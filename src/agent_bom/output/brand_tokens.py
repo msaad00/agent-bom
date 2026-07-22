@@ -11,8 +11,31 @@ from dataclasses import dataclass
 PRODUCT_NAME = "agent-bom"
 # Capability line for meta/prose — not shown under the nav lockup.
 POSITIONING_SHORT = "Open security scanner for AI infrastructure"
+# Longer meta line for OpenAPI / HTML <title> chrome (matches VISUAL_LANGUAGE).
+POSITIONING_META = (
+    "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure"
+)
 TAGLINE_CHAIN = "agent → MCP server → packages → CVEs → blast radius"
 DOCS_URL = "https://github.com/msaad00/agent-bom"
+REPORT_TITLE = f"{PRODUCT_NAME} scan report"
+
+# Minimal dark mark for API /docs favicon when package data is unavailable.
+MARK_SVG_DARK = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="agent-bom mark">
+  <defs>
+    <linearGradient id="abm" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="15" fill="#0c1210" stroke="url(#abm)" stroke-width="2"/>
+  <circle cx="32" cy="30.2" r="12" fill="#0f1a17" stroke="url(#abm)" stroke-width="2.4"/>
+  <path d="M32 18.4V13.5" stroke="url(#abm)" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="32" cy="11.9" r="2.1" fill="url(#abm)"/>
+  <circle cx="28" cy="28.9" r="2.7" fill="#34d399"/>
+  <circle cx="36" cy="28.9" r="2.7" fill="#22d3ee"/>
+  <path d="M28.3 35.4h7.4" stroke="url(#abm)" stroke-width="1.9" stroke-linecap="round"/>
+</svg>
+"""
 
 # Terminal mark: BOM with agent HUD in the O (visor + antenna cue).
 _MARK_UNICODE = (
@@ -111,15 +134,39 @@ def print_cli_startup_banner(console: object, *, version: str) -> None:
     print_()
 
 
+def emit_cli_runtime_summary(
+    title: str,
+    rows: list[tuple[str, str]],
+    *,
+    err: bool = False,
+    force_ascii: bool = False,
+) -> None:
+    """Print the BOM mark + product title + aligned key/value rows for serve/gateway."""
+
+    import click
+
+    click.echo("", err=err)
+    for line in cli_mark_lines(force_ascii=force_ascii):
+        click.echo(line, err=err)
+    click.echo(f"  {title}", err=err)
+    for label, value in rows:
+        click.echo(f"  {label:<11} {value}", err=err)
+    click.echo("  Press Ctrl+C to stop.\n", err=err)
+
+
 __all__ = [
     "DOCS_URL",
     "LANE_TOKENS",
+    "MARK_SVG_DARK",
+    "POSITIONING_META",
     "POSITIONING_SHORT",
     "PRODUCT_NAME",
+    "REPORT_TITLE",
     "TAGLINE_CHAIN",
     "LaneToken",
     "cli_banner_plain",
     "cli_mark_lines",
+    "emit_cli_runtime_summary",
     "lane_title",
     "lane_token",
     "print_cli_startup_banner",

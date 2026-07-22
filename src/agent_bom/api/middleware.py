@@ -77,7 +77,8 @@ _DOCS_CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+    # Favicon is served from /brand/mark.svg (self); keep jsdelivr for swagger assets.
+    "img-src 'self' data: https://cdn.jsdelivr.net; "
     "font-src 'self' data: https://cdn.jsdelivr.net; "
     "worker-src 'self' blob:; "
     "connect-src 'self'"
@@ -963,6 +964,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/ping",
             "/readyz",
             "/version",
+            "/brand/mark.svg",
             "/docs",
             "/redoc",
             "/openapi.json",
@@ -984,6 +986,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/ping",
             "/readyz",
             "/version",
+            "/brand/mark.svg",
             "/v1/auth/session",
             "/v1/auth/oidc/login",
             "/v1/auth/oidc/callback",
@@ -1005,7 +1008,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return False
         if path.startswith("/_next/"):
             return True
-        if path in {"/favicon.ico", "/robots.txt", "/manifest.json", "/apple-touch-icon.png"}:
+        if path in {
+            "/favicon.ico",
+            "/robots.txt",
+            "/manifest.json",
+            "/apple-touch-icon.png",
+            "/brand/mark.svg",
+        }:
+            return True
+        if path.startswith("/brand/"):
             return True
         dashboard_routes = {
             "",

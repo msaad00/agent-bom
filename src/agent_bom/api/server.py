@@ -74,6 +74,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import resolved_cors_origins_raw
+from agent_bom.output.brand_tokens import POSITIONING_META, PRODUCT_NAME, TAGLINE_CHAIN
 
 _logger = logging.getLogger(__name__)
 _DASHBOARD_CSP_META_RE = re.compile(
@@ -629,15 +630,13 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="agent-bom API",
-    description=(
-        "Security scanner for AI supply chain and infrastructure — "
-        "map the full trust chain from agents to CVEs, credentials, and blast radius."
-    ),
+    title=f"{PRODUCT_NAME} API",
+    description=f"{POSITIONING_META}. {TAGLINE_CHAIN}.",
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=_lifespan,
+    swagger_ui_parameters={"favicon_url": "/brand/mark.svg"},
 )
 
 _default_origins = [
@@ -1301,6 +1300,23 @@ def _public_health() -> PublicHealthResponse:
         configured_auth_modes=list(cast(list[str], auth_runtime["configured_modes"])),
         unauthenticated_allowed=bool(auth_runtime.get("unauthenticated_allowed", False)),
     )
+
+
+@app.get("/brand/mark.svg", include_in_schema=False, tags=["meta"])
+async def brand_mark_svg() -> Any:
+    """Serve the canonical BOM agent-HUD mark for OpenAPI /docs favicon chrome."""
+    from fastapi.responses import FileResponse, Response
+
+    from agent_bom.output.brand_tokens import MARK_SVG_DARK
+
+    root = Path(__file__).resolve().parents[3]
+    for candidate in (
+        root / "docs" / "images" / "brand" / "mark-dark.svg",
+        root / "ui" / "public" / "brand" / "mark-dark.svg",
+    ):
+        if candidate.is_file():
+            return FileResponse(candidate, media_type="image/svg+xml")
+    return Response(content=MARK_SVG_DARK, media_type="image/svg+xml")
 
 
 @app.get("/health", response_model=PublicHealthResponse, tags=["meta"])

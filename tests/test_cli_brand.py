@@ -5,8 +5,10 @@ from __future__ import annotations
 from agent_bom.output.brand_tokens import (
     POSITIONING_SHORT,
     PRODUCT_NAME,
+    REPORT_TITLE,
     cli_banner_plain,
     cli_mark_lines,
+    emit_cli_runtime_summary,
     print_cli_startup_banner,
 )
 
@@ -40,3 +42,22 @@ def test_startup_banner_renders_mark_and_quick_start() -> None:
     assert "9.9.9" in blob
     assert f"{PRODUCT_NAME} scan" in blob
     assert "Quick start" in blob
+
+
+def test_runtime_summary_includes_bom_mark(capsys) -> None:
+    emit_cli_runtime_summary(
+        "agent-bom serve",
+        [("Bind", "http://127.0.0.1:8422")],
+        force_ascii=True,
+    )
+    out = capsys.readouterr().out
+    assert "B" in out and "M" in out
+    assert "agent-bom serve" in out
+    assert "Bind" in out
+    assert REPORT_TITLE  # locked constant for report headers
+
+
+def test_report_title_uses_product_name() -> None:
+    assert REPORT_TITLE.startswith(PRODUCT_NAME)
+    assert "Agent-BOM" not in REPORT_TITLE
+    assert "AI-BOM Report" != REPORT_TITLE

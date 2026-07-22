@@ -11,6 +11,7 @@ import type {
   ScanJob,
   ScanJobStatus,
   GraphSnapshot,
+  GraphHistoryResponse,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   GraphQueryRequest,
@@ -174,6 +175,8 @@ export type {
   GraphPagination,
   GraphAttackPath,
   GraphSnapshot,
+  GraphHistoryResponse,
+  GraphHistorySnapshot,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   FixFirstPathCard,
@@ -812,6 +815,13 @@ export const api = {
     // widen to all retained snapshots so old history is never silently hidden.
     if (windowDays != null) params.set("window_days", String(windowDays));
     return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`);
+  },
+
+  /** Retained graph history with adjacent diff summaries — GET /v1/graph/history */
+  getGraphHistory: (limit = 50, windowDays?: number) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (windowDays != null) params.set("window_days", String(windowDays));
+    return get<GraphHistoryResponse>(`/v1/graph/history?${params.toString()}`);
   },
 
   /** Diff two persisted graph snapshots without loading either full graph */

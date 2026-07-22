@@ -48,6 +48,8 @@ const LAYER_ORDER = [
   "asset",
   "infra",
   "finding",
+  "code",
+  "ci",
 ] as const;
 
 const LAYER_LABELS: Record<string, string> = {
@@ -69,6 +71,8 @@ const LAYER_LABELS: Record<string, string> = {
   asset: "Assets",
   infra: "Infrastructure",
   finding: "Findings",
+  code: "Code",
+  ci: "CI/CD",
   other: "Other",
 };
 

@@ -2879,17 +2879,9 @@ _SHAPE_TO_ICON: dict[str, str] = {
 
 
 _RESERVED_GRAPH_NODE_KINDS: dict[str, tuple[list[str], str]] = {
-    EntityType.CODE_MODULE.value: (
-        ["code_graph"],
-        "Reserved for source-code topology; static supply-chain scans do not emit module-level nodes yet.",
-    ),
     EntityType.EXTERNAL_IMPORT.value: (
         ["code_graph"],
         "Reserved for source-code import topology; static supply-chain scans do not emit import nodes yet.",
-    ),
-    EntityType.CI_JOB.value: (
-        ["ci_graph"],
-        "Reserved for CI/CD topology; scan jobs are tracked operationally but are not emitted as graph nodes yet.",
     ),
 }
 
@@ -2898,18 +2890,6 @@ _RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
     RelationshipType.IMPORTS.value: (
         ["code_graph"],
         "Reserved for source-code topology linking files, modules, packages, and imports.",
-    ),
-    RelationshipType.DEFINES.value: (
-        ["code_graph"],
-        "Reserved for source-code topology linking source files to modules, tools, and CI jobs.",
-    ),
-    RelationshipType.RUNS.value: (
-        ["ci_graph"],
-        "Reserved for CI/CD topology linking workflow jobs to tools, servers, and agents.",
-    ),
-    RelationshipType.CONFIGURES.value: (
-        ["code_graph"],
-        "Reserved for configuration topology linking config files to agents, servers, CI jobs, and tools.",
     ),
     RelationshipType.OWNS.value: (
         ["identity_graph"],
@@ -2935,6 +2915,8 @@ _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
     EntityType.DIRECTORY.value: ["repo_structure_overlay"],
     EntityType.SOURCE_FILE.value: ["repo_structure_overlay"],
     EntityType.CONFIG_FILE.value: ["repo_structure_overlay"],
+    EntityType.CODE_MODULE.value: ["code_graph_overlay"],
+    EntityType.CI_JOB.value: ["ci_graph_overlay", "github_actions"],
 }
 
 
@@ -2943,6 +2925,9 @@ _EMITTED_GRAPH_EDGE_SURFACES: dict[str, list[str]] = {
     RelationshipType.USED_CREDENTIAL.value: ["runtime_proxy", "gateway_event_projection"],
     RelationshipType.USES_FRAMEWORK.value: ["ai_inventory", "framework_agents"],
     RelationshipType.OBSERVES.value: ["ai_inventory"],
+    RelationshipType.DEFINES.value: ["code_graph_overlay"],
+    RelationshipType.RUNS.value: ["ci_graph_overlay", "github_actions"],
+    RelationshipType.CONFIGURES.value: ["ci_graph_overlay", "github_actions"],
 }
 
 

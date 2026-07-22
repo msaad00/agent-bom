@@ -18,6 +18,8 @@ describe("GraphLegend", () => {
           { label: "MCP Server", color: "#3b82f6", layer: "mcp_server", kind: "node", shape: "square" },
           { label: "Package", color: "#52525b", layer: "package", kind: "node", shape: "pill" },
           { label: "Vulnerability", color: "#ef4444", layer: "finding", kind: "node", shape: "diamond" },
+          { label: "Code Module", color: "#06b6d4", layer: "code", kind: "node", shape: "dot" },
+          { label: "CI/CD Job", color: "#a855f7", layer: "ci", kind: "node", shape: "diamond" },
           { label: "Uses", color: "#10b981", kind: "edge", lineStyle: "solid" },
         ]}
       />,
@@ -27,6 +29,8 @@ describe("GraphLegend", () => {
     expect(screen.getByText("MCP Servers")).toBeInTheDocument();
     expect(screen.getByText("Packages")).toBeInTheDocument();
     expect(screen.getByText("Findings")).toBeInTheDocument();
+    expect(screen.getByText("Code")).toBeInTheDocument();
+    expect(screen.getByText("CI/CD")).toBeInTheDocument();
     expect(screen.getByText("Relationships")).toBeInTheDocument();
     expect(screen.getByText("Uses")).toBeInTheDocument();
   });

@@ -11,6 +11,7 @@ import type {
   ScanJob,
   ScanJobStatus,
   GraphSnapshot,
+  GraphHistoryResponse,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   GraphQueryRequest,
@@ -19,6 +20,8 @@ import type {
   GraphNodeNeighborsResponse,
   GraphNeighborDirection,
   GraphImpactResponse,
+  GraphFilterPreset,
+  GraphFilterPresetCreate,
   GraphRollupResponse,
   GraphSearchResponse,
   GraphSemanticClustersResponse,
@@ -172,12 +175,16 @@ export type {
   GraphPagination,
   GraphAttackPath,
   GraphSnapshot,
+  GraphHistoryResponse,
+  GraphHistorySnapshot,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   FixFirstPathCard,
   GraphQueryRequest,
   GraphQueryResponse,
   GraphImpactResponse,
+  GraphFilterPreset,
+  GraphFilterPresetCreate,
   GraphNodeDetailResponse,
   GraphNodeNeighborsResponse,
   GraphNeighborDirection,
@@ -810,6 +817,13 @@ export const api = {
     return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`);
   },
 
+  /** Retained graph history with adjacent diff summaries — GET /v1/graph/history */
+  getGraphHistory: (limit = 50, windowDays?: number) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (windowDays != null) params.set("window_days", String(windowDays));
+    return get<GraphHistoryResponse>(`/v1/graph/history?${params.toString()}`);
+  },
+
   /** Diff two persisted graph snapshots without loading either full graph */
   getGraphDiff: (oldScanId: string, newScanId: string) => {
     const params = new URLSearchParams();
@@ -1014,6 +1028,17 @@ export const api = {
     if (maxDepth != null) params.set("max_depth", String(maxDepth));
     return get<GraphImpactResponse>(`/v1/graph/impact?${params.toString()}`);
   },
+
+  /** List saved graph filter presets — GET /v1/graph/presets */
+  listGraphPresets: () => get<GraphFilterPreset[]>("/v1/graph/presets"),
+
+  /** Save a named graph filter preset — POST /v1/graph/presets */
+  saveGraphPreset: (body: GraphFilterPresetCreate) =>
+    post<{ name: string; status: string }>("/v1/graph/presets", body),
+
+  /** Delete a saved graph filter preset — DELETE /v1/graph/presets/{name} */
+  deleteGraphPreset: (name: string) =>
+    del(`/v1/graph/presets/${encodeURIComponent(name)}`),
 
   /** Estate-scale CONTAINS roll-up with optional one-level drill-down */
   getGraphRollup: (

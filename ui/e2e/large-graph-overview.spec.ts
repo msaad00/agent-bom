@@ -315,9 +315,10 @@ test("sigma webgl overview renders when explicitly requested", async ({ page }, 
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("WebGL graph overview")).toBeVisible();
-  await expect(page.getByText("Sigma.js renderer for broad estate scans")).toBeVisible();
+  const sigma = page.getByTestId("sigma-graph-overview");
+  await expect(sigma).toBeVisible({ timeout: 30_000 });
+  await expect(sigma.getByText("WebGL graph overview")).toBeVisible();
+  await expect(sigma.getByText(/Sigma\.js renderer for broad estate scans/)).toBeVisible();
   await expectSigmaCanvases(page);
   await page.screenshot({ path: testInfo.outputPath("sigma-webgl-overview.png"), fullPage: true });
 });

@@ -212,17 +212,25 @@ def test_discover_skips_generic_markdown_and_vendored_dirs(tmp_path):
     vendored = tmp_path / "node_modules" / "pkg" / "skills" / "evil.md"
     venv_skill = tmp_path / ".venv" / "lib" / "skills" / "tool.md"
     docs_skill = tmp_path / "docs" / "skills" / "example.md"
-    for path in (vendored, venv_skill, docs_skill):
+    site_docs_skill = tmp_path / "site-docs" / "skills" / "index.md"
+    agents_readme = tmp_path / ".agents" / "skills" / "README.md"
+    agents_skill = tmp_path / ".agents" / "skills" / "review" / "SKILL.md"
+    for path in (vendored, venv_skill, docs_skill, site_docs_skill, agents_readme, agents_skill):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# Third-party or docs skill")
 
     found = discover_skill_files(tmp_path)
     names = {p.name for p in found}
+    rel = {str(p.relative_to(tmp_path)) for p in found}
     assert "CLAUDE.md" in names
     assert "README.md" not in names
     assert "evil.md" not in names
     assert "tool.md" not in names
     assert "example.md" not in names
+    assert "index.md" not in names
+    assert ".agents/skills/README.md" not in rel
+    assert "site-docs/skills/index.md" not in rel
+    assert ".agents/skills/review/SKILL.md" in rel
 
 
 # ── scan_skill_files tests ──────────────────────────────────────────────────

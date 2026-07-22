@@ -155,7 +155,7 @@ The same machine-readable mapping is exposed to assistants through
 |-----------|-------------------|-------------------|
 | Choose supported MCP projects | `registry_lookup`, `marketplace_check`, `fleet_scan`, MCP registry freshness gate | Registry metadata, package provenance, source freshness, advisory matches |
 | Design for boundaries | `context_graph`, `exposure_paths`, `runtime_blueprints`, gateway policy | Graph edges, allowed tool categories, drift decisions, gateway metrics |
-| Validate parameters | 76 strict-args MCP tools, API validation errors, `policy_check` | `tools/list` schemas, `additionalProperties:false`, correlation IDs |
+| Validate parameters | 77 strict-args MCP tools, API validation errors, `policy_check` | `tools/list` schemas, `additionalProperties:false`, correlation IDs |
 | Constrain and sandbox execution | `tool_risk_assessment`, proxy, gateway, deployment profiles | Capability classes, block decisions, sandbox posture, Helm/Docker settings |
 | Sign and verify sensitive actions | `audit_integrity`, signed posture outbox, Shield admin-gated tools | HMAC chain status, source-agent labels, audit reasons, posture events |
 | Filter chained outputs | prompt-injection sentinels, `runtime_correlate`, proxy response inspection | Runtime alerts, detector findings, redaction mode, policy decisions |
@@ -177,7 +177,7 @@ The same machine-readable mapping is exposed to assistants through
 │  2. PROXY         Sits between client and server, intercepts     │
 │     (agent-bom proxy) every JSON-RPC message, enforces policy    │
 │                                                                  │
-│  3. MCP SERVER    Exposes 76 scan/governance tools to any agent  │
+│  3. MCP SERVER    Exposes 77 scan/governance tools to any agent  │
 │     (agent-bom mcp server)  — scan, check, registry, compliance  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -237,7 +237,7 @@ For cross-agent correlation, use the broader runtime protection engine (`agent-b
 agent-bom mcp server
 ```
 
-Exposes 76 tools to any MCP-compatible AI assistant. Your agent can run scans,
+Exposes 77 tools to any MCP-compatible AI assistant. Your agent can run scans,
 check packages, query ExposurePaths, ask for deploy decisions, query threat
 intel, inspect runtime posture, run admin-gated Shield actions, and generate
 compliance reports without leaving the chat:

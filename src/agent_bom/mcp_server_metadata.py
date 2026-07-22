@@ -351,6 +351,14 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
+        "name": "runtime_evidence_ingest",
+        "description": (
+            "Ingest CWPP runtime/EDR workload signals into the durable evidence store "
+            "(authenticated source; metadata only; never writes to a customer cloud target)"
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
         "name": "cost_forecast",
         "description": "Project LLM spend burn rate and budget runway (reference-only forecast)",
         "annotations": {"readOnlyHint": True},
@@ -461,6 +469,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "ai_inventory_scan": ["READ", "LOCAL_FILE_READ"],
     "license_compliance_scan": ["READ", "LOCAL_FILE_READ", "COMPLIANCE"],
     "ingest_external_scan": ["WRITE", "LOCAL_FILE_READ", "INGEST"],
+    "runtime_evidence_ingest": ["WRITE", "INGEST"],
     # access_review recomputes and persists campaign status as a side effect of
     # a read-shaped call → WRITE (idempotent, non-destructive).
     "access_review": ["WRITE", "READ", "IDENTITY", "GOVERNANCE", "AUDIT"],

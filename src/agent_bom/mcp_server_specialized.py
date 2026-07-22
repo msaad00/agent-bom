@@ -22,6 +22,7 @@ def register_specialized_ai_tools(
     """Register specialized AI, model, and external-ingest MCP tools."""
     from agent_bom.mcp_tools.cloud import gpu_infra_scan_impl, registry_sweep_scan_impl, vector_db_scan_impl
     from agent_bom.mcp_tools.compliance import aisvs_benchmark_impl, license_compliance_scan_impl
+    from agent_bom.mcp_tools.runtime_evidence import runtime_evidence_ingest_impl
     from agent_bom.mcp_tools.specialized import (
         ai_inventory_scan_impl,
         browser_extension_scan_impl,
@@ -298,6 +299,38 @@ def register_specialized_ai_tools(
             license_compliance_scan_impl,
             scan_json=scan_json,
             policy_json=policy_json,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Ingest CWPP Runtime Evidence")
+    async def runtime_evidence_ingest(
+        source_id: Annotated[str, Field(description="Pre-registered runtime evidence source id.")],
+        secret: Annotated[
+            str,
+            Field(description="Shared secret for the source (never logged)."),
+        ],
+        signals_json: Annotated[
+            str,
+            Field(
+                description=(
+                    "JSON string: a list of signal objects, or {\"signals\": [...]} matching the "
+                    "POST /v1/cloud/runtime-evidence/ingest body shape (metadata only)."
+                ),
+            ),
+        ],
+    ) -> str:
+        """Ingest CWPP runtime/EDR workload signals into the local evidence store.
+
+        Mutates the durable runtime-evidence store for the authenticated source's
+        tenant. Sources are provisioned via ``AGENT_BOM_RUNTIME_EVIDENCE_SOURCES``.
+        Fail-closed on auth; never writes to a customer cloud target.
+        """
+        return await execute_tool_async(
+            "runtime_evidence_ingest",
+            runtime_evidence_ingest_impl,
+            source_id=source_id,
+            secret=secret,
+            signals_json=signals_json,
             _truncate_response=truncate_response,
         )
 

@@ -490,6 +490,10 @@ function SecurityGraphPageContent() {
   }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, selectedScanId]);
 
   useEffect(() => {
+    setPinnedNodeId(focus.nodeId || null);
+  }, [focus.nodeId]);
+
+  useEffect(() => {
     if (!selectedAttackPathKey) return;
     const selectedIndex = attackPaths.findIndex((path) => attackPathKey(path) === selectedAttackPathKey);
     if (selectedIndex < 0 || selectedIndex < visibleAttackPathCount) return;

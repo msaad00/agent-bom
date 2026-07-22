@@ -398,6 +398,8 @@ export interface AttackPath {
   credential_exposure: string[];
   tool_exposure: string[];
   vuln_ids: string[];
+  /** Stable Finding.id anchors when stamped (preferred over CVE labels). */
+  finding_ids?: string[];
   /**
    * Potential ATT&CK/ATLAS techniques mapped from this path's observed
    * evidence, ordered by hop. Optional so older graph snapshots without the

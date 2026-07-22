@@ -959,6 +959,12 @@ export interface UnifiedFinding {
   canonical_id?: string | undefined;
   finding_type?: string | undefined;
   source?: string | undefined;
+  /** Estate / asset UnifiedNode id this finding attaches to (graph FK). */
+  node_id?: string | null | undefined;
+  /** Vulnerability/misconfiguration node id (e.g. vuln:CVE-…). */
+  finding_node_id?: string | null | undefined;
+  /** EntityType.value for the estate node when known. */
+  entity_type?: string | null | undefined;
   asset?: {
     name?: string | undefined;
     asset_type?: string | undefined;
@@ -1176,6 +1182,7 @@ export interface ContextGraphResponse {
     credential_exposure: string[];
     tool_exposure: string[];
     vuln_ids: string[];
+    finding_ids?: string[];
   }>;
   interaction_risks: Array<{
     pattern: string;

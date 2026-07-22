@@ -6,13 +6,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { LoginPanel } from "@/components/login-panel";
 import { useAuthState } from "@/components/auth-provider";
+import { defaultOperatorLanding } from "@/lib/operator-landing";
 import { safeReturnPath } from "@/lib/safe-return-path";
 
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { session, loading } = useAuthState();
-  const returnTo = safeReturnPath(searchParams.get("returnTo"));
+  // SecOps default: investigation home unless an explicit safe returnTo is set.
+  const returnTo = defaultOperatorLanding(safeReturnPath(searchParams.get("returnTo")));
 
   useEffect(() => {
     if (loading) return;

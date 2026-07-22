@@ -198,6 +198,10 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
     return {
       id: findingLabel,
       finding_id: finding.id,
+      node_id: finding.node_id ?? undefined,
+      finding_node_id: finding.finding_node_id ?? undefined,
+      entity_type: finding.entity_type ?? undefined,
+      asset_type: finding.asset?.asset_type ?? undefined,
       severity: normalizedSeverity(finding.effective_severity ?? finding.severity),
       summary: raw.attack_vector_summary ?? finding.title ?? finding.description,
       description: finding.description ?? finding.title,

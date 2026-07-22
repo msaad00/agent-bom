@@ -1,3 +1,4 @@
+import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
 import type { EnrichedVuln } from "@/lib/findings-view";
 
 export interface WhyItMattersLink {
@@ -81,8 +82,8 @@ export function buildWhyItMatters(vuln: EnrichedVuln): WhyItMattersNarrative | n
   }
 
   const links: WhyItMattersLink[] = [];
-  if (vuln.graph_reachable || vuln.effective_reach_band) {
-    links.push({ href: "/security-graph", label: "Open security graph" });
+  if (vuln.graph_reachable || vuln.effective_reach_band || vuln.node_id || vuln.finding_node_id) {
+    links.push({ href: buildFindingInvestigationHref(vuln), label: "Open investigation" });
   }
   if (vuln.runtime_evidence?.state === "blocked") {
     links.push({ href: "/traces", label: "Open trace explorer" });

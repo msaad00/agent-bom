@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronRight, ExternalLink, FileSearch, Loader2, Radar, ShieldAlert } from "lucide-react";
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
+import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
 import { Drawer } from "@/components/drawer";
 import {
@@ -130,6 +131,8 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
 
       <ReachBadges vuln={vuln} />
 
+      <EstateNodeSection vuln={vuln} />
+
       <Section title="Attack summary">
         <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{summary}</p>
         {cweMatches.length > 0 ? (
@@ -235,6 +238,40 @@ function Section({
       <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">{title}</h4>
       <div className="mt-2">{children}</div>
     </section>
+  );
+}
+
+/** Typed estate node → evidence: primary investigation entry from a finding. */
+function EstateNodeSection({ vuln }: { vuln: EnrichedVuln }) {
+  const href = buildFindingInvestigationHref(vuln);
+  const entityType = vuln.entity_type || vuln.asset_type || "asset";
+  const estateLabel = vuln.node_id || vuln.packages[0] || vuln.agents[0] || "estate node";
+  const findingNode = vuln.finding_node_id;
+
+  return (
+    <Section title="Estate node" accent>
+      <p className="text-sm text-[color:var(--text-secondary)]">
+        Investigate from the typed graph node this finding attaches to — not as a free-floating severity row.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <Chip mono>{entityType}</Chip>
+        {vuln.node_id ? <Chip mono>{vuln.node_id}</Chip> : <Chip>{estateLabel}</Chip>}
+        {findingNode ? <Chip mono>{findingNode}</Chip> : null}
+        {vuln.finding_id ? (
+          <span className="font-mono text-[10px] text-[color:var(--text-tertiary)]">finding {vuln.finding_id}</span>
+        ) : null}
+      </div>
+      <div className="mt-3">
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--accent-mint)] hover:underline"
+          data-testid="finding-investigate-estate"
+        >
+          Open in investigation
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    </Section>
   );
 }
 

@@ -236,4 +236,4 @@ def test_describe_posture_shape_and_status():
     assert posture["evaluated"] == 1
     assert posture["status"] in {"attention_required", "blocked"}
     assert posture["identities"][0]["risk_score"] > 0
-    assert posture["generated_from"] == "/v1/auth/nhi/governance"
+    assert posture["generated_from"] == "/v1/graph/nhi/governance"

@@ -61,3 +61,10 @@ def test_stranded_ci_recovery_runs_on_pr_synchronize() -> None:
     assert "scripts/retrigger_stranded_pr.sh" in workflow
     assert "github.event.pull_request.number" in workflow
     assert "github.event_name == 'pull_request' && '0' || '3'" in workflow
+
+
+def test_self_scan_upload_filters_first_party_informational_skill_rows() -> None:
+    pr_gate = (ROOT / ".github" / "workflows" / "pr-security-gate.yml").read_text(encoding="utf-8")
+    post_merge = (ROOT / ".github" / "workflows" / "post-merge-self-scan.yml").read_text(encoding="utf-8")
+    assert "filter_first_party_skill_sarif.py" in pr_gate
+    assert "filter_first_party_skill_sarif.py" in post_merge

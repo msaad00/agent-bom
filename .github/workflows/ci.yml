@@ -41,12 +41,12 @@ jobs:
         run: python3 scripts/lint_release_workflow.py .github/workflows/release.yml
 
   changes:
-    name: PR Path Classifier
+    name: Change Path Classifier
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     outputs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
@@ -66,7 +66,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          else
+            before="${{ github.event.before }}"
+            if [ -n "$before" ] && ! printf '%s' "$before" | grep -qE '^0+$'; then
+              changed="$(git diff --name-only "$before" "$GITHUB_SHA")"
+            else
+              changed="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")"
+            fi
+          fi
           action=false
           alpine=false
           alpine_full=false
@@ -314,10 +323,8 @@ jobs:
         run: |
           python scripts/check_js_supply_chain.py
           cd sdks/typescript
-          npm config set fetch-retries 5
-          npm config set fetch-retry-mintimeout 20000
-          npm config set fetch-retry-maxtimeout 120000
-          npm ci --ignore-scripts
+          # The preceding SDK audit step installed this exact lockfile. Reuse
+          # that tree instead of paying for a second npm ci on every run.
           npm run build
           if find dist -name '*.map' -print -quit | grep -q .; then
             echo "::error::TypeScript SDK build emitted source maps"
@@ -376,7 +383,12 @@ jobs:
     # caught by the release docs-deploy lane after it has already reached main
     # (issue #3631). Mirrors the exact build invocation in
     # .github/workflows/docs.yml but never publishes.
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.docs == 'true')
+    if: >-
+      always() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.docs == 'true'
+      )
     permissions:
       contents: read
     steps:
@@ -400,10 +412,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: changes
-    # Skip on PRs that touch no UI / API-contract / workflow paths so a
-    # compose-only or docs-only PR can never be blocked by a downstream UI
-    # regression in main. Push events to main always run the full suite.
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.ui == 'true')
+    # PRs that touch no UI / API-contract / workflow paths skip this expensive
+    # lane. On pushes to main, Main UI Smoke is the canary and already builds
+    # the standalone app; keeping this required context skipped avoids a
+    # second full npm install/build for the same commit.
+    if: >-
+      always() && (
+        github.event_name != 'push' && (
+          github.event_name != 'pull_request' ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.ui == 'true'
+        )
+      )
     permissions:
       contents: read
     steps:
@@ -650,7 +670,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     needs: changes
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.endpoint == 'true')
+    if: >-
+      always() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.endpoint == 'true'
+      )
     permissions:
       contents: read
     strategy:
@@ -745,11 +770,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        if: github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        if: >-
+          (github.event_name != 'pull_request' && github.event_name != 'push') ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.python == 'true'
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Run tests
-        if: github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        if: >-
+          (github.event_name != 'pull_request' && github.event_name != 'push') ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.python == 'true'
         run: |
           # Keep PR matrix worker count bounded on hosted runners. `-n auto`
           # can overcommit CPU/RAM enough for GitHub to terminate the runner
@@ -773,41 +804,27 @@ jobs:
             uv run pytest tests/ -q --tb=short -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
           fi
 
-      - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)
-        # Surfaces a re-baseline pointer when the graph builder drifts.  The
-        # underlying tests are already executed by the previous step; this job
-        # re-runs *just* the three guard files so the CI summary names them
-        # clearly and points operators at scripts/rebaseline_graph_edges.py.
-        if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
+      - name: Graph accuracy fixture guard (#2259)
+        # The graph tests are already part of the full test invocation above.
+        # Keep the cheap fixture check and re-baseline guidance without running
+        # the same 23 tests a second time.
+        if: >-
+          always() && (
+            (github.event_name != 'pull_request' && github.event_name != 'push') ||
+            needs.changes.result != 'success' ||
+            needs.changes.outputs.python == 'true'
+          )
         run: |
-          set +e
-          uv run pytest \
-            tests/test_graph_roundtrip.py \
-            tests/test_graph_edge_counts.py \
-            tests/test_graph_visual_snapshot.py \
-            -v --tb=short
-          status=$?
-          if [ $status -ne 0 ]; then
-            echo ""
-            echo "=========================================================="
-            echo "Graph accuracy guards FAILED."
-            echo ""
-            echo "If this drift is intentional (graph builder changed shape),"
-            echo "regenerate the recorded fixtures and commit them:"
-            echo ""
-            echo "    Re-baseline: python scripts/rebaseline_graph_edges.py"
-            echo ""
-            echo "Otherwise this is a real regression — fix the builder."
-            echo "=========================================================="
-          fi
           uv run python scripts/rebaseline_graph_edges.py --dry-run
-          exit $status
 
       - name: DCM scanner self-check (meta-recursive)
         # Runs agent-bom's own DCM scanner against agent-bom's own DCM migrations.
         # Proves the scanner is alive, its rules fire on real SQL, and our own
         # migration files are clean (or surface known findings explicitly).
-        if: github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        if: >-
+          (github.event_name != 'pull_request' && github.event_name != 'push') ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.python == 'true'
         run: |
           uv run python - <<'PYEOF'
           from pathlib import Path
@@ -849,7 +866,12 @@ jobs:
     # the normal Test job (which installs none of the cloud extras) — CI stays
     # green while a fresh install loses that discovery path at runtime. Install
     # the cloud extras here and actually execute every extra-gated import line.
-    if: always() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.python == 'true')
+    if: >-
+      always() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.python == 'true'
+      )
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -873,7 +895,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.postgres == 'true')
+    if: >-
+      always() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.postgres == 'true'
+      )
     permissions:
       contents: read
     services:
@@ -997,7 +1024,12 @@ jobs:
   # glibc-only assumptions in code, compiled extensions, or path handling.
   test-alpine:
     name: Test (Alpine/musl)
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.alpine == 'true')
+    if: >-
+      always() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.alpine == 'true'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -1305,7 +1337,12 @@ jobs:
   # 6. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:
     name: Dogfood GitHub Action
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.action == 'true')
+    if: >-
+      always() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.action == 'true'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

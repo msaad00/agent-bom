@@ -146,6 +146,10 @@ jobs:
           path.write_text(json.dumps(data, indent=2) + "\n")
           PY
 
+      - name: Filter first-party informational skill findings
+        if: always() && hashFiles('sarif/self-dep.sarif') != ''
+        run: uv run python scripts/filter_first_party_skill_sarif.py sarif/self-dep.sarif
+
       - name: Upload dep scan SARIF
         if: always() && hashFiles('sarif/self-dep.sarif') != ''
         uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3

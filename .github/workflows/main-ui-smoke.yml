@@ -1,7 +1,7 @@
 name: Main UI Smoke
 
-# Runs on every push to main and rebuilds the standalone UI container, boots
-# it, and curls the dashboard root. The goal is to catch a "main is now
+# Runs on every UI-affecting push to main and rebuilds the standalone UI
+# container, boots it, and curls the dashboard root. The goal is to catch a "main is now
 # broken" symptom (CSP regression, hydration failure, missing standalone
 # output) within minutes — before the next downstream PR opens and gets
 # blocked by an unrelated upstream regression.
@@ -19,7 +19,11 @@ on:
       - "ui/**"
       - "src/agent_bom/api/**"
       - "contracts/**"
+      - "src/agent_bom/graph/**"
+      - "src/agent_bom/context_graph.py"
+      - "src/agent_bom/graph_schema.py"
       - "src/agent_bom/models.py"
+      - "action.yml"
       - ".github/workflows/main-ui-smoke.yml"
   workflow_dispatch: {}
 

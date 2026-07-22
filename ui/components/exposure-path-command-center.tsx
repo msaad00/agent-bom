@@ -8,6 +8,7 @@ import {
   Bug,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Database,
   GitBranch,
   KeyRound,
@@ -18,8 +19,15 @@ import {
   ShieldAlert,
   Wrench,
 } from "lucide-react";
-import { pathDisplayTitle, pathFixLabel, type ExposureEntityRole, type ExposurePath } from "@/lib/exposure-path";
+import {
+  pathDisplayTitle,
+  pathFixLabel,
+  type ExposureEntityRef,
+  type ExposureEntityRole,
+  type ExposurePath,
+} from "@/lib/exposure-path";
 import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
+import { formatExposureEntityTitle } from "@/lib/entity-display";
 import {
   buildPathGraphLayout,
   wrapGraphText,
@@ -164,9 +172,8 @@ export function ExposurePathCommandCenter({
                 </span>
               ) : null}
             </div>
-            <h2 className="text-xl font-semibold leading-8 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
-              {pathDisplayTitle(path)}
-            </h2>
+            <h2 className="sr-only">{pathDisplayTitle(path)}</h2>
+            <ExposurePathHopTitle hops={path.hops.length > 0 ? path.hops : [path.source, path.target]} />
             <p
               title={pathSummary}
               className="line-clamp-3 max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)] sm:line-clamp-2"
@@ -395,6 +402,34 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+function ExposurePathHopTitle({ hops }: { hops: ExposureEntityRef[] }) {
+  /** Wrap between hops (chip + chevron), never mid-arrow in a long string. */
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-2"
+      aria-hidden="true"
+      data-testid="exposure-path-hop-title"
+    >
+      {hops.map((hop, index) => {
+        const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
+        return (
+          <div key={`${hop.id}-${index}`} className="flex items-center gap-1.5">
+            {index > 0 ? (
+              <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" aria-hidden="true" />
+            ) : null}
+            <span
+              title={hop.label}
+              className={`max-w-[14rem] truncate rounded-lg border px-2.5 py-1 text-sm font-semibold text-[color:var(--foreground)] ${meta.tint}`}
+            >
+              {formatExposureEntityTitle(hop.label, hop.role)}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

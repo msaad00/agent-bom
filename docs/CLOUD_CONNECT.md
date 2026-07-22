@@ -574,43 +574,20 @@ graph edge, so reachability stays edge-derived and is never fabricated.
 Wired today: findings surfaced by `GET /v1/findings` (and the overview /
 compliance / observability reads that share the enricher) gain a
 `workload_runtime_evidence` field on workload-scoped rows once a tenant has
-<<<<<<< HEAD
 signals; the JSON API export carries it automatically. Authenticated ingest is
-<<<<<<< HEAD
-available at `POST /v1/cloud/runtime-evidence/ingest` (sources provisioned via
-`AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`; empty registry fails closed). Graph
-persist and investigation graph loads annotate matching CWPP workload nodes
-via the same index (tenant-scoped; absence stays `no_runtime_signal`, never
-"clean").
-
-Not yet locked in (stage 4 remainder): CLI/MCP ingest surface, a scheduler that
-pulls from sources, typed SARIF/report export fields, and any UI panel for
-workload runtime evidence. Azure/GCP disk side-scan remains discovery +
-injected-SDK lifecycle adapters (`executor: contract_only`) — no CLI executor
-and no credentialed live smoke is claimed.
-=======
 available at `POST /v1/cloud/runtime-evidence/ingest`, CLI
 `agent-bom cloud runtime-evidence-ingest`, and the MCP tool
 `runtime_evidence_ingest` (sources via `AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`;
-empty registry fails closed). A graph-join helper annotates CWPP workload nodes
-for a matching tenant.
+empty registry fails closed). Graph persist and investigation graph loads
+annotate matching CWPP workload nodes via the same index (tenant-scoped;
+absence stays `no_runtime_signal`, never "clean"). JSON / SARIF / HTML report
+exports carry the same field when it is already attached on a finding or when
+the tenant durable evidence store is non-empty (`AGENT_BOM_TENANT_ID`).
 
-Not yet locked in (stage 4 remainder): a scheduler that pulls from sources,
-typed SARIF/report export fields, the live graph/campaign route invocation, and
-any UI panel for workload runtime evidence. No credentialed live source smoke is
-claimed. Azure/GCP disk side-scan remains discovery + injected-SDK adapters —
-no CLI executor is claimed.
->>>>>>> cd080ac5 (feat(cwpp): CLI and MCP runtime-evidence ingest)
-=======
-signals; the JSON API export carries it automatically. JSON / SARIF / HTML
-report exports carry the same field when it is already attached on a finding or
-when the tenant durable evidence store is non-empty (`AGENT_BOM_TENANT_ID`). A
-graph-join helper annotates CWPP workload nodes for a matching tenant. Not yet
-locked in (stage 4 remainder): CLI/MCP ingest surfaces, a scheduler that pulls
-from sources, the UI panel for workload runtime evidence, and Azure/GCP
-side-scan CLI wiring that stays honest until credentialed smoke. No credentialed
-live source smoke is claimed.
->>>>>>> 5730acbc (feat(cwpp): surface workload_runtime_evidence in exports)
+Not yet locked in (stage 4 remainder): a scheduler that pulls from sources and
+any UI panel for workload runtime evidence. Azure/GCP disk side-scan remains
+discovery + injected-SDK lifecycle adapters (`executor: contract_only`) — no
+CLI executor and no credentialed live smoke is claimed.
 
 ---
 

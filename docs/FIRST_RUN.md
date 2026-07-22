@@ -26,6 +26,12 @@ add `-f html -o agent-bom-report.html` (or `-f json`, `-f sarif`); run
 agent-bom scan --demo --offline
 ```
 
+The command's status `1` is expected: the curated sample deliberately contains
+blocking findings, so the CLI behaves like the same security gate used in CI.
+The printed report is still valid; this status is not a scanner crash. Offline
+mode also limits enrichment to bundled demo evidence. After reviewing the
+sample, run `agent-bom scan -p .` against your own repository.
+
 Use this when you need reproducible output — for example a screenshot or a bug
 report. The package versions and advisory-backed ranges are curated in code and
 guarded by tests, so it does not depend on fabricated CVEs or a machine-specific

@@ -159,6 +159,13 @@ def test_first_run_docs_reference_real_paths() -> None:
         assert (ROOT / relative).exists()
 
 
+def test_first_run_docs_explain_demo_exit_status() -> None:
+    guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
+
+    assert "status `1` is expected" in guide
+    assert "not a scanner crash" in guide
+
+
 def test_packaged_first_run_sample_can_be_written_and_scanned(tmp_path: Path) -> None:
     target = tmp_path / "agent-bom-first-run"
     written = write_first_run_sample(target)

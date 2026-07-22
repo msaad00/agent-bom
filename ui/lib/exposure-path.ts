@@ -166,6 +166,20 @@ export function pathFixLabel(path: ExposurePath): string | undefined {
   return undefined;
 }
 
+/**
+ * Describe path length without presenting a single-node risk signal as an
+ * impossible-looking zero-hop route. Multi-node paths report traversed edges;
+ * zero- and one-node signals report their node count instead.
+ */
+export function pathSpanLabel(nodeCount: number): string {
+  const normalizedNodeCount = Math.max(0, nodeCount);
+  if (normalizedNodeCount <= 1) {
+    return `${normalizedNodeCount} node${normalizedNodeCount === 1 ? "" : "s"}`;
+  }
+  const hopCount = normalizedNodeCount - 1;
+  return `${hopCount} hop${hopCount === 1 ? "" : "s"}`;
+}
+
 export function pathSequenceLabels(path: ExposurePath): string[] {
   return path.hops.map((hop) => hop.label);
 }

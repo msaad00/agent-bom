@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { UnifiedGraphResponse } from "@/lib/api";
+import type { GraphCompleteness, UnifiedGraphResponse } from "@/lib/api";
 import type { PageLane } from "@/lib/page-lanes";
 import { severityRank } from "@/lib/severity";
 
@@ -240,6 +240,8 @@ export interface InventoryModel {
   loadedByKind: Record<AssetKindId, number>;
   scanId: string;
   createdAt: string;
+  /** Whether the current graph page is exhaustive or still cursor-bounded. */
+  completeness?: GraphCompleteness | undefined;
 }
 
 function attrString(node: GraphNode, key: string): string | undefined {
@@ -382,6 +384,7 @@ export function buildInventory(graph: UnifiedGraphResponse): InventoryModel {
     loadedByKind,
     scanId: graph.scan_id,
     createdAt: graph.created_at,
+    completeness: graph.completeness,
   };
 }
 

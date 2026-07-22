@@ -180,14 +180,23 @@ describe("AssetInventoryView", () => {
         highest_interaction_risk: 0,
       },
       pagination: { total: 2, offset: 0, limit: 1, has_more: true, next_cursor: "cur-2" },
+      completeness: {
+        status: "truncated",
+        complete: false,
+        sampled: false,
+        truncated: true,
+        returned: 1,
+        total: 2,
+        reason: "node_page_limit",
+      },
     } as unknown as UnifiedGraphResponse);
     getGraph.mockResolvedValueOnce({
       ...graph([node("pkg-2", "package", { data_sources: ["sbom"] })], []),
       pagination: { total: 2, offset: 1, limit: 1, has_more: false, next_cursor: "" },
     } as unknown as UnifiedGraphResponse);
-
     renderWithProvider(<AssetInventoryView kind="packages" />);
     const table = await screen.findByTestId("inventory-table-packages");
+    expect(screen.getByText(/Current graph page is truncated/i)).toBeInTheDocument();
     await waitFor(() => expect(within(table).getByText("pkg-1")).toBeInTheDocument());
     expect(within(table).queryByText("pkg-2")).not.toBeInTheDocument();
 

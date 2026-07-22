@@ -82,3 +82,65 @@ def test_attack_path_finding_ids_prefer_stamped_attributes():
         )
     }
     assert _finding_ids_for_nodes(nodes, ["vuln:CVE-1"], ["CVE-1"]) == ["fid-abc", "CVE-1"]
+
+
+def test_link_report_findings_stamps_persisted_graph_nodes():
+    from agent_bom.graph.asset_entity import link_report_findings_to_graph
+
+    graph = UnifiedGraph(scan_id="s1", tenant_id="t1")
+    pkg = UnifiedNode(id="pkg:pypi/flask@3.0.0", entity_type=EntityType.PACKAGE, label="flask")
+    vuln = UnifiedNode(
+        id="vuln:CVE-2026-0002",
+        entity_type=EntityType.VULNERABILITY,
+        label="CVE-2026-0002",
+        attributes={"vulnerability_id": "CVE-2026-0002"},
+    )
+    graph.add_node(pkg)
+    graph.add_node(vuln)
+    graph.add_edge(
+        UnifiedEdge(
+            source=pkg.id,
+            target=vuln.id,
+            relationship=RelationshipType.VULNERABLE_TO,
+            evidence={"source": "test"},
+        )
+    )
+    report_json = {
+        "findings": [
+            {
+                "id": "finding-persist-1",
+                "finding_type": "cve",
+                "source": "mcp_scan",
+                "severity": "high",
+                "title": "CVE-2026-0002: flask",
+                "cve_id": "CVE-2026-0002",
+                "asset": {"name": "flask", "asset_type": "package"},
+            }
+        ]
+    }
+    assert link_report_findings_to_graph(report_json, graph) == 1
+    assert finding_id_from_node_attributes(vuln.attributes) == "finding-persist-1"
+
+
+def test_toxic_finding_rehydrate_preserves_graph_fks():
+    from agent_bom.graph.toxic_findings import toxic_combination_findings_from_data
+
+    rows = [
+        {
+            "id": "toxic-1",
+            "finding_type": "combination",
+            "source": "graph_analysis",
+            "severity": "critical",
+            "title": "Exposed + vulnerable",
+            "description": "demo",
+            "asset": {"name": "web", "asset_type": "cloud_resource"},
+            "node_id": "cloud_resource:web",
+            "finding_node_id": "vuln:CVE-1",
+            "entity_type": "cloud_resource",
+        }
+    ]
+    findings = toxic_combination_findings_from_data(rows)
+    assert len(findings) == 1
+    assert findings[0].node_id == "cloud_resource:web"
+    assert findings[0].finding_node_id == "vuln:CVE-1"
+    assert findings[0].entity_type == "cloud_resource"

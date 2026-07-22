@@ -184,10 +184,32 @@ def link_findings_to_graph_nodes(findings: list[Any], graph: Any) -> int:
     return linked
 
 
+def link_report_findings_to_graph(report_json: Any, graph: Any) -> int:
+    """Stamp Finding ↔ node FKs onto ``graph`` from a serialized scan report.
+
+    Used by the persist path so attack-path ``finding_ids`` resolve to stable
+    Finding.id values even though the surfacing graph was thrown away earlier.
+    Best-effort; never raises.
+    """
+    if not isinstance(report_json, dict):
+        return 0
+    rows = report_json.get("findings")
+    if not isinstance(rows, list) or not rows:
+        return 0
+    try:
+        from agent_bom.graph.toxic_findings import toxic_combination_findings_from_data
+
+        findings = toxic_combination_findings_from_data([row for row in rows if isinstance(row, dict)])
+        return link_findings_to_graph_nodes(findings, graph)
+    except Exception:  # noqa: BLE001 — never fail persist on FK stamping
+        return 0
+
+
 __all__ = [
     "canonical_asset_type",
     "entity_type_for_asset_type",
     "finding_id_from_node_attributes",
     "link_findings_to_graph_nodes",
+    "link_report_findings_to_graph",
     "normalize_asset_type",
 ]

@@ -118,6 +118,9 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "message_id",
         "entry_id",
         "finding_id",
+        # Graph investigation FKs — opaque node ids, not free text
+        "node_id",
+        "finding_node_id",
         "evidence_id",
         "ordinal",
         "rule_id",

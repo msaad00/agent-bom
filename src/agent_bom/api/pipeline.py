@@ -505,6 +505,21 @@ def _persist_graph_snapshot(
         except Exception as link_exc:  # noqa: BLE001 — never fail persist on FK stamping
             _logger.debug("finding↔node persist linking skipped: %s", link_exc)
 
+        # Annotate CWPP workload nodes with tenant-scoped runtime evidence before
+        # persist so investigation loads see it without a second enrich pass.
+        # Absence stays no_runtime_signal — never a cleanliness claim (#4158).
+        try:
+            from agent_bom.cloud.runtime_workload_evidence import (
+                RuntimeWorkloadEvidenceIndex,
+                enrich_graph_workload_runtime_evidence,
+            )
+            from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+
+            wl_index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
+            enrich_graph_workload_runtime_evidence(graph, wl_index)
+        except Exception as runtime_exc:  # noqa: BLE001 — never fail persist on enrich
+            _logger.debug("workload runtime evidence graph enrich skipped: %s", runtime_exc)
+
         from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
 
         tenant_token = set_current_tenant(tenant_id)

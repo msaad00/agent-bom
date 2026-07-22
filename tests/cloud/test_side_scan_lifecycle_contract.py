@@ -35,11 +35,12 @@ def test_provider_capabilities_do_not_claim_unshipped_executors() -> None:
 
     assert capabilities["aws"].executor == "shipped"
     assert capabilities["aws"].cli_available is True
-    assert capabilities["azure"].executor == "shipped"
-    assert capabilities["gcp"].executor == "shipped"
+    assert capabilities["azure"].executor == "contract_only"
+    assert capabilities["gcp"].executor == "contract_only"
     assert capabilities["azure"].cli_available is False
     assert capabilities["gcp"].cli_available is False
-
+    assert capabilities["azure"].credentialed_smoke is False
+    assert capabilities["gcp"].credentialed_smoke is False
 
 @pytest.mark.parametrize("status", [ExecutionStatus.DISABLED, ExecutionStatus.DENIED, ExecutionStatus.FAILED])
 def test_non_execution_states_are_unevaluable_not_clean(status: ExecutionStatus) -> None:

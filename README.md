@@ -118,9 +118,8 @@ drilldowns — not a dense dashboard collage.
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Prioritized attack path connecting identity, agent, MCP server, package, and critical finding" width="820" />
 </p>
 
-Path titles can wrap in narrow frames; use Path / Graph / List toggles in the
-live UI for a single-row hop strip. Recapture notes:
-[docs/CAPTURE.md](docs/CAPTURE.md).
+Path view is a single-row hop strip (scroll horizontally on long chains).
+Recapture notes: [docs/CAPTURE.md](docs/CAPTURE.md).
 
 </details>
 

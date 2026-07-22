@@ -18,6 +18,10 @@
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 <p align="center">
+  Scan locally → send evidence to a control plane you run → enforce runtime MCP/tool calls.
+  One Finding + UnifiedGraph model across CLI, API, UI, and MCP.
+</p>
+<p align="center">
   <a href="https://demo.agent-bom.com"><b>Live demo</b></a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="docs/FIRST_RUN.md">First Run</a> ·
@@ -38,9 +42,14 @@ Inventory, findings, reachability, and fix-first actions — no control plane
 required. Export when another tool needs it:
 `agent-bom scan . -f sarif -o findings.sarif`.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Prioritized attack path connecting identity, agent, MCP server, package, and critical finding" width="900" />
-</p>
+Offline sample without your repo: `uvx agent-bom scan --demo --offline` ·
+full path: [First Run](docs/FIRST_RUN.md).
+
+## Blast radius
+
+One finding fans out to the MCP servers that load it, reachable tools,
+credential references, and agents that can reach it — not a CVE list in
+isolation.
 
 <p align="center">
   <picture>
@@ -49,12 +58,27 @@ required. Export when another tool needs it:
   </picture>
 </p>
 
-One finding links to the MCP servers that load it, reachable tools, credential
-references, and agents that can reach it. Offline sample without your repo:
-`uvx agent-bom scan --demo --offline` · full first-run path:
-[First Run](docs/FIRST_RUN.md).
+## Who it is for
 
-## Three product lanes
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas: AppSec/GRC, Platform/SRE, Developers, and AI/MCP owners with matching outcomes" width="900" />
+  </picture>
+</p>
+
+| Team | Start here | Outcome |
+|---|---|---|
+| Developers / AI builders | `agent-bom scan .` | Inventory, findings, blast radius before changes ship |
+| AppSec / security eng | `agent-bom scan . -f sarif -o findings.sarif` | Reachability triage, graph paths, CI gates |
+| Platform / SRE / cloud | `agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
+| GRC / audit | Compliance exports + control-plane evidence | Framework mappings, signed bundles, review context |
+| AI / MCP owners | `agent-bom mcp server` or `gateway serve` | Tool inventory and allow/warn/block decisions |
+
+Evidence helper, not a GRC system of record, IAM, SIEM, or certification program.
+Boundaries: [PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
+
+## How the tool works
 
 1. **Scan** — `agent-bom scan .` → inventory, findings, SARIF/SBOM/HTML, local graph
 2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres)
@@ -67,28 +91,54 @@ boundary.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom three product lanes: local scan, self-hosted control plane, and runtime gateway on one Finding + UnifiedGraph model" width="1100" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom three tool lanes: local scan, self-hosted control plane, and runtime gateway on one Finding + UnifiedGraph model" width="1100" />
   </picture>
 </p>
 
-## See the product
+## Graph lenses
 
-[Live demo](https://demo.agent-bom.com) is a read-only sandbox with synthetic
-showcase evidence. Prefer the local offline sample above when you want a
-reproducible CLI walkthrough. Captures below are from shipped Next.js routes.
+Shipped graph surfaces for lineage, agent mesh, and filtered attack-path
+drilldowns — not a dense dashboard collage.
 
-| Findings and reach | Remediation |
+| Lineage (filtered path) | Agent mesh |
 |:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, reachable agents, fixes, and review actions" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation with risk reduction, ownership, and verification" width="430" /> |
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Filtered attack-path lineage across agent, MCP, package, and finding nodes" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Focused agent mesh across agent, MCP server, package, and finding" width="430" /> |
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="Agent-scoped context map with reachable MCP servers and lateral movement" width="820" />
+</p>
 
 <details>
-<summary><b>More views</b> — posture, runtime, connections, new scan</summary>
+<summary><b>Investigation capture</b> — prioritized path with export/handoff chrome</summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Prioritized attack path connecting identity, agent, MCP server, package, and critical finding" width="820" />
+</p>
+
+Path titles can wrap in narrow frames; use Path / Graph / List toggles in the
+live UI for a single-row hop strip. Recapture notes:
+[docs/CAPTURE.md](docs/CAPTURE.md).
+
+</details>
+
+<details>
+<summary><b>Dashboard captures</b> — findings queue, remediation, posture, runtime, connections</summary>
+
+| Findings queue | Remediation |
+|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, reachable agents, fixes, and review actions" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation with risk reduction, ownership, and verification" width="430" /> |
 
 | Risk overview | Runtime gateway |
 |:---:|:---:|
 | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture grade, findings, and operations" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="430" /> |
-| **Connections** | **New scan** |
+
+| Connections | New scan |
+|:---:|:---:|
 | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub across cloud, code, AI, and data sources" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan workspace with collector plan and read-only boundary" width="430" /> |
+
+[Live demo](https://demo.agent-bom.com) is a read-only sandbox with synthetic
+showcase evidence. Prefer the local offline sample above for a reproducible CLI
+walkthrough.
 
 </details>
 
@@ -146,23 +196,6 @@ Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
 Also: `agent-bom graph`, `agent-bom remediate -p .`, CI pin
 `uses: msaad00/agent-bom@v0.97.2`. Maps: [CLI](docs/CLI_MAP.md) ·
 [start here](docs/START_HERE.md) · [product map](docs/PRODUCT_MAP.md).
-
-</details>
-
-<details>
-<summary><b>Who it is for</b></summary>
-
-| Team | Start here | Outcome |
-|---|---|---|
-| Developers / AI builders | `agent-bom scan .` | Inventory, findings, blast radius before changes ship |
-| AppSec / security eng | `agent-bom scan . -f sarif -o findings.sarif` | Reachability triage, graph paths, CI gates |
-| Platform / SRE / cloud | `agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
-| GRC / audit | Compliance exports + control-plane evidence | Framework mappings, signed bundles, review context |
-| AI / MCP owners | `agent-bom mcp server` or `gateway serve` | Tool inventory and allow/warn/block decisions |
-
-Evidence helper, not a GRC system of record, IAM, SIEM, or certification program.
-Coverage: [AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
-[product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
 </details>
 

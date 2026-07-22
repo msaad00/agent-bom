@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
@@ -74,9 +74,12 @@ describe("ExposurePathCommandCenter", () => {
       />,
     );
 
-    expect(
-      screen.getByText("Analyst Agent → Database service → werkzeug → CVE-2026-0002 → Execute Sql → DATABASE URL"),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
+      "Analyst Agent → Database service → werkzeug → CVE-2026-0002 → Execute Sql → DATABASE URL",
+    );
+    expect(screen.getByTestId("exposure-path-hop-title")).toBeInTheDocument();
+    expect(screen.getByText("Analyst Agent")).toBeInTheDocument();
+    expect(within(screen.getByTestId("exposure-path-hop-title")).getByText("CVE-2026-0002")).toBeInTheDocument();
     expect(screen.queryByText("What is exposed")).not.toBeInTheDocument();
     expect(screen.getByText("Evidence & relationships")).toBeInTheDocument();
     expect(screen.queryByText("Evidence drawer")).not.toBeVisible();

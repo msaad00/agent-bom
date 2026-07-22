@@ -9,6 +9,11 @@ export interface EnrichedVuln extends Vulnerability {
    * merge one row per CVE.
    */
   finding_id?: string | undefined;
+  /** Estate UnifiedNode id (graph FK) when the API stamped the finding. */
+  node_id?: string | undefined;
+  finding_node_id?: string | undefined;
+  entity_type?: string | undefined;
+  asset_type?: string | undefined;
   packages: string[];
   agents: string[];
   sources: string[];

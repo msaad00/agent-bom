@@ -88,14 +88,16 @@ function SecurityGraphPageContent() {
       cve: searchParams.get("cve") ?? "",
       packageName: searchParams.get("package") ?? "",
       agentName: searchParams.get("agent") ?? "",
+      nodeId: searchParams.get("node") ?? "",
+      findingId: searchParams.get("finding") ?? "",
     }),
     [searchParams],
   );
 
   const focusLabel = useMemo(() => {
-    const parts = [focus.cve, focus.packageName, focus.agentName].filter(Boolean);
+    const parts = [focus.nodeId, focus.cve, focus.packageName, focus.agentName].filter(Boolean);
     return parts.length > 0 ? parts.join(" · ") : null;
-  }, [focus.agentName, focus.cve, focus.packageName]);
+  }, [focus.agentName, focus.cve, focus.nodeId, focus.packageName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +187,7 @@ function SecurityGraphPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
+  }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, selectedScanId]);
 
   const selectedSnapshot = useMemo(
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
@@ -266,7 +268,7 @@ function SecurityGraphPageContent() {
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
 
-  const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
+  const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName || focus.nodeId || focus.findingId);
   const selectedAttackPath = useMemo(
     () =>
       selectedAttackPathKey
@@ -396,7 +398,7 @@ function SecurityGraphPageContent() {
   useEffect(() => {
     setFocusApplied(false);
     setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
-  }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
+  }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, selectedScanId]);
 
   useEffect(() => {
     if (!selectedAttackPathKey) return;

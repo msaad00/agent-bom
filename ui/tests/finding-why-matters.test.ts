@@ -53,7 +53,11 @@ describe("buildWhyItMatters", () => {
     // Compliance mapping is now scannable chip data, not a run-on paragraph.
     expect(narrative?.complianceTags).toEqual(["owasp_llm:llm06", "mitre_atlas:exfiltration"]);
     expect(narrative?.links.map((link) => link.href)).toEqual(
-      expect.arrayContaining(["/security-graph", "/traces", "/compliance"]),
+      expect.arrayContaining([
+        expect.stringMatching(/^\/security-graph/),
+        "/traces",
+        "/compliance",
+      ]),
     );
   });
 });

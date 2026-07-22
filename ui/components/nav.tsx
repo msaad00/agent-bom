@@ -112,10 +112,15 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Gauge,
     desc: "Risk, findings, and fixes",
     links: [
-      { href: "/", label: "Overview", icon: LayoutDashboard },
-      { href: "/findings", label: "Findings", icon: Bug },
-      { href: "/security-graph", label: "Investigation", icon: Network, desc: "Prioritized attack paths with lineage, mesh, and context lenses" },
+      {
+        href: "/security-graph",
+        label: "Investigation",
+        icon: Network,
+        desc: "SecOps home — typed estate nodes with findings as attached evidence",
+      },
+      { href: "/findings", label: "Findings", icon: Bug, desc: "Queue of evidence; open a row to investigate the estate node" },
       { href: "/remediation", label: "Remediation", icon: Wrench },
+      { href: "/", label: "Overview", icon: LayoutDashboard, desc: "Cross-domain posture snapshot" },
     ],
     secondary: [
       { href: "/graph", label: "Lineage", icon: GitBranch },

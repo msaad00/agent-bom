@@ -31,6 +31,10 @@ export type AttackPathFocus = {
   packageName?: string | undefined;
   agentName?: string | undefined;
   scanId?: string | undefined;
+  /** Estate / vuln UnifiedNode id from Finding.node_id / finding_node_id. */
+  nodeId?: string | undefined;
+  /** Stable Finding.id when stamped on the path or query string. */
+  findingId?: string | undefined;
 };
 
 export type GraphInvestigationRequest = {
@@ -336,6 +340,8 @@ export function attackPathSequenceLabels(path: AttackPath, nodeById: Map<string,
 export function buildSecurityGraphHref(focus: AttackPathFocus): string {
   const params = new URLSearchParams();
   if (focus.scanId) params.set("scan", focus.scanId);
+  if (focus.nodeId) params.set("node", focus.nodeId);
+  if (focus.findingId) params.set("finding", focus.findingId);
   if (focus.cve) params.set("cve", focus.cve);
   if (focus.packageName) params.set("package", focus.packageName);
   if (focus.agentName) params.set("agent", focus.agentName);
@@ -554,9 +560,22 @@ export function matchesAttackPathFocus(
   const cve = normalizeLabel(focus.cve);
   const packageName = normalizeLabel(focus.packageName);
   const agentName = normalizeLabel(focus.agentName);
-  if (!cve && !packageName && !agentName) return false;
+  const nodeId = (focus.nodeId || "").trim();
+  const findingId = (focus.findingId || "").trim();
+  if (!cve && !packageName && !agentName && !nodeId && !findingId) return false;
 
   const labels = pathNodeLabels(path, nodeById);
+
+  if (nodeId && !path.hops.includes(nodeId)) {
+    return false;
+  }
+
+  if (findingId) {
+    const pathFindingIds = Array.isArray(path.finding_ids) ? path.finding_ids : [];
+    const inFindingIds = pathFindingIds.some((id) => id === findingId);
+    const inVulnIds = path.vuln_ids.some((id) => id === findingId);
+    if (!inFindingIds && !inVulnIds) return false;
+  }
 
   if (cve) {
     const inPathVulns = path.vuln_ids.some((id) => normalizeLabel(id) === cve);

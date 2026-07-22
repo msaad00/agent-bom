@@ -150,6 +150,7 @@ async def test_inventory_summary_counts_by_type_and_group(seeded_store) -> None:
     assert body["by_group"]["cloud"] == 6
     assert body["by_group"]["identity"] == 4
     assert body["by_group"]["secrets"] == 1
+    assert body["completeness"]["status"] == "complete"
 
 
 # ── List ─────────────────────────────────────────────────────────────────────
@@ -172,6 +173,7 @@ async def test_inventory_list_provider_facet(seeded_store) -> None:
     )
     body = json.loads(response)
     assert body["pagination"]["facet_filtered"] is True
+    assert body["completeness"]["truncated"] is False
     assert {r["id"] for r in body["assets"]} == {
         "account:snowflake:acct1",
         "cloud_resource:snowflake:warehouse:WH_ETL",
@@ -215,6 +217,7 @@ async def test_inventory_asset_detail_returns_edges(seeded_store) -> None:
     )
     body = json.loads(response)
     assert body["schema_version"] == "inventory.asset.v1"
+    assert body["completeness"]["status"] == "complete"
     assert body["asset"]["id"] == "server:mcp"
     assert body["node"]["entity_type"] == "server"
     edge_targets = {e["target"] for e in body["edges_out"]} | {e["source"] for e in body["edges_in"]}

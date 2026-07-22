@@ -52,6 +52,7 @@ export function InventoryIndex() {
     }
     return { assets, withFindings, critical, findings };
   }, [model]);
+  const complete = model?.completeness?.complete ?? true;
 
   if (loading && !model) {
     return (
@@ -98,11 +99,21 @@ export function InventoryIndex() {
       <StatStrip
         items={[
           { label: "Assets", value: totals.assets.toLocaleString() },
-          { label: "With findings", value: totals.withFindings, accent: totals.withFindings > 0 ? "warn" : "neutral" },
-          { label: "Critical assets", value: totals.critical, accent: "critical" },
-          { label: "Correlated findings", value: totals.findings },
+          { label: complete ? "With findings" : "Loaded with findings", value: totals.withFindings, accent: totals.withFindings > 0 ? "warn" : "neutral" },
+          { label: complete ? "Critical assets" : "Loaded critical assets", value: totals.critical, accent: "critical" },
+          { label: complete ? "Correlated findings" : "Loaded correlations", value: totals.findings },
         ]}
       />
+
+      {model.completeness && !model.completeness.complete ? (
+        <div
+          data-testid="inventory-coverage"
+          className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]"
+        >
+          <span className="font-medium text-[color:var(--foreground)]">Evidence coverage:</span>{" "}
+          {model.completeness.status}. The totals are authoritative, while findings and relationships are loaded from the current graph page.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map(({ kind, total, criticalAssets, highAssets, withFindings }) => {

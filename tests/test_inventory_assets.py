@@ -123,6 +123,14 @@ def test_summary_counts_assets_by_type_and_group_excluding_findings(inventory_st
     assert body["by_group"]["cloud"] == 6  # ec2, s3, aws-acct, snowflake-acct, warehouse, snowflake-db
     assert body["by_group"]["identity"] == 4  # snowflake role+user, alice, admin
     assert body["by_group"]["secrets"] == 1  # credential
+    assert body["completeness"] == {
+        "status": "complete",
+        "complete": True,
+        "sampled": False,
+        "truncated": False,
+        "returned": 16,
+        "total": 16,
+    }
 
 
 # ── Faceted list ──
@@ -142,6 +150,8 @@ def test_list_returns_asset_rows_and_excludes_findings(inventory_store):
     assert row["environment"] == "production"
     assert row["provider"] == "aws"
     assert row["source"] == "cloud:aws"
+    assert body["completeness"]["status"] == "complete"
+    assert body["completeness"]["returned"] == 16
 
 
 def test_list_type_filter(inventory_store):
@@ -184,6 +194,7 @@ def test_list_environment_facet_filter(inventory_store):
     assert resp.status_code == 200
     body = resp.json()
     assert body["pagination"]["facet_filtered"] is True
+    assert body["completeness"]["status"] == "complete"
     ids = {r["id"] for r in body["assets"]}
     assert ids == {"agent:a", "server:mcp", "cloud_resource:ec2"}
 
@@ -232,6 +243,7 @@ def test_list_facet_filter_paginates_without_dropping_rows(tmp_path):
             assert len(page) <= 40
             seen.extend(row["id"] for row in page)
             pagination = body["pagination"]
+            assert body["completeness"]["truncated"] == pagination["has_more"]
             if not pagination["has_more"] or not pagination["next_cursor"]:
                 break
             cursor = pagination["next_cursor"]
@@ -253,6 +265,7 @@ def test_list_pagination_with_cursor(inventory_store):
         body = client.get(url).json()
         page_ids = [r["id"] for r in body["assets"]]
         assert len(page_ids) <= 5
+        assert body["completeness"]["truncated"] == body["pagination"]["has_more"]
         assert not (set(page_ids) & seen)  # no duplicates across pages
         seen.update(page_ids)
         pages += 1
@@ -272,6 +285,7 @@ def test_detail_returns_node_with_edges(inventory_store):
     assert resp.status_code == 200
     body = resp.json()
     assert body["schema_version"] == "inventory.asset.v1"
+    assert body["completeness"]["status"] == "complete"
     assert body["asset"]["id"] == "server:mcp"
     assert body["node"]["entity_type"] == "server"
     neighbors = set(body["neighbors"]) | set(body["sources"])

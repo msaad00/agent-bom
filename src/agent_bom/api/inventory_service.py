@@ -21,6 +21,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, encode_graph_cursor
 from agent_bom.graph import SEVERITY_RANK, EntityType
+from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 from agent_bom.security import sanitize_error
 
@@ -229,6 +230,7 @@ async def build_summary(
         "by_type": dict(sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))),
         "by_group": {group: count for group, count in by_group.items() if count or group in _TYPE_GROUPS},
         "finding_count": sum(int(node_types.get(t, 0) or 0) for t in _FINDING_TYPE_VALUES),
+        "completeness": graph_completeness(returned=total_assets, total=total_assets),
     }
 
 
@@ -312,6 +314,7 @@ async def build_asset_list(
     if not facet_active:
         nodes, total, next_cursor = await _fetch(cursor, offset, limit)
         rows = [asset_row(node) for node in nodes]
+        has_more = bool(next_cursor) if cursor else offset + len(rows) < total
         return {
             "schema_version": "inventory.assets.v1",
             "tenant_id": tenant_id,
@@ -330,9 +333,15 @@ async def build_asset_list(
                 "limit": limit,
                 "cursor": cursor or "",
                 "next_cursor": next_cursor or "",
-                "has_more": bool(next_cursor) if cursor else offset + limit < total,
+                "has_more": has_more,
                 "facet_filtered": False,
             },
+            "completeness": graph_completeness(
+                returned=len(rows),
+                total=total,
+                truncated=has_more,
+                reason="asset_page_limit" if has_more else "",
+            ),
         }
 
     # Facet filter active: keyset-page the store and refill until we have a full
@@ -394,6 +403,11 @@ async def build_asset_list(
             "has_more": has_more,
             "facet_filtered": True,
         },
+        "completeness": graph_completeness(
+            returned=len(page_rows),
+            truncated=has_more,
+            reason="facet_page_limit" if has_more else "",
+        ),
     }
 
 
@@ -436,4 +450,5 @@ async def build_asset_detail(
         "neighbors": context["neighbors"],
         "sources": context["sources"],
         "impact": context["impact"],
+        "completeness": graph_completeness(returned=1, total=1),
     }

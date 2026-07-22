@@ -29,6 +29,9 @@ import type {
   GraphAgentsResponse,
   GraphDiffResponse,
   GraphEdgeChangesResponse,
+  InventorySummaryResponse,
+  InventoryAssetsResponse,
+  InventoryAssetDetailResponse,
   GraphExportFormat,
   AgentBomManifestResponse,
   PostureCountsResponse,
@@ -174,11 +177,16 @@ export type {
   ScanJobStatus,
   ScanResult,
   GraphPagination,
+  GraphCompleteness,
   GraphAttackPath,
   GraphSnapshot,
   GraphHistoryResponse,
   GraphHistorySnapshot,
   UnifiedGraphResponse,
+  InventorySummaryResponse,
+  InventoryAssetsResponse,
+  InventoryAsset,
+  InventoryAssetDetailResponse,
   FixFirstGraphViewResponse,
   FixFirstPathCard,
   GraphAttackCampaign,
@@ -873,6 +881,48 @@ export const api = {
     if (filters?.cursor) params.set("cursor", filters.cursor);
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Read the store-backed, tenant-scoped inventory summary. */
+  getInventorySummary: (scanId?: string) => {
+    const qs = scanId ? `?scan_id=${encodeURIComponent(scanId)}` : "";
+    return get<InventorySummaryResponse>(`/v1/inventory/summary${qs}`);
+  },
+
+  /** Read one bounded, cursor-paged inventory page from the shared store. */
+  getInventoryAssets: (filters?: {
+    type?: string[] | undefined;
+    search?: string | undefined;
+    environment?: string | undefined;
+    provider?: string | undefined;
+    source?: string | undefined;
+    minSeverity?: string | undefined;
+    scanId?: string | undefined;
+    cursor?: string | undefined;
+    offset?: number | undefined;
+    limit?: number | undefined;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.type?.length) params.set("type", filters.type.join(","));
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.environment) params.set("environment", filters.environment);
+    if (filters?.provider) params.set("provider", filters.provider);
+    if (filters?.source) params.set("source", filters.source);
+    if (filters?.minSeverity) params.set("min_severity", filters.minSeverity);
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.cursor) params.set("cursor", filters.cursor);
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return get<InventoryAssetsResponse>(`/v1/inventory/assets${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Lazily load one asset's relationships and blast-radius context. */
+  getInventoryAsset: (assetId: string, scanId?: string) => {
+    const qs = scanId ? `?scan_id=${encodeURIComponent(scanId)}` : "";
+    return get<InventoryAssetDetailResponse>(
+      `/v1/inventory/assets/${encodeURIComponent(assetId)}${qs}`,
+    );
   },
 
   /** Load the ranked fix-first security graph view model */

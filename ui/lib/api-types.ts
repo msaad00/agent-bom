@@ -110,6 +110,21 @@ export interface GraphPagination {
   next_cursor?: string | undefined;
 }
 
+/**
+ * Shared evidence coverage contract. `truncated` means the response is a
+ * bounded page; clients must follow the cursor before treating the lens as
+ * exhaustive. `sampled` is reserved for deterministic representative views.
+ */
+export interface GraphCompleteness {
+  status: "complete" | "truncated" | "sampled";
+  complete: boolean;
+  sampled: boolean;
+  truncated: boolean;
+  returned: number;
+  total?: number | undefined;
+  reason?: string | undefined;
+}
+
 export interface GraphSnapshot {
   scan_id: string;
   created_at: string;
@@ -154,6 +169,56 @@ export interface UnifiedGraphResponse extends Omit<
 > {
   attack_paths: GraphAttackPath[];
   pagination: GraphPagination;
+  completeness?: GraphCompleteness | undefined;
+}
+
+/** Shared HTTP/MCP inventory projection over the tenant-scoped graph store. */
+export interface InventorySummaryResponse {
+  schema_version: string;
+  tenant_id: string;
+  scan_id: string;
+  total_assets: number;
+  by_type: Record<string, number>;
+  by_group: Record<string, number>;
+  finding_count: number;
+  completeness: GraphCompleteness;
+}
+
+export interface InventoryAsset {
+  id: string;
+  type: string;
+  name: string;
+  environment: string;
+  provider: string;
+  risk: number;
+  severity: string;
+  status: string;
+  source: string;
+  sources: string[];
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface InventoryAssetsResponse {
+  schema_version: string;
+  tenant_id: string;
+  assets: InventoryAsset[];
+  filters: Record<string, string | string[]>;
+  pagination: GraphPagination & { facet_filtered: boolean };
+  completeness: GraphCompleteness;
+}
+
+export interface InventoryAssetDetailResponse {
+  schema_version: string;
+  tenant_id: string;
+  asset: InventoryAsset;
+  node: Record<string, unknown>;
+  edges_out: Record<string, unknown>[];
+  edges_in: Record<string, unknown>[];
+  neighbors: string[];
+  sources: string[];
+  impact: Record<string, unknown>;
+  completeness: GraphCompleteness;
 }
 
 export interface AgentBomManifestNode {

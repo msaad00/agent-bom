@@ -48,12 +48,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   without mutating stable asset ids. Evidence redaction keeps the FKs, toxic/CIEM
   rehydrate preserves them, and graph persist restamps vuln nodes after the
   throwaway surfacing graph is released.
-<<<<<<< HEAD
 - Findings drawer leads with an Estate node section and deep-links into
   `/security-graph?node=…&finding=…`; Posture nav is investigation-first and
   post-login defaults to SecOps investigation home.
-=======
->>>>>>> origin/main
 - README: clean top-nav Live demo link (offline fallback lives under scan/demo
   body copy), lead with product visuals, and collapse persona / connector /
   architecture tables under `<details>`.

@@ -59,6 +59,28 @@ if [ -z "${check_runs}" ]; then
   check_runs="[]"
 fi
 
+# A newer push to the PR branch can leave an older CI run holding the branch's
+# concurrency slot. GitHub then queues the current run before creating any
+# check-runs, which appears in branch protection as "Expected — Waiting for
+# status to be reported". Cancel only superseded required workflows on this
+# exact branch; unrelated workflows and current-head runs are left alone.
+branch_runs="$(
+  gh api --method GET "repos/${REPO}/actions/runs" \
+    -f branch="${head_ref}" -f per_page=100 2>/dev/null || printf '{"workflow_runs":[]}'
+)"
+while IFS= read -r run_id; do
+  [ -n "${run_id}" ] || continue
+  echo "PR #${PR}: cancelling superseded required workflow run ${run_id} on ${head_ref}."
+  gh run cancel "${run_id}" --repo "${REPO}"
+done < <(
+  jq -r --arg current_sha "${head_sha}" \
+    '.workflow_runs[]
+     | select(.status != "completed")
+     | select(.head_sha != $current_sha)
+     | select(.name == "CI/CD Pipeline" or .name == "PR Security Gate" or .name == "CodeQL")
+     | .id' <<< "${branch_runs}"
+)
+
 # A workflow can be queued with no check-runs attached yet. Treat that state
 # as active so the fallback cannot dispatch a duplicate CI fan-out while
 # GitHub is still materialising jobs for the same head SHA.

@@ -37,6 +37,7 @@ if [ -z "${HEAD_SHA}" ]; then
   echo "could not resolve head SHA for PR #${PR}" >&2
   exit 1
 fi
+HEAD_REF="$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.ref)"
 
 CHECK_RUNS="$(
   gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" --jq '.check_runs' || printf '[]'
@@ -44,6 +45,28 @@ CHECK_RUNS="$(
 if [ -z "${CHECK_RUNS}" ]; then
   CHECK_RUNS="[]"
 fi
+
+# A newer push to the PR branch can leave an older CI run holding the branch's
+# concurrency slot. GitHub then queues the current run before creating any
+# check-runs, which appears in branch protection as "Expected — Waiting for
+# status to be reported". Cancel only superseded required workflows on this
+# exact branch; unrelated workflows and current-head runs are left alone.
+BRANCH_RUNS="$(
+  gh api --method GET "repos/${REPO}/actions/runs" \
+    -f branch="${HEAD_REF}" -f per_page=100 2>/dev/null || printf '{"workflow_runs":[]}'
+)"
+while IFS= read -r RUN_ID; do
+  [ -n "${RUN_ID}" ] || continue
+  echo "PR #${PR}: cancelling superseded required workflow run ${RUN_ID} on ${HEAD_REF}."
+  gh run cancel "${RUN_ID}" --repo "${REPO}"
+done < <(
+  jq -r --arg current_sha "${HEAD_SHA}" \
+    '.workflow_runs[]
+     | select(.status != "completed")
+     | select(.head_sha != $current_sha)
+     | select(.name == "CI/CD Pipeline" or .name == "PR Security Gate" or .name == "CodeQL")
+     | .id' <<< "${BRANCH_RUNS}"
+)
 
 # A queued workflow may have no check-runs attached yet. Query workflow runs
 # by head SHA so a pending/no-job run is not mistaken for missing CI.

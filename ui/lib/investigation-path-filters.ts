@@ -34,7 +34,7 @@ function hopEvidenceTier(
 function hopEnvironment(node: UnifiedNode | undefined): string | null {
   if (!node) return null;
   const attrs = node.attributes ?? {};
-  const env = attrs.environment ?? attrs.env;
+  const env = node.dimensions?.environment || attrs.environment || attrs.env;
   return typeof env === "string" && env.length > 0 ? env : null;
 }
 

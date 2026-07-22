@@ -114,6 +114,44 @@ class TestBuildUnifiedGraphFromReport:
         names = {a.label for a in agents}
         assert names == {"claude-desktop", "cursor"}
 
+    def test_agent_environment_lands_on_dimensions_and_stack(self):
+        report = _minimal_report()
+        report["agents"][0]["environment"] = "production"
+        g = build_unified_graph_from_report(report)
+        agent = next(n for n in g.nodes.values() if n.label == "claude-desktop")
+        assert agent.dimensions.environment == "production"
+        assert agent.attributes["environment"] == "production"
+        server = next(n for n in g.nodes.values() if n.entity_type == EntityType.SERVER and n.attributes.get("agent") == "claude-desktop")
+        assert server.dimensions.environment == "production"
+        assert server.attributes["environment"] == "production"
+        package = next(n for n in g.nodes.values() if n.entity_type == EntityType.PACKAGE and "express" in n.label)
+        assert package.dimensions.environment == "production"
+        assert package.attributes["environment"] == "production"
+
+    def test_cloud_inventory_bucket_owns_and_contains_with_env_tag(self):
+        report = _minimal_report()
+        report["cloud_inventory"] = {
+            "provider": "aws",
+            "status": "ok",
+            "account_id": "123456789012",
+            "region": "us-east-1",
+            "buckets": [
+                {
+                    "name": "prod-artifacts",
+                    "publicly_accessible": False,
+                    "tags": {"Environment": "production"},
+                }
+            ],
+        }
+        g = build_unified_graph_from_report(report)
+        account_id = "account:aws:123456789012"
+        bucket_id = "cloud_resource:aws:s3:bucket:prod-artifacts"
+        assert bucket_id in g.nodes
+        assert g.nodes[bucket_id].dimensions.environment == "production"
+        assert g.nodes[bucket_id].attributes["environment"] == "production"
+        assert any(e.source == account_id and e.target == bucket_id and e.relationship == RelationshipType.OWNS for e in g.edges)
+        assert any(e.source == account_id and e.target == bucket_id and e.relationship == RelationshipType.CONTAINS for e in g.edges)
+
     def test_fleet_source_id_disambiguates_same_named_agents(self):
         report = {
             "scan_id": "fleet-endpoints",

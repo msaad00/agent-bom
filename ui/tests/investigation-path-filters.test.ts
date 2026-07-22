@@ -73,4 +73,17 @@ describe("investigation-path-filters", () => {
   it("collects distinct environments from path hops", () => {
     expect(collectPathEnvironments(paths, nodes)).toEqual(["prod"]);
   });
+
+  it("reads environment from dimensions when attributes omit it", () => {
+    const dimsOnly = new Map<string, UnifiedNode>([
+      [
+        "agent-dims",
+        {
+          ...node("agent-dims", "agent"),
+          dimensions: { environment: "staging" },
+        } as UnifiedNode,
+      ],
+    ]);
+    expect(collectPathEnvironments([path({ hops: ["agent-dims"] })], dimsOnly)).toEqual(["staging"]);
+  });
 });

@@ -137,15 +137,20 @@ export function AssetInventoryView({ kind }: { kind: AssetKindId }) {
       <StatStrip
         items={[
           { label: "Total", value: total, hint: total > loadedCount ? `${loadedCount} loaded` : undefined },
-          { label: "With findings", value: summary.withFindings, accent: summary.withFindings > 0 ? "warn" : "neutral" },
-          { label: "Critical", value: summary.criticalAssets, accent: "critical" },
-          { label: "High", value: summary.highAssets, accent: "high" },
-          { label: "Correlated findings", value: summary.totalFindings },
+          { label: total > loadedCount || hasMore ? "Loaded with findings" : "With findings", value: summary.withFindings, accent: summary.withFindings > 0 ? "warn" : "neutral" },
+          { label: total > loadedCount || hasMore ? "Loaded critical" : "Critical", value: summary.criticalAssets, accent: "critical" },
+          { label: total > loadedCount || hasMore ? "Loaded high" : "High", value: summary.highAssets, accent: "high" },
+          { label: total > loadedCount || hasMore ? "Loaded correlations" : "Correlated findings", value: summary.totalFindings },
         ]}
       />
 
       <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]">
         <span className="font-medium text-[color:var(--text-secondary)]">Coverage:</span> {config.coverageNote}
+        {model?.completeness && !model.completeness.complete ? (
+          <span className="ml-1 text-[color:var(--status-warn)]">
+            Current graph page is {model.completeness.status}; load more pages before treating row-level correlations as exhaustive.
+          </span>
+        ) : null}
         {total > loadedCount || hasMore ? (
           <span className="text-[color:var(--text-tertiary)]">
             {" "}

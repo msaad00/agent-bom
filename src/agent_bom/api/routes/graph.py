@@ -1399,6 +1399,42 @@ async def _graph_store_call(fn: Callable[..., _GraphCallResult], /, *args: Any, 
         raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
 
 
+def _enrich_loaded_graph_runtime_evidence(graph: Any, tenant_id: str) -> Any:
+    """Best-effort CWPP workload runtime-evidence annotate on a loaded graph.
+
+    Covers snapshots persisted before enrich-at-persist landed. Tenant mismatch
+    or empty store is a no-op; never raises into graph routes.
+    """
+    try:
+        from agent_bom.cloud.runtime_workload_evidence import (
+            RuntimeWorkloadEvidenceIndex,
+            enrich_graph_workload_runtime_evidence,
+        )
+        from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+
+        index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
+        enrich_graph_workload_runtime_evidence(graph, index)
+    except Exception:  # noqa: BLE001 — investigation reads must not fail closed on enrich
+        logger.debug("workload runtime evidence load enrich skipped", exc_info=True)
+    return graph
+
+
+async def _load_graph_for_investigation(
+    graph_store: Any,
+    *,
+    scan_id: str | None,
+    tenant_id: str,
+    **load_kwargs: Any,
+) -> Any:
+    """load_graph + runtime-evidence enrich for investigation surfaces."""
+    graph = await _graph_store_call(
+        graph_store.load_graph,
+        scan_id=scan_id or "",
+        tenant_id=tenant_id,
+        **load_kwargs,
+    )
+    return _enrich_loaded_graph_runtime_evidence(graph, tenant_id)
+
 async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
     """Run CPU-heavy graph derivation and serialization off the event loop."""
     try:
@@ -1864,8 +1900,8 @@ async def get_graph(
         min_rank = SEVERITY_RANK.get(min_severity.lower(), 0)
 
     if relationships or static_only or dynamic_only:
-        graph = await _graph_store_call(
-            graph_store.load_graph,
+        graph = await _load_graph_for_investigation(
+            graph_store,
             scan_id=requested_scan_id,
             tenant_id=tenant,
             entity_types=et_set,
@@ -1976,8 +2012,8 @@ async def get_fix_first_graph_view(
     if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
-    graph = await _graph_store_call(
-        graph_store.load_graph,
+    graph = await _load_graph_for_investigation(
+        graph_store,
         scan_id=requested_scan_id,
         tenant_id=tenant,
     )
@@ -2108,8 +2144,8 @@ async def get_graph_attack_paths(
         limit=limit,
     )
     if total == 0:
-        graph = await _graph_store_call(
-            graph_store.load_graph,
+        graph = await _load_graph_for_investigation(
+            graph_store,
             scan_id=effective_scan_id,
             tenant_id=tenant,
         )

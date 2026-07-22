@@ -574,11 +574,18 @@ graph edge, so reachability stays edge-derived and is never fabricated.
 Wired today: findings surfaced by `GET /v1/findings` (and the overview /
 compliance / observability reads that share the enricher) gain a
 `workload_runtime_evidence` field on workload-scoped rows once a tenant has
-signals; the JSON API export carries it automatically. A graph-join helper
-annotates CWPP workload nodes for a matching tenant. Not yet locked in (stage 4):
-a dedicated ingest REST endpoint, CLI/MCP ingest surface, a scheduler that pulls
-from sources, typed SARIF/report export fields, the live graph/campaign route
-invocation, and any UI panel. No credentialed live source smoke is claimed.
+signals; the JSON API export carries it automatically. Authenticated ingest is
+available at `POST /v1/cloud/runtime-evidence/ingest` (sources provisioned via
+`AGENT_BOM_RUNTIME_EVIDENCE_SOURCES`; empty registry fails closed). Graph
+persist and investigation graph loads annotate matching CWPP workload nodes
+via the same index (tenant-scoped; absence stays `no_runtime_signal`, never
+"clean").
+
+Not yet locked in (stage 4 remainder): CLI/MCP ingest surface, a scheduler that
+pulls from sources, typed SARIF/report export fields, and any UI panel for
+workload runtime evidence. Azure/GCP disk side-scan remains discovery +
+injected-SDK lifecycle adapters (`executor: contract_only`) — no CLI executor
+and no credentialed live smoke is claimed.
 
 ---
 

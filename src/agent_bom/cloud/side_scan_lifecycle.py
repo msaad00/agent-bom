@@ -149,11 +149,16 @@ class SideScanProviderCapability:
 
 
 def side_scan_provider_capabilities() -> dict[SideScanProvider, SideScanProviderCapability]:
-    """Return the shipped side-scan surface without inferring adapter availability."""
+    """Return the shipped side-scan surface without inferring adapter availability.
+
+    Azure/GCP expose target discovery and an injected-SDK lifecycle adapter
+    boundary. They are ``contract_only`` until a CLI/scheduler executor and
+    credentialed smoke are proven — never advertise them as shipped executors.
+    """
     return {
         "aws": SideScanProviderCapability("aws", True, True, "shipped", True, False),
-        "azure": SideScanProviderCapability("azure", True, True, "shipped", False, False),
-        "gcp": SideScanProviderCapability("gcp", True, True, "shipped", False, False),
+        "azure": SideScanProviderCapability("azure", True, True, "contract_only", False, False),
+        "gcp": SideScanProviderCapability("gcp", True, True, "contract_only", False, False),
     }
 
 

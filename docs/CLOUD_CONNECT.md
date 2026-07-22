@@ -575,10 +575,13 @@ Wired today: findings surfaced by `GET /v1/findings` (and the overview /
 compliance / observability reads that share the enricher) gain a
 `workload_runtime_evidence` field on workload-scoped rows once a tenant has
 signals; the JSON API export carries it automatically. A graph-join helper
-annotates CWPP workload nodes for a matching tenant. Not yet locked in (stage 4):
-a dedicated ingest REST endpoint, CLI/MCP ingest surface, a scheduler that pulls
-from sources, typed SARIF/report export fields, the live graph/campaign route
-invocation, and any UI panel. No credentialed live source smoke is claimed.
+annotates CWPP workload nodes for a matching tenant. CLI
+`agent-bom cloud side-scan-capabilities` prints the honest provider surface;
+`agent-bom cloud side-scan --provider azure|gcp` refuses execution (exit 2)
+without instantiating adapters. Not yet locked in (stage 4 remainder):
+CLI/MCP runtime-evidence ingest, typed SARIF/report export fields, UI panel,
+and a scheduler that pulls from sources. No credentialed live Azure/GCP
+executor smoke is claimed.
 
 ---
 

@@ -42,6 +42,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
+- CWPP stage-4 (E): `agent-bom cloud side-scan --provider` refuses Azure/GCP
+  CLI execution (exit 2); `side-scan-capabilities` prints the honest
+  discovery/contract surface (#4158).
 - Findings carry optional graph FKs (`node_id`, `finding_node_id`, `entity_type`)
   and attack paths expose `finding_ids` so investigation joins typed estate nodes
   instead of CVE-label-only anchors; `asset_type` aliases map to `EntityType`

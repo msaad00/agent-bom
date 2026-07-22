@@ -24,6 +24,11 @@ import {
   GraphEvidenceExportButton,
   FullscreenButton,
 } from "@/components/graph-chrome";
+import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
+import {
+  GraphDriftTimeline,
+  type DriftScrubberPair,
+} from "@/components/graph-drift-timeline";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { LargeGraphOverview } from "@/components/large-graph-overview";
 import { LineageDetailPanel } from "@/components/lineage-detail";
@@ -102,6 +107,7 @@ import {
   ApiRateLimitError,
   type GraphDiffResponse,
   type GraphEdgeChangesResponse,
+  type GraphHistorySnapshot,
   type GraphNodeDetailResponse,
   type GraphQueryResponse,
   type GraphSnapshot,
@@ -705,6 +711,12 @@ function GraphPageInner() {
   );
   const [loadingEdgeChanges, setLoadingEdgeChanges] = useState(false);
   const [edgeChangesError, setEdgeChangesError] = useState<string | null>(null);
+  const [historySnapshots, setHistorySnapshots] = useState<GraphHistorySnapshot[]>(
+    [],
+  );
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [driftScrubberPair, setDriftScrubberPair] =
+    useState<DriftScrubberPair | null>(null);
   const [driftLensActive, setDriftLensActive] = useState(false);
   const [driftFilter, setDriftFilter] = useState<DriftLensFilter>("all");
   const [evidenceLensActive, setEvidenceLensActive] = useState(false);
@@ -1001,13 +1013,24 @@ function GraphPageInner() {
     return snapshots[index + 1];
   }, [snapshots, selectedScanId]);
 
+  const diffPair = useMemo(() => {
+    if (driftScrubberPair) return driftScrubberPair;
+    if (previousSnapshot && selectedScanId) {
+      return {
+        oldScanId: previousSnapshot.scan_id,
+        newScanId: selectedScanId,
+      } satisfies DriftScrubberPair;
+    }
+    return null;
+  }, [driftScrubberPair, previousSnapshot, selectedScanId]);
+
   useEffect(() => {
     let cancelled = false;
     setGraphDiff(null);
     setDiffError(null);
     setEdgeChanges(null);
     setEdgeChangesError(null);
-    if (!selectedScanId || !previousSnapshot) {
+    if (!diffPair) {
       setLoadingDiff(false);
       setLoadingEdgeChanges(false);
       return;
@@ -1015,8 +1038,8 @@ function GraphPageInner() {
     setLoadingDiff(true);
     setLoadingEdgeChanges(true);
     Promise.all([
-      api.getGraphDiff(previousSnapshot.scan_id, selectedScanId),
-      api.getGraphEdgeChanges(previousSnapshot.scan_id, selectedScanId),
+      api.getGraphDiff(diffPair.oldScanId, diffPair.newScanId),
+      api.getGraphEdgeChanges(diffPair.oldScanId, diffPair.newScanId),
     ])
       .then(([diffResult, edgeResult]) => {
         if (cancelled) return;
@@ -1037,7 +1060,7 @@ function GraphPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [previousSnapshot, selectedScanId]);
+  }, [diffPair]);
 
   useEffect(() => {
     if (!selectedNodeId || !selectedScanId) return;
@@ -1067,6 +1090,28 @@ function GraphPageInner() {
     [mergedGraphData?.nodes],
   );
   const activeScopePreset = graphScopePresetForFilters(filters);
+
+  useEffect(() => {
+    if (activeScopePreset !== "assetDrift") return;
+    let cancelled = false;
+    setLoadingHistory(true);
+    api
+      .getGraphHistory(50, 0)
+      .then((history) => {
+        if (cancelled) return;
+        setHistorySnapshots(history.snapshots ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHistorySnapshots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeScopePreset]);
 
   const attackPaths = useMemo(
     () =>
@@ -2389,18 +2434,35 @@ function GraphPageInner() {
           </div>
 
           {activeScopePreset === "assetDrift" && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
-              <span>
-                Asset lifecycle drift lens — governance and{" "}
-                <span className="font-mono">exhibits_drift</span> edges with
-                drift incidents on estate containers.
-              </span>
-              <a
-                href="/drift"
-                className="rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
-              >
-                Open drift incidents
-              </a>
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+                <span>
+                  Asset lifecycle drift lens — governance and{" "}
+                  <span className="font-mono">exhibits_drift</span> edges with
+                  drift incidents on estate containers.
+                </span>
+                <a
+                  href="/drift"
+                  className="rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+                >
+                  Open drift incidents
+                </a>
+              </div>
+              <GraphDriftTimeline
+                snapshots={historySnapshots}
+                selected={diffPair}
+                loading={loadingHistory}
+                onSelect={(pair) => {
+                  setDriftScrubberPair(pair);
+                  setDriftLensActive(true);
+                  setDriftFilter((current) =>
+                    current === "all" ? "changed" : current,
+                  );
+                  if (pair.newScanId !== selectedScanId) {
+                    setSelectedScanId(pair.newScanId);
+                  }
+                }}
+              />
             </div>
           )}
 
@@ -2758,7 +2820,7 @@ function GraphPageInner() {
                 onFilterChange={setDriftFilter}
                 counts={drift.counts}
                 criticalCount={drift.critical}
-                comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
+                comparedLabel={diffPair?.oldScanId.slice(0, 12)}
                 attributeSummaries={driftAttributeSummaryList}
               />
             </div>
@@ -2770,7 +2832,7 @@ function GraphPageInner() {
             changes={edgeChanges}
             loading={loadingEdgeChanges}
             error={edgeChangesError}
-            comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
+            comparedLabel={diffPair?.oldScanId.slice(0, 12)}
           />
         ) : null}
 
@@ -3103,16 +3165,24 @@ function GraphPageInner() {
           {loadingGraph && graphData && <GraphRefreshOverlay />}
 
           {graphTruncated && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2 text-xs text-[var(--text-tertiary)]">
-              <span className="text-amber-400">
-                This scan exceeds the interactive render budget of{" "}
-                {GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes.
-              </span>
-              <span>
-                The highest-signal topology is shown and dense neighborhoods are
-                aggregated — zoom, filter by layer/severity, or focus an agent or
-                attack path to drill in. Nothing is split across pages.
-              </span>
+            <div className="mt-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2">
+              <GraphCompletenessBanner
+                completeness={{
+                  status: "truncated",
+                  truncated: true,
+                  complete: false,
+                  sampled: false,
+                  returned: displayNodes.length,
+                  total: graphData?.pagination.total ?? GRAPH_FULL_FETCH_LIMIT,
+                  reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes. Dense neighborhoods are aggregated — filter or focus rather than treating this canvas as the full estate.`,
+                }}
+                visibleCount={displayNodes.length}
+                omittedCount={Math.max(
+                  0,
+                  (graphData?.pagination.total ?? displayNodes.length) -
+                    displayNodes.length,
+                )}
+              />
             </div>
           )}
 

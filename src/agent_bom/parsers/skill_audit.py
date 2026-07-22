@@ -130,6 +130,7 @@ def audit_skill_result(result: SkillScanResult) -> SkillAuditResult:
       5. Dangerous server names (HIGH)
       6. Excessive credential exposure (MEDIUM)
       7. External URL / data exfiltration (MEDIUM)
+      8. MCP blocklist match on extracted servers (CRITICAL/HIGH)
     """
     registry = _load_registry()
     audit = SkillAuditResult()
@@ -303,7 +304,7 @@ def _check_server(
     source_file: str,
     audit: SkillAuditResult,
 ) -> None:
-    """Run checks 2, 4-5, and 7 against a single MCP server."""
+    """Run checks 2, 4-5, 7, and 8 against a single MCP server."""
     # ── Check 4: Shell/exec access via command ───────────────────────────
     cmd_base = srv.command.rsplit("/", 1)[-1].lower() if srv.command else ""
     if cmd_base in _SHELL_COMMANDS:
@@ -402,6 +403,37 @@ def _check_server(
             )
         )
 
+    # ── Check 8: MCP blocklist (skill-extracted servers) ───────────────
+    try:
+        from agent_bom.mcp_blocklist import match_mcp_server
+    except Exception:  # pragma: no cover - import guard
+        match_mcp_server = None  # type: ignore[assignment]
+    if match_mcp_server is not None:
+        for match in match_mcp_server(srv):
+            detail_bits = [match.description or match.title]
+            if match.matched_value:
+                detail_bits.append(f"Matched value: {match.matched_value!r} ({match.match_type}).")
+            detail_bits.append(f"Extracted from skill/instruction surface {source_file}.")
+            audit.findings.append(
+                SkillFinding(
+                    severity=str(match.severity or "high").lower(),
+                    category="mcp_blocklist",
+                    title=match.title,
+                    detail=" ".join(bit for bit in detail_bits if bit),
+                    source_file=source_file,
+                    server=srv.name,
+                    package=match.package or None,
+                    recommendation=(
+                        "Remove or disable the matched MCP server until the blocklist entry is reviewed."
+                        if match.default_recommendation == "block"
+                        else "Review the matched MCP server against the blocklist entry before use."
+                    ),
+                    context="config_block",
+                    evidence_source="external_registry",
+                    confidence=str(match.confidence or "high"),
+                )
+            )
+
     # ── Check 7: External URL ────────────────────────────────────────────
     if srv.transport in (TransportType.SSE, TransportType.STREAMABLE_HTTP) and srv.url:
         url_lower = srv.url.lower()
@@ -450,3 +482,108 @@ def _match_server_to_registry(srv, registry: dict) -> dict | None:
             if pkg_name and pkg_name in candidate:
                 return entry
     return None
+
+
+# ── Unified Finding stream ───────────────────────────────────────────────────
+
+
+def _risk_score(severity: str) -> float:
+    return {
+        "critical": 9.0,
+        "high": 7.5,
+        "medium": 5.0,
+        "low": 2.5,
+    }.get(str(severity or "").lower(), 1.0)
+
+
+def _finding_type_for_skill_category(category: str):
+    from agent_bom.finding import FindingType
+
+    normalized = str(category or "").lower()
+    if normalized == "mcp_blocklist":
+        return FindingType.MCP_BLOCKLIST
+    if "exfil" in normalized or normalized == "external_url":
+        return FindingType.EXFILTRATION
+    if "credential" in normalized or normalized == "excessive_permissions":
+        return FindingType.CREDENTIAL_EXPOSURE
+    if "injection" in normalized or "prompt_coercion" in normalized:
+        return FindingType.INJECTION
+    return FindingType.SKILL_RISK
+
+
+def skill_audit_data_to_findings(skill_audit: dict) -> list:
+    """Convert serialized skill-audit data into the unified Finding stream.
+
+    Mirrors ``prompt_scan_data_to_findings`` so main-scan / API reports carry
+    ``FindingType.SKILL_RISK`` (and MCP blocklist hits) instead of leaving
+    skill results only in the ``skill_audit_data`` sidecar.
+    """
+    from agent_bom.finding import Asset, Finding, FindingSource
+
+    if not isinstance(skill_audit, dict):
+        return []
+
+    unified = []
+    for item in skill_audit.get("findings") or []:
+        if not isinstance(item, dict):
+            continue
+        source_file = str(item.get("source_file") or "")
+        category = str(item.get("category") or "skill_risk")
+        severity = str(item.get("ai_adjusted_severity") or item.get("severity") or "unknown").lower()
+        if severity == "false_positive":
+            continue
+        title = str(item.get("title") or "Skill security finding")
+        asset_name = (
+            str(item.get("server") or item.get("package") or "")
+            or (Path(source_file).name if source_file else "skill")
+        )
+        asset_type = "mcp_server" if item.get("server") else ("package" if item.get("package") else "skill_file")
+        identifier = item.get("server") or item.get("package") or source_file or None
+        unified.append(
+            Finding(
+                finding_type=_finding_type_for_skill_category(category),
+                source=FindingSource.SKILL,
+                asset=Asset(
+                    name=asset_name,
+                    asset_type=asset_type,
+                    identifier=str(identifier) if identifier else None,
+                    location=source_file or None,
+                ),
+                severity=severity,
+                title=title,
+                description=str(item.get("detail") or title),
+                remediation_guidance=str(item.get("recommendation") or "") or None,
+                owasp_tags=["LLM01"] if "injection" in category or "prompt" in category else [],
+                owasp_mcp_tags=["MCP04", "MCP07"] if category == "mcp_blocklist" else [],
+                nist_ai_rmf_tags=["MAP-4.1", "MEASURE-2.6"],
+                evidence={
+                    "category": category,
+                    "package": item.get("package"),
+                    "server": item.get("server"),
+                    "context": item.get("context"),
+                    "confidence": item.get("confidence"),
+                    "evidence_source": item.get("evidence_source"),
+                    "source_line": item.get("source_line"),
+                    "ai_detected": item.get("ai_detected"),
+                    "scanner": "skill_audit",
+                },
+                risk_score=_risk_score(severity),
+            )
+        )
+    return unified
+
+
+def replace_skill_findings(report, skill_audit: dict | None) -> int:
+    """Replace ``FindingSource.SKILL`` rows on *report* from serialized audit data.
+
+    Returns the number of findings attached.
+    """
+    from agent_bom.finding import FindingSource
+
+    if skill_audit is None:
+        return 0
+    existing = list(getattr(report, "findings", None) or [])
+    retained = [finding for finding in existing if getattr(finding, "source", None) != FindingSource.SKILL]
+    added = skill_audit_data_to_findings(skill_audit)
+    report.findings = retained + added
+    return len(added)

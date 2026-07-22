@@ -1979,6 +1979,9 @@ def scan(
     # Attach skill/trust/prompt/enforcement data from context
     if ctx.skill_audit_data:
         report.skill_audit_data = ctx.skill_audit_data
+        from agent_bom.parsers.skill_audit import replace_skill_findings
+
+        replace_skill_findings(report, ctx.skill_audit_data)
     if ctx.trust_assessment_data:
         report.trust_assessment_data = ctx.trust_assessment_data
     if ctx.prompt_scan_data:
@@ -2537,6 +2540,9 @@ def scan(
                 "ai_overall_risk_level": _skill_audit_obj.ai_overall_risk_level,
             }
             report.skill_audit_data = ctx.skill_audit_data
+            from agent_bom.parsers.skill_audit import replace_skill_findings
+
+            replace_skill_findings(report, ctx.skill_audit_data)
 
     # Step 4d: Generate remediation files (optional)
     if remediate_path or remediate_sh_path:

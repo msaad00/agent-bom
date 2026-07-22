@@ -1238,6 +1238,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
                 if skill_audit_data is not None:
                     report.skill_audit_data = skill_audit_data
+                    from agent_bom.parsers.skill_audit import replace_skill_findings
+
+                    replace_skill_findings(report, skill_audit_data)
                 if iac_findings_data is not None:
                     report.iac_findings_data = iac_findings_data
                 if repo_ai_inventory_data is not None:
@@ -1442,6 +1445,9 @@ def _run_scan_sync(job: ScanJob) -> None:
         )
         if skill_audit_data is not None:
             report.skill_audit_data = skill_audit_data
+            from agent_bom.parsers.skill_audit import replace_skill_findings
+
+            replace_skill_findings(report, skill_audit_data)
         if iac_findings_data is not None:
             report.iac_findings_data = iac_findings_data
         if repo_ai_inventory_data is not None:

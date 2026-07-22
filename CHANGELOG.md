@@ -10,6 +10,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Skill audit feeds the unified Finding stream (`FindingType.SKILL_RISK` /
+  `FindingSource.SKILL`) on CLI and API scans, matches extracted MCP servers
+  against the curated blocklist, and registers a `skill-audit` scanner driver.
 - Compose platform stack runs a one-shot `migrate` service before `api`
   (stamp `init.sql` baselines when needed, then `alembic upgrade head`), matching
   the Helm migration Job so image upgrades apply Postgres schema changes without

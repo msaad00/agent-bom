@@ -295,6 +295,12 @@ add the audit log (`audit_events`, append-only) when sizing total disk.
 | 5k agents  | 26,001 | 26,000 |  52,001 | ~120 MiB | 2 vCPU / 4 GiB / 50 GiB gp3 |
 | 10k agents | 52,001 | 52,000 | 104,001 | ~240 MiB | 4 vCPU / 8 GiB / 100 GiB gp3 |
 
+These rows are **disk/floor estimates from synthetic ingest cardinalities**, not
+a proven graph-API read latency ceiling. The checked-in query/API measured
+ceiling remains ~10,479 nodes / 11,242 edges — see
+[`docs/perf/graph-api-postgres-benchmark.md`](perf/graph-api-postgres-benchmark.md).
+Do not cite the 52k-node sizing row as measured read performance.
+
 Verify the actual disk used by the graph tables in your deployment with:
 
 ```sql

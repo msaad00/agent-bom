@@ -597,10 +597,13 @@ Azure/GCP disk side-scan remains discovery + injected-SDK lifecycle adapters
 
 ## 8. Why it scales and stays accurate
 
-- **Scale:** AWS Organizations, Azure management-group fan-out, and GCP
-  org/folder/project fan-out discover the whole estate; the graph partitions by
-  account, subscription, or project so multi-account/multi-tenant estates stay
-  separable, with explicit caps to bound a run.
+- **Scale:** When credentials and org fan-out flags are set, AWS Organizations,
+  Azure management-group fan-out, and GCP org/folder/project fan-out walk the
+  reachable estate; the graph partitions by account, subscription, or project
+  so multi-account/multi-tenant estates stay separable, with explicit caps to
+  bound a run. In-repo CI coverage for org fan-out is mocked/fixture-based;
+  live least-privilege org smoke remains environment-owned and is not claimed
+  as proven here.
 - **Alignment:** every datum a connector collects is wired end-to-end —
   data model → graph nodes/edges → JSON output → CLI/API → tests — so nothing is
   "collected but dropped". A guard test keeps the AWS SDK surface honest.

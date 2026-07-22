@@ -155,7 +155,7 @@ AGENT_BOM_NO_AUTO_DEV_KEY
 AGENT_BOM_NO_AUTO_CONNECTIONS_KEY
 # Opt-in flag for the storage-backed graph-build workspace (producer streaming); read in api/pipeline.py, path default in graph/build_workspace.py.
 AGENT_BOM_GRAPH_BUILD_WORKSPACE
-# Opt-in / auto flag (#4055/#4075): build the correlated graph into a per-build store-backed container on a throwaway private SQLite workspace so the producer's peak RSS drops; unset auto-enables above AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES; explicit 0/false/off forces the in-RAM producer. Read in api/pipeline.py.
+# Opt-in / auto flag (#4055/#4075): build the correlated graph into a per-build store-backed container on a throwaway private SQLite workspace so the producer's peak RSS drops; unset auto-enables above AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES; explicit 0/false/off forces the in-RAM producer. API persist path always opens backend="sqlite" (shared Postgres producer wiring is not the default). Read in api/pipeline.py. Not declared in config.py — allowlisted intentionally.
 AGENT_BOM_GRAPH_STORE_BACKED_BUILD
 # Entity-count threshold (default 5000) for auto-enabling AGENT_BOM_GRAPH_STORE_BACKED_BUILD when that flag is unset; read in api/pipeline.py.
 AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES

@@ -3,6 +3,10 @@
 
 Stdlib-only — no pip installs required on the runner host.
 
+``TARGET`` counts **findings rows ingested**, not UnifiedGraph node ceiling.
+Do not treat a 1M findings run as proof of 1M-node graph API latency (see
+``docs/perf/graph-api-postgres-benchmark.md`` for the measured graph ceiling).
+
 Environment:
   AGENT_BOM_URL          Base URL (default http://127.0.0.1:8422)
   AGENT_BOM_API_KEY      Bearer token with ingest + read scope

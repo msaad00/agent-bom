@@ -881,10 +881,11 @@ def test_api_key_middleware_accepts_signed_browser_session(monkeypatch):
     test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
 
     client = TestClient(test_app)
+    client.cookies.set(SESSION_COOKIE_NAME, token)
+    client.cookies.set(CSRF_COOKIE_NAME, csrf)
     resp = client.post(
         "/v1/scan",
         headers={CSRF_HEADER_NAME: csrf},
-        cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf},
     )
     assert resp.status_code == 200
     assert resp.json() == {
@@ -935,7 +936,9 @@ def test_api_key_middleware_rejects_browser_session_without_csrf(monkeypatch):
     test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
 
     client = TestClient(test_app)
-    resp = client.post("/v1/scan", cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf})
+    client.cookies.set(SESSION_COOKIE_NAME, token)
+    client.cookies.set(CSRF_COOKIE_NAME, csrf)
+    resp = client.post("/v1/scan")
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Forbidden — missing or invalid CSRF token"
 
@@ -969,10 +972,11 @@ def test_api_key_middleware_rejects_csrf_from_another_session(monkeypatch):
     test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
 
     client = TestClient(test_app)
+    client.cookies.set(SESSION_COOKIE_NAME, token_a)
+    client.cookies.set(CSRF_COOKIE_NAME, csrf_b)
     resp = client.post(
         "/v1/scan",
         headers={CSRF_HEADER_NAME: csrf_b},
-        cookies={SESSION_COOKIE_NAME: token_a, CSRF_COOKIE_NAME: csrf_b},
     )
     assert resp.status_code == 403
 
@@ -1000,10 +1004,11 @@ def test_api_key_middleware_rejects_revoked_browser_session(monkeypatch):
     test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
 
     client = TestClient(test_app)
+    client.cookies.set(SESSION_COOKIE_NAME, token)
+    client.cookies.set(CSRF_COOKIE_NAME, csrf)
     resp = client.post(
         "/v1/scan",
         headers={CSRF_HEADER_NAME: csrf},
-        cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf},
     )
     assert resp.status_code == 401
 

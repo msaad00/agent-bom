@@ -38,6 +38,10 @@ operator deployment timing, managed graph-backend timing, or production SLOs.
 The current measured ceiling is the checked-in Docker Postgres estate with
 10,479 nodes, 11,242 edges, and 291 materialized attack paths. 100k+ and
 1M-node Postgres claims are not yet measured; they remain follow-on scale work.
+Store-backed live graph builds on the persist path still use a **private
+SQLite staging workspace by default**; shared-Postgres producer wiring is
+implemented but not the default auto-enable path (see
+`src/agent_bom/graph/store_backed.py`).
 Measured local CPU graph timings remain in
 [`p95-p99-graph-query.md`](p95-p99-graph-query.md).
 

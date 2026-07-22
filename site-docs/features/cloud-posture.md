@@ -47,8 +47,9 @@ Supported pre-cloud inputs include:
 
 ## Runtime posture lane
 
-Run cloud benchmark checks against the actual environment when credentials are
-available:
+Run cloud benchmark checks against the actual environment when operator
+credentials are available (demo-estate CIS is curated sample data, not a live
+connect):
 
 ```bash
 agent-bom cloud aws --cis

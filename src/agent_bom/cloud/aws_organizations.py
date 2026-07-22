@@ -1,10 +1,11 @@
 """AWS Organizations inventory — org → OUs → accounts → SCPs (read-only, agentless).
 
 Answers "what does our AWS org / multi-account estate look like" for a CISO or an
-agent: the organization hierarchy (organizational units), every member account
-(scales to thousands via pagination), and the Service Control Policies that bound
-them. Emitted as ORG / ACCOUNT / POLICY graph nodes with ``CONTAINS`` hierarchy so
-the estate is traversable top-down then drill-down — the AWS analogue of the Azure
+agent: the organization hierarchy (organizational units), member accounts (SDK
+pagination supports large org lists; live multi-account fan-out size is not
+measured in-repo), and the Service Control Policies that bound them. Emitted as
+ORG / ACCOUNT / POLICY graph nodes with ``CONTAINS`` hierarchy so the estate is
+traversable top-down then drill-down — the AWS analogue of the Azure
 management-group hierarchy.
 
 Trust posture: read-only (``organizations:Describe*`` / ``List*`` only — all in the

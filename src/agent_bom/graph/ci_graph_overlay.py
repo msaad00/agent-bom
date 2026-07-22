@@ -112,11 +112,13 @@ def apply_ci_graph_overlay(
             )
             counts["configures_edges"] += 1
 
-        servers = agent.get("mcp_servers") if isinstance(agent.get("mcp_servers"), list) else []
+        raw_servers = agent.get("mcp_servers")
+        servers = raw_servers if isinstance(raw_servers, list) else []
         for server in servers:
             if not isinstance(server, dict):
                 continue
-            tools = server.get("tools") if isinstance(server.get("tools"), list) else []
+            raw_tools = server.get("tools")
+            tools = raw_tools if isinstance(raw_tools, list) else []
             for tool in tools:
                 tool_name = ""
                 if isinstance(tool, dict):

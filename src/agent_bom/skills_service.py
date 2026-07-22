@@ -20,8 +20,8 @@ from agent_bom.parsers.skills import (
     looks_like_instruction_surface,
     parse_skill_file,
 )
-from agent_bom.parsers.trust_assessment import ProvenanceVerdict, TrustAssessmentResult, Verdict, assess_trust
-from agent_bom.security import sanitize_command_args
+from agent_bom.parsers.trust_assessment import ProvenanceVerdict, ReviewVerdict, TrustAssessmentResult, Verdict, assess_trust
+from agent_bom.security import sanitize_command_args, sanitize_error
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_bundle_threat_intel
 from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog, save_skills_catalog
@@ -192,12 +192,20 @@ class SkillsRescanReport:
 
 
 def _discover_explicit_skill_files(directory: Path) -> list[Path]:
-    """Discover skill-like files inside a directory explicitly requested by the user."""
+    """Discover skill-like files inside a directory explicitly requested by the user.
+
+    Unlike project auto-discovery, explicit paths may intentionally target
+    ``tests/fixtures`` release samples — do not skip those trees here.
+    """
     found: list[Path] = []
     seen: set[Path] = set()
     allow_docs_skills = "docs" in directory.parts and "skills" in directory.parts
     for path in iter_discovery_files(directory, extra_skip_dirs=SKILL_DISCOVERY_SKIP_DIRS):
-        if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
+        if not looks_like_instruction_surface(
+            path,
+            allow_docs_skills=allow_docs_skills,
+            skip_test_fixtures=False,
+        ):
             continue
         resolved = path.resolve()
         if resolved not in seen:
@@ -396,6 +404,33 @@ def _run_async_sync(awaitable):
         return future.result()
 
 
+
+def _failed_skill_file_report(path: Path, exc: BaseException) -> SkillFileReport:
+    """Build a warn-and-continue report when one skill target raises mid-batch."""
+    safe = sanitize_error(exc if isinstance(exc, Exception) else str(exc))
+    return SkillFileReport(
+        path=path,
+        scan=SkillScanResult(source_files=[str(path)]),
+        audit=SkillAuditResult(passed=False),
+        trust=TrustAssessmentResult(
+            source_file=str(path),
+            review_verdict=ReviewVerdict.REVIEW,
+            provenance_verdict=ProvenanceVerdict.UNVERIFIED,
+            recommendations=[f"Skill scan failed: {safe}"],
+            review_reasons=[safe],
+        ),
+        provenance={"status": "unavailable", "reason": safe},
+        bundle=SkillBundle(
+            stable_id="",
+            sha256="",
+            root=str(path.parent),
+            file_count=0,
+            referenced_file_count=0,
+        ),
+        status=ThreatIntelStatus.UNAVAILABLE.value,
+    )
+
+
 async def _scan_skill_targets_async(
     paths: Iterable[str | Path] | None = None,
     *,
@@ -414,7 +449,18 @@ async def _scan_skill_targets_async(
         async with sem:
             return await _build_skill_report_async(path, intel_source=intel_source)
 
-    reports = list(await asyncio.gather(*[_scan_one(path) for path in targets]))
+    outcomes = await asyncio.gather(*[_scan_one(path) for path in targets], return_exceptions=True)
+    reports: list[SkillFileReport] = []
+    for path, outcome in zip(targets, outcomes, strict=False):
+        if isinstance(outcome, BaseException):
+            logger.warning(
+                "Skill scan failed for %s: %s",
+                path,
+                sanitize_error(outcome if isinstance(outcome, Exception) else str(outcome)),
+            )
+            reports.append(_failed_skill_file_report(path, outcome))
+        else:
+            reports.append(outcome)
     report = SkillsScanReport(files=reports, catalog_path=_persist_catalog(reports, catalog_path))
     summary = report.to_dict()["summary"]
     assert isinstance(summary, dict)
@@ -478,12 +524,14 @@ async def _rescan_skill_catalog_async(
         return stable_id, updated, serialized_entry
 
     pending: list[asyncio.Task[tuple[str, dict[str, object], dict[str, object]]]] = []
+    pending_ids: list[str] = []
     for stable_id, raw_entry in sorted(entries.items()):
         entry = raw_entry if isinstance(raw_entry, dict) else {}
         path_str = str(entry.get("path") or "")
         path = Path(path_str)
         if path_str and path.exists():
             pending.append(asyncio.create_task(_rescan_existing(stable_id, entry, path, path_str)))
+            pending_ids.append(stable_id)
             continue
 
         status = ThreatIntelStatus.UNAVAILABLE.value
@@ -516,8 +564,36 @@ async def _rescan_skill_catalog_async(
             }
         )
 
-    for stable_id, updated, serialized_entry in await asyncio.gather(*pending):
-        updated_entries[stable_id] = updated
+    outcomes = await asyncio.gather(*pending, return_exceptions=True) if pending else []
+    for stable_id, outcome in zip(pending_ids, outcomes, strict=False):
+        if isinstance(outcome, BaseException):
+            raw_failed = entries.get(stable_id)
+            failed_entry: dict[str, object] = raw_failed if isinstance(raw_failed, dict) else {}
+            path_str = str(failed_entry.get("path") or "")
+            safe = sanitize_error(outcome if isinstance(outcome, Exception) else str(outcome))
+            logger.warning("Skill catalog rescan failed for %s: %s", stable_id, safe)
+            updated = dict(failed_entry)
+            updated["status"] = ThreatIntelStatus.UNAVAILABLE.value
+            updated_entries[stable_id] = updated
+            serialized.append(
+                {
+                    "bundle_stable_id": stable_id,
+                    "path": path_str,
+                    "exists": True,
+                    "rescanned": False,
+                    "status": ThreatIntelStatus.UNAVAILABLE.value,
+                    "trust_verdict": failed_entry.get("trust_verdict"),
+                    "review_verdict": failed_entry.get("review_verdict"),
+                    "provenance_status": failed_entry.get("provenance_status"),
+                    "threat_intel": failed_entry.get("threat_intel"),
+                    "findings": failed_entry.get("findings", 0),
+                    "scanned_at": {"last_seen": catalog_scan_timestamp()},
+                    "error": safe,
+                }
+            )
+            continue
+        sid, updated, serialized_entry = outcome
+        updated_entries[sid] = updated
         serialized.append(serialized_entry)
 
     catalog["entries"] = updated_entries

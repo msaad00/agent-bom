@@ -375,6 +375,24 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             standards=("OWASP_LLM", "OWASP_AGENTIC"),
         ),
         _registration(
+            "skill-audit",
+            "agent_bom.parsers.skill_audit",
+            phase=ScannerPhase.SCANNING,
+            run_attr="audit_skill_result",
+            input_types=("skill_file", "instruction_file"),
+            output_types=("skill_findings", "skill_audit"),
+            finding_types=("skill-risk", "mcp-blocklist", "typosquat", "shell-access", "unverified-server"),
+            summary=(
+                "Skill/instruction file audit: registry typosquat, MCP blocklist on extracted "
+                "servers, shell access, and behavioral regex/AST risks."
+            ),
+            capabilities=local_read,
+            failure_mode=ScannerFailureMode.WARN_AND_CONTINUE,
+            skip_when=("no_skill_scope", "unsupported_file_type"),
+            telemetry_keys=("files_scanned", "packages_checked", "servers_checked", "findings_emitted", "duration_ms"),
+            standards=("OWASP_LLM", "OWASP_AGENTIC", "OWASP_MCP"),
+        ),
+        _registration(
             "license-policy",
             "agent_bom.license_policy",
             phase=ScannerPhase.ANALYSIS,

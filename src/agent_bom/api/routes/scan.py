@@ -10,7 +10,8 @@ Endpoints:
     GET  /v1/scan/{job_id}/licenses    license compliance report
     GET  /v1/scan/{job_id}/vex         VEX document
     GET  /v1/scan/{job_id}/skill-audit skill security audit
-    DELETE /v1/scan/{job_id}           cancel / discard a job
+    POST /v1/scan/{job_id}/cancel      cooperative cancel for pending/running jobs
+    DELETE /v1/scan/{job_id}           discard a job record
     GET  /v1/scan/{job_id}/stream      SSE — real-time scan progress
     GET  /v1/jobs                      list all scan jobs
     GET  /v1/findings                  list findings from completed scans
@@ -61,7 +62,7 @@ from agent_bom.api.models import (
     ScanRequest,
     TrainingPipelinesRequest,
 )
-from agent_bom.api.pipeline import _now, submit_scan_job
+from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_job
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
@@ -1498,10 +1499,29 @@ async def get_skill_audit(request: Request, job_id: str) -> dict:
     )
 
 
+@router.post("/scan/{job_id}/cancel", response_model=ScanJob, tags=["scan"])
+async def cancel_scan(request: Request, job_id: str) -> ScanJob:
+    """Request cooperative cancellation of a pending or running scan job.
+
+    Sets ``JobStatus.CANCELLED``; the worker exits at the next pipeline
+    checkpoint. Terminal jobs are returned unchanged. Use ``DELETE`` to discard
+    the job record after cancellation (or for already-finished jobs).
+    """
+    job = _job_for_request(request, job_id)
+    request_scan_cancellation(job)
+    return _job_response_payload(_job_for_request(request, job_id))
+
+
 @router.delete("/scan/{job_id}", status_code=204, tags=["scan"])
 async def delete_scan(request: Request, job_id: str) -> None:
-    """Discard a job record."""
+    """Discard a job record.
+
+    For pending/running jobs, requests cooperative cancellation first so the
+    worker does not finish into a resurrected DONE state after discard.
+    """
     job = _job_for_request(request, job_id)
+    if job.status in {JobStatus.PENDING, JobStatus.RUNNING}:
+        request_scan_cancellation(job)
     in_memory = _jobs_pop(job_id) if _visible_to_tenant(job, _tenant_id(request)) else None
     in_store = _get_store().delete(job_id, tenant_id=_tenant_id(request))
     if not in_memory and not in_store:

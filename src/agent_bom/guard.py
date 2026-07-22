@@ -212,9 +212,24 @@ async def guard_install(
 
     logger.info("Scanning %d package(s) before install: %s", len(packages), ", ".join(packages))
 
-    # Check packages concurrently
+    # Check packages concurrently (one failure must not abort siblings).
     tasks = [_check_package(name, ecosystem, min_severity=min_severity, block_kev=block_kev) for name in packages]
-    results = await asyncio.gather(*tasks)
+    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+    results: list[dict] = []
+    for name, outcome in zip(packages, outcomes, strict=False):
+        if isinstance(outcome, BaseException):
+            from agent_bom.security import sanitize_error
+
+            results.append(
+                {
+                    "name": name,
+                    "blocked": True,
+                    "scan_failed": True,
+                    "error": sanitize_error(outcome if isinstance(outcome, Exception) else str(outcome)),
+                }
+            )
+        else:
+            results.append(outcome)
 
     for pkg_result in results:
         result.packages_checked += 1

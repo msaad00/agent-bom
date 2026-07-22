@@ -68,6 +68,7 @@ def test_builtin_scanner_registry_declares_core_scanner_families() -> None:
         "cicd-github-actions",
         "dataset-pii",
         "prompt-injection",
+        "skill-audit",
         "firmware-advisory",
         "runtime-detectors",
         "yara-signature",

@@ -118,6 +118,12 @@ def test_gemini_project_config_in_list():
     assert ".gemini/settings.json" in PROJECT_CONFIG_FILES
 
 
+def test_claude_and_windsurf_project_mcp_configs_in_list():
+    assert ".claude/settings.json" in PROJECT_CONFIG_FILES
+    assert ".claude/settings.local.json" in PROJECT_CONFIG_FILES
+    assert ".windsurf/mcp.json" in PROJECT_CONFIG_FILES
+
+
 # ── 5. Codex CLI TOML parser ──────────────────────────────────────────────
 
 

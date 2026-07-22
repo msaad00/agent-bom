@@ -28,6 +28,24 @@ def test_path_classifier_covers_main_pushes() -> None:
     assert "git diff-tree --no-commit-id" in script
 
 
+def test_main_ui_smoke_covers_every_ui_classifier_surface() -> None:
+    """The main-push smoke must mirror paths that make PR UI validation run."""
+    workflow = (ROOT / ".github" / "workflows" / "main-ui-smoke.yml").read_text(
+        encoding="utf-8"
+    )
+    for path in (
+        '"ui/**"',
+        '"action.yml"',
+        '"contracts/**"',
+        '"src/agent_bom/api/**"',
+        '"src/agent_bom/graph/**"',
+        '"src/agent_bom/context_graph.py"',
+        '"src/agent_bom/graph_schema.py"',
+        '"src/agent_bom/models.py"',
+    ):
+        assert path in workflow
+
+
 def test_path_gated_jobs_fail_closed_when_classifier_fails() -> None:
     jobs = _ci()["jobs"]
     for name in ("docs-strict", "ui", "endpoint-packaging", "postgres-integration", "test-alpine", "action-dogfood"):

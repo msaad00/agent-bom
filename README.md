@@ -34,16 +34,30 @@
 
 ## Scan
 
+The same scanner runs from four entry points — pick the one for your surface;
+none is "the" way in.
+
+CLI (local or one-off):
+
 ```bash
 pip install agent-bom
 agent-bom scan .
 ```
 
-Inventory, findings, reachability, and fix-first actions — works without a
-control plane. Same scanner also runs in CI ([GitHub Action](https://github.com/marketplace/actions/agent-bom)),
-Docker, and from a self-hosted control plane via cloud connect / scheduled
-estate scans — “local” is one entry point, not the only one. Export when
-another tool needs it: `agent-bom scan . -f sarif -o findings.sarif`.
+CI (GitHub Action):
+
+```yaml
+- uses: msaad00/agent-bom@v0.97.2
+  with:
+    scan-type: agents
+    format: sarif
+    upload-sarif: true
+```
+
+Also: Docker, and a self-hosted control plane via cloud connect / scheduled
+estate scans. Inventory, findings, reachability, and fix-first actions work
+without a control plane; export when another tool needs it:
+`agent-bom scan . -f sarif -o findings.sarif`.
 
 Offline sample without your repo: `uvx agent-bom scan --demo --offline` ·
 full path: [First Run](docs/FIRST_RUN.md).

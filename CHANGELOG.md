@@ -13,6 +13,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Skill audit feeds the unified Finding stream (`FindingType.SKILL_RISK` /
   `FindingSource.SKILL`) on CLI and API scans, matches extracted MCP servers
   against the curated blocklist, and registers a `skill-audit` scanner driver.
+- Project skill/MCP discovery covers IDE agent trees
+  (`.cursor/{agents,skills,commands}`, `.claude/{skills,agents,commands,rules}`,
+  `.codex/skills`, `.agents/{skills,agents}`) and project MCP settings
+  (`.claude/settings.json`, `.claude/settings.local.json`, `.windsurf/mcp.json`).
 - Compose platform stack runs a one-shot `migrate` service before `api`
   (stamp `init.sql` baselines when needed, then `alembic upgrade head`), matching
   the Helm migration Job so image upgrades apply Postgres schema changes without

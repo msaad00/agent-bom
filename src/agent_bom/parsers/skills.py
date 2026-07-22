@@ -498,8 +498,30 @@ _INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
 )
 
 # Directory names whose ``*.md`` / ``*.mdc`` descendants are instruction surfaces.
+# Keep this list narrow: bare ``agents/`` / ``commands/`` dirs are common in
+# application code and would flood discovery with false positives.
 _INSTRUCTION_DIR_NAMES: frozenset[str] = frozenset({"skills", "prompts"})
 _INSTRUCTION_SUFFIXES: frozenset[str] = frozenset({".md", ".mdc"})
+
+# IDE / agent-tooling roots: (grandparent.name, parent.name) → instruction tree.
+# Covers Cursor/Claude/Codex/AGENTS.md-adjacent layouts without treating every
+# repo ``agents/`` package directory as a skill surface.
+_INSTRUCTION_NESTED_ROOTS: frozenset[tuple[str, str]] = frozenset(
+    {
+        (".cursor", "rules"),
+        (".cursor", "agents"),
+        (".cursor", "skills"),
+        (".cursor", "commands"),
+        (".claude", "skills"),
+        (".claude", "agents"),
+        (".claude", "commands"),
+        (".claude", "rules"),
+        (".agents", "skills"),
+        (".agents", "agents"),
+        (".codex", "skills"),
+        (".github", "instructions"),
+    }
+)
 
 
 def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = False) -> bool:
@@ -507,7 +529,8 @@ def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = Fals
 
     The heuristic is intentionally bounded: it recognises well-known instruction
     filenames anywhere, plus ``*.md`` / ``*.mdc`` files nested under recognised
-    instruction directories (``skills/``, ``prompts/``, ``.cursor/rules``,
+    instruction directories (``skills/``, ``prompts/``, ``.cursor/{rules,agents,skills}``,
+    ``.claude/{skills,agents,commands,rules}``, ``.codex/skills``,
     ``.github/instructions``). Generic repository markdown (READMEs, PR
     templates, changelogs) and vendored trees are excluded so discovery does not
     scan an entire monorepo blindly.
@@ -533,15 +556,12 @@ def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = Fals
     if any(parent.name in _INSTRUCTION_DIR_NAMES for parent in parents):
         return True
 
-    # .cursor/rules/*.mdc (Cursor project rules) and .github/instructions/*.md
-    # (GitHub Copilot path-scoped instructions).
+    # IDE / agent-tooling nested roots (Cursor, Claude Code, Codex, Copilot).
     for parent in parents:
         grandparent = parent.parent
         if grandparent == parent:
             continue
-        if parent.name == "rules" and grandparent.name == ".cursor":
-            return True
-        if parent.name == "instructions" and grandparent.name == ".github":
+        if (grandparent.name, parent.name) in _INSTRUCTION_NESTED_ROOTS:
             return True
 
     return False
@@ -554,7 +574,7 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
     keeps only paths that :func:`looks_like_instruction_surface` recognises:
     named instruction files (``CLAUDE.md``, ``AGENTS.md``, ``.cursorrules`` …)
     plus ``*.md`` / ``*.mdc`` files nested under ``skills/``, ``prompts/``,
-    ``.cursor/rules``, and ``.github/instructions`` at any depth.
+    IDE agent/skill/rules trees, and ``.github/instructions`` at any depth.
     """
     if not project_dir.is_dir():
         return []

@@ -159,6 +159,29 @@ def test_discover_nested_skill_md_and_cursor_mdc(tmp_path):
     assert cursor_rule in found
 
 
+def test_discover_ide_agent_and_skill_trees(tmp_path):
+    """Discovers Cursor/Claude/Codex agent + skill trees without bare agents/ FPs."""
+    surfaces = [
+        tmp_path / ".cursor" / "agents" / "reviewer.md",
+        tmp_path / ".cursor" / "skills" / "ship" / "SKILL.md",
+        tmp_path / ".claude" / "agents" / "planner.md",
+        tmp_path / ".claude" / "skills" / "triage" / "SKILL.md",
+        tmp_path / ".claude" / "commands" / "audit.md",
+        tmp_path / ".claude" / "rules" / "security.md",
+        tmp_path / ".codex" / "skills" / "pentest" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "local" / "SKILL.md",
+    ]
+    app_agent = tmp_path / "src" / "agents" / "worker.md"
+    for path in (*surfaces, app_agent):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Instruction surface")
+
+    found = discover_skill_files(tmp_path)
+    for path in surfaces:
+        assert path in found, path
+    assert app_agent not in found
+
+
 def test_discover_cursorrules(tmp_path):
     """Discovers .cursorrules file."""
     (tmp_path / ".cursorrules").write_text("# Cursor rules")

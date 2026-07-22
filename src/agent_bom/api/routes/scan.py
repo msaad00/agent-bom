@@ -2478,7 +2478,11 @@ async def list_inventory(
 
     packages = _inventory_packages_from_agents(agents)
     total = len(agents)
+    package_total = len(packages)
+    job_total = len(jobs)
     page = agents[offset : offset + limit]
+    packages_page = packages[offset : offset + limit]
+    jobs_page = jobs[offset : offset + limit]
     return {
         # Scope marker so callers never conflate this population with live
         # local-disk discovery at /v1/agents. This endpoint is the scanned
@@ -2492,9 +2496,17 @@ async def list_inventory(
         "agents": page,
         "count": len(page),
         "total": total,
-        "packages": packages,
-        "package_count": len(packages),
-        "jobs": jobs,
+        "limit": limit,
+        "offset": offset,
+        # Honest truncation across the three roll-up arrays that share this
+        # offset/limit window (fleet-style list contract).
+        "has_more": offset + len(page) < total or offset + len(packages_page) < package_total or offset + len(jobs_page) < job_total,
+        "packages": packages_page,
+        "package_count": len(packages_page),
+        "package_total": package_total,
+        "jobs": jobs_page,
+        "job_count": len(jobs_page),
+        "job_total": job_total,
         "warnings": [],
     }
 

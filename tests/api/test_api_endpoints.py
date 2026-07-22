@@ -994,3 +994,70 @@ def test_inventory_endpoint_declares_scanned_estate_scope():
     assert body["scope"] == "scanned_estate"
     assert body.get("source")
     assert "/v1/agents" in body["source"]
+    assert body["limit"] == 500
+    assert body["offset"] == 0
+    assert body["has_more"] is False
+    assert body["package_total"] == 0
+    assert body["job_total"] == 0
+
+
+def test_inventory_endpoint_pages_agents_packages_and_jobs():
+    """GET /v1/inventory exposes fleet-style has_more and does not dump full packages."""
+    client, store = _fresh_client()
+    agents = []
+    for index in range(5):
+        agents.append(
+            {
+                "name": f"agent-{index}",
+                "mcp_servers": [
+                    {
+                        "name": f"server-{index}",
+                        "packages": [
+                            {"name": f"pkg-{index}-a", "version": "1.0.0", "ecosystem": "npm"},
+                            {"name": f"pkg-{index}-b", "version": "2.0.0", "ecosystem": "npm"},
+                        ],
+                    }
+                ],
+            }
+        )
+    store.put(
+        ScanJob(
+            job_id="job-inventory-page",
+            tenant_id="default",
+            status=JobStatus.DONE,
+            created_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:13Z",
+            request=ScanRequest(),
+            result={"agents": agents},
+        )
+    )
+
+    page = client.get("/v1/inventory", params={"limit": 2, "offset": 0})
+    assert page.status_code == 200
+    body = page.json()
+    assert body["total"] == 5
+    assert body["count"] == 2
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert body["has_more"] is True
+    assert [agent["name"] for agent in body["agents"]] == ["agent-0", "agent-1"]
+    assert body["package_total"] == 10
+    assert body["package_count"] == 2
+    assert len(body["packages"]) == 2
+    assert body["job_total"] == 1
+    assert body["job_count"] == 1
+
+    last = client.get("/v1/inventory", params={"limit": 2, "offset": 4})
+    assert last.status_code == 200
+    last_body = last.json()
+    assert last_body["count"] == 1
+    assert last_body["has_more"] is True  # packages still truncated at this offset
+    assert last_body["package_count"] == 2
+    assert last_body["job_count"] == 0
+
+    packages_done = client.get("/v1/inventory", params={"limit": 2, "offset": 10})
+    assert packages_done.status_code == 200
+    done_body = packages_done.json()
+    assert done_body["count"] == 0
+    assert done_body["package_count"] == 0
+    assert done_body["has_more"] is False

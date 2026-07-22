@@ -61,10 +61,11 @@ High-signal entry points:
 Use this framing when editing public docs, UI copy, release notes, demos, or
 examples:
 
-1. **Scan locally** — CLI, Docker, and GitHub Action produce findings, SARIF,
-   SBOMs, HTML reports, and graph exports.
-2. **Send evidence to a control plane** — fleet sync, REST API, Helm/EKS, and
-   the browser UI centralize inventory, graph state, compliance, audit, and
+1. **Scan** — CLI, Docker, GitHub Action, and cloud connect (from a self-hosted
+   control plane) produce findings, SARIF, SBOMs, HTML reports, and graph
+   exports. “Local” is one entry point, not the product boundary.
+2. **Centralize evidence in a control plane** — fleet sync, REST API, Helm/EKS,
+   and the browser UI centralize inventory, graph state, compliance, audit, and
    governance.
 3. **Enforce runtime behavior** — MCP server mode, proxy/gateway, and Shield
    SDK turn the same model into assistant and tool-call controls.

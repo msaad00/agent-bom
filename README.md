@@ -18,7 +18,8 @@
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 <p align="center">
-  Scan locally → send evidence to a control plane you run → enforce runtime MCP/tool calls.
+  Scan from CLI, CI, Docker, or cloud connect on a control plane you run →
+  centralize evidence → enforce runtime MCP/tool calls.
   One Finding + UnifiedGraph model across CLI, API, UI, and MCP.
 </p>
 <p align="center">
@@ -31,16 +32,18 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
-## Scan locally
+## Scan
 
 ```bash
 pip install agent-bom
 agent-bom scan .
 ```
 
-Inventory, findings, reachability, and fix-first actions — no control plane
-required. Export when another tool needs it:
-`agent-bom scan . -f sarif -o findings.sarif`.
+Inventory, findings, reachability, and fix-first actions — works without a
+control plane. Same scanner also runs in CI ([GitHub Action](https://github.com/marketplace/actions/agent-bom)),
+Docker, and from a self-hosted control plane via cloud connect / scheduled
+estate scans — “local” is one entry point, not the only one. Export when
+another tool needs it: `agent-bom scan . -f sarif -o findings.sarif`.
 
 Offline sample without your repo: `uvx agent-bom scan --demo --offline` ·
 full path: [First Run](docs/FIRST_RUN.md).
@@ -80,7 +83,7 @@ Boundaries: [PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
 
 ## How the tool works
 
-1. **Scan** — `agent-bom scan .` → inventory, findings, SARIF/SBOM/HTML, local graph
+1. **Scan** — CLI / CI / Docker / cloud connect → inventory, findings, SARIF/SBOM/HTML, graph
 2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres)
 3. **Runtime** — `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` → allow/warn/block on live MCP/tool calls
 
@@ -91,7 +94,7 @@ boundary.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom three tool lanes: local scan, self-hosted control plane, and runtime gateway on one Finding + UnifiedGraph model" width="1100" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom three tool lanes: scan (CLI/CI/Docker/cloud connect), self-hosted control plane, and runtime gateway on one Finding + UnifiedGraph model" width="1100" />
   </picture>
 </p>
 

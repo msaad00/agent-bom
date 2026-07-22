@@ -1940,7 +1940,11 @@ def _validate_rate_limit(name: str, value: int, *, max_rpm: int) -> int:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Tenant-aware sliding window rate limiter with bounded memory."""
+    """Tenant-aware sliding window rate limiter with bounded memory.
+
+    Write / ingest POSTs (scan jobs and CWPP runtime-evidence ingest) share the
+    tighter ``scan_rpm`` bucket. Everything else uses ``read_rpm``.
+    """
 
     # Health/readiness/liveness probes must never self-throttle: orchestrators
     # (k8s, ELB, uptime monitors) hit these on short intervals and a probe storm
@@ -1955,6 +1959,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/livez",
             "/readyz",
             "/ping",
+        }
+    )
+    # Write/ingest doors that must not burn the generous read RPM budget.
+    _WRITE_RATE_LIMIT_PATHS = frozenset(
+        {
+            "/v1/cloud/runtime-evidence/ingest",
         }
     )
 
@@ -2015,6 +2025,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return True
         return False
 
+    @classmethod
+    def _is_write_rate_limited(cls, path: str, method: str) -> bool:
+        """True when the request should consume the tighter scan/write RPM bucket."""
+        if method != "POST":
+            return False
+        if path.startswith("/v1/scan"):
+            return True
+        return path in cls._WRITE_RATE_LIMIT_PATHS
+
     async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         if self._is_dashboard_static_asset(request.url.path, request.method):
             return await call_next(request)
@@ -2024,7 +2043,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         now = time.time()
 
-        is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
+        is_scan = self._is_write_rate_limited(request.url.path, request.method)
         limit = self._scan_rpm if is_scan else self._read_rpm
 
         key = await self._bucket_key(request, is_scan)

@@ -1518,6 +1518,49 @@ def test_rate_limit_middleware():
     assert "Retry-After" in resp.headers
 
 
+def test_runtime_evidence_ingest_uses_scan_rate_limit_bucket():
+    """CWPP ingest must not burn the generous read RPM budget."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    path = "/v1/cloud/runtime-evidence/ingest"
+    test_app = Starlette(
+        routes=[
+            Route(path, dummy, methods=["POST"]),
+            Route("/v1/findings", dummy, methods=["GET"]),
+        ]
+    )
+    test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
+
+    client = TestClient(test_app)
+    for _ in range(3):
+        resp = client.post(path)
+        assert resp.status_code == 200
+        assert resp.headers["X-RateLimit-Limit"] == "3"
+
+    resp = client.post(path)
+    assert resp.status_code == 429
+    assert resp.headers["X-RateLimit-Limit"] == "3"
+
+    # Read budget remains independent of the write ingest bucket.
+    read = client.get("/v1/findings")
+    assert read.status_code == 200
+    assert read.headers["X-RateLimit-Limit"] == "10"
+
+
+def test_write_rate_limit_classifier_covers_scan_and_runtime_ingest():
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/scan", "POST") is True
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/scan/dataset-cards", "POST") is True
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/cloud/runtime-evidence/ingest", "POST") is True
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/cloud/runtime-evidence/ingest", "GET") is False
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/findings", "GET") is False
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/findings", "POST") is False
+
+
 def test_audit_and_gateway_limits_are_validated():
     """High-volume audit surfaces must reject invalid limits instead of forwarding them."""
     configure_api(api_key=None, rate_limit_rpm=1000)

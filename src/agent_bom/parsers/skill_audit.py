@@ -497,17 +497,17 @@ def _risk_score(severity: str) -> float:
 
 
 def _finding_type_for_skill_category(category: str):
+    """Map skill-audit categories onto the unified Finding taxonomy.
+
+    Behavioral / package / server findings stay ``SKILL_RISK`` so the skill
+    lane keeps a single rule id in SARIF/exports. Only curated MCP blocklist
+    hits cross-walk to ``MCP_BLOCKLIST`` (same policy signal as MCP scan).
+    """
     from agent_bom.finding import FindingType
 
     normalized = str(category or "").lower()
     if normalized == "mcp_blocklist":
         return FindingType.MCP_BLOCKLIST
-    if "exfil" in normalized or normalized == "external_url":
-        return FindingType.EXFILTRATION
-    if "credential" in normalized or normalized == "excessive_permissions":
-        return FindingType.CREDENTIAL_EXPOSURE
-    if "injection" in normalized or "prompt_coercion" in normalized:
-        return FindingType.INJECTION
     return FindingType.SKILL_RISK
 
 

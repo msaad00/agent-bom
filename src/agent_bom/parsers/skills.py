@@ -483,6 +483,20 @@ SKILL_DISCOVERY_SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
+# Test fixture trees intentionally contain malicious / high-risk skill samples
+# for unit tests. Auto-discovery must not treat them as first-party surfaces
+# (self-scan / project scan would otherwise fail the severity gate on fixtures).
+_TEST_FIXTURE_ROOT_NAMES: frozenset[str] = frozenset({"tests", "test", "__tests__"})
+
+
+def _is_test_fixture_path(path: Path) -> bool:
+    """Return True for paths under ``tests/fixtures`` (or ``test/fixtures``)."""
+    parts = path.parts
+    for index, part in enumerate(parts[:-1]):
+        if part in _TEST_FIXTURE_ROOT_NAMES and parts[index + 1] == "fixtures":
+            return True
+    return False
+
 # Well-known instruction filenames recognised anywhere in the tree.
 _INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
     {
@@ -536,6 +550,8 @@ def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = Fals
     scan an entire monorepo blindly.
     """
     if any(part in SKILL_DISCOVERY_SKIP_DIRS for part in path.parts):
+        return False
+    if _is_test_fixture_path(path):
         return False
     if not allow_docs_skills and "docs" in path.parts and "skills" in path.parts:
         return False

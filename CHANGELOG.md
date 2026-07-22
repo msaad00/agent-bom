@@ -17,6 +17,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
   (`.cursor/{agents,skills,commands}`, `.claude/{skills,agents,commands,rules}`,
   `.codex/skills`, `.agents/{skills,agents}`) and project MCP settings
   (`.claude/settings.json`, `.claude/settings.local.json`, `.windsurf/mcp.json`).
+  Auto-discovery skips `tests/fixtures` skill samples so intentional malicious
+  fixtures do not fail project/self-scan severity gates.
 - Compose platform stack runs a one-shot `migrate` service before `api`
   (stamp `init.sql` baselines when needed, then `alembic upgrade head`), matching
   the Helm migration Job so image upgrades apply Postgres schema changes without

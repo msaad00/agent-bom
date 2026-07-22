@@ -464,7 +464,60 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
           </div>
         </Panel>
       ) : null}
+
+      <WorkloadRuntimeEvidencePanel evidence={vuln.workload_runtime_evidence} />
     </div>
+  );
+}
+
+function WorkloadRuntimeEvidencePanel({
+  evidence,
+}: {
+  evidence: EnrichedVuln["workload_runtime_evidence"];
+}) {
+  if (!evidence?.state) return null;
+  const state = evidence.state;
+  const label =
+    state === "runtime_ioc_observed"
+      ? "IOC observed"
+      : state === "runtime_alert_observed"
+        ? "Alert observed"
+        : state === "runtime_activity_observed"
+          ? "Activity observed"
+          : state === "no_runtime_signal"
+            ? "No runtime signal"
+            : state.replaceAll("_", " ");
+  const tone =
+    state === "runtime_ioc_observed"
+      ? "border-rose-500/30 dark:border-rose-800/60 bg-rose-500/10 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
+      : state === "runtime_alert_observed"
+        ? "border-amber-500/30 dark:border-amber-800/60 bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+        : state === "runtime_activity_observed"
+          ? "border-sky-500/30 dark:border-sky-800/60 bg-sky-500/10 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
+          : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] text-[color:var(--text-secondary)]";
+  const sourceKinds = Array.isArray(evidence.source_kinds) ? evidence.source_kinds.filter(Boolean) : [];
+  return (
+    <Panel title="Workload runtime evidence">
+      <div className="space-y-3 text-sm text-[color:var(--text-secondary)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${tone}`}>
+            {label}
+          </span>
+          {typeof evidence.signal_count === "number" ? (
+            <span className="text-xs text-[color:var(--text-tertiary)]">{evidence.signal_count} signal{evidence.signal_count === 1 ? "" : "s"}</span>
+          ) : null}
+        </div>
+        {evidence.latest_observed_at ? (
+          <KeyVal label="Latest observed" value={formatFindingTimestamp(evidence.latest_observed_at)} />
+        ) : null}
+        {sourceKinds.length > 0 ? <TagList label="Sources" values={sourceKinds} /> : null}
+        <p className="text-xs leading-5 text-[color:var(--text-tertiary)]">
+          Additive CWPP/EDR metadata only — absence of a signal is not a clean-workload assertion
+          {evidence.clean_workload_assertion === false ? " (clean_workload_assertion: false)" : ""}.
+          Distinct from proxy/gateway runtime evidence on the Overview reach badges.
+        </p>
+      </div>
+    </Panel>
   );
 }
 

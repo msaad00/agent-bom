@@ -42,6 +42,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   graph test module docstring matches auto-enable behavior.
 
 ### Changed
+- CWPP stage-4 (D): findings Evidence drawer shows a Workload runtime evidence
+  panel for CWPP/EDR summaries (additive; not a clean-workload assertion)
+  (#4158).
 - Findings carry optional graph FKs (`node_id`, `finding_node_id`, `entity_type`)
   and attack paths expose `finding_ids` so investigation joins typed estate nodes
   instead of CVE-label-only anchors; `asset_type` aliases map to `EntityType`

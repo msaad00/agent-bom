@@ -1,4 +1,5 @@
 import type { Vulnerability } from "@/lib/api";
+import type { WorkloadRuntimeEvidence } from "@/lib/api-types";
 
 export interface EnrichedVuln extends Vulnerability {
   /**
@@ -38,6 +39,8 @@ export interface EnrichedVuln extends Vulnerability {
     blocked_count?: number;
     observed_count?: number;
   } | undefined;
+  /** CWPP runtime/EDR evidence — separate from proxy/gateway runtime_evidence. */
+  workload_runtime_evidence?: WorkloadRuntimeEvidence | undefined;
   lifecycle_status?: string | undefined;
   first_seen?: string | undefined;
   last_seen?: string | undefined;

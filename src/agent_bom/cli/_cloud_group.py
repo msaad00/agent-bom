@@ -738,6 +738,13 @@ cloud_group.add_command(inventory_cmd, "inventory")
 
 
 @click.command("side-scan")
+@click.option(
+    "--provider",
+    type=click.Choice(["aws", "azure", "gcp"], case_sensitive=False),
+    default="aws",
+    show_default=True,
+    help="Cloud provider. Only AWS ships a CLI executor today; Azure/GCP stay contract_only.",
+)
 @click.option("--instance-id", default=None, help="EC2 instance whose attached EBS volumes to scan.")
 @click.option("--volume-id", default=None, help="A specific EBS volume to scan (takes precedence over --instance-id).")
 @click.option(
@@ -750,6 +757,7 @@ cloud_group.add_command(inventory_cmd, "inventory")
 @click.option("--no-secrets", is_flag=True, help="Skip the redacted secret scan (SBOM + CVEs only).")
 @click.option("--no-sweep-orphans", is_flag=True, help="Skip the pre-run sweep of snapshots stranded by an earlier crash.")
 def side_scan_cmd(
+    provider: str,
     instance_id: Optional[str],
     volume_id: Optional[str],
     collector_instance_id: Optional[str],
@@ -758,13 +766,19 @@ def side_scan_cmd(
     no_secrets: bool,
     no_sweep_orphans: bool,
 ) -> None:
-    """Agentless EBS disk side-scan — snapshot, mount read-only, SBOM + CVEs + redacted secrets.
+    """Agentless disk side-scan — snapshot, mount read-only, SBOM + CVEs + redacted secrets.
 
-    The single opt-in, non-read-only capability in agent-bom: it takes an EBS
-    snapshot, attaches a temp volume to an *in-account collector* instance, mounts
-    it read-only, parses the package SBOM + secret type/location (never values,
-    never file contents), and tears everything down in a guaranteed cleanup. No
-    disk image or block data ever leaves the account.
+    AWS EBS is the shipped CLI executor: it takes a snapshot, attaches a temp
+    volume to an *in-account collector* instance, mounts it read-only, parses the
+    package SBOM + secret type/location (never values, never file contents), and
+    tears everything down in a guaranteed cleanup. No disk image or block data
+    ever leaves the account.
+
+    Azure Managed Disk and GCP Persistent Disk expose target discovery and an
+    injected-SDK lifecycle adapter boundary only — ``--provider azure|gcp``
+    refuses execution (exit 2) until a credentialed smoke proves a CLI executor.
+    Use ``agent-bom cloud side-scan-capabilities`` and cloud inventory
+    ``side_scan_targets`` for the honest surface.
 
     Requires the scoped snapshot role (deploy/terraform/connect-aws-sidescan) and
     an in-account collector instance. Gated by ``AGENT_BOM_SIDESCAN`` — OFF by
@@ -775,6 +789,7 @@ def side_scan_cmd(
       AGENT_BOM_SIDESCAN=1 agent-bom cloud side-scan \\
         --volume-id vol-0abc --collector-instance-id i-0def \\
         --availability-zone us-east-1a --region us-east-1
+      agent-bom cloud side-scan-capabilities -f json
     """
     import asyncio
 
@@ -782,8 +797,25 @@ def side_scan_cmd(
 
     from agent_bom.cloud.base import CloudDiscoveryError
     from agent_bom.cloud.side_scan import run_side_scan
+    from agent_bom.cloud.side_scan_lifecycle import side_scan_provider_capabilities
 
     con = Console()
+    provider_key = provider.strip().lower()
+    capabilities = side_scan_provider_capabilities()
+    capability = capabilities.get(provider_key)
+    if capability is None or not capability.cli_available:
+        executor = capability.executor if capability is not None else "contract_only"
+        con.print(
+            f"\n  [yellow]side-scan executor unavailable for {provider_key}:[/yellow] "
+            f"executor={executor}, cli_available=false"
+        )
+        con.print(
+            "  [dim]Azure/GCP expose target discovery + lifecycle contract only — "
+            "no CLI executor is claimed. See `agent-bom cloud side-scan-capabilities` "
+            "and inventory `side_scan_targets`.[/dim]\n"
+        )
+        raise SystemExit(2)
+
     try:
         results: list[SideScanResult] = asyncio.run(
             run_side_scan(
@@ -804,6 +836,58 @@ def side_scan_cmd(
         raise SystemExit(1) from None
 
     _render_side_scan_results(con, results)
+
+
+@click.command("side-scan-capabilities")
+@click.option(
+    "-f",
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"], case_sensitive=False),
+    default="table",
+    show_default=True,
+    help="Output format.",
+)
+def side_scan_capabilities_cmd(output_format: str) -> None:
+    """Print honest CWPP side-scan provider capabilities (no cloud mutations).
+
+    AWS is the shipped CLI executor. Azure/GCP advertise target discovery and a
+    lifecycle contract only until credentialed smoke proves otherwise.
+    """
+    import json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from agent_bom.cloud.side_scan_lifecycle import side_scan_provider_capabilities
+
+    capabilities = [cap.to_dict() for cap in side_scan_provider_capabilities().values()]
+    con = Console()
+    if output_format.lower() == "json":
+        con.print_json(json.dumps(capabilities, sort_keys=True))
+        return
+
+    table = Table(title="CWPP side-scan capabilities")
+    table.add_column("Provider")
+    table.add_column("Target discovery")
+    table.add_column("Lifecycle contract")
+    table.add_column("Executor")
+    table.add_column("CLI")
+    table.add_column("Credentialed smoke")
+    for row in capabilities:
+        table.add_row(
+            str(row.get("provider") or ""),
+            "yes" if row.get("target_discovery") else "no",
+            "yes" if row.get("lifecycle_contract") else "no",
+            str(row.get("executor") or ""),
+            "yes" if row.get("cli_available") else "no",
+            "yes" if row.get("credentialed_smoke") else "no",
+        )
+    con.print(table)
+    con.print(
+        "\n  [dim]Azure/GCP CLI execution is refused until a credentialed smoke "
+        "proves an executor. Inventory `side_scan_targets` remains discovery-only.[/dim]\n"
+    )
 
 
 def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> None:
@@ -852,6 +936,7 @@ def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> No
 
 
 cloud_group.add_command(side_scan_cmd, "side-scan")
+cloud_group.add_command(side_scan_capabilities_cmd, "side-scan-capabilities")
 
 
 @click.command("runtime-evidence-ingest")

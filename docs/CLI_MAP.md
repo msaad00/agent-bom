@@ -37,7 +37,7 @@ Inventory, package, image, IaC, cloud, and skills scanning entry points.
 | `iac` | Scan IaC: Dockerfile, Terraform, CloudFormation, Helm, Kubernetes. |
 | `sbom` | Ingest an existing SBOM (CycloneDX / SPDX) and scan its components. |
 | `ingest` | Ingest operator-provided evidence (e.g. `ingest hardware` firmware attestation) into the graph. |
-| `cloud` | Cloud posture + estate inventory for AWS/Azure/GCP, CIS benchmarks, and cloud registry sweeps. Group: `scan` (all configured clouds), `aws`/`azure`/`gcp` aliases, `inventory`, `registry-scan` (ECR/ACR/GAR sweep), `resilience`, AWS EBS `side-scan`, and CWPP `runtime-evidence-ingest`. |
+| `cloud` | Cloud posture + estate inventory for AWS/Azure/GCP, CIS benchmarks, and cloud registry sweeps. Group: `scan` (all configured clouds), `aws`/`azure`/`gcp` aliases, `inventory`, `registry-scan` (ECR/ACR/GAR sweep), `resilience`, AWS EBS `side-scan`, `side-scan-capabilities` (honest Azure/GCP contract_only surface), and CWPP `runtime-evidence-ingest`. |
 | `check` | Pre-install check for one package: allow / warn / block. |
 | `verify` | Package integrity + SLSA provenance verification. |
 | `secrets` | Secret detection. |
@@ -154,7 +154,7 @@ the source is:
 
 | Source | Command home | Why |
 |---|---|---|
-| AWS / Azure / GCP | `agent-bom cloud ...` | provider APIs expose estate inventory, IAM, network posture, CIS checks, and registry sweeps; the side-scan CLI is AWS-only, while Azure/GCP currently expose injected-SDK lifecycle adapters |
+| AWS / Azure / GCP | `agent-bom cloud ...` | provider APIs expose estate inventory, IAM, network posture, CIS checks, and registry sweeps; the side-scan CLI executor is AWS-only (`side-scan --provider azure|gcp` refuses), while `side-scan-capabilities` and inventory `side_scan_targets` stay discovery/contract-only for Azure/GCP |
 | Snowflake | `agent-bom agents --snowflake` plus `connect snowflake` | Snowflake is a warehouse/governance source: Cortex, grants, query/activity evidence, lineage, and CIS/posture metadata |
 
 Both paths normalize into the same `Finding` and `ContextGraph` model; the

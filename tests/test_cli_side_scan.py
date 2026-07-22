@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
+import pytest
+
 import agent_bom.cli._cloud_group as cg
 from agent_bom.cloud.side_scan import (
     SideScanDisabledError,
@@ -70,8 +72,9 @@ def test_side_scan_invokes_run_side_scan_with_mapped_kwargs(monkeypatch):
     # --no-secrets -> scan_secrets_enabled=False; --no-sweep-orphans -> sweep_orphans=False
     assert captured["scan_secrets_enabled"] is False
     assert captured["sweep_orphans"] is False
-    # Summary table rendered the volume + cleanup status.
-    assert "vol-target" in result.output
+    # Summary table rendered the instance + snapshot + cleanup status
+    # (volume may ellipsize under narrow COLUMNS).
+    assert "i-target" in result.output
     assert "snap-1" in result.output
 
 
@@ -137,3 +140,29 @@ def test_side_scan_disabled_flag_exits_nonzero_with_actionable_message(monkeypat
 
 def test_side_scan_command_registered_on_group():
     assert "side-scan" in cg.cloud_group.commands
+    assert "side-scan-capabilities" in cg.cloud_group.commands
+
+
+@pytest.mark.parametrize("provider", ["azure", "gcp"])
+def test_side_scan_refuses_non_cli_providers_without_calling_executor(monkeypatch, provider: str):
+    called = False
+
+    async def fake_run_side_scan(**kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan.run_side_scan", fake_run_side_scan)
+    result = CliRunner().invoke(cg.side_scan_cmd, ["--provider", provider, "--volume-id", "vol-x"])
+    assert result.exit_code == 2, result.output
+    assert called is False
+    assert "executor unavailable" in result.output.lower() or "cli_available=false" in result.output.lower()
+    assert "contract" in result.output.lower() or "discovery" in result.output.lower()
+
+
+def test_side_scan_capabilities_json():
+    result = CliRunner().invoke(cg.side_scan_capabilities_cmd, ["-f", "json"])
+    assert result.exit_code == 0, result.output
+    assert '"provider": "aws"' in result.output
+    assert '"provider": "azure"' in result.output
+    assert '"cli_available": false' in result.output or '"cli_available": false' in result.output.replace("False", "false")

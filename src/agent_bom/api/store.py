@@ -20,6 +20,11 @@ from .server import JobStatus, ScanJob
 
 _JOB_TTL_SECONDS = 3600  # 1 hour
 
+# Curated public-demo scan jobs must outlive AGENT_BOM_API_JOB_TTL. Without this
+# exemption the cleanup loop deletes DONE demo jobs ~1h after bootstrap and the
+# hosted demo serves an empty findings spine until the next API restart.
+DEMO_ESTATE_TRIGGERED_BY = "demo-estate-bootstrap"
+
 
 def _require_tenant_scope(tenant_id: str | None, all_tenants: bool, method: str) -> None:
     """Fail closed when a request-path read/write omits a tenant scope.
@@ -74,7 +79,12 @@ class InMemoryJobStore:
         if len(self._jobs) <= self._max_retained_jobs:
             return
 
-        completed = [(jid, job) for jid, job in self._jobs.items() if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
+        completed = [
+            (jid, job)
+            for jid, job in self._jobs.items()
+            if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
+            and getattr(job, "triggered_by", None) != DEMO_ESTATE_TRIGGERED_BY
+        ]
         completed.sort(key=lambda item: (item[1].completed_at is None, item[1].completed_at or item[1].created_at))
         for jid, _job in completed[: len(self._jobs) - self._max_retained_jobs]:
             self._jobs.pop(jid, None)
@@ -159,6 +169,7 @@ class InMemoryJobStore:
                 for jid, job in self._jobs.items()
                 if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)
                 and job.completed_at
+                and getattr(job, "triggered_by", None) != DEMO_ESTATE_TRIGGERED_BY
                 and (now - datetime.fromisoformat(job.completed_at)).total_seconds() > ttl_seconds
             ]
             for jid in expired:
@@ -413,8 +424,9 @@ class SQLiteJobStore:
                 """DELETE FROM jobs
                    WHERE status IN ('done', 'failed', 'cancelled')
                      AND completed_at IS NOT NULL
+                     AND IFNULL(triggered_by, '') != ?
                      AND julianday(?) - julianday(completed_at) > ?""",
-                (now, ttl_seconds / 86400.0),
+                (DEMO_ESTATE_TRIGGERED_BY, now, ttl_seconds / 86400.0),
             )
             self._conn.commit()
             return cursor.rowcount

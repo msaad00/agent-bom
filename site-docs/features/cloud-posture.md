@@ -25,7 +25,7 @@ agent-bom iac Dockerfile k8s/ infra/main.tf --format sarif --output agent-bom-ia
 In GitHub Actions, use the `iac` scan type or the `iac` input:
 
 ```yaml
-- uses: msaad00/agent-bom@v0.97.2
+- uses: msaad00/agent-bom@v0.97.3
   with:
     scan-type: iac
     scan-ref: infra/main.tf,k8s/
@@ -47,8 +47,9 @@ Supported pre-cloud inputs include:
 
 ## Runtime posture lane
 
-Run cloud benchmark checks against the actual environment when credentials are
-available:
+Run cloud benchmark checks against the actual environment when operator
+credentials are available (demo-estate CIS is curated sample data, not a live
+connect):
 
 ```bash
 agent-bom cloud aws --cis

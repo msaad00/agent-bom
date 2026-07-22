@@ -101,8 +101,9 @@ even on exception. CLI / export builders that never pass a container stay
 in-RAM; below-threshold API scans keep the byte-identical in-RAM producer. This
 is a measured peak-RSS reduction (~2.5–3× lower producer peak, residual O(N)
 floor ~0.37), not a claim of strict bounded memory — multi-million-node estates
-still need a server-side backend. Large builds write O(graph) bytes to pod
-ephemeral storage while the throwaway SQLite workspace is open.
+still need a server-side backend (**ADR residual only — not a shipped product
+claim**). Large builds write O(graph) bytes to pod ephemeral storage while the
+throwaway SQLite workspace is open.
 
 Two overlays mutated a *held* node subset across passes (cnapp exposure marks;
 effective-permissions admin-equivalence marks) — a pattern the store's

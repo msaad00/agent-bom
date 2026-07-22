@@ -158,6 +158,13 @@ your `maxReplicas` calibrated to your Postgres connection-pool capacity
 (default chart sets pool size in
 `controlPlane.api.env.AGENT_BOM_POSTGRES_POOL_MAX`).
 
+Graph store-backed builds auto-enable for larger API snapshots, but the
+default producer still stages into a **private SQLite** workspace (shared
+Postgres producer wiring is not the default). The checked-in measured
+ceiling remains ~10,479 nodes / 11,242 edges
+([graph API Postgres benchmark](https://github.com/msaad00/agent-bom/blob/main/docs/perf/graph-api-postgres-benchmark.md));
+100k / 1M-node production claims are unproven.
+
 This gap blocks the "elastic at 1M edges" claim, but it does not block
 pilots and does not prevent the SLOs above from being met for the
 workload sizes they're written for.

@@ -71,7 +71,7 @@ Start with a familiar adoption pattern: a single CI step that fails on policy, u
 
 ```yaml
 # GitHub Actions
-- uses: msaad00/agent-bom@v0.97.2
+- uses: msaad00/agent-bom@v0.97.3
   with:
     scan-type: agents        # auto-detect MCP configs + deps
     severity-threshold: high # fail PR on HIGH+ CVEs
@@ -89,21 +89,21 @@ Start with a familiar adoption pattern: a single CI step that fails on policy, u
 
 ```yaml
 # Container image gate
-- uses: msaad00/agent-bom@v0.97.2
+- uses: msaad00/agent-bom@v0.97.3
   with:
     scan-type: image
     scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
     severity-threshold: critical
 
 # IaC gate
-- uses: msaad00/agent-bom@v0.97.2
+- uses: msaad00/agent-bom@v0.97.3
   with:
     scan-type: iac
     iac: Dockerfile,k8s/,infra/main.tf
     severity-threshold: high
 
 # Air-gapped or fully cached CI
-- uses: msaad00/agent-bom@v0.97.2
+- uses: msaad00/agent-bom@v0.97.3
   with:
     auto-update-db: false
     enrich: false
@@ -294,6 +294,12 @@ add the audit log (`audit_events`, append-only) when sizing total disk.
 | 1k agents  |  5,201 |  5,200 |  10,401 |  ~24 MiB | 2 vCPU / 4 GiB / 20 GiB gp3 |
 | 5k agents  | 26,001 | 26,000 |  52,001 | ~120 MiB | 2 vCPU / 4 GiB / 50 GiB gp3 |
 | 10k agents | 52,001 | 52,000 | 104,001 | ~240 MiB | 4 vCPU / 8 GiB / 100 GiB gp3 |
+
+These rows are **disk/floor estimates from synthetic ingest cardinalities**, not
+a proven graph-API read latency ceiling. The checked-in query/API measured
+ceiling remains ~10,479 nodes / 11,242 edges — see
+[`docs/perf/graph-api-postgres-benchmark.md`](perf/graph-api-postgres-benchmark.md).
+Do not cite the 52k-node sizing row as measured read performance.
 
 Verify the actual disk used by the graph tables in your deployment with:
 
@@ -601,7 +607,7 @@ docker run --rm \
   -v ~/.config:/home/abom/.config:ro \
   -v ~/.agent-bom:/home/abom/.agent-bom \
   -v $(pwd):/workspace:ro \
-  agentbom/agent-bom:0.97.2 agents --format json
+  agentbom/agent-bom:0.97.3 agents --format json
 ```
 
 Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base image.

@@ -78,6 +78,11 @@ add the audit log (`audit_events` is HMAC-chained, append-only) when sizing
 total disk. Production sizing tables for the listed estates live in
 [`docs/ENTERPRISE_DEPLOYMENT.md`](../ENTERPRISE_DEPLOYMENT.md).
 
+These 10k-agent / ~52k-node figures are **ingest cardinality + disk floor
+inputs only**. They are not the graph-API query measured ceiling (that remains
+~10,479 nodes / 11,242 edges in
+[`graph-api-postgres-benchmark.md`](graph-api-postgres-benchmark.md)).
+
 A separate Postgres-backed scale evidence run is tracked in #1806; until it
 publishes, treat the in-process numbers as a CPU-path floor and the row
 counts above as the persistence-side estimate input.

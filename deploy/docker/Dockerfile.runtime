@@ -18,7 +18,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea0996
 COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./
 COPY src/ ./src/
 
-ARG VERSION=0.97.2
+ARG VERSION=0.97.3
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -41,7 +41,7 @@ RUN uv sync --locked --no-dev --no-editable --extra runtime
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9
 
-ARG VERSION=0.97.2
+ARG VERSION=0.97.3
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

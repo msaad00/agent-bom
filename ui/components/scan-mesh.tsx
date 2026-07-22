@@ -10,7 +10,7 @@ import { useGraphLayout } from "@/lib/use-graph-layout";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { api, type ScanJob } from "@/lib/api";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
-import { LineageDetailPanel } from "@/components/lineage-detail";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { MeshStats } from "@/components/mesh-stats";
 import { buildMeshGraph, getConnectedIds, type MeshStatsData } from "@/lib/mesh-graph";
 import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor, readableGraphEdges } from "@/lib/graph-utils";
@@ -118,7 +118,13 @@ export function ScanMeshView({ id }: { id: string }) {
           <Controls className={CONTROLS_CLASS} />
           <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
         </ReactFlow>
-        {selectedNode && <LineageDetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />}
+        {selectedNode && (
+          <GraphEntityDrawer
+            data={selectedNode}
+            onClose={() => setSelectedNode(null)}
+            enrich={false}
+          />
+        )}
       </div>
     </div>
   );

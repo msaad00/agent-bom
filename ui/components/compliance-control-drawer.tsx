@@ -153,6 +153,18 @@ export function ComplianceControlDrawer({
             View findings
           </Link>
           <Link
+            href={(() => {
+              const params = new URLSearchParams();
+              if (control.affected_packages[0]) params.set("package", control.affected_packages[0]);
+              if (control.affected_agents[0]) params.set("agent", control.affected_agents[0]);
+              const qs = params.toString();
+              return qs ? `/security-graph?${qs}` : "/security-graph";
+            })()}
+            className="rounded-lg border border-sky-700/40 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-800 dark:text-sky-200 transition hover:border-sky-600"
+          >
+            Evidence in security graph
+          </Link>
+          <Link
             href={`/remediation?q=${encodeURIComponent(control.code)}`}
             className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]"
           >

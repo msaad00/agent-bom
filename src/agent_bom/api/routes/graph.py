@@ -1482,25 +1482,35 @@ def _overlay_filter_and_respond(
 
 
 def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str, agent: str, limit: int) -> dict[str, Any]:
+    from agent_bom.graph.path_ranking import criticality_rank_meta, path_rank_tuple
+
     available_paths = _derived_attack_paths(graph)
     ranked_paths = sorted(
         (path for path in available_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
-        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+        key=lambda path: path_rank_tuple(graph, path),
         reverse=True,
     )
-    cards = [_fix_first_card_for_path(graph, path, index + 1) for index, path in enumerate(ranked_paths[:limit])]
+    cards = []
+    for index, path in enumerate(ranked_paths[:limit]):
+        card = _fix_first_card_for_path(graph, path, index + 1)
+        card["rank_meta"] = criticality_rank_meta(graph, path)
+        cards.append(card)
     covered_findings = {finding for card in cards for finding in card["affected"]["findings"]}
+    # Crown-jewel fusion campaigns (not remediation ticket campaigns).
+    campaigns = [campaign.to_dict() for campaign in getattr(graph, "attack_campaigns", [])[:12]]
     return {
         "scan_id": graph.scan_id,
         "tenant_id": graph.tenant_id,
         "created_at": graph.created_at,
         "cards": cards,
+        "attack_campaigns": campaigns,
         "summary": {
             "total_paths": len(available_paths),
             "matched_paths": len(ranked_paths),
             "returned_paths": len(cards),
             "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
             "covered_findings": len(covered_findings),
+            "campaign_count": len(getattr(graph, "attack_campaigns", [])),
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
         },
@@ -2879,17 +2889,9 @@ _SHAPE_TO_ICON: dict[str, str] = {
 
 
 _RESERVED_GRAPH_NODE_KINDS: dict[str, tuple[list[str], str]] = {
-    EntityType.CODE_MODULE.value: (
-        ["code_graph"],
-        "Reserved for source-code topology; static supply-chain scans do not emit module-level nodes yet.",
-    ),
     EntityType.EXTERNAL_IMPORT.value: (
         ["code_graph"],
         "Reserved for source-code import topology; static supply-chain scans do not emit import nodes yet.",
-    ),
-    EntityType.CI_JOB.value: (
-        ["ci_graph"],
-        "Reserved for CI/CD topology; scan jobs are tracked operationally but are not emitted as graph nodes yet.",
     ),
 }
 
@@ -2898,18 +2900,6 @@ _RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
     RelationshipType.IMPORTS.value: (
         ["code_graph"],
         "Reserved for source-code topology linking files, modules, packages, and imports.",
-    ),
-    RelationshipType.DEFINES.value: (
-        ["code_graph"],
-        "Reserved for source-code topology linking source files to modules, tools, and CI jobs.",
-    ),
-    RelationshipType.RUNS.value: (
-        ["ci_graph"],
-        "Reserved for CI/CD topology linking workflow jobs to tools, servers, and agents.",
-    ),
-    RelationshipType.CONFIGURES.value: (
-        ["code_graph"],
-        "Reserved for configuration topology linking config files to agents, servers, CI jobs, and tools.",
     ),
     RelationshipType.OWNS.value: (
         ["identity_graph"],
@@ -2935,6 +2925,8 @@ _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
     EntityType.DIRECTORY.value: ["repo_structure_overlay"],
     EntityType.SOURCE_FILE.value: ["repo_structure_overlay"],
     EntityType.CONFIG_FILE.value: ["repo_structure_overlay"],
+    EntityType.CODE_MODULE.value: ["code_graph_overlay"],
+    EntityType.CI_JOB.value: ["ci_graph_overlay", "github_actions"],
 }
 
 
@@ -2943,6 +2935,9 @@ _EMITTED_GRAPH_EDGE_SURFACES: dict[str, list[str]] = {
     RelationshipType.USED_CREDENTIAL.value: ["runtime_proxy", "gateway_event_projection"],
     RelationshipType.USES_FRAMEWORK.value: ["ai_inventory", "framework_agents"],
     RelationshipType.OBSERVES.value: ["ai_inventory"],
+    RelationshipType.DEFINES.value: ["code_graph_overlay"],
+    RelationshipType.RUNS.value: ["ci_graph_overlay", "github_actions"],
+    RelationshipType.CONFIGURES.value: ["ci_graph_overlay", "github_actions"],
 }
 
 

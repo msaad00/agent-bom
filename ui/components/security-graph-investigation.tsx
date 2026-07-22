@@ -15,9 +15,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Focus, GitBranch, Loader2 } from "lucide-react";
 
-import { LineageDetailPanel } from "@/components/lineage-detail";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
+import { api } from "@/lib/api";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 import {
   BACKGROUND_COLOR,
@@ -31,6 +32,7 @@ import {
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
+import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
 import { buildFocusedGraphData } from "@/lib/security-graph-focus";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { useGraphLayout } from "@/lib/use-graph-layout";
@@ -103,10 +105,6 @@ function InvestigationFlow({
 
   useEffect(() => {
     if (nodes.length === 0) return;
-    // Fit on the next frame so ReactFlow has measured the freshly laid-out
-    // nodes before we fit to their bounds. Keyed on the node reference, which
-    // changes on mount, layout settle, lens switch, focus toggle, and snapshot
-    // change — every case where the previous viewport can be stale.
     const raf = requestAnimationFrame(() => {
       void fitView(fitOptionsRef.current);
     });
@@ -149,6 +147,9 @@ export function SecurityGraphInvestigation({
   onFocusModeChange,
   fullGraphHref,
   loading = false,
+  scanId,
+  onPinnedNodeChange,
+  onStepHint,
 }: {
   graph: UnifiedGraphData | null;
   attackPath: AttackPath | null;
@@ -156,8 +157,16 @@ export function SecurityGraphInvestigation({
   onFocusModeChange: (next: boolean) => void;
   fullGraphHref: string;
   loading?: boolean;
+  scanId?: string | undefined;
+  onPinnedNodeChange?: ((nodeId: string | null) => void) | undefined;
+  /** Notify parent when expand/impact actions advance the investigation step. */
+  onStepHint?: ((step: "expand" | "impact" | "fix") => void) | undefined;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [drawerData, setDrawerData] = useState<LineageNodeData | null>(null);
+  const [blastLoading, setBlastLoading] = useState(false);
+  const [blastActive, setBlastActive] = useState(false);
+  const lastPinnedRef = useRef<string | null>(null);
 
   const activeGraph = useMemo(() => {
     if (!graph) return null;
@@ -181,8 +190,6 @@ export function SecurityGraphInvestigation({
   }, [activeGraph]);
 
   const layout = useGraphLayout("dagre-lr", flow.nodes, flow.edges, {
-    // Wider rank/node separation keeps the AGENT → SERVER → PACKAGE → FINDING
-    // chain legible: node boxes never touch and edges have room to read.
     dagreLr: { rankSep: 128, nodeSep: 48 },
   });
   const displayEdges = useMemo(() => readableGraphEdges(layout.edges), [layout.edges]);
@@ -206,11 +213,89 @@ export function SecurityGraphInvestigation({
   );
 
   useEffect(() => {
-    if (!selectedNodeId) return;
+    if (!selectedNodeId) {
+      setDrawerData(null);
+      lastPinnedRef.current = null;
+      onPinnedNodeChange?.(null);
+      return;
+    }
     if (!layout.nodes.some((node) => node.id === selectedNodeId)) {
       setSelectedNodeId(null);
+      return;
     }
-  }, [layout.nodes, selectedNodeId]);
+    if (!selectedNode) return;
+    const base = {
+      ...(selectedNode.data as LineageNodeData),
+      attributes: {
+        ...((selectedNode.data as LineageNodeData).attributes ?? {}),
+        node_id: selectedNode.id,
+      },
+    };
+    setDrawerData(base);
+    const isNewPin = lastPinnedRef.current !== selectedNode.id;
+    lastPinnedRef.current = selectedNode.id;
+    if (isNewPin) {
+      onPinnedNodeChange?.(selectedNode.id);
+      // Pinning a node advances the operator into Expand — parent owns step URL.
+      onStepHint?.("expand");
+    }
+    // Intentionally omit callback identities from deps to avoid re-notify loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.nodes, selectedNode, selectedNodeId]);
+
+  async function handleExpandNeighbors() {
+    if (!selectedNodeId || !scanId) return;
+    onStepHint?.("expand");
+    try {
+      const neighbors = await api.getGraphNodeNeighbors(selectedNodeId, {
+        scanId,
+        limit: 24,
+        direction: "both",
+      });
+      setDrawerData((current) =>
+        current
+          ? {
+              ...current,
+              neighborCount: neighbors.total_neighbors,
+              attributes: {
+                ...(current.attributes ?? {}),
+                node_id: selectedNodeId,
+                expanded_neighbor_ids: neighbors.neighbors.map((node) => node.id),
+              },
+            }
+          : current,
+      );
+    } catch {
+      /* keep prior drawer state */
+    }
+  }
+
+  async function handleShowImpact() {
+    if (!selectedNodeId || !scanId) return;
+    onStepHint?.("impact");
+    setBlastLoading(true);
+    try {
+      const [detail, impact] = await Promise.all([
+        api.getGraphNode(selectedNodeId, scanId),
+        api.getGraphImpact(selectedNodeId, scanId),
+      ]);
+      setDrawerData((current) => {
+        if (!current) return current;
+        const merged = mergeGraphNodeDetail(current, detail);
+        return {
+          ...merged,
+          impactCount: impact.affected_count,
+          maxImpactDepth: impact.max_depth_reached,
+          impactByType: impact.affected_by_type,
+        };
+      });
+      setBlastActive(true);
+    } catch {
+      setBlastActive(false);
+    } finally {
+      setBlastLoading(false);
+    }
+  }
 
   return (
     <section className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
@@ -219,7 +304,7 @@ export function SecurityGraphInvestigation({
           <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Live investigation</h2>
           <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
             {focusMode
-              ? "Focus mode highlights the selected exposure path in an interactive graph."
+              ? "Focus mode highlights the selected exposure path. Pin a node to expand neighbors and impact."
               : "Full snapshot mode shows the persisted subgraph for this scan."}
           </p>
         </div>
@@ -277,11 +362,24 @@ export function SecurityGraphInvestigation({
         </div>
       </div>
 
-      {selectedNode && (
+      {drawerData && (
         <div className="border-t border-[color:var(--border-subtle)] p-4">
-          <LineageDetailPanel
-            data={selectedNode.data as LineageNodeData}
-            onClose={() => setSelectedNodeId(null)}
+          <GraphEntityDrawer
+            data={drawerData}
+            scanId={scanId}
+            variant="inline"
+            onClose={() => {
+              setSelectedNodeId(null);
+              setDrawerData(null);
+              setBlastActive(false);
+              onPinnedNodeChange?.(null);
+            }}
+            blastRadiusActive={blastActive}
+            blastRadiusLoading={blastLoading}
+            onShowBlastRadius={() => void handleShowImpact()}
+            onExpandNeighbors={() => void handleExpandNeighbors()}
+            onShowImpact={() => void handleShowImpact()}
+            remediationHref="/remediation"
           />
         </div>
       )}

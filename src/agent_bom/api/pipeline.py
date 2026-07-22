@@ -495,6 +495,16 @@ def _persist_graph_snapshot(
     with container_cm as container:
         graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id, container=container)
 
+        # Stamp Finding.id onto vuln/misconfig nodes before persist so attack-path
+        # finding_ids (and investigation deep-links) are not CVE-label-only.
+        # The surfacing graph was intentionally thrown away earlier (#4055/#4075).
+        try:
+            from agent_bom.graph.asset_entity import link_report_findings_to_graph
+
+            link_report_findings_to_graph(report_json, graph)
+        except Exception as link_exc:  # noqa: BLE001 — never fail persist on FK stamping
+            _logger.debug("finding↔node persist linking skipped: %s", link_exc)
+
         from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
 
         tenant_token = set_current_tenant(tenant_id)

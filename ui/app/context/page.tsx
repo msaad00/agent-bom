@@ -29,7 +29,8 @@ import {
   lineageNodeTypes,
   type LineageNodeData,
 } from "@/components/lineage-nodes";
-import { LineageDetailPanel } from "@/components/lineage-detail";
+import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
 import {
   buildContextFlowGraph,
@@ -642,12 +643,8 @@ export default function ContextPage() {
       )}
       {graphData && <ContextStats data={graphData} compact />}
       {graphData?.completeness && !graphData.completeness.complete && (
-        <div className="mx-4 mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          This is a bounded {graphData.completeness.status} view
-          {graphData.completeness.total != null
-            ? ` (${graphData.completeness.returned} of ${graphData.completeness.total} returned)`
-            : ""}
-          . Expand or filter the graph to investigate more evidence.
+        <div className="mx-4 mt-3">
+          <GraphCompletenessBanner completeness={graphData.completeness} />
         </div>
       )}
 
@@ -710,9 +707,10 @@ export default function ContextPage() {
           )}
 
           {selectedNode && (
-            <LineageDetailPanel
+            <GraphEntityDrawer
               data={selectedNode}
               onClose={() => setSelectedNode(null)}
+              enrich={false}
             />
           )}
           </div>

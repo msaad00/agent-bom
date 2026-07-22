@@ -341,6 +341,43 @@ export default function AuditLogPage() {
                             </div>
                           </div>
                         </div>
+                        {(() => {
+                          const details = entry.details ?? {};
+                          const nodeId =
+                            typeof details.node_id === "string" ? details.node_id : "";
+                          const findingId =
+                            typeof details.finding_id === "string"
+                              ? details.finding_id
+                              : typeof details.cve === "string"
+                                ? details.cve
+                                : "";
+                          const scanId =
+                            typeof details.scan_id === "string" ? details.scan_id : "";
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              {nodeId || findingId || scanId ? (
+                                <a
+                                  href={`/security-graph?${new URLSearchParams({
+                                    ...(scanId ? { scan: scanId } : {}),
+                                    ...(findingId ? { cve: findingId } : {}),
+                                    ...(nodeId && !findingId ? { agent: nodeId } : {}),
+                                  }).toString()}`}
+                                  className="rounded-lg border border-emerald-700/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-800 dark:text-emerald-200"
+                                >
+                                  Open in security graph
+                                </a>
+                              ) : null}
+                              {findingId ? (
+                                <a
+                                  href={`/findings?q=${encodeURIComponent(findingId)}`}
+                                  className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)]"
+                                >
+                                  Open finding
+                                </a>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                         {Object.keys(entry.details).length > 0 && (
                           <div>
                             <span className="text-xs text-[var(--text-tertiary)] block mb-1">

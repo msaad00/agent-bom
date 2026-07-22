@@ -119,6 +119,31 @@ export interface GraphSnapshot {
   analysis_status?: import("./graph-schema").GraphStats["analysis_status"] | undefined;
 }
 
+/** Adjacent-pair entry from GET /v1/graph/history */
+export interface GraphHistoryDiffSummary {
+  nodes_added?: number;
+  nodes_removed?: number;
+  nodes_changed?: number;
+  edges_added?: number;
+  edges_removed?: number;
+  [key: string]: unknown;
+}
+
+export interface GraphHistorySnapshot {
+  scan_id: string;
+  created_at?: string;
+  node_count?: number;
+  edge_count?: number;
+  diff_baseline_scan_id?: string;
+  diff_summary?: GraphHistoryDiffSummary;
+}
+
+export interface GraphHistoryResponse {
+  schema_version?: string;
+  snapshots: GraphHistorySnapshot[];
+  window?: Record<string, unknown>;
+}
+
 export interface GraphAttackPath extends AttackPath {
   exposure_path?: ExposurePath | undefined;
 }
@@ -215,6 +240,12 @@ export interface FixFirstAction {
   href: string;
 }
 
+export interface FixFirstRankMeta {
+  environment_weight?: number;
+  environments?: string[];
+  tool_capabilities?: string[];
+}
+
 export interface FixFirstPathCard {
   id: string;
   rank: number;
@@ -226,6 +257,7 @@ export interface FixFirstPathCard {
   sequence_labels: string[];
   risk_reasons: FixFirstRiskReason[];
   next_actions: FixFirstAction[];
+  rank_meta?: FixFirstRankMeta | undefined;
   affected: {
     agents: string[];
     servers: string[];
@@ -236,17 +268,36 @@ export interface FixFirstPathCard {
   };
 }
 
+/** Fusion crown-jewel path cluster (not a remediation ticket campaign). */
+export interface GraphAttackCampaign {
+  campaign_id: string;
+  crown_jewel: string;
+  crown_jewel_label: string;
+  partition?: string;
+  owner?: string;
+  business_impact?: string;
+  exploitability?: number;
+  expected_risk_reduction?: number;
+  path_count: number;
+  top_path_summary?: string;
+  cross_partition?: boolean;
+  evidence?: string[];
+  member_paths?: string[];
+}
+
 export interface FixFirstGraphViewResponse {
   scan_id: string;
   tenant_id: string;
   created_at: string;
   cards: FixFirstPathCard[];
+  attack_campaigns?: GraphAttackCampaign[];
   summary: {
     total_paths: number;
     matched_paths: number;
     returned_paths: number;
     highest_risk: number;
     covered_findings: number;
+    campaign_count?: number;
     node_count: number;
     edge_count: number;
   };
@@ -255,6 +306,23 @@ export interface FixFirstGraphViewResponse {
     package: string;
     agent: string;
   };
+}
+
+export interface NhiGovernanceIdentity {
+  node_id?: string;
+  label?: string;
+  risk_score?: number;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface NhiGovernancePosture {
+  generated_from?: string;
+  scan_id?: string;
+  tenant_id?: string;
+  counts?: Record<string, number>;
+  identities?: NhiGovernanceIdentity[];
+  [key: string]: unknown;
 }
 
 export interface GraphQueryRequest {
@@ -297,6 +365,21 @@ export interface GraphImpactResponse {
   affected_by_type: Record<string, number>;
   affected_count: number;
   max_depth_reached: number;
+}
+
+/** Saved tenant graph filter preset from GET/POST /v1/graph/presets */
+export interface GraphFilterPreset {
+  name: string;
+  description?: string;
+  filters: Record<string, unknown>;
+  created_at?: string;
+  tenant_id?: string;
+}
+
+export interface GraphFilterPresetCreate {
+  name: string;
+  description?: string;
+  filters: Record<string, unknown>;
 }
 
 export interface GraphNodeDetailResponse {

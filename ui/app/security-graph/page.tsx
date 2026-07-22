@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   GitBranch,
@@ -29,11 +29,24 @@ import { ExposurePathLens } from "@/components/exposure-path-lens";
 import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
+import { GraphCampaignPanel } from "@/components/graph-campaign-panel";
+import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
+import {
+  GraphPresetControls,
+  type InvestigationPresetFilters,
+} from "@/components/graph-preset-controls";
+import { InvestigationFilterChips } from "@/components/investigation-filter-chips";
+import {
+  InvestigationStepStrip,
+  parseInvestigationStep,
+  type InvestigationStep,
+} from "@/components/investigation-step-strip";
 import {
   api,
   formatDate,
   type FixFirstGraphViewResponse,
   type FixFirstPathCard,
+  type GraphAttackCampaign,
   type GraphSnapshot,
   type PostureResponse,
   type UnifiedGraphResponse,
@@ -57,6 +70,17 @@ import { SecurityGraphInvestigation } from "@/components/security-graph-investig
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
+import {
+  collectPathEnvironments,
+  filterAttackPathsForInvestigation,
+} from "@/lib/investigation-path-filters";
+
+const EMPTY_INVESTIGATION_FILTERS: InvestigationPresetFilters = {
+  severity: null,
+  layer: null,
+  evidenceTier: null,
+  environment: null,
+};
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
 const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
@@ -65,6 +89,8 @@ const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 
 function SecurityGraphPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -81,6 +107,13 @@ function SecurityGraphPageContent() {
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const [pathView, setPathView] = useState<ExposurePathView>("path");
+  const [investigationFilters, setInvestigationFilters] =
+    useState<InvestigationPresetFilters>(EMPTY_INVESTIGATION_FILTERS);
+  const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<Partial<Record<InvestigationStep, boolean>>>(
+    {},
+  );
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
 
   const focus = useMemo(
     () => ({
@@ -90,8 +123,41 @@ function SecurityGraphPageContent() {
       agentName: searchParams.get("agent") ?? "",
       nodeId: searchParams.get("node") ?? "",
       findingId: searchParams.get("finding") ?? "",
+      traceId: searchParams.get("trace") ?? searchParams.get("runtime_trace_id") ?? "",
     }),
     [searchParams],
+  );
+
+  const investigationStep = parseInvestigationStep(searchParams.get("step"));
+
+  const setInvestigationStep = useCallback(
+    (next: InvestigationStep) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "path") params.delete("step");
+      else params.set("step", next);
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      setCompletedSteps((current) => ({ ...current, [next]: true }));
+      if (next === "fix") {
+        setPathView("path");
+      } else if (next === "expand" || next === "impact") {
+        setPathView("graph");
+        setInvestigationFocusMode(true);
+      } else {
+        setPathView("path");
+      }
+    },
+    [pathname, router, searchParams],
+  );
+
+  const handleStepHint = useCallback(
+    (step: "expand" | "impact" | "fix") => {
+      setCompletedSteps((current) => ({ ...current, path: true, [step]: true }));
+      if (investigationStep === "path" && step === "expand") {
+        setInvestigationStep("expand");
+      }
+    },
+    [investigationStep, setInvestigationStep],
   );
 
   const focusLabel = useMemo(() => {
@@ -232,14 +298,33 @@ function SecurityGraphPageContent() {
     return next;
   }, [fixFirstCards]);
 
-  const attackPaths = useMemo(
-    () =>
+  const campaigns = useMemo<GraphAttackCampaign[]>(
+    () => fixFirstView?.attack_campaigns ?? [],
+    [fixFirstView?.attack_campaigns],
+  );
+  const selectedCampaign = useMemo(
+    () => campaigns.find((campaign) => campaign.campaign_id === selectedCampaignId) ?? null,
+    [campaigns, selectedCampaignId],
+  );
+
+  const allAttackPaths = useMemo(() => {
+    const base =
       fixFirstCards.length > 0
         ? fixFirstCards.map((card) => card.attack_path)
         : [...(graphData?.attack_paths ?? [])].sort(
             (left, right) => right.composite_risk - left.composite_risk,
-          ),
-    [fixFirstCards, graphData?.attack_paths],
+          );
+    if (!selectedCampaign?.member_paths?.length) return base;
+    const members = new Set(selectedCampaign.member_paths);
+    return base.filter((path) => members.has(`${path.source}->${path.target}`));
+  }, [fixFirstCards, graphData?.attack_paths, selectedCampaign]);
+  const attackPaths = useMemo(
+    () => filterAttackPathsForInvestigation(allAttackPaths, graphNodeById, investigationFilters),
+    [allAttackPaths, graphNodeById, investigationFilters],
+  );
+  const pathEnvironments = useMemo(
+    () => collectPathEnvironments(allAttackPaths, graphNodeById),
+    [allAttackPaths, graphNodeById],
   );
   const visibleAttackPaths = useMemo(
     () => attackPaths.slice(0, Math.min(visibleAttackPathCount, attackPaths.length)),
@@ -249,22 +334,27 @@ function SecurityGraphPageContent() {
 
   const rankedRows = useMemo<RankedPathRow[]>(
     () =>
-      rankedAttackPathRows(visibleAttackPaths, fixFirstCards)
-        .map(({ path, card, rank, key }) => {
-          const pathNodes = toAttackCardNodes(path, graphNodeById);
-          if (pathNodes.length === 0) return null;
-          return {
-            key,
-            selectionKey: attackPathKey(path),
-            rank,
-            title: descriptiveAttackPathTitle(card?.title, pathNodes),
-            cve: path.vuln_ids[0] ?? null,
-            riskScore: path.composite_risk,
-            hops: Math.max(0, path.hops.length - 1),
-            agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
-          } satisfies RankedPathRow;
-        })
-        .filter((row): row is RankedPathRow => row !== null),
+      rankedAttackPathRows(visibleAttackPaths, fixFirstCards).flatMap(({ path, card, rank, key }) => {
+        const pathNodes = toAttackCardNodes(path, graphNodeById);
+        if (pathNodes.length === 0) return [];
+        const row: RankedPathRow = {
+          key,
+          selectionKey: attackPathKey(path),
+          rank,
+          title: descriptiveAttackPathTitle(card?.title, pathNodes),
+          cve: path.vuln_ids[0] ?? null,
+          riskScore: path.composite_risk,
+          hops: Math.max(0, path.hops.length - 1),
+          agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
+        };
+        if (card?.rank_meta?.tool_capabilities?.length) {
+          row.capabilityTags = card.rank_meta.tool_capabilities;
+        }
+        if (card?.rank_meta?.environments?.length) {
+          row.environmentTags = card.rank_meta.environments;
+        }
+        return [row];
+      }),
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
 
@@ -312,7 +402,6 @@ function SecurityGraphPageContent() {
     () =>
       selectedAttackPath
         ? selectedFixFirstCard?.exposure_path ??
-          selectedAttackPath.exposure_path ??
           toExposurePathFromAttackPath(selectedAttackPath, graphNodeById, {
             scanId: selectedScanId || undefined,
             rank: selectedFixFirstCard?.rank,
@@ -482,6 +571,25 @@ function SecurityGraphPageContent() {
 
       <GraphLensSwitcher variant="compact" />
 
+      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+              Investigation loop
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+              Path → Expand → Impact → Fix. Step is query-param driven (`step=`).
+              {pinnedNodeId ? ` Pinned ${pinnedNodeId.slice(0, 12)}…` : ""}
+            </p>
+          </div>
+          <InvestigationStepStrip
+            step={investigationStep}
+            onStepChange={setInvestigationStep}
+            completed={completedSteps}
+          />
+        </div>
+      </section>
+
       <DeployGatePanel scanId={selectedScanId || undefined} />
 
       <Collapsible
@@ -501,7 +609,7 @@ function SecurityGraphPageContent() {
           view={pathView}
           onViewChange={setPathView}
           techniquesSlot={selectedAttackPath ? <AttackPathTechniqueChain path={selectedAttackPath} /> : null}
-          graphSlot={
+            graphSlot={
             graphData && selectedAttackPath ? (
               <SecurityGraphInvestigation
                 graph={graphData as UnifiedGraphData}
@@ -510,6 +618,9 @@ function SecurityGraphPageContent() {
                 onFocusModeChange={setInvestigationFocusMode}
                 fullGraphHref={fullGraphHref}
                 loading={loadingGraph}
+                scanId={selectedScanId || undefined}
+                onPinnedNodeChange={setPinnedNodeId}
+                onStepHint={handleStepHint}
               />
             ) : null
           }
@@ -669,7 +780,7 @@ function SecurityGraphPageContent() {
             )}
           </div>
         </section>
-      ) : attackPaths.length === 0 ? (
+      ) : allAttackPaths.length === 0 ? (
         <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <div className="mb-4">
             <GraphAnalysisStatusBanner status={graphData?.stats.analysis_status?.attack_path_fusion} />
@@ -706,49 +817,115 @@ function SecurityGraphPageContent() {
             )}
           </div>
         </section>
+      ) : attackPaths.length === 0 ? (
+        <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 space-y-4">
+          <InvestigationFilterChips
+            filters={investigationFilters}
+            onChange={setInvestigationFilters}
+            environments={pathEnvironments}
+          />
+          <GraphPresetControls
+            filters={investigationFilters}
+            onApply={setInvestigationFilters}
+          />
+          <GraphEmptyState
+            title="No paths match the current investigation filters"
+            detail="Clear severity, layer, evidence, or environment chips to restore the ranked path queue."
+            suggestions={[
+              "Clear one filter chip at a time to widen the queue.",
+              "Load a saved preset that matches this estate.",
+              "Open the full graph for topology outside the filtered set.",
+            ]}
+          />
+          <button
+            type="button"
+            onClick={() => setInvestigationFilters(EMPTY_INVESTIGATION_FILTERS)}
+            className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+          >
+            Clear investigation filters
+          </button>
+        </section>
       ) : (
         <>
-          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-[color:var(--foreground)]">
-                  {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
-                </h2>
-                <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-                  Select a path to open its graph and evidence above.
-                </p>
-                {focusLabel && (
-                  <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
-                )}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
+            <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-[color:var(--foreground)]">
+                    {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
+                    {allAttackPaths.length !== attackPaths.length
+                      ? ` of ${allAttackPaths.length}`
+                      : ""}
+                  </h2>
+                  <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+                    Select a path to open its graph and evidence above.
+                    {selectedCampaign
+                      ? ` Filtered to crown-jewel cluster “${selectedCampaign.crown_jewel_label || selectedCampaign.crown_jewel}”.`
+                      : ""}
+                  </p>
+                  {focusLabel && (
+                    <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
+                  )}
+                  {focus.traceId ? (
+                    <p className="mt-1 text-xs text-sky-300">
+                      Runtime trace pin: <span className="font-mono">{focus.traceId}</span>
+                    </p>
+                  ) : null}
+                </div>
+                <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
               </div>
-              <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
-            </div>
 
-            <RankedPathList
-              rows={rankedRows}
-              selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
-              onSelect={setSelectedAttackPathKey}
-              onKeyDown={handleAttackPathQueueKeyDown}
-            />
-            {hiddenAttackPathCount > 0 && (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3">
-                <p className="text-xs text-[color:var(--text-tertiary)]">
-                  Showing {visibleAttackPaths.length} of {attackPaths.length} ranked paths.
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setVisibleAttackPathCount((current) =>
-                      Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
-                    )
-                  }
-                  className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                >
-                  Show {Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more
-                </button>
+              <div className="mt-4 space-y-3">
+                <InvestigationFilterChips
+                  filters={investigationFilters}
+                  onChange={setInvestigationFilters}
+                  environments={pathEnvironments}
+                />
+                <GraphPresetControls
+                  filters={investigationFilters}
+                  onApply={setInvestigationFilters}
+                />
               </div>
-            )}
-          </section>
+
+              <RankedPathList
+                rows={rankedRows}
+                selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
+                onSelect={(key) => {
+                  setSelectedAttackPathKey(key);
+                  setCompletedSteps((current) => ({ ...current, path: true }));
+                  if (investigationStep === "path") {
+                    setPathView("graph");
+                  }
+                }}
+                onKeyDown={handleAttackPathQueueKeyDown}
+              />
+              {hiddenAttackPathCount > 0 && (
+                <div className="mt-4">
+                  <GraphCompletenessBanner
+                    visibleCount={visibleAttackPaths.length}
+                    omittedCount={hiddenAttackPathCount}
+                    loadMoreLabel={`Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more`}
+                    onLoadMore={() =>
+                      setVisibleAttackPathCount((current) =>
+                        Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </section>
+
+            <GraphCampaignPanel
+              campaigns={campaigns}
+              selectedCampaignId={selectedCampaignId}
+              onSelect={(campaign) => {
+                setSelectedCampaignId((current) =>
+                  current === campaign.campaign_id ? null : campaign.campaign_id,
+                );
+                setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
+              }}
+            />
+          </div>
         </>
       )}
     </div>

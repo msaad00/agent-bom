@@ -160,6 +160,41 @@ describe("AssetInventoryView", () => {
       expect(screen.getByText(/No cloud resources discovered yet/i)).toBeInTheDocument(),
     );
   });
+
+  it("loads the next graph page when Load more is clicked", async () => {
+    const getGraph = vi.spyOn(api, "getGraph");
+    getGraph.mockResolvedValueOnce({
+      ...graph(
+        [node("pkg-1", "package", { data_sources: ["sbom"] })],
+        [],
+      ),
+      stats: {
+        total_nodes: 2,
+        total_edges: 0,
+        node_types: { package: 2 },
+        severity_counts: {},
+        relationship_types: {},
+        attack_path_count: 0,
+        interaction_risk_count: 0,
+        max_attack_path_risk: 0,
+        highest_interaction_risk: 0,
+      },
+      pagination: { total: 2, offset: 0, limit: 1, has_more: true, next_cursor: "cur-2" },
+    } as unknown as UnifiedGraphResponse);
+    getGraph.mockResolvedValueOnce({
+      ...graph([node("pkg-2", "package", { data_sources: ["sbom"] })], []),
+      pagination: { total: 2, offset: 1, limit: 1, has_more: false, next_cursor: "" },
+    } as unknown as UnifiedGraphResponse);
+
+    renderWithProvider(<AssetInventoryView kind="packages" />);
+    const table = await screen.findByTestId("inventory-table-packages");
+    await waitFor(() => expect(within(table).getByText("pkg-1")).toBeInTheDocument());
+    expect(within(table).queryByText("pkg-2")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("inventory-load-more"));
+    await waitFor(() => expect(within(table).getByText("pkg-2")).toBeInTheDocument());
+    expect(getGraph).toHaveBeenCalledWith(expect.objectContaining({ cursor: "cur-2" }));
+  });
 });
 
 describe("InventoryIndex", () => {

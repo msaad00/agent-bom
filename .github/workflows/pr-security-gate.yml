@@ -53,13 +53,13 @@ jobs:
           EOF
 
       - name: Upload dependency self-scan config placeholder
-        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: sarif/empty-agent-bom.sarif
           category: agent-bom-self-dep
 
       - name: Upload SAST self-scan config placeholder
-        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: sarif/empty-agent-bom.sarif
           category: agent-bom-self-sast
@@ -274,7 +274,7 @@ jobs:
 
       - name: Upload SARIF to code-scanning
         if: always() && hashFiles('self-scan.sarif') != ''
-        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: self-scan.sarif
           category: agent-bom-self-scan

@@ -2,11 +2,17 @@
 
 Three interchangeable backends behind one contract:
 
-* :class:`InMemoryRuntimeWorkloadEvidenceStore` — the default, non-durable tier.
-* :class:`SQLiteRuntimeWorkloadEvidenceStore` — node-local, restart-safe, and
-  safe under cross-process writers (WAL + busy timeout).
+* :class:`InMemoryRuntimeWorkloadEvidenceStore` — explicit ephemeral opt-out
+  (``AGENT_BOM_EPHEMERAL_STORE=1``); process-local, non-durable.
+* :class:`SQLiteRuntimeWorkloadEvidenceStore` — node-local default, restart-safe,
+  and safe under cross-process writers (WAL + busy timeout).
 * :class:`PostgresRuntimeWorkloadEvidenceStore` — shared across control-plane
   replicas.
+
+:func:`get_runtime_workload_evidence_store` selects the tier via
+:func:`agent_bom.storage.factory.resolve_backend` with ``mode="durable"``
+(Postgres → ephemeral opt-out → SQLite), matching the runtime event store so
+CLI ingest and API enrichment share evidence across processes and workers.
 
 Tenant isolation is application-level and follows the stage-1 lifecycle store
 (:mod:`agent_bom.cloud.side_scan_lifecycle`): ``tenant_id`` leads every WHERE
@@ -278,17 +284,41 @@ _default_lock = threading.Lock()
 
 
 def get_runtime_workload_evidence_store() -> RuntimeWorkloadEvidenceStore:
-    """Return the process default runtime workload-evidence store.
+    """Return the process default runtime workload-evidence store, durable by default.
 
-    Defaults to the in-memory tier so the finding/graph read path is a no-op until
-    an operator configures a durable backend or seeds signals. Durable SQLite /
-    Postgres backends are wired by stage-4 lock-in (scheduler + config); tests and
-    callers can inject one with :func:`set_runtime_workload_evidence_store`.
+    Selection (highest precedence first), via :mod:`agent_bom.storage.factory`:
+    - Postgres (``AGENT_BOM_POSTGRES_URL`` / ``AGENT_BOM_DB`` Postgres URL):
+      multi-replica — CLI ingest and API enrichment share one evidence table.
+    - in-memory (``AGENT_BOM_EPHEMERAL_STORE=1``): explicit opt-out; signals are
+      lost on restart and across processes/workers.
+    - SQLite (default, or ``AGENT_BOM_DB`` file path): single-node durable —
+      evidence survives a restart and is visible to a co-located API process.
+
+    Tests and callers can still inject a store with
+    :func:`set_runtime_workload_evidence_store`.
     """
     global _default_store
     with _default_lock:
-        if _default_store is None:
+        if _default_store is not None:
+            return _default_store
+        from agent_bom.storage.base import BackendKind
+        from agent_bom.storage.factory import resolve_backend
+
+        # mode="durable" matches runtime_event_store: Postgres → ephemeral only
+        # on explicit opt-out → SQLite default. The prior always-InMemory factory
+        # silently dropped CLI→API and multi-worker evidence.
+        selection = resolve_backend(mode="durable")
+        if selection.backend is BackendKind.POSTGRES:
+            import os
+
+            dsn = selection.dsn or os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_DB", "")
+            if not dsn.strip():
+                raise RuntimeError("Postgres workload-evidence store selected but no Postgres URL is configured")
+            _default_store = PostgresRuntimeWorkloadEvidenceStore(dsn.strip())
+        elif selection.backend is BackendKind.MEMORY:
             _default_store = InMemoryRuntimeWorkloadEvidenceStore()
+        else:
+            _default_store = SQLiteRuntimeWorkloadEvidenceStore(selection.sqlite_path or "agent_bom.db")
         return _default_store
 
 
@@ -298,11 +328,16 @@ def set_runtime_workload_evidence_store(store: RuntimeWorkloadEvidenceStore | No
         _default_store = store
 
 
+def reset_runtime_workload_evidence_store() -> None:
+    set_runtime_workload_evidence_store(None)
+
+
 __all__ = [
     "InMemoryRuntimeWorkloadEvidenceStore",
     "PostgresRuntimeWorkloadEvidenceStore",
     "RuntimeWorkloadEvidenceStore",
     "SQLiteRuntimeWorkloadEvidenceStore",
     "get_runtime_workload_evidence_store",
+    "reset_runtime_workload_evidence_store",
     "set_runtime_workload_evidence_store",
 ]

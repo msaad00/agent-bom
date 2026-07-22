@@ -29,6 +29,7 @@ import { ExposurePathLens } from "@/components/exposure-path-lens";
 import { Collapsible } from "@/components/collapsible";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { GraphAnalysisStatusBanner, graphAnalysisStatusCopy } from "@/components/graph-analysis-status";
+import { GraphCampaignPanel } from "@/components/graph-campaign-panel";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
   GraphPresetControls,
@@ -45,6 +46,7 @@ import {
   formatDate,
   type FixFirstGraphViewResponse,
   type FixFirstPathCard,
+  type GraphAttackCampaign,
   type GraphSnapshot,
   type PostureResponse,
   type UnifiedGraphResponse,
@@ -111,6 +113,7 @@ function SecurityGraphPageContent() {
   const [completedSteps, setCompletedSteps] = useState<Partial<Record<InvestigationStep, boolean>>>(
     {},
   );
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
 
   const focus = useMemo(
     () => ({
@@ -118,6 +121,7 @@ function SecurityGraphPageContent() {
       cve: searchParams.get("cve") ?? "",
       packageName: searchParams.get("package") ?? "",
       agentName: searchParams.get("agent") ?? "",
+      traceId: searchParams.get("trace") ?? searchParams.get("runtime_trace_id") ?? "",
     }),
     [searchParams],
   );
@@ -292,15 +296,26 @@ function SecurityGraphPageContent() {
     return next;
   }, [fixFirstCards]);
 
-  const allAttackPaths = useMemo(
-    () =>
+  const campaigns = useMemo<GraphAttackCampaign[]>(
+    () => fixFirstView?.attack_campaigns ?? [],
+    [fixFirstView?.attack_campaigns],
+  );
+  const selectedCampaign = useMemo(
+    () => campaigns.find((campaign) => campaign.campaign_id === selectedCampaignId) ?? null,
+    [campaigns, selectedCampaignId],
+  );
+
+  const allAttackPaths = useMemo(() => {
+    const base =
       fixFirstCards.length > 0
         ? fixFirstCards.map((card) => card.attack_path)
         : [...(graphData?.attack_paths ?? [])].sort(
             (left, right) => right.composite_risk - left.composite_risk,
-          ),
-    [fixFirstCards, graphData?.attack_paths],
-  );
+          );
+    if (!selectedCampaign?.member_paths?.length) return base;
+    const members = new Set(selectedCampaign.member_paths);
+    return base.filter((path) => members.has(`${path.source}->${path.target}`));
+  }, [fixFirstCards, graphData?.attack_paths, selectedCampaign]);
   const attackPaths = useMemo(
     () => filterAttackPathsForInvestigation(allAttackPaths, graphNodeById, investigationFilters),
     [allAttackPaths, graphNodeById, investigationFilters],
@@ -317,22 +332,27 @@ function SecurityGraphPageContent() {
 
   const rankedRows = useMemo<RankedPathRow[]>(
     () =>
-      rankedAttackPathRows(visibleAttackPaths, fixFirstCards)
-        .map(({ path, card, rank, key }) => {
-          const pathNodes = toAttackCardNodes(path, graphNodeById);
-          if (pathNodes.length === 0) return null;
-          return {
-            key,
-            selectionKey: attackPathKey(path),
-            rank,
-            title: descriptiveAttackPathTitle(card?.title, pathNodes),
-            cve: path.vuln_ids[0] ?? null,
-            riskScore: path.composite_risk,
-            hops: Math.max(0, path.hops.length - 1),
-            agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
-          } satisfies RankedPathRow;
-        })
-        .filter((row): row is RankedPathRow => row !== null),
+      rankedAttackPathRows(visibleAttackPaths, fixFirstCards).flatMap(({ path, card, rank, key }) => {
+        const pathNodes = toAttackCardNodes(path, graphNodeById);
+        if (pathNodes.length === 0) return [];
+        const row: RankedPathRow = {
+          key,
+          selectionKey: attackPathKey(path),
+          rank,
+          title: descriptiveAttackPathTitle(card?.title, pathNodes),
+          cve: path.vuln_ids[0] ?? null,
+          riskScore: path.composite_risk,
+          hops: Math.max(0, path.hops.length - 1),
+          agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
+        };
+        if (card?.rank_meta?.tool_capabilities?.length) {
+          row.capabilityTags = card.rank_meta.tool_capabilities;
+        }
+        if (card?.rank_meta?.environments?.length) {
+          row.environmentTags = card.rank_meta.environments;
+        }
+        return [row];
+      }),
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
 
@@ -825,64 +845,85 @@ function SecurityGraphPageContent() {
         </section>
       ) : (
         <>
-          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-[color:var(--foreground)]">
-                  {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
-                  {allAttackPaths.length !== attackPaths.length
-                    ? ` of ${allAttackPaths.length}`
-                    : ""}
-                </h2>
-                <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-                  Select a path to open its graph and evidence above.
-                </p>
-                {focusLabel && (
-                  <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
-                )}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
+            <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-[color:var(--foreground)]">
+                    {attackPaths.length} ranked path{attackPaths.length !== 1 ? "s" : ""}
+                    {allAttackPaths.length !== attackPaths.length
+                      ? ` of ${allAttackPaths.length}`
+                      : ""}
+                  </h2>
+                  <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+                    Select a path to open its graph and evidence above.
+                    {selectedCampaign
+                      ? ` Filtered to crown-jewel cluster “${selectedCampaign.crown_jewel_label || selectedCampaign.crown_jewel}”.`
+                      : ""}
+                  </p>
+                  {focusLabel && (
+                    <p className="mt-1 text-xs text-emerald-300">Focused: {focusLabel}</p>
+                  )}
+                  {focus.traceId ? (
+                    <p className="mt-1 text-xs text-sky-300">
+                      Runtime trace pin: <span className="font-mono">{focus.traceId}</span>
+                    </p>
+                  ) : null}
+                </div>
+                <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
               </div>
-              <div className="font-mono text-lg text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
-            </div>
 
-            <div className="mt-4 space-y-3">
-              <InvestigationFilterChips
-                filters={investigationFilters}
-                onChange={setInvestigationFilters}
-                environments={pathEnvironments}
-              />
-              <GraphPresetControls
-                filters={investigationFilters}
-                onApply={setInvestigationFilters}
-              />
-            </div>
-
-            <RankedPathList
-              rows={rankedRows}
-              selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
-              onSelect={(key) => {
-                setSelectedAttackPathKey(key);
-                setCompletedSteps((current) => ({ ...current, path: true }));
-                if (investigationStep === "path") {
-                  setPathView("graph");
-                }
-              }}
-              onKeyDown={handleAttackPathQueueKeyDown}
-            />
-            {hiddenAttackPathCount > 0 && (
-              <div className="mt-4">
-                <GraphCompletenessBanner
-                  visibleCount={visibleAttackPaths.length}
-                  omittedCount={hiddenAttackPathCount}
-                  loadMoreLabel={`Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more`}
-                  onLoadMore={() =>
-                    setVisibleAttackPathCount((current) =>
-                      Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
-                    )
-                  }
+              <div className="mt-4 space-y-3">
+                <InvestigationFilterChips
+                  filters={investigationFilters}
+                  onChange={setInvestigationFilters}
+                  environments={pathEnvironments}
+                />
+                <GraphPresetControls
+                  filters={investigationFilters}
+                  onApply={setInvestigationFilters}
                 />
               </div>
-            )}
-          </section>
+
+              <RankedPathList
+                rows={rankedRows}
+                selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
+                onSelect={(key) => {
+                  setSelectedAttackPathKey(key);
+                  setCompletedSteps((current) => ({ ...current, path: true }));
+                  if (investigationStep === "path") {
+                    setPathView("graph");
+                  }
+                }}
+                onKeyDown={handleAttackPathQueueKeyDown}
+              />
+              {hiddenAttackPathCount > 0 && (
+                <div className="mt-4">
+                  <GraphCompletenessBanner
+                    visibleCount={visibleAttackPaths.length}
+                    omittedCount={hiddenAttackPathCount}
+                    loadMoreLabel={`Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more`}
+                    onLoadMore={() =>
+                      setVisibleAttackPathCount((current) =>
+                        Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </section>
+
+            <GraphCampaignPanel
+              campaigns={campaigns}
+              selectedCampaignId={selectedCampaignId}
+              onSelect={(campaign) => {
+                setSelectedCampaignId((current) =>
+                  current === campaign.campaign_id ? null : campaign.campaign_id,
+                );
+                setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
+              }}
+            />
+          </div>
         </>
       )}
     </div>

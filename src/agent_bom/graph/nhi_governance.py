@@ -690,7 +690,7 @@ def describe_nhi_governance_posture(
         },
         "identities": [v.to_dict() for v in verdicts],
         "message": message,
-        "generated_from": "/v1/auth/nhi/governance",
+        "generated_from": "/v1/graph/nhi/governance",
     }
 
 

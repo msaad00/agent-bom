@@ -616,6 +616,35 @@ def _resolve_finding_workload(row: Mapping[str, Any]) -> tuple[str, str, str] | 
     provider = str(row.get("provider") or "").strip().lower()
     account = _account_from_ref(str(row.get("account_ref") or "")) or str(row.get("account_id") or "").strip()
     workload_ref = str(row.get("resource_id") or row.get("target_id") or row.get("asset_id") or row.get("workload_ref") or "").strip()
+
+    asset = row.get("asset")
+    if isinstance(asset, Mapping):
+        provider = provider or str(asset.get("provider") or "").strip().lower()
+        account = (
+            account
+            or _account_from_ref(str(asset.get("account_ref") or ""))
+            or str(asset.get("account_id") or "").strip()
+        )
+        if not workload_ref:
+            workload_ref = str(asset.get("identifier") or asset.get("resource_id") or "").strip()
+            if not workload_ref:
+                source_ids = asset.get("source_ids")
+                if isinstance(source_ids, list) and source_ids:
+                    workload_ref = str(source_ids[0] or "").strip()
+
+    evidence = row.get("evidence")
+    if isinstance(evidence, Mapping):
+        provider = provider or str(evidence.get("provider") or "").strip().lower()
+        account = (
+            account
+            or _account_from_ref(str(evidence.get("account_ref") or ""))
+            or str(evidence.get("account_id") or "").strip()
+        )
+        if not workload_ref:
+            workload_ref = str(
+                evidence.get("resource_id") or evidence.get("target_id") or evidence.get("workload_ref") or ""
+            ).strip()
+
     if provider and account and workload_ref:
         return provider, account, workload_ref
     return None
@@ -635,6 +664,63 @@ def attach_workload_runtime_evidence_to_finding(row: dict[str, Any], index: Runt
         return row
     row["workload_runtime_evidence"] = index.summary_for(*resolved)
     return row
+
+
+def attach_workload_runtime_evidence_to_finding_model(
+    finding: Any,
+    index: RuntimeWorkloadEvidenceIndex | None,
+) -> bool:
+    """Annotate a Finding in place for JSON/SARIF/HTML export surfaces.
+
+    Returns True when ``workload_runtime_evidence`` was set. Absence of a matching
+    signal still annotates ``no_runtime_signal`` with ``clean_workload_assertion``
+    false whenever the finding resolves to a workload identity and the tenant
+    index is non-empty.
+    """
+    if index is None or index.is_empty():
+        return False
+    if not hasattr(finding, "workload_runtime_evidence"):
+        return False
+    row = finding.to_dict() if hasattr(finding, "to_dict") else {}
+    if not isinstance(row, dict):
+        return False
+    attach_workload_runtime_evidence_to_finding(row, index)
+    evidence = row.get("workload_runtime_evidence")
+    if not isinstance(evidence, dict):
+        return False
+    finding.workload_runtime_evidence = evidence
+    return True
+
+
+def enrich_findings_workload_runtime_evidence(
+    findings: Iterable[Any],
+    index: RuntimeWorkloadEvidenceIndex | None,
+) -> int:
+    """Annotate an iterable of Finding models; return how many were annotated."""
+    if index is None or index.is_empty():
+        return 0
+    return sum(1 for finding in findings if attach_workload_runtime_evidence_to_finding_model(finding, index))
+
+
+def optional_runtime_workload_evidence_index(
+    *,
+    tenant_id: str | None = None,
+    store: Any = None,
+) -> RuntimeWorkloadEvidenceIndex | None:
+    """Load a tenant evidence index for export enrichment, or None when empty.
+
+    Prefer an explicit ``tenant_id``; otherwise use ``AGENT_BOM_TENANT_ID`` and
+    finally ``default``. An empty store yields None so exporters do not invent
+    no-signal rows for tenants that never opted into runtime ingest.
+    """
+    active_tenant = (tenant_id or os.getenv("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
+    active_store = store
+    if active_store is None:
+        from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+
+        active_store = get_runtime_workload_evidence_store()
+    index = RuntimeWorkloadEvidenceIndex.from_store(active_store, active_tenant)
+    return None if index.is_empty() else index
 
 
 def _node_attributes(node: Any) -> dict[str, Any] | None:
@@ -807,14 +893,17 @@ __all__ = [
     "SourceAuthenticationError",
     "StaleSignalError",
     "attach_workload_runtime_evidence_to_finding",
+    "attach_workload_runtime_evidence_to_finding_model",
     "attach_workload_runtime_evidence_to_node",
     "build_runtime_signal",
     "canonical_workload_id",
+    "enrich_findings_workload_runtime_evidence",
     "enrich_graph_workload_runtime_evidence",
     "get_runtime_source_registry",
     "ingest_runtime_signals",
     "ingest_runtime_signals_payload",
     "no_runtime_signal_summary",
+    "optional_runtime_workload_evidence_index",
     "set_runtime_source_registry",
     "workload_runtime_summary",
 ]

@@ -47,9 +47,11 @@ def to_html(
     *,
     offline_assets: bool = False,
 ) -> str:
+    from agent_bom.output.finding_views import apply_workload_runtime_evidence_for_export
+
     blast_radii = blast_radii or []
-    findings = cve_findings(report, blast_radii)
-    policy_findings = _non_cve_findings(report)
+    findings = apply_workload_runtime_evidence_for_export(cve_findings(report, blast_radii))
+    policy_findings = apply_workload_runtime_evidence_for_export(_non_cve_findings(report))
     generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
     elements_json = _cytoscape_elements(report, blast_radii)
     attack_flow_json = _attack_flow_elements(report, blast_radii)

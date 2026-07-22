@@ -43,6 +43,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 <<<<<<< HEAD
+<<<<<<< HEAD
 - CWPP stage-4 honesty: Azure/GCP side-scan capabilities report
   `executor: contract_only` (discovery + injected-SDK adapters only); runtime
   evidence ingest + graph persist/investigation loads are documented as wired;
@@ -52,6 +53,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `runtime_evidence_ingest` share the authenticated runtime-evidence door with
   the REST ingest route (#4158).
 >>>>>>> cd080ac5 (feat(cwpp): CLI and MCP runtime-evidence ingest)
+=======
+- CWPP stage-4 (C): JSON / SARIF / HTML exports surface
+  `workload_runtime_evidence` on workload-scoped findings (additive;
+  `clean_workload_assertion` stays false) (#4158).
+>>>>>>> 5730acbc (feat(cwpp): surface workload_runtime_evidence in exports)
 - Findings carry optional graph FKs (`node_id`, `finding_node_id`, `entity_type`)
   and attack paths expose `finding_ids` so investigation joins typed estate nodes
   instead of CVE-label-only anchors; `asset_type` aliases map to `EntityType`

@@ -1046,6 +1046,50 @@ def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Fin
     )
 
 
+def cloud_org_architecture_finding_to_finding(finding: dict, *, provider: str, org_id: str = "") -> "Finding":
+    """Convert an AWS/GCP org-architecture finding into a unified Finding."""
+    from agent_bom.finding_scope import normalize_account_ref
+    from agent_bom.security import sanitize_text
+
+    provider_key = sanitize_text(str(provider or "cloud"), max_len=40).lower() or "cloud"
+    check_id = sanitize_text(str(finding.get("check_id") or finding.get("title") or "ORG"), max_len=80)
+    severity = sanitize_text(str(finding.get("severity") or "medium"), max_len=40).lower() or "medium"
+    title = sanitize_text(str(finding.get("title") or check_id), max_len=300)
+    detail = sanitize_text(str(finding.get("detail") or ""), max_len=800)
+    org_label = sanitize_text(str(org_id or "standalone"), max_len=120)
+    account_ref = normalize_account_ref(provider_key, org_label)
+
+    return Finding(
+        finding_type=FindingType.CLOUD_BEST_PRACTICE_FAIL,
+        source=FindingSource.CLOUD_SECURITY,
+        asset=Asset(
+            name=f"{provider_key}-org:{org_label}",
+            asset_type="cloud_resource",
+            identifier=f"{provider_key}-org:{org_label}",
+            location=provider_key,
+            provider=provider_key,
+            account_ref=account_ref,
+        ),
+        severity=severity,
+        provider=provider_key,
+        account_ref=account_ref,
+        title=title,
+        description=detail or title,
+        compliance_tags=[f"CLOUD-ORG-{check_id}"],
+        evidence={
+            "provider": provider_key,
+            "org_id": org_id,
+            "check_id": check_id,
+            "category": finding.get("category") or "estate_architecture",
+            "account_count": finding.get("account_count"),
+            "hierarchy_depth": finding.get("hierarchy_depth"),
+        },
+        is_actionable=True,
+        impact_category="estate_architecture",
+        id=stable_id("cloud-org", provider_key, check_id, org_label),
+    )
+
+
 def blast_radius_to_finding(br: object) -> "Finding":
     """Convert a BlastRadius instance to a unified Finding.
 

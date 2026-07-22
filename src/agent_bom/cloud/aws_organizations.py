@@ -128,6 +128,7 @@ def discover_organization(profile: str | None = None, *, force: bool = False) ->
         # AWSOrganizationsNotInUseException → a standalone account, not an error.
         if "NotInUse" in type(exc).__name__ or "AWSOrganizationsNotInUse" in str(exc):
             result["status"] = "not_in_org"
+            _derive_findings(result)
         else:
             result["status"] = "ok"  # partial; record what we can
             warnings.append(f"Could not describe organization: {sanitize_discovery_warning(exc)}")
@@ -218,26 +219,7 @@ def discover_organization(profile: str | None = None, *, force: bool = False) ->
         warnings.append(f"Could not list SCPs: {sanitize_discovery_warning(exc)}")
 
     # Findings.
-    customer_scps = [s for s in result["scps"] if not s["aws_managed"]]
-    if not customer_scps and result["accounts"]:
-        result["findings"].append(
-            {
-                "severity": "medium",
-                "title": "No custom Service Control Policies",
-                "detail": f"{len(result['accounts'])} accounts, no customer SCPs — only the default FullAWSAccess applies.",
-            }
-        )
-    ou_ids = {o["id"] for o in result["organizational_units"]}
-    # accounts are placed via parents; flag the org as flat if there are no non-root OUs
-    non_root_ous = [o for o in result["organizational_units"] if not o.get("is_root")]
-    if result["accounts"] and not non_root_ous:
-        result["findings"].append(
-            {
-                "severity": "low",
-                "title": "Flat organization (no OUs)",
-                "detail": f"{len(result['accounts'])} accounts sit directly under the root with no OUs — no tiered guardrails.",
-            }
-        )
+    _derive_findings(result)
 
     result["status"] = "ok"
     result["discovery_envelope"] = DiscoveryEnvelope(
@@ -246,8 +228,102 @@ def discover_organization(profile: str | None = None, *, force: bool = False) ->
         permissions_used=_AWS_ORG_PERMISSIONS,
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     ).to_dict()
-    _ = ou_ids  # reserved for future account→OU placement enrichment
     return result
+
+
+def _derive_findings(result: dict[str, Any]) -> None:
+    """Flag estate-architecture risks (single-account / flat OU tree / missing SCPs).
+
+    Appends structured findings with stable ``check_id`` values so the graph and
+    unified Finding stream can promote them without inventing CIS tags.
+    """
+    status = str(result.get("status") or "")
+    accounts = [a for a in (result.get("accounts") or []) if isinstance(a, dict)]
+    non_root_ous = [o for o in (result.get("organizational_units") or []) if isinstance(o, dict) and not o.get("is_root")]
+    customer_scps = [s for s in (result.get("scps") or []) if isinstance(s, dict) and not s.get("aws_managed")]
+
+    account_count = len(accounts)
+    hierarchy_depth = len(non_root_ous)
+    if status == "not_in_org":
+        verdict = "not_in_org"
+    elif account_count <= 1:
+        verdict = "single_account"
+    elif hierarchy_depth == 0:
+        verdict = "flat"
+    else:
+        verdict = "tiered"
+    result["architecture"] = {
+        "provider": "aws",
+        "account_count": account_count,
+        "hierarchy_depth": hierarchy_depth,
+        "custom_scp_count": len(customer_scps),
+        "verdict": verdict,
+    }
+
+    findings = result.setdefault("findings", [])
+    if not isinstance(findings, list):
+        result["findings"] = []
+        findings = result["findings"]
+
+    if status == "not_in_org":
+        findings.append(
+            {
+                "check_id": "ORG-AWS-001",
+                "severity": "medium",
+                "category": "estate_architecture",
+                "title": "Standalone AWS account (not in an Organization)",
+                "detail": (
+                    "This account is not a member of AWS Organizations. Multi-account "
+                    "landing zones with OU-tiered SCPs are the recommended isolation model."
+                ),
+                "account_count": 1,
+                "hierarchy_depth": 0,
+            }
+        )
+        return
+
+    if account_count <= 1 and (account_count > 0 or result.get("org_id")):
+        findings.append(
+            {
+                "check_id": "ORG-AWS-002",
+                "severity": "medium",
+                "category": "estate_architecture",
+                "title": "Single-account AWS Organization",
+                "detail": (
+                    f"{max(account_count, 1)} account under the organization — workloads, identity, "
+                    "and logging share one blast-radius boundary. Prefer separate accounts per "
+                    "environment / workload (landing-zone pattern)."
+                ),
+                "account_count": max(account_count, 1),
+                "hierarchy_depth": hierarchy_depth,
+            }
+        )
+
+    if accounts and not customer_scps:
+        findings.append(
+            {
+                "check_id": "ORG-AWS-003",
+                "severity": "medium",
+                "category": "estate_architecture",
+                "title": "No custom Service Control Policies",
+                "detail": f"{account_count} accounts, no customer SCPs — only the default FullAWSAccess applies.",
+                "account_count": account_count,
+                "hierarchy_depth": hierarchy_depth,
+            }
+        )
+
+    if accounts and not non_root_ous:
+        findings.append(
+            {
+                "check_id": "ORG-AWS-004",
+                "severity": "low",
+                "category": "estate_architecture",
+                "title": "Flat organization (no OUs)",
+                "detail": f"{account_count} accounts sit directly under the root with no OUs — no tiered guardrails.",
+                "account_count": account_count,
+                "hierarchy_depth": 0,
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

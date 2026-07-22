@@ -1432,6 +1432,8 @@ class AIBOMReport:
         base.extend(finding for finding in self._iac_findings() if finding.id not in iac_existing)
         gov_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._snowflake_governance_findings() if finding.id not in gov_existing)
+        org_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._cloud_org_architecture_findings() if finding.id not in org_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._malicious_package_findings() if finding.id not in malicious_existing)
         return base
@@ -1486,6 +1488,28 @@ class AIBOMReport:
         for raw in data.get("findings", []) or []:
             if isinstance(raw, dict):
                 findings.append(snowflake_governance_finding_to_finding(raw, account))
+        return findings
+
+    def _cloud_org_architecture_findings(self) -> "list[Finding]":
+        """AWS/GCP org-architecture findings (single-account / flat hierarchy)."""
+        from agent_bom.finding import cloud_org_architecture_finding_to_finding
+
+        payloads: list[tuple[str, dict[str, Any]]] = []
+        aws = self.aws_organization_data
+        if isinstance(aws, dict):
+            payloads.append(("aws", aws))
+        inventory = self.cloud_inventory_data
+        inv_list = inventory if isinstance(inventory, list) else ([inventory] if isinstance(inventory, dict) else [])
+        for entry in inv_list:
+            if isinstance(entry, dict) and isinstance(entry.get("gcp_organization"), dict):
+                payloads.append(("gcp", entry["gcp_organization"]))
+
+        findings: list[Finding] = []
+        for provider, payload in payloads:
+            org_id = str(payload.get("org_id") or "")
+            for raw in payload.get("findings", []) or []:
+                if isinstance(raw, dict):
+                    findings.append(cloud_org_architecture_finding_to_finding(raw, provider=provider, org_id=org_id))
         return findings
 
     def _iac_findings(self) -> "list[Finding]":

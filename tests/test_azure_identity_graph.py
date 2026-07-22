@@ -220,7 +220,10 @@ def test_security_defaults_pass_fail_unevaluable():
 # Access reviews: 1.3, 1.4
 # ---------------------------------------------------------------------------
 
-_GUEST_REVIEW = {"displayName": "Quarterly guest review", "scope": {"query": "/groups/x/members/microsoft.graph.user/?$filter=(userType eq 'Guest')"}}
+_GUEST_REVIEW = {
+    "displayName": "Quarterly guest review",
+    "scope": {"query": "/groups/x/members/microsoft.graph.user/?$filter=(userType eq 'Guest')"},
+}
 _GROUP_REVIEW = {"displayName": "Group owners review", "scope": {"query": "/groups/x/owners"}}
 
 

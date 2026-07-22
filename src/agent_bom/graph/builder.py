@@ -4153,11 +4153,7 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
                 "cloud_provider": "aws",
                 "master_account_id": _clean_graph_part(payload.get("master_account_id")),
                 "feature_set": _clean_graph_part(payload.get("feature_set")),
-                **(
-                    {"architecture": payload.get("architecture")}
-                    if isinstance(payload.get("architecture"), dict)
-                    else {}
-                ),
+                **({"architecture": payload.get("architecture")} if isinstance(payload.get("architecture"), dict) else {}),
             },
             data_sources=data_sources,
             dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),

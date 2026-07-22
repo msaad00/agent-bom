@@ -1509,9 +1509,7 @@ class AIBOMReport:
             org_id = str(payload.get("org_id") or "")
             for raw in payload.get("findings", []) or []:
                 if isinstance(raw, dict):
-                    findings.append(
-                        cloud_org_architecture_finding_to_finding(raw, provider=provider, org_id=org_id)
-                    )
+                    findings.append(cloud_org_architecture_finding_to_finding(raw, provider=provider, org_id=org_id))
         return findings
 
     def _iac_findings(self) -> "list[Finding]":

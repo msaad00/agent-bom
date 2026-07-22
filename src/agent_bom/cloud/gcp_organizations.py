@@ -429,8 +429,7 @@ def _derive_findings(result: dict[str, Any]) -> None:
                 "category": "estate_architecture",
                 "title": "Standalone GCP project (no organization)",
                 "detail": (
-                    "No GCP organization is visible. Folder hierarchy + org policies are the "
-                    "recommended isolation model across projects."
+                    "No GCP organization is visible. Folder hierarchy + org policies are the recommended isolation model across projects."
                 ),
                 "account_count": 1,
                 "hierarchy_depth": 0,
@@ -461,10 +460,7 @@ def _derive_findings(result: dict[str, Any]) -> None:
                 "severity": "medium",
                 "category": "estate_architecture",
                 "title": "No organization policy constraints",
-                "detail": (
-                    f"{project_count} projects, no org-policy constraints — "
-                    "no org-wide guardrails (the AWS-SCP equivalent) apply."
-                ),
+                "detail": (f"{project_count} projects, no org-policy constraints — no org-wide guardrails (the AWS-SCP equivalent) apply."),
                 "account_count": project_count,
                 "hierarchy_depth": hierarchy_depth,
             }

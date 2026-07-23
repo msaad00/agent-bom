@@ -214,6 +214,16 @@ export default function MeshPage() {
   const captureMode = useCaptureMode();
 
   useEffect(() => {
+    if (!captureMode) return;
+    setPathFocusEnabled(false);
+    setNodeFilter((current) => ({
+      ...current,
+      tools: true,
+      credentials: true,
+    }));
+    setVulnerableOnly(false);
+  }, [captureMode]);
+  useEffect(() => {
     api
       .listJobs()
       .then((res) => {
@@ -258,6 +268,18 @@ export default function MeshPage() {
   }, [selectedJob]);
 
   const activeResult = useMemo(() => activeJob?.result ?? null, [activeJob]);
+
+  useEffect(() => {
+    if (!captureMode || !activeResult) return;
+    const focusNames = new Set(["developer-copilot", "sre-runbook-agent"]);
+    const keys = activeResult.agents
+      .filter((agent) => focusNames.has(agent.name))
+      .map((agent) => getMeshAgentKey(agent));
+    if (keys.length > 0) {
+      setSelectedAgents(keys);
+    }
+  }, [activeResult, captureMode]);
+
 
   const agentOptions = useMemo(() => {
     if (!activeResult) return [];
@@ -510,7 +532,7 @@ export default function MeshPage() {
         <div className="border-b border-[var(--border-subtle)] px-5 py-2.5">
           <h1 className="text-base font-semibold text-foreground">Agent Mesh</h1>
           <p className="text-sm text-[var(--text-secondary)]">
-            agent → MCP server → package → tool → CVE
+            Shared MCP servers across developer-copilot and sre-runbook-agent — tools, credentials, and labeled relationships
           </p>
         </div>
       ) : (

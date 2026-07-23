@@ -1863,7 +1863,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "mesh-live.png",
       page: "/mesh?capture=1",
-      scope: "Focused agent mesh graph across the active agent, MCP server, package, and CVE path",
+      scope: "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
     },
     {
       path: "gateway-policies-live.png",
@@ -1883,7 +1883,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "context-map-live.png",
       page: "/context?capture=1",
-      scope: "Agent-scoped context map with centered lateral reachability graph (paths drawer on demand)",
+      scope: "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
     },
     {
       path: "fleet-state-live.png",
@@ -1987,13 +1987,29 @@ async function main() {
       await meshPage.reload({ waitUntil: "load" });
       await meshPage
         .locator(".react-flow__node:visible")
-        .filter({ hasText: "developer-copilot" })
+        .filter({ hasText: "filesystem MCP" })
         .first()
         .waitFor({ state: "visible", timeout: 30_000 });
+      await meshPage
+        .locator(".react-flow__node:visible")
+        .filter({ hasText: "sre-runbook-agent" })
+        .first()
+        .waitFor({ state: "visible", timeout: 30_000 });
+      const showAll = meshPage.getByRole("button", { name: "Show all", exact: true });
+      if (await showAll.count()) {
+        await showAll.click();
+        await meshPage.waitForTimeout(400);
+      }
       await fitReactFlow(meshPage);
       await scrollTo(meshPage, 0);
     }, {
-      expectedText: ["Agent Mesh", "developer-copilot", "github-enterprise MCP", "DEMO-VULN-21441"],
+      expectedText: [
+        "Agent Mesh",
+        "developer-copilot",
+        "sre-runbook-agent",
+        "filesystem MCP",
+        "Uses",
+      ],
       expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`],
       minGraphNodes: 4,
       minGraphEdges: 3,
@@ -2031,7 +2047,13 @@ async function main() {
       await scrollTo(lineagePage, 20);
       await lineagePage.waitForTimeout(350);
     }, {
-      expectedText: ["Relevant paths", "Developer Copilot", "github-enterprise MCP", "DEMO-VULN-21441"],
+      expectedText: [
+        "Relevant paths",
+        "Developer Copilot",
+        "github-enterprise MCP",
+        "next@",
+        "DEMO-VULN-21441",
+      ],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
       minGraphNodes: 4,
       minGraphEdges: 3,
@@ -2050,6 +2072,11 @@ async function main() {
           await agentScope.selectOption("developer-copilot");
           await contextPage.waitForTimeout(600);
         }
+        const showAll = contextPage.getByRole("button", { name: "Show all", exact: true });
+        if (await showAll.count()) {
+          await showAll.click();
+          await contextPage.waitForTimeout(400);
+        }
         await contextPage.locator(".react-flow__node").first().waitFor({
           state: "visible",
           timeout: 20_000,
@@ -2066,7 +2093,12 @@ async function main() {
       },
       {
         awaitResponses: [(response) => response.url().includes("/context-graph") && response.ok()],
-        expectedText: ["Context Map", "DEMO-VULN-21441", "developer-copilot"],
+        expectedText: [
+          "Context Map",
+          "developer-copilot",
+          "create_pull_request",
+          "GITHUB_FINE_GRAINED_TOKEN",
+        ],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
         minGraphNodes: 4,
         minGraphEdges: 3,

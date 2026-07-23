@@ -376,6 +376,46 @@ export function relationshipLegendItem(relationship: string): LegendItem {
   };
 }
 
+export function relationshipEdgeLabelText(
+  relationship: string,
+  metadata?: Record<string, unknown>,
+): string {
+  if (relationship === "shares_server") {
+    return `shared: ${(metadata?.server as string) ?? ""}`.trim();
+  }
+  if (relationship === "shares_credential" || relationship === "shares_cred") {
+    return `shared: ${(metadata?.credential as string) ?? ""}`.trim();
+  }
+  return relationshipLegendItem(relationship).label;
+}
+
+export function relationshipEdgeLabelPresentation(options?: {
+  captureMode?: boolean;
+}): Pick<
+  import("@xyflow/react").Edge,
+  | "labelShowBg"
+  | "labelBgPadding"
+  | "labelBgBorderRadius"
+  | "labelBgStyle"
+  | "labelStyle"
+> {
+  const captureMode = options?.captureMode ?? false;
+  return {
+    labelShowBg: true,
+    labelBgPadding: [8, 4],
+    labelBgBorderRadius: 6,
+    labelBgStyle: {
+      fill: captureMode ? "#0a0a0a" : "rgba(24,24,27,0.92)",
+      fillOpacity: 0.94,
+    },
+    labelStyle: {
+      fill: "#f4f4f5",
+      fontSize: 11,
+      fontWeight: 600,
+    },
+  };
+}
+
 const RELATIONSHIP_LEGEND_ITEMS: Record<
   (typeof RELATIONSHIP_LEGEND_ORDER)[number],
   LegendItem

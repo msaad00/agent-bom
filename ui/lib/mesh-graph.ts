@@ -14,6 +14,23 @@ import {
 } from "@/lib/exposure-path";
 import { severityAtOrAbove, severityRank } from "@/lib/severity";
 import { severityHex } from "@/lib/theme-colors";
+import {
+  relationshipEdgeLabelPresentation,
+  relationshipEdgeLabelText,
+} from "@/lib/graph-utils";
+
+
+function meshEdgeWithRelationshipLabel(edge: Edge): Edge {
+  const relationship =
+    typeof edge.data?.relationship === "string"
+      ? edge.data.relationship
+      : "uses";
+  return {
+    ...edge,
+    label: relationshipEdgeLabelText(relationship),
+    ...relationshipEdgeLabelPresentation(),
+  };
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -915,7 +932,7 @@ export function buildMeshGraph(
     topExposurePath,
   };
 
-  return { nodes, edges, stats };
+  return { nodes, edges: edges.map(meshEdgeWithRelationshipLabel), stats };
 }
 
 // ─── Hover Highlighting ─────────────────────────────────────────────────────

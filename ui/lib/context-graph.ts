@@ -15,6 +15,10 @@ import {
   reachStrokeColor,
 } from "@/lib/effective-reach";
 import { RELATIONSHIP_COLOR_MAP } from "@/lib/graph-schema";
+import {
+  relationshipEdgeLabelPresentation,
+  relationshipEdgeLabelText,
+} from "@/lib/graph-utils";
 
 // ─── Types (mirror Python context_graph.to_serializable) ────────────────────
 
@@ -300,7 +304,7 @@ export function buildContextFlowGraph(
         type: "smoothstep",
         data: {
           relationship,
-          relationshipLabel: relationship.replace(/_/g, " "),
+          relationshipLabel: relationshipEdgeLabelText(relationship, e.metadata),
           evidenceMode: isOnPath
             ? "selected_path"
             : relationship.includes("runtime")
@@ -323,14 +327,8 @@ export function buildContextFlowGraph(
           width: 12,
           height: 12,
         },
-        label:
-          relationship === "shares_server"
-            ? `shared: ${(e.metadata?.server as string) ?? ""}`
-            : relationship === "shares_credential" ||
-                relationship === "shares_cred"
-              ? `shared: ${(e.metadata?.credential as string) ?? ""}`
-              : undefined,
-        labelStyle: { fontSize: 9, fill: "#71717a" },
+        label: relationshipEdgeLabelText(relationship, e.metadata),
+        ...relationshipEdgeLabelPresentation(),
       };
     });
 

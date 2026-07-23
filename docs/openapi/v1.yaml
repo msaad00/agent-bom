@@ -3757,7 +3757,7 @@ info:
     \ cloud infrastructure. agent \u2192 MCP server \u2192 packages \u2192 CVEs \u2192\
     \ blast radius."
   title: agent-bom API
-  version: 0.97.4
+  version: 0.97.5
 openapi: 3.1.0
 paths:
   /health:

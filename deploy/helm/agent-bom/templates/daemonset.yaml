@@ -36,6 +36,7 @@ spec:
           imagePullPolicy: {{ .Values.runtimeImage.pullPolicy }}
           command: ["agent-bom"]
           args:
+            - "runtime"
             - "protect"
             - "--mode"
             - {{ .Values.monitor.mode | quote }}
@@ -49,6 +50,9 @@ spec:
               protocol: TCP
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
@@ -57,6 +61,9 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           startupProbe:
             {{- toYaml .Values.startupProbe | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

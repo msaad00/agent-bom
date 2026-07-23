@@ -18,7 +18,7 @@ OIDC_TENANT_CLAIM="${AGENT_BOM_OIDC_TENANT_CLAIM:-tenant_id}"
 OIDC_ROLE_CLAIM="${AGENT_BOM_OIDC_ROLE_CLAIM:-agent_bom_role}"
 NODE_INSTANCE_TYPE="m7i.large"
 NODE_COUNT="3"
-K8S_VERSION="1.30"
+K8S_VERSION="1.32"
 STATE_DIR="${HOME}/.agent-bom/eks-reference"
 DRY_RUN=0
 
@@ -51,7 +51,7 @@ Options:
   --oidc-role-claim CLAIM     Configure AGENT_BOM_OIDC_ROLE_CLAIM (default: agent_bom_role)
   --node-instance-type TYPE   eksctl managed nodegroup instance type (default: m7i.large)
   --node-count COUNT          eksctl desired/min node count (default: 3)
-  --k8s-version VERSION       EKS version for --create-cluster (default: 1.30)
+  --k8s-version VERSION       EKS version for --create-cluster (default: 1.32)
   --state-dir PATH            Local state/output root (default: ~/.agent-bom/eks-reference)
   --dry-run                   Print actions and generated command paths without applying changes
   -h, --help                  Show this help
@@ -295,6 +295,45 @@ module "agent_bom_baseline" {
 }
 EOF
 
+TF_OUTPUTS="${TF_ROOT}/outputs.tf"
+cat >"${TF_OUTPUTS}" <<'EOF'
+output "scanner_role_arn" {
+  value = module.agent_bom_baseline.scanner_role_arn
+}
+
+output "backup_role_arn" {
+  value = module.agent_bom_baseline.backup_role_arn
+}
+
+output "backup_bucket_name" {
+  value = module.agent_bom_baseline.backup_bucket_name
+}
+
+output "db_endpoint" {
+  value = module.agent_bom_baseline.db_endpoint
+}
+
+output "db_secret_arn" {
+  value = module.agent_bom_baseline.db_secret_arn
+}
+
+output "db_secret_name" {
+  value = module.agent_bom_baseline.db_secret_name
+}
+
+output "db_url_secret_name" {
+  value = module.agent_bom_baseline.db_url_secret_name
+}
+
+output "auth_secret_name" {
+  value = module.agent_bom_baseline.auth_secret_name
+}
+
+output "helm_values_hint" {
+  value = module.agent_bom_baseline.helm_values_hint
+}
+EOF
+
 log "Applying Terraform AWS baseline"
 run "${TERRAFORM_BIN}" -chdir="${TF_ROOT}" init
 run "${TERRAFORM_BIN}" -chdir="${TF_ROOT}" apply -auto-approve
@@ -320,25 +359,42 @@ fi
 
 API_KEY=""
 AUDIT_HMAC=""
+BROWSER_SESSION_KEY=""
+CONNECTIONS_KEY=""
+TRUST_PROXY_SECRET=""
 GATEWAY_TOKEN=""
+DB_PASSWORD=""
 
 if [ "$DRY_RUN" -eq 0 ]; then
   [ -n "${DB_SECRET_ARN}" ] || die "terraform did not return db_secret_arn"
   DB_SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "${DB_SECRET_ARN}" --region "${REGION}" --query SecretString --output text)"
-  DB_URL="$(printf '%s' "${DB_SECRET_JSON}" | python3 - <<'PY'
+  DB_ENDPOINT="$("${TERRAFORM_BIN}" -chdir="${TF_ROOT}" output -raw db_endpoint 2>/dev/null || true)"
+  # RDS manage_master_user_password secrets often only contain username/password.
+  # Prefer terraform db_endpoint; fall back to secret host/port/dbname when present.
+  # Build a passwordless URL + discrete password: RDS passwords often contain URL
+  # metacharacters (e.g. '?') that break embedded-password DSNs even when quoted.
+  # Pass JSON via env — a heredoc would steal stdin from a pipe.
+  DB_URL_AND_PASSWORD="$(
+    DB_SECRET_JSON="${DB_SECRET_JSON}" DB_ENDPOINT="${DB_ENDPOINT}" python3 - <<'PY'
 import json
-import sys
+import os
 from urllib.parse import quote
 
-payload = json.load(sys.stdin)
-username = quote(str(payload["username"]))
-password = quote(str(payload["password"]))
-host = payload["host"]
-port = payload["port"]
+payload = json.loads(os.environ["DB_SECRET_JSON"])
+username = quote(str(payload["username"]), safe="")
+password = str(payload["password"])
+host = os.environ.get("DB_ENDPOINT") or payload.get("host")
+port = payload.get("port") or 5432
 dbname = payload.get("dbname") or payload.get("dbInstanceIdentifier") or "agent_bom"
-print(f"postgresql://{username}:{password}@{host}:{port}/{dbname}")
+if not host:
+    raise SystemExit("no db host: terraform db_endpoint and secret.host both empty")
+# psycopg conninfo URL without password; password travels via secret file mount.
+print(f"postgresql://{username}@{host}:{port}/{dbname}?sslmode=require")
+print(password)
 PY
-)"
+  )"
+  DB_URL="$(printf '%s\n' "${DB_URL_AND_PASSWORD}" | sed -n '1p')"
+  DB_PASSWORD="$(printf '%s\n' "${DB_URL_AND_PASSWORD}" | sed -n '2p')"
 
   API_KEY="$(python3 - <<'PY'
 import secrets
@@ -350,16 +406,43 @@ import secrets
 print(secrets.token_hex(32))
 PY
 )"
+  BROWSER_SESSION_KEY="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(32))
+PY
+)"
+  CONNECTIONS_KEY="$(python3 - <<'PY'
+import base64, os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
+PY
+)"
+  TRUST_PROXY_SECRET="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(32))
+PY
+)"
 
   log "Creating namespace and control-plane secrets"
   kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+  # Discrete password key + passwordless URL; chart/install-overrides mounts the file.
   kubectl -n "${NAMESPACE}" create secret generic agent-bom-control-plane-db \
     --from-literal=AGENT_BOM_POSTGRES_URL="${DB_URL}" \
+    --from-literal=password="${DB_PASSWORD}" \
+    --from-literal=AGENT_BOM_POSTGRES_PASSWORD_FILE=/var/run/db-password/password \
+    --from-literal=TMPDIR=/tmp \
+    --from-literal=TEMP=/tmp \
+    --from-literal=TMP=/tmp \
     --dry-run=client -o yaml | kubectl apply -f -
+  # Clustered HA rejects static AGENT_BOM_API_KEY; use role-scoped AGENT_BOM_API_KEYS.
   kubectl -n "${NAMESPACE}" create secret generic agent-bom-control-plane-auth \
-    --from-literal=AGENT_BOM_API_KEY="${API_KEY}" \
+    --from-literal=AGENT_BOM_API_KEYS="${API_KEY}:admin" \
     --from-literal=AGENT_BOM_AUDIT_HMAC_KEY="${AUDIT_HMAC}" \
     --from-literal=AGENT_BOM_REQUIRE_AUDIT_HMAC=1 \
+    --from-literal=AGENT_BOM_BROWSER_SESSION_SIGNING_KEY="${BROWSER_SESSION_KEY}" \
+    --from-literal=AGENT_BOM_CONNECTIONS_KEY="${CONNECTIONS_KEY}" \
+    --from-literal=AGENT_BOM_TRUST_PROXY_AUTH=1 \
+    --from-literal=AGENT_BOM_TRUST_PROXY_AUTH_SECRET="${TRUST_PROXY_SECRET}" \
+    --from-literal=AGENT_BOM_TRUST_PROXY_AUTH_ISSUER=agent-bom-eks-reference \
     $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_ISSUER=%s " "${OIDC_ISSUER}" ) \
     $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_AUDIENCE=%s " "${OIDC_AUDIENCE}" ) \
     $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_TENANT_CLAIM=%s " "${OIDC_TENANT_CLAIM}" ) \
@@ -368,10 +451,21 @@ PY
     --dry-run=client -o yaml | kubectl apply -f -
 
   if [ -n "${DB_URL_SECRET_NAME}" ]; then
-    aws secretsmanager put-secret-value \
-      --region "${REGION}" \
-      --secret-id "${DB_URL_SECRET_NAME}" \
-      --secret-string "{\"AGENT_BOM_POSTGRES_URL\":\"${DB_URL}\"}" >/dev/null
+    # JSON-safe put (password stays in RDS-managed secret + k8s secret key).
+    DB_URL="${DB_URL}" REGION="${REGION}" DB_URL_SECRET_NAME="${DB_URL_SECRET_NAME}" python3 - <<'PY'
+import json, os, subprocess
+payload = {
+    "AGENT_BOM_POSTGRES_URL": os.environ["DB_URL"],
+    "AGENT_BOM_POSTGRES_PASSWORD_FILE": "/var/run/db-password/password",
+}
+subprocess.run(
+    ["aws", "secretsmanager", "put-secret-value",
+     "--region", os.environ["REGION"],
+     "--secret-id", os.environ["DB_URL_SECRET_NAME"],
+     "--secret-string", json.dumps(payload)],
+    check=True,
+)
+PY
   fi
 
   if [ -n "${AUTH_SECRET_NAME}" ]; then
@@ -379,9 +473,14 @@ PY
 import json
 
 payload = {
-    "AGENT_BOM_API_KEY": "${API_KEY}",
+    "AGENT_BOM_API_KEYS": "${API_KEY}:admin",
     "AGENT_BOM_AUDIT_HMAC_KEY": "${AUDIT_HMAC}",
     "AGENT_BOM_REQUIRE_AUDIT_HMAC": "1",
+    "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY": "${BROWSER_SESSION_KEY}",
+    "AGENT_BOM_CONNECTIONS_KEY": "${CONNECTIONS_KEY}",
+    "AGENT_BOM_TRUST_PROXY_AUTH": "1",
+    "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": "${TRUST_PROXY_SECRET}",
+    "AGENT_BOM_TRUST_PROXY_AUTH_ISSUER": "agent-bom-eks-reference",
 }
 if "${OIDC_ISSUER}":
     payload["AGENT_BOM_OIDC_ISSUER"] = "${OIDC_ISSUER}"
@@ -401,15 +500,35 @@ fi
 
 INSTALL_OVERRIDES="${GENERATED_DIR}/install-overrides.yaml"
 cat >"${INSTALL_OVERRIDES}" <<EOF
+# Reference dogfood: no External Secrets / Prometheus Operator CRDs required
+monitor:
+  enabled: false
+  serviceMonitor:
+    enabled: false
 controlPlane:
   externalSecrets:
     enabled: false
+  observability:
+    prometheusRule:
+      enabled: false
   api:
     envFrom:
       - secretRef:
           name: agent-bom-control-plane-db
       - secretRef:
           name: agent-bom-control-plane-auth
+    # Mount discrete RDS password (URL stays passwordless — avoids '?' etc. in DSN).
+    extraVolumeMounts:
+      - name: db-password
+        mountPath: /var/run/db-password
+        readOnly: true
+    extraVolumes:
+      - name: db-password
+        secret:
+          secretName: agent-bom-control-plane-db
+          items:
+            - key: password
+              path: password
   ingress:
     enabled: $( [ -n "${HOSTNAME}" ] && printf true || printf false )
 $( [ -n "${HOSTNAME}" ] && cat <<YAML

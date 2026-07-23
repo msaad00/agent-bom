@@ -8,8 +8,8 @@ output "scanner_role_arn" {
 }
 
 output "scanner_assume_connect_policy_arn" {
-  description = "IAM policy ARN granting the scanner sts:AssumeRole on the read-only connection roles cross-account (empty when connect_role_arns = [])."
-  value       = length(var.connect_role_arns) > 0 ? aws_iam_policy.scanner_assume_connect[0].arn : ""
+  description = "Deprecated: connect assume is an inline role policy (PutRolePolicy); no managed policy ARN. Empty string retained for callers."
+  value       = ""
 }
 
 output "backup_role_arn" {

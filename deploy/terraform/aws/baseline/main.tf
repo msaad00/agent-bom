@@ -52,17 +52,27 @@ resource "aws_iam_role" "scanner" {
   name               = "${var.name}-scanner"
   assume_role_policy = data.aws_iam_policy_document.scanner_assume_role.json
   tags               = local.common_tags
+
+  # Provisioners often lack iam:UpdateRoleDescription; do not clear an existing
+  # AWS description when moving from attached managed policies to inline.
+  lifecycle {
+    ignore_changes = [description]
+  }
 }
 
-resource "aws_iam_policy" "scanner" {
+# Inline (PutRolePolicy): customer-managed CreatePolicy is often denied under
+# PowerUser + scoped provisioner policies; inline policies keep IRSA usable.
+resource "aws_iam_role_policy" "scanner" {
   name   = "${var.name}-scanner"
-  policy = file("${path.module}/../../../../scripts/provision/aws_readonly_policy.json")
-  tags   = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "scanner" {
-  role       = aws_iam_role.scanner.name
-  policy_arn = aws_iam_policy.scanner.arn
+  role   = aws_iam_role.scanner.id
+  # Co-located: Terraform resolves path.module under .terraform/modules/, so
+  # climbing out to scripts/provision/ breaks for generated eks-reference roots.
+  # IAM requires printable ASCII only (no UTF-8 punctuation in comments).
+  # Strip doc-only keys (e.g. _comment); IAM PutRolePolicy rejects them.
+  policy = jsonencode({
+    for k, v in jsondecode(file("${path.module}/aws_readonly_policy.json")) : k => v
+    if contains(["Version", "Id", "Statement"], k)
+  })
 }
 
 # ---------------------------------------------------------------------------
@@ -87,17 +97,11 @@ data "aws_iam_policy_document" "scanner_assume_connect" {
   }
 }
 
-resource "aws_iam_policy" "scanner_assume_connect" {
+resource "aws_iam_role_policy" "scanner_assume_connect" {
   count  = length(var.connect_role_arns) > 0 ? 1 : 0
   name   = "${var.name}-scanner-assume-connect"
+  role   = aws_iam_role.scanner.id
   policy = data.aws_iam_policy_document.scanner_assume_connect[0].json
-  tags   = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "scanner_assume_connect" {
-  count      = length(var.connect_role_arns) > 0 ? 1 : 0
-  role       = aws_iam_role.scanner.name
-  policy_arn = aws_iam_policy.scanner_assume_connect[0].arn
 }
 
 data "aws_iam_policy_document" "backup_assume_role" {
@@ -173,17 +177,11 @@ data "aws_iam_policy_document" "backup" {
   }
 }
 
-resource "aws_iam_policy" "backup" {
+resource "aws_iam_role_policy" "backup" {
   count  = var.create_backup_bucket ? 1 : 0
   name   = "${var.name}-backup"
+  role   = aws_iam_role.backup[0].id
   policy = data.aws_iam_policy_document.backup[0].json
-  tags   = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "backup" {
-  count      = var.create_backup_bucket ? 1 : 0
-  role       = aws_iam_role.backup[0].name
-  policy_arn = aws_iam_policy.backup[0].arn
 }
 
 resource "aws_s3_bucket" "backups" {

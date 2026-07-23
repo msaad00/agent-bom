@@ -34,15 +34,16 @@ variable "connect_role_arns" {
     hosted connect), not only the account it runs in. Least-privilege: the only
     action granted is sts:AssumeRole, scoped to these resource ARNs; the
     connection role's own trust policy + ExternalId are the reciprocal guard.
-    Defaults match the role names minted by connect-aws and the CloudFormation
-    connector template (agent-bom-readonly*, abom-readonly*). Narrow to explicit
-    ARNs for a tighter blast radius, or set to [] to disable cross-account
-    assume entirely.
+    Defaults match the role names minted by connect-aws, the CloudFormation
+    connector template, and the EKS reference lab (agent-bom-readonly*,
+    abom-readonly*, abom-eks-lab-ro-*). Narrow to explicit ARNs for a tighter
+    blast radius, or set to [] to disable cross-account assume entirely.
   EOT
   type        = list(string)
   default = [
     "arn:aws:iam::*:role/agent-bom-readonly*",
     "arn:aws:iam::*:role/abom-readonly*",
+    "arn:aws:iam::*:role/abom-eks-lab-ro-*",
   ]
 }
 

@@ -105,6 +105,25 @@ def is_tenant_rls_bypassed() -> bool:
     return _bypass_tenant_rls.get()
 
 
+def _normalize_postgres_conninfo_url(url: str) -> str:
+    """Accept SQLAlchemy dialect URLs and rewrite them for psycopg conninfo.
+
+    Operators sometimes paste Alembic-style ``postgresql+psycopg://`` DSNs into
+    ``AGENT_BOM_POSTGRES_URL``. psycopg_pool treats the full scheme as an
+    unknown connection option and refuses to connect. Strip the ``+driver``
+    suffix so both forms work.
+    """
+    for prefix, replacement in (
+        ("postgresql+psycopg://", "postgresql://"),
+        ("postgres+psycopg://", "postgresql://"),
+        ("postgresql+psycopg2://", "postgresql://"),
+        ("postgres+psycopg2://", "postgresql://"),
+    ):
+        if url.lower().startswith(prefix):
+            return replacement + url[len(prefix) :]
+    return url
+
+
 def _parse_and_validate_postgres_url() -> tuple[ParseResult, str]:
     """Parse ``AGENT_BOM_POSTGRES_URL`` and reject privileged role names.
 
@@ -117,11 +136,12 @@ def _parse_and_validate_postgres_url() -> tuple[ParseResult, str]:
     url = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
     if not url:
         legacy_url = os.environ.get("AGENT_BOM_DB", "").strip()
-        if legacy_url.lower().startswith(("postgres://", "postgresql://")):
+        if legacy_url.lower().startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
             url = legacy_url
     if not url:
         raise ValueError("AGENT_BOM_POSTGRES_URL or a Postgres AGENT_BOM_DB value is required for PostgreSQL storage.")
 
+    url = _normalize_postgres_conninfo_url(url)
     parsed = urlparse(url)
     username = (parsed.username or "").strip()
     forbidden = {"postgres", "root", "admin", "superuser", "administrator"}

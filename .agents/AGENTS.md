@@ -138,11 +138,8 @@ Minimum verification matrix:
 
 ## Never
 
-- `Co-Authored-By:` an LLM (Claude, Codex, Copilot, GPT, Gemini, etc.) in
-  commits.
-- Tool-credit prefixes in PR titles, commits, or CHANGELOG entries
-  (`[claude]`, `[codex]`, `[copilot]`, `[cursor]`, etc.) — they ship into
-  GitHub release notes.
+- AI/tool co-author trailers or tool-credit prefixes in commits, PR titles, or
+  CHANGELOG entries — they ship into GitHub release notes.
 - Clutter marketing, positioning, release notes, PR titles, or benchmark claims
   with comparisons to other products — describe our own capabilities and users'
   needs. Integration code and supported-upstream docs may name a third-party
@@ -162,7 +159,7 @@ Minimum verification matrix:
   public tree (`docs/`, `docs/audits/`, `docs/archive/AUDIT*`,
   `site-docs/`, CHANGELOG, UI copy, PR titles/bodies). Keep that material
   in private notes or chat. Public docs are product evidence and operator
-  runbooks only — not Cursor/Claude/Codex review write-ups. Enforced by
+  runbooks only — not agent-session review write-ups. Enforced by
   `scripts/check_public_docs_hygiene.py`.
 
 ## Always

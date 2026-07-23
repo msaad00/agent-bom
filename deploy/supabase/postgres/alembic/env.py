@@ -6,6 +6,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from deploy.supabase.postgres.compose_migrate import _normalize_sqlalchemy_url
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -28,6 +30,7 @@ def _database_url() -> str:
     url = os.environ.get("ALEMBIC_DATABASE_URL") or os.environ.get("AGENT_BOM_POSTGRES_URL")
     if not url:
         raise RuntimeError("Set ALEMBIC_DATABASE_URL or AGENT_BOM_POSTGRES_URL before running Alembic migrations.")
+    url = _normalize_sqlalchemy_url(url)
     parts = urlsplit(url)
     if parts.password:
         return url

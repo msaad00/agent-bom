@@ -11,7 +11,7 @@ The public repo is read by strangers. These classes of material must never ship:
      readiness") and deleted strategic-audit banners.
 
 Public docs are product evidence and operator runbooks only — not
-Cursor/Claude/Codex review write-ups or commercial scorecards.
+agent-session review write-ups or commercial scorecards.
 
 Exit 0 = clean. Exit 1 = a violation. Pure stdlib so it runs anywhere in CI.
 """
@@ -180,7 +180,7 @@ def main() -> int:
             print(f"  {v}")
         print(
             "\nKeep strategy, named-prospect lists, harsh scorecards, and "
-            "Cursor/Claude persona audits in private notes — not docs/."
+            "agent-session persona audits in private notes — not docs/."
         )
         return 1
 

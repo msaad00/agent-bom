@@ -338,6 +338,11 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     assert "docker-compose.demo-override.pretracked." in workflow
     assert 'mv "$legacy_overlay" "$legacy_backup"' in workflow
     assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index("git pull --ff-only")
+    # Compose one-shot failures must expose the migration container's state and
+    # bounded logs through SSM; otherwise deployment failures are unactionable.
+    assert "compose failure status" in workflow
+    assert "migration failure logs" in workflow
+    assert "logs --no-color --tail=200 migrate" in workflow
 
     # Security gate remains platform + hosted-poc only (no demo anon flags).
     preflight_src = (root / "scripts" / "deploy" / "hosted_poc_preflight.py").read_text(encoding="utf-8")

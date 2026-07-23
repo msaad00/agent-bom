@@ -35,7 +35,9 @@ uv run pytest tests/ -x -q                         # must be green before you st
 ```
 
 That's it. `agent-bom agents` now runs from your local checkout.
-Use `uv sync --extra dev` only for a lighter core workflow; `dev-all` is the supported full-suite contributor setup.
+Use `uv sync --extra dev` for a lighter core workflow (docs, skills, small
+fixes); `dev-all` is the supported full-suite contributor setup before larger
+code PRs.
 
 ---
 

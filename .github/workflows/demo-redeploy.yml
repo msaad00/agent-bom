@@ -149,11 +149,25 @@ jobs:
             build
 
           echo "== docker compose up =="
-          docker compose \
+          if ! docker compose \
             -f deploy/docker-compose.platform.yml \
             -f deploy/docker-compose.hosted-poc.yml \
             -f deploy/docker-compose.demo-override.yml \
-            up -d
+            up -d; then
+            echo "== compose failure status ==" >&2
+            docker compose \
+              -f deploy/docker-compose.platform.yml \
+              -f deploy/docker-compose.hosted-poc.yml \
+              -f deploy/docker-compose.demo-override.yml \
+              ps -a >&2 || true
+            echo "== migration failure logs ==" >&2
+            docker compose \
+              -f deploy/docker-compose.platform.yml \
+              -f deploy/docker-compose.hosted-poc.yml \
+              -f deploy/docker-compose.demo-override.yml \
+              logs --no-color --tail=200 migrate >&2 || true
+            exit 1
+          fi
 
           # Preflight validates platform + hosted-poc only (auth-required hardening).
           # The demo-override anonymous flags are intentional for the public demo and

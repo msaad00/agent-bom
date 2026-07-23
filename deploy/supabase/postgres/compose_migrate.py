@@ -27,6 +27,14 @@ ALEMBIC_CONFIG = "deploy/supabase/postgres/alembic.ini"
 BOOTSTRAP_MARKER_TABLE = "audit_log"
 
 
+def _normalize_sqlalchemy_url(url: str) -> str:
+    """Select the shipped psycopg v3 driver for driverless Postgres URLs."""
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
+
+
 def _repo_root() -> Path:
     # Image layout: /opt/agent-bom/deploy/supabase/postgres/compose_migrate.py
     here = Path(__file__).resolve()
@@ -43,6 +51,7 @@ def _resolve_database_url() -> str:
             "error: set ALEMBIC_DATABASE_URL or AGENT_BOM_POSTGRES_URL "
             "(bootstrap/admin role) before compose migrations"
         )
+    url = _normalize_sqlalchemy_url(url)
     parts = urlsplit(url)
     if parts.password:
         return url

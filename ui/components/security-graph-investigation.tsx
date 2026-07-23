@@ -94,7 +94,7 @@ function InvestigationFlow({
     nodeCount: number;
     edgeCount: number;
     selectedNode: boolean;
-    mode: "lineage";
+    mode: "lineage" | "context";
   };
   onNodeSelect: (id: string) => void;
 }) {
@@ -119,7 +119,7 @@ function InvestigationFlow({
       fitView
       fitViewOptions={fitOptions}
       minZoom={0.2}
-      maxZoom={1.8}
+      maxZoom={2.5}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable
@@ -202,9 +202,11 @@ export function SecurityGraphInvestigation({
       nodeCount: layout.nodes.length,
       edgeCount: displayEdges.length,
       selectedNode: Boolean(selectedNodeId),
-      mode: "lineage" as const,
+      // Focused attack paths are short chains — use context framing so fitView
+      // fills the investigation canvas instead of parking a tiny path mid-pane.
+      mode: (focusMode ? "context" : "lineage") as "context" | "lineage",
     }),
-    [displayEdges.length, layout.nodes.length, selectedNodeId],
+    [displayEdges.length, focusMode, layout.nodes.length, selectedNodeId],
   );
 
   const selectedNode = useMemo(
@@ -334,16 +336,16 @@ export function SecurityGraphInvestigation({
 
       <div
         id="security-graph-investigation-canvas"
-        className="relative min-h-[28rem] bg-[color:var(--surface-muted)]"
+        className="relative min-h-[40rem] h-[min(56vh,42rem)] bg-[color:var(--surface-muted)]"
         data-testid="security-graph-investigation"
       >
         {loading ? (
-          <div className="flex h-[28rem] items-center justify-center gap-2 text-sm text-[color:var(--text-secondary)]">
+          <div className="flex h-full min-h-[40rem] items-center justify-center gap-2 text-sm text-[color:var(--text-secondary)]">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading graph evidence…
           </div>
         ) : layout.nodes.length === 0 ? (
-          <div className="flex h-[28rem] items-center justify-center px-6 text-center text-sm text-[color:var(--text-secondary)]">
+          <div className="flex h-full min-h-[40rem] items-center justify-center px-6 text-center text-sm text-[color:var(--text-secondary)]">
             No graph nodes matched this path. Run a fresh scan or clear focus to inspect the full snapshot.
           </div>
         ) : (

@@ -25,6 +25,22 @@ describe("graph viewport framing", () => {
     expect(selected.maxZoom).toBeGreaterThan(unfocused.maxZoom);
   });
 
+  it("frames small context paths as the canvas hero instead of under-zooming", () => {
+    const context = graphFitViewOptions({ nodeCount: 6, edgeCount: 5, mode: "context" });
+    const lineage = graphFitViewOptions({ nodeCount: 6, edgeCount: 5, mode: "lineage" });
+    const capture = graphFitViewOptions({
+      nodeCount: 6,
+      edgeCount: 5,
+      mode: "context",
+      captureMode: true,
+    });
+
+    expect(context.maxZoom).toBeGreaterThan(lineage.maxZoom);
+    expect(context.padding).toBeLessThanOrEqual(0.06);
+    expect(capture.maxZoom).toBeGreaterThan(context.maxZoom);
+    expect(capture.padding).toBeLessThanOrEqual(context.padding);
+  });
+
   it("hides the minimap for readable focused captures and keeps it for dense topology", () => {
     expect(shouldShowGraphMiniMap({ nodeCount: 10, edgeCount: 12 })).toBe(false);
     expect(shouldShowGraphMiniMap({ nodeCount: 24, edgeCount: 40, selectedNode: true })).toBe(false);

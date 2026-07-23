@@ -71,6 +71,7 @@ import { SecurityGraphInvestigation } from "@/components/security-graph-investig
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
   collectPathEnvironments,
   filterAttackPathsForInvestigation,
@@ -90,6 +91,7 @@ const FIX_FIRST_CARD_LIMIT = 12;
 const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 
 function SecurityGraphPageContent() {
+  const captureMode = useCaptureMode();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -604,12 +606,13 @@ function SecurityGraphPageContent() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className={captureMode ? "space-y-2" : "space-y-4"}>
       <PageLaneHeader
         lane="command"
         title="Investigation"
         subtitle="Prioritized attack paths first, with lineage, agent mesh, context, and raw topology available as lenses."
         actions={
+          captureMode ? undefined : (
           <>
             <GraphEvidenceExportButton
               scanId={selectedScanId || undefined}
@@ -630,11 +633,13 @@ function SecurityGraphPageContent() {
               <ArrowRight className="h-4 w-4" />
             </Link>
           </>
+          )
         }
       />
 
       <GraphLensSwitcher variant="compact" />
 
+      {!captureMode ? (
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -653,8 +658,9 @@ function SecurityGraphPageContent() {
           />
         </div>
       </section>
+      ) : null}
 
-      <DeployGatePanel scanId={selectedScanId || undefined} />
+      {!captureMode && <DeployGatePanel scanId={selectedScanId || undefined} />}
 
       <Collapsible
         title="Exposure paths"

@@ -2,6 +2,16 @@
 
 > Systematic OWASP LLM Top 10 + MITRE ATLAS threat assessment across your AI infrastructure.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Goal
 
 Assess your AI infrastructure against the [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/) and [MITRE ATLAS](https://atlas.mitre.org/) adversarial ML framework. Identify which threat categories apply, quantify exposure per category, and prioritize remediation.

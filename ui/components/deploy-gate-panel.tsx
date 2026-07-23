@@ -116,7 +116,7 @@ export function DeployGatePanel({ scanId }: { scanId?: string | undefined }) {
   return (
     <section
       aria-label="Should I deploy gate"
-      className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4"
+      className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

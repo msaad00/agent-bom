@@ -2,6 +2,16 @@
 
 > Run CIS AWS Foundations v3.0 checks, map controls to compliance frameworks, track posture over time, and remediate findings — using agent-bom as the assessment engine.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Architecture
 
 ```

@@ -121,6 +121,17 @@ Operational consequences:
 - Wheels build cleanly on `linux/amd64` and `linux/arm64` — no per-arch native toolchain.
 - Slower than Rust/Go scanners on huge fanouts; per-package memory is higher. For VM disk-image scanning at scale, install `syft` alongside agent-bom and let the fallback path take over.
 
+Forward-looking runtime note:
+
+- An **optional Go sidecar** for proven hot paths (high-concurrency gateway
+  relay, long-lived collectors) is an accepted direction — see
+  [ADR-009](decisions/009-python-primary-go-sidecar-later.md). It is **not**
+  required on the scan path today and is not a second product edition.
+- `sdks/go` is a **control-plane CLIENT SDK** for calling the API. It is not a
+  second runtime engine alongside the Python scanners, connectors, MCP server,
+  or proxy/gateway.
+
+
 ---
 
 ## 1c. Data Flow - one scan request

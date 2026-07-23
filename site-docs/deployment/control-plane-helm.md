@@ -111,7 +111,7 @@ By default the chart leaves `NEXT_PUBLIC_API_URL` blank in the UI pod, so the
 browser uses relative paths:
 
 - `/v1/*`
-- `/health`
+- `/healthz` (and `/health` — same JSON liveness probe)
 - `/docs`
 - `/redoc`
 - `/openapi.json`

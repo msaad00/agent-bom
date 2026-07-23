@@ -98,9 +98,12 @@ agent-bom sbom agent-bom-sbom.cdx.json -f json
 ## Release CI image scan gate
 
 After `agentbom/agent-bom:<tag>` and `agentbom/agent-bom-ui:<tag>` are pushed
-to Docker Hub, release CI pulls the published API/runtime image and runs a
-Trivy gate before minting the GitHub Release. Confirm both Hub tags exist
-before treating the release as complete (compose and Helm pin both images):
+to Docker Hub, release CI:
+
+1. Verifies the UI tag is pullable (`docker manifest inspect` in
+   `docker-publish-ui`) so compose/Helm pins cannot race a missing Hub tag
+2. Pulls the published API/runtime image and runs a Trivy gate before minting
+   the GitHub Release
 
 ```bash
 # both must resolve for the published tag
@@ -111,8 +114,8 @@ docker pull "agentbom/agent-bom-ui:${TAG}"
 | Step | Tool | Default policy |
 |---|---|---|
 | Pre-publish candidate | `agent-bom image` in `container-gate` | fail on fixable `MEDIUM+`, `.image-scan-ignore` allowlist |
+| Post-publish UI tag | `docker manifest inspect` in `docker-publish-ui` | fail if `agentbom/agent-bom-ui:<tag>` is not pullable |
 | Post-publish registry image | Trivy in `published-image-scan-gate` | fail on `CRITICAL,HIGH`, `--ignore-unfixed`, same allowlist |
-| Hub UI tag parity | manual / Hub API | `agentbom/agent-bom-ui:<tag>` must exist when chart/compose pin it |
 
 Override the published-image threshold with the repository variable
 `RELEASE_IMAGE_SCAN_FAIL_SEVERITIES` (comma-separated Trivy severities, e.g.

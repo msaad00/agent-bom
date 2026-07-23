@@ -213,6 +213,21 @@ Full connect model: docs/CLOUD_CONNECT.md
 EOF
 }
 
+compose_bin() {
+  # Prefer Compose V2 plugin; fall back to standalone docker-compose for hosts
+  # that still ship the v1 binary (without it, `docker compose -f` fails with
+  # "unknown shorthand flag: 'f'").
+  if docker compose version >/dev/null 2>&1; then
+    printf '%s\n' "docker" "compose"
+    return 0
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    printf '%s\n' "docker-compose"
+    return 0
+  fi
+  die "Docker Compose required: install the Compose V2 plugin (docker compose) or docker-compose"
+}
+
 compose_up() {
   local file="$1"
   need_cmd docker
@@ -224,9 +239,12 @@ compose_up() {
     export AGENT_BOM_DEMO_ESTATE=1
     log "Demo estate enabled (showcase graph + curated offline scan on API start)"
   fi
-  run docker compose -f "$file" up -d
+  # Intentionally unquoted: expand to `docker compose` or `docker-compose`.
+  # shellcheck disable=SC2046
+  run $(compose_bin) -f "$file" up -d
   log "Dashboard → http://localhost:3000"
   log "API docs  → http://localhost:8422/docs"
+  log "API health → http://localhost:8422/healthz"
   print_onboarding_card "http://localhost:3000" "http://localhost:8422"
 }
 

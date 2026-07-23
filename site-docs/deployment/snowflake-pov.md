@@ -92,7 +92,7 @@ kubectl -n agent-bom get pods
 kubectl -n agent-bom logs deploy/agent-bom-api --tail=100
 kubectl -n agent-bom port-forward svc/agent-bom-api 8080:8080
 
-curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/healthz
 curl -fsS http://127.0.0.1:8080/version
 curl -fsS http://127.0.0.1:8080/v1/discovery/providers
 curl -fsS http://127.0.0.1:8080/v1/auth/policy

@@ -32,7 +32,7 @@ This page is the canonical runtime surface map. The detail docs:
 | **Inter-agent firewall** | `src/agent_bom/firewall.py` | Whether agent A may delegate to agent B. Returns `allow`/`deny` for an `(source, target)` pair. |
 | **Proxy / sidecar** | `src/agent_bom/proxy.py`, `src/agent_bom/sidecar.py` | Per-method runtime policy on a single MCP server: which JSON-RPC methods are enabled, which tools are allow-listed, response-body credential redaction, approval-required gating. |
 | **MCP server** | `src/agent_bom/mcp_server.py` | Exposes agent-bom's own tools (scan, blast-radius, evidence) over MCP for Claude/Cursor to consume. *Not* a policy layer; it's a tool surface. |
-| **Sidecar injection webhook** | `src/agent_bom/sidecar_admission.py`, Helm `sidecarInjection` block | Mutates Pod specs at admission time so workloads get the proxy automatically. *Not* a runtime decision; it's a deploy-time injection path. |
+| **Sidecar injection webhook** | `src/agent_bom/sidecar_injector.py`, Helm `sidecarInjection` block | Mutates Pod specs at admission time so workloads get the proxy automatically. *Not* a runtime decision; it's a deploy-time injection path. |
 
 The first three are policy layers and run on every request. The MCP
 server is a tool publisher — it's a *target* of policy, not an

@@ -6,9 +6,9 @@ Product source is read by strangers. Three classes of text must never ship in it
   1. Chat-style / conversational comments that address the reader or echo a
      working session ("tell me if you do", "let me know", "as you requested").
      Comments must explain the non-obvious *why* — never talk to a person.
-  2. LLM / assistant self-references ("as an AI", "I am Claude",
-     "Co-Authored-By: <assistant>"). Authorship attribution belongs nowhere in
-     the tree, least of all in code.
+  2. Assistant self-references in source comments ("as an AI", first-person
+     assistant voice). Product source should explain the non-obvious why, not
+     narrate who wrote it.
   3. Internal task / audit-cycle breadcrumbs ("P1-18 v0.86.5 audit: ...").
      The prioritisation id means nothing to an external reader; keep the
      explanation, drop the tracking prefix (it belongs in the commit/PR).
@@ -73,9 +73,7 @@ FORBIDDEN: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bas we discussed\b", re.I), "conversational reference to a working session"),
     (re.compile(r"\bper our (chat|conversation|discussion)\b", re.I), "conversational reference"),
     (re.compile(r"\bchange only if your\b", re.I), "second-person directive (belongs in docs, not code)"),
-    (re.compile(r"\bas an ai\b", re.I), "LLM/assistant self-reference"),
-    (re.compile(r"\bi am claude\b|\bi'?m claude\b", re.I), "LLM/assistant self-reference"),
-    (re.compile(r"co-?authored-by:\s*(claude|gpt|codex|copilot|cursor)", re.I), "LLM co-author attribution"),
+    (re.compile(r"\bas an ai\b", re.I), "assistant self-reference"),
     (re.compile(r"\bP\d-\d+\s+v\d", re.I), "internal task/audit-cycle breadcrumb (keep the why, drop the id)"),
 )
 

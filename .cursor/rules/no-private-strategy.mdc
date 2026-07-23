@@ -13,7 +13,7 @@ From `AGENTS.md` — non-negotiable for every agent in this repo.
 - Named prospect, partner, advisor, or individual targeting notes
 - Customer or partner target lists
 - AE / commercial scorecards and “harsh re-rate” / absolute pilot-readiness tables
-- Cursor / Claude / Codex persona or codebase audit ledgers (`docs/audits/`, `docs/archive/AUDIT*`)
+- Agent-session / persona or codebase audit ledgers (`docs/audits/`, `docs/archive/AUDIT*`)
 
 ## Do instead
 

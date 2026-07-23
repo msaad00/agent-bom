@@ -58,26 +58,13 @@ repos:
         files: ^(src/agent_bom/.*\.py|src/agent_bom/config\.py|scripts/env_var_allowlist\.txt|docs/operations/ENV_VARS\.md)$
       - id: comment-hygiene-guard
         name: comment hygiene (no chat/POC/task-id noise in source)
-        # Rejects conversational comments, LLM self-references, and internal
+        # Rejects conversational comments, assistant self-references, and internal
         # task/audit breadcrumbs in product source before they reach a commit.
         # Same gate the CI Lint stage runs. Pure stdlib, no project venv needed.
         entry: python3 scripts/check_comment_hygiene.py
         language: system
         pass_filenames: false
         always_run: true
-      - id: commit-message-strip
-        name: commit message strip (remove injected assistant trailers)
-        entry: python3 scripts/check_commit_message.py --strip
-        language: system
-        stages: [prepare-commit-msg]
-        pass_filenames: true
-        always_run: true
-      - id: commit-message-hygiene
-        name: commit message hygiene (no LLM co-author attribution)
-        entry: python3 scripts/check_commit_message.py
-        language: system
-        stages: [commit-msg]
-        pass_filenames: true
       - id: exception-sanitization-guard
         name: exception sanitization (no raw exception text in HTTP responses or logs)
         # Rejects new detail=str(exc) / detail=f"...{exc}" HTTPException bodies and

@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
-  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version&cacheSeconds=300" alt="PyPI"></a>
+  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version&cacheSeconds=60" alt="PyPI"></a>
   <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
   <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
@@ -58,9 +58,9 @@ isolation.
 |---|---|---|
 | Developers / AI builders | `agent-bom scan .` | Inventory, findings, blast radius before changes ship |
 | AppSec / security eng | `agent-bom scan . -f sarif -o findings.sarif` | Reachability triage, graph paths, CI gates |
-| Platform / SRE / cloud | `agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
+| Platform / SRE / cloud | `pip install 'agent-bom[ui]' && agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
 | GRC / audit | Compliance exports + control-plane evidence | Framework mappings, signed bundles, review context |
-| AI / MCP owners | `agent-bom mcp server` or `gateway serve` | Tool inventory and allow/warn/block decisions |
+| AI / MCP owners | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` or `gateway serve` | Tool inventory and allow/warn/block decisions |
 
 Evidence helper, not a GRC system of record, IAM, SIEM, or certification program.
 Boundaries: [PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
@@ -68,7 +68,7 @@ Boundaries: [PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
 ## How the tool works
 
 1. **Scan** — CLI / CI / Docker / cloud connect → inventory, findings, SARIF/SBOM/HTML, graph
-2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres)
+2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres). Loopback is the default; non-loopback hosts need real auth or an explicit `--allow-insecure-no-auth` (env vars alone are not enough).
 3. **Runtime** — `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` → allow/warn/block on live MCP/tool calls
 
 Discovery and static/cloud scanning are read-only. The control plane stores
@@ -159,7 +159,7 @@ Pilot compose binds `127.0.0.1` with loopback CORS. Before sharing a link, use
 | Target | Start here |
 |---|---|
 | Docker Compose | [pilot compose](deploy/docker-compose.pilot.yml) |
-| Helm / Kubernetes | [chart](deploy/helm/agent-bom) |
+| Helm / Kubernetes | [chart](deploy/helm/agent-bom) — `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.97.4` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | CloudFormation | [templates](deploy/cloudformation) |
 | Snowflake SPCS | [install guide](docs/snowflake-native-app/INSTALL.md) |
@@ -175,7 +175,8 @@ Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
 | Scan repo / image / agent config | `agent-bom scan .` or [GitHub Action](https://github.com/marketplace/actions/agent-bom) | JSON, SARIF, SBOM, HTML |
 | Cloud / data estate | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
 | Team posture UI | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
-| MCP tools for agents | `agent-bom mcp server` | strict MCP tool responses |
+| MCP tools for agents | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict MCP tool responses |
+| Skills playbooks | [docs/skills/](docs/skills/) · OpenClaw / Cortex wrappers under `integrations/` | first command → findings / SBOM |
 | Runtime tool governance | `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` | allow/warn/block audit |
 | Audit package | `agent-bom scan . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, bundles |
 
@@ -230,7 +231,8 @@ verified separately. Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 
 ## Contributing
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), [.agents/AGENTS.md](.agents/AGENTS.md),
-and the [open issues](https://github.com/msaad00/agent-bom/issues).
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the
+[open issues](https://github.com/msaad00/agent-bom/issues). Community chat:
+[Discord](https://discord.gg/3YmYPqKZh5).
 
 License: Apache-2.0.

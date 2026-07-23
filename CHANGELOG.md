@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.97.5] - 2026-07-23
+
+### Fixed
+- EKS reference install path: co-located baseline `aws_readonly_policy.json`, inline scanner IAM policies, SQLAlchemy-style Postgres URL normalization, Helm writable `/tmp` and UI public seed under restricted PSA, default Kubernetes 1.32, and `abom-eks-lab-ro-*` in scanner `connect_role_arns` (#4421).
+- UI `postcss` override bumped to 8.5.12 for CVE-2026-45623 (#4420, closes #4419).
+
 ## [0.97.4] - 2026-07-22
 
 ### Fixed
@@ -2573,7 +2579,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.4...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.5...HEAD
+[0.97.5]: https://github.com/msaad00/agent-bom/compare/v0.97.4...v0.97.5
 [0.97.4]: https://github.com/msaad00/agent-bom/compare/v0.97.3...v0.97.4
 [0.97.3]: https://github.com/msaad00/agent-bom/compare/v0.97.2...v0.97.3
 [0.97.2]: https://github.com/msaad00/agent-bom/compare/v0.97.1...v0.97.2

@@ -1423,6 +1423,7 @@ async function installRoutes(page) {
     { scan_id: PREVIOUS_SCAN_ID, created_at: "2026-06-03T19:00:00Z", node_count: 22, edge_count: 25, risk_summary: { critical: 5, high: 8, medium: 6 } },
   ]));
   await page.route("**/v1/graph/views/fix-first?**", (route) => fulfill(route, fixFirstView()));
+  await page.route("**/v1/graph/presets**", (route) => fulfill(route, []));
   await page.route("**/v1/graph/rollup?**", (route) => fulfill(route, {
     scan_id: SCAN_ID,
     tenant_id: "default",
@@ -1882,7 +1883,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "context-map-live.png",
       page: "/context?capture=1",
-      scope: "Agent-scoped context map showing reachable MCP servers and lateral movement side panel",
+      scope: "Agent-scoped context map with centered lateral reachability graph (paths drawer on demand)",
     },
     {
       path: "fleet-state-live.png",
@@ -2040,18 +2041,32 @@ async function main() {
       "/context?capture=1",
       "context-map-live.png",
       async (contextPage) => {
-        await contextPage.getByText(/Lateral paths|Paths from|No lateral paths/i).first().waitFor({ state: "visible", timeout: 30_000 });
+        await contextPage.getByRole("heading", { name: "Context Map" }).waitFor({
+          state: "visible",
+          timeout: 30_000,
+        });
         const agentScope = contextPage.locator("select").first();
         if ((await agentScope.count()) > 0) {
           await agentScope.selectOption("developer-copilot");
           await contextPage.waitForTimeout(600);
         }
+        await contextPage.locator(".react-flow__node").first().waitFor({
+          state: "visible",
+          timeout: 20_000,
+        });
         await fitReactFlow(contextPage);
+        // One extra zoom for README proof — small context chains stay width-bound
+        // after fitView and read small in a tall pane without it.
+        const zoomIn = contextPage.locator(".react-flow__controls-zoomin").first();
+        if (await zoomIn.count()) {
+          await zoomIn.click({ force: true });
+          await contextPage.waitForTimeout(200);
+        }
         await scrollTo(contextPage, 0);
       },
       {
         awaitResponses: [(response) => response.url().includes("/context-graph") && response.ok()],
-        expectedText: ["Context Map", "Paths from Developer Copilot", "DEMO-VULN-21441"],
+        expectedText: ["Context Map", "DEMO-VULN-21441", "developer-copilot"],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
         minGraphNodes: 4,
         minGraphEdges: 3,

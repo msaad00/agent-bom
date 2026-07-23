@@ -21,6 +21,7 @@ import {
   Waypoints,
   ChevronDown,
   ChevronRight,
+  PanelRight,
 } from "lucide-react";
 import { api, type Agent, type JobListItem, type ScanJob } from "@/lib/api";
 import { useGraphLayout } from "@/lib/use-graph-layout";
@@ -292,6 +293,8 @@ export default function ContextPage() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
+  // Canvas is the hero — paths list opens on demand (drawer), not by default.
+  const [pathsPanelOpen, setPathsPanelOpen] = useState(false);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
@@ -395,7 +398,8 @@ export default function ContextPage() {
   }, [focusedPath, graphData, selectedAgent]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
-    dagreLr: readableLineageDagreLr(),
+    // Slightly tighter ranks so small context chains fill the centered canvas.
+    dagreLr: readableLineageDagreLr({ rankSep: 132, nodeSep: 48 }),
   });
 
   // Search highlighting
@@ -565,26 +569,19 @@ export default function ContextPage() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-base font-semibold text-[var(--foreground)] flex items-center gap-2">
-              <Waypoints className="w-4 h-4 text-orange-400" />
-              Context Map
-            </h1>
-            <p className="text-xs text-[var(--text-tertiary)]">
-              Static reachability for one agent at a time. Path focus shows the highest-risk lateral chain.
-            </p>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {/* Agent selector */}
+      {/* Compact header — filters share one row so the canvas stays hero */}
+      <div className="flex flex-col gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="shrink-0 text-sm font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+            <Waypoints className="w-3.5 h-3.5 text-orange-400" />
+            Context Map
+          </h1>
           <select
             value={selectedAgent ?? ""}
             onChange={(e) =>
               setSelectedAgent(e.target.value || null)
             }
-            className="min-w-0 max-w-[12rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-orange-600"
+            className="min-w-0 max-w-[11rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-orange-600"
           >
             <option value="">All agents</option>
             {agentNames?.map((name) => (
@@ -593,12 +590,10 @@ export default function ContextPage() {
               </option>
             ))}
           </select>
-
-          {/* Job selector */}
           <select
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
-            className="min-w-0 max-w-[14rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
+            className="min-w-0 max-w-[12rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
           >
             {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
@@ -607,21 +602,32 @@ export default function ContextPage() {
               </option>
             ))}
           </select>
-
-          {/* Search */}
-          <div className="relative w-full min-w-0 sm:max-w-[14rem]">
-            <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] absolute left-2 top-1/2 -translate-y-1/2" />
+          <div className="relative min-w-0 flex-1 sm:max-w-[12rem]">
+            <Search className="w-3 h-3 text-[var(--text-tertiary)] absolute left-2 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search agent, server, tool, CVE"
-              className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded pl-7 pr-2 py-1 text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-emerald-600"
+              placeholder="Search…"
+              className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded pl-6 pr-2 py-0.5 text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-emerald-600"
             />
           </div>
-
+          {graphData && (
+            <button
+              type="button"
+              onClick={() => setPathsPanelOpen((open) => !open)}
+              aria-pressed={pathsPanelOpen}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] transition ${
+                pathsPanelOpen
+                  ? "border-orange-500/40 bg-orange-500/10 text-orange-200"
+                  : "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-orange-500/30"
+              }`}
+            >
+              <PanelRight className="h-3 w-3" />
+              Paths
+            </button>
+          )}
           <FullscreenButton />
-          </div>
         </div>
         <GraphLensSwitcher variant="compact" legendItems={legendItems} />
       </div>
@@ -637,18 +643,18 @@ export default function ContextPage() {
 
       {/* Stats */}
       {graphData?.stats.lateral_paths_truncated && (
-        <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-[11px] text-amber-200">
+        <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[10px] text-amber-200">
           Showing a bounded set of highest-priority lateral paths for this large graph. Narrow the agent scope to inspect additional paths.
         </div>
       )}
       {graphData && <ContextStats data={graphData} compact />}
       {graphData?.completeness && !graphData.completeness.complete && (
-        <div className="mx-4 mt-3">
+        <div className="mx-3 mt-1">
           <GraphCompletenessBanner completeness={graphData.completeness} />
         </div>
       )}
 
-      {/* Main area: graph + sidebar */}
+      {/* Main area: graph + optional paths drawer */}
       <div className="flex-1 flex overflow-hidden">
         {/* Graph */}
         <div className="flex-1 flex flex-col min-h-0">
@@ -673,6 +679,16 @@ export default function ContextPage() {
               command="agent-bom scan -p . -f graph"
             />
           ) : (
+            <div className="flex h-full min-h-0 w-full items-center justify-center bg-[var(--background)]">
+              {/* Cap canvas height for small graphs so fitView fills the frame
+                  instead of parking a wide short chain in a tall empty pane. */}
+              <div
+                className={`relative w-full min-h-0 ${
+                  displayNodes.length <= 20
+                    ? "h-[min(100%,38rem)]"
+                    : "h-full"
+                }`}
+              >
             <ReactFlow
               key={captureMode ? "context-capture" : "context-interactive"}
               nodes={displayNodes}
@@ -681,7 +697,7 @@ export default function ContextPage() {
               fitView
               fitViewOptions={viewportOptions}
               minZoom={0.16}
-              maxZoom={2.5}
+              maxZoom={2.8}
               onlyRenderVisibleElements
               defaultEdgeOptions={{ type: "smoothstep" }}
               proOptions={{ hideAttribution: true }}
@@ -704,6 +720,8 @@ export default function ContextPage() {
                 />
               )}
             </ReactFlow>
+              </div>
+            </div>
           )}
 
           {selectedNode && (
@@ -716,8 +734,8 @@ export default function ContextPage() {
           </div>
         </div>
 
-        {/* Lateral movement sidebar */}
-        {graphData && (
+        {/* Lateral movement sidebar — drawer on demand */}
+        {graphData && pathsPanelOpen && (
           <LateralPanel
             paths={graphData.lateral_paths}
             risks={graphData.interaction_risks}

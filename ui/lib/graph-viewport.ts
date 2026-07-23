@@ -63,17 +63,33 @@ export function graphFitViewOptions(input: GraphViewportInput): GraphFitViewOpti
   if (input.mode === "mesh") {
     maxZoom -= 0.06;
   } else if (input.mode === "context") {
-    maxZoom -= 0.04;
+    // Context paths are short LR chains — zoom up so the cluster is the hero,
+    // not a tiny path floating in an empty dark pane.
+    maxZoom += nodeCount <= 16 ? 0.2 : 0.08;
+    padding -= nodeCount <= 16 ? 0.03 : 0.01;
   }
 
   if (input.captureMode) {
-    padding -= input.mode === "mesh" ? 0.1 : 0.02;
-    maxZoom += input.mode === "mesh" ? 0.92 : 0.1;
+    padding -= input.mode === "mesh" ? 0.1 : input.mode === "context" ? 0.04 : 0.02;
+    maxZoom += input.mode === "mesh" ? 0.92 : input.mode === "context" ? 0.22 : 0.1;
   }
 
+  const minPadding =
+    input.mode === "context"
+      ? 0.04
+      : input.captureMode && input.mode === "mesh"
+        ? 0.02
+        : 0.08;
+  const maxZoomCap =
+    input.captureMode && input.mode === "mesh"
+      ? 3
+      : input.mode === "context"
+        ? 2.6
+        : 2.25;
+
   return {
-    padding: clamp(padding, input.captureMode && input.mode === "mesh" ? 0.02 : 0.08, 0.24),
-    maxZoom: clamp(maxZoom + selectedBoost, 0.82, input.captureMode && input.mode === "mesh" ? 3 : 2.25),
+    padding: clamp(padding, minPadding, 0.24),
+    maxZoom: clamp(maxZoom + selectedBoost, 0.82, maxZoomCap),
     duration: input.captureMode ? 0 : 240,
   };
 }

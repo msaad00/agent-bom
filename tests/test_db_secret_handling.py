@@ -92,6 +92,23 @@ def test_resolve_postgres_url_strips_embedded_password(monkeypatch):
     assert postgres_common.resolve_postgres_secret() == "inline-pw"
 
 
+def test_resolve_postgres_url_accepts_sqlalchemy_psycopg_dialect(monkeypatch):
+    """Alembic-style postgresql+psycopg:// DSNs normalize to psycopg conninfo."""
+    monkeypatch.setenv(
+        "AGENT_BOM_POSTGRES_URL",
+        "postgresql+psycopg://agent_bom_app:inline-pw@postgres:5432/agent_bom?sslmode=require",
+    )
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_AUTH_MODE", raising=False)
+
+    url = postgres_common.resolve_postgres_url()
+    assert url.startswith("postgresql://")
+    assert "+psycopg" not in url
+    assert "inline-pw" not in url
+    assert url == "postgresql://agent_bom_app@postgres:5432/agent_bom?sslmode=require"
+    assert postgres_common.resolve_postgres_secret() == "inline-pw"
+
+
 def test_resolve_postgres_url_still_rejects_privileged_role(monkeypatch):
     """The privileged-role rejection is preserved by the refactor."""
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://postgres@db:5432/agent_bom")

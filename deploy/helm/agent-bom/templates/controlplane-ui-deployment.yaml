@@ -36,6 +36,18 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- include "agent-bom.controlPlaneTopologySpreadConstraints" (dict "Values" .Values "component" "ui" "Chart" .Chart "Release" .Release) | nindent 6 }}
       {{- include "agent-bom.controlPlaneAffinity" (dict "Values" .Values "component" "ui" "Chart" .Chart "Release" .Release) | nindent 6 }}
+      initContainers:
+        - name: seed-public
+          image: "{{ .Values.uiImage.repository }}:{{ .Values.uiImage.tag }}"
+          imagePullPolicy: {{ .Values.uiImage.pullPolicy }}
+          # Prefer -R over -a: restricted securityContext cannot utime on emptyDir
+          # ("cp: preserving times ... Operation not permitted") and exits 1.
+          command: ["sh", "-c", "cp -R /app/public/. /seed/"]
+          securityContext:
+            {{- toYaml (default .Values.securityContext .Values.controlPlane.ui.securityContext) | nindent 12 }}
+          volumeMounts:
+            - name: ui-public
+              mountPath: /seed
       containers:
         - name: ui
           image: "{{ .Values.uiImage.repository }}:{{ .Values.uiImage.tag }}"
@@ -53,7 +65,10 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- toYaml (default .Values.securityContext .Values.controlPlane.ui.securityContext) | nindent 12 }}
+          volumeMounts:
+            - name: ui-public
+              mountPath: /app/public
           resources:
             {{- toYaml .Values.controlPlane.ui.resources | nindent 12 }}
           livenessProbe:
@@ -62,6 +77,9 @@ spec:
             {{- toYaml .Values.controlPlane.ui.readinessProbe | nindent 12 }}
           startupProbe:
             {{- toYaml .Values.controlPlane.ui.startupProbe | nindent 12 }}
+      volumes:
+        - name: ui-public
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

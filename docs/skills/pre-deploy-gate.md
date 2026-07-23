@@ -2,6 +2,16 @@
 
 > CI/CD security gate for AI applications — block deployments with critical vulnerabilities or policy violations.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Goal
 
 Integrate agent-bom into your CI/CD pipeline to scan AI supply chain packages, container images, and MCP server configs before deployment. Fail the build on critical/high CVEs, credential exposure, CISA KEV matches, policy violations, or excessive tool agency.

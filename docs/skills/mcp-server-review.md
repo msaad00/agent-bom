@@ -2,6 +2,16 @@
 
 > Evaluate an MCP server before adopting it — registry lookup, package vulnerability scan, tool risk analysis, and trust assessment.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Goal
 
 Before adding a new MCP server to your AI agent configuration, assess its security posture: Is it in the verified registry? Do its packages have CVEs? What tools does it expose? Does it require dangerous permissions?

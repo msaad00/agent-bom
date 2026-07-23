@@ -2,6 +2,16 @@
 
 > Detect IAM created by departed employees, revoke credentials, strip permissions, quarantine — fully automated with Snowflake, EventBridge, and Lambda.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: true
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Architecture
 
 ```

@@ -2,6 +2,16 @@
 
 > Security scanner for AI infrastructure — target-scoped asset discovery, vulnerability scanning, threat mapping, and SBOM generation.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Goal
 
 Produce a target-scoped **AI infrastructure security report** — a structured inventory of AI agents, MCP servers, packages, credential references, and tools visible through the configured inputs, enriched with CVE data, blast radius analysis, OWASP LLM Top 10, and MITRE ATLAS threat mappings.

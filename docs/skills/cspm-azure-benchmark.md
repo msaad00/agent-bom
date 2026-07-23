@@ -2,6 +2,16 @@
 
 > Azure CIS Foundations v2.1 assessment with controls mapping, AI Foundry security, and posture tracking — preparation skill for when agent-bom ships native Azure CIS checks.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Architecture
 
 ```

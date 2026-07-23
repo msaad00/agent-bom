@@ -568,7 +568,7 @@ export default function ContextPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+    <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col`}>
       {/* Compact header — filters share one row so the canvas stays hero */}
       <div className="flex flex-col gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -629,10 +629,10 @@ export default function ContextPage() {
           )}
           <FullscreenButton />
         </div>
-        <GraphLensSwitcher variant="compact" legendItems={legendItems} />
+        <GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} />
       </div>
 
-      {topExposurePath && (
+      {!captureMode && topExposurePath && (
         <ExposurePathStrip
           path={topExposurePath}
           active={pathFocusEnabled}
@@ -642,13 +642,13 @@ export default function ContextPage() {
       )}
 
       {/* Stats */}
-      {graphData?.stats.lateral_paths_truncated && (
+      {!captureMode && graphData?.stats.lateral_paths_truncated && (
         <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[10px] text-amber-200">
           Showing a bounded set of highest-priority lateral paths for this large graph. Narrow the agent scope to inspect additional paths.
         </div>
       )}
-      {graphData && <ContextStats data={graphData} compact />}
-      {graphData?.completeness && !graphData.completeness.complete && (
+      {!captureMode && graphData && <ContextStats data={graphData} compact />}
+      {!captureMode && graphData?.completeness && !graphData.completeness.complete && (
         <div className="mx-3 mt-1">
           <GraphCompletenessBanner completeness={graphData.completeness} />
         </div>
@@ -710,7 +710,7 @@ export default function ContextPage() {
               }}
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-              <Controls className={CONTROLS_CLASS} />
+              {!captureMode && <Controls className={CONTROLS_CLASS} />}
               {showMiniMap && (
                 <MiniMap
                   nodeColor={minimapNodeColor}

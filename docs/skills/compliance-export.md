@@ -2,6 +2,16 @@
 
 > Generate audit-ready AI-BOM documents in CycloneDX, SPDX, and SARIF with OWASP LLM Top 10 + MITRE ATLAS coverage matrix.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: true
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Goal
 
 Produce compliance-ready artifacts for auditors, regulators, and security teams: standardized SBOM formats (CycloneDX 1.7, SPDX 3.0), SARIF for GitHub Security, threat framework coverage reports, and an interactive HTML dashboard.

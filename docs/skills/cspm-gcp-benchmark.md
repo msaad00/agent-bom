@@ -2,6 +2,16 @@
 
 > GCP CIS Foundations v3.0 assessment with controls mapping, Vertex AI security, and posture tracking — preparation skill for when agent-bom ships native GCP CIS checks.
 
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: true
+  shell_exec: true
+```
+
 ## Architecture
 
 ```

@@ -299,6 +299,12 @@ export default function ContextPage() {
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
 
+  useEffect(() => {
+    if (captureMode) {
+      setPathFocusEnabled(false);
+    }
+  }, [captureMode]);
+
   // Load completed jobs
   useEffect(() => {
     api

@@ -84,16 +84,19 @@ boundary.
 
 ## Graph lenses
 
-Shipped graph surfaces for lineage, agent mesh, and filtered attack-path
-drilldowns — not a dense dashboard collage.
+Three graph lenses tell different stories: package-level lineage, multi-agent
+mesh overlap, and lateral context — not three copies of the same CVE chain.
 
-| Lineage (filtered path) | Agent mesh |
+| Lineage (package hop) | Agent mesh (shared MCP) |
 |:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Filtered attack-path lineage across agent, MCP, package, and finding nodes" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Focused agent mesh across agent, MCP server, package, and finding" width="430" /> |
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Lineage graph focused on developer-copilot, GitHub MCP, next package version, and DEMO-VULN finding with labeled edges" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh showing developer-copilot and sre-runbook-agent converging on shared filesystem MCP with relationship labels" width="430" /> |
+| *Investigation drilldown: agent → MCP → `next@` → critical finding.* | *Two agents, one shared server — tools and credentials in the same frame.* |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="Agent-scoped context map with reachable MCP servers and lateral movement" width="820" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="Context map with path focus off: repo-write tool, GitHub credential, MCP servers, and agent lateral links" width="820" />
 </p>
+
+<p align="center"><em>Context map: neighborhood topology (tools, creds, servers) — not the same hero CVE strip as lineage.</em></p>
 
 <details>
 <summary><b>Investigation capture</b> — prioritized path with export/handoff chrome</summary>

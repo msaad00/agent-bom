@@ -1,6 +1,6 @@
 {
   "release_version": "0.97.4",
-  "captured_at": "2026-07-23T02:07:31.947Z",
+  "captured_at": "2026-07-23T02:40:45.203Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
     {
@@ -30,7 +30,7 @@
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
-      "scope": "Focused agent mesh graph across the active agent, MCP server, package, and CVE path",
+      "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
       "visible_version": "0.97.4"
     },
     {
@@ -54,7 +54,7 @@
     {
       "path": "context-map-live.png",
       "page": "/context?capture=1",
-      "scope": "Agent-scoped context map with centered lateral reachability graph (paths drawer on demand)",
+      "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
       "visible_version": "0.97.4"
     },
     {

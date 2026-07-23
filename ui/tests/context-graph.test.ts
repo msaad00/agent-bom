@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildContextFlowGraph, displayContextDescription, topLateralPathForAgent, type ContextGraphData, type LateralPath } from "@/lib/context-graph";
 import { RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
+import { relationshipEdgeLabelText } from "@/lib/graph-utils";
 
 describe("buildContextFlowGraph", () => {
   it("prefers canonical entity and relationship fields when present", () => {
@@ -125,4 +126,40 @@ describe("buildContextFlowGraph", () => {
       "vuln:critical",
     ]);
   });
+  it("labels edges with human relationship names for readability", () => {
+    const data: ContextGraphData = {
+      nodes: [
+        { id: "agent:desktop", kind: "agent", label: "desktop", metadata: {} },
+        { id: "server:chat", kind: "server", label: "chat", metadata: {} },
+      ],
+      edges: [
+        {
+          source: "agent:desktop",
+          target: "server:chat",
+          kind: "uses",
+          relationship: "uses",
+          weight: 1,
+          metadata: {},
+        },
+      ],
+      lateral_paths: [],
+      interaction_risks: [],
+      stats: {
+        total_nodes: 2,
+        total_edges: 1,
+        agent_count: 1,
+        shared_server_count: 0,
+        shared_credential_count: 0,
+        lateral_path_count: 0,
+        max_lateral_depth: 0,
+        highest_path_risk: 0,
+        interaction_risk_count: 0,
+      },
+    };
+
+    const graph = buildContextFlowGraph(data);
+    expect(graph.edges[0]?.label).toBe(relationshipEdgeLabelText("uses"));
+    expect(graph.edges[0]?.labelShowBg).toBe(true);
+  });
+
 });

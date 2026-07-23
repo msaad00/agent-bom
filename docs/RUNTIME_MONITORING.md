@@ -101,6 +101,7 @@ spec:
         - name: agent-bom-proxy
           image: agentbom/agent-bom:0.97.4
           args:
+            - "proxy"
             - "--log"
             - "/var/log/agent-bom/audit.jsonl"
             - "--block-undeclared"
@@ -167,6 +168,13 @@ All tool calls are allowed through. Every invocation is recorded in the JSONL au
 
 ```bash
 agent-bom proxy --no-isolate --log audit.jsonl -- npx @mcp/server-filesystem /workspace
+```
+
+Hermetic smoke without npm (uses the bundled JSON-RPC fixture; invoke via
+module name — do not pass an absolute venv `python` path to the proxy):
+
+```bash
+agent-bom proxy --no-isolate --log audit.jsonl -- python3 -m agent_bom.runtime_smoke_mcp
 ```
 
 For Claude Desktop, Claude Code, and Cortex JSON configs, you can auto-wrap eligible stdio servers:

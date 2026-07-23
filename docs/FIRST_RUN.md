@@ -187,7 +187,8 @@ fleet collector, SIEM export, or manually curated source of truth.
 ```
 
 Proves install → offline demo scan → CSV export. Optional API health when
-`AGENT_BOM_RELEASE_SMOKE_API_URL` is set.
+`AGENT_BOM_RELEASE_SMOKE_API_URL` is set (probes `${URL}/healthz` for JSON
+liveness; `/health` is the same probe).
 Add `--inventory-only` when that file is the complete evidence boundary and
 you do not want project, cwd, skill, model, dataset, or secret auto-discovery
 merged into the result.

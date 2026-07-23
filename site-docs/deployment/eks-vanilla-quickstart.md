@@ -90,13 +90,13 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 ```bash
 kubectl get ingress -n agent-bom
-curl -fsS https://agent-bom.internal.example.com/health
+curl -fsS https://agent-bom.internal.example.com/healthz
 curl -fsS https://agent-bom.internal.example.com/readyz
 helm test agent-bom -n agent-bom
 ```
 
-The API uses `/health` for liveness and `/readyz` for dependency readiness.
-Gateway and sidecar runtime surfaces use `/healthz`.
+The API uses `/healthz` (JSON liveness; `/health` is the same probe) and `/readyz` for dependency readiness.
+Gateway and sidecar runtime surfaces also use `/healthz`.
 
 ## NetworkPolicy Note
 

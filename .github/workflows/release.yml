@@ -664,6 +664,24 @@ jobs:
           subject-digest: ${{ steps.build-ui-image.outputs.digest }}
           push-to-registry: true
 
+      - name: Verify UI image tag on Docker Hub
+        # Compose/Helm pin agentbom/agent-bom-ui:<tag>. Fail closed if Hub has
+        # not exposed the tag after push (API image already has a pull/scan gate).
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          IMAGE="agentbom/agent-bom-ui:${VERSION}"
+          for attempt in 1 2 3 4 5 6; do
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "OK: ${IMAGE} is pullable from the registry"
+              exit 0
+            fi
+            echo "Waiting for Hub to expose ${IMAGE} (attempt ${attempt}/6)…"
+            sleep 20
+          done
+          echo "::error::${IMAGE} was not pullable after publish — refuse to treat the release as complete"
+          exit 1
+
   published-image-scan-gate:
     name: Published image scan gate
     needs: docker-publish

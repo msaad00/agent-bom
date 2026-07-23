@@ -332,6 +332,12 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     # Empty findings spine is a demo outage — redeploy must fail closed on it.
     assert "demo estate smoke" in workflow
     assert "/v1/findings?limit=1" in workflow
+    # v0.97.4 made the demo overlay tracked. The VM's older untracked copy must
+    # be preserved outside the checkout path before git pull can fast-forward.
+    assert 'git ls-files --error-unmatch "$legacy_overlay"' in workflow
+    assert "docker-compose.demo-override.pretracked." in workflow
+    assert 'mv "$legacy_overlay" "$legacy_backup"' in workflow
+    assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index("git pull --ff-only")
 
     # Security gate remains platform + hosted-poc only (no demo anon flags).
     preflight_src = (root / "scripts" / "deploy" / "hosted_poc_preflight.py").read_text(encoding="utf-8")

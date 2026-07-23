@@ -123,6 +123,18 @@ jobs:
             set +a
           fi
 
+          # Before v0.97.4 the public-demo overlay was VM-local. Preserve that
+          # untracked file before pulling the now-canonical tracked overlay;
+          # otherwise git correctly refuses to overwrite it and the release
+          # cannot reach the compose/preflight/smoke gates.
+          legacy_overlay="deploy/docker-compose.demo-override.yml"
+          if [ -f "$legacy_overlay" ] && \
+             ! git ls-files --error-unmatch "$legacy_overlay" >/dev/null 2>&1; then
+            legacy_backup="deploy/secrets/docker-compose.demo-override.pretracked.$(date -u +%Y%m%dT%H%M%SZ).yml"
+            echo "Preserving legacy demo overlay at $legacy_backup"
+            mv "$legacy_overlay" "$legacy_backup"
+          fi
+
           echo "== git pull =="
           git pull --ff-only
 

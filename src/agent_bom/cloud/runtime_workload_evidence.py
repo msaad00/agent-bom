@@ -48,6 +48,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from agent_bom.canonical_ids import canonical_id
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -620,11 +621,7 @@ def _resolve_finding_workload(row: Mapping[str, Any]) -> tuple[str, str, str] | 
     asset = row.get("asset")
     if isinstance(asset, Mapping):
         provider = provider or str(asset.get("provider") or "").strip().lower()
-        account = (
-            account
-            or _account_from_ref(str(asset.get("account_ref") or ""))
-            or str(asset.get("account_id") or "").strip()
-        )
+        account = account or _account_from_ref(str(asset.get("account_ref") or "")) or str(asset.get("account_id") or "").strip()
         if not workload_ref:
             workload_ref = str(asset.get("identifier") or asset.get("resource_id") or "").strip()
             if not workload_ref:
@@ -635,15 +632,9 @@ def _resolve_finding_workload(row: Mapping[str, Any]) -> tuple[str, str, str] | 
     evidence = row.get("evidence")
     if isinstance(evidence, Mapping):
         provider = provider or str(evidence.get("provider") or "").strip().lower()
-        account = (
-            account
-            or _account_from_ref(str(evidence.get("account_ref") or ""))
-            or str(evidence.get("account_id") or "").strip()
-        )
+        account = account or _account_from_ref(str(evidence.get("account_ref") or "")) or str(evidence.get("account_id") or "").strip()
         if not workload_ref:
-            workload_ref = str(
-                evidence.get("resource_id") or evidence.get("target_id") or evidence.get("workload_ref") or ""
-            ).strip()
+            workload_ref = str(evidence.get("resource_id") or evidence.get("target_id") or evidence.get("workload_ref") or "").strip()
 
     if provider and account and workload_ref:
         return provider, account, workload_ref
@@ -714,13 +705,23 @@ def optional_runtime_workload_evidence_index(
     no-signal rows for tenants that never opted into runtime ingest.
     """
     active_tenant = (tenant_id or os.getenv("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
-    active_store = store
-    if active_store is None:
-        from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+    try:
+        active_store = store
+        if active_store is None:
+            from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
 
-        active_store = get_runtime_workload_evidence_store()
-    index = RuntimeWorkloadEvidenceIndex.from_store(active_store, active_tenant)
-    return None if index.is_empty() else index
+            active_store = get_runtime_workload_evidence_store()
+        index = RuntimeWorkloadEvidenceIndex.from_store(active_store, active_tenant)
+        return None if index.is_empty() else index
+    except Exception as exc:  # noqa: BLE001 - enrichment is explicitly optional
+        # Runtime evidence is additive. A backend outage must not suppress the
+        # primary scan findings or make JSON/SARIF/HTML export fail. Ingest and
+        # durable writes remain fail-closed in their own paths.
+        logger.warning(
+            "optional runtime workload evidence enrichment unavailable: %s",
+            sanitize_text(exc),
+        )
+        return None
 
 
 def _node_attributes(node: Any) -> dict[str, Any] | None:

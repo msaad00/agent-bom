@@ -64,11 +64,7 @@ def test_json_sarif_html_carry_preattached_workload_runtime_evidence() -> None:
     assert exported["workload_runtime_evidence"]["clean_workload_assertion"] is False
 
     sarif = to_sarif(report)
-    props = next(
-        result["properties"]
-        for result in sarif["runs"][0]["results"]
-        if result["properties"].get("workload_runtime_evidence")
-    )
+    props = next(result["properties"] for result in sarif["runs"][0]["results"] if result["properties"].get("workload_runtime_evidence"))
     assert props["workload_runtime_evidence"]["state"] == STATE_HAS_IOC
     assert props["workload_runtime_evidence"]["clean_workload_assertion"] is False
 
@@ -121,6 +117,26 @@ def test_export_enrichment_from_store_marks_no_signal_honestly(monkeypatch) -> N
 
         html = to_html(report)
         assert "No runtime signal" in html
+    finally:
+        set_runtime_workload_evidence_store(None)
+
+
+def test_optional_enrichment_failure_does_not_suppress_core_findings(caplog) -> None:
+    class UnavailableStore:
+        def list_for_tenant(self, tenant_id: str, *, limit: int = 5000):
+            del tenant_id, limit
+            raise RuntimeError("postgresql://agent_bom_app:secret-value@db.internal/agent_bom unavailable")
+
+    set_runtime_workload_evidence_store(UnavailableStore())  # type: ignore[arg-type]
+    try:
+        finding = _workload_finding()
+        report = AIBOMReport(generated_at=datetime.now(timezone.utc), tool_version="0.0.0", findings=[finding])
+
+        payload = to_json(report)
+
+        assert any(row["id"] == finding.id for row in payload["findings"])
+        assert "optional runtime workload evidence enrichment unavailable" in caplog.text
+        assert "secret-value" not in caplog.text
     finally:
         set_runtime_workload_evidence_store(None)
 

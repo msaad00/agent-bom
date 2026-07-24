@@ -64,14 +64,12 @@ def test_every_postgres_store_guards_runtime_schema_ddl() -> None:
         ROOT / "src" / "agent_bom" / "api" / name
         for name in ("idempotency_store.py", "middleware.py", "proxy_replay_store.py", "shared_auth_state.py")
     )
+    runtime_schema_files.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
     for path in sorted(runtime_schema_files):
         for line_number, line in enumerate(path.read_text().splitlines(), start=1):
             if "ensure_postgres_schema_version(" not in line or line.lstrip().startswith("def "):
                 continue
-            if not any(
-                guard in line
-                for guard in ("if not ensure_postgres_schema_version(", "if ensure_postgres_schema_version(")
-            ):
+            if not any(guard in line for guard in ("if not ensure_postgres_schema_version(", "if ensure_postgres_schema_version(")):
                 offenders.append(f"{path.relative_to(ROOT)}:{line_number}")
 
     assert offenders == []
@@ -112,6 +110,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
             "shared_auth_state.py",
         )
     )
+    runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
     runtime_source = "\n".join(path.read_text() for path in runtime_paths)
     migration_sql = (ROOT / "deploy" / "supabase" / "postgres" / "runtime-schema.sql").read_text()
     baseline_sql = (ROOT / "deploy" / "supabase" / "postgres" / "init.sql").read_text()

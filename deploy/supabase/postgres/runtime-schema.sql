@@ -63,6 +63,24 @@ CREATE TABLE IF NOT EXISTS runtime_observations (tenant_id TEXT NOT NULL, observ
 CREATE TABLE IF NOT EXISTS runtime_sessions (tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, last_seen TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(tenant_id,session_id));
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_tenant_session_time ON runtime_observations(tenant_id,session_id,observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runtime_sessions_tenant_last_seen ON runtime_sessions(tenant_id,last_seen DESC);
+CREATE TABLE IF NOT EXISTS runtime_workload_evidence (
+  tenant_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  workload_ref TEXT NOT NULL,
+  dedup_key TEXT NOT NULL,
+  workload_id TEXT NOT NULL,
+  signal_type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY(tenant_id,provider,account_id,workload_ref,dedup_key)
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_workload_evidence_tenant_observed_dedup
+  ON runtime_workload_evidence(tenant_id,observed_at DESC,dedup_key DESC);
+DROP INDEX IF EXISTS idx_runtime_workload_evidence_tenant_time;
 
 CREATE TABLE IF NOT EXISTS scim_users (tenant_id TEXT NOT NULL,user_id TEXT NOT NULL,external_id TEXT,user_name TEXT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),data JSONB NOT NULL,PRIMARY KEY(tenant_id,user_id));
 CREATE TABLE IF NOT EXISTS scim_groups (tenant_id TEXT NOT NULL,group_id TEXT NOT NULL,external_id TEXT,display_name TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),data JSONB NOT NULL,PRIMARY KEY(tenant_id,group_id));
@@ -142,7 +160,7 @@ DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'access_review_campaigns','access_review_items','agent_identities','agent_identity_jit_grants','agent_conditional_access_policies',
-    'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','scim_users','scim_groups',
+    'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','runtime_workload_evidence','scim_users','scim_groups',
     'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides',
     'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections',
     'control_plane_sources','credential_refs','audit_chain_checkpoint','compliance_hub_findings','hub_findings_current',
@@ -171,7 +189,7 @@ INSERT INTO control_plane_schema_versions(component,version,updated_at)
 SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
- 'agent_identities','runtime_events','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
+ 'agent_identities','runtime_events','runtime_workload_evidence','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
  'shared_auth_state','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config'
 ]) component
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;

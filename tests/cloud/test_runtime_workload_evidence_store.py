@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import sqlite3
 import uuid
 
 import pytest
@@ -75,6 +76,12 @@ def test_sqlite_persists_across_reopen(tmp_path):
     assert len(rows) == 1
     assert rows[0].workload_ref == "i-0abc"
     assert rows[0].source_kind == "edr"
+    with sqlite3.connect(path) as connection:
+        marker = connection.execute(
+            "SELECT version FROM control_plane_schema_versions WHERE component = ?",
+            ("runtime_workload_evidence",),
+        ).fetchone()
+    assert marker == (1,)
 
 
 def test_sqlite_cross_tenant_same_dedup_key_both_persist_no_leak(tmp_path):

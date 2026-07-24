@@ -923,7 +923,10 @@ jobs:
       # RLS implicitly even when FORCE ROW LEVEL SECURITY is set on the
       # table, which would silently mask any RLS regression and is not how
       # production runs. The role is created in the setup step below.
-      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:apppass@127.0.0.1:5432/agentbom_test
+      # Mirror Compose: the URL contains no password; the app reads it from a
+      # mounted file through the shared Postgres connection factory.
+      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app@127.0.0.1:5432/agentbom_test
+      AGENT_BOM_POSTGRES_PASSWORD_FILE: /tmp/agent-bom-postgres-app-password
       AGENT_BOM_POSTGRES_POOL_MIN_SIZE: "1"
       AGENT_BOM_POSTGRES_POOL_MAX_SIZE: "4"
       AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS: "5"
@@ -937,6 +940,11 @@ jobs:
 
       - name: Install Postgres test dependencies
         run: uv sync --frozen --extra dev --extra api --extra postgres
+
+      - name: Write app-role password file
+        run: |
+          install -m 0600 /dev/null "${AGENT_BOM_POSTGRES_PASSWORD_FILE}"
+          printf '%s' 'apppass' > "${AGENT_BOM_POSTGRES_PASSWORD_FILE}"
 
       - name: Install Postgres client
         run: |
@@ -991,10 +999,8 @@ jobs:
       - name: Provision non-superuser application role
         run: |
           set -euo pipefail
-          # The role is intentionally NOSUPERUSER NOBYPASSRLS so RLS policies
-          # actually apply to it. Granting CREATE on the public schema lets the
-          # storage layer's _ensure_tenant_rls() create and own its tables, so
-          # ALTER TABLE ... FORCE ROW LEVEL SECURITY succeeds.
+          # The role is intentionally DML-only, NOSUPERUSER, and NOBYPASSRLS,
+          # matching Compose. Migrations own every table, policy, and index.
           psql -h 127.0.0.1 -U postgres -d agentbom_test <<'SQL'
           DO $$
           BEGIN
@@ -1004,9 +1010,12 @@ jobs:
           END
           $$;
           GRANT CONNECT ON DATABASE agentbom_test TO agent_bom_app;
-          GRANT USAGE, CREATE ON SCHEMA public TO agent_bom_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO agent_bom_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO agent_bom_app;
+          GRANT USAGE ON SCHEMA public TO agent_bom_app;
+          REVOKE CREATE ON SCHEMA public FROM agent_bom_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO agent_bom_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT USAGE, SELECT ON SEQUENCES TO agent_bom_app;
           SQL
 
       - name: Migrate the integration test database

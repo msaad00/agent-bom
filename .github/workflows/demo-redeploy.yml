@@ -12,15 +12,17 @@ name: Demo redeploy
 # vars/secrets documented in docs/HOSTED_POC.md → "Demo redeploy".
 
 on:
-  # Primary trigger: workflow_run fires even when Release publishes with the
-  # default GITHUB_TOKEN (which suppresses `release: published` workflow starts).
+  # Deploy only after the Release workflow succeeds. A direct release trigger
+  # can race the still-running release and would duplicate the deployment.
   workflow_run:
     workflows: ["Release"]
     types: [completed]
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
+      release_ref:
+        description: "Exact main-ancestor tag or commit to deploy (defaults to current main SHA)"
+        type: string
+        required: false
       reset_demo:
         description: "Reset the demo tenant state after the redeploy"
         type: boolean
@@ -36,10 +38,9 @@ concurrency:
 jobs:
   redeploy:
     name: Redeploy hosted demo via SSM
-    # Skip failed Release runs; keep release + manual dispatch always eligible.
+    # Skip failed Release runs; keep protected manual dispatch eligible.
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'release' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -89,20 +90,32 @@ jobs:
           DEMO_INSTANCE_ID: ${{ vars.DEMO_INSTANCE_ID }}
           DEMO_DEPLOY_DIR: ${{ vars.DEMO_DEPLOY_DIR || '/opt/agent-bom' }}
           RESET_DEMO: ${{ inputs.reset_demo || 'false' }}
-          RELEASE_REF: ${{ github.event.release.tag_name || github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_REF: ${{ inputs.release_ref || github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
 
+          case "${RELEASE_REF}" in
+            ''|*[!A-Za-z0-9._/-]*)
+              echo "::error::release_ref must be a tag or commit containing only letters, numbers, '.', '_', '/', or '-'."
+              exit 1
+              ;;
+          esac
+
+          deploy_dir_b64=$(printf '%s' "${DEMO_DEPLOY_DIR}" | base64 -w0)
+          reset_demo_b64=$(printf '%s' "${RESET_DEMO}" | base64 -w0)
+          release_ref_b64=$(printf '%s' "${RELEASE_REF}" | base64 -w0)
+
           # Build the remote script with a quoted heredoc so the runner does
-          # NOT expand any of the VM-side shell variables, then splice in only
-          # the two runner-provided values via sed.
+          # NOT expand any of the VM-side shell variables. Only base64-encoded,
+          # validated runner values are spliced into the script.
           cat > remote.sh <<'REMOTE'
           # SSM AWS-RunShellScript executes this under /bin/sh (dash on Ubuntu),
           # which has no `pipefail` — use POSIX-safe `set -eu` so the script does
           # not abort at line 1 with "Illegal option -o pipefail".
           set -eu
-          DEPLOY_DIR="__DEPLOY_DIR__"
-          RESET_DEMO="__RESET_DEMO__"
+          DEPLOY_DIR=$(printf '%s' '__DEPLOY_DIR_B64__' | base64 -d)
+          RESET_DEMO=$(printf '%s' '__RESET_DEMO_B64__' | base64 -d)
+          RELEASE_REF=$(printf '%s' '__RELEASE_REF_B64__' | base64 -d)
           # Fail loud when vars.DEMO_DEPLOY_DIR does not match the VM checkout
           # (bare `cd` under dash only prints "can't cd", which hid past failures).
           if [ ! -d "$DEPLOY_DIR/.git" ]; then
@@ -112,6 +125,21 @@ jobs:
             exit 1
           fi
           cd "$DEPLOY_DIR"
+
+          compose() {
+            docker compose \
+              -f deploy/docker-compose.platform.yml \
+              -f deploy/docker-compose.hosted-poc.yml \
+              -f deploy/docker-compose.demo-override.yml "$@"
+          }
+
+          emit_sanitized_logs() {
+            echo "== bounded sanitized API/migration logs ==" >&2
+            compose logs --no-color --tail=120 api migrate 2>&1 \
+              | PYTHONPATH="$DEPLOY_DIR/src" python3 -c \
+                  'import sys; from agent_bom.security import sanitize_text; [print(sanitize_text(line, max_len=500)) for line in sys.stdin]' \
+              | tail -c 24000 >&2 || true
+          }
 
           # Optional on-VM env file carries the non-secret URL wiring the
           # preflight requires (NEXT_PUBLIC_API_URL, CORS_ORIGINS) plus the
@@ -124,7 +152,7 @@ jobs:
           fi
 
           # Before v0.97.4 the public-demo overlay was VM-local. Preserve that
-          # untracked file before pulling the now-canonical tracked overlay;
+          # untracked file before checking out the now-canonical tracked overlay;
           # otherwise git correctly refuses to overwrite it and the release
           # cannot reach the compose/preflight/smoke gates.
           legacy_overlay="deploy/docker-compose.demo-override.yml"
@@ -135,45 +163,43 @@ jobs:
             mv "$legacy_overlay" "$legacy_backup"
           fi
 
-          echo "== git pull =="
-          git pull --ff-only
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "ERROR: tracked files are modified in $DEPLOY_DIR; refusing an ambiguous deployment." >&2
+            exit 1
+          fi
+
+          PREVIOUS_COMMIT=$(git rev-parse HEAD)
+          echo "== resolve exact release ref =="
+          git fetch --prune --tags origin main
+          TARGET_COMMIT=$(git rev-parse --verify "${RELEASE_REF}^{commit}")
+          if ! git merge-base --is-ancestor "$TARGET_COMMIT" origin/main; then
+            echo "ERROR: requested release ref is not an ancestor of origin/main." >&2
+            exit 1
+          fi
+          git checkout --detach "$TARGET_COMMIT"
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+          echo "Previous commit: $PREVIOUS_COMMIT"
+          echo "Target commit:   $TARGET_COMMIT"
+
+          # Preflight validates platform + hosted-poc only (auth-required
+          # hardening). Run it before the build/promotion boundary.
+          echo "== preflight (fail-closed) =="
+          python3 scripts/deploy/hosted_poc_preflight.py --write-secret
 
           # Build images first while the previous stack keeps serving, then
           # restart containers briefly — avoids a long Cloudflare 502 window
           # during `up -d --build`.
           echo "== docker compose build =="
-          docker compose \
-            -f deploy/docker-compose.platform.yml \
-            -f deploy/docker-compose.hosted-poc.yml \
-            -f deploy/docker-compose.demo-override.yml \
-            build
+          compose build
 
-          echo "== docker compose up =="
-          if ! docker compose \
-            -f deploy/docker-compose.platform.yml \
-            -f deploy/docker-compose.hosted-poc.yml \
-            -f deploy/docker-compose.demo-override.yml \
-            up -d; then
+          echo "== docker compose up (in-place promotion boundary) =="
+          if ! compose up -d; then
             echo "== compose failure status ==" >&2
-            docker compose \
-              -f deploy/docker-compose.platform.yml \
-              -f deploy/docker-compose.hosted-poc.yml \
-              -f deploy/docker-compose.demo-override.yml \
-              ps -a >&2 || true
-            echo "== migration failure logs ==" >&2
-            docker compose \
-              -f deploy/docker-compose.platform.yml \
-              -f deploy/docker-compose.hosted-poc.yml \
-              -f deploy/docker-compose.demo-override.yml \
-              logs --no-color --tail=200 migrate >&2 || true
+            compose ps -a >&2 || true
+            emit_sanitized_logs
+            echo "Deployment failed during in-place replacement; automatic rollback was not attempted." >&2
             exit 1
           fi
-
-          # Preflight validates platform + hosted-poc only (auth-required hardening).
-          # The demo-override anonymous flags are intentional for the public demo and
-          # must not be part of that security gate.
-          echo "== preflight (fail-closed) =="
-          python3 scripts/deploy/hosted_poc_preflight.py --write-secret
 
           echo "== smoke =="
           scripts/deploy/hosted_poc_smoke.sh
@@ -190,8 +216,9 @@ jobs:
             | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("total") or 0))')
           if [ "$findings_total" -lt 1 ]; then
             echo "ERROR: demo estate has zero findings (total=${findings_total})." >&2
-            echo "Bootstrap did not seed a usable scan job — check API logs for" >&2
-            echo "'demo estate scan bootstrap failed' and AGENT_BOM_DEMO_ESTATE=1." >&2
+            emit_sanitized_logs
+            echo "Validation failed after in-place container replacement; target may be serving." >&2
+            echo "Automatic rollback was not attempted because the migration may not be reversible." >&2
             exit 1
           fi
           echo "Demo estate findings total=${findings_total}"
@@ -207,8 +234,9 @@ jobs:
           echo "== redeploy complete =="
           REMOTE
 
-          sed -i "s#__DEPLOY_DIR__#${DEMO_DEPLOY_DIR}#g" remote.sh
-          sed -i "s#__RESET_DEMO__#${RESET_DEMO}#g" remote.sh
+          sed -i "s#__DEPLOY_DIR_B64__#${deploy_dir_b64}#g" remote.sh
+          sed -i "s#__RESET_DEMO_B64__#${reset_demo_b64}#g" remote.sh
+          sed -i "s#__RELEASE_REF_B64__#${release_ref_b64}#g" remote.sh
 
           # SSM `commands` is a JSON array; pass the whole script as one element.
           jq -n --rawfile script remote.sh '{commands: [$script]}' > params.json
@@ -250,7 +278,7 @@ jobs:
             --query "StandardErrorContent" --output text >&2 || true
 
           if [ "${status}" != "Success" ]; then
-            echo "::error::Hosted demo redeploy failed on the VM (SSM status: ${status}). Preflight/smoke or compose did not pass — the demo was NOT promoted."
+            echo "::error::Hosted demo redeploy failed on the VM (SSM status: ${status}). If compose up started, the target may be serving; inspect the sanitized diagnostics."
             exit 1
           fi
           echo "Hosted demo redeploy succeeded."

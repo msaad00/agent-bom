@@ -71,6 +71,28 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert any(item.job_id == job_id for item in results)
 
 
+def test_demo_estate_bootstrap_uses_secret_aware_migrated_postgres(monkeypatch):
+    """Compose's password-free app DSN must still persist demo findings."""
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.stores import set_job_store
+    from agent_bom.cloud.runtime_workload_evidence_store import reset_runtime_workload_evidence_store
+    from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE_FORCE", "1")
+    store = PostgresJobStore()
+    set_job_store(store)
+    reset_runtime_workload_evidence_store()
+
+    summary = maybe_bootstrap_demo_estate()
+
+    assert summary.get("scan_error") is not True
+    assert summary.get("seeded") is True
+    assert int(summary.get("findings") or 0) > 0
+    jobs = store.list_all(tenant_id="default")
+    assert any(job.job_id == summary["job_id"] and job.result and job.result.get("findings") for job in jobs)
+
+
 def test_budget_pk_migration_targets_visible_relation_across_search_path():
     """The inspected and altered table must be the same visible relation."""
     import psycopg
@@ -335,9 +357,7 @@ def test_postgres_graph_build_workspace_rls_blocks_cross_tenant_raw_select():
     finally:
         reset_current_tenant(token_b)
 
-    assert cross_tenant_rows == [], (
-        "graph_build_workspace_nodes RLS leaked tenant A data into a session bound to tenant B"
-    )
+    assert cross_tenant_rows == [], "graph_build_workspace_nodes RLS leaked tenant A data into a session bound to tenant B"
 
     # Cleanup under tenant A (and edges table is unused here).
     token_a = set_current_tenant(tenant_a)

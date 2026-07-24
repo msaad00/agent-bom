@@ -1,0 +1,29 @@
+{
+  "date": "2026-07-23",
+  "baseline_p95_at_500": 2547.357,
+  "tuned_p95_at_500": 2572.27,
+  "baseline_peak_rss_mb_at_500": 107.656,
+  "tuned_peak_rss_mb_at_500": 107.078,
+  "baseline_error_rate_at_500": 0.0,
+  "tuned_error_rate_at_500": 0.0,
+  "rss": {
+    "baseline_peak_rss_mb": 107.656,
+    "tuned_peak_rss_mb": 107.078
+  },
+  "error_rate": {
+    "baseline": 0.0,
+    "tuned": 0.0
+  },
+  "thresholds": {
+    "p95_ms": 50,
+    "peak_rss_mb": 512,
+    "error_rate": 0.01
+  },
+  "gate_tripped": true,
+  "next": "proceed_phase2",
+  "artifacts": {
+    "baseline": "docs/perf/results/gateway-relay-baseline-2026-07-23.json",
+    "tuned": "docs/perf/results/gateway-relay-tuned-2026-07-23.json",
+    "evidence": "docs/perf/gateway-relay-latency.md"
+  }
+}

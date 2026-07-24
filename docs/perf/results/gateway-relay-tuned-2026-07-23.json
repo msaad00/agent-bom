@@ -1,0 +1,161 @@
+{
+  "metadata": {
+    "date": "2026-07-24",
+    "timestamp_utc": "2026-07-24T01:51:14.088527+00:00",
+    "hostname": "Wegzs-MacBook-Pro.local",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "python": "3.13.5",
+    "agent_bom_version": "0.97.5",
+    "mode": "tuned",
+    "git_commit": "100c53a1a",
+    "uvloop": {
+      "requested": true,
+      "enabled": true,
+      "detail": "uvloop 0.22.1"
+    },
+    "httpx_limits": {
+      "mode": "tuned",
+      "max_connections": 1000,
+      "max_keepalive_connections": 500
+    },
+    "gateway_pool_env": {
+      "note": "GatewaySettings.upstream_http_max_connections defaults to 100 / keepalive 20; not exposed via AGENT_BOM_* env today. Tuned mode cannot enlarge the gateway pool without a code/CLI change.",
+      "upstream_http_max_connections_default": 100,
+      "upstream_http_max_keepalive_connections_default": 20
+    },
+    "bind": {
+      "gateway": "127.0.0.1:8090",
+      "upstream": "127.0.0.1:8100"
+    },
+    "requests_per_level": 200,
+    "concurrency_levels": [
+      1,
+      10,
+      50,
+      100,
+      250,
+      500
+    ],
+    "warmup_requests": 20,
+    "total_wall_s": 16.776
+  },
+  "results": [
+    {
+      "concurrency": 1,
+      "requests": 200,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_kinds": {},
+      "latency_ms": {
+        "p50_ms": 2.142,
+        "p95_ms": 2.553,
+        "p99_ms": 3.471,
+        "max_ms": 3.74,
+        "mean_ms": 2.222,
+        "samples": 200
+      },
+      "peak_rss_kb": 108688,
+      "peak_rss_mb": 106.141,
+      "wall_s": 2.837
+    },
+    {
+      "concurrency": 10,
+      "requests": 200,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_kinds": {},
+      "latency_ms": {
+        "p50_ms": 103.556,
+        "p95_ms": 235.799,
+        "p99_ms": 302.326,
+        "max_ms": 553.898,
+        "mean_ms": 121.127,
+        "samples": 200
+      },
+      "peak_rss_kb": 109232,
+      "peak_rss_mb": 106.672,
+      "wall_s": 2.767
+    },
+    {
+      "concurrency": 50,
+      "requests": 200,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_kinds": {},
+      "latency_ms": {
+        "p50_ms": 507.455,
+        "p95_ms": 1409.049,
+        "p99_ms": 2185.622,
+        "max_ms": 2690.659,
+        "mean_ms": 581.208,
+        "samples": 200
+      },
+      "peak_rss_kb": 109600,
+      "peak_rss_mb": 107.031,
+      "wall_s": 2.747
+    },
+    {
+      "concurrency": 100,
+      "requests": 200,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_kinds": {},
+      "latency_ms": {
+        "p50_ms": 879.809,
+        "p95_ms": 2515.841,
+        "p99_ms": 2669.775,
+        "max_ms": 2748.73,
+        "mean_ms": 1035.632,
+        "samples": 200
+      },
+      "peak_rss_kb": 109616,
+      "peak_rss_mb": 107.047,
+      "wall_s": 2.783
+    },
+    {
+      "concurrency": 250,
+      "requests": 200,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_kinds": {},
+      "latency_ms": {
+        "p50_ms": 1370.296,
+        "p95_ms": 2572.973,
+        "p99_ms": 2701.919,
+        "max_ms": 2713.389,
+        "mean_ms": 1372.294,
+        "samples": 200
+      },
+      "peak_rss_kb": 109648,
+      "peak_rss_mb": 107.078,
+      "wall_s": 2.769
+    },
+    {
+      "concurrency": 500,
+      "requests": 200,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_kinds": {},
+      "latency_ms": {
+        "p50_ms": 1378.941,
+        "p95_ms": 2572.27,
+        "p99_ms": 2669.068,
+        "max_ms": 2720.425,
+        "mean_ms": 1373.417,
+        "samples": 200
+      },
+      "peak_rss_kb": 109648,
+      "peak_rss_mb": 107.078,
+      "wall_s": 2.76
+    }
+  ],
+  "gateway_metrics_tail": "# HELP agent_bom_auth_failures_total API authentication failures by reason\n# TYPE agent_bom_auth_failures_total counter\nagent_bom_auth_failures_total{reason=\"none\"} 0\n# HELP agent_bom_rate_limit_hits_total Requests rejected by a rate limiter\n# TYPE agent_bom_rate_limit_hits_total counter\nagent_bom_rate_limit_hits_total{bucket=\"none\"} 0\n# HELP agent_bom_compliance_exports_total Compliance evidence bundles exported by signing algorithm\n# TYPE agent_bom_compliance_exports_total counter\nagent_bom_compliance_exports_total{algorithm=\"none\"} 0\n# HELP agent_bom_compliance_export_bytes_total Total bytes of compliance bundles served by framework\n# TYPE agent_bom_compliance_export_bytes_total counter\nagent_bom_compliance_export_bytes_total{framework=\"none\"} 0\n# HELP agent_bom_scan_completions_total Completed scans by final status\n# TYPE agent_bom_scan_completions_total counter\nagent_bom_scan_completions_total{status=\"none\"} 0\n# HELP agent_bom_scan_jobs_active In-flight scans currently queued or running\n# TYPE agent_bom_scan_jobs_active gauge\nagent_bom_scan_jobs_active 0\n# HELP agent_bom_gateway_relays_total Multi-MCP gateway relay events by upstream and outcome\n# TYPE agent_bom_gateway_relays_total counter\nagent_bom_gateway_relays_total{upstream=\"echo\",outcome=\"forwarded\"} 1220\n# HELP agent_bom_authorization_evidence_total Cloud authorization evidence collections by posture\n# TYPE agent_bom_authorization_evidence_total counter\nagent_bom_authorization_evidence_total{provider=\"none\",status=\"indeterminate\"} 0\n# HELP agent_bom_authorization_evidence_gaps_total Cloud authorization evidence gaps by reason code\n# TYPE agent_bom_authorization_evidence_gaps_total counter\nagent_bom_authorization_evidence_gaps_total{provider=\"none\",reason=\"none\"} 0\n",
+  "final_gateway_rss_kb": 109648,
+  "final_gateway_rss_mb": 107.078,
+  "go_gate_inputs_at_500": {
+    "p95_ms": 2572.27,
+    "peak_rss_mb": 107.078,
+    "error_rate": 0.0
+  }
+}

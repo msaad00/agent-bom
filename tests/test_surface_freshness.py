@@ -160,3 +160,62 @@ def test_surface_freshness_reads_paginated_ghcr_tags(monkeypatch):
     assert result["surface"] == "Docker"
     assert result["status"] == "fresh"
     assert result["version"] == "0.89.2"
+
+
+def test_env_or_treats_blank_as_unset():
+    script = _load_script("check_surface_freshness.py")
+    glama = _load_script("check_glama_listing.py")
+
+    assert script._env_or("MISSING_VAR_XYZ", "fallback") == "fallback"
+    assert glama._env_or("MISSING_VAR_XYZ", "fallback") == "fallback"
+
+
+def test_surface_freshness_blank_env_vars_use_defaults(monkeypatch):
+    """GitHub Actions injects unset vars.* as empty strings into env:."""
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setenv("DOCKER_IMAGE", "")
+    monkeypatch.setenv("SMITHERY_SERVER_QUALIFIED_NAME", "   ")
+    monkeypatch.setenv("GLAMA_LISTING_URL", "")
+
+    assert script._env_or("DOCKER_IMAGE", script.DEFAULT_DOCKER_IMAGE) == script.DEFAULT_DOCKER_IMAGE
+    assert (
+        script._env_or("SMITHERY_SERVER_QUALIFIED_NAME", script.DEFAULT_SMITHERY_SERVER)
+        == script.DEFAULT_SMITHERY_SERVER
+    )
+
+    glama = _load_script("check_glama_listing.py")
+    assert glama._env_or("GLAMA_LISTING_URL", glama.DEFAULT_URL) == glama.DEFAULT_URL
+
+
+def test_surface_freshness_main_skips_blank_docker_and_smithery_env(monkeypatch, tmp_path):
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setenv("DOCKER_IMAGE", "")
+    monkeypatch.setenv("SMITHERY_SERVER_QUALIFIED_NAME", "")
+
+    monkeypatch.setattr(script, "probe_pypi", lambda expected, **_kw: {
+        "surface": "PyPI", "status": "fresh", "version": expected, "expected": expected,
+    })
+    monkeypatch.setattr(script, "probe_glama", lambda expected, **_kw: {
+        "surface": "Glama", "status": "fresh", "version": expected, "expected": expected,
+    })
+
+    seen: dict[str, str] = {}
+
+    def fake_docker(expected, image, **_kw):
+        seen["docker"] = image
+        return {"surface": "Docker", "status": "fresh", "version": expected, "expected": expected}
+
+    def fake_smithery(expected, qualified_name, **_kw):
+        seen["smithery"] = qualified_name
+        return {"surface": "Smithery", "status": "fresh", "version": "catalog-live", "expected": expected}
+
+    monkeypatch.setattr(script, "probe_docker", fake_docker)
+    monkeypatch.setattr(script, "probe_smithery", fake_smithery)
+
+    out = tmp_path / "report.json"
+    assert script.main(["--expected", "0.97.5", "--out", str(out)]) == 0
+    report = json.loads(out.read_text())
+    assert report["all_fresh"] is True
+    assert seen["docker"] == script.DEFAULT_DOCKER_IMAGE
+    assert seen["smithery"] == script.DEFAULT_SMITHERY_SERVER
+

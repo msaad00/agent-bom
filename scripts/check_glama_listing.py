@@ -18,6 +18,17 @@ ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 README = ROOT / "README.md"
 DEFAULT_URL = "https://glama.ai/mcp/servers/msaad00/agent-bom"
+
+
+def _env_or(name: str, default: str) -> str:
+    """Return env var if non-blank; otherwise ``default``.
+
+    GitHub Actions injects unset ``vars.*`` as empty strings into ``env:``,
+    so ``os.environ.get(name, default)`` would keep ``""`` and skip the default.
+    """
+    value = (os.environ.get(name) or "").strip()
+    return value or default
+
 GLAMA_DOCKERFILE = "integrations/glama/Dockerfile"
 GLAMA_MANIFESTS = (ROOT / "glama.json", ROOT / "integrations" / "glama" / "server.json")
 
@@ -146,7 +157,7 @@ def _extract_listing_version(page: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=os.environ.get("GLAMA_LISTING_URL", DEFAULT_URL))
+    parser.add_argument("--url", default=_env_or("GLAMA_LISTING_URL", DEFAULT_URL))
     parser.add_argument("--expected", default=None, help="Expected version; defaults to pyproject.toml.")
     parser.add_argument("--json", action="store_true", help="Emit a machine-readable freshness result.")
     parser.add_argument("--timeout", type=int, default=20)

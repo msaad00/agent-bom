@@ -165,14 +165,98 @@ class PythonHttpRelayTransport:
         )
 
 
+
+def gateway_relay_backend() -> str:
+    """Return ``python`` (default) or ``go`` from ``AGENT_BOM_GATEWAY_RELAY_BACKEND``."""
+    import os
+
+    raw = (os.environ.get("AGENT_BOM_GATEWAY_RELAY_BACKEND") or "python").strip().lower()
+    if raw in {"go", "golang"}:
+        return "go"
+    return "python"
+
+
+def gateway_relay_go_url() -> str:
+    """Sidecar base URL for the Go relay (no trailing slash)."""
+    import os
+
+    return (os.environ.get("AGENT_BOM_GATEWAY_RELAY_GO_URL") or "http://127.0.0.1:8091").rstrip("/")
+
+
+class GoHttpRelayTransport:
+    """``GatewayRelayTransport`` that POSTs to a Go sidecar ``/v1/forward``.
+
+    Enabled when ``AGENT_BOM_GATEWAY_RELAY_BACKEND=go``. The Python gateway still
+    owns policy / auth header resolution; the sidecar only performs the HTTP
+    forward under the shared contract.
+    """
+
+    def __init__(
+        self,
+        client: Any,
+        *,
+        base_url: str | None = None,
+        max_bytes: int = MAX_GATEWAY_RELAY_MESSAGE_BYTES,
+    ) -> None:
+        self._client = client
+        self._base_url = (base_url or gateway_relay_go_url()).rstrip("/")
+        self._max_bytes = max_bytes
+
+    async def forward(self, request: RelayForwardRequest) -> RelayForwardResult:
+        payload = {
+            "upstream": {
+                "name": request.upstream.name,
+                "url": request.upstream.url,
+                "tenant_id": request.upstream.tenant_id,
+                "private_network_approved": request.upstream.private_network_approved,
+            },
+            "message": request.message,
+            "headers": dict(request.headers),
+        }
+        encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > self._max_bytes:
+            raise ValueError(f"relay request exceeded {self._max_bytes} bytes")
+
+        url = f"{self._base_url}/v1/forward"
+        response = await self._client.post(
+            url,
+            content=encoded,
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
+        raw = response.content
+        if len(raw) > self._max_bytes:
+            raise ValueError(f"relay response exceeded {self._max_bytes} bytes")
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Go relay returned non-object JSON")
+        message = data.get("message")
+        if not isinstance(message, dict):
+            raise ValueError("Go relay result missing message object")
+        upstream_name = str(data.get("upstream_name") or request.upstream.name)
+        bytes_read = int(data.get("bytes_read") or len(raw))
+        return RelayForwardResult(message=message, upstream_name=upstream_name, bytes_read=bytes_read)
+
+
+def build_gateway_relay_transport(client: Any, *, max_bytes: int = MAX_GATEWAY_RELAY_MESSAGE_BYTES) -> GatewayRelayTransport:
+    """Select Python or Go transport from ``AGENT_BOM_GATEWAY_RELAY_BACKEND``."""
+    if gateway_relay_backend() == "go":
+        return GoHttpRelayTransport(client, max_bytes=max_bytes)
+    return PythonHttpRelayTransport(client, max_bytes=max_bytes)
+
+
 __all__ = [
     "MAX_GATEWAY_RELAY_MESSAGE_BYTES",
     "GatewayRelayTransport",
+    "GoHttpRelayTransport",
     "PythonHttpRelayTransport",
     "RelayAuditHint",
     "RelayForwardRequest",
     "RelayForwardResult",
     "RelayUpstreamTarget",
+    "build_gateway_relay_transport",
     "forward_jsonrpc_http",
+    "gateway_relay_backend",
+    "gateway_relay_go_url",
     "relay_upstream_from_config",
 ]

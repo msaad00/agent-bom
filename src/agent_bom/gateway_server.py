@@ -85,7 +85,8 @@ from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
 from agent_bom.runtime.gateway_relay_contract import (
     MAX_GATEWAY_RELAY_MESSAGE_BYTES,
-    forward_jsonrpc_http,
+    RelayForwardRequest,
+    build_gateway_relay_transport,
     relay_upstream_from_config,
 )
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
@@ -797,11 +798,16 @@ class GatewayUpstreamRelay:
         circuit_key = _upstream_circuit_key(upstream)
         await self._breaker.before_call(circuit_key, upstream.name)
         try:
+            from agent_bom.runtime.gateway_relay_contract import gateway_relay_backend
+
+            # Go sidecar is typically loopback; the httpx client only reaches the
+            # sidecar, which then dials the upstream. Allow private for that hop.
+            allow_private = True if gateway_relay_backend() == "go" else upstream.private_network_approved
             response = await _post_upstream_jsonrpc(
                 upstream,
                 message,
                 extra_headers,
-                client=await self._client_for_call(allow_private_networks=upstream.private_network_approved),
+                client=await self._client_for_call(allow_private_networks=allow_private),
             )
         except Exception:
             await self._breaker.record_failure(circuit_key)
@@ -1074,8 +1080,11 @@ async def _default_upstream_caller(
 
     from agent_bom.runtime.egress_transport import build_pinned_async_client
 
+    from agent_bom.runtime.gateway_relay_contract import gateway_relay_backend
+
+    allow_private = True if gateway_relay_backend() == "go" else upstream.private_network_approved
     async with build_pinned_async_client(
-        allow_private_networks=upstream.private_network_approved,
+        allow_private_networks=allow_private,
         timeout=httpx.Timeout(30.0),
     ) as client:
         return await _post_upstream_jsonrpc(upstream, message, extra_headers, client=client)
@@ -1092,18 +1101,22 @@ async def _post_upstream_jsonrpc(
     *,
     client: Any,
 ) -> dict[str, Any]:
-    """Forward via the Phase-2 pure-relay contract (Python reference)."""
+    """Forward via the pure-relay contract (Python in-process or Go sidecar).
+
+    Backend selected by ``AGENT_BOM_GATEWAY_RELAY_BACKEND`` (default ``python``).
+    When ``go``, the shared httpx client talks to the sidecar ``/v1/forward``;
+    the sidecar then POSTs to the upstream URL.
+    """
     auth_headers = await upstream.resolve_auth_headers()
-    result = await forward_jsonrpc_http(
-        upstream_url=upstream.url,
-        message=message,
-        headers={**auth_headers, **extra_headers},
-        client=client,
-        upstream_name=upstream.name,
-        max_bytes=_MAX_GATEWAY_MESSAGE_BYTES,
+    target = relay_upstream_from_config(upstream)
+    transport = build_gateway_relay_transport(client, max_bytes=_MAX_GATEWAY_MESSAGE_BYTES)
+    result = await transport.forward(
+        RelayForwardRequest(
+            upstream=target,
+            message=message,
+            headers={**auth_headers, **extra_headers},
+        )
     )
-    # Keep a local reference so adapters/tests can assert the snapshot shape.
-    _ = relay_upstream_from_config(upstream)
     return result.message
 
 

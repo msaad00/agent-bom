@@ -1,0 +1,236 @@
+{
+  "metadata": {
+    "date": "2026-07-24",
+    "timestamp_utc": "2026-07-24T03:19:51.572376+00:00",
+    "hostname": "local-benchmark-host",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "python": "3.13.5",
+    "agent_bom_version": "0.97.5",
+    "git_commit": "e93ad4dd3",
+    "mode": "baseline",
+    "requests_per_level": 100,
+    "concurrency_levels": [
+      50,
+      500
+    ],
+    "note": "Quick Phase-3 compare: same harness as gateway-relay baseline, ladder trimmed to 50+500 with 100 requests/level."
+  },
+  "compare": {
+    "python": {
+      "at_50": {
+        "p50_ms": 449.403,
+        "p95_ms": 1319.616,
+        "error_rate": 0.0,
+        "peak_rss_mb": 113.281
+      },
+      "at_500": {
+        "p50_ms": 796.606,
+        "p95_ms": 1447.563,
+        "error_rate": 0.0,
+        "peak_rss_mb": 113.703
+      }
+    },
+    "go": {
+      "at_50": {
+        "p50_ms": 463.814,
+        "p95_ms": 1172.78,
+        "error_rate": 0.0,
+        "peak_rss_mb": 106.672
+      },
+      "at_500": {
+        "p50_ms": 703.12,
+        "p95_ms": 1326.603,
+        "error_rate": 0.0,
+        "peak_rss_mb": 106.859
+      }
+    },
+    "p95_improvement_at_500": 0.0836
+  },
+  "raw_artifacts": {
+    "python_run": {
+      "metadata": {
+        "date": "2026-07-24",
+        "timestamp_utc": "2026-07-24T03:19:19.140680+00:00",
+        "hostname": "local-benchmark-host",
+        "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+        "machine": "arm64",
+        "python": "3.13.5",
+        "agent_bom_version": "0.97.5",
+        "mode": "baseline",
+        "git_commit": "e93ad4dd3",
+        "uvloop": {
+          "requested": false,
+          "enabled": false,
+          "detail": "not requested"
+        },
+        "httpx_limits": {
+          "mode": "baseline",
+          "max_connections": 100,
+          "max_keepalive_connections": 20
+        },
+        "gateway_pool_env": {
+          "note": "GatewaySettings.upstream_http_max_connections defaults to 100 / keepalive 20; not exposed via AGENT_BOM_* env today. Tuned mode cannot enlarge the gateway pool without a code/CLI change.",
+          "upstream_http_max_connections_default": 100,
+          "upstream_http_max_keepalive_connections_default": 20
+        },
+        "bind": {
+          "gateway": "127.0.0.1:8090",
+          "upstream": "127.0.0.1:8100",
+          "go_relay": null
+        },
+        "relay_backend": "python",
+        "requests_per_level": 100,
+        "concurrency_levels": [
+          50,
+          500
+        ],
+        "warmup_requests": 20,
+        "total_wall_s": 3.195
+      },
+      "results": [
+        {
+          "concurrency": 50,
+          "requests": 100,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_kinds": {},
+          "latency_ms": {
+            "p50_ms": 449.403,
+            "p95_ms": 1319.616,
+            "p99_ms": 1440.671,
+            "max_ms": 1481.005,
+            "mean_ms": 554.264,
+            "samples": 100
+          },
+          "peak_rss_kb": 116000,
+          "peak_rss_mb": 113.281,
+          "wall_s": 1.53
+        },
+        {
+          "concurrency": 500,
+          "requests": 100,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_kinds": {},
+          "latency_ms": {
+            "p50_ms": 796.606,
+            "p95_ms": 1447.563,
+            "p99_ms": 1491.832,
+            "max_ms": 1531.306,
+            "mean_ms": 779.605,
+            "samples": 100
+          },
+          "peak_rss_kb": 116432,
+          "peak_rss_mb": 113.703,
+          "wall_s": 1.564
+        }
+      ],
+      "gateway_metrics_tail": "# HELP agent_bom_auth_failures_total API authentication failures by reason\n# TYPE agent_bom_auth_failures_total counter\nagent_bom_auth_failures_total{reason=\"none\"} 0\n# HELP agent_bom_rate_limit_hits_total Requests rejected by a rate limiter\n# TYPE agent_bom_rate_limit_hits_total counter\nagent_bom_rate_limit_hits_total{bucket=\"none\"} 0\n# HELP agent_bom_compliance_exports_total Compliance evidence bundles exported by signing algorithm\n# TYPE agent_bom_compliance_exports_total counter\nagent_bom_compliance_exports_total{algorithm=\"none\"} 0\n# HELP agent_bom_compliance_export_bytes_total Total bytes of compliance bundles served by framework\n# TYPE agent_bom_compliance_export_bytes_total counter\nagent_bom_compliance_export_bytes_total{framework=\"none\"} 0\n# HELP agent_bom_scan_completions_total Completed scans by final status\n# TYPE agent_bom_scan_completions_total counter\nagent_bom_scan_completions_total{status=\"none\"} 0\n# HELP agent_bom_scan_jobs_active In-flight scans currently queued or running\n# TYPE agent_bom_scan_jobs_active gauge\nagent_bom_scan_jobs_active 0\n# HELP agent_bom_gateway_relays_total Multi-MCP gateway relay events by upstream and outcome\n# TYPE agent_bom_gateway_relays_total counter\nagent_bom_gateway_relays_total{upstream=\"echo\",outcome=\"forwarded\"} 640\n# HELP agent_bom_authorization_evidence_total Cloud authorization evidence collections by posture\n# TYPE agent_bom_authorization_evidence_total counter\nagent_bom_authorization_evidence_total{provider=\"none\",status=\"indeterminate\"} 0\n# HELP agent_bom_authorization_evidence_gaps_total Cloud authorization evidence gaps by reason code\n# TYPE agent_bom_authorization_evidence_gaps_total counter\nagent_bom_authorization_evidence_gaps_total{provider=\"none\",reason=\"none\"} 0\n",
+      "final_gateway_rss_kb": 116432,
+      "final_gateway_rss_mb": 113.703,
+      "go_gate_inputs_at_500": {
+        "p95_ms": 1447.563,
+        "peak_rss_mb": 113.703,
+        "error_rate": 0.0
+      }
+    },
+    "go_run": {
+      "metadata": {
+        "date": "2026-07-24",
+        "timestamp_utc": "2026-07-24T03:19:35.896239+00:00",
+        "hostname": "local-benchmark-host",
+        "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+        "machine": "arm64",
+        "python": "3.13.5",
+        "agent_bom_version": "0.97.5",
+        "mode": "baseline",
+        "git_commit": "e93ad4dd3",
+        "uvloop": {
+          "requested": false,
+          "enabled": false,
+          "detail": "not requested"
+        },
+        "httpx_limits": {
+          "mode": "baseline",
+          "max_connections": 100,
+          "max_keepalive_connections": 20
+        },
+        "gateway_pool_env": {
+          "note": "GatewaySettings.upstream_http_max_connections defaults to 100 / keepalive 20; not exposed via AGENT_BOM_* env today. Tuned mode cannot enlarge the gateway pool without a code/CLI change.",
+          "upstream_http_max_connections_default": 100,
+          "upstream_http_max_keepalive_connections_default": 20
+        },
+        "bind": {
+          "gateway": "127.0.0.1:53409",
+          "upstream": "127.0.0.1:53410",
+          "go_relay": "http://127.0.0.1:53411"
+        },
+        "relay_backend": "go",
+        "requests_per_level": 100,
+        "concurrency_levels": [
+          50,
+          500
+        ],
+        "warmup_requests": 20,
+        "total_wall_s": 2.964
+      },
+      "results": [
+        {
+          "concurrency": 50,
+          "requests": 100,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_kinds": {},
+          "latency_ms": {
+            "p50_ms": 463.814,
+            "p95_ms": 1172.78,
+            "p99_ms": 1304.984,
+            "max_ms": 1355.907,
+            "mean_ms": 502.993,
+            "samples": 100
+          },
+          "peak_rss_kb": 109232,
+          "peak_rss_mb": 106.672,
+          "wall_s": 1.403
+        },
+        {
+          "concurrency": 500,
+          "requests": 100,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_kinds": {},
+          "latency_ms": {
+            "p50_ms": 703.12,
+            "p95_ms": 1326.603,
+            "p99_ms": 1368.08,
+            "max_ms": 1371.486,
+            "mean_ms": 703.015,
+            "samples": 100
+          },
+          "peak_rss_kb": 109424,
+          "peak_rss_mb": 106.859,
+          "wall_s": 1.425
+        }
+      ],
+      "gateway_metrics_tail": "# HELP agent_bom_auth_failures_total API authentication failures by reason\n# TYPE agent_bom_auth_failures_total counter\nagent_bom_auth_failures_total{reason=\"none\"} 0\n# HELP agent_bom_rate_limit_hits_total Requests rejected by a rate limiter\n# TYPE agent_bom_rate_limit_hits_total counter\nagent_bom_rate_limit_hits_total{bucket=\"none\"} 0\n# HELP agent_bom_compliance_exports_total Compliance evidence bundles exported by signing algorithm\n# TYPE agent_bom_compliance_exports_total counter\nagent_bom_compliance_exports_total{algorithm=\"none\"} 0\n# HELP agent_bom_compliance_export_bytes_total Total bytes of compliance bundles served by framework\n# TYPE agent_bom_compliance_export_bytes_total counter\nagent_bom_compliance_export_bytes_total{framework=\"none\"} 0\n# HELP agent_bom_scan_completions_total Completed scans by final status\n# TYPE agent_bom_scan_completions_total counter\nagent_bom_scan_completions_total{status=\"none\"} 0\n# HELP agent_bom_scan_jobs_active In-flight scans currently queued or running\n# TYPE agent_bom_scan_jobs_active gauge\nagent_bom_scan_jobs_active 0\n# HELP agent_bom_gateway_relays_total Multi-MCP gateway relay events by upstream and outcome\n# TYPE agent_bom_gateway_relays_total counter\nagent_bom_gateway_relays_total{upstream=\"echo\",outcome=\"forwarded\"} 220\n# HELP agent_bom_authorization_evidence_total Cloud authorization evidence collections by posture\n# TYPE agent_bom_authorization_evidence_total counter\nagent_bom_authorization_evidence_total{provider=\"none\",status=\"indeterminate\"} 0\n# HELP agent_bom_authorization_evidence_gaps_total Cloud authorization evidence gaps by reason code\n# TYPE agent_bom_authorization_evidence_gaps_total counter\nagent_bom_authorization_evidence_gaps_total{provider=\"none\",reason=\"none\"} 0\n",
+      "final_gateway_rss_kb": 109424,
+      "final_gateway_rss_mb": 106.859,
+      "go_gate_inputs_at_500": {
+        "p95_ms": 1326.603,
+        "peak_rss_mb": 106.859,
+        "error_rate": 0.0
+      }
+    }
+  },
+  "decision": {
+    "verdict": "defer",
+    "rationale": "Go sidecar improves p95 modestly (~8% at concurrency 500) but remains far above the 50 ms Go-gate SLO (python 1447 ms vs go 1326 ms). Keep Python as default pure-relay; retain the optional go flag as an experimental path only. Do not promote the sidecar to a documented production default without a further pool/tuning investigation.",
+    "thresholds_reference": {
+      "go_gate_p95_ms": 50,
+      "go_gate_peak_rss_mb": 512,
+      "go_gate_error_rate": 0.01
+    },
+    "next": "keep_python_default_optional_go_flag"
+  }
+}

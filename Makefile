@@ -151,6 +151,10 @@ git-status:  ## Show git status and current branch
 	@echo ""
 	@git status
 
+
+gateway-relay-go-test:  ## Run Go gateway-relay sidecar unit tests (Phase 3 spike)
+	cd runtime/gateway-relay && go test ./...
+
 analytics:  ## Show adoption metrics (PyPI downloads, GitHub traffic, stars)
 	@echo "=== PyPI downloads (recent) ==="
 	@curl -sf "https://pypistats.org/api/packages/agent-bom/recent" 2>/dev/null \

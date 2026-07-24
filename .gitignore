@@ -76,3 +76,6 @@ deploy/helm/agent-bom/**/* [0-9].yaml
 *-report.json
 agent-bom-report.json
 .DS_Store
+
+# Go gateway-relay spike build output
+runtime/gateway-relay/bin/

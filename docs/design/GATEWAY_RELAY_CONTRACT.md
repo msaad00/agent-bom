@@ -1,10 +1,9 @@
 # Design: gateway pure-relay contract
 
-**Status:** Phase 2 extract (Python reference). Optional Go sidecar is **not**
-implemented here — see [ADR-009](../decisions/009-python-primary-go-sidecar-later.md)
-and the Go-gate evidence in
-[`docs/perf/gateway-relay-latency.md`](../perf/gateway-relay-latency.md)
-(`gate_tripped=true` on 2026-07-23).
+**Status:** Phase 2 extract (Python reference) + Phase 3 optional Go sidecar
+spike under `runtime/gateway-relay` (feature-flagged; default off). See
+[ADR-009](../decisions/009-python-primary-go-sidecar-later.md) and
+[`docs/perf/results/gateway-relay-go-spike-2026-07-24.json`](../perf/results/gateway-relay-go-spike-2026-07-24.json).
 
 **Code:** [`src/agent_bom/runtime/gateway_relay_contract.py`](../../src/agent_bom/runtime/gateway_relay_contract.py)
 
@@ -106,6 +105,6 @@ behavioral checks (HTTP status, JSON-RPC result, oversize rejection).
 
 ## Non-goals
 
-- No Go binary in this phase.
+- Go sidecar is optional and feature-flagged (`AGENT_BOM_GATEWAY_RELAY_BACKEND=go`).
 - No rewrite of stdio `proxy.py` or cloud connectors.
 - No second product edition.

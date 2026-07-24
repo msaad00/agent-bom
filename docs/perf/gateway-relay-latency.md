@@ -7,6 +7,9 @@ Raw result artifacts:
 - [`results/gateway-relay-baseline-2026-07-23.json`](results/gateway-relay-baseline-2026-07-23.json)
 - [`results/gateway-relay-tuned-2026-07-23.json`](results/gateway-relay-tuned-2026-07-23.json)
 - [`results/gateway-relay-go-gate-2026-07-23.json`](results/gateway-relay-go-gate-2026-07-23.json)
+- [`results/gateway-relay-go-spike-2026-07-23.json`](results/gateway-relay-go-spike-2026-07-23.json)
+- [`results/gateway-relay-decision-2026-07-23.json`](results/gateway-relay-decision-2026-07-23.json)
+- [`results/gateway-relay-go-spike-2026-07-24.json`](results/gateway-relay-go-spike-2026-07-24.json)
 
 ## Claim
 

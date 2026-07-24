@@ -53,6 +53,23 @@ def test_path_gated_jobs_fail_closed_when_classifier_fails() -> None:
         assert "needs.changes.result != 'success'" in condition
 
 
+def test_path_gated_jobs_remain_cancellable() -> None:
+    jobs = _ci()["jobs"]
+    for name in (
+        "docs-strict",
+        "ui",
+        "endpoint-packaging",
+        "test",
+        "sdk-import-smoke",
+        "postgres-integration",
+        "test-alpine",
+        "action-dogfood",
+    ):
+        condition = jobs[name]["if"]
+        assert "!cancelled()" in condition
+        assert "always()" not in condition
+
+
 def test_security_reuses_typescript_install_for_build() -> None:
     text = CI_WORKFLOW.read_text(encoding="utf-8")
     security = text.split("  # 2. Linting + Type Checking", 1)[0]

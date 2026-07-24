@@ -82,7 +82,7 @@ jobs:
           GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN || github.token }}
           AUTOMATION_TOKEN_CONFIGURED: ${{ secrets.AUTOMATION_GITHUB_TOKEN != '' }}
           AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
-          REQUIRED_CHECKS: "Lint and Type Check,Test (Python 3.11),Test (Python 3.13),Build Package,Security Scan,CodeQL,Test (Python 3.14)"
+          REQUIRED_CHECKS: "Lint and Type Check,Test (Python 3.13),Build Package,Security Scan,CodeQL"
           MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || (github.event_name == 'pull_request' && '0' || '3') }}
           PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number || '' }}
           REQUIRE_AUTO_MERGE: ${{ github.event_name != 'workflow_dispatch' || inputs.require_auto_merge }}

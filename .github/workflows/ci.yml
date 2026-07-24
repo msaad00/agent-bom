@@ -384,7 +384,7 @@ jobs:
     # (issue #3631). Mirrors the exact build invocation in
     # .github/workflows/docs.yml but never publishes.
     if: >-
-      always() && (
+      !cancelled() && (
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.docs == 'true'
@@ -417,7 +417,7 @@ jobs:
     # the standalone app; keeping this required context skipped avoids a
     # second full npm install/build for the same commit.
     if: >-
-      always() && (
+      !cancelled() && (
         github.event_name != 'push' && (
           github.event_name != 'pull_request' ||
           needs.changes.result != 'success' ||
@@ -671,7 +671,7 @@ jobs:
     timeout-minutes: 20
     needs: changes
     if: >-
-      always() && (
+      !cancelled() && (
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.endpoint == 'true'
@@ -747,13 +747,14 @@ jobs:
     permissions:
       contents: read
     needs: changes
-    # The job itself always runs: "Test (Python 3.13)" is a REQUIRED context,
+    # The job itself runs unless the workflow is cancelled: "Test (Python
+    # 3.13)" is a REQUIRED context,
     # and a matrix job skipped at job level never expands its matrix, so the
     # required check would sit at "Expected" forever and block auto-merge.
     # The heavy STEPS below skip instead when the classifier positively says
     # the PR cannot affect Python (docs/UI/deploy-only); the job then reports
     # success in seconds. Fail closed: a classifier failure runs the suite.
-    if: always()
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -867,7 +868,7 @@ jobs:
     # green while a fresh install loses that discovery path at runtime. Install
     # the cloud extras here and actually execute every extra-gated import line.
     if: >-
-      always() && (
+      !cancelled() && (
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.python == 'true'
@@ -896,7 +897,7 @@ jobs:
     timeout-minutes: 10
     needs: changes
     if: >-
-      always() && (
+      !cancelled() && (
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.postgres == 'true'
@@ -1025,7 +1026,7 @@ jobs:
   test-alpine:
     name: Test (Alpine/musl)
     if: >-
-      always() && (
+      !cancelled() && (
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.alpine == 'true'
@@ -1338,7 +1339,7 @@ jobs:
   action-dogfood:
     name: Dogfood GitHub Action
     if: >-
-      always() && (
+      !cancelled() && (
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.action == 'true'

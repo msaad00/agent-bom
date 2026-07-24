@@ -87,6 +87,22 @@ What each one protects:
 These are enforced when the API accepts new work. They are not soft dashboard
 warnings; they return quota errors and emit tenant-scoped audit events.
 
+## Connections scheduler vs scan schedules
+
+The Cloud Connections background loop (`AGENT_BOM_CONNECTIONS_SCHEDULER`) is
+separate from `/v1/schedules`:
+
+- due full-scans use a compare-and-swap claim on `last_scan_at` so multi-replica
+  API pods do not double-run the same connection
+- `AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY` (Helm
+  `controlPlane.connectionsScheduler.maxConcurrency`, default `4`) bounds both
+  due full-scans and continuous event drains — one `to_thread` per connection
+  under an asyncio semaphore
+- `scan_mode=continuous` drains provider event queues in parallel before claims;
+  AWS scheduler drains use `WaitTimeSeconds=0` so empty queues do not stall ticks
+- org-scoped Connections nest a provider `ThreadPoolExecutor` inside one
+  semaphore slot — see `docs/CONCURRENCY_AND_FAILURE_MODEL.md`
+
 ## CronJob vs scheduler
 
 The scanner `CronJob` and the recurring schedule subsystem are different

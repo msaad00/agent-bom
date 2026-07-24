@@ -15,7 +15,10 @@ Design notes:
   is null (manual-only) by default.
 * **Continuous event drain.** Each tick, *before* due full scans, connections
   with ``scan_mode=continuous`` and a provider event-queue env configured drain
-  a bounded batch via ``consume_*`` (AWS/Azure/GCP). That path stamps
+  a bounded batch via ``consume_*`` (AWS/Azure/GCP). Drains run in parallel under
+  the same ``CONNECTIONS_SCHEDULER_MAX_CONCURRENCY`` semaphore (one
+  ``asyncio.to_thread`` per connection), with AWS ``WaitTimeSeconds=0`` on the
+  scheduler path so empty queues do not stall ticks. That path stamps
   ``last_event_at`` only — full-scan cadence still goes through
   ``claim_due_scan`` / ``last_scan_at``.
 * **Cluster-safe.** Multiple control-plane replicas may run this loop. Each due
@@ -152,25 +155,43 @@ def _load_continuous_consumer(
     return enabled, consume
 
 
-def drain_continuous_events(store: ConnectionStore) -> int:
-    """Drain provider event queues for ``scan_mode=continuous`` connections.
+def _consume_continuous_events(
+    record: CloudConnectionRecord,
+    store: ConnectionStore,
+    *,
+    wait_seconds: int = 0,
+) -> None:
+    """Run one connection's ``consume_*`` in a worker thread (scheduler path).
 
-    No-op when the scheduler flag is off. For each continuous connection whose
-    provider has a queue/subscription env configured, call the matching
-    ``consume_*`` (bounded, fail-closed). Events update ``last_event_at`` only
-    inside the consumer — this helper never advances ``last_scan_at``.
-
-    Returns the number of connections for which a consume was attempted.
+    Passes a short ``wait_seconds`` for AWS SQS so empty queues do not stall the
+    tick on long-poll. Azure/GCP consumers have no WaitTimeSeconds equivalent.
+    Never raises — one bad consume cannot sink the tick.
     """
-    if not connections_scheduler_enabled():
-        return 0
+    loaded = _load_continuous_consumer(record.provider)
+    if loaded is None:
+        return
+    _enabled, consume = loaded
+    kwargs: dict[str, Any] = {"tenant_id": record.tenant_id, "store": store}
+    if (record.provider or "").strip().lower() == "aws":
+        kwargs["wait_seconds"] = max(0, int(wait_seconds))
+    try:
+        consume(record, **kwargs)
+    except Exception:  # noqa: BLE001 - one bad consume never sinks the tick
+        logger.exception(
+            "Continuous event drain failed for connection %s (provider=%s)",
+            record.id,
+            record.provider,
+        )
 
-    attempted = 0
+
+def _select_continuous_drain_targets(store: ConnectionStore) -> list[CloudConnectionRecord]:
+    """Return continuous connections whose provider event ingest is enabled."""
+    targets: list[CloudConnectionRecord] = []
     for record in store.list_continuous():
         loaded = _load_continuous_consumer(record.provider)
         if loaded is None:
             continue
-        enabled, consume = loaded
+        enabled, _consume = loaded
         try:
             if not enabled():
                 continue
@@ -180,16 +201,46 @@ def drain_continuous_events(store: ConnectionStore) -> int:
                 record.id,
             )
             continue
-        attempted += 1
-        try:
-            consume(record, tenant_id=record.tenant_id, store=store)
-        except Exception:  # noqa: BLE001 - one bad consume never sinks the tick
-            logger.exception(
-                "Continuous event drain failed for connection %s (provider=%s)",
-                record.id,
-                record.provider,
+        targets.append(record)
+    return targets
+
+
+async def drain_continuous_events(
+    store: ConnectionStore,
+    *,
+    max_concurrency: int = CONNECTIONS_SCHEDULER_MAX_CONCURRENCY,
+    wait_seconds: int = 0,
+) -> int:
+    """Drain provider event queues for ``scan_mode=continuous`` connections.
+
+    No-op when the scheduler flag is off. Eligible continuous connections drain
+    in parallel under a semaphore (one ``asyncio.to_thread(consume_*)`` each),
+    bounded by *max_concurrency* (defaults to
+    ``CONNECTIONS_SCHEDULER_MAX_CONCURRENCY``). Events update ``last_event_at``
+    only inside the consumer — this helper never advances ``last_scan_at``.
+
+    Returns the number of connections for which a consume was attempted.
+    """
+    if not connections_scheduler_enabled():
+        return 0
+
+    targets = _select_continuous_drain_targets(store)
+    if not targets:
+        return 0
+
+    semaphore = asyncio.Semaphore(max(1, max_concurrency))
+
+    async def _guarded(record: CloudConnectionRecord) -> None:
+        async with semaphore:
+            await asyncio.to_thread(
+                _consume_continuous_events,
+                record,
+                store,
+                wait_seconds=wait_seconds,
             )
-    return attempted
+
+    await asyncio.gather(*(_guarded(record) for record in targets))
+    return len(targets)
 
 
 def execute_connection_scan(record: CloudConnectionRecord) -> bool:
@@ -254,7 +305,8 @@ async def run_due_scans_once(
     so at most *max_concurrency* scans run at a time.
     """
     # Event drain before full scans so mid-interval posture updates land first.
-    await asyncio.to_thread(drain_continuous_events, store)
+    # Short wait (0) so empty SQS queues do not stall the tick on long-poll.
+    await drain_continuous_events(store, max_concurrency=max_concurrency, wait_seconds=0)
 
     claimed = claim_due_connections(store, now)
     if not claimed:

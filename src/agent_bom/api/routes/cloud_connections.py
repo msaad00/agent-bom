@@ -314,12 +314,21 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     )
 
     # Default auto_scan_on_create=true: run the same brokered scan path as
-    # POST …/scan. Failure marks the row error (sanitized detail) but never
-    # rolls back the create — the connection stays fetchable for remediation.
+    # POST …/scan under the same adaptive_backpressure lane. Failure marks the
+    # row error (sanitized detail) but never rolls back the create — the
+    # connection stays fetchable for remediation. Shed (429) leaves the row
+    # pending so the client can retry via POST …/scan.
     if auto_scan_on_create:
         actor = _actor(request)
         try:
-            summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
+            async with adaptive_backpressure("cloud_connection_scan"):
+                summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
+        except BackpressureRejectedError as exc:
+            raise HTTPException(
+                status_code=429,
+                detail=exc.to_dict(),
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            ) from exc
         except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
             detail = _safe_connection_detail(exc)
             _mark_connection(record, status=STATUS_ERROR, status_detail=detail)

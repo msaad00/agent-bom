@@ -362,7 +362,8 @@ def test_scheduler_disabled_when_flag_falsy(value: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_drain_continuous_events_invokes_provider_consume(
+@pytest.mark.asyncio
+async def test_drain_continuous_events_invokes_provider_consume(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Continuous + provider queue env → consume_* once; last_scan_at untouched."""
@@ -393,7 +394,7 @@ def test_drain_continuous_events_invokes_provider_consume(
     store.put(continuous)
     prior_last_scan = continuous.last_scan_at
 
-    count = drain_continuous_events(store)
+    count = await drain_continuous_events(store)
     assert count == 1
     assert consumed == [continuous.id]
     fetched = store.get(continuous.tenant_id, continuous.id)
@@ -403,7 +404,8 @@ def test_drain_continuous_events_invokes_provider_consume(
     assert fetched.last_scan_at == prior_last_scan
 
 
-def test_drain_continuous_events_scheduler_off_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_drain_continuous_events_scheduler_off_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     os.environ.pop("AGENT_BOM_CONNECTIONS_SCHEDULER", None)
     os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
     consumed: list[str] = []
@@ -415,11 +417,12 @@ def test_drain_continuous_events_scheduler_off_is_noop(monkeypatch: pytest.Monke
     set_connection_store(store)
     store.put(_record(scan_mode=SCAN_MODE_CONTINUOUS))
 
-    assert drain_continuous_events(store) == 0
+    assert await drain_continuous_events(store) == 0
     assert consumed == []
 
 
-def test_drain_continuous_events_full_mode_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_drain_continuous_events_full_mode_skips(monkeypatch: pytest.MonkeyPatch) -> None:
     os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
     os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
     consumed: list[str] = []
@@ -431,11 +434,12 @@ def test_drain_continuous_events_full_mode_skips(monkeypatch: pytest.MonkeyPatch
     set_connection_store(store)
     store.put(_record(scan_mode=SCAN_MODE_FULL))
 
-    assert drain_continuous_events(store) == 0
+    assert await drain_continuous_events(store) == 0
     assert consumed == []
 
 
-def test_drain_continuous_events_skips_without_provider_queue(
+@pytest.mark.asyncio
+async def test_drain_continuous_events_skips_without_provider_queue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
@@ -449,8 +453,88 @@ def test_drain_continuous_events_skips_without_provider_queue(
     set_connection_store(store)
     store.put(_record(scan_mode=SCAN_MODE_CONTINUOUS))
 
-    assert drain_continuous_events(store) == 0
+    assert await drain_continuous_events(store) == 0
     assert consumed == []
+
+
+@pytest.mark.asyncio
+async def test_drain_continuous_events_parallel_under_semaphore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multiple continuous connections drain via concurrent to_thread, not a serial loop."""
+    import threading
+    import time
+
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+
+    lock = threading.Lock()
+    in_flight = 0
+    max_in_flight = 0
+    wait_kwargs: list[int | None] = []
+
+    def _fake_consume(record: CloudConnectionRecord, **kwargs: Any) -> dict[str, Any]:
+        nonlocal in_flight, max_in_flight
+        wait_kwargs.append(kwargs.get("wait_seconds"))
+        with lock:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        time.sleep(0.08)
+        with lock:
+            in_flight -= 1
+        return {"status": "ok", "processed": 0}
+
+    monkeypatch.setattr("agent_bom.cloud.event_ingest.consume_aws_events", _fake_consume)
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    for _ in range(4):
+        store.put(_record(scan_mode=SCAN_MODE_CONTINUOUS, last_scan_at=_now().isoformat()))
+
+    started = time.monotonic()
+    count = await drain_continuous_events(store, max_concurrency=4)
+    elapsed = time.monotonic() - started
+
+    assert count == 4
+    assert max_in_flight >= 2, f"expected overlapping consumes, max_in_flight={max_in_flight}"
+    # Serial 4×0.08s ≈ 0.32s; parallel under concurrency 4 should finish closer to one sleep.
+    assert elapsed < 0.28, f"drain looked serial (elapsed={elapsed:.3f}s)"
+    assert wait_kwargs == [0, 0, 0, 0], "scheduler path must shorten SQS WaitTimeSeconds"
+
+
+@pytest.mark.asyncio
+async def test_drain_continuous_events_respects_max_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    import time
+
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+
+    lock = threading.Lock()
+    in_flight = 0
+    max_in_flight = 0
+
+    def _fake_consume(record: CloudConnectionRecord, **kwargs: Any) -> dict[str, Any]:
+        nonlocal in_flight, max_in_flight
+        with lock:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        time.sleep(0.05)
+        with lock:
+            in_flight -= 1
+        return {"status": "ok"}
+
+    monkeypatch.setattr("agent_bom.cloud.event_ingest.consume_aws_events", _fake_consume)
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    for _ in range(4):
+        store.put(_record(scan_mode=SCAN_MODE_CONTINUOUS, last_scan_at=_now().isoformat()))
+
+    assert await drain_continuous_events(store, max_concurrency=2) == 4
+    assert max_in_flight == 2
 
 
 @pytest.mark.asyncio

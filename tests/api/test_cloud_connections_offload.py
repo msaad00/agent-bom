@@ -124,6 +124,99 @@ def test_scan_connection_backpressure_shed_is_429_not_error(monkeypatch, wired):
     assert marks == [], "a shed request must not flip the connection to error"
 
 
+def test_create_connection_scan_on_create_uses_backpressure(monkeypatch):
+    """auto_scan_on_create must share the cloud_connection_scan backpressure lane."""
+    from agent_bom.api.connection_store import InMemoryConnectionStore, set_connection_store
+    from agent_bom.api.routes.cloud_connections import CloudConnectionCreate
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    monkeypatch.setattr(cloud_connections, "connections_key_configured", lambda: True)
+    monkeypatch.setattr(cloud_connections, "encrypt_secret", lambda value: f"enc:{value}")
+    monkeypatch.setattr(cloud_connections, "log_action", lambda *a, **k: None)
+    monkeypatch.setattr(cloud_connections, "_actor", lambda request: "tester")
+    monkeypatch.setattr(cloud_connections, "_tenant", lambda request: "tenant-bp")
+    monkeypatch.setattr(
+        cloud_connections,
+        "_run_connection_scan",
+        lambda record, tenant_id: {"scan_id": "s-create", "status": "completed"},
+    )
+
+    paths: list[str] = []
+
+    @contextlib.asynccontextmanager
+    async def _track(path):
+        paths.append(path)
+        yield
+
+    monkeypatch.setattr(cloud_connections, "adaptive_backpressure", _track)
+
+    body = CloudConnectionCreate(
+        provider="aws",
+        display_name="bp-conn",
+        role_ref="arn:aws:iam::123456789012:role/agent-bom-readonly",
+        external_id="ext-secret",
+        regions=["us-east-1"],
+        auto_scan_on_create=True,
+    )
+    result = asyncio.run(cloud_connections.create_connection(request=object(), body=body))
+
+    assert paths == ["cloud_connection_scan"]
+    assert result["status"] == "active"
+    assert result["last_scan_id"] == "s-create"
+    fetched = store.get("tenant-bp", result["id"])
+    assert fetched is not None
+    assert fetched.status == "active"
+
+
+def test_create_connection_scan_on_create_backpressure_shed_is_429(monkeypatch):
+    """Shed on create leaves the row pending and returns 429 (retry via POST …/scan)."""
+    from fastapi import HTTPException
+
+    from agent_bom.api.connection_store import InMemoryConnectionStore, set_connection_store
+    from agent_bom.api.routes.cloud_connections import CloudConnectionCreate
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    monkeypatch.setattr(cloud_connections, "connections_key_configured", lambda: True)
+    monkeypatch.setattr(cloud_connections, "encrypt_secret", lambda value: f"enc:{value}")
+    monkeypatch.setattr(cloud_connections, "log_action", lambda *a, **k: None)
+    monkeypatch.setattr(cloud_connections, "_actor", lambda request: "tester")
+    monkeypatch.setattr(cloud_connections, "_tenant", lambda request: "tenant-bp")
+
+    scanned: list[str] = []
+    monkeypatch.setattr(
+        cloud_connections,
+        "_run_connection_scan",
+        lambda record, tenant_id: scanned.append(record.id) or {"scan_id": "x"},
+    )
+
+    @contextlib.asynccontextmanager
+    async def _shedding(path):
+        raise BackpressureRejectedError(path, "concurrency limit", 5)
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(cloud_connections, "adaptive_backpressure", _shedding)
+
+    body = CloudConnectionCreate(
+        provider="aws",
+        display_name="bp-shed",
+        role_ref="arn:aws:iam::123456789012:role/agent-bom-readonly",
+        external_id="ext-secret",
+        regions=["us-east-1"],
+        auto_scan_on_create=True,
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(cloud_connections.create_connection(request=object(), body=body))
+
+    assert exc_info.value.status_code == 429
+    assert (exc_info.value.headers or {}).get("Retry-After") == "5"
+    assert scanned == []
+    rows = store.list_for_tenant("tenant-bp")
+    assert len(rows) == 1
+    assert rows[0].status == "pending"
+
+
 @pytest.mark.asyncio
 async def test_slow_connection_test_keeps_event_loop_responsive(monkeypatch, wired):
     """A hung broker endpoint must not pin the loop — the offload proves it."""

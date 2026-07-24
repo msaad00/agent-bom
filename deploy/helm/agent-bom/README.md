@@ -109,6 +109,8 @@ blank `collectorImage.tag` falls back to `image.tag`.
 | `scanner.cloud.azure.allSubscriptions` | `false` | Job/CLI only → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS` (same Connections vs Job split as `orgInventory`) |
 | `scanner.cloud.gcp.allProjects` | `false` | Job/CLI only → `AGENT_BOM_GCP_ALL_PROJECTS` (same Connections vs Job split as `orgInventory`) |
 | `controlPlane.connectionsScheduler.enabled` | `false` | Injects `AGENT_BOM_CONNECTIONS_SCHEDULER=1` on the API; still requires per-connection `scan_interval_minutes` |
+| `controlPlane.connectionsScheduler.maxConcurrency` | `4` | Injects `AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY` (due full-scans + continuous event drains) |
+| `controlPlane.connectionsScheduler.pollSeconds` | _(unset)_ | Optional; injects `AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS` when set |
 | `collectorImage.repository` | `agentbom/agent-bom-collector` | Cloud-SDK collector image the scan CronJob runs |
 | `collectorImage.tag` | release version | Collector tag — override to bump the SDK layer independently of the control plane; blank falls back to `image.tag` |
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments |

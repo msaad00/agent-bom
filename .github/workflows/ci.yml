@@ -108,7 +108,17 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(site-docs/|mkdocs\.yml$|\.github/workflows/(docs|ci)\.yml$|\.github/actions/setup-python/)'; then
             docs=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|deploy/supabase/postgres/)'; then
+          # Scope rule: every module that writes to Postgres through the
+          # tenant-RLS connection helper, plus the callers responsible for
+          # binding the tenant context around such a write. The prefix
+          # `src/agent_bom/api/postgres_` alone missed the scheduler and the
+          # continuous-ingest drain, so the Postgres contract job was skipped
+          # on the very PR that fixed a cloud_connections RLS WITH CHECK
+          # violation. Request-path binders (api/middleware.py, api/pipeline.py)
+          # are deliberately excluded: no integration test drives the ASGI app
+          # against real Postgres, so the job could not observe a regression
+          # there and gating those hot files would cost time for no signal.
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/(postgres_|storage_schema\.py|connection_store\.py|connection_scheduler\.py|proxy_replay_store\.py)|src/agent_bom/cloud/([a-z_]*event_ingest|runtime_workload_evidence_store)\.py|src/agent_bom/ticketing/postgres_store\.py|tests/test_postgres_|deploy/supabase/postgres/)'; then
             postgres=true
           fi
           # Python test suite: skip only when a PR clearly cannot affect it

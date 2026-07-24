@@ -53,7 +53,7 @@ agent-bom agents --snowflake
 | Route | Purpose | CLI / client |
 |---|---|---|
 | `POST /v1/fleet/sync` | Endpoint inventory sync | `agent-bom agents --push-url …/v1/fleet/sync` |
-| `POST /v1/results/push` | Full scan report → ScanJob | `agent-bom agents … --push-url …/v1/results/push` |
+| `POST /v1/results/push` | Full scan report → ScanJob | `agent-bom scan … --push-url https://control-plane.example.com` (a base URL resolves to this route; an explicit `/v1/…` path is used as given) |
 | `POST /v1/findings/bulk` | Normalized findings batch | API / integrations |
 | `POST /v1/ocsf/ingest` | OCSF security events | SIEM / observability hooks |
 | `POST /v1/sources` + `POST /v1/sources/{id}/run` | Registered connector/source registry | Dashboard **Scan → Sources** |

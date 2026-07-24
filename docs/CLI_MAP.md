@@ -168,6 +168,7 @@ Push scanner or CI evidence into a running control plane without the dashboard:
 
 | Command | API | Notes |
 |---|---|---|
+| `scan --push-url <url>` | `POST /v1/results/push` | Full scan report → ScanJob, findings, and graph state. Accepts a base URL (`http://127.0.0.1:8422`) or the explicit endpoint; a URL that already names a `/v1/…` path is used as given. |
 | `findings push <file>` | `POST /v1/findings/bulk` | Accepts normalized findings JSON or Trivy / Grype / Syft output. Defaults `--api-url` to `http://127.0.0.1:8422` for local pilots. |
 | `fleet sync` | `POST /v1/fleet/sync` | Local discovery only — no dry-run preview without a push URL. |
 | `mcp` tool `ingest_external_scan` | same bulk route when `AGENT_BOM_API_URL` + credentials are set | Parse-only when credentials are absent. |

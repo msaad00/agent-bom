@@ -454,14 +454,18 @@ def compute_exit_code(
     # Push results to central dashboard
     if push_url and report:
         try:
+            from agent_bom.push import normalize_scan_push_url
             from agent_bom.push import push_results as _push
+            from agent_bom.security import sanitize_url
 
+            resolved_push_url = normalize_scan_push_url(push_url)
             report_data = to_json(report)
-            ok = _push(push_url, report_data, api_key=push_api_key)
+            ok = _push(resolved_push_url, report_data, api_key=push_api_key)
+            endpoint = sanitize_url(resolved_push_url)
             if ok and not quiet:
-                con.print("\n  [green]Results pushed to configured endpoint[/green]")
+                con.print(f"\n  [green]Results pushed to {endpoint}[/green]")
             elif not ok and not quiet:
-                con.print("\n  [yellow]Push to configured endpoint failed[/yellow]")
+                con.print(f"\n  [yellow]Push to {endpoint} failed[/yellow]")
         except Exception as push_err:
             if not quiet:
                 con.print(f"\n  [yellow]Push failed: {push_err}[/yellow]")

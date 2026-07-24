@@ -61,6 +61,8 @@ CORE_FLAGS: frozenset[str] = frozenset(
         "--snyk",
         "--quiet",
         "--agent-mode",
+        # The scan → control-plane handoff. Hiding it stranded the whole lane.
+        "--push-url",
     }
 )
 
@@ -108,8 +110,7 @@ VENDOR_FLAGS: frozenset[str] = frozenset(
         "--siem-token",
         "--siem-index",
         "--siem-format",
-        # Central dashboard push
-        "--push-url",
+        # Central dashboard push (--push-url is a core flag, see CORE_FLAGS)
         "--push-api-key",
         # ClickHouse analytics
         "--clickhouse-url",

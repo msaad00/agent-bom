@@ -81,7 +81,7 @@ Three product lanes on one Finding + UnifiedGraph model:
 
 1. **Scan** — CLI / CI / Docker / cloud connect → inventory, findings, SARIF/SBOM/HTML, graph
 2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres). Loopback is the default; non-loopback hosts need real auth or an explicit `--allow-insecure-no-auth` (env vars alone are not enough).
-3. **Runtime** — `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` → allow/warn/block on live MCP/tool calls
+3. **Runtime** — `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` → allow/warn/block on live MCP/tool calls
 
 Discovery and static/cloud scanning are read-only. The control plane stores
 evidence; gateway/proxy modes make explicit policy decisions at a separate
@@ -212,7 +212,7 @@ Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
 | Team posture UI | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
 | MCP tools for agents | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict MCP tool responses |
 | Skills playbooks | [docs/skills/](docs/skills/) · OpenClaw / Cortex wrappers under `integrations/` | first command → findings / SBOM |
-| Runtime tool governance | `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` | allow/warn/block audit |
+| Runtime tool governance | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | allow/warn/block audit |
 | Audit package | `agent-bom scan . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, bundles |
 
 Also: `agent-bom graph`, `agent-bom remediate -p .`, CI pin

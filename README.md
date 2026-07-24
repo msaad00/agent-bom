@@ -164,7 +164,7 @@ Path view is a single-row hop strip (scroll horizontally on long chains).
 </p>
 
 <details>
-<summary><b>CLI walkthrough</b> — 0.97.5 console demo</summary>
+<summary><b>CLI walkthrough</b> — 0.98.0 console demo</summary>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo showing inventory, findings, remediation, and package gate" width="820" />
@@ -193,7 +193,7 @@ Pilot compose binds `127.0.0.1` with loopback CORS. Before sharing a link, use
 | Target | Start here |
 |---|---|
 | Docker Compose | [pilot compose](deploy/docker-compose.pilot.yml) |
-| Helm / Kubernetes | [chart](deploy/helm/agent-bom) — `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.97.5` |
+| Helm / Kubernetes | [chart](deploy/helm/agent-bom) — `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.98.0` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | CloudFormation | [templates](deploy/cloudformation) |
 | Snowflake SPCS | [install guide](docs/snowflake-native-app/INSTALL.md) |
@@ -216,7 +216,7 @@ Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
 | Audit package | `agent-bom scan . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, bundles |
 
 Also: `agent-bom graph`, `agent-bom remediate -p .`, CI pin
-`uses: msaad00/agent-bom@v0.97.5`. Maps: [CLI](docs/CLI_MAP.md) ·
+`uses: msaad00/agent-bom@v0.98.0`. Maps: [CLI](docs/CLI_MAP.md) ·
 [start here](docs/START_HERE.md) · [product map](docs/PRODUCT_MAP.md).
 
 </details>

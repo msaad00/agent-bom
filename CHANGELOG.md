@@ -9,6 +9,55 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-07-24
+
+### Added
+- Cloud Connections now persist authoritative account or organization scope,
+  full or continuous scan mode, scan-on-create behavior, and per-connection
+  cadence. Organization-scoped AWS connections fan inventory and CIS evidence
+  across member accounts through short-lived read-only assumed roles; the
+  scheduler and UI expose the effective scope and both cadence gates
+  (#4430, #4431, #4437, #4442, #4459).
+- Optional Go gateway-relay and posture-event collector contracts. The gateway
+  remains Python-first unless an operator selects the Go relay. The collector
+  ships an authenticated, loopback-first forwarding proof; bounded SQS polling
+  and a published collector image remain explicitly unshipped (#4425, #4427,
+  #4429, #4459).
+- Public proof surfaces now use the canonical Scan -> Centralize -> Enforce
+  product loop, generated architecture diagrams, and byte-for-byte SVG drift
+  gates in preflight (#4461).
+
+### Changed
+- Scheduled and manual connection scans share the same full inventory and CIS
+  path. Continuous mode drains configured provider event queues between full
+  scans; it does not replace the full-scan evidence contract (#4431, #4437).
+- The control-plane scheduler reports the distinct "enabled but no cadence"
+  state. Helm keeps the event collector off unless both an image and the
+  required secret-backed configuration are supplied (#4461).
+- README and deployment proof now lead with runnable first commands, keep the
+  CLI, Docker, Helm/EKS, gateway, and hosted-demo paths distinct, and avoid
+  treating deployment targets as shipped extensions (#4449, #4460, #4461).
+
+### Fixed
+- Postgres-hosted demo and control-plane scans persist findings through the
+  migrated workload-evidence schema, password-file/IAM-aware pool, tenant
+  context, grants, and RLS. CI now runs the Postgres contract when scheduler or
+  ingest paths change (#4433, #4455).
+- Cloud connection scope is authoritative on every scan, scheduler failures are
+  tenant-bound and sanitized, and event-collector helper endpoints require a
+  separate inbound bearer secret before they can forward with the control-plane
+  credential (#4452, #4459).
+- The packaged API image contains the dashboard again, and the air-gapped Helm
+  profile renders with its intended vulnerability database contract (#4453).
+- SARIF rules retain advisory descriptions and remediation text, while the CLI
+  normalizes push URLs and publishes a runnable gateway first command (#4456,
+  #4460).
+- Exposure-path UI labels no longer hide credential or tool hops and remain
+  legible in light and dark themes (#4454).
+- Replaced the vulnerable transitive brace-expansion dependency line and
+  restored full-suite Ruff compliance found during the release audit (#4458,
+  #4462).
+
 ## [0.97.5] - 2026-07-23
 
 ### Fixed
@@ -2579,7 +2628,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.97.5...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.0...HEAD
+[0.98.0]: https://github.com/msaad00/agent-bom/compare/v0.97.5...v0.98.0
 [0.97.5]: https://github.com/msaad00/agent-bom/compare/v0.97.4...v0.97.5
 [0.97.4]: https://github.com/msaad00/agent-bom/compare/v0.97.3...v0.97.4
 [0.97.3]: https://github.com/msaad00/agent-bom/compare/v0.97.2...v0.97.3

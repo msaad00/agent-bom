@@ -368,12 +368,16 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(stackSet.textContent).toContain("agent-bom-readonly");
     expect(stackSet.textContent).toContain(`EXTERNAL_ID=${setupId}`);
 
-    // Honest copy: read-only, every member account, new accounts auto-enroll.
+    // Honest copy: StackSet is grant onboarding; scan fan-out needs the env flag.
     const explainer = within(wizard).getByTestId("wizard-org-explainer").textContent ?? "";
     expect(explainer).toMatch(/every member account/i);
     expect(explainer).toMatch(/auto-enroll|automatically/i);
     expect(explainer).toMatch(/read-only/i);
     expect(explainer).toMatch(/management account|delegated admin/i);
+    expect(explainer).toMatch(/AGENT_BOM_AWS_ORG_INVENTORY/);
+    expect(explainer).toMatch(/management-account role only|management.account role only/i);
+    expect(stackSet.textContent).toContain("AGENT_BOM_AWS_ORG_INVENTORY");
+    expect(stackSet.textContent).not.toMatch(/enumerates the org and assumes/i);
 
     // The single-account CLI grant script is hidden while in org scope.
     expect(within(wizard).queryByText(/aws iam create-role/)).toBeNull();

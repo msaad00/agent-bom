@@ -3641,7 +3641,7 @@ function AddConnectionWizard({
                   ) : null}
                   <p className="text-[var(--foreground)]">
                     {isOrgScope ? (
-                      "Deploy one CloudFormation StackSet from your AWS Organization management (or delegated-admin) account. It mints the read-only role in every member account and auto-enrolls new ones — then paste this management account's role ARN in the next step."
+                      "Deploy one CloudFormation StackSet from your AWS Organization management (or delegated-admin) account. That grant mints the read-only role in every member account and auto-enrolls new ones — then paste this management account's role ARN in the next step. Org-wide scan fan-out still needs AGENT_BOM_AWS_ORG_INVENTORY on the control plane / scanner; a connection scan covers the management-account role only until that flag is set."
                     ) : (
                       <>
                         Run this in your {provider.label} to create the read-only grant, then paste the{" "}
@@ -3677,6 +3677,13 @@ function AddConnectionWizard({
                           <Lock className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
                           Read-only least-privilege (SecurityAudit / ViewOnlyAccess), assumed via short-lived STS with
                           this ExternalId — no static keys, no per-action credentials.
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                          Scan fan-out across member accounts requires{" "}
+                          <code className="font-mono">AGENT_BOM_AWS_ORG_INVENTORY</code> on the control plane /
+                          scanner (Helm: <code className="font-mono">scanner.cloud.aws.orgInventory</code>). Until
+                          then, a connection scan covers the management-account role only.
                         </li>
                       </ul>
                     </div>

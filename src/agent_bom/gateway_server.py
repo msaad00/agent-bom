@@ -83,12 +83,17 @@ from agent_bom.proxy_policy import (
 from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
 from agent_bom.runtime.fail_mode import gateway_fail_mode_matrix
 from agent_bom.runtime.gateway_events import GatewayRuntimeEventType, build_gateway_runtime_event
+from agent_bom.runtime.gateway_relay_contract import (
+    MAX_GATEWAY_RELAY_MESSAGE_BYTES,
+    forward_jsonrpc_http,
+    relay_upstream_from_config,
+)
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.security import sanitize_error, sanitize_text
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
-_MAX_GATEWAY_MESSAGE_BYTES = 2 * 1024 * 1024
+_MAX_GATEWAY_MESSAGE_BYTES = MAX_GATEWAY_RELAY_MESSAGE_BYTES
 _GATEWAY_RELAY_SCOPE = "gateway:relay"
 
 AuditSink = Callable[[dict[str, Any]], Awaitable[None]]
@@ -1087,35 +1092,19 @@ async def _post_upstream_jsonrpc(
     *,
     client: Any,
 ) -> dict[str, Any]:
+    """Forward via the Phase-2 pure-relay contract (Python reference)."""
     auth_headers = await upstream.resolve_auth_headers()
-    headers = {"Content-Type": "application/json", **auth_headers, **extra_headers}
-    async with client.stream("POST", upstream.url, json=message, headers=headers) as response:
-        response.raise_for_status()
-        content_length = response.headers.get("content-length")
-        if content_length:
-            try:
-                declared_size = int(content_length)
-            except ValueError:
-                declared_size = 0
-            if declared_size > _MAX_GATEWAY_MESSAGE_BYTES:
-                raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
-
-        body = bytearray()
-        async for chunk in response.aiter_bytes():
-            if len(body) + len(chunk) > _MAX_GATEWAY_MESSAGE_BYTES:
-                raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
-            body.extend(chunk)
-
-        raw_body = bytes(body)
-        if response.headers.get("content-type", "").startswith("application/json"):
-            return json.loads(raw_body)
-        # Some upstreams return text/event-stream; MVP treats non-JSON as an
-        # opaque body wrapped in a success envelope so policy + audit still fire.
-        return {
-            "jsonrpc": "2.0",
-            "id": message.get("id"),
-            "result": {"raw": raw_body.decode("utf-8", errors="replace")},
-        }
+    result = await forward_jsonrpc_http(
+        upstream_url=upstream.url,
+        message=message,
+        headers={**auth_headers, **extra_headers},
+        client=client,
+        upstream_name=upstream.name,
+        max_bytes=_MAX_GATEWAY_MESSAGE_BYTES,
+    )
+    # Keep a local reference so adapters/tests can assert the snapshot shape.
+    _ = relay_upstream_from_config(upstream)
+    return result.message
 
 
 async def _read_bounded_gateway_body(request: Any) -> bytes:

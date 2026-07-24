@@ -123,4 +123,4 @@ pool, not the load generator).
 
 `gate_tripped=true` → proceed to Phase 2 (Python-only relay interface +
 contract tests). Do not implement a Go sidecar until that contract exists
-(ADR-009).
+(ADR-009). Phase 2 Python extract: [`docs/design/GATEWAY_RELAY_CONTRACT.md`](../design/GATEWAY_RELAY_CONTRACT.md).

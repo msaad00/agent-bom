@@ -157,7 +157,7 @@ the source is:
 | AWS / Azure / GCP | `agent-bom cloud ...` | provider APIs expose estate inventory, IAM, network posture, CIS checks, and registry sweeps; the side-scan CLI executor is AWS-only (`side-scan --provider azure|gcp` refuses), while `side-scan-capabilities` and inventory `side_scan_targets` stay discovery/contract-only for Azure/GCP |
 | Snowflake | `agent-bom agents --snowflake` plus `connect snowflake` | Snowflake is a warehouse/governance source: Cortex, grants, query/activity evidence, lineage, and CIS/posture metadata |
 
-Both paths normalize into the same `Finding` and `ContextGraph` model; the
+Both paths normalize into the same `Finding` and `UnifiedGraph` model; the
 split is only the operator command and provider API boundary.
 
 ---

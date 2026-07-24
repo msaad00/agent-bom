@@ -68,7 +68,7 @@ dashboard. Snowflake Streamlit views may still exist for Snowflake-native
 deployments, but they are not the primary product visuals for README or docs.
 
 Diagrams should center the interoperable evidence model: sources and connectors
-feed `Finding` + `ContextGraph`, then humans and agents consume the same
+feed `Finding` + `UnifiedGraph`, then humans and agents consume the same
 evidence through CLI, API, UI, MCP, CI, reports, and gateway controls. AWS,
 Azure, GCP, Snowflake, registries, repos, IaC, SBOMs, and runtime streams are
 connector lanes. None should be drawn as the product center unless the page is
@@ -93,18 +93,21 @@ Every generated visual must keep text inside its parent shape at README scale:
 no clipped labels, no text crossing card borders, no arrows covering text, and
 no stale visible version stamp.
 
+`PERSONA_LANES` in that generator is the single source of truth for the persona
+names: the card titles, the README "Who it is for" table rows, and the image alt
+text use the same five strings in the same order, so the picture and the table
+under it can never name different sets. Card copy is budgeted
+(`_audit_persona_copy`) because text is drawn, not wrapped.
+
 Current SVG inventory:
 
 | File | What it shows | Where it lives in the README |
 |---|---|---|
 | `brand/logo-{light,dark}.svg` | Brand lockup (mark + wordmark); see Brand basics above | hero |
-| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
-| `how-it-works-{light,dark}.svg` | Three product lanes — Scan → Graph → Serve — vuln/advisories in scan, ContextGraph + blast radius at center, `agent-bom serve` as one pane of glass; cloud row uses official marks from `ui/public/logos/` | README "How It Works" |
-| `persona-value-{light,dark}.svg` | Five buyer personas in a compact single-row band (AppSec ≠ GRC / audit) — neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "What Is agent-bom", collapsed "Who it's for" detail |
+| `architecture-{light,dark}.svg` | Layered flow: sources → scan/enrich → unified Finding + UnifiedGraph → self-hosted API, scheduler/events, gateway, and MCP surfaces → people, agents, and artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
+| `how-it-works-{light,dark}.svg` | Three product lanes — Scan → Centralize → Enforce — local/CI evidence, the self-hosted control plane, and optional runtime gateway on one Finding + UnifiedGraph model | README "How It Works" |
+| `persona-value-{light,dark}.svg` | Five buyer personas in a compact single-row band — Developers, AppSec, Platform / SRE, GRC / audit, AI / MCP owners (AppSec ≠ GRC / audit), the same five names and order as the README "Who it is for" table; neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "Who it is for" |
 | `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | README "What Is agent-bom", collapsed drilldown |
-| `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
-| `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |
-| `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
 | `demo-latest.gif` | Terminal demo (1100×1000; compressed, exact size may change per render) | "Try the demo" |
 
 Current PNG inventory:

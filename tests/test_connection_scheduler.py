@@ -15,13 +15,21 @@ Also covers the three hardening invariants the scheduler must hold:
   bound, and a raising scan restores the previous tenant;
 * no persistence failure escapes a tick — ``execute_connection_scan`` never
   raises and both ``gather`` fan-outs survive a raising task.
+
+Plus idle observability: an enabled loop whose connections carry neither cadence
+gate says so once per throttle window, and a tick that ran a scan never emits
+that notice.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import time
 import uuid
 from collections.abc import Iterator
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -30,8 +38,11 @@ from cryptography.fernet import Fernet
 
 from agent_bom.api import connection_crypto
 from agent_bom.api.connection_scheduler import (
+    _log_idle_notice,
     claim_due_connections,
+    connection_scheduler_loop,
     connections_scheduler_enabled,
+    describe_idle_scheduler,
     drain_continuous_events,
     execute_connection_scan,
     is_due,
@@ -875,3 +886,117 @@ async def test_run_once_drains_continuous_before_due_full_scans(
     assert order[0] == f"drain:{continuous_due.id}"
     assert order[1] == f"scan:{continuous_due.id}"
     assert calls["scanned_ids"] == [continuous_due.id]
+
+
+# --------------------------------------------------------------------------- #
+# Idle observability (an enabled scheduler with no cadence must not be silent)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def _scheduler_log(caplog: pytest.LogCaptureFixture) -> Iterator[pytest.LogCaptureFixture]:
+    """Capture scheduler records regardless of test order.
+
+    ``setup_logging`` may already have configured the ``agent_bom`` tree with
+    ``propagate=False``, which silently drops records before ``caplog``'s root
+    handler sees them. Pin both the level and propagation for this logger only.
+    """
+    scheduler_logger = logging.getLogger("agent_bom.api.connection_scheduler")
+    prior_propagate = scheduler_logger.propagate
+    scheduler_logger.propagate = True
+    caplog.set_level(logging.INFO, logger="agent_bom.api.connection_scheduler")
+    try:
+        yield caplog
+    finally:
+        scheduler_logger.propagate = prior_propagate
+
+
+async def _run_one_tick(store: InMemoryConnectionStore, done: Any, *, timeout: float = 5.0) -> None:
+    """Run the scheduler loop until *done()* or *timeout*, then cancel it.
+
+    ``poll_seconds`` is set high so the loop performs exactly one tick and then
+    parks in its inter-poll sleep, which makes "logged once" assertions
+    deterministic without patching ``asyncio.sleep``.
+    """
+    task = asyncio.create_task(connection_scheduler_loop(store, poll_seconds=3600))
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline and not done():
+            await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+def _idle_records(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [record.getMessage() for record in caplog.records if "enabled but idle" in record.getMessage()]
+
+
+@pytest.mark.asyncio
+async def test_idle_scheduler_logs_once_when_no_cadence_is_configured(
+    _scheduler_log: pytest.LogCaptureFixture,
+) -> None:
+    """An enabled scheduler with no interval and no continuous mode says so — once."""
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    # Manual-only, full-mode: neither cadence gate is satisfied, so the loop can
+    # never do anything until an operator sets one.
+    store.put(_record(scan_interval_minutes=None, scan_mode=SCAN_MODE_FULL))
+
+    await _run_one_tick(store, lambda: bool(_idle_records(_scheduler_log)))
+
+    messages = _idle_records(_scheduler_log)
+    assert len(messages) == 1, messages
+    assert "scan_interval_minutes" in messages[0]
+    assert "scan_mode=continuous" in messages[0]
+
+
+def test_idle_notice_is_throttled_within_its_window(_scheduler_log: pytest.LogCaptureFixture) -> None:
+    """Repeated idle ticks reuse the throttle anchor instead of logging again."""
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(_record(scan_interval_minutes=None, scan_mode=SCAN_MODE_FULL))
+
+    first = _log_idle_notice(store, None, 60)
+    second = _log_idle_notice(store, first, 60)
+
+    messages = _idle_records(_scheduler_log)
+    assert len(messages) == 1, messages
+    assert second == first
+
+
+def test_idle_notice_silent_while_a_cadence_exists() -> None:
+    """A connection carrying an interval is configured cadence, not a misconfiguration."""
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(
+        _record(
+            scan_interval_minutes=60,
+            last_scan_at=(_now() - timedelta(minutes=1)).isoformat(),
+        )
+    )
+
+    assert describe_idle_scheduler(store) is None
+
+
+@pytest.mark.asyncio
+async def test_busy_tick_does_not_log_the_idle_notice(
+    monkeypatch: pytest.MonkeyPatch,
+    _scheduler_log: pytest.LogCaptureFixture,
+) -> None:
+    """A tick that actually ran a due scan logs the run, never the idle notice."""
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    _install_scan_mocks(monkeypatch)
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(_record(scan_interval_minutes=60, last_scan_at=None))
+
+    def _ran() -> bool:
+        return any("ran 1 due cloud-connection scan" in r.getMessage() for r in _scheduler_log.records)
+
+    await _run_one_tick(store, _ran)
+
+    assert _ran(), [r.getMessage() for r in _scheduler_log.records]
+    assert _idle_records(_scheduler_log) == []

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -984,6 +986,80 @@ def test_helm_event_collector_deployment_gated_by_values():
     assert "app.kubernetes.io/component: event-collector" in on
     assert "--control-plane-url=" in on
     assert "/v1/cloud/connections/events/ingest" not in on  # path is in the binary, not args
+
+
+def _render_chart(*sets: str) -> subprocess.CompletedProcess[str]:
+    """Run `helm template` without asserting success, so failures can be inspected."""
+    if shutil.which("helm") is None:
+        pytest.skip("helm not installed")
+    args = ["helm", "template", "abom", str(HELM_DIR)]
+    for item in sets:
+        args += ["--set", item]
+    return subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+
+
+def _collector_docs(stdout: str) -> list[dict]:
+    return [
+        doc
+        for doc in yaml.safe_load_all(stdout)
+        if doc and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "event-collector"
+    ]
+
+
+def test_helm_event_collector_disabled_renders_no_objects():
+    """Default and explicit-off installs stay collector-free (unchanged behavior)."""
+    for extra in ((), ("eventCollector.enabled=false",)):
+        proc = _render_chart("controlPlane.enabled=true", "controlPlane.migrations.enabled=false", *extra)
+        assert proc.returncode == 0, proc.stderr
+        assert _collector_docs(proc.stdout) == []
+
+
+def test_helm_event_collector_without_image_fails_render_loudly():
+    """No published image: enabling the collector must abort, never silently no-op.
+
+    Before this guard `helm template --set eventCollector.enabled=true` exited 0
+    and rendered zero collector objects, so an operator got a clean
+    `helm upgrade` and no collector.
+    """
+    proc = _render_chart("controlPlane.enabled=true", "controlPlane.migrations.enabled=false", "eventCollector.enabled=true")
+    assert proc.returncode != 0, "enabling the collector with no image must fail the render"
+    assert _collector_docs(proc.stdout) == []
+    message = proc.stderr
+    assert "eventCollector.image.repository" in message
+    assert "runtime/event-collector" in message
+    assert "eventCollector.enabled=false" in message
+
+
+def test_helm_event_collector_without_control_plane_fails_render_loudly():
+    """The collector Deployment only renders with the in-cluster control plane."""
+    proc = _render_chart(
+        "controlPlane.enabled=false",
+        "eventCollector.enabled=true",
+        "eventCollector.image.repository=example/event-collector",
+    )
+    assert proc.returncode != 0, "collector without controlPlane.enabled must fail the render"
+    assert _collector_docs(proc.stdout) == []
+    assert "controlPlane.enabled" in proc.stderr
+
+
+def test_helm_event_collector_renders_a_usable_deployment_when_image_supplied():
+    """A self-hosted image still installs — assert the rendered structure, not exit 0."""
+    proc = _render_chart(
+        "controlPlane.enabled=true",
+        "controlPlane.migrations.enabled=false",
+        "eventCollector.enabled=true",
+        "eventCollector.image.repository=example/event-collector",
+        "eventCollector.image.tag=test",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _collector_docs(proc.stdout)
+    assert len(docs) == 1, docs
+    deployment = docs[0]
+    assert deployment["kind"] == "Deployment"
+    containers = deployment["spec"]["template"]["spec"]["containers"]
+    assert len(containers) == 1
+    assert containers[0]["image"] == "example/event-collector:test"
+    assert containers[0]["ports"][0]["containerPort"] == 8092
 
 
 def test_pilot_compose_optional_connections_scheduler_env():

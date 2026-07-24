@@ -508,6 +508,103 @@ def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
     )
 
 
+def test_cloud_connections_rls_requires_the_scheduler_to_bind_the_record_tenant():
+    """Regression cover for #4452 against a real server.
+
+    The connections scheduler writes on behalf of whichever tenant owns the
+    record, so it must bind that tenant before touching the store. Without the
+    binding the session still reports the ``default`` fallback and the
+    ``cloud_connections_tenant_isolation`` WITH CHECK clause rejects the row —
+    on a multi-tenant Postgres control plane every scheduled write for a
+    non-``default`` tenant failed.
+
+    Only a live server can prove the three things below: that the owner's write
+    round-trips, that the unbound write raises the real
+    ``psycopg.errors.InsufficientPrivilege`` (which pins the WITH CHECK half of
+    the policy, so a migration that drops it fails here), and that one tenant's
+    rejection does not poison the next tenant's write.
+    """
+    import psycopg
+
+    from agent_bom.api import postgres_common
+    from agent_bom.api.connection_store import CloudConnectionRecord
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_connection import PostgresConnectionStore
+
+    pool = postgres_common._get_pool()
+    with pool.connection() as conn:
+        role_state = conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone()
+    if role_state is None or role_state[0] or role_state[1]:
+        pytest.skip(
+            f"Runtime RLS check requires a non-superuser, non-bypassrls role. current_user has (rolsuper, rolbypassrls)={role_state}."
+        )
+
+    store = PostgresConnectionStore()
+    suffix = uuid4().hex
+    tenant_a = f"conn-a-{suffix}"
+    tenant_b = f"conn-b-{suffix}"
+
+    def _record(connection_id: str, tenant_id: str) -> CloudConnectionRecord:
+        return CloudConnectionRecord(
+            id=connection_id,
+            tenant_id=tenant_id,
+            provider="aws",
+            display_name="Scheduled production",
+            role_ref="arn:aws:iam::123456789012:role/agent-bom-read-only",
+            external_id_encrypted="",
+            created_at="2026-07-24T00:00:00Z",
+            updated_at="2026-07-24T00:00:01Z",
+            scan_interval_minutes=60,
+        )
+
+    record_a = _record(f"sched-a-{suffix}", tenant_a)
+    record_b = _record(f"sched-b-{suffix}", tenant_b)
+
+    try:
+        # 1. The scheduler's fixed behaviour: bind the record's tenant, write,
+        #    and read the row back as its owner.
+        token = set_current_tenant(tenant_a)
+        try:
+            store.put(record_a)
+            owned = store.get(tenant_a, record_a.id)
+        finally:
+            reset_current_tenant(token)
+        assert owned is not None, "a tenant-bound scheduled write did not persist"
+        assert owned.tenant_id == tenant_a
+        assert owned.scan_interval_minutes == 60
+
+        # 2. The pre-fix behaviour: no binding, so the session is still on the
+        #    'default' fallback and the WITH CHECK clause must refuse the row.
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            store.put(_record(f"sched-unbound-{suffix}", tenant_a))
+
+        # 3. A rejected write for one tenant must not stop the next tenant's.
+        token = set_current_tenant(tenant_a)
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                store.put(record_b)
+        finally:
+            reset_current_tenant(token)
+
+        token = set_current_tenant(tenant_b)
+        try:
+            store.put(record_b)
+            second = store.get(tenant_b, record_b.id)
+            leaked = store.get(tenant_a, record_a.id)
+        finally:
+            reset_current_tenant(token)
+        assert second is not None, "tenant B's write was lost after tenant A's rejection"
+        assert second.tenant_id == tenant_b
+        assert leaked is None, "cloud_connections RLS leaked tenant A's row into a session bound to tenant B"
+    finally:
+        for tenant_id, connection_id in ((tenant_a, record_a.id), (tenant_b, record_b.id)):
+            token = set_current_tenant(tenant_id)
+            try:
+                store.delete(tenant_id, connection_id)
+            finally:
+                reset_current_tenant(token)
+
+
 def test_audit_append_persists_entry_tenant_under_mismatched_ambient_context():
     """Regression for #4276: proxy-header auth emits its audit event BEFORE the
     request tenant context is installed, so ``append`` runs while the ambient

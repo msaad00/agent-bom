@@ -107,10 +107,11 @@ def test_readme_storefront_keeps_quick_start_deploy_and_version_pins() -> None:
     assert re.search(r"^## Deploy & self-host\s*$", readme, re.M)
     assert re.search(r"^## See the product\s*$", readme, re.M)
 
-    # Persona alt text keeps AppSec and GRC as separate lanes.
+    # Persona surfaces keep AppSec and GRC as separate lanes (never one card).
     assert "AppSec/GRC" not in readme
     assert "AppSec / GRC" not in readme
-    assert "AppSec, GRC" in readme
+    assert "| AppSec |" in readme
+    assert "| GRC / audit |" in readme
 
     # Helm OCI pin and CLI walkthrough label match pyproject.
     assert f"oci://ghcr.io/msaad00/charts/agent-bom --version {version}" in readme
@@ -119,6 +120,20 @@ def test_readme_storefront_keeps_quick_start_deploy_and_version_pins() -> None:
 
     # Logo honesty: CLI is text wordmark; UI/demo show the mark.
     assert "wordmark as text" in readme or "text wordmark" in readme
+
+
+def test_readme_grc_persona_row_teaches_the_real_compliance_command() -> None:
+    """The GRC row must give the same runnable entry point as the other four."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "agent-bom report compliance-narrative" in readme
+    # No noun-phrase placeholder where a command belongs.
+    assert "| Compliance exports + control-plane evidence |" not in readme
+
+    result = CliRunner().invoke(main, ["report", "compliance-narrative", "--help"])
+    assert result.exit_code == 0, result.output
+    # The documented invocation passes a saved scan report positionally.
+    assert "SCAN_FILE" in result.output
 
 
 def test_permissions_doc_keeps_network_boundary_scoped() -> None:

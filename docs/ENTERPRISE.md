@@ -12,7 +12,13 @@ It exists for a simple reason: the controls are real, but they should not requir
 
 ## What Is True Today
 
-`agent-bom` is production-ready OSS and enterprise-adaptable. The current enterprise control plane is built around:
+The enterprise controls on this page ship as working, tested code — every row of
+the [claim-to-code map](#claim-to-code-map) points at its implementation, and the
+control plane is deployable today for evaluation and self-hosted use. A
+third-party penetration test is still an open exit criterion:
+[`PENTEST_READINESS.md`](PENTEST_READINESS.md) defines the scope and the security
+criteria that must close before a `v1.0` production-ready claim. The current
+enterprise control plane is built around:
 
 - API key auth with ordered RBAC route rules
 - optional OIDC bearer auth with fail-closed tenant claims

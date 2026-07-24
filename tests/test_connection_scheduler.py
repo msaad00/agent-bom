@@ -6,6 +6,15 @@ claimed scan), the run-once orchestration (scan triggered + ``last_scan_at``
 advanced + status ``active``), failure isolation (a failing connection is marked
 ``error`` and the loop continues), non-AWS skip (the broker is AWS-only), and the
 env toggle that keeps the loop off in CLI/dev.
+
+Also covers the three hardening invariants the scheduler must hold:
+
+* the persisted ``status_detail`` follows the same policy as the HTTP scan route
+  (``_safe_connection_detail``) so no broker text reaches ``GET /v1/cloud/connections``;
+* every per-connection unit of work runs with the connection's Postgres tenant
+  bound, and a raising scan restores the previous tenant;
+* no persistence failure escapes a tick — ``execute_connection_scan`` never
+  raises and both ``gather`` fan-outs survive a raising task.
 """
 
 from __future__ import annotations
@@ -24,6 +33,7 @@ from agent_bom.api.connection_scheduler import (
     claim_due_connections,
     connections_scheduler_enabled,
     drain_continuous_events,
+    execute_connection_scan,
     is_due,
     run_due_scans_once,
     select_due_connections,
@@ -39,8 +49,23 @@ from agent_bom.api.connection_store import (
     SQLiteConnectionStore,
     set_connection_store,
 )
+from agent_bom.api.postgres_common import _current_tenant
 
 _TEST_KEY = Fernet.generate_key().decode("ascii")
+
+# A realistic boto3 ``AssumeRole`` denial. ``sanitize_error`` without
+# ``generic=True`` strips URLs, absolute paths, and ``key=value`` credential
+# assignments — it leaves the account-bearing ARN prefix and the ExternalId
+# value intact, and the message is short enough to survive both the 200-char
+# sanitizer truncation and the 300-char ``status_detail`` cap. Anything that
+# persists this text verbatim leaks a secret to ``GET /v1/cloud/connections``.
+_LEAK_EXTERNAL_ID = "super-secret-external-id"
+_LEAK_ACCOUNT_ARN = "arn:aws:sts::111122223333:assumed-role"
+_BROKER_FAILURE_MESSAGE = (
+    "An error occurred (AccessDenied) when calling the AssumeRole operation: "
+    f"{_LEAK_ACCOUNT_ARN}/abom is not authorized "
+    f"(ExternalId {_LEAK_EXTERNAL_ID})"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -97,16 +122,56 @@ def _record(
 _BROKER_SESSION_SENTINEL = object()
 
 
-def _install_scan_mocks(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False) -> dict[str, Any]:
-    """Patch the broker + AWS inventory/CIS the scheduler's scan path reuses."""
+class _TenantRecordingStore(InMemoryConnectionStore):
+    """In-memory store that records the bound Postgres tenant on every write.
+
+    ``put`` is the scheduler's write path (via ``_mark_connection``). On
+    Postgres the ``WITH CHECK`` half of each ``*_tenant_isolation`` policy
+    compares the row's ``tenant_id`` against ``app.tenant_id``, which
+    ``_apply_tenant_session`` reads from the ``_current_tenant`` contextvar —
+    so an unbound tenant means the write is rejected. Ids added to
+    ``fail_ids`` raise on write to simulate that rejection.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.put_tenants: list[tuple[str, str]] = []
+        self.fail_ids: set[str] = set()
+
+    def put(self, record: CloudConnectionRecord) -> None:
+        self.put_tenants.append((record.id, _current_tenant.get()))
+        if record.id in self.fail_ids:
+            raise RuntimeError('new row violates row-level security policy for table "cloud_connections"')
+        super().put(record)
+
+    def observed_tenant(self, connection_id: str) -> str | None:
+        """Tenant bound during the most recent write for *connection_id*."""
+        for record_id, tenant in reversed(self.put_tenants):
+            if record_id == connection_id:
+                return tenant
+        return None
+
+
+def _install_scan_mocks(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail: bool = False,
+    fail_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    """Patch the broker + AWS inventory/CIS the scheduler's scan path reuses.
+
+    *fail* fails every broker exchange; *fail_ids* fails only those connections
+    so a tick can mix a failing and a healthy connection.
+    """
     from agent_bom.cloud import aws_cis_benchmark, aws_inventory, connection_broker
 
-    calls: dict[str, Any] = {"scanned_ids": []}
+    calls: dict[str, Any] = {"scanned_ids": [], "scan_tenants": []}
 
     def _fake_broker(record: CloudConnectionRecord, **kwargs: Any) -> Any:
         calls["scanned_ids"].append(record.id)
-        if fail:
-            raise connection_broker.ConnectionBrokerError(f"AssumeRole failed for connection {record.id}.")
+        calls["scan_tenants"].append((record.id, _current_tenant.get()))
+        if fail or (fail_ids is not None and record.id in fail_ids):
+            raise connection_broker.ConnectionBrokerError(_BROKER_FAILURE_MESSAGE)
         return _BROKER_SESSION_SENTINEL
 
     def _fake_inventory(region: str | None = None, force: bool = False, session: Any = None, **kwargs: Any) -> dict[str, Any]:
@@ -290,7 +355,240 @@ async def test_run_once_failing_connection_marked_error_and_loop_continues(monke
         assert fetched is not None
         assert fetched.status == STATUS_ERROR
         assert fetched.status_detail
-        assert "super-secret-external-id" not in fetched.status_detail
+        assert _LEAK_EXTERNAL_ID not in fetched.status_detail
+        assert _LEAK_ACCOUNT_ARN not in fetched.status_detail
+
+
+@pytest.mark.asyncio
+async def test_scheduled_failure_detail_matches_http_scan_route_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The persisted detail must be exactly what the HTTP scan route would store.
+
+    ``status_detail`` is returned verbatim by ``GET /v1/cloud/connections``, so
+    the scheduler cannot apply a weaker policy than the route: both go through
+    ``_safe_connection_detail``, which never surfaces the broker's free-form
+    message.
+    """
+    from agent_bom.api.routes.cloud_connections import _safe_connection_detail
+    from agent_bom.cloud.connection_broker import ConnectionBrokerError
+
+    _install_scan_mocks(monkeypatch, fail=True)
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    record = _record(scan_interval_minutes=60, last_scan_at=None)
+    store.put(record)
+
+    assert await run_due_scans_once(store, _now()) == 1
+
+    expected = _safe_connection_detail(ConnectionBrokerError(_BROKER_FAILURE_MESSAGE))
+    fetched = store.get(record.tenant_id, record.id)
+    assert fetched is not None
+    assert fetched.status_detail == expected
+    assert "AccessDenied" not in fetched.status_detail
+
+
+# --------------------------------------------------------------------------- #
+# Tenant context binding (Postgres RLS WITH CHECK)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_run_once_binds_each_connections_tenant_for_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each connection's writes run under its own tenant, not the default one."""
+    _install_scan_mocks(monkeypatch)
+    store = _TenantRecordingStore()
+    set_connection_store(store)
+    first = _record(tenant_id="tenant-a", scan_interval_minutes=60, last_scan_at=None)
+    second = _record(tenant_id="tenant-b", scan_interval_minutes=60, last_scan_at=None)
+    store.put(first)
+    store.put(second)
+    store.put_tenants.clear()
+
+    assert await run_due_scans_once(store, _now()) == 2
+
+    assert store.observed_tenant(first.id) == "tenant-a"
+    assert store.observed_tenant(second.id) == "tenant-b"
+    assert "default" not in {tenant for _id, tenant in store.put_tenants}
+
+
+def test_execute_connection_scan_restores_tenant_after_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raising scan resets the tenant so it cannot leak into the next unit."""
+    _install_scan_mocks(monkeypatch, fail=True)
+    store = _TenantRecordingStore()
+    set_connection_store(store)
+    record = _record(tenant_id="tenant-a")
+    store.put(record)
+    store.put_tenants.clear()
+
+    assert execute_connection_scan(record) is False
+    assert store.observed_tenant(record.id) == "tenant-a"
+    assert _current_tenant.get() == "default"
+
+
+def test_failing_scan_does_not_leak_tenant_into_next_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two tenants in one tick: the first raising must not taint the second."""
+    store = _TenantRecordingStore()
+    set_connection_store(store)
+    failing = _record(tenant_id="tenant-a", scan_interval_minutes=60, last_scan_at=None)
+    healthy = _record(tenant_id="tenant-b", scan_interval_minutes=60, last_scan_at=None)
+    store.put(failing)
+    store.put(healthy)
+    store.put_tenants.clear()
+    calls = _install_scan_mocks(monkeypatch, fail_ids={failing.id})
+
+    # Sequential in-thread calls share one context, so a missing reset shows up.
+    assert execute_connection_scan(failing) is False
+    assert execute_connection_scan(healthy) is True
+
+    assert dict(calls["scan_tenants"]) == {failing.id: "tenant-a", healthy.id: "tenant-b"}
+    assert store.observed_tenant(healthy.id) == "tenant-b"
+    assert _current_tenant.get() == "default"
+
+
+@pytest.mark.asyncio
+async def test_drain_continuous_events_binds_connection_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The event drain's ``last_event_at`` stamp also needs the tenant bound."""
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+    observed: list[str] = []
+
+    def _fake_consume(record: CloudConnectionRecord, **kwargs: Any) -> dict[str, Any]:
+        observed.append(_current_tenant.get())
+        return {"status": "ok", "processed": 0}
+
+    monkeypatch.setattr("agent_bom.cloud.event_ingest.consume_aws_events", _fake_consume)
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(_record(tenant_id="tenant-b", scan_mode=SCAN_MODE_CONTINUOUS))
+
+    assert await drain_continuous_events(store) == 1
+    assert observed == ["tenant-b"]
+
+
+# --------------------------------------------------------------------------- #
+# Persistence failures never sink a tick
+# --------------------------------------------------------------------------- #
+
+
+def test_execute_connection_scan_never_raises_when_store_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejected store write is reported as a failed scan, not raised."""
+    _install_scan_mocks(monkeypatch)
+    store = _TenantRecordingStore()
+    set_connection_store(store)
+    record = _record(scan_interval_minutes=60, last_scan_at=None)
+    store.put(record)
+    store.fail_ids.add(record.id)
+
+    assert execute_connection_scan(record) is False
+
+
+@pytest.mark.asyncio
+async def test_run_once_survives_a_connection_whose_store_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One connection's persistence failure cannot abort the whole tick."""
+    calls = _install_scan_mocks(monkeypatch)
+    store = _TenantRecordingStore()
+    set_connection_store(store)
+    broken = _record(scan_interval_minutes=60, last_scan_at=None)
+    healthy = _record(scan_interval_minutes=60, last_scan_at=None)
+    store.put(broken)
+    store.put(healthy)
+    store.fail_ids.add(broken.id)
+
+    count = await run_due_scans_once(store, _now())
+
+    assert count == 2
+    assert set(calls["scanned_ids"]) == {broken.id, healthy.id}
+    fetched = store.get(healthy.tenant_id, healthy.id)
+    assert fetched is not None
+    assert fetched.status == STATUS_ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_run_once_survives_a_raising_scan_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The due-scan gather must collect task errors instead of aborting the tick."""
+    from agent_bom.api import connection_scheduler as sched
+
+    _install_scan_mocks(monkeypatch)
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    boom = _record(scan_interval_minutes=60, last_scan_at=None)
+    healthy = _record(scan_interval_minutes=60, last_scan_at=None)
+    store.put(boom)
+    store.put(healthy)
+    ran: list[str] = []
+
+    def _explode(record: CloudConnectionRecord) -> bool:
+        if record.id == boom.id:
+            raise RuntimeError("worker thread failure")
+        ran.append(record.id)
+        return True
+
+    monkeypatch.setattr(sched, "execute_connection_scan", _explode)
+
+    assert await run_due_scans_once(store, _now()) == 2
+    assert ran == [healthy.id]
+
+
+@pytest.mark.asyncio
+async def test_drain_continuous_events_survives_store_listing_failure() -> None:
+    """A store outage while listing continuous connections cannot sink the tick."""
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+
+    class _BrokenListing(InMemoryConnectionStore):
+        def list_continuous(self) -> list[CloudConnectionRecord]:
+            raise RuntimeError("connection pool exhausted")
+
+    store = _BrokenListing()
+    set_connection_store(store)
+
+    assert await drain_continuous_events(store) == 0
+
+
+@pytest.mark.asyncio
+async def test_drain_continuous_events_survives_a_raising_drain_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The drain gather must collect task errors instead of aborting the tick."""
+    from agent_bom.api import connection_scheduler as sched
+
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+    monkeypatch.setattr(
+        "agent_bom.cloud.event_ingest.consume_aws_events",
+        lambda record, **k: {"status": "ok"},
+    )
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    boom = _record(scan_mode=SCAN_MODE_CONTINUOUS)
+    healthy = _record(scan_mode=SCAN_MODE_CONTINUOUS)
+    store.put(boom)
+    store.put(healthy)
+    drained: list[str] = []
+
+    def _explode(record: CloudConnectionRecord, store_arg: Any, **kwargs: Any) -> None:
+        if record.id == boom.id:
+            raise RuntimeError("worker thread failure")
+        drained.append(record.id)
+
+    monkeypatch.setattr(sched, "_consume_continuous_events", _explode)
+
+    assert await drain_continuous_events(store) == 2
+    assert drained == [healthy.id]
 
 
 @pytest.mark.asyncio

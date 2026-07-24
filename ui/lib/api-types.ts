@@ -3457,6 +3457,10 @@ export interface CloudConnectionRecord {
   auth_params?: Record<string, string>;
   /** ``account`` (default) or ``organization`` — org fans Connections scan across member accounts. */
   inventory_scope?: "account" | "organization" | string;
+  /** ``full`` (default) polling cadence; ``continuous`` intends event-driven mid-interval refresh. */
+  scan_mode?: "full" | "continuous" | string;
+  /** When true (Create default), a follow-up path may enqueue a scan after create. */
+  auto_scan_on_create?: boolean;
 }
 
 export interface CloudConnectionsResponse {
@@ -3479,6 +3483,10 @@ export interface CloudConnectionCreateRequest {
   scan_interval_minutes?: number | null;
   /** ``account`` (default) or ``organization`` for Connections scan fan-out. */
   inventory_scope?: "account" | "organization";
+  /** ``full`` (default) or ``continuous``. */
+  scan_mode?: "full" | "continuous";
+  /** Defaults true on create; persisted for a follow-up create-time scan path. */
+  auto_scan_on_create?: boolean;
 }
 
 export interface CloudConnectionUpdateRequest {
@@ -3486,6 +3494,10 @@ export interface CloudConnectionUpdateRequest {
   scan_interval_minutes: number | null;
   /** Optional org fan-out scope for subsequent Connections scans. */
   inventory_scope?: "account" | "organization";
+  /** Optional scan cadence mode. */
+  scan_mode?: "full" | "continuous";
+  /** Optional create-time auto-scan flag. */
+  auto_scan_on_create?: boolean;
 }
 
 export interface AuthorizationEvidenceSummary {

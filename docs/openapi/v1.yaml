@@ -886,13 +886,20 @@ components:
       description: "Request body for creating a connection. ``external_id`` is write-only.\n\
         \n``scan_interval_minutes`` opts the connection into recurring background\
         \ scans\n(Phase B.2). Null (the default) means manual-only \u2014 the scheduler\
-        \ ignores it."
+        \ ignores it.\n``scan_mode`` is ``full`` (default) or ``continuous``; continuous\
+        \ intends\nevent-driven mid-interval refresh once an event queue is wired.\
+        \ ``auto_scan_on_create``\ndefaults true and is persisted for a follow-up\
+        \ create-time scan path."
       properties:
         auth_params:
           additionalProperties:
             type: string
           title: Auth Params
           type: object
+        auto_scan_on_create:
+          default: true
+          title: Auto Scan On Create
+          type: boolean
         display_name:
           maxLength: 200
           minLength: 1
@@ -925,6 +932,10 @@ components:
           - type: integer
           - type: 'null'
           title: Scan Interval Minutes
+        scan_mode:
+          default: full
+          title: Scan Mode
+          type: string
       required:
       - provider
       - display_name
@@ -939,10 +950,15 @@ components:
 
         ``scan_interval_minutes`` is set to the supplied value; null disables the
 
-        recurring scan (back to manual-only). Optional ``inventory_scope`` updates
+        recurring scan (back to manual-only). Optional ``inventory_scope``,
 
-        org fan-out for subsequent scans.'
+        ``scan_mode``, and ``auto_scan_on_create`` update when provided.'
       properties:
+        auto_scan_on_create:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Auto Scan On Create
         inventory_scope:
           anyOf:
           - type: string
@@ -953,6 +969,11 @@ components:
           - type: integer
           - type: 'null'
           title: Scan Interval Minutes
+        scan_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scan Mode
       title: CloudConnectionUpdate
       type: object
     ClusterPostureRequest:

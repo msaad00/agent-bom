@@ -50,11 +50,13 @@ from agent_bom.api.audit_log import log_action
 from agent_bom.api.connection_crypto import ConnectionSecretError, connections_key_configured, encrypt_secret
 from agent_bom.api.connection_store import (
     INVENTORY_SCOPE_ACCOUNT,
+    SCAN_MODE_FULL,
     STATUS_ACTIVE,
     STATUS_ERROR,
     STATUS_PENDING,
     SUPPORTED_PROVIDERS,
     VALID_INVENTORY_SCOPES,
+    VALID_SCAN_MODES,
     CloudConnectionRecord,
     connection_org_fanout_enabled,
     get_connection_store,
@@ -91,6 +93,9 @@ class CloudConnectionCreate(BaseModel):
 
     ``scan_interval_minutes`` opts the connection into recurring background scans
     (Phase B.2). Null (the default) means manual-only — the scheduler ignores it.
+    ``scan_mode`` is ``full`` (default) or ``continuous``; continuous intends
+    event-driven mid-interval refresh once an event queue is wired. ``auto_scan_on_create``
+    defaults true and is persisted for a follow-up create-time scan path.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -108,20 +113,24 @@ class CloudConnectionCreate(BaseModel):
     # ``account`` (default) = connected target only; ``organization`` = fan-out
     # across member accounts / subscriptions / projects on Connections scan.
     inventory_scope: str = INVENTORY_SCOPE_ACCOUNT
+    scan_mode: str = SCAN_MODE_FULL
+    auto_scan_on_create: bool = True
 
 
 class CloudConnectionUpdate(BaseModel):
     """Request body for updating a connection's recurring scan schedule.
 
     ``scan_interval_minutes`` is set to the supplied value; null disables the
-    recurring scan (back to manual-only). Optional ``inventory_scope`` updates
-    org fan-out for subsequent scans.
+    recurring scan (back to manual-only). Optional ``inventory_scope``,
+    ``scan_mode``, and ``auto_scan_on_create`` update when provided.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     scan_interval_minutes: int | None = None
     inventory_scope: str | None = None
+    scan_mode: str | None = None
+    auto_scan_on_create: bool | None = None
 
 
 def _now() -> str:
@@ -199,6 +208,19 @@ def _validate_inventory_scope(scope: str | None, *, auth_params: dict[str, Any] 
     return raw
 
 
+def _validate_scan_mode(mode: str | None) -> str:
+    """Normalize scan_mode to full|continuous."""
+    raw = str(mode or "").strip().lower()
+    if not raw:
+        return SCAN_MODE_FULL
+    if raw not in VALID_SCAN_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"scan_mode must be one of: {', '.join(VALID_SCAN_MODES)}.",
+        )
+    return raw
+
+
 
 def _validate_regions(regions: list[str]) -> list[str]:
     from agent_bom.cloud.aws_inventory import ALL_REGIONS_SENTINEL
@@ -242,6 +264,8 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
     auth_params = _validate_auth_params(body.auth_params)
     inventory_scope = _validate_inventory_scope(body.inventory_scope, auth_params=auth_params)
+    scan_mode = _validate_scan_mode(body.scan_mode)
+    auto_scan_on_create = bool(body.auto_scan_on_create)
 
     # Fail closed before doing anything if the store cannot encrypt the secret.
     if not connections_key_configured():
@@ -273,6 +297,8 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         scan_interval_minutes=scan_interval_minutes,
         auth_params=auth_params,
         inventory_scope=inventory_scope,
+        scan_mode=scan_mode,
+        auto_scan_on_create=auto_scan_on_create,
     )
     get_connection_store().put(record)
     log_action(
@@ -325,10 +351,14 @@ async def update_connection(
     secret is untouched and never returned.
     """
     record = _require_connection(request, connection_id)
-    scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
-    record.scan_interval_minutes = scan_interval_minutes
+    if "scan_interval_minutes" in body.model_fields_set:
+        record.scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
     if body.inventory_scope is not None:
         record.inventory_scope = _validate_inventory_scope(body.inventory_scope, auth_params=record.auth_params)
+    if body.scan_mode is not None:
+        record.scan_mode = _validate_scan_mode(body.scan_mode)
+    if body.auto_scan_on_create is not None:
+        record.auto_scan_on_create = bool(body.auto_scan_on_create)
     record.updated_at = _now()
     get_connection_store().put(record)
     log_action(

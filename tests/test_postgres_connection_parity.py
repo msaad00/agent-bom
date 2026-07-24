@@ -69,3 +69,29 @@ def test_last_scan_id_round_trips_through_postgres(monkeypatch):
     restored = store.get("acme", "conn-1")
     assert restored is not None
     assert restored.last_scan_id == "scan-123"
+
+
+def test_scan_mode_and_auto_scan_on_create_round_trip_postgres(monkeypatch):
+    pool = _Pool()
+    monkeypatch.setattr("agent_bom.api.postgres_connection._tenant_connection", lambda _pool: pool.connection())
+    store = PostgresConnectionStore(pool=pool)
+    record = CloudConnectionRecord(
+        id="conn-2",
+        tenant_id="acme",
+        provider="aws",
+        display_name="Continuous",
+        role_ref="arn:aws:iam::123:role/read-only",
+        external_id_encrypted="",
+        created_at="2026-07-24T00:00:00Z",
+        updated_at="2026-07-24T00:00:01Z",
+        scan_mode="continuous",
+        auto_scan_on_create=False,
+    )
+
+    store.put(record)
+
+    restored = store.get("acme", "conn-2")
+    assert restored is not None
+    assert restored.scan_mode == "continuous"
+    assert restored.auto_scan_on_create is False
+    assert restored.last_scan_id is None

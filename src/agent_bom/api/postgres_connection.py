@@ -11,7 +11,12 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.api.connection_store import CloudConnectionRecord, _decode_inventory_scope, _row_to_record
+from agent_bom.api.connection_store import (
+    CloudConnectionRecord,
+    _decode_inventory_scope,
+    _decode_scan_mode,
+    _row_to_record,
+)
 from agent_bom.api.postgres_common import (
     ConnectionPool,
     _ensure_tenant_rls,
@@ -54,7 +59,9 @@ class PostgresConnectionStore:
                     scan_interval_minutes INTEGER,
                     auth_params           TEXT NOT NULL DEFAULT '{}',
                     last_event_at         TEXT,
-                    inventory_scope       TEXT NOT NULL DEFAULT 'account'
+                    inventory_scope       TEXT NOT NULL DEFAULT 'account',
+                    scan_mode             TEXT NOT NULL DEFAULT 'full',
+                    auto_scan_on_create   BOOLEAN NOT NULL DEFAULT TRUE
                 )
             """)
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_interval_minutes INTEGER")
@@ -65,6 +72,12 @@ class PostgresConnectionStore:
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS last_event_at TEXT")
             conn.execute(
                 "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS inventory_scope TEXT NOT NULL DEFAULT 'account'"
+            )
+            conn.execute(
+                "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_mode TEXT NOT NULL DEFAULT 'full'"
+            )
+            conn.execute(
+                "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
             conn.execute(
@@ -81,8 +94,8 @@ class PostgresConnectionStore:
                     (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                      regions, status, status_detail, created_at, updated_at, last_scan_at,
                      last_scan_id, scan_interval_minutes, auth_params, last_event_at,
-                     inventory_scope)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     inventory_scope, scan_mode, auto_scan_on_create)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     provider = EXCLUDED.provider,
                     display_name = EXCLUDED.display_name,
@@ -97,7 +110,9 @@ class PostgresConnectionStore:
                     scan_interval_minutes = EXCLUDED.scan_interval_minutes,
                     auth_params = EXCLUDED.auth_params,
                     last_event_at = EXCLUDED.last_event_at,
-                    inventory_scope = EXCLUDED.inventory_scope
+                    inventory_scope = EXCLUDED.inventory_scope,
+                    scan_mode = EXCLUDED.scan_mode,
+                    auto_scan_on_create = EXCLUDED.auto_scan_on_create
                 """,
                 (
                     record.id,
@@ -117,6 +132,8 @@ class PostgresConnectionStore:
                     json.dumps(record.auth_params),
                     record.last_event_at,
                     _decode_inventory_scope(record.inventory_scope),
+                    _decode_scan_mode(record.scan_mode),
+                    bool(record.auto_scan_on_create),
                 ),
             )
             conn.commit()
@@ -126,7 +143,8 @@ class PostgresConnectionStore:
             row = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
-                "scan_interval_minutes, auth_params, last_event_at "
+                "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
+                "scan_mode, auto_scan_on_create "
                 "FROM cloud_connections WHERE tenant_id = %s AND id = %s",
                 (tenant_id, connection_id),
             ).fetchone()
@@ -137,7 +155,8 @@ class PostgresConnectionStore:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
-                "scan_interval_minutes, auth_params, last_event_at "
+                "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
+                "scan_mode, auto_scan_on_create "
                 "FROM cloud_connections WHERE tenant_id = %s ORDER BY created_at, id",
                 (tenant_id,),
             ).fetchall()
@@ -163,7 +182,8 @@ class PostgresConnectionStore:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
-                "scan_interval_minutes, auth_params, last_event_at "
+                "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
+                "scan_mode, auto_scan_on_create "
                 "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
             ).fetchall()
         return [_row_to_record(row) for row in rows]

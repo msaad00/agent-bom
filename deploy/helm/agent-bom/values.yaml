@@ -450,6 +450,13 @@ teardownHooks:
 
 controlPlane:
   enabled: false
+  # Opt-in background loop that re-scans due cloud connections (row
+  # scan_interval_minutes). When true, injects AGENT_BOM_CONNECTIONS_SCHEDULER=1
+  # on the API Deployment. Cadence still requires a per-connection interval;
+  # scan_mode=continuous also needs an event queue for mid-interval refresh
+  # (event drain is not wired until a follow-up PR).
+  connectionsScheduler:
+    enabled: false
   serviceMesh:
     enabled: false
     provider: istio

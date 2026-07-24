@@ -818,6 +818,122 @@ def test_api_patch_requires_scan_permission() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# API: scan_mode + auto_scan_on_create (continuous foundation)
+# --------------------------------------------------------------------------- #
+
+
+def test_api_create_defaults_scan_mode_full_and_auto_scan_on_create_true() -> None:
+    client = TestClient(_app())
+    created = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()
+    assert created["scan_mode"] == "full"
+    assert created["auto_scan_on_create"] is True
+
+
+def test_api_create_accepts_continuous_scan_mode() -> None:
+    client = TestClient(_app())
+    body = _create_body()
+    body["scan_mode"] = "continuous"
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
+    assert created["scan_mode"] == "continuous"
+    assert created["auto_scan_on_create"] is True
+
+
+def test_api_create_rejects_invalid_scan_mode() -> None:
+    client = TestClient(_app())
+    body = _create_body()
+    body["scan_mode"] = "streaming"
+    resp = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers())
+    assert resp.status_code == 400
+    assert "scan_mode" in resp.json()["detail"]
+
+
+def test_api_create_persists_auto_scan_on_create_false() -> None:
+    client = TestClient(_app())
+    body = _create_body()
+    body["auto_scan_on_create"] = False
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
+    assert created["auto_scan_on_create"] is False
+
+
+def test_api_patch_updates_scan_mode_and_auto_scan_on_create() -> None:
+    client = TestClient(_app())
+    cid = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()["id"]
+
+    set_resp = client.patch(
+        f"/v1/cloud/connections/{cid}",
+        json={"scan_mode": "continuous", "auto_scan_on_create": False},
+        headers=_proxy_headers(),
+    )
+    assert set_resp.status_code == 200
+    body = set_resp.json()
+    assert body["scan_mode"] == "continuous"
+    assert body["auto_scan_on_create"] is False
+
+    # Partial patch: only scan_mode; auto_scan_on_create stays false.
+    mode_only = client.patch(
+        f"/v1/cloud/connections/{cid}",
+        json={"scan_mode": "full"},
+        headers=_proxy_headers(),
+    )
+    assert mode_only.status_code == 200
+    assert mode_only.json()["scan_mode"] == "full"
+    assert mode_only.json()["auto_scan_on_create"] is False
+
+
+def test_api_patch_rejects_invalid_scan_mode() -> None:
+    client = TestClient(_app())
+    cid = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()["id"]
+    resp = client.patch(
+        f"/v1/cloud/connections/{cid}",
+        json={"scan_mode": "nightly"},
+        headers=_proxy_headers(),
+    )
+    assert resp.status_code == 400
+    assert "scan_mode" in resp.json()["detail"]
+
+
+def test_sqlite_scan_mode_and_auto_scan_columns_migrate_and_round_trip(tmp_path: Any) -> None:
+    """Legacy tables gain scan_mode/auto_scan_on_create; new values round-trip."""
+    db_path = str(tmp_path / "legacy-scan-mode.db")
+    raw = sqlite3.connect(db_path)
+    raw.execute(
+        "CREATE TABLE cloud_connections (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, "
+        "display_name TEXT NOT NULL, role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
+        "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', status_detail TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_scan_at TEXT, last_scan_id TEXT, "
+        "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', last_event_at TEXT, "
+        "inventory_scope TEXT NOT NULL DEFAULT 'account')"
+    )
+    raw.execute(
+        "INSERT INTO cloud_connections (id, tenant_id, provider, display_name, role_ref, created_at, updated_at) "
+        "VALUES ('legacy-sm', 'tenant-a', 'aws', 'legacy', 'arn:role', "
+        "'2026-07-01T00:00:00+00:00', '2026-07-01T00:00:00+00:00')"
+    )
+    raw.commit()
+    raw.close()
+
+    store = SQLiteConnectionStore(db_path)
+    legacy = store.get("tenant-a", "legacy-sm")
+    assert legacy is not None
+    assert legacy.scan_mode == "full"
+    assert legacy.auto_scan_on_create is True
+
+    columns = {row[1] for row in sqlite3.connect(db_path).execute("PRAGMA table_info(cloud_connections)").fetchall()}
+    assert "scan_mode" in columns
+    assert "auto_scan_on_create" in columns
+
+    updated = _record("tenant-a")
+    updated.id = "legacy-sm"
+    updated.scan_mode = "continuous"
+    updated.auto_scan_on_create = False
+    store.put(updated)
+    fetched = store.get("tenant-a", "legacy-sm")
+    assert fetched is not None
+    assert fetched.scan_mode == "continuous"
+    assert fetched.auto_scan_on_create is False
+
+
+# --------------------------------------------------------------------------- #
 # Broker: AWS AssumeRole with the decrypted ExternalId; non-AWS planned
 # --------------------------------------------------------------------------- #
 

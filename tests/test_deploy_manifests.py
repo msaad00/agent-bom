@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 DEPLOY_DIR = Path(__file__).parent.parent / "deploy"
@@ -916,3 +917,33 @@ def test_snowflake_key_secret_mount_is_group_readable_under_fsgroup():
     assert "defaultMode: 0400" not in cronjob
     values = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     assert values["podSecurityContext"]["fsGroup"] == 1000
+
+
+def test_helm_connections_scheduler_env_gated_by_values():
+    """controlPlane.connectionsScheduler.enabled injects AGENT_BOM_CONNECTIONS_SCHEDULER=1."""
+    import shutil
+    import subprocess
+
+    if shutil.which("helm") is None:
+        pytest.skip("helm not installed")
+
+    def _render(*sets: str) -> str:
+        args = ["helm", "template", "abom", str(HELM_DIR), "--set", "controlPlane.enabled=true"]
+        for item in sets:
+            args += ["--set", item]
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    off = _render(
+        "controlPlane.migrations.enabled=false",
+        "controlPlane.connectionsScheduler.enabled=false",
+    )
+    assert "AGENT_BOM_CONNECTIONS_SCHEDULER" not in off
+
+    on = _render(
+        "controlPlane.migrations.enabled=false",
+        "controlPlane.connectionsScheduler.enabled=true",
+    )
+    assert "name: AGENT_BOM_CONNECTIONS_SCHEDULER" in on
+    assert 'value: "1"' in on

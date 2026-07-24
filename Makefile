@@ -46,6 +46,8 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 	@echo "→ release/README consistency";           python scripts/check_release_consistency.py
 	@echo "→ env-var reference";                    python scripts/generate_env_var_reference.py --check
 	@echo "→ SDK patterns.json";                    python sdks/shared/generate-patterns.py --check
+	@echo "→ documentation SVGs";                    python scripts/generate_doc_architecture_svgs.py --check
+	@echo "→ blast-radius SVGs";                     python scripts/generate_blast_radius_svgs.py --check
 	@echo "✓ preflight passed — CI's Version Alignment gate will be green (run 'make lint' separately for ruff/mypy)"
 
 preflight-fix:  ## Regenerate every drift artifact so you never push stale OpenAPI/schemas/patterns; then review + commit

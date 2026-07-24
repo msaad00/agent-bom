@@ -863,15 +863,25 @@ pdb:
 
 # ─── Event / log collector (Go sidecar) ───────────────────────────────────────
 # Posts normalized CloudTrail batches to POST /v1/cloud/connections/events/ingest.
-# See docs/design/EVENT_COLLECTOR_CONTRACT.md. Default off — enable when you have
-# a collector image and a control-plane API key secret.
+# See docs/design/EVENT_COLLECTOR_CONTRACT.md.
+#
+# BRING YOUR OWN IMAGE. No event-collector image is published for this chart and
+# the repo ships no Dockerfile for it — only the Go source under
+# runtime/event-collector/. Build and host the image yourself, then set
+# image.repository below. Enabling the collector with an empty image.repository,
+# or without controlPlane.enabled, aborts `helm template`/`helm upgrade` with an
+# explanatory error rather than installing nothing.
 eventCollector:
   enabled: false
   image:
-    repository: ""   # optional; unset keeps stock installs without the sidecar
+    repository: ""   # required when enabled — your own registry/event-collector
     tag: ""
   listen: ":8092"
-  mode: stub         # stub | sqs (sqs requires queue URL + IAM — poll lands later)
+  # stub | sqs. Both start the HTTP surface (/healthz, /v1/normalize/cloudtrail,
+  # /v1/forward/cloudtrail). "sqs" is accepted but the bounded SQS poll is NOT
+  # wired yet — the binary logs that and serves the same forward endpoints
+  # (runtime/event-collector/cmd/event-collector/main.go).
+  mode: stub
   controlPlaneUrl: ""  # empty → in-cluster http://{{ name }}-api:8420
   apiKeySecret:
     name: ""

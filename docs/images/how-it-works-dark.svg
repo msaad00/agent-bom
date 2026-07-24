@@ -3,36 +3,31 @@
 <title>agent-bom - three product lanes</title>
 <desc>Scan locally, centralize evidence, enforce runtime - one Finding + UnifiedGraph model.</desc>
 <defs>
-  <linearGradient id="bg" x1="0" y1="0" x2="1120" y2="420" gradientUnits="userSpaceOnUse">
-    <stop offset="0%" stop-color="#0b1220"/>
-    <stop offset="55%" stop-color="#0f1c24"/>
-    <stop offset="100%" stop-color="#10261f"/>
-  </linearGradient>
-  <linearGradient id="lane1" x1="48" y1="140" x2="360" y2="360" gradientUnits="userSpaceOnUse">
-    <stop offset="0%" stop-color="#0f766e" stop-opacity="0.35"/>
-    <stop offset="100%" stop-color="#0f766e" stop-opacity="0.05"/>
-  </linearGradient>
-  <linearGradient id="lane2" x1="392" y1="140" x2="704" y2="360" gradientUnits="userSpaceOnUse">
-    <stop offset="0%" stop-color="#0369a1" stop-opacity="0.35"/>
-    <stop offset="100%" stop-color="#0369a1" stop-opacity="0.05"/>
-  </linearGradient>
-  <linearGradient id="lane3" x1="736" y1="140" x2="1048" y2="360" gradientUnits="userSpaceOnUse">
-    <stop offset="0%" stop-color="#b45309" stop-opacity="0.32"/>
-    <stop offset="100%" stop-color="#b45309" stop-opacity="0.05"/>
-  </linearGradient>
-  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
-    <feGaussianBlur stdDeviation="18"/>
-  </filter>
+<linearGradient id="bg" x1="0" y1="0" x2="1120" y2="420" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#0b1220"/>
+<stop offset="55%" stop-color="#0f1c24"/>
+<stop offset="100%" stop-color="#10261f"/>
+</linearGradient>
+<linearGradient id="lane1" x1="48" y1="140" x2="360" y2="360" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#0f766e" stop-opacity="0.35"/>
+<stop offset="100%" stop-color="#0f766e" stop-opacity="0.05"/>
+</linearGradient>
+<linearGradient id="lane2" x1="392" y1="140" x2="704" y2="360" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#0369a1" stop-opacity="0.35"/>
+<stop offset="100%" stop-color="#0369a1" stop-opacity="0.05"/>
+</linearGradient>
+<linearGradient id="lane3" x1="736" y1="140" x2="1048" y2="360" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#b45309" stop-opacity="0.35"/>
+<stop offset="100%" stop-color="#b45309" stop-opacity="0.05"/>
+</linearGradient>
+<filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
 </defs>
-
 <rect width="1120" height="420" rx="20" fill="url(#bg)"/>
-<circle cx="180" cy="90" r="120" fill="#34d399" opacity="0.07" filter="url(#soft)"/>
-<circle cx="920" cy="340" r="140" fill="#22d3ee" opacity="0.06" filter="url(#soft)"/>
-
+<circle cx="180" cy="90" r="120" fill="#34d399" opacity="0.08" filter="url(#soft)"/>
+<circle cx="920" cy="340" r="140" fill="#22d3ee" opacity="0.07" filter="url(#soft)"/>
 <text x="48" y="52" font-family="'IBM Plex Sans','Segoe UI',system-ui,sans-serif" font-size="13" font-weight="700" letter-spacing="0.22em" fill="#34d399">AGENT-BOM</text>
 <text x="48" y="92" font-family="'IBM Plex Sans','Segoe UI',system-ui,sans-serif" font-size="28" font-weight="700" fill="#f8fafc">One evidence model. Three ways in.</text>
 <text x="48" y="118" font-family="'IBM Plex Sans','Segoe UI',system-ui,sans-serif" font-size="14" fill="#94a3b8">Scan / control plane / runtime enforcement. Same Finding + UnifiedGraph everywhere.</text>
-
 <rect x="48" y="148" width="320" height="200" rx="4" fill="url(#lane1)"/>
 <rect x="48" y="148" width="4" height="200" fill="#34d399"/>
 <text x="72" y="178" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="11" font-weight="700" letter-spacing="0.16em" fill="#5eead4">01  SCAN</text>
@@ -40,7 +35,6 @@
 <text x="72" y="242" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="13" fill="#94a3b8">Inventory, findings, fix-first,</text>
 <text x="72" y="260" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="13" fill="#94a3b8">SARIF / SBOM / HTML - no server.</text>
 <text x="72" y="312" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="12" fill="#67e8f9">agent-bom scan .</text>
-
 <rect x="392" y="148" width="320" height="200" rx="4" fill="url(#lane2)"/>
 <rect x="392" y="148" width="4" height="200" fill="#38bdf8"/>
 <text x="416" y="178" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="11" font-weight="700" letter-spacing="0.16em" fill="#7dd3fc">02  CENTRALIZE</text>
@@ -48,15 +42,13 @@
 <text x="416" y="242" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="13" fill="#94a3b8">Fleet, graph, compliance,</text>
 <text x="416" y="260" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="13" fill="#94a3b8">audit - your VPC / Postgres.</text>
 <text x="416" y="312" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="12" fill="#7dd3fc">agent-bom serve</text>
-
 <rect x="736" y="148" width="336" height="200" rx="4" fill="url(#lane3)"/>
 <rect x="736" y="148" width="4" height="200" fill="#fbbf24"/>
 <text x="760" y="178" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="11" font-weight="700" letter-spacing="0.16em" fill="#fcd34d">03  ENFORCE</text>
 <text x="760" y="214" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="22" font-weight="700" fill="#f8fafc">Runtime gateway</text>
 <text x="760" y="242" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="13" fill="#94a3b8">Allow / warn / block MCP</text>
 <text x="760" y="260" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="13" fill="#94a3b8">tool calls with signed audit.</text>
-<text x="760" y="312" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="12" fill="#fcd34d">agent-bom gateway serve ...</text>
-
+<text x="760" y="312" font-family="'IBM Plex Mono',ui-monospace,monospace" font-size="12" fill="#fcd34d">agent-bom gateway serve --help</text>
 <rect x="48" y="372" width="1024" height="1" fill="#1e293b"/>
-<text x="48" y="398" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="12" fill="#64748b">Finding + UnifiedGraph is the spine - CLI, API, UI, and MCP share it.</text>
+<text x="48" y="398" font-family="'IBM Plex Sans',system-ui,sans-serif" font-size="12" fill="#94a3b8">Finding + UnifiedGraph is the spine - CLI, API, UI, and MCP share it.</text>
 </svg>

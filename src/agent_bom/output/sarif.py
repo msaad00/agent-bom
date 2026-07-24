@@ -16,6 +16,7 @@ from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.exploitability import exploitability_tags, parse_cvss_vector_signals
 from agent_bom.finding import Finding, FindingType
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.output.advisory_text import advisory_help, sanitize_advisory_text
 from agent_bom.output.exposure_path import (
     exposure_path_blast_summary,
     exposure_path_chain,
@@ -30,7 +31,7 @@ from agent_bom.output.finding_views import (
     package_name,
     package_version,
 )
-from agent_bom.security import sanitize_sensitive_payload, sanitize_text
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text, sanitize_url
 
 _SARIF_SEVERITY_MAP = {
     Severity.CRITICAL: "error",
@@ -158,20 +159,40 @@ def _to_relative_path(path: str, ecosystem: Optional[str] = None) -> str:
 
 
 def _sanitize_sarif_property(value: Any) -> Any:
-    """Apply final defensive redaction before data leaves via SARIF."""
+    """Apply final defensive redaction before data leaves via SARIF.
+
+    Property bags carry arbitrary nested evidence — scanner payloads, runtime
+    capture, provenance — so they keep the conservative tier-A allowlist.
+    """
     sanitized = sanitize_sensitive_payload(value, max_str_len=1000)
     if isinstance(sanitized, str):
         return None
     return redact_for_persistence({"details": sanitized}, EvidenceTier.SAFE_TO_STORE).get("details")
 
 
-def _sanitize_sarif_text(field_name: str, value: Any, *, fallback: str = "") -> str:
-    """Redact free-text SARIF fields using the two-bucket persistence policy."""
+def _sanitize_scanner_text(field_name: str, value: Any, *, fallback: str = "") -> str:
+    """Redact scanner free text that may quote the scanned workspace.
+
+    Descriptions on the unified finding path (SAST, secret, credential
+    exposure) and model-authored triage rationale can echo source lines out of
+    the repository being scanned, so they stay behind the conservative tier-A
+    allowlist: the field name is not on it, the text is dropped, and the caller
+    falls back to the structural title. Published advisory prose is a different
+    provenance and uses :func:`sanitize_advisory_text` instead.
+    """
     sanitized = sanitize_sensitive_payload(str(value or ""), key=field_name, max_str_len=1000)
     redacted = redact_for_persistence({field_name: sanitized}, EvidenceTier.SAFE_TO_STORE).get(field_name)
     if redacted is None:
         return fallback
     return str(redacted)
+
+
+def _cis_remediation_text(remediation: Any) -> str:
+    """Flatten a CIS remediation dict into one sanitized guidance line."""
+    if not isinstance(remediation, dict):
+        return ""
+    parts = [sanitize_advisory_text("recommendation", remediation.get(key)) for key in ("fix_cli", "fix_console")]
+    return " ".join(part for part in parts if part)
 
 
 def _exposure_related_locations(exposure_path: dict[str, Any]) -> list[dict]:
@@ -190,11 +211,11 @@ def _exposure_related_locations(exposure_path: dict[str, Any]) -> list[dict]:
                 "id": index,
                 "logicalLocations": [
                     {
-                        "fullyQualifiedName": _sanitize_sarif_text("title", hop, fallback=hop),
-                        "kind": _sanitize_sarif_text("title", kind or "node", fallback="node"),
+                        "fullyQualifiedName": sanitize_advisory_text("title", hop, fallback=hop),
+                        "kind": sanitize_advisory_text("title", kind or "node", fallback="node"),
                     }
                 ],
-                "message": {"text": _sanitize_sarif_text("title", name or hop, fallback=hop)},
+                "message": {"text": sanitize_advisory_text("title", name or hop, fallback=hop)},
             }
         )
     return related
@@ -479,22 +500,30 @@ def _ensure_cve_sarif_rule(
     tags = list(dict.fromkeys([*finding.cwe_ids, *exploitability_tags(parse_cvss_vector_signals(finding.cvss_vector))]))
     if tags:
         rule_props["tags"] = tags
-    rules.append(
-        {
-            "id": rule_id,
-            "shortDescription": {
-                "text": _sanitize_sarif_text(
-                    "title",
-                    f"{sev.value.upper()}: {rule_id} in {pkg_name}@{pkg_version}",
-                    fallback=f"{rule_id} package vulnerability",
-                )
-            },
-            "fullDescription": {"text": _sanitize_sarif_text("description", finding.description, fallback=f"Vulnerability {rule_id}")},
-            "helpUri": f"https://osv.dev/vulnerability/{rule_id}",
-            "defaultConfiguration": {"level": level},
-            "properties": rule_props,
-        }
+    advisory_uri = f"https://osv.dev/vulnerability/{rule_id}"
+    description = sanitize_advisory_text("description", finding.description, fallback=f"Vulnerability {rule_id}")
+    rule: dict[str, Any] = {
+        "id": rule_id,
+        "shortDescription": {
+            "text": sanitize_advisory_text(
+                "title",
+                f"{sev.value.upper()}: {rule_id} in {pkg_name}@{pkg_version}",
+                fallback=f"{rule_id} package vulnerability",
+            )
+        },
+        "fullDescription": {"text": description},
+        "helpUri": advisory_uri,
+        "defaultConfiguration": {"level": level},
+        "properties": rule_props,
+    }
+    help_body = advisory_help(
+        description,
+        remediation=sanitize_advisory_text("recommendation", finding.remediation_guidance),
+        reference_uri=advisory_uri,
     )
+    if help_body:
+        rule["help"] = help_body
+    rules.append(rule)
 
 
 def _ai_assessment_result_properties(assessment: Any) -> dict[str, Any]:
@@ -512,7 +541,7 @@ def _ai_assessment_result_properties(assessment: Any) -> dict[str, Any]:
     }
     rationale = (assessment.rationale or "").strip()
     if rationale:
-        props["agent-bom:ai_rationale"] = _sanitize_sarif_text("description", rationale, fallback="")
+        props["agent-bom:ai_rationale"] = _sanitize_scanner_text("description", rationale, fallback="")
     if assessment.suggested_controls:
         props["agent-bom:ai_suggested_controls"] = list(assessment.suggested_controls)
     return props
@@ -546,7 +575,7 @@ def _cve_sarif_result(
         "ruleId": rule_id,
         "level": level,
         "kind": kind,
-        "message": {"text": _sanitize_sarif_text("title", message_text, fallback=f"{rule_id} package vulnerability")},
+        "message": {"text": sanitize_advisory_text("title", message_text, fallback=f"{rule_id} package vulnerability")},
         **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=config_path, start_line=1),
         "locations": [
             {
@@ -588,7 +617,7 @@ def _cve_sarif_result(
         "ai_summary": finding.ai_summary,
         "suppressed": bool(finding.suppressed),
         "is_malicious": finding.is_malicious,
-        "malicious_reason": (_sanitize_sarif_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
+        "malicious_reason": (sanitize_advisory_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
     }
     if finding.fixed_version:
         result_properties["fixed_version"] = finding.fixed_version
@@ -726,25 +755,29 @@ def to_sarif(
         level = finding_sev_map.get(finding_severity_name, "warning")
         if rule_id not in seen_rule_ids:
             seen_rule_ids.add(rule_id)
-            rules.append(
-                {
-                    "id": rule_id,
-                    "shortDescription": {"text": _sanitize_sarif_text("title", finding.finding_type.value.replace("_", " ").title())},
-                    "fullDescription": {
-                        "text": _sanitize_sarif_text(
-                            "description",
-                            finding.description,
-                            fallback=_sanitize_sarif_text("title", finding.title or finding.finding_type.value),
-                        )
-                    },
-                    "defaultConfiguration": {"level": level},
-                    "properties": {
-                        "security-severity": finding_sev_score.get(finding_severity_name, "4.0"),
-                        "source": finding.source.value,
-                        "finding_type": finding.finding_type.value,
-                    },
-                }
+            description = _sanitize_scanner_text(
+                "description",
+                finding.description,
+                fallback=sanitize_advisory_text("title", finding.title or finding.finding_type.value),
             )
+            finding_rule: dict[str, Any] = {
+                "id": rule_id,
+                "shortDescription": {"text": sanitize_advisory_text("title", finding.finding_type.value.replace("_", " ").title())},
+                "fullDescription": {"text": description},
+                "defaultConfiguration": {"level": level},
+                "properties": {
+                    "security-severity": finding_sev_score.get(finding_severity_name, "4.0"),
+                    "source": finding.source.value,
+                    "finding_type": finding.finding_type.value,
+                },
+            }
+            help_body = advisory_help(
+                description,
+                remediation=_sanitize_scanner_text("recommendation", finding.remediation_guidance),
+            )
+            if help_body:
+                finding_rule["help"] = help_body
+            rules.append(finding_rule)
 
         file_path = _to_relative_path(
             finding.asset.location or "agent-bom-report.json",
@@ -756,10 +789,10 @@ def to_sarif(
             "level": level,
             "kind": "fail" if level in {"error", "warning"} else "informational",
             "message": {
-                "text": _sanitize_sarif_text(
+                "text": sanitize_advisory_text(
                     "title",
                     finding.title,
-                    fallback=_sanitize_sarif_text("description", finding.description, fallback=finding.finding_type.value),
+                    fallback=_sanitize_scanner_text("description", finding.description, fallback=finding.finding_type.value),
                 )
             },
             **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=1),
@@ -774,11 +807,13 @@ def to_sarif(
             "properties": {
                 "risk_score": finding.risk_score,
                 "asset_type": finding.asset.asset_type,
-                "asset_name": _sanitize_sarif_text("title", finding.asset.name, fallback=finding.asset.asset_type),
+                "asset_name": sanitize_advisory_text("title", finding.asset.name, fallback=finding.asset.asset_type),
                 "evidence": _sanitize_sarif_property(finding.evidence),
                 "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
                 "is_malicious": finding.is_malicious,
-                "malicious_reason": (_sanitize_sarif_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
+                "malicious_reason": (sanitize_advisory_text("title", finding.malicious_reason) or None)
+                if finding.malicious_reason
+                else None,
                 # Structured reach lists + AI-native context (unified Finding parity).
                 "affected_servers": list(finding.affected_servers),
                 "affected_agents": list(finding.affected_agents),
@@ -792,8 +827,7 @@ def to_sarif(
                     {
                         "workload_runtime_evidence": _sanitize_sarif_property(finding.workload_runtime_evidence),
                     }
-                    if isinstance(getattr(finding, "workload_runtime_evidence", None), dict)
-                    and finding.workload_runtime_evidence
+                    if isinstance(getattr(finding, "workload_runtime_evidence", None), dict) and finding.workload_runtime_evidence
                     else {}
                 ),
             },
@@ -817,25 +851,29 @@ def to_sarif(
 
             if rule_id not in seen_rule_ids:
                 seen_rule_ids.add(rule_id)
-                rules.append(
-                    {
-                        "id": rule_id,
-                        "shortDescription": {"text": _sanitize_sarif_text("title", iac_finding.get("title", rule_id), fallback=rule_id)},
-                        "fullDescription": {
-                            "text": _sanitize_sarif_text(
-                                "description",
-                                iac_finding.get("message"),
-                                fallback=_sanitize_sarif_text("title", iac_finding.get("title", rule_id), fallback=rule_id),
-                            )
-                        },
-                        "defaultConfiguration": {"level": level},
-                        "properties": {
-                            "security-severity": iac_sev_score.get(sev, "4.0"),
-                            "category": iac_finding.get("category", "iac"),
-                            "compliance": iac_finding.get("compliance", []),
-                        },
-                    }
+                description = sanitize_advisory_text(
+                    "description",
+                    iac_finding.get("message"),
+                    fallback=sanitize_advisory_text("title", iac_finding.get("title", rule_id), fallback=rule_id),
                 )
+                iac_rule: dict[str, Any] = {
+                    "id": rule_id,
+                    "shortDescription": {"text": sanitize_advisory_text("title", iac_finding.get("title", rule_id), fallback=rule_id)},
+                    "fullDescription": {"text": description},
+                    "defaultConfiguration": {"level": level},
+                    "properties": {
+                        "security-severity": iac_sev_score.get(sev, "4.0"),
+                        "category": iac_finding.get("category", "iac"),
+                        "compliance": iac_finding.get("compliance", []),
+                    },
+                }
+                help_body = advisory_help(
+                    description,
+                    remediation=sanitize_advisory_text("recommendation", iac_finding.get("remediation")),
+                )
+                if help_body:
+                    iac_rule["help"] = help_body
+                rules.append(iac_rule)
 
             fp_input = f"{rule_id}:{file_path}:{line_num}"
             results.append(
@@ -844,10 +882,10 @@ def to_sarif(
                     "level": level,
                     "kind": "fail",
                     "message": {
-                        "text": _sanitize_sarif_text(
+                        "text": sanitize_advisory_text(
                             "description",
                             iac_finding.get("message"),
-                            fallback=_sanitize_sarif_text("title", iac_finding.get("title", "IaC misconfiguration")),
+                            fallback=sanitize_advisory_text("title", iac_finding.get("title", "IaC misconfiguration")),
                         )
                     },
                     **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
@@ -880,28 +918,30 @@ def to_sarif(
 
             if rule_id not in seen_rule_ids:
                 seen_rule_ids.add(rule_id)
-                rules.append(
-                    {
-                        "id": rule_id,
-                        "shortDescription": {
-                            "text": _sanitize_sarif_text("title", f"{sev.upper()}: {comp_type.replace('_', ' ')} - {name}")
-                        },
-                        "fullDescription": {
-                            "text": _sanitize_sarif_text(
-                                "description",
-                                comp.get("description", ""),
-                                fallback=f"AI component finding: {name}",
-                            )
-                        },
-                        "defaultConfiguration": {"level": level},
-                        "properties": {"security-severity": ai_sev_score.get(sev, "0.0")},
-                    }
+                description = sanitize_advisory_text(
+                    "description",
+                    comp.get("description", ""),
+                    fallback=f"AI component finding: {name}",
                 )
+                ai_rule: dict[str, Any] = {
+                    "id": rule_id,
+                    "shortDescription": {"text": sanitize_advisory_text("title", f"{sev.upper()}: {comp_type.replace('_', ' ')} - {name}")},
+                    "fullDescription": {"text": description},
+                    "defaultConfiguration": {"level": level},
+                    "properties": {"security-severity": ai_sev_score.get(sev, "0.0")},
+                }
+                help_body = advisory_help(
+                    description,
+                    remediation=sanitize_advisory_text("recommendation", comp.get("recommendation")),
+                )
+                if help_body:
+                    ai_rule["help"] = help_body
+                rules.append(ai_rule)
 
             file_path = _to_relative_path(comp.get("file", "unknown") or "unknown")
             line_num = int(comp.get("line", 1) or 1)
             fp_input = f"{rule_id}:{file_path}:{line_num}"
-            desc = _sanitize_sarif_text("description", comp.get("description", ""), fallback=f"{comp_type.replace('_', ' ')}: {name}")
+            desc = sanitize_advisory_text("description", comp.get("description", ""), fallback=f"{comp_type.replace('_', ' ')}: {name}")
             results.append(
                 {
                     "ruleId": rule_id,
@@ -939,26 +979,25 @@ def to_sarif(
             level = cis_sev_map.get(cis_severity, "warning")
             remediation = check.get("remediation") or {}
             title = check.get("title") or rule_id
-            help_uri = remediation.get("docs") or ""
+            help_uri = sanitize_url(str(remediation.get("docs") or "")) or ""
 
             if rule_id not in seen_rule_ids:
                 seen_rule_ids.add(rule_id)
+                recommendation = sanitize_advisory_text(
+                    "recommendation",
+                    check.get("recommendation"),
+                    fallback=sanitize_advisory_text("title", title, fallback=rule_id),
+                )
                 cis_rule: dict = {
                     "id": rule_id,
                     "shortDescription": {
-                        "text": _sanitize_sarif_text(
+                        "text": sanitize_advisory_text(
                             "title",
                             f"{cis_severity.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
                             fallback=rule_id,
                         )
                     },
-                    "fullDescription": {
-                        "text": _sanitize_sarif_text(
-                            "recommendation",
-                            check.get("recommendation"),
-                            fallback=_sanitize_sarif_text("title", title, fallback=rule_id),
-                        )
-                    },
+                    "fullDescription": {"text": recommendation},
                     "defaultConfiguration": {"level": level},
                     "properties": {
                         "security-severity": cis_sev_score.get(cis_severity, "4.0"),
@@ -968,6 +1007,13 @@ def to_sarif(
                 }
                 if help_uri:
                     cis_rule["helpUri"] = help_uri
+                help_body = advisory_help(
+                    recommendation,
+                    remediation=_cis_remediation_text(remediation),
+                    reference_uri=help_uri,
+                )
+                if help_body:
+                    cis_rule["help"] = help_body
                 rules.append(cis_rule)
 
             # Synthetic fingerprint so repeat runs produce stable IDs.
@@ -999,7 +1045,7 @@ def to_sarif(
                     "level": level,
                     "kind": "fail",
                     "message": {
-                        "text": _sanitize_sarif_text(
+                        "text": sanitize_advisory_text(
                             "title",
                             f"CIS {cloud_key.upper()} {check_id} failed: {title}",
                             fallback=rule_id,

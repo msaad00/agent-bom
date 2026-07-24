@@ -987,7 +987,12 @@ def test_helm_event_collector_deployment_gated_by_values():
 
 
 def test_pilot_compose_optional_connections_scheduler_env():
-    """Pilot profile exposes AGENT_BOM_CONNECTIONS_SCHEDULER (default 1 for local eval)."""
+    """Pilot profile exposes AGENT_BOM_CONNECTIONS_SCHEDULER, defaulted OFF.
+
+    Recurring connection scans run brokered scans against the operator's real
+    cloud account, so the pilot profile must match what config.py, the Helm
+    chart and docs/CLOUD_CONNECT.md all promise: opt-in, never inherited.
+    """
     text = (DEPLOY_DIR / "docker-compose.pilot.yml").read_text()
     assert "AGENT_BOM_CONNECTIONS_SCHEDULER" in text
-    assert "${AGENT_BOM_CONNECTIONS_SCHEDULER:-1}" in text
+    assert "${AGENT_BOM_CONNECTIONS_SCHEDULER:-0}" in text

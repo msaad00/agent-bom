@@ -453,7 +453,7 @@ def run_benchmark(
         "metadata": {
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "hostname": socket.gethostname(),
+            "hostname": os.environ.get("AGENT_BOM_PERF_HOSTNAME", "local-benchmark-host"),
             "platform": platform.platform(),
             "machine": platform.machine(),
             "python": platform.python_version(),

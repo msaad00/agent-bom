@@ -99,11 +99,16 @@ scripts/retrigger_stranded_pr.sh <PR_NUMBER>
 The script:
 
 1. Resolves the PR's current head SHA.
-2. Checks whether the canonical required check (`Lint and Type Check`) ran
-   against that SHA via `repos/.../commits/<sha>/check-runs`.
-3. If any required check is still active, exits without retriggering. Downstream
-   jobs such as package build are not created until prerequisite jobs finish.
-4. If checks are missing or stale after the run is idle, closes the PR and
+2. Checks the five branch-protection contexts (`Lint and Type Check`, Python
+   3.13, package build, security scan, and CodeQL) against that SHA via
+   `repos/.../commits/<sha>/check-runs`.
+3. Cancels required-workflow runs for older SHAs on the exact PR branch. If a
+   normal cancellation does not finish within a short grace, it uses GitHub's
+   force-cancel endpoint; current-head and unrelated runs are never targeted.
+4. If any current-head required check is still active, exits without
+   retriggering. Downstream jobs such as package build are not created until
+   prerequisite jobs finish.
+5. If checks are missing or stale after the run is idle, closes the PR and
    immediately reopens it. This starts `pull_request` workflows only when the
    token is not `GITHUB_TOKEN`.
 
@@ -114,7 +119,7 @@ run on any PR.
 
 `.github/workflows/auto-retrigger-stranded.yml` runs `scripts/retrigger_stranded_pr.sh`
 against every synchronized PR whose current head SHA has zero or stale
-`Lint and Type Check` runs. It runs immediately after a PR push, after `main`
+required checks. It runs immediately after a PR push, after `main`
 advances, every 15 minutes, and through `workflow_dispatch` for on-demand. Once this workflow is on the
 default branch and `AUTOMATION_GITHUB_TOKEN` is configured, stranded PRs
 unstrand themselves within five minutes — no operator action required.
@@ -132,9 +137,8 @@ Operator-side troubleshooting if a strand persists past ~10 minutes:
   the close/reopen retrigger path.
 - Was the PR younger than `MIN_AGE_MINUTES` (3 min by default)? It's intentionally
   skipped to give the initial `pull_request` workflow a chance to start.
-- Did `gh api commits/{sha}/check-runs` return zero, or is there a
-  different check name now? Update `REQUIRED_CHECK` in the workflow if
-  the canonical check is renamed.
+- Did `gh api commits/{sha}/check-runs` return zero, or did branch protection
+  change? Keep `REQUIRED_CHECKS` aligned with the protected contexts.
 
 ### Permanent fix alternatives (settings change required)
 

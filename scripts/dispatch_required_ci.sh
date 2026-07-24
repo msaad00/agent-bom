@@ -18,7 +18,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 PR="$1"
-REQUIRED_CHECKS="${REQUIRED_CHECKS:-Lint and Type Check,Test (Python 3.11),Test (Python 3.13),Build Package,Security Scan,CodeQL,Test (Python 3.14)}"
+REQUIRED_CHECKS="${REQUIRED_CHECKS:-Lint and Type Check,Test (Python 3.13),Build Package,Security Scan,CodeQL}"
 REPO="${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 
 pr_json="$(
@@ -71,7 +71,7 @@ branch_runs="$(
 while IFS= read -r run_id; do
   [ -n "${run_id}" ] || continue
   echo "PR #${PR}: cancelling superseded required workflow run ${run_id} on ${head_ref}."
-  gh run cancel "${run_id}" --repo "${REPO}"
+  "$(dirname "$0")/cancel_superseded_run.sh" "${REPO}" "${run_id}"
 done < <(
   jq -r --arg current_sha "${head_sha}" \
     '.workflow_runs[]

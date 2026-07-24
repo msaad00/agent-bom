@@ -79,7 +79,8 @@ class CloudConnectionRecord:
     auth_params: dict[str, Any] = field(default_factory=dict)
     # Scan fan-out scope: ``account`` (default) covers the connected target only;
     # ``organization`` fans inventory across member accounts / subscriptions /
-    # projects. Older rows may only carry this under ``auth_params``.
+    # projects. The column is the single authority; a legacy row that only
+    # carries the scope under ``auth_params`` is promoted in __post_init__.
     inventory_scope: str = INVENTORY_SCOPE_ACCOUNT
     # ``full`` (default) = interval/manual polling cadence only; ``continuous``
     # opts into event-driven mid-interval refresh once an event queue is wired
@@ -88,6 +89,25 @@ class CloudConnectionRecord:
     # When true (Create default), PR2 will enqueue a scan after create. Stored
     # now so the flag is durable before the runtime honors it.
     auto_scan_on_create: bool = True
+
+    def __post_init__(self) -> None:
+        """Promote a legacy ``auth_params`` inventory scope into the column.
+
+        Rows created before ``inventory_scope`` existed (and clients that
+        dual-wrote it) carry the scope under ``auth_params``. Reading it there
+        at scan time made the fan-out impossible to turn off: the column could
+        say ``account`` while the scan still crossed every member account.
+        Promote it once on load — the column carries the intent from then on and
+        the shadow key is dropped, so an update to the column is authoritative.
+        """
+        legacy = str((self.auth_params or {}).get("inventory_scope") or "").strip().lower()
+        if not legacy:
+            return
+        params = dict(self.auth_params)
+        params.pop("inventory_scope", None)
+        self.auth_params = params
+        if str(self.inventory_scope or "").strip().lower() == INVENTORY_SCOPE_ACCOUNT and legacy == INVENTORY_SCOPE_ORGANIZATION:
+            self.inventory_scope = INVENTORY_SCOPE_ORGANIZATION
 
     def to_public_dict(self) -> dict[str, Any]:
         """Non-secret representation for API responses.
@@ -106,17 +126,16 @@ class CloudConnectionRecord:
 def connection_org_fanout_enabled(record: CloudConnectionRecord) -> bool:
     """True when this connection should fan inventory across the org estate.
 
-    Prefers the first-class ``inventory_scope`` column. Falls back to
-    ``auth_params.inventory_scope`` for older rows created before the column
-    existed (or dual-written by clients). Does **not** consult
-    ``AGENT_BOM_AWS_ORG_INVENTORY`` — that env flag remains the CLI/enrichment
-    gate; per-connection scope is the product gate for Connections scans.
+    The ``inventory_scope`` column is the only authority — a legacy
+    ``auth_params`` scope is promoted into it when the record is constructed
+    (see :meth:`CloudConnectionRecord.__post_init__`), so the credential blast
+    radius of a scan is exactly what the API and the UI report. Does **not**
+    consult ``AGENT_BOM_AWS_ORG_INVENTORY`` — that env flag remains the
+    CLI/enrichment gate; per-connection scope is the product gate for
+    Connections scans.
     """
     scope = str(getattr(record, "inventory_scope", "") or "").strip().lower()
-    if scope == INVENTORY_SCOPE_ORGANIZATION:
-        return True
-    auth_scope = str((record.auth_params or {}).get("inventory_scope") or "").strip().lower()
-    return auth_scope == INVENTORY_SCOPE_ORGANIZATION
+    return scope == INVENTORY_SCOPE_ORGANIZATION
 
 
 class ConnectionStore(Protocol):

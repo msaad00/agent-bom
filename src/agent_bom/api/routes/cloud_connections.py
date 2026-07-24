@@ -112,9 +112,12 @@ class CloudConnectionCreate(BaseModel):
     # project, Snowflake user/role/warehouse). Never a secret — the one secret
     # is ``external_id``.
     auth_params: dict[str, str] = Field(default_factory=dict)
-    # ``account`` (default) = connected target only; ``organization`` = fan-out
-    # across member accounts / subscriptions / projects on Connections scan.
-    inventory_scope: str = INVENTORY_SCOPE_ACCOUNT
+    # ``account`` (the default when omitted) = connected target only;
+    # ``organization`` = fan-out across member accounts / subscriptions /
+    # projects on Connections scan. Optional so an omitted field can still pick
+    # up a legacy ``auth_params["inventory_scope"]``; an explicit value here
+    # always wins and is what the stored column carries.
+    inventory_scope: str | None = None
     scan_mode: str = SCAN_MODE_FULL
     auto_scan_on_create: bool = True
 
@@ -195,11 +198,21 @@ def _validate_auth_params(auth_params: dict[str, str]) -> dict[str, str]:
     return cleaned
 
 
-def _validate_inventory_scope(scope: str | None, *, auth_params: dict[str, Any] | None = None) -> str:
-    """Normalize inventory_scope from the body or auth_params fallback."""
+def _validate_inventory_scope(scope: str | None, *, auth_params: dict[str, str] | None = None) -> str:
+    """Resolve the stored inventory scope; the column is the single authority.
+
+    An explicit body value wins. When the body omits the field, a legacy
+    ``auth_params["inventory_scope"]`` is consumed as the intent — popped from
+    the blob so the resolved value lives only in the column and can later be
+    turned off by an update. A legacy value that is not a known scope narrows to
+    the ``account`` default (fail closed) rather than rejecting the request; the
+    response reports the scope that was actually stored.
+    """
     raw = str(scope or "").strip().lower()
-    if not raw and auth_params:
-        raw = str(auth_params.get("inventory_scope") or "").strip().lower()
+    if auth_params is not None:
+        legacy = str(auth_params.pop("inventory_scope", "") or "").strip().lower()
+        if not raw and legacy in VALID_INVENTORY_SCOPES:
+            raw = legacy
     if not raw:
         return INVENTORY_SCOPE_ACCOUNT
     if raw not in VALID_INVENTORY_SCOPES:
@@ -581,7 +594,7 @@ async def update_connection(
     if "scan_interval_minutes" in body.model_fields_set:
         record.scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
     if body.inventory_scope is not None:
-        record.inventory_scope = _validate_inventory_scope(body.inventory_scope, auth_params=record.auth_params)
+        record.inventory_scope = _validate_inventory_scope(body.inventory_scope)
     if body.scan_mode is not None:
         record.scan_mode = _validate_scan_mode(body.scan_mode)
     if body.auto_scan_on_create is not None:
@@ -679,7 +692,14 @@ def _annotate_inventory_counts(inventory: Any) -> None:
     scan surfaced empty resource/identity stats. Enrich the payload (non-destructive
     — raw lists are preserved) with the same counts ``_summarize_inventory_payload``
     computes so those stats populate honestly.
+
+    An org-scope scan persists a **list** of per-account payloads; the panel
+    sums the per-account counts, so each element is annotated in turn.
     """
+    if isinstance(inventory, list):
+        for item in inventory:
+            _annotate_inventory_counts(item)
+        return
     if not isinstance(inventory, dict):
         return
     if "resource_count" in inventory and "identity_count" in inventory:

@@ -652,11 +652,11 @@ function eventMode(connection: CloudConnectionRecord): {
   };
 }
 
+// The stored inventory_scope column is the single authority for scan fan-out;
+// the API promotes a legacy auth_params scope into it, so never read the blob
+// here — the chip would otherwise claim a blast radius the scan does not use.
 function isOrganizationScope(connection: CloudConnectionRecord): boolean {
-  return (
-    connection.inventory_scope === "organization" ||
-    connection.auth_params?.inventory_scope === "organization"
-  );
+  return connection.inventory_scope === "organization";
 }
 
 function isContinuousMode(connection: CloudConnectionRecord): boolean {
@@ -1392,7 +1392,9 @@ function ConnectionsHub() {
 
       {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
       {!connectionsSchedulerEnabled &&
-      connections.some((connection) => connection.scan_interval_minutes) ? (
+      connections.some(
+        (connection) => connection.scan_interval_minutes || isContinuousMode(connection),
+      ) ? (
         <div
           role="status"
           data-testid="connections-scheduler-disabled-banner"
@@ -1400,10 +1402,11 @@ function ConnectionsHub() {
         >
           <p className="font-medium">Scheduler disabled on this control plane</p>
           <p className="mt-1 text-xs leading-5 text-amber-900/80 dark:text-amber-100/80">
-            One or more connections have a scan interval, but recurring scans will not run until{" "}
+            One or more connections use a scan interval or Continuous mode, but neither recurring
+            scans nor continuous event drains run until{" "}
             <code className="font-mono text-[11px]">AGENT_BOM_CONNECTIONS_SCHEDULER=1</code> (or Helm{" "}
             <code className="font-mono text-[11px]">controlPlane.connectionsScheduler.enabled</code>) is
-            turned on.
+            turned on. Continuous mode additionally needs a provider event queue env.
           </p>
         </div>
       ) : null}
@@ -2308,7 +2311,8 @@ function UnifiedRow({
                 className="max-w-[16rem] text-[10px] leading-snug text-[var(--text-tertiary)]"
                 data-testid="schedule-continuous-queue-hint"
               >
-                Mid-interval refresh needs a provider event queue env on the control plane.
+                Mid-interval refresh needs both AGENT_BOM_CONNECTIONS_SCHEDULER=1 and a provider
+                event queue env on the control plane.
               </p>
             ) : null}
           </div>
@@ -2862,8 +2866,7 @@ function ConnectionDetailDrawer({
       subtitle={
         <span className="inline-flex flex-wrap items-center gap-2">
           <span className="font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
-          {connection.inventory_scope === "organization" ||
-          connection.auth_params?.inventory_scope === "organization" ? (
+          {isOrganizationScope(connection) ? (
             <span
               className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
               data-testid="connection-org-scope-chip"
@@ -4036,8 +4039,9 @@ function AddConnectionWizard({
                         className="mt-1.5 block text-[11px] text-[var(--text-tertiary)]"
                         data-testid="wizard-continuous-queue-hint"
                       >
-                        Mid-interval refresh needs a provider event queue env on the control plane
-                        (for example AGENT_BOM_AWS_EVENT_QUEUE_URL).
+                        Mid-interval refresh needs both AGENT_BOM_CONNECTIONS_SCHEDULER=1 and a
+                        provider event queue env (for example AGENT_BOM_AWS_EVENT_QUEUE_URL) on the
+                        control plane.
                       </span>
                     ) : null}
                   </span>

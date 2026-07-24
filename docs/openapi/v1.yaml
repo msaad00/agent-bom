@@ -963,9 +963,10 @@ components:
           title: External Id
           type: string
         inventory_scope:
-          default: account
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Inventory Scope
-          type: string
         provider:
           title: Provider
           type: string

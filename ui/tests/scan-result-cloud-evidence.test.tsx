@@ -95,4 +95,31 @@ describe("ScanResultView cloud evidence", () => {
       screen.getByText(/Cloud inventory and posture evidence was persisted/i),
     ).toBeInTheDocument();
   });
+
+  it("sums per-account counts for an organization fan-out inventory list", async () => {
+    apiMock.getScan.mockResolvedValue({
+      job_id: "scan-cloud-1",
+      status: "done",
+      created_at: "2026-06-27T00:00:00Z",
+      completed_at: "2026-06-27T00:05:00Z",
+      request: {},
+      progress: [],
+      result: {
+        agents: [],
+        blast_radius: [],
+        cloud_inventory: [
+          { provider: "aws", account_id: "111111111111", resource_count: 30, identity_count: 4 },
+          { provider: "aws", account_id: "222222222222", resource_count: 12, identity_count: 3 },
+        ],
+      },
+    });
+
+    render(<ScanResultView id="scan-cloud-1" />);
+
+    await waitFor(() => expect(apiMock.getScan).toHaveBeenCalledWith("scan-cloud-1"));
+
+    // Resources is the estate total, not the member-account count (2).
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(screen.getByText("7")).toBeInTheDocument();
+  });
 });

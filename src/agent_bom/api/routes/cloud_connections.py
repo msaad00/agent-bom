@@ -49,11 +49,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.connection_crypto import ConnectionSecretError, connections_key_configured, encrypt_secret
 from agent_bom.api.connection_store import (
+    INVENTORY_SCOPE_ACCOUNT,
     STATUS_ACTIVE,
     STATUS_ERROR,
     STATUS_PENDING,
     SUPPORTED_PROVIDERS,
+    VALID_INVENTORY_SCOPES,
     CloudConnectionRecord,
+    connection_org_fanout_enabled,
     get_connection_store,
 )
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -102,18 +105,23 @@ class CloudConnectionCreate(BaseModel):
     # project, Snowflake user/role/warehouse). Never a secret — the one secret
     # is ``external_id``.
     auth_params: dict[str, str] = Field(default_factory=dict)
+    # ``account`` (default) = connected target only; ``organization`` = fan-out
+    # across member accounts / subscriptions / projects on Connections scan.
+    inventory_scope: str = INVENTORY_SCOPE_ACCOUNT
 
 
 class CloudConnectionUpdate(BaseModel):
     """Request body for updating a connection's recurring scan schedule.
 
     ``scan_interval_minutes`` is set to the supplied value; null disables the
-    recurring scan (back to manual-only).
+    recurring scan (back to manual-only). Optional ``inventory_scope`` updates
+    org fan-out for subsequent scans.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     scan_interval_minutes: int | None = None
+    inventory_scope: str | None = None
 
 
 def _now() -> str:
@@ -176,6 +184,22 @@ def _validate_auth_params(auth_params: dict[str, str]) -> dict[str, str]:
     return cleaned
 
 
+def _validate_inventory_scope(scope: str | None, *, auth_params: dict[str, Any] | None = None) -> str:
+    """Normalize inventory_scope from the body or auth_params fallback."""
+    raw = str(scope or "").strip().lower()
+    if not raw and auth_params:
+        raw = str(auth_params.get("inventory_scope") or "").strip().lower()
+    if not raw:
+        return INVENTORY_SCOPE_ACCOUNT
+    if raw not in VALID_INVENTORY_SCOPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"inventory_scope must be one of: {', '.join(VALID_INVENTORY_SCOPES)}.",
+        )
+    return raw
+
+
+
 def _validate_regions(regions: list[str]) -> list[str]:
     from agent_bom.cloud.aws_inventory import ALL_REGIONS_SENTINEL
 
@@ -217,6 +241,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     regions = _validate_regions(body.regions)
     scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
     auth_params = _validate_auth_params(body.auth_params)
+    inventory_scope = _validate_inventory_scope(body.inventory_scope, auth_params=auth_params)
 
     # Fail closed before doing anything if the store cannot encrypt the secret.
     if not connections_key_configured():
@@ -247,6 +272,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         last_scan_at=None,
         scan_interval_minutes=scan_interval_minutes,
         auth_params=auth_params,
+        inventory_scope=inventory_scope,
     )
     get_connection_store().put(record)
     log_action(
@@ -301,6 +327,8 @@ async def update_connection(
     record = _require_connection(request, connection_id)
     scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
     record.scan_interval_minutes = scan_interval_minutes
+    if body.inventory_scope is not None:
+        record.inventory_scope = _validate_inventory_scope(body.inventory_scope, auth_params=record.auth_params)
     record.updated_at = _now()
     get_connection_store().put(record)
     log_action(
@@ -488,10 +516,16 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     so the read-only code path runs against the assumed role — then persists the
     result through the existing scan/graph stores (the pipeline's persistence
     path), not a parallel one. Returns a non-secret scan summary.
+
+    When ``connection_org_fanout_enabled(record)``, fans inventory (and CIS)
+    across member accounts via the brokered management session — gated by the
+    connection's ``inventory_scope``, not ``AGENT_BOM_AWS_ORG_INVENTORY``.
     """
     import uuid as _uuid
 
-    from agent_bom.cloud import aws_inventory
+    from agent_bom.api.connection_crypto import decrypt_secret
+    from agent_bom.cloud import aws_inventory, aws_organizations
+    from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
     from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
     from agent_bom.cloud.connection_broker import broker_session
     from agent_bom.mcp_tools.posture import _summarize_inventory_payload
@@ -503,32 +537,80 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     region = None if all_regions else (record.regions[0] if record.regions else None)
     session = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
 
-    # Same read-only discovery the cloud routes run, against the brokered role.
-    if all_regions:
-        inventory_payload = aws_inventory.discover_inventory_all_regions(force=True, session=session)
-    else:
-        inventory_payload = aws_inventory.discover_inventory(region=region, force=True, session=session)
-    cis_report = run_aws_cis(region=region, session=session)
+    org_fanout = connection_org_fanout_enabled(record)
+    external_id = ""
+    member_role = ""
+    try:
+        if org_fanout:
+            external_id = decrypt_secret(record.external_id_encrypted)
+            member_role = str(record.auth_params.get("member_role_name") or "").strip() or "agent-bom-readonly"
+            inventory_payloads = aws_inventory.discover_all_account_inventories(
+                force=True,
+                session=session,
+                external_id=external_id,
+                role_name=member_role,
+            )
+            inventory_payload: Any = inventory_payloads
+            cis_report = run_all_account_benchmarks(
+                session=session,
+                external_id=external_id,
+                role_name=member_role,
+            )
+        elif all_regions:
+            inventory_payload = aws_inventory.discover_inventory_all_regions(force=True, session=session)
+            cis_report = run_aws_cis(region=region, session=session)
+        else:
+            inventory_payload = aws_inventory.discover_inventory(region=region, force=True, session=session)
+            cis_report = run_aws_cis(region=region, session=session)
+    finally:
+        external_id = ""
+
     cis_dict = cis_report.to_dict()
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
     _mark_connection_report_sources(report, "aws")
     report.cloud_inventory_data = inventory_payload
     report.cis_benchmark_data = cis_dict
+    if org_fanout:
+        org = aws_organizations.discover_organization(session=session, force=True)
+        if isinstance(org, dict) and org.get("status") == "ok":
+            payloads = inventory_payload if isinstance(inventory_payload, list) else []
+            aws_payloads = [item for item in payloads if isinstance(item, dict)]
+            if aws_payloads:
+                org["account_scan"] = aws_organizations.summarize_account_scan(aws_payloads)
+            report.aws_organization_data = org
     scan_id = _persist_connection_report(record, tenant_id, report)
 
+    if isinstance(inventory_payload, list):
+        inventory_summary: dict[str, Any] = {
+            "provider": "aws",
+            "status": "ok",
+            "account_count": len(inventory_payload),
+            "accounts": [
+                _summarize_inventory_payload("aws", item) for item in inventory_payload if isinstance(item, dict)
+            ],
+        }
+    else:
+        inventory_summary = _summarize_inventory_payload("aws", inventory_payload)
+
+    audit_note = (
+        "Org-scope connection scan: inventory + CIS fan out across member accounts via short-lived "
+        "AssumeRole from the brokered management session. Read-only; no secret value is returned."
+        if org_fanout
+        else (
+            "Scan ran against a short-lived read-only role assumed from the stored connection. "
+            "Inventory + CIS are read-only; no resource is mutated and no secret value is returned."
+        )
+    )
     return {
         "schema_version": "cloud.connections.scan.v1",
         "connection_id": record.id,
         "tenant_id": tenant_id,
         "provider": "aws",
         "scan_id": scan_id,
-        "inventory": _summarize_inventory_payload("aws", inventory_payload),
+        "inventory": inventory_summary,
         "cis_benchmark": _cis_summary(cis_dict),
-        "audit_metadata": _scan_audit_metadata(
-            "Scan ran against a short-lived read-only role assumed from the stored connection. "
-            "Inventory + CIS are read-only; no resource is mutated and no secret value is returned."
-        ),
+        "audit_metadata": _scan_audit_metadata(audit_note),
     }
 
 
@@ -551,7 +633,14 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     credential = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
     subscription_id = str(record.auth_params.get("subscription_id") or "").strip() or None
 
-    inventory_payload = azure_inventory.discover_inventory(subscription_id=subscription_id, credential=credential, force=True)
+    if connection_org_fanout_enabled(record):
+        inventory_payload: Any = azure_inventory.discover_all_subscription_inventories(
+            credential=credential, force=True
+        )
+    else:
+        inventory_payload = azure_inventory.discover_inventory(
+            subscription_id=subscription_id, credential=credential, force=True
+        )
     cis_report = run_azure_cis(subscription_id=subscription_id, credential=credential)
     cis_dict = cis_report.to_dict()
 
@@ -560,7 +649,12 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     from agent_bom.cloud.dspm_findings import build_inventory_dspm_findings
 
     account_ref = f"azure:{subscription_id}" if subscription_id else None
-    dspm_findings = build_inventory_dspm_findings(inventory_payload, provider="azure", account_ref=account_ref)
+    primary_for_dspm = inventory_payload[0] if isinstance(inventory_payload, list) and inventory_payload else inventory_payload
+    dspm_findings = build_inventory_dspm_findings(
+        primary_for_dspm if isinstance(primary_for_dspm, dict) else {},
+        provider="azure",
+        account_ref=account_ref,
+    )
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
     _mark_connection_report_sources(report, "azure")
@@ -568,13 +662,25 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     report.azure_cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
 
+    if isinstance(inventory_payload, list):
+        inventory_summary: dict[str, Any] = {
+            "provider": "azure",
+            "status": "ok",
+            "account_count": len(inventory_payload),
+            "accounts": [
+                _summarize_inventory_payload("azure", item) for item in inventory_payload if isinstance(item, dict)
+            ],
+        }
+    else:
+        inventory_summary = _summarize_inventory_payload("azure", inventory_payload)
+
     return {
         "schema_version": "cloud.connections.scan.v1",
         "connection_id": record.id,
         "tenant_id": tenant_id,
         "provider": "azure",
         "scan_id": scan_id,
-        "inventory": _summarize_inventory_payload("azure", inventory_payload),
+        "inventory": inventory_summary,
         "cis_benchmark": _cis_summary(cis_dict),
         "audit_metadata": _scan_audit_metadata(
             "Scan ran against a read-only Azure Reader credential brokered from the stored connection. "
@@ -602,7 +708,14 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     credentials = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
     project_id = str(record.auth_params.get("project_id") or "").strip() or None
 
-    inventory_payload = gcp_inventory.discover_inventory(project_id=project_id, credentials=credentials, force=True)
+    if connection_org_fanout_enabled(record):
+        inventory_payload: Any = gcp_inventory.discover_all_project_inventories(
+            credentials=credentials, force=True
+        )
+    else:
+        inventory_payload = gcp_inventory.discover_inventory(
+            project_id=project_id, credentials=credentials, force=True
+        )
     cis_report = run_gcp_cis(project_id=project_id, credentials=credentials)
     cis_dict = cis_report.to_dict()
 
@@ -612,13 +725,25 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     report.gcp_cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
 
+    if isinstance(inventory_payload, list):
+        inventory_summary: dict[str, Any] = {
+            "provider": "gcp",
+            "status": "ok",
+            "account_count": len(inventory_payload),
+            "accounts": [
+                _summarize_inventory_payload("gcp", item) for item in inventory_payload if isinstance(item, dict)
+            ],
+        }
+    else:
+        inventory_summary = _summarize_inventory_payload("gcp", inventory_payload)
+
     return {
         "schema_version": "cloud.connections.scan.v1",
         "connection_id": record.id,
         "tenant_id": tenant_id,
         "provider": "gcp",
         "scan_id": scan_id,
-        "inventory": _summarize_inventory_payload("gcp", inventory_payload),
+        "inventory": inventory_summary,
         "cis_benchmark": _cis_summary(cis_dict),
         "audit_metadata": _scan_audit_metadata(
             "Scan ran against read-only GCP service-account credentials (cloud-platform.read-only) brokered from the "

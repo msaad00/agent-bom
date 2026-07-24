@@ -118,9 +118,11 @@ collectors execute. See
 | Runtime | `/runtime`, `/proxy`, `/gateway`, `/traces` | Policy + audit + HITL queue |
 | Compliance | `/compliance` | Framework evidence + exports |
 
-Each Connections entry (and `POST /v1/cloud/connections/{id}/scan`) is one
-AWS account / Azure subscription / GCP project; org **scan** fan-out is an
-env flag on the scanner/CLI (the AWS wizard StackSet path is grant-only) — see
+By default each Connections entry (and `POST /v1/cloud/connections/{id}/scan`)
+is one AWS account / Azure subscription / GCP project. Set
+`inventory_scope=organization` (AWS wizard **Whole organization**) so Connections
+`/scan` fans out across members; StackSet (or equivalent) still deploys member
+roles. CLI/Helm CronJob env flags remain for enrichment Jobs — see
 [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md) §1c.
 
 Proof-path nav in the UI: **Queue · Graph · Runtime · Reports · Connections**.

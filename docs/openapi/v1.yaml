@@ -903,6 +903,10 @@ components:
           minLength: 1
           title: External Id
           type: string
+        inventory_scope:
+          default: account
+          title: Inventory Scope
+          type: string
         provider:
           title: Provider
           type: string
@@ -935,8 +939,15 @@ components:
 
         ``scan_interval_minutes`` is set to the supplied value; null disables the
 
-        recurring scan (back to manual-only).'
+        recurring scan (back to manual-only). Optional ``inventory_scope`` updates
+
+        org fan-out for subsequent scans.'
       properties:
+        inventory_scope:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inventory Scope
         scan_interval_minutes:
           anyOf:
           - type: integer

@@ -34,6 +34,10 @@ STATUS_ACTIVE = "active"
 STATUS_ERROR = "error"
 VALID_STATUSES: tuple[str, ...] = (STATUS_PENDING, STATUS_ACTIVE, STATUS_ERROR)
 
+INVENTORY_SCOPE_ACCOUNT = "account"
+INVENTORY_SCOPE_ORGANIZATION = "organization"
+VALID_INVENTORY_SCOPES: tuple[str, ...] = (INVENTORY_SCOPE_ACCOUNT, INVENTORY_SCOPE_ORGANIZATION)
+
 
 @dataclass
 class CloudConnectionRecord:
@@ -69,6 +73,10 @@ class CloudConnectionRecord:
     # ``external_id_encrypted``; these are deliberately NOT secret and are safe to
     # return in API responses.
     auth_params: dict[str, Any] = field(default_factory=dict)
+    # Scan fan-out scope: ``account`` (default) covers the connected target only;
+    # ``organization`` fans inventory across member accounts / subscriptions /
+    # projects. Older rows may only carry this under ``auth_params``.
+    inventory_scope: str = INVENTORY_SCOPE_ACCOUNT
 
     def to_public_dict(self) -> dict[str, Any]:
         """Non-secret representation for API responses.
@@ -82,6 +90,22 @@ class CloudConnectionRecord:
         data.pop("external_id_encrypted", None)
         data["has_external_id"] = bool(self.external_id_encrypted)
         return data
+
+
+def connection_org_fanout_enabled(record: CloudConnectionRecord) -> bool:
+    """True when this connection should fan inventory across the org estate.
+
+    Prefers the first-class ``inventory_scope`` column. Falls back to
+    ``auth_params.inventory_scope`` for older rows created before the column
+    existed (or dual-written by clients). Does **not** consult
+    ``AGENT_BOM_AWS_ORG_INVENTORY`` — that env flag remains the CLI/enrichment
+    gate; per-connection scope is the product gate for Connections scans.
+    """
+    scope = str(getattr(record, "inventory_scope", "") or "").strip().lower()
+    if scope == INVENTORY_SCOPE_ORGANIZATION:
+        return True
+    auth_scope = str((record.auth_params or {}).get("inventory_scope") or "").strip().lower()
+    return auth_scope == INVENTORY_SCOPE_ORGANIZATION
 
 
 class ConnectionStore(Protocol):
@@ -123,6 +147,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                 "scan_interval_minutes",
                 "auth_params",
                 "last_event_at",
+                "inventory_scope",
             ),
             ddl_by_backend={
                 "sqlite": (
@@ -133,7 +158,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
                     "updated_at TEXT NOT NULL, last_scan_at TEXT, last_scan_id TEXT, "
                     "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', "
-                    "last_event_at TEXT)"
+                    "last_event_at TEXT, inventory_scope TEXT NOT NULL DEFAULT 'account')"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
@@ -143,7 +168,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
                     "updated_at TEXT NOT NULL, last_scan_at TEXT, last_scan_id TEXT, "
                     "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', "
-                    "last_event_at TEXT)"
+                    "last_event_at TEXT, inventory_scope TEXT NOT NULL DEFAULT 'account')"
                 ),
             },
         ),
@@ -191,18 +216,26 @@ def _decode_auth_params(raw: Any) -> dict[str, Any]:
     return {str(k): v for k, v in parsed.items()}
 
 
+def _decode_inventory_scope(raw: Any) -> str:
+    """Normalize a stored inventory_scope value (default account)."""
+    scope = str(raw or "").strip().lower()
+    if scope == INVENTORY_SCOPE_ORGANIZATION:
+        return INVENTORY_SCOPE_ORGANIZATION
+    return INVENTORY_SCOPE_ACCOUNT
+
+
 def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
     """Map a ``cloud_connections`` row tuple to a record (shared by backends).
 
-    Durable backends use the canonical 16-column shape with ``last_scan_id``.
-    The legacy 15-column shape remains readable for compatibility with older
-    adapters and persisted test fixtures; every trailing column keeps the same
-    relative order, so a length check selects the correct positional indexes.
+    Durable backends use the canonical 17-column shape with ``inventory_scope``.
+    Older 15/16-column shapes remain readable; trailing columns keep the same
+    relative order, so length checks select positional indexes.
     """
     has_last_scan_id = len(row) >= 16
     interval_idx = 13 if has_last_scan_id else 12
     auth_idx = 14 if has_last_scan_id else 13
     event_idx = 15 if has_last_scan_id else 14
+    scope_idx = 16 if has_last_scan_id else 15
     return CloudConnectionRecord(
         id=row[0],
         tenant_id=row[1],
@@ -220,6 +253,7 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         scan_interval_minutes=(_decode_interval(row[interval_idx]) if len(row) > interval_idx else None),
         auth_params=_decode_auth_params(row[auth_idx]) if len(row) > auth_idx else {},
         last_event_at=row[event_idx] if len(row) > event_idx else None,
+        inventory_scope=_decode_inventory_scope(row[scope_idx]) if len(row) > scope_idx else INVENTORY_SCOPE_ACCOUNT,
     )
 
 
@@ -230,7 +264,12 @@ def _copy_record(record: CloudConnectionRecord) -> CloudConnectionRecord:
     Without this the in-memory store would hand out the live reference and the
     compare-and-swap claim could never observe a concurrent change.
     """
-    return replace(record, regions=list(record.regions), auth_params=dict(record.auth_params))
+    return replace(
+        record,
+        regions=list(record.regions),
+        auth_params=dict(record.auth_params),
+        inventory_scope=str(record.inventory_scope or INVENTORY_SCOPE_ACCOUNT),
+    )
 
 
 class InMemoryConnectionStore:
@@ -325,6 +364,10 @@ class SQLiteConnectionStore:
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN auth_params TEXT NOT NULL DEFAULT '{}'")
         if "last_event_at" not in columns:
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN last_event_at TEXT")
+        if "inventory_scope" not in columns:
+            self._conn.execute(
+                "ALTER TABLE cloud_connections ADD COLUMN inventory_scope TEXT NOT NULL DEFAULT 'account'"
+            )
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -337,8 +380,9 @@ class SQLiteConnectionStore:
             INSERT OR REPLACE INTO cloud_connections
                 (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                  regions, status, status_detail, created_at, updated_at, last_scan_at,
-                 last_scan_id, scan_interval_minutes, auth_params, last_event_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 last_scan_id, scan_interval_minutes, auth_params, last_event_at,
+                 inventory_scope)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.id,
@@ -357,6 +401,7 @@ class SQLiteConnectionStore:
                 record.scan_interval_minutes,
                 json.dumps(record.auth_params),
                 record.last_event_at,
+                _decode_inventory_scope(record.inventory_scope),
             ),
         )
         self._conn.commit()
@@ -365,7 +410,7 @@ class SQLiteConnectionStore:
         row = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
-            "last_scan_id, scan_interval_minutes, auth_params, last_event_at "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope "
             "FROM cloud_connections WHERE tenant_id = ? AND id = ?",
             (tenant_id, connection_id),
         ).fetchone()
@@ -375,7 +420,7 @@ class SQLiteConnectionStore:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
-            "last_scan_id, scan_interval_minutes, auth_params, last_event_at "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope "
             "FROM cloud_connections WHERE tenant_id = ? ORDER BY created_at, id",
             (tenant_id,),
         ).fetchall()
@@ -393,7 +438,7 @@ class SQLiteConnectionStore:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
             "regions, status, status_detail, created_at, updated_at, last_scan_at, "
-            "last_scan_id, scan_interval_minutes, auth_params, last_event_at "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope "
             "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
         ).fetchall()
         return [_row_to_record(row) for row in rows]

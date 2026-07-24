@@ -83,7 +83,7 @@ def test_list_member_account_ids_keeps_only_active(monkeypatch) -> None:
     monkeypatch.setattr(
         aws_orgs,
         "discover_organization",
-        lambda profile=None, *, force=False: {
+        lambda profile=None, *, force=False, session=None: {
             "status": "ok",
             "accounts": [
                 {"id": "111111111111", "status": "ACTIVE"},
@@ -97,7 +97,7 @@ def test_list_member_account_ids_keeps_only_active(monkeypatch) -> None:
 
 
 def test_list_member_account_ids_empty_when_not_in_org(monkeypatch) -> None:
-    monkeypatch.setattr(aws_orgs, "discover_organization", lambda profile=None, *, force=False: {"status": "not_in_org"})
+    monkeypatch.setattr(aws_orgs, "discover_organization", lambda profile=None, *, force=False, session=None: {"status": "not_in_org"})
     assert aws_orgs.list_member_account_ids() == []
 
 
@@ -174,7 +174,7 @@ def _inv(account_id: str, *, status: str = "ok") -> dict:
 
 def test_inventory_fanout_merges_each_account(monkeypatch) -> None:
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: ["111111111111", "222222222222"])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["111111111111", "222222222222"])
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
 
     scanned: list[str] = []
@@ -194,7 +194,7 @@ def test_inventory_fanout_merges_each_account(monkeypatch) -> None:
 
 def test_inventory_fanout_skips_denied_account_with_warning(monkeypatch) -> None:
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: ["ok-acct", "denied-acct"])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["ok-acct", "denied-acct"])
 
     def _fake_assume(aid, **kw):
         if aid == "denied-acct":
@@ -214,7 +214,7 @@ def test_inventory_fanout_skips_denied_account_with_warning(monkeypatch) -> None
 def test_inventory_fanout_honors_cap(monkeypatch) -> None:
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
     monkeypatch.setenv("AGENT_BOM_AWS_MAX_ACCOUNTS", "2")
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: ["a1", "a2", "a3", "a4"])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["a1", "a2", "a3", "a4"])
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
     monkeypatch.setattr(aws_inv, "discover_inventory", lambda *, session=None, force=False: _inv(str(session).split("::")[-1]))
 
@@ -225,10 +225,10 @@ def test_inventory_fanout_honors_cap(monkeypatch) -> None:
 
 def test_inventory_fanout_falls_back_to_single_account(monkeypatch) -> None:
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: [])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: [])
     called: list[bool] = []
 
-    def _single(*, profile=None, force=False):
+    def _single(*, profile=None, force=False, session=None):
         called.append(True)
         return _inv("solo")
 
@@ -316,7 +316,7 @@ def _cis_report(account_id: str) -> CISBenchmarkReport:
 
 
 def test_cis_fanout_per_account_attribution(monkeypatch) -> None:
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: ["111111111111", "222222222222"])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["111111111111", "222222222222"])
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
 
     def _fake_run(*, session=None, checks=None):
@@ -336,7 +336,7 @@ def test_cis_fanout_per_account_attribution(monkeypatch) -> None:
 
 
 def test_cis_fanout_skips_denied_account_with_warning(monkeypatch) -> None:
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: ["ok-acct", "denied-acct"])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["ok-acct", "denied-acct"])
 
     def _fake_assume(aid, **kw):
         if aid == "denied-acct":
@@ -355,7 +355,7 @@ def test_cis_fanout_skips_denied_account_with_warning(monkeypatch) -> None:
 
 def test_cis_fanout_caps_accounts_with_warning(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_AWS_MAX_ACCOUNTS", "1")
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: ["a1", "a2", "a3"])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["a1", "a2", "a3"])
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
     monkeypatch.setattr(aws_cis, "run_benchmark", lambda *, session=None, checks=None: _cis_report(str(session).split("::")[-1]))
 
@@ -365,10 +365,10 @@ def test_cis_fanout_caps_accounts_with_warning(monkeypatch) -> None:
 
 
 def test_cis_fanout_falls_back_to_single_account(monkeypatch) -> None:
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile, *, force=False: [])
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: [])
     called: list[bool] = []
 
-    def _single(profile=None, checks=None):
+    def _single(profile=None, checks=None, session=None):
         called.append(True)
         return _cis_report("solo")
 
@@ -430,7 +430,7 @@ def test_enrich_report_attaches_account_scan_summary(monkeypatch) -> None:
     monkeypatch.setattr(
         aws_orgs,
         "discover_organization",
-        lambda profile=None, *, force=False: {
+        lambda profile=None, *, force=False, session=None: {
             "status": "ok",
             "org_id": "o-xyz",
             "accounts": [{"id": "111111111111", "status": "ACTIVE"}],

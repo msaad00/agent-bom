@@ -1218,18 +1218,25 @@ def architecture(theme_name: str) -> str:
 # Persona band accents — one restrained hue per buyer lane, on neutral cards.
 PERSONA_ACCENTS = {
     "appsec": ("#2dd4bf", "#0d9488"),
+    "grc": ("#fbbf24", "#d97706"),
     "platform": ("#38bdf8", "#0284c7"),
     "builders": ("#a78bfa", "#7c3aed"),
     "seceng": ("#fb7185", "#e11d48"),
 }
 
-# Role badge glyphs on the solid accent badge circle at (18.5, 18): compliance
-# doc-with-check, platform layers, agent bot, security shield-with-check.
-# GLYPH / ACCENT tokens are substituted per theme when the card is drawn.
+# Role badge glyphs on the solid accent badge circle at (18.5, 18): AppSec
+# doc-with-check, GRC clipboard/checklist, platform layers, agent bot,
+# security shield-with-check. GLYPH / ACCENT tokens are substituted per theme
+# when the card is drawn.
 PERSONA_BADGES = {
     "appsec": (
         '<rect x="16.2" y="14.7" width="4.6" height="6.2" rx="1" fill="GLYPH" stroke="none"/>'
         '<path d="M17.3 17.9l.95.95 1.75-1.75" stroke="ACCENT" stroke-width="1.05"/>'
+    ),
+    "grc": (
+        '<rect x="16.0" y="14.6" width="5.0" height="6.6" rx="0.9" fill="none" stroke="GLYPH" stroke-width="1.05"/>'
+        '<path d="M17.2 14.2h2.6v1.2h-2.6z" fill="GLYPH" stroke="none"/>'
+        '<path d="M17.1 17.0h2.8 M17.1 18.4h2.8 M17.1 19.8h1.8" stroke="GLYPH" stroke-width="1.0"/>'
     ),
     "platform": '<path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/>',
     "builders": '<rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/>',
@@ -1365,11 +1372,19 @@ def _persona_lane_card(
 def persona_value(theme: str) -> str:
     """Compact single-row buyer-lane band — persona -> value proof per card."""
     t = THEMES[theme]
-    w, h = 1080, 236
+    # Five cards need extra width so titles/tags fit without overflow.
+    w, h = 1280, 236
     persona_bg = "#16161d" if theme == "dark" else t["bg"]
 
     cards = [
-        ("AppSec / GRC", "SARIF · compliance · audit chain", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware", "appsec"),
+        ("AppSec", "SARIF · reachability · CI gates", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware", "appsec"),
+        (
+            "GRC / audit",
+            "compliance · evidence · frameworks",
+            "Audit-ready exports",
+            "control mappings · signed bundles · review context",
+            "grc",
+        ),
         ("Platform / SRE", "fleet sync · Helm · CI · SBOM", "Container coverage", "OCI native · Grype · CIS posture", "platform"),
         ("Agent builders", "MCP inventory · Shield · runtime", "Self-hosted control plane", "your VPC · signed audit · Helm", "builders"),
         (
@@ -1383,7 +1398,7 @@ def persona_value(theme: str) -> str:
 
     margin_x, margin_y = 23, 18
     gap = 14
-    card_w = (w - margin_x * 2 - gap * 3) // 4
+    card_w = (w - margin_x * 2 - gap * 4) // 5
     card_h = 174
 
     parts = _svg_open(w, h, "agent-bom personas and value")

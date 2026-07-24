@@ -10,6 +10,9 @@ Modes:
              load generator. Gateway upstream pool size is not currently
              exposed via AGENT_BOM_* env vars (GatewaySettings fields only),
              so tuned mode documents that gap rather than inventing knobs.
+
+``--relay-backend go`` starts ``runtime/gateway-relay`` and sets
+``AGENT_BOM_GATEWAY_RELAY_BACKEND=go`` on the gateway child.
 """
 
 from __future__ import annotations
@@ -36,9 +39,12 @@ DEFAULT_REQUESTS = 200
 GATEWAY_BIND_HOST = "127.0.0.1"
 GATEWAY_BIND_PORT = 8090
 UPSTREAM_PORT = 8100
+GO_RELAY_PORT = 8091
 WARMUP_REQUESTS = 20
 HEALTH_TIMEOUT_S = 45.0
 REQUEST_TIMEOUT_S = 30.0
+# Privacy: never record the operator machine hostname in committed artifacts.
+BENCHMARK_HOSTNAME = "local-benchmark-host"
 
 
 def _percentiles(values_ms: list[float]) -> dict[str, float | int]:
@@ -244,7 +250,7 @@ def _httpx_limits(mode: str) -> Any:
     return httpx.Limits(max_connections=100, max_keepalive_connections=20)
 
 
-def _gateway_env(mode: str) -> dict[str, str]:
+def _gateway_env(mode: str, *, relay_backend: str = "python", go_relay_url: str | None = None) -> dict[str, str]:
     """Env for the gateway child process.
 
     ``GatewaySettings.upstream_http_max_connections`` / keepalive are dataclass
@@ -257,12 +263,27 @@ def _gateway_env(mode: str) -> dict[str, str]:
         # Empty policy + fail-open keeps the relay path free of DENY noise for
         # this microbenchmark (policy engine is not under test here).
         "AGENT_BOM_GATEWAY_FAIL_MODE": "open",
+        "AGENT_BOM_GATEWAY_RELAY_BACKEND": relay_backend,
     }
+    if relay_backend == "go":
+        env["AGENT_BOM_GATEWAY_RELAY_GO_URL"] = go_relay_url or f"http://127.0.0.1:{GO_RELAY_PORT}"
     if mode == "tuned":
         env["UVLOOP"] = "1"
         # Documented non-knobs: pool size is not env-configurable yet.
         env["AGENT_BOM_GATEWAY_PERF_TUNE"] = "1"
     return env
+
+
+def _go_relay_cmd(listen: str) -> list[str]:
+    """Build the Go sidecar binary and return argv for ``-listen``."""
+    module = ROOT / "runtime" / "gateway-relay"
+    built = module / "bin" / "gateway-relay"
+    built.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.check_call(
+        ["go", "build", "-o", str(built), "./cmd/gateway-relay"],
+        cwd=str(module),
+    )
+    return [str(built), "-listen", listen]
 
 
 async def _one_call(client: Any, url: str, req_id: int) -> tuple[float, bool, str | None]:
@@ -393,10 +414,13 @@ def run_benchmark(
     requests_per_level: int,
     gateway_port: int | None,
     upstream_port: int | None,
+    relay_backend: str = "python",
+    go_relay_port: int | None = None,
 ) -> dict[str, Any]:
     uvloop_note = _apply_uvloop_if_requested(mode)
     gport = gateway_port or _free_port()
     uport = upstream_port or _free_port()
+    rport = go_relay_port or _free_port()
     # Prefer the documented default ports when free.
     if gateway_port is None:
         try:
@@ -412,10 +436,19 @@ def run_benchmark(
                 uport = UPSTREAM_PORT
         except OSError:
             pass
+    if relay_backend == "go" and go_relay_port is None:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", GO_RELAY_PORT))
+                rport = GO_RELAY_PORT
+        except OSError:
+            pass
 
     gateway_base = f"http://{GATEWAY_BIND_HOST}:{gport}"
+    go_relay_url = f"http://127.0.0.1:{rport}"
     upstream_proc: subprocess.Popen[bytes] | None = None
     gateway_proc: subprocess.Popen[bytes] | None = None
+    go_relay_proc: subprocess.Popen[bytes] | None = None
 
     with tempfile.TemporaryDirectory(prefix="abom-gateway-perf-") as tmp:
         upstreams = Path(tmp) / "upstreams.yaml"
@@ -425,9 +458,13 @@ def run_benchmark(
             upstream_proc = _spawn(_mock_cmd(uport))
             _wait_http_ok(f"http://127.0.0.1:{uport}/healthz")
 
+            if relay_backend == "go":
+                go_relay_proc = _spawn(_go_relay_cmd(f"127.0.0.1:{rport}"))
+                _wait_http_ok(f"{go_relay_url}/healthz", timeout_s=90.0)
+
             gateway_proc = _spawn(
                 _gateway_cmd(f"{GATEWAY_BIND_HOST}:{gport}", upstreams),
-                env=_gateway_env(mode),
+                env=_gateway_env(mode, relay_backend=relay_backend, go_relay_url=go_relay_url),
             )
             _wait_http_ok(f"{gateway_base}/healthz")
 
@@ -446,6 +483,7 @@ def run_benchmark(
             final_rss_kb = _peak_rss_kb_tree(gateway_proc.pid)
         finally:
             _terminate(gateway_proc)
+            _terminate(go_relay_proc)
             _terminate(upstream_proc)
 
     at_500 = next((r for r in results if r["concurrency"] == 500), None)
@@ -453,7 +491,7 @@ def run_benchmark(
         "metadata": {
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "hostname": os.environ.get("AGENT_BOM_PERF_HOSTNAME", "local-benchmark-host"),
+            "hostname": BENCHMARK_HOSTNAME,
             "platform": platform.platform(),
             "machine": platform.machine(),
             "python": platform.python_version(),
@@ -475,7 +513,12 @@ def run_benchmark(
                 "upstream_http_max_connections_default": 100,
                 "upstream_http_max_keepalive_connections_default": 20,
             },
-            "bind": {"gateway": f"{GATEWAY_BIND_HOST}:{gport}", "upstream": f"127.0.0.1:{uport}"},
+            "bind": {
+                "gateway": f"{GATEWAY_BIND_HOST}:{gport}",
+                "upstream": f"127.0.0.1:{uport}",
+                "go_relay": (go_relay_url if relay_backend == "go" else None),
+            },
+            "relay_backend": relay_backend,
             "requests_per_level": requests_per_level,
             "concurrency_levels": concurrency_levels,
             "warmup_requests": WARMUP_REQUESTS,
@@ -530,6 +573,13 @@ def main() -> None:
     )
     parser.add_argument("--gateway-port", type=int, default=None)
     parser.add_argument("--upstream-port", type=int, default=None)
+    parser.add_argument(
+        "--relay-backend",
+        choices=("python", "go"),
+        default="python",
+        help="Pure-relay backend (default python; go starts the sidecar)",
+    )
+    parser.add_argument("--go-relay-port", type=int, default=None)
     args = parser.parse_args()
     mode = "tuned" if args.mode == "python" else args.mode
     if 500 not in args.concurrency:
@@ -541,6 +591,8 @@ def main() -> None:
         requests_per_level=args.requests_per_level,
         gateway_port=args.gateway_port,
         upstream_port=args.upstream_port,
+        relay_backend=args.relay_backend,
+        go_relay_port=args.go_relay_port,
     )
 
 

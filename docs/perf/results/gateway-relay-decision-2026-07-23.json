@@ -1,0 +1,32 @@
+{
+  "date": "2026-07-23",
+  "comparison_point": "concurrency_500",
+  "python_tuned": {
+    "artifact": "docs/perf/results/gateway-relay-tuned-2026-07-23.json",
+    "p95_ms": 2572.27,
+    "p50_ms": 1378.941,
+    "error_rate": 0.0,
+    "peak_rss_mb": 107.078
+  },
+  "go_spike": {
+    "artifact": "docs/perf/results/gateway-relay-go-spike-2026-07-23.json",
+    "p95_ms": 2426.12,
+    "p50_ms": 1309.894,
+    "error_rate": 0.0,
+    "peak_rss_mb": 91.078,
+    "relay_backend": "go"
+  },
+  "thresholds": {
+    "promote_if_go_p95_lt_half_python": true,
+    "promote_if_go_p95_lt_ms": 50
+  },
+  "ratio_go_over_python_p95": 0.9432,
+  "decision": "defer",
+  "recommendation": "Defer Go promotion; keep Python primary and retain the Go sidecar harness for future soaks.",
+  "notes": [
+    "Policy/auth/audit remain Python-owned; Go only implements POST /v1/forward.",
+    "Default AGENT_BOM_GATEWAY_RELAY_BACKEND=python; Helm gateway.relayBackend defaults to python."
+  ],
+  "timestamp_utc": "2026-07-24T03:20:16.246103+00:00",
+  "git_commit_go_spike": "e93ad4dd3"
+}

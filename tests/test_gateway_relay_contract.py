@@ -186,3 +186,18 @@ def test_relay_request_json_roundtrip_shape() -> None:
     decoded = json.loads(encoded)
     assert decoded["upstream"]["name"] == "jira"
     assert decoded["message"]["method"] == "tools/list"
+
+
+def test_build_gateway_relay_transport_selects_backend(monkeypatch) -> None:
+    import httpx
+
+    from agent_bom.runtime.gateway_relay_contract import (
+        GoHttpRelayTransport,
+        PythonHttpRelayTransport,
+        build_gateway_relay_transport,
+    )
+
+    monkeypatch.setenv("AGENT_BOM_GATEWAY_RELAY_BACKEND", "python")
+    assert isinstance(build_gateway_relay_transport(httpx.AsyncClient()), PythonHttpRelayTransport)
+    monkeypatch.setenv("AGENT_BOM_GATEWAY_RELAY_BACKEND", "go")
+    assert isinstance(build_gateway_relay_transport(httpx.AsyncClient()), GoHttpRelayTransport)

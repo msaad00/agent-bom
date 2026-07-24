@@ -63,3 +63,25 @@ a specific hot path under the same policy/audit contract.
 - **Negative:** Some network-daemon workloads may hit Python concurrency limits
   before a sidecar exists; mitigate with horizontal workers and measurement
   rather than speculative rewrites.
+
+### Phase 3 Go spike (2026-07-24) — **defer**
+
+Measured `runtime/gateway-relay` behind `AGENT_BOM_GATEWAY_RELAY_BACKEND=go`
+against the default Python in-process relay
+(`docs/perf/results/gateway-relay-go-spike-2026-07-24.json` and the c=500 soak
+decision in `docs/perf/results/gateway-relay-decision-2026-07-23.json`).
+
+| Backend | p95 @ 50 | p95 @ 500 |
+|---------|---------:|----------:|
+| python  | 1319.6 ms | 1447.6 ms |
+| go      | 1172.8 ms | 1326.6 ms |
+
+Go improved p95 by roughly 8% in the scrubbed 100-req soak and by ~6% vs the
+tuned Python full-ladder artifact at c=500 (Python p95 2572.27 ms → Go p95
+2426.12 ms; ratio ~0.94). Neither run met promote thresholds (Go p95 < 50%
+of Python p95, or Go p95 < 50 ms). **Defer promotion:** Python stays the
+default pure-relay implementation; the Go sidecar remains an optional
+experimental flag + Helm values stub. Revisit only with stronger evidence
+(pool tuning, multi-replica EKS soak, or a clear SLO miss that Python cannot
+close).
+

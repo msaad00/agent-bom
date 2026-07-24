@@ -3468,6 +3468,8 @@ export interface CloudConnectionsResponse {
   tenant_id: string;
   connections: CloudConnectionRecord[];
   count: number;
+  /** True when AGENT_BOM_CONNECTIONS_SCHEDULER is enabled on this control plane. */
+  connections_scheduler_enabled?: boolean;
 }
 
 /** Request body for `POST /v1/cloud/connections`. `external_id` is write-only. */

@@ -1,0 +1,68 @@
+{{- if and .Values.controlPlane.enabled .Values.eventCollector.enabled }}
+{{- $imageRepo := .Values.eventCollector.image.repository | default "" }}
+{{- if $imageRepo }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-bom.name" . }}-event-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: event-collector
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" . | nindent 8 }}
+        app.kubernetes.io/component: event-collector
+    spec:
+      containers:
+        - name: event-collector
+          image: "{{ $imageRepo }}:{{ .Values.eventCollector.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --listen={{ .Values.eventCollector.listen | default ":8092" }}
+            - --mode={{ .Values.eventCollector.mode | default "stub" }}
+            {{- $cpUrl := .Values.eventCollector.controlPlaneUrl | default "" }}
+            {{- if not $cpUrl }}
+            {{- $cpUrl = printf "http://%s-api:8420" (include "agent-bom.name" .) }}
+            {{- end }}
+            - --control-plane-url={{ $cpUrl }}
+            {{- if and .Values.eventCollector.apiKeySecret.name .Values.eventCollector.apiKeySecret.key }}
+            - --api-key-file=/var/run/secrets/agent-bom/api-key
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8092
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          {{- if and .Values.eventCollector.apiKeySecret.name .Values.eventCollector.apiKeySecret.key }}
+          volumeMounts:
+            - name: api-key
+              mountPath: /var/run/secrets/agent-bom
+              readOnly: true
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+      {{- if and .Values.eventCollector.apiKeySecret.name .Values.eventCollector.apiKeySecret.key }}
+      volumes:
+        - name: api-key
+          secret:
+            secretName: {{ .Values.eventCollector.apiKeySecret.name }}
+            items:
+              - key: {{ .Values.eventCollector.apiKeySecret.key }}
+                path: api-key
+      {{- end }}
+{{- end }}
+{{- end }}

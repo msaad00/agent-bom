@@ -420,6 +420,10 @@ class HealthResponse(BaseModel):
     auth_configured: bool = False
     configured_auth_modes: list[str] = Field(default_factory=list)
     unauthenticated_allowed: bool = False
+    # Read-only packaging honesty: recurring connection intervals only fire when
+    # AGENT_BOM_CONNECTIONS_SCHEDULER (or Helm controlPlane.connectionsScheduler)
+    # is enabled. Default false so self-hosted installs do not silently claim cadence.
+    connections_scheduler_enabled: bool = False
     tracing: TracingHealth
     analytics: AnalyticsHealth
     storage: StorageHealth

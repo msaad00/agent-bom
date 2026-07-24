@@ -1328,6 +1328,7 @@ async def health() -> PublicHealthResponse:
 @app.get("/v1/system/health", response_model=HealthResponse, tags=["meta"])
 async def system_health() -> HealthResponse:
     """Authenticated operator diagnostics for configured subsystems."""
+    from agent_bom.api.connection_scheduler import connections_scheduler_enabled
     from agent_bom.api.middleware import get_auth_runtime_status
     from agent_bom.entitlements import load_entitlement_state
 
@@ -1339,6 +1340,7 @@ async def system_health() -> HealthResponse:
         auth_configured=bool(auth_runtime.get("auth_configured", False)),
         configured_auth_modes=list(cast(list[str], auth_runtime["configured_modes"])),
         unauthenticated_allowed=bool(auth_runtime.get("unauthenticated_allowed", False)),
+        connections_scheduler_enabled=connections_scheduler_enabled(),
         tracing=TracingHealth(**get_tracing_health()),
         analytics=_analytics_health(),
         storage=_storage_health(),

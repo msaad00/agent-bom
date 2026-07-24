@@ -63,6 +63,7 @@ from agent_bom.api.connection_store import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.cloud.event_ingest import CloudChangeEvent, dispatch_change_event
 from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
@@ -356,6 +357,8 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 @router.get("/cloud/connections")
 async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
+    from agent_bom.api.connection_scheduler import connections_scheduler_enabled
+
     tenant_id = _tenant(request)
     records = get_connection_store().list_for_tenant(tenant_id)
     return {
@@ -363,6 +366,179 @@ async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str
         "tenant_id": tenant_id,
         "connections": [r.to_public_dict() for r in records],
         "count": len(records),
+        # Packaging honesty for the UI schedule banner: intervals alone do not
+        # run unless the control-plane scheduler process is enabled.
+        "connections_scheduler_enabled": connections_scheduler_enabled(),
+    }
+
+
+class CloudChangeEventIngestItem(BaseModel):
+    """One normalized posture-change event (event-collector → control plane)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1, max_length=64)
+    account: str = Field(min_length=1, max_length=128)
+    region: str = Field(default="", max_length=64)
+    resource_type: str = Field(min_length=1, max_length=64)
+    resource_id: str = Field(min_length=1, max_length=512)
+    action: str = Field(min_length=1, max_length=256)
+    arn: str = Field(default="", max_length=2048)
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class CloudConnectionsEventsIngestRequest(BaseModel):
+    """Batch body for ``POST /v1/cloud/connections/events/ingest``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    events: list[CloudChangeEventIngestItem] = Field(min_length=1, max_length=100)
+
+
+def _account_from_role_ref(role_ref: str) -> str:
+    """Extract the AWS account id from a connection ``role_ref`` ARN."""
+    parts = (role_ref or "").split(":")
+    return parts[4] if len(parts) > 4 else ""
+
+
+def _match_connection_for_event(
+    tenant_id: str,
+    provider: str,
+    account: str,
+) -> CloudConnectionRecord | None:
+    """Return the tenant connection bound to *provider* + *account*, if any."""
+    provider_l = (provider or "").strip().lower()
+    account_s = (account or "").strip()
+    if not provider_l or not account_s:
+        return None
+    for record in get_connection_store().list_for_tenant(tenant_id):
+        if (record.provider or "").strip().lower() != provider_l:
+            continue
+        if _account_from_role_ref(record.role_ref) == account_s:
+            return record
+    return None
+
+
+@router.post("/cloud/connections/events/ingest")
+async def ingest_connection_events(
+    request: Request,
+    body: CloudConnectionsEventsIngestRequest,
+    _role: Any = _SCAN_DEP,
+) -> dict[str, Any]:
+    """Accept a batch of normalized cloud change events from the event collector.
+
+    Auth-by-default (``scan`` permission). Each event is matched to a tenant
+    connection by provider + account (from ``role_ref``); unmatched accounts are
+    skipped fail-closed (no confused-deputy scan). Heavy dispatch runs off the
+    event loop. Errors are sanitized — never returned raw.
+    """
+    tenant_id = _tenant(request)
+    results: list[dict[str, Any]] = []
+    dispatched = 0
+    skipped = 0
+
+    def _process() -> None:
+        nonlocal dispatched, skipped
+        for item in body.events:
+            record = _match_connection_for_event(tenant_id, item.provider, item.account)
+            if record is None:
+                skipped += 1
+                results.append(
+                    {
+                        "account": item.account,
+                        "provider": item.provider,
+                        "status": "skipped",
+                        "detail": "no matching connection for account",
+                    }
+                )
+                continue
+            event = CloudChangeEvent(
+                provider=item.provider.strip().lower(),
+                account=item.account.strip(),
+                region=(item.region or "").strip(),
+                resource_type=item.resource_type.strip().lower(),
+                resource_id=item.resource_id.strip(),
+                action=item.action.strip(),
+                arn=(item.arn or "").strip(),
+                raw=item.raw if isinstance(item.raw, dict) else {},
+            )
+            try:
+                summary = dispatch_change_event(event, record, tenant_id=tenant_id)
+            except Exception as exc:  # noqa: BLE001
+                skipped += 1
+                _logger.warning(
+                    "Connection event ingest dispatch failed for connection %s: %s",
+                    record.id,
+                    sanitize_error(exc, generic=True),
+                )
+                results.append(
+                    {
+                        "account": item.account,
+                        "provider": item.provider,
+                        "connection_id": record.id,
+                        "status": "skipped",
+                        "detail": sanitize_error(exc, generic=True),
+                    }
+                )
+                continue
+            if summary is None:
+                skipped += 1
+                results.append(
+                    {
+                        "account": item.account,
+                        "provider": item.provider,
+                        "connection_id": record.id,
+                        "status": "skipped",
+                        "detail": "dispatch declined (account/type guard)",
+                    }
+                )
+                continue
+            dispatched += 1
+            results.append(
+                {
+                    "account": item.account,
+                    "provider": item.provider,
+                    "connection_id": record.id,
+                    "status": "dispatched",
+                    "detail": "",
+                }
+            )
+
+    try:
+        async with adaptive_backpressure("connection_events_ingest"):
+            await anyio.to_thread.run_sync(_process)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("Connection events ingest failed")
+        raise HTTPException(
+            status_code=500,
+            detail=sanitize_error(exc, generic=True),
+        ) from exc
+
+    log_action(
+        "cloud_connection.events_ingest",
+        actor=_actor(request),
+        resource="cloud-connection/events",
+        tenant_id=tenant_id,
+        outcome="success",
+        accepted=len(body.events),
+        dispatched=dispatched,
+        skipped=skipped,
+    )
+    return {
+        "schema_version": "cloud.connections.events.ingest.v1",
+        "tenant_id": tenant_id,
+        "accepted": len(body.events),
+        "dispatched": dispatched,
+        "skipped": skipped,
+        "results": results,
     }
 
 

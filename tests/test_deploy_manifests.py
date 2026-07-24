@@ -947,3 +947,40 @@ def test_helm_connections_scheduler_env_gated_by_values():
     )
     assert "name: AGENT_BOM_CONNECTIONS_SCHEDULER" in on
     assert 'value: "1"' in on
+
+
+def test_helm_event_collector_deployment_gated_by_values():
+    """eventCollector.enabled + image.repository renders a Deployment; default off."""
+    import shutil
+    import subprocess
+
+    if shutil.which("helm") is None:
+        pytest.skip("helm not installed")
+
+    def _render(*sets: str) -> str:
+        args = ["helm", "template", "abom", str(HELM_DIR), "--set", "controlPlane.enabled=true"]
+        for item in sets:
+            args += ["--set", item]
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    off = _render("controlPlane.migrations.enabled=false")
+    assert "event-collector" not in off or "component: event-collector" not in off
+
+    on = _render(
+        "controlPlane.migrations.enabled=false",
+        "eventCollector.enabled=true",
+        "eventCollector.image.repository=agentbom/event-collector",
+        "eventCollector.image.tag=test",
+    )
+    assert "app.kubernetes.io/component: event-collector" in on
+    assert "--control-plane-url=" in on
+    assert "/v1/cloud/connections/events/ingest" not in on  # path is in the binary, not args
+
+
+def test_pilot_compose_optional_connections_scheduler_env():
+    """Pilot profile exposes AGENT_BOM_CONNECTIONS_SCHEDULER (default 1 for local eval)."""
+    text = (DEPLOY_DIR / "docker-compose.pilot.yml").read_text()
+    assert "AGENT_BOM_CONNECTIONS_SCHEDULER" in text
+    assert "${AGENT_BOM_CONNECTIONS_SCHEDULER:-1}" in text

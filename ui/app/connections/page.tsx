@@ -652,6 +652,17 @@ function eventMode(connection: CloudConnectionRecord): {
   };
 }
 
+function isOrganizationScope(connection: CloudConnectionRecord): boolean {
+  return (
+    connection.inventory_scope === "organization" ||
+    connection.auth_params?.inventory_scope === "organization"
+  );
+}
+
+function isContinuousMode(connection: CloudConnectionRecord): boolean {
+  return (connection.scan_mode ?? "full") === "continuous";
+}
+
 function statusTone(status: string): string {
   switch (status) {
     case "active":
@@ -819,6 +830,7 @@ function ConnectionsHub() {
 
   // Cloud connections.
   const [connections, setConnections] = useState<CloudConnectionRecord[]>([]);
+  const [connectionsSchedulerEnabled, setConnectionsSchedulerEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -873,9 +885,11 @@ function ConnectionsHub() {
     try {
       const result = await api.listCloudConnections();
       setConnections(result.connections);
+      setConnectionsSchedulerEnabled(Boolean(result.connections_scheduler_enabled));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load cloud connections.");
       setConnections([]);
+      setConnectionsSchedulerEnabled(false);
     } finally {
       setLoading(false);
     }
@@ -1359,6 +1373,22 @@ function ConnectionsHub() {
       <HubTabs tab={tab} onChange={setTab} connectCount={CONNECTOR_CATALOG.length} sourceCount={unifiedRows.length} />
 
       {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
+      {!connectionsSchedulerEnabled &&
+      connections.some((connection) => connection.scan_interval_minutes) ? (
+        <div
+          role="status"
+          data-testid="connections-scheduler-disabled-banner"
+          className="rounded-xl border border-amber-500/30 dark:border-amber-900/60 bg-amber-500/10 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-100"
+        >
+          <p className="font-medium">Scheduler disabled on this control plane</p>
+          <p className="mt-1 text-xs leading-5 text-amber-900/80 dark:text-amber-100/80">
+            One or more connections have a scan interval, but recurring scans will not run until{" "}
+            <code className="font-mono text-[11px]">AGENT_BOM_CONNECTIONS_SCHEDULER=1</code> (or Helm{" "}
+            <code className="font-mono text-[11px]">controlPlane.connectionsScheduler.enabled</code>) is
+            turned on.
+          </p>
+        </div>
+      ) : null}
       {!canManage ? (
         <PermissionDeniedNotice
           session={session}
@@ -2179,9 +2209,7 @@ function UnifiedRow({
           </span>
           <div className="flex items-center gap-1.5">
             <CategoryChip category={row.category} />
-            {isCloud &&
-            (connection!.inventory_scope === "organization" ||
-              connection!.auth_params?.inventory_scope === "organization") ? (
+            {isCloud && isOrganizationScope(connection!) ? (
               <span
                 className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
                 title="Connections scan fans out across organization member accounts"
@@ -2190,10 +2218,22 @@ function UnifiedRow({
                 Organization
               </span>
             ) : null}
+            {isCloud && isContinuousMode(connection!) ? (
+              <span
+                className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-200"
+                title="Continuous mode: event-driven refresh between full scans"
+                data-testid="connection-continuous-chip"
+              >
+                Continuous
+              </span>
+            ) : null}
             {mode ? (
               <span
                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${mode.tone}`}
                 title={mode.detail}
+                data-testid={
+                  mode.label === "Event-driven" ? "connection-event-driven-chip" : undefined
+                }
               >
                 <Clock className="h-2.5 w-2.5" />
                 {mode.label}
@@ -2785,6 +2825,14 @@ function ConnectionDetailDrawer({
               Organization
             </span>
           ) : null}
+          {isContinuousMode(connection) ? (
+            <span
+              className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-200"
+              data-testid="connection-continuous-chip"
+            >
+              Continuous
+            </span>
+          ) : null}
         </span>
       }
       headerAside={<StatusPill status={connection.status} />}
@@ -3318,6 +3366,7 @@ interface WizardForm {
   external_id: string;
   regions: string;
   auth: Record<string, string>;
+  auto_scan_on_create: boolean;
 }
 
 function buildWizardForm(provider: string): WizardForm {
@@ -3328,6 +3377,7 @@ function buildWizardForm(provider: string): WizardForm {
     external_id: "",
     regions: "",
     auth: {},
+    auto_scan_on_create: true,
   };
 }
 
@@ -3537,6 +3587,7 @@ function AddConnectionWizard({
       regions,
       auth_params: authParams,
       inventory_scope: isAws && awsScope === "organization" ? "organization" : "account",
+      auto_scan_on_create: form.auto_scan_on_create,
     };
 
     setSubmitting(true);
@@ -3892,6 +3943,25 @@ function AddConnectionWizard({
                     {isAws
                       ? "Matches the ExternalId in your trust policy. Stored encrypted at rest; regenerate on the Setup step only if you have not applied the grant yet."
                       : provider.secretField.hint}
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={form.auto_scan_on_create}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, auto_scan_on_create: event.target.checked }))
+                    }
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-500"
+                    data-testid="wizard-auto-scan-on-create"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                      Run first scan after connect
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                      Default on. Starts a read-only inventory + CIS scan once the connection is saved.
+                    </span>
                   </span>
                 </label>
                 {provider.usesRegions ? (

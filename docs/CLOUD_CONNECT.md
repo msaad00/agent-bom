@@ -37,14 +37,22 @@ three-step wizard: **Provider → Setup → Details**.
 
 **Scope (single target vs org fan-out).** Each connection — and
 `POST /v1/cloud/connections/{id}/scan` — covers **one** AWS account, Azure
-subscription, or GCP project. Cross-account / all-subscriptions / all-projects
-fan-out is **not** a Connections-wizard option today; use the env-flag CLI or
-Helm CronJob paths (`AGENT_BOM_AWS_ORG_INVENTORY`,
-`AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`, `AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5).
-Control-plane `tenant_id` is the agent-bom tenancy key — it is **not** an Azure
-AD tenant or AWS account ID; one CP tenant can own many connections. Recurring
-connection scans are scheduler opt-in (`AGENT_BOM_CONNECTIONS_SCHEDULER`,
-default concurrency 4). Org fan-out caps: AWS 200
+subscription, or GCP project (AWS "All enabled regions" is still that one
+account). The AWS Connections wizard may offer **Whole organization**
+CloudFormation StackSet scripts: that is **grant onboarding** (mint the
+read-only role across member accounts), not scan fan-out. Org /
+all-subscriptions / all-projects **scan** fan-out requires the scanner/CLI
+env flags on the control plane, CLI process, or Helm scanner Job
+(`AGENT_BOM_AWS_ORG_INVENTORY`, `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
+`AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5) — Connections `/scan` does not turn
+them on. On the Helm CronJob, only Azure has a first-class chart value today
+(`scanner.cloud.azure.allSubscriptions` → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`);
+AWS org and GCP all-projects go through `scanner.env` (or CLI), not dedicated
+chart keys. Control-plane `tenant_id` is the agent-bom tenancy key — it is
+**not** an Azure AD tenant or AWS account ID; one CP tenant can own many
+connections. Recurring connection scans need both scheduler opt-in
+(`AGENT_BOM_CONNECTIONS_SCHEDULER`) and a per-connection
+`scan_interval_minutes` (default concurrency 4). Org fan-out caps: AWS 200
 (`AGENT_BOM_AWS_MAX_ACCOUNTS`), Azure 500
 (`AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS`), GCP 200 (`AGENT_BOM_GCP_MAX_PROJECTS`).
 

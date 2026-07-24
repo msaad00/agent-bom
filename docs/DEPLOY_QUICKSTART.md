@@ -118,9 +118,10 @@ collectors execute. See
 | Runtime | `/runtime`, `/proxy`, `/gateway`, `/traces` | Policy + audit + HITL queue |
 | Compliance | `/compliance` | Framework evidence + exports |
 
-Each Connections entry (and `POST /v1/cloud/connections/{id}/scan`) is one AWS
-account / Azure subscription / GCP project; org-wide fan-out remains CLI/CronJob
-env flags — see [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md) §1c.
+Each Connections entry (and `POST /v1/cloud/connections/{id}/scan`) is one
+AWS account / Azure subscription / GCP project; org **scan** fan-out is an
+env flag on the scanner/CLI (the AWS wizard StackSet path is grant-only) — see
+[`CLOUD_CONNECT.md`](CLOUD_CONNECT.md) §1c.
 
 Proof-path nav in the UI: **Queue · Graph · Runtime · Reports · Connections**.
 

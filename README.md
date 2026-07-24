@@ -23,27 +23,37 @@
   One Finding + UnifiedGraph model across CLI, API, UI, and MCP.
 </p>
 <p align="center">
+  Brand lockup above is the product logo. The CLI prints the wordmark as text
+  (<code>agent-bom</code>); the UI and
+  <a href="https://demo.agent-bom.com">live demo</a> show the logo in app nav.
+</p>
+<p align="center">
   <a href="https://demo.agent-bom.com"><b>Live demo</b></a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
-  <a href="docs/FIRST_RUN.md">First Run</a> ·
-  <a href="site-docs/deployment/overview.md">Self-host</a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#deploy--self-host"><b>Deploy</b></a> ·
+  <a href="docs/FIRST_RUN.md">First run</a> ·
   <a href="https://github.com/marketplace/actions/agent-bom">GitHub Action</a> ·
   <a href="https://hub.docker.com/r/agentbom/agent-bom">Docker</a> ·
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
-## Blast radius
+## Quick start
 
-One finding fans out to the MCP servers that load it, reachable tools,
-credential references, and agents that can reach it — not a CVE list in
-isolation.
+Three commands to see value locally (no cloud account required):
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast radius: one package finding fans out to MCP servers, agents, secrets, and tools" width="900" />
-  </picture>
-</p>
+```bash
+pip install agent-bom
+agent-bom scan --demo --offline
+# optional control plane (loopback UI + API)
+pip install 'agent-bom[ui]' && agent-bom serve
+```
+
+- Console report prints inventory, findings, and blast radius inline.
+- Optional file artifacts: `-f html -o agent-bom-report.html` (also `json`, `sarif`, SBOM).
+- Demo exit status `1` is expected — the sample includes blocking findings (same gate as CI).
+
+Full walkthrough: [docs/FIRST_RUN.md](docs/FIRST_RUN.md).
 
 ## Who it is for
 
@@ -67,6 +77,8 @@ Boundaries: [PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
 
 ## How the tool works
 
+Three product lanes on one Finding + UnifiedGraph model:
+
 1. **Scan** — CLI / CI / Docker / cloud connect → inventory, findings, SARIF/SBOM/HTML, graph
 2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres). Loopback is the default; non-loopback hosts need real auth or an explicit `--allow-insecure-no-auth` (env vars alone are not enough).
 3. **Runtime** — `agent-bom gateway serve --upstreams upstreams.yaml --bind 127.0.0.1:8090` → allow/warn/block on live MCP/tool calls
@@ -82,7 +94,43 @@ boundary.
   </picture>
 </p>
 
-## Graph lenses
+One finding fans out to the MCP servers that load it, reachable tools,
+credential references, and agents that can reach it — not a CVE list in
+isolation.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast radius: one package finding fans out to MCP servers, agents, secrets, and tools" width="900" />
+  </picture>
+</p>
+
+## See the product
+
+Story order: **Scan → Connect → Posture → Investigate → Enforce**
+(findings + remediation together under Scan). Screenshots are the same UI as
+the [live demo](https://demo.agent-bom.com) (logo in app nav). Capture notes:
+[docs/CAPTURE.md](docs/CAPTURE.md).
+
+### Scan — findings and remediation
+
+| Findings queue | Remediation |
+|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, reachable agents, fixes, and review actions" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation with risk reduction, ownership, and verification" width="430" /> |
+
+### Connect — sources and new scan
+
+| Connections | New scan |
+|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub across cloud, code, AI, and data sources" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan workspace with collector plan and read-only boundary" width="430" /> |
+
+### Posture — risk overview
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture grade, findings, and operations" width="820" />
+</p>
+
+### Investigate — lineage, mesh, context
 
 Three graph lenses tell different stories: package-level lineage, multi-agent
 mesh overlap, and lateral context — not three copies of the same CVE chain.
@@ -99,37 +147,21 @@ mesh overlap, and lateral context — not three copies of the same CVE chain.
 <p align="center"><em>Context map: neighborhood topology (tools, creds, servers) — not the same hero CVE strip as lineage.</em></p>
 
 <details>
-<summary><b>Investigation capture</b> — prioritized path with export/handoff chrome</summary>
+<summary><b>Attack path</b> — prioritized path with export/handoff chrome</summary>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Prioritized attack path connecting identity, agent, MCP server, package, and critical finding" width="820" />
 </p>
 
 Path view is a single-row hop strip (scroll horizontally on long chains).
-Recapture notes: [docs/CAPTURE.md](docs/CAPTURE.md).
 
 </details>
 
-<details>
-<summary><b>Dashboard captures</b> — findings queue, remediation, posture, runtime, connections</summary>
+### Enforce — runtime gateway
 
-| Findings queue | Remediation |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, reachable agents, fixes, and review actions" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation with risk reduction, ownership, and verification" width="430" /> |
-
-| Risk overview | Runtime gateway |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture grade, findings, and operations" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="430" /> |
-
-| Connections | New scan |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub across cloud, code, AI, and data sources" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan workspace with collector plan and read-only boundary" width="430" /> |
-
-[Live demo](https://demo.agent-bom.com) is a read-only sandbox with synthetic
-showcase evidence. Prefer the local offline sample above for a reproducible CLI
-walkthrough.
-
-</details>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="820" />
+</p>
 
 <details>
 <summary><b>CLI walkthrough</b> — 0.97.5 console demo</summary>
@@ -138,14 +170,13 @@ walkthrough.
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo showing inventory, findings, remediation, and package gate" width="820" />
 </p>
 
+In the terminal the brand is the text wordmark (`agent-bom`), not the SVG logo.
 Seeded `requests` typosquat produces an expected non-zero security-gate exit —
 a demonstrated finding, not a failed recording.
 
 </details>
 
-Capture list: [docs/CAPTURE.md](docs/CAPTURE.md).
-
-## Self-host
+## Deploy & self-host
 
 You run the control plane in your own boundary (no managed public SaaS in this
 repo yet):
@@ -162,13 +193,14 @@ Pilot compose binds `127.0.0.1` with loopback CORS. Before sharing a link, use
 | Target | Start here |
 |---|---|
 | Docker Compose | [pilot compose](deploy/docker-compose.pilot.yml) |
-| Helm / Kubernetes | [chart](deploy/helm/agent-bom) — `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.97.4` |
+| Helm / Kubernetes | [chart](deploy/helm/agent-bom) — `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.97.5` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | CloudFormation | [templates](deploy/cloudformation) |
 | Snowflake SPCS | [install guide](docs/snowflake-native-app/INSTALL.md) |
 
 Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
-[deployment overview](site-docs/deployment/overview.md).
+[deployment overview](site-docs/deployment/overview.md) ·
+[HOSTED_POC](docs/HOSTED_POC.md).
 
 <details>
 <summary><b>Surfaces and entry points</b></summary>

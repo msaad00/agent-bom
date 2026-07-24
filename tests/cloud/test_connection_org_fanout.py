@@ -109,13 +109,14 @@ def test_aws_org_connection_scan_calls_discover_all_with_session(monkeypatch: py
         "discover_inventory",
         lambda **kw: (_ for _ in ()).throw(AssertionError("single-account discover_inventory must not run")),
     )
-    monkeypatch.setattr(
-        "agent_bom.cloud.aws_cis_benchmark.run_benchmark",
-        lambda **kw: MagicMock(to_dict=lambda: {"checks": [], "warnings": []}),
-    )
+    cis_report = MagicMock(to_dict=lambda: {"checks": [], "warnings": []})
     monkeypatch.setattr(
         "agent_bom.cloud.aws_cis_benchmark.run_all_account_benchmarks",
-        lambda **kw: MagicMock(to_dict=lambda: {"checks": [], "warnings": []}),
+        lambda **kw: cis_report,
+    )
+    monkeypatch.setattr(
+        "agent_bom.cloud.aws_cis_benchmark.run_benchmark",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("single-account run_benchmark must not run")),
     )
     monkeypatch.setattr(
         aws_organizations,

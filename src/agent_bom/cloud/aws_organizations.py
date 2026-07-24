@@ -108,26 +108,19 @@ def discover_organization(
     if not force and os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() not in _TRUTHY:
         return result
 
-    # A caller-supplied session (Connections broker) must work without boto3 in
-    # the ambient env — only build a Session from profile/ambient when needed.
-    if session is None:
-        try:
-            import boto3
-        except ImportError:
-            result["status"] = "boto3_missing"
-            result["warnings"] = [
-                "boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"
-            ]
-            return result
-
-    try:
-        from botocore.exceptions import NoCredentialsError
-    except ImportError:
-        NoCredentialsError = Exception  # type: ignore[misc,assignment]  # noqa: N806
-
     warnings: list[str] = result["warnings"]
     try:
+        # Brokered Connections sessions are used as-is; only the ambient path
+        # needs boto3 to build a Session from profile / default credentials.
         if session is None:
+            try:
+                import boto3
+            except ImportError:
+                result["status"] = "boto3_missing"
+                result["warnings"] = [
+                    "boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"
+                ]
+                return result
             session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         org = session.client("organizations")
     except Exception as exc:  # noqa: BLE001
@@ -140,11 +133,13 @@ def discover_organization(
         result["org_id"] = str(desc.get("Id", "") or "")
         result["master_account_id"] = str(desc.get("MasterAccountId", "") or "")
         result["feature_set"] = str(desc.get("FeatureSet", "") or "")
-    except NoCredentialsError:
-        result["status"] = "no_credentials"
-        warnings.append("AWS credentials not found.")
-        return result
     except Exception as exc:  # noqa: BLE001
+        # Name-match botocore NoCredentialsError so brokered-session callers
+        # do not require boto3/botocore installed just to pass a session.
+        if type(exc).__name__ == "NoCredentialsError":
+            result["status"] = "no_credentials"
+            warnings.append("AWS credentials not found.")
+            return result
         # AWSOrganizationsNotInUseException → a standalone account, not an error.
         if "NotInUse" in type(exc).__name__ or "AWSOrganizationsNotInUse" in str(exc):
             result["status"] = "not_in_org"

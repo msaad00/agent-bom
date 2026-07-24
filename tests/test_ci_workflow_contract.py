@@ -70,6 +70,29 @@ def test_path_gated_jobs_remain_cancellable() -> None:
         assert "always()" not in condition
 
 
+def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
+    """25 minutes keeps ~40% headroom over the ~17.6 min worst case seen on main.
+
+    A 35-minute ceiling let a hung suite burn a runner for another quarter hour
+    before anyone saw it.
+    """
+    assert _ci()["jobs"]["test"]["timeout-minutes"] == 25
+
+
+def test_pull_request_pytest_reports_slowest_tests() -> None:
+    """PR runs surface the slowest tests so timeout regressions have evidence."""
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    run_tests = text.split("      - name: Run tests", 1)[1].split(
+        "      - name: Graph accuracy fixture guard", 1
+    )[0]
+
+    pytest_lines = [line.strip() for line in run_tests.splitlines() if "uv run pytest tests/" in line]
+    assert len(pytest_lines) == 2
+    assert all("--durations=25" in line for line in pytest_lines)
+    coverage_line = next(line for line in pytest_lines if "--cov=agent_bom" in line)
+    assert "--cov-fail-under=75" in coverage_line
+
+
 def test_security_reuses_typescript_install_for_build() -> None:
     text = CI_WORKFLOW.read_text(encoding="utf-8")
     security = text.split("  # 2. Linting + Type Checking", 1)[0]

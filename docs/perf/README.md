@@ -18,6 +18,9 @@ Current evidence pages:
 - [`fleet-reconciliation.md`](fleet-reconciliation.md) — fleet and Kubernetes
   reconciliation latency.
 
+- [`gateway-relay-latency.md`](gateway-relay-latency.md) — HTTP gateway JSON-RPC
+  relay p50/p95/p99 + RSS under concurrency (Go-gate evidence for ADR-009).
+
 Current raw result artifact:
 
 - [`results/scale-evidence-local-2026-04-26.json`](results/scale-evidence-local-2026-04-26.json)
@@ -34,6 +37,13 @@ Current raw result artifact:
 - [`results/postgres-graph-explain-sample.json`](results/postgres-graph-explain-sample.json)
   — dry-run Postgres EXPLAIN artifact index; it contains no measured query
   plans.
+
+- [`results/gateway-relay-baseline-2026-07-23.json`](results/gateway-relay-baseline-2026-07-23.json)
+  — local gateway relay baseline (mock MCP upstream, concurrency ladder to 500).
+- [`results/gateway-relay-tuned-2026-07-23.json`](results/gateway-relay-tuned-2026-07-23.json)
+  — same fixture after uvloop + larger client httpx limits.
+- [`results/gateway-relay-go-gate-2026-07-23.json`](results/gateway-relay-go-gate-2026-07-23.json)
+  — Go-gate decision artifact (`gate_tripped`, next step).
 
 Run the structure check before publishing release numbers:
 
@@ -53,4 +63,11 @@ Regenerate the graph API/Postgres scaffold artifacts:
 uv run python scripts/generate_graph_benchmark_estate.py
 uv run python scripts/run_graph_api_benchmark.py --dry-run
 uv run python scripts/run_graph_postgres_explain.py --dry-run
+```
+
+Regenerate the gateway relay baseline / tuned measurements:
+
+```bash
+uv run python scripts/run_gateway_relay_benchmark.py --mode baseline --output docs/perf/results/gateway-relay-baseline-2026-07-23.json
+uv run python scripts/run_gateway_relay_benchmark.py --mode tuned --output docs/perf/results/gateway-relay-tuned-2026-07-23.json
 ```

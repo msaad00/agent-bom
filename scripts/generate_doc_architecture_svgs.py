@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 from agent_bom.mcp_server_metadata import _SERVER_CARD_TOOLS
 
@@ -1217,34 +1218,134 @@ def architecture(theme_name: str) -> str:
 
 # Persona band accents — one restrained hue per buyer lane, on neutral cards.
 PERSONA_ACCENTS = {
+    "dev": ("#a78bfa", "#7c3aed"),
     "appsec": ("#2dd4bf", "#0d9488"),
-    "grc": ("#fbbf24", "#d97706"),
     "platform": ("#38bdf8", "#0284c7"),
-    "builders": ("#a78bfa", "#7c3aed"),
-    "seceng": ("#fb7185", "#e11d48"),
+    "grc": ("#fbbf24", "#d97706"),
+    "mcp": ("#fb7185", "#e11d48"),
 }
 
-# Role badge glyphs on the solid accent badge circle at (18.5, 18): AppSec
-# doc-with-check, GRC clipboard/checklist, platform layers, agent bot,
-# security shield-with-check. GLYPH / ACCENT tokens are substituted per theme
-# when the card is drawn.
+# Role badge glyphs on the solid accent badge circle at (18.5, 18): developer
+# report-with-check, AppSec shield-with-check, platform layers, GRC
+# clipboard/checklist, MCP agent bot. GLYPH / ACCENT tokens are substituted per
+# theme when the card is drawn.
 PERSONA_BADGES = {
-    "appsec": (
+    "dev": (
         '<rect x="16.2" y="14.7" width="4.6" height="6.2" rx="1" fill="GLYPH" stroke="none"/>'
         '<path d="M17.3 17.9l.95.95 1.75-1.75" stroke="ACCENT" stroke-width="1.05"/>'
     ),
+    "appsec": (
+        '<path d="M18.5 14.3l3.15 1.15v2.1c0 2.1-1.4 3.5-3.15 4-1.75-.5-3.15-1.9-3.15-4v-2.1z" fill="GLYPH" stroke="none"/>'
+        '<path d="M17.1 17.95l1 1 1.8-1.8" stroke="ACCENT" stroke-width="1.05"/>'
+    ),
+    "platform": '<path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/>',
     "grc": (
         '<rect x="16.0" y="14.6" width="5.0" height="6.6" rx="0.9" fill="none" stroke="GLYPH" stroke-width="1.05"/>'
         '<path d="M17.2 14.2h2.6v1.2h-2.6z" fill="GLYPH" stroke="none"/>'
         '<path d="M17.1 17.0h2.8 M17.1 18.4h2.8 M17.1 19.8h1.8" stroke="GLYPH" stroke-width="1.0"/>'
     ),
-    "platform": '<path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/>',
-    "builders": '<rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/>',
-    "seceng": (
-        '<path d="M18.5 14.3l3.15 1.15v2.1c0 2.1-1.4 3.5-3.15 4-1.75-.5-3.15-1.9-3.15-4v-2.1z" fill="GLYPH" stroke="none"/>'
-        '<path d="M17.1 17.95l1 1 1.8-1.8" stroke="ACCENT" stroke-width="1.05"/>'
-    ),
+    "mcp": '<rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/>',
 }
+
+
+class PersonaLane(NamedTuple):
+    """One buyer lane, rendered as a card and mirrored by the README table.
+
+    ``title`` is the authoritative persona name: the card title, the README
+    ``## Who it is for`` row label, and the alt text all use this exact string,
+    so the picture and the table under it can never name different sets.
+    """
+
+    title: str
+    capabilities: str  # "·"-separated tags
+    value_title: str
+    value_sub: str
+    accent_key: str
+
+
+# The five personas. One entry per README table row, in the same order.
+PERSONA_LANES: tuple[PersonaLane, ...] = (
+    PersonaLane(
+        "Developers",
+        "local scan · images · CI gates",
+        "Accurate SCA",
+        "15 ecosystems · EPSS/KEV · distro-aware",
+        "dev",
+    ),
+    PersonaLane(
+        "AppSec",
+        "SARIF · reachability · graph paths",
+        "Triage by reachability",
+        "blast radius · CI gates · exit codes",
+        "appsec",
+    ),
+    PersonaLane(
+        "Platform / SRE",
+        "fleet sync · Helm · CI · SBOM",
+        "Self-hosted control plane",
+        "your VPC · Postgres · signed audit",
+        "platform",
+    ),
+    PersonaLane(
+        "GRC / audit",
+        "compliance · evidence · frameworks",
+        "Audit-ready exports",
+        "control mappings · signed bundles",
+        "grc",
+    ),
+    PersonaLane(
+        "AI / MCP owners",
+        "MCP inventory · allow/warn/block",
+        "Agent-native surface",
+        f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools · SARIF",
+        "mcp",
+    ),
+)
+
+# Card geometry for the persona band (five cards on one 1280px row).
+PERSONA_BAND_WIDTH = 1280
+PERSONA_BAND_MARGIN_X = 23
+PERSONA_BAND_GAP = 14
+PERSONA_CARD_WIDTH = (PERSONA_BAND_WIDTH - PERSONA_BAND_MARGIN_X * 2 - PERSONA_BAND_GAP * 4) // 5
+PERSONA_CARD_PAD_X = 14
+
+# Copy budgets measured by rendering the band at README scale. Text is drawn,
+# not wrapped, so an over-long line runs past its pill and into the next card —
+# how the 49-char GRC value line shipped overflowing. Widest strings verified to
+# stay inside a card: "Security engineers" (title), "Self-hosted control plane"
+# (value title), and "15 ecosystems · EPSS/KEV · distro-aware" (value sub),
+# which sits flush against the pill edge — treat 39 as the hard ceiling.
+PERSONA_TITLE_MAX_CHARS = 18
+PERSONA_VALUE_TITLE_MAX_CHARS = 25
+PERSONA_VALUE_SUB_MAX_CHARS = 39
+
+
+def _persona_tag_width(tag: str) -> int:
+    """Pill width for one capability tag (label advance plus symmetric padding)."""
+    return int(len(tag) * 4.9) + 16
+
+
+def _persona_tag_row_width(capabilities: str) -> int:
+    """Total drawn width of a card's tag row, including the 6px inter-tag gaps."""
+    tags = [seg.strip() for seg in capabilities.split("·")]
+    return sum(_persona_tag_width(tag) for tag in tags) + 6 * (len(tags) - 1)
+
+
+def _audit_persona_copy() -> list[str]:
+    """Return persona copy that would render past its card at README scale."""
+    tag_budget = PERSONA_CARD_WIDTH - PERSONA_CARD_PAD_X * 2
+    issues: list[str] = []
+    for lane in PERSONA_LANES:
+        if len(lane.title) > PERSONA_TITLE_MAX_CHARS:
+            issues.append(f"{lane.title!r} title is {len(lane.title)} chars (max {PERSONA_TITLE_MAX_CHARS})")
+        if len(lane.value_title) > PERSONA_VALUE_TITLE_MAX_CHARS:
+            issues.append(f"{lane.value_title!r} value title is {len(lane.value_title)} chars (max {PERSONA_VALUE_TITLE_MAX_CHARS})")
+        if len(lane.value_sub) > PERSONA_VALUE_SUB_MAX_CHARS:
+            issues.append(f"{lane.value_sub!r} value line is {len(lane.value_sub)} chars (max {PERSONA_VALUE_SUB_MAX_CHARS})")
+        row_width = _persona_tag_row_width(lane.capabilities)
+        if row_width > tag_budget:
+            issues.append(f"{lane.title!r} tag row is {row_width}px wide (max {tag_budget}px)")
+    return issues
 
 
 def _persona_lane_card(
@@ -1304,7 +1405,7 @@ def _persona_lane_card(
     tag_x = x + 14
     tag_y = y + 64
     for tag in tags:
-        tag_w = int(len(tag) * 4.9) + 16
+        tag_w = _persona_tag_width(tag)
         parts.append(
             f'<rect x="{tag_x}" y="{tag_y}" width="{tag_w}" height="18" rx="6" '
             f'fill="{accent}" fill-opacity="{chip_tint_op}" stroke="{accent}" stroke-opacity="0.4"/>'
@@ -1373,40 +1474,20 @@ def persona_value(theme: str) -> str:
     """Compact single-row buyer-lane band — persona -> value proof per card."""
     t = THEMES[theme]
     # Five cards need extra width so titles/tags fit without overflow.
-    w, h = 1280, 236
+    w, h = PERSONA_BAND_WIDTH, 236
     persona_bg = "#16161d" if theme == "dark" else t["bg"]
 
-    cards = [
-        ("AppSec", "SARIF · reachability · CI gates", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware", "appsec"),
-        (
-            "GRC / audit",
-            "compliance · evidence · frameworks",
-            "Audit-ready exports",
-            "control mappings · signed bundles · review context",
-            "grc",
-        ),
-        ("Platform / SRE", "fleet sync · Helm · CI · SBOM", "Container coverage", "OCI native · Grype · CIS posture", "platform"),
-        ("Agent builders", "MCP inventory · Shield · runtime", "Self-hosted control plane", "your VPC · signed audit · Helm", "builders"),
-        (
-            "Security engineers",
-            "findings queue · paths · graph",
-            "Agent-native surface",
-            f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools · SARIF",
-            "seceng",
-        ),
-    ]
-
-    margin_x, margin_y = 23, 18
-    gap = 14
-    card_w = (w - margin_x * 2 - gap * 4) // 5
+    margin_x, margin_y = PERSONA_BAND_MARGIN_X, 18
+    gap = PERSONA_BAND_GAP
+    card_w = PERSONA_CARD_WIDTH
     card_h = 174
 
     parts = _svg_open(w, h, "agent-bom personas and value")
     parts.append(f'<rect width="{w}" height="{h}" rx="12" fill="{persona_bg}"/>')
 
-    for idx, card in enumerate(cards):
+    for idx, lane in enumerate(PERSONA_LANES):
         x = margin_x + idx * (card_w + gap)
-        parts += _persona_lane_card(x, margin_y, card_w, card_h, *card, theme, t)
+        parts += _persona_lane_card(x, margin_y, card_w, card_h, *lane, theme, t)
 
     parts.append(
         _trust_footer(
@@ -1436,6 +1517,9 @@ def _audit_layout(svg: str, *, margin: int = 2) -> list[str]:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    copy_issues = _audit_persona_copy()
+    if copy_issues:
+        raise SystemExit(f"persona card copy issues: {copy_issues}")
     mapping = {
         "how-it-works-dark.svg": ("dark", how_it_works),
         "how-it-works-light.svg": ("light", how_it_works),

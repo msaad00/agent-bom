@@ -415,23 +415,30 @@ running the normal CLI or onboarding bundle on the endpoint.
 
 ### API-Based Cloud Scanning
 
-```python
-# Scan Snowflake Cortex via API (uses SSO by default)
-agent-bom agents --snowflake-account myaccount \
-               --snowflake-user myuser
+```bash
+# Scan Snowflake Cortex via API — account and user come from the environment
+export SNOWFLAKE_ACCOUNT="ORG-ACCOUNT"
+export SNOWFLAKE_USER="ABOM_SCANNER"
+agent-bom agents --snowflake
 
 # Or with key-pair auth (CI/CD)
-SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/sf_key.p8 \
-agent-bom agents --snowflake-account myaccount --snowflake-user myuser
+export SNOWFLAKE_AUTHENTICATOR="snowflake_jwt"
+export SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/sf_key.p8
+agent-bom agents --snowflake
 
 # Scan AWS Bedrock via API
-agent-bom agents --aws-region us-east-1 \
-               --aws-profile production
+agent-bom agents --aws --aws-region us-east-1 --aws-profile production
 
 # Scan Azure OpenAI via API
-agent-bom agents --azure-subscription-id xxx \
-               --azure-resource-group rg-ai
+agent-bom agents --azure --azure-subscription "$AZURE_SUBSCRIPTION_ID"
 ```
+
+Snowflake credentials are environment-only — there is no `--snowflake-account`
+or `--snowflake-user` flag. See
+[`CLOUD_CONNECT.md` § Snowflake](CLOUD_CONNECT.md#6-snowflake--connect-with-a-key-pair-never-a-password)
+for the read-only grant block and the supported authenticators. Azure scope is
+a whole subscription (`--azure-subscription`, or `AZURE_SUBSCRIPTION_ID`);
+there is no resource-group flag.
 
 **No VM access required** — uses cloud provider APIs to:
 1. List AI agents/models
@@ -480,19 +487,30 @@ def scan_vm_fleet(vm_list):
     return aggregate_results(results)
 ```
 
-### 2. Incremental Scanning
+### 2. Baseline Diffing (CI Noise Control)
 
-**Problem**: Re-scanning everything is wasteful
-**Solution**: Track changes, only scan deltas
+**Problem**: Every run re-reports the same pre-existing findings, so CI stays red
+**Solution**: Diff the report against a saved baseline and gate on new findings only
 
 ```bash
-# Store fingerprint of last scan
+# Save a scan report to use as the baseline
 agent-bom agents --output /var/lib/agent-bom/baseline.json
 
-# Next scan: compare to baseline
+# Later runs: diff against it and report only what is new
 agent-bom agents --baseline /var/lib/agent-bom/baseline.json \
+               --delta \
                --output /var/lib/agent-bom/delta.json
 ```
+
+`--delta` bases the exit code on new findings only — pre-existing ones are
+suppressed — so a CI gate surfaces exactly what the current change introduced.
+`--save` writes a run to `~/.agent-bom/history/` if you want a diffable trail
+without managing baseline paths yourself.
+
+**This does not reduce scan work.** There is no incremental scan mode: every
+run performs a full inventory of the configured scope. `--baseline` and
+`--delta` are post-scan report filters, so they cut review noise and CI
+failures, not scan time or cost.
 
 ### 3. Distributed Scanning (Map-Reduce)
 

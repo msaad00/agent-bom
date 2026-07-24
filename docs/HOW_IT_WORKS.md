@@ -31,26 +31,26 @@ for the mechanics.
 
 ## The three product lanes
 
-Read it as the shipped commands and the sidebar graph lenses: **scan**
-(`agents` / CI / Docker), normalize into one **graph** (`Finding` +
-`ContextGraph` with blast radius), then **serve** (`agent-bom serve`) as one
-pane of glass. Sidebar **Findings** is the triage queue inside serve — not a
-lane name. Vuln matching runs in scan and lands on the graph.
+Read it as three ways to use the same evidence model: **scan** locally or in CI,
+**centralize** evidence in a self-hosted control plane, and **enforce** runtime
+tool calls through the optional gateway. Every lane uses `Finding` +
+`UnifiedGraph`; sidebar **Findings** is a triage queue inside the control plane,
+not a separate product lane.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/how-it-works-dark.svg">
-  <img alt="agent-bom three lanes: scan, graph, serve" src="images/how-it-works-light.svg">
+  <img alt="agent-bom three product lanes: local and CI scanning, a self-hosted control plane, and optional runtime gateway enforcement on one Finding and UnifiedGraph model" src="images/how-it-works-light.svg">
 </picture>
 
 | Lane | What happens | Key output |
 |---|---|---|
-| **1. Scan** | Read-only intake from repos, CI, images, IaC, MCP configs, and cloud accounts, then the six-step engine (discover → extract → scan → enrich → analyze → report). Enrichment joins OSV / GHSA / NVD / KEV / EPSS and scores symbol-level CVE reachability. | matched, enriched, reachability-scored evidence |
-| **2. Graph** | Evidence normalizes into one `Finding` model and one `ContextGraph` (blast radius: agent → MCP → package → CVE) shared by CLI, CI, API, UI, and MCP tools — the same story as Lineage / Agent Mesh / Context in the sidebar. | one evidence graph |
-| **3. Serve** | `agent-bom serve` is the self-hosted one pane of glass: dashboard, Findings queue, REST API, MCP server, fleet, audit — plus report formats and optional runtime gateway / proxy. | reviewed posture + exports + optional allow/warn/block |
+| **1. Scan** | Read-only intake from repos, CI, images, IaC, MCP configs, and cloud accounts. Enrichment joins OSV / GHSA / NVD / KEV / EPSS and scores symbol-level CVE reachability. | SARIF, SBOM, HTML, JSON, and graph exports |
+| **2. Centralize** | `agent-bom serve` runs the self-hosted dashboard, Findings queue, REST API, fleet inventory, audit evidence, and Postgres-backed shared state. | reviewed posture, evidence history, and exports |
+| **3. Enforce** | `agent-bom gateway serve` applies allow / warn / block policy to live MCP tool calls and records signed audit evidence. | runtime decisions and audit trail |
 
-Stage 1's "analyze" step is where symbol-level reachability is computed; stage 2
-is where it becomes blast radius on the agent/MCP graph. That pairing is the
-differentiator — the rest of the flow is table stakes done cleanly.
+The scan lane computes symbol-level reachability; `UnifiedGraph` turns it into
+blast radius across agents, MCP servers, packages, credentials, and tools. The
+control plane and gateway consume that same evidence instead of rebuilding it.
 
 ## Where to go next
 

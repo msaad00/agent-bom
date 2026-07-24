@@ -83,7 +83,7 @@ Not a managed MCP connector catalog. Primary wedge: scan → graph → prove pat
 ## Description
 
 `agent-bom` inventories agents, MCP servers, packages, credentials, and cloud
-estate into one evidence model (`Finding` + `ContextGraph`). Humans use CLI, API,
+estate into one evidence model (`Finding` + `UnifiedGraph`). Humans use CLI, API,
 and dashboard; AI clients use strict-argument MCP tools over the same findings,
 attack paths, compliance tags, and runtime audit chain.
 

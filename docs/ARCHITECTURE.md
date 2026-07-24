@@ -26,7 +26,7 @@ This diagram is intentionally a product map, not a full module graph.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/architecture-dark.svg">
-  <img alt="agent-bom architecture: sources to scan/ingest to unified Finding and ContextGraph to control plane to consumers" src="images/architecture-light.svg">
+  <img alt="agent-bom architecture: read-only sources feed scanning and enrichment, then unified Finding and UnifiedGraph evidence flows through the self-hosted API, scheduler, event intake, gateway, and MCP surfaces to people, agents, and export artifacts" src="images/architecture-light.svg">
 </picture>
 
 ```mermaid
@@ -147,7 +147,7 @@ flowchart LR
     SCAN["Scan\nOSV batch + advisories"]
     ENR["Enrichment\nCVSS · EPSS · KEV · GHSA · compliance"]
     FIND["Unified Finding\nnormalized, deduped, scored"]
-    GRAPH["ContextGraph\npackage → finding → server → tool → cred → agent"]
+    GRAPH["UnifiedGraph\npackage → finding → server → tool → cred → agent"]
     OUT["Outputs\nconsole · SARIF · SBOM · HTML · graph export · webhooks"]
 
     REQ --> DISC --> EXT --> SCAN --> ENR --> FIND --> GRAPH --> OUT

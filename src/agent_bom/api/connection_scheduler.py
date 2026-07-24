@@ -32,6 +32,13 @@ Design notes:
   On Postgres the ``WITH CHECK`` half of each tenant-isolation policy compares
   the written row against ``app.tenant_id``, so an unbound tenant makes every
   scheduled write for a non-``default`` tenant fail closed.
+* **Observable when idle.** Cadence needs *both* an operator gate and a
+  per-connection gate: the env flag above turns the loop on, and a connection
+  must carry ``scan_interval_minutes`` (recurring full scans) or
+  ``scan_mode=continuous`` plus a provider event-queue env (event drain). An
+  enabled loop with neither gate satisfied can never do anything, so it warns
+  once per throttle window (:data:`IDLE_NOTICE_INTERVAL_SECONDS`) instead of
+  polling silently forever.
 * **Safe.** Read-only scans only. A failing connection is marked ``error`` with
   the same curated, secret-free detail the HTTP scan route persists
   (``_safe_connection_detail``) — the broker's free-form message is never stored,
@@ -50,6 +57,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -75,6 +83,11 @@ logger = logging.getLogger(__name__)
 
 # Every supported provider is broker-enabled and therefore schedulable.
 _SCHEDULABLE_PROVIDERS: frozenset[str] = frozenset({"aws", "azure", "gcp", "snowflake"})
+
+# How often an enabled-but-idle scheduler repeats its notice. The loop polls
+# every ``CONNECTIONS_SCHEDULER_POLL_SECONDS`` (60s by default), so a per-tick
+# log would bury real events; one line per hour stays visible without spamming.
+IDLE_NOTICE_INTERVAL_SECONDS = 3600
 
 # Provider → (event_ingest module, consume_* name). Snowflake has no consumer.
 _CONTINUOUS_CONSUMERS: dict[str, tuple[str, str]] = {
@@ -235,6 +248,56 @@ def _select_continuous_drain_targets(store: ConnectionStore) -> list[CloudConnec
             continue
         targets.append(record)
     return targets
+
+
+def describe_idle_scheduler(store: ConnectionStore) -> str | None:
+    """Return why an enabled scheduler has no work, or None when cadence exists.
+
+    Two independent per-connection gates feed a tick: a recurring full scan needs
+    ``scan_interval_minutes``, and an event drain needs ``scan_mode=continuous``
+    plus the provider's event-queue env. With neither satisfied the loop can
+    never do anything — the misconfiguration an operator cannot otherwise see,
+    because startup only reports that the scheduler is *enabled*.
+
+    Never raises: a store outage is a transport failure, not a configuration
+    verdict, so it yields None rather than a misleading "nothing configured".
+    """
+    try:
+        if store.list_schedulable():
+            return None
+    except Exception:  # noqa: BLE001 - the idle check never sinks the tick
+        logger.exception("Listing schedulable cloud connections for the scheduler idle check failed")
+        return None
+    if _select_continuous_drain_targets(store):
+        return None
+    return (
+        "no connection sets scan_interval_minutes (recurring scans) and none is "
+        "drain-eligible (scan_mode=continuous plus a provider event-queue env)"
+    )
+
+
+def _log_idle_notice(store: ConnectionStore, last_checked: float | None, poll_seconds: int) -> float | None:
+    """Warn about an enabled-but-idle scheduler, at most once per window.
+
+    Returns the throttle anchor: this check's monotonic timestamp, or the
+    unchanged *last_checked* while the window is still open. The window covers
+    the store inspection too, so a healthy control plane does not pay two extra
+    queries per poll, and a cadence removed later still surfaces within one
+    window rather than only after the next successful scan.
+    """
+    now = time.monotonic()
+    if last_checked is not None and now - last_checked < IDLE_NOTICE_INTERVAL_SECONDS:
+        return last_checked
+    reason = describe_idle_scheduler(store)
+    if reason is not None:
+        logger.warning(
+            "Cloud-connection scan scheduler is enabled but idle: %s. Polling every %ds; "
+            "this notice repeats at most every %d minutes.",
+            reason,
+            poll_seconds,
+            IDLE_NOTICE_INTERVAL_SECONDS // 60,
+        )
+    return now
 
 
 async def _gather_isolated(
@@ -454,9 +517,15 @@ async def connection_scheduler_loop(
     on consecutive failures (up to *max_backoff* seconds) so a broken store does
     not get hammered. A failure scanning one connection is isolated inside
     :func:`execute_connection_scan` and never breaks the loop.
+
+    A tick that ran nothing is not silent: when no connection carries either
+    cadence gate, :func:`_log_idle_notice` warns once per
+    :data:`IDLE_NOTICE_INTERVAL_SECONDS`. A tick that did run work clears the
+    throttle anchor so a cadence removed afterwards is reported promptly.
     """
     interval = max(1, poll_seconds)
     consecutive_failures = 0
+    idle_checked_at: float | None = None
     while True:
         try:
             active_store = store or get_connection_store()
@@ -464,6 +533,9 @@ async def connection_scheduler_loop(
             count = await run_due_scans_once(active_store, now)
             if count:
                 logger.info("Connection scheduler ran %d due cloud-connection scan(s)", count)
+                idle_checked_at = None
+            else:
+                idle_checked_at = _log_idle_notice(active_store, idle_checked_at, interval)
             consecutive_failures = 0
         except asyncio.CancelledError:
             raise

@@ -112,7 +112,7 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 ## Key features
 
-- **Blast radius + attack-path fusion** — multi-hop exposure paths over one unified `ContextGraph`, from package → finding → MCP server → credentials → connected agents
+- **Blast radius + attack-path fusion** — multi-hop exposure paths over one `UnifiedGraph`, from package → finding → MCP server → credentials → connected agents
 - **CWE-aware impact** — RCE shows credential exposure, DoS does not; symbol-level CVE reachability joins CWE/CVE/CPE advisory context when OSV/GHSA carry affected symbols (Python, npm, Go)
 - **Portable outputs** — SARIF, CycloneDX, SPDX, OCSF, HTML, graph, JSON, ZIP evidence bundles, and more
 - **MCP server mode** — 77 MCP tools, 6 resources, and 8 workflow prompts exposed to MCP clients like Claude, Cursor, Windsurf, and Cortex CoCo / Cortex Code

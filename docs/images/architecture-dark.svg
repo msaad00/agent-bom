@@ -21,7 +21,7 @@
 <rect x="292" y="110" width="118" height="44" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="300" y="120" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(304,124) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15h12a4 4 0 0 0 .5-8A6 6 0 0 0 6 15z"/></g>
 <text x="330" y="131" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Cloud</text>
-<text x="330" y="142" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">4 providers</text>
+<text x="330" y="142" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">4 connect · 16 scan</text>
 <rect x="418" y="110" width="118" height="44" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="426" y="120" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(430,124) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5-7 3.5-7-3.5z M5 11l7 3.5 7-3.5 M5 15l7 3.5 7-3.5"/></g>
 <text x="456" y="131" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">IaC &amp; OCI</text>
@@ -64,63 +64,66 @@
 <line x1="480" y1="290" x2="480" y2="304" stroke="#818cf8" stroke-width="1.6" stroke-linecap="round"/><polygon points="480,308 476,302 484,302" fill="#818cf8"/><text x="480" y="285" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="800" letter-spacing="0.1em" fill="#818cf8">PROCESS</text>
 <rect x="28" y="300" width="904" height="136" rx="12" fill="#0f0f13" stroke="#2dd4bf" stroke-width="1.2" opacity="0.95"/><rect x="28" y="300" width="904" height="3" rx="12" fill="#2dd4bf" opacity="0.55"/>
 <rect x="40" y="310" width="4" height="22" rx="2" fill="#2dd4bf"/><text x="54" y="325" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.14em" fill="#2dd4bf">EVIDENCE &amp; PLATFORM</text><text x="910" y="325" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#99f6e4">auth · self-hosted</text>
-<rect x="40" y="332" width="213" height="32" rx="8" fill="#15121f" stroke="#2dd4bf" stroke-width="1.5"/>
-<rect x="48" y="336" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(52,340) scale(0.6666666666666666)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6.5c0 4.5-3.2 7.8-8 9.5-4.8-1.7-8-5-8-9.5V6z"/><path d="M12 9v4"/><path d="M12 16.5h.01"/></g>
-<text x="78" y="347" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Unified Finding</text>
-<text x="78" y="358" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#2dd4bf">one schema</text>
-<rect x="259" y="332" width="213" height="32" rx="8" fill="#15121f" stroke="#2dd4bf" stroke-width="1.5"/>
-<rect x="267" y="336" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(271,340) scale(0.6666666666666666)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/></g>
-<text x="297" y="347" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">UnifiedGraph</text>
-<text x="297" y="358" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#2dd4bf">attack paths</text>
-<rect x="40" y="370" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
-<rect x="48" y="374" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(52,378) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7"/></g>
-<text x="78" y="385" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Stores</text>
-<text x="78" y="396" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">PG·SQLite</text>
-<rect x="259" y="370" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
-<rect x="267" y="374" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(271,378) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
-<text x="297" y="385" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Audit chain</text>
-<text x="297" y="396" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">signed</text>
-<rect x="488" y="332" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
-<rect x="496" y="336" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,340) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
-<text x="526" y="347" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">REST API</text>
-<text x="526" y="358" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">369 ops</text>
-<rect x="707" y="332" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
-<rect x="715" y="336" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(719,340) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
-<text x="745" y="347" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Gateway</text>
-<text x="745" y="358" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">runtime</text>
-<rect x="488" y="370" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
-<rect x="496" y="374" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,378) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
-<text x="526" y="385" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">MCP server</text>
-<text x="526" y="396" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">77 tools</text>
-<rect x="707" y="370" width="213" height="32" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
-<rect x="715" y="374" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(719,378) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
-<text x="745" y="385" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Fleet jobs</text>
-<text x="745" y="396" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">Helm·EKS</text>
-<rect x="488" y="412" width="432" height="18" rx="6" fill="#121016" stroke="#2a2733"/><text x="704" y="425" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="6.5" font-weight="700" fill="#a1a1aa">OIDC · SAML · SCIM · RBAC</text>
+<rect x="40" y="332" width="214" height="29" rx="8" fill="#15121f" stroke="#2dd4bf" stroke-width="1.5"/>
+<rect x="48" y="334" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(52,338) scale(0.6666666666666666)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6.5c0 4.5-3.2 7.8-8 9.5-4.8-1.7-8-5-8-9.5V6z"/><path d="M12 9v4"/><path d="M12 16.5h.01"/></g>
+<text x="78" y="345" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Unified Finding</text>
+<text x="78" y="356" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#2dd4bf">one schema</text>
+<rect x="258" y="332" width="214" height="29" rx="8" fill="#15121f" stroke="#2dd4bf" stroke-width="1.5"/>
+<rect x="266" y="334" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(270,338) scale(0.6666666666666666)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/></g>
+<text x="296" y="345" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">UnifiedGraph</text>
+<text x="296" y="356" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#2dd4bf">attack paths</text>
+<rect x="40" y="365" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="48" y="367" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(52,371) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7"/></g>
+<text x="78" y="378" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Stores</text>
+<text x="78" y="389" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">PG·SQLite</text>
+<rect x="258" y="365" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="266" y="367" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(270,371) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
+<text x="296" y="378" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Audit chain</text>
+<text x="296" y="389" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">signed</text>
+<rect x="488" y="332" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="496" y="334" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,338) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
+<text x="526" y="345" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">REST API</text>
+<text x="526" y="356" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">371 ops</text>
+<rect x="706" y="332" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="714" y="334" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(718,338) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
+<text x="744" y="345" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Gateway</text>
+<text x="744" y="356" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">runtime</text>
+<rect x="488" y="365" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="496" y="367" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,371) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="526" y="378" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">MCP server</text>
+<text x="526" y="389" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">77 tools</text>
+<rect x="706" y="365" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="714" y="367" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(718,371) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
+<text x="744" y="378" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Fleet jobs</text>
+<text x="744" y="389" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">Helm·EKS</text>
+<rect x="488" y="398" width="214" height="29" rx="8" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
+<rect x="496" y="400" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(500,404) scale(0.6666666666666666)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
+<text x="526" y="411" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#e9e9ec">Scheduler / events</text>
+<text x="526" y="422" font-family="ui-monospace,monospace" font-size="6.5" font-weight="600" fill="#82828c">cadence·change</text>
 <line x1="480" y1="438" x2="480" y2="452" stroke="#2dd4bf" stroke-width="1.6" stroke-linecap="round"/><polygon points="480,456 476,450 484,450" fill="#2dd4bf"/><text x="480" y="433" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="800" letter-spacing="0.1em" fill="#2dd4bf">DELIVER</text>
 <rect x="28" y="448" width="904" height="140" rx="12" fill="#0f0f13" stroke="#c084fc" stroke-width="1.2" opacity="0.95"/><rect x="28" y="448" width="904" height="3" rx="12" fill="#c084fc" opacity="0.55"/>
 <rect x="40" y="458" width="4" height="22" rx="2" fill="#c084fc"/><text x="54" y="473" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.14em" fill="#c084fc">CONSUMERS &amp; ARTIFACTS</text><text x="910" y="473" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#e9d5ff">deliver</text>
-<text x="256" y="482" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.1em" fill="#c084fc">PEOPLE</text>
-<rect x="40" y="492" width="432" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
+<text x="182" y="482" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.1em" fill="#c084fc">PEOPLE</text>
+<rect x="40" y="492" width="285" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
 <rect x="50" y="495" width="22" height="22" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(54,499) scale(0.5833333333333334)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-4 4 4 4 M13 16h7"/></g>
 <text x="80" y="511" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#e9e9ec">CLI</text>
-<rect x="40" y="527" width="432" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
+<rect x="40" y="527" width="285" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
 <rect x="50" y="530" width="22" height="22" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(54,534) scale(0.5833333333333334)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M4 9h16"/></g>
 <text x="80" y="546" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#e9e9ec">Web UI</text>
-<text x="704" y="482" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.1em" fill="#c084fc">AGENTS</text>
-<rect x="488" y="492" width="432" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
-<rect x="498" y="495" width="22" height="22" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(502,499) scale(0.5833333333333334)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
-<text x="528" y="511" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#e9e9ec">MCP</text>
-<rect x="488" y="527" width="432" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
-<rect x="498" y="530" width="22" height="22" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(502,534) scale(0.5833333333333334)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
-<text x="528" y="546" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#e9e9ec">SDK</text>
-<text x="730.4" y="482" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.1em" fill="#c084fc">ARTIFACTS</text>
-<rect x="550.4" y="492" width="117.0" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="608.9" y="505" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">SARIF</text>
-<rect x="672.4" y="492" width="117.0" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="730.9" y="505" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">CDX</text>
-<rect x="794.4" y="492" width="117.0" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="852.9" y="505" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">SPDX</text>
-<rect x="550.4" y="517" width="117.0" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="608.9" y="530" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">OCSF</text>
-<rect x="672.4" y="517" width="117.0" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="730.9" y="530" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">HTML</text>
-<rect x="794.4" y="517" width="117.0" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="852.9" y="530" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">JSON</text>
-<text x="730.4" y="552" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="600" fill="#6b6b75">SIEM · webhooks</text>
+<text x="479" y="482" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.1em" fill="#c084fc">AGENTS</text>
+<rect x="337" y="492" width="285" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
+<rect x="347" y="495" width="22" height="22" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(351,499) scale(0.5833333333333334)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="377" y="511" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#e9e9ec">MCP</text>
+<rect x="337" y="527" width="285" height="30" rx="7" fill="#161619" stroke="#2a2a31"/>
+<rect x="347" y="530" width="22" height="22" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(351,534) scale(0.5833333333333334)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
+<text x="377" y="546" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#e9e9ec">SDK</text>
+<text x="776" y="482" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.1em" fill="#c084fc">ARTIFACTS</text>
+<rect x="634" y="492" width="91" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="679.5" y="505" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">SARIF</text>
+<rect x="730" y="492" width="91" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="775.5" y="505" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">CDX</text>
+<rect x="826" y="492" width="91" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="871.5" y="505" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">SPDX</text>
+<rect x="634" y="517" width="91" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="679.5" y="530" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">OCSF</text>
+<rect x="730" y="517" width="91" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="775.5" y="530" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">HTML</text>
+<rect x="826" y="517" width="91" height="20" rx="5" fill="#121016" stroke="#2a2a31"/><text x="871.5" y="530" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#a1a1aa">JSON</text>
+<text x="776" y="552" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="600" fill="#6b6b75">SIEM · webhooks</text>
 <rect x="24" y="582" width="912" height="26" rx="8" fill="#0c1a14" stroke="#1f4438"/><text x="480" y="600" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#4ade80">READ-ONLY BY DEFAULT · no target writes · no secret values · self-hosted · signed evidence</text>
 </svg>

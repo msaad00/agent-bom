@@ -1,6 +1,19 @@
+{{- $imageRepo := (.Values.eventCollector.image).repository | default "" }}
+{{- if .Values.eventCollector.enabled }}
+{{- if not $imageRepo }}
+{{- fail (printf "%s\n%s\n%s\n%s"
+  "agent-bom: eventCollector.enabled=true but eventCollector.image.repository is empty."
+  "No event-collector image is published and this repo ships no Dockerfile for it, so the collector would install as nothing."
+  "Build and host your own from runtime/event-collector/ (see docs/design/EVENT_COLLECTOR_CONTRACT.md), then set eventCollector.image.repository."
+  "Otherwise set eventCollector.enabled=false to install without the collector.") }}
+{{- end }}
+{{- if not .Values.controlPlane.enabled }}
+{{- fail (printf "%s\n%s"
+  "agent-bom: eventCollector.enabled=true requires controlPlane.enabled=true — the collector Deployment forwards to the in-cluster control-plane API and is only rendered with it."
+  "Set controlPlane.enabled=true, or set eventCollector.enabled=false to install without the collector.") }}
+{{- end }}
+{{- end }}
 {{- if and .Values.controlPlane.enabled .Values.eventCollector.enabled }}
-{{- $imageRepo := .Values.eventCollector.image.repository | default "" }}
-{{- if $imageRepo }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -64,5 +77,4 @@ spec:
               - key: {{ .Values.eventCollector.apiKeySecret.key }}
                 path: api-key
       {{- end }}
-{{- end }}
 {{- end }}

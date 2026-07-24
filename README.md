@@ -60,16 +60,16 @@ Full walkthrough: [docs/FIRST_RUN.md](docs/FIRST_RUN.md).
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas: AppSec, GRC, Platform/SRE, Agent builders, and Security engineers with matching outcomes" width="900" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas: Developers, AppSec, Platform / SRE, GRC / audit, and AI / MCP owners with matching outcomes" width="900" />
   </picture>
 </p>
 
 | Team | Start here | Outcome |
 |---|---|---|
-| Developers / AI builders | `agent-bom scan .` | Inventory, findings, blast radius before changes ship |
-| AppSec / security eng | `agent-bom scan . -f sarif -o findings.sarif` | Reachability triage, graph paths, CI gates |
-| Platform / SRE / cloud | `pip install 'agent-bom[ui]' && agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
-| GRC / audit | Compliance exports + control-plane evidence | Framework mappings, signed bundles, review context |
+| Developers | `agent-bom scan .` | Inventory, findings, blast radius before changes ship |
+| AppSec | `agent-bom scan . -f sarif -o findings.sarif` | Reachability triage, graph paths, CI gates |
+| Platform / SRE | `pip install 'agent-bom[ui]' && agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
+| GRC / audit | `agent-bom scan . -f json -o scan.json && agent-bom report compliance-narrative scan.json` | Framework mappings, signed bundles, review context |
 | AI / MCP owners | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` or `gateway serve` | Tool inventory and allow/warn/block decisions |
 
 Evidence helper, not a GRC system of record, IAM, SIEM, or certification program.

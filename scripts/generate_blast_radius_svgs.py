@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -204,7 +205,7 @@ def _flow_card(
             label,
             w=text_w,
             **{
-                "font-size": "7.5",
+                "font-size": "11",
                 "font-weight": "700",
                 "letter-spacing": "0.09em",
                 "fill": label_color,
@@ -224,7 +225,7 @@ def _flow_card(
             subtitle_y,
             subtitle,
             w=text_w,
-            **{"font-size": "9", "fill": muted},
+            **{"font-size": "11", "fill": muted},
         )
     )
 
@@ -255,7 +256,7 @@ def _list_chip(
             badge,
             **{
                 "text-anchor": "middle",
-                "font-size": "6.5",
+                "font-size": "11",
                 "font-weight": "800",
                 "fill": "#ffffff",
             },
@@ -271,7 +272,7 @@ def _list_chip(
             label,
             w=text_w,
             **{
-                "font-size": "8.5",
+                "font-size": "11",
                 "font-weight": "600" if not danger else "700",
                 "font-family": "ui-monospace, monospace",
                 "fill": text_color,
@@ -321,7 +322,7 @@ def blast_radius(theme_name: str) -> str:
             w // 2,
             68,
             "package -> finding -> MCP server -> AI agent -> credentials and tools",
-            **{"text-anchor": "middle", "font-size": "10", "fill": t["subtitle"]},
+            **{"text-anchor": "middle", "font-size": "11", "fill": t["subtitle"]},
         )
     )
 
@@ -474,7 +475,7 @@ def blast_radius(theme_name: str) -> str:
                     bx + 14,
                     ny + 3,
                     "2x",
-                    **{"text-anchor": "middle", "font-size": "8", "font-weight": "800", "fill": t["badge_text"]},
+                    **{"text-anchor": "middle", "font-size": "11", "font-weight": "800", "fill": t["badge_text"]},
                 )
             )
 
@@ -492,7 +493,7 @@ def blast_radius(theme_name: str) -> str:
             "BLAST RADIUS",
             **{
                 "text-anchor": "middle",
-                "font-size": "9.5",
+                "font-size": "11",
                 "font-weight": "800",
                 "letter-spacing": "0.08em",
                 "fill": t["blast_title"],
@@ -509,7 +510,7 @@ def blast_radius(theme_name: str) -> str:
             inner_x + 4,
             cred_y,
             "CREDENTIALS",
-            **{"font-size": "7.5", "font-weight": "700", "letter-spacing": "0.09em", "fill": t["cred_label"], "opacity": "0.92"},
+            **{"font-size": "11", "font-weight": "700", "letter-spacing": "0.09em", "fill": t["cred_label"], "opacity": "0.92"},
         )
     )
     creds = ["ANTHROPIC_KEY", "DB_URL", "AWS_SECRET"]
@@ -545,7 +546,7 @@ def blast_radius(theme_name: str) -> str:
             inner_x + 4,
             tools_y,
             "TOOLS REACHABLE",
-            **{"font-size": "7.5", "font-weight": "700", "letter-spacing": "0.09em", "fill": t["tool_label"], "opacity": "0.92"},
+            **{"font-size": "11", "font-weight": "700", "letter-spacing": "0.09em", "fill": t["tool_label"], "opacity": "0.92"},
         )
     )
     tools = ["query_db", "read_file", "write_file", "exec_sql", "run_shell"]
@@ -630,8 +631,8 @@ def blast_radius(theme_name: str) -> str:
         cx_stat = 40 + col_w * i + col_w // 2
         parts.append(
             _text(cx_stat, stats_y + 36, num, **{"text-anchor": "middle", "font-size": "22", "font-weight": "800", "fill": color})
-            + _text(cx_stat, stats_y + 54, line1, **{"text-anchor": "middle", "font-size": "9", "fill": t["muted"]})
-            + _text(cx_stat, stats_y + 68, line2, **{"text-anchor": "middle", "font-size": "9", "fill": t["muted"]})
+            + _text(cx_stat, stats_y + 54, line1, **{"text-anchor": "middle", "font-size": "11", "fill": t["muted"]})
+            + _text(cx_stat, stats_y + 68, line2, **{"text-anchor": "middle", "font-size": "11", "fill": t["muted"]})
         )
         if i:
             lx = 40 + col_w * i
@@ -650,7 +651,7 @@ def blast_radius(theme_name: str) -> str:
             stats_y + 28,
             "RECOMMENDED FIX",
             w=fix_w - fix_pad * 2,
-            **{"font-size": "9", "font-weight": "700", "letter-spacing": "0.06em", "fill": t["fix_label"]},
+            **{"font-size": "11", "font-weight": "700", "letter-spacing": "0.06em", "fill": t["fix_label"]},
         )
         + _clipped_text(
             cid("fix"),
@@ -671,7 +672,7 @@ def blast_radius(theme_name: str) -> str:
             stats_y + 70,
             "Resolves all 3 agent exposures in one upgrade",
             w=fix_w - fix_pad * 2,
-            **{"font-size": "9", "fill": t["fix_label"]},
+            **{"font-size": "11", "fill": t["fix_label"]},
         )
     )
 
@@ -680,6 +681,9 @@ def blast_radius(theme_name: str) -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Fail when committed SVGs differ from generated output")
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     for theme, name in (("dark", "blast-radius-dark.svg"), ("light", "blast-radius-light.svg")):
         svg = blast_radius(theme) + "\n"
@@ -690,8 +694,13 @@ def main() -> None:
         if github_issues:
             raise SystemExit(f"{name} GitHub SVG issues: {github_issues}")
         path = OUT / name
-        path.write_text(svg, encoding="utf-8")
-        print(f"wrote {path}")
+        if args.check:
+            if not path.exists() or path.read_text(encoding="utf-8") != svg:
+                raise SystemExit(f"generated SVG drift: {path}; run {Path(__file__).name}")
+            print(f"checked {path}")
+        else:
+            path.write_text(svg, encoding="utf-8")
+            print(f"wrote {path}")
 
 
 if __name__ == "__main__":

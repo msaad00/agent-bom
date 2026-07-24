@@ -843,3 +843,18 @@ pdb:
   enabled: false
   minAvailable: 1
   maxUnavailable: null
+
+# ─── Event / log collector (Go sidecar — Phase 2) ─────────────────────────────
+# Phase 1 ships contract + stub binary only; Helm Deployment is Phase 2.
+# See docs/design/EVENT_COLLECTOR_CONTRACT.md.
+# eventCollector:
+#   enabled: false
+#   image:
+#     repository: ""   # optional; unset keeps stock installs without the sidecar
+#     tag: ""
+#   listen: ":8092"
+#   mode: stub         # stub | sqs (sqs requires queue URL + IAM)
+#   controlPlaneUrl: ""  # defaults to in-cluster API service when wired in Phase 2
+#   apiKeySecret:
+#     name: ""
+#     key: api-key

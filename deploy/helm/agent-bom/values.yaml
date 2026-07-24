@@ -155,9 +155,10 @@ scanner:
       #   - EKS: IRSA — set serviceAccount.annotations
       #     eks.amazonaws.com/role-arn to the scanner/control-plane role. That
       #     role reads THIS account directly and, cross-account, can AssumeRole
-      #     into connect-aws read-only roles (hosted connect / org fan-out when
-      #     orgInventory is also true). The baseline module attaches the
-      #     least-privilege sts:AssumeRole policy; see
+      #     into connect-aws read-only roles. For Connections org fan-out, set
+      #     inventory_scope=organization on the connection row (not this flag).
+      #     For Helm/CLI Job org fan-out, also set orgInventory below. The
+      #     baseline module attaches least-privilege sts:AssumeRole; see
       #     deploy/terraform/aws/baseline (connect_role_arns).
       #   - Self-managed k8s on EC2 / ECS: the pod inherits the node instance
       #     profile or ECS task role from the AWS SDK default chain — still
@@ -168,14 +169,18 @@ scanner:
       allRegions: false       # AGENT_BOM_AWS_ALL_REGIONS
       regions: ""             # AGENT_BOM_AWS_REGIONS (comma list, e.g. "us-east-1,eu-west-1")
       maxRegions: ""          # AGENT_BOM_AWS_MAX_REGIONS
-      # Org scan fan-out (default OFF). StackSet/org grant onboarding is separate —
-      # set this so the scanner enumerates member accounts and AssumeRoles into each.
+      # Job/CLI ONLY (scanner CronJob → AGENT_BOM_AWS_ORG_INVENTORY). Does NOT
+      # drive Connections /scan. Connections org fan-out =
+      # inventory_scope=organization on the connection row (+ StackSet grants).
+      # StackSet/org grant onboarding is separate from either path.
       orgInventory: false     # AGENT_BOM_AWS_ORG_INVENTORY
       maxAccounts: ""         # AGENT_BOM_AWS_MAX_ACCOUNTS (default 200 in code)
     azure:
       # Sets AGENT_BOM_AZURE_INVENTORY=1. Auth = AKS workload identity federated
       # to the connect-azure Reader principal (see cloud.azure block below).
       inventory: false
+      # Job/CLI ONLY (AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS). Connections org =
+      # inventory_scope=organization on the row.
       allSubscriptions: false # AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS
       maxSubscriptions: ""    # AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS
       # Client ID of the user-assigned managed identity / app federated to the
@@ -190,7 +195,8 @@ scanner:
       # AGENT_BOM_GCP_IMPERSONATE_SA — the connect-gcp read-only SA email. The
       # ambient KSA token is exchanged for short-lived impersonated creds.
       impersonateSa: ""
-      # Multi-project scan fan-out (default OFF). Mirrors azure.allSubscriptions.
+      # Job/CLI ONLY (AGENT_BOM_GCP_ALL_PROJECTS). Connections org =
+      # inventory_scope=organization on the row. Mirrors azure.allSubscriptions.
       allProjects: false      # AGENT_BOM_GCP_ALL_PROJECTS
       maxProjects: ""         # AGENT_BOM_GCP_MAX_PROJECTS (default 200 in code)
     snowflake:
@@ -453,8 +459,8 @@ controlPlane:
   # Opt-in background loop that re-scans due cloud connections (row
   # scan_interval_minutes). When true, injects AGENT_BOM_CONNECTIONS_SCHEDULER=1
   # on the API Deployment. Cadence still requires a per-connection interval;
-  # scan_mode=continuous also needs an event queue for mid-interval refresh
-  # (event drain is not wired until a follow-up PR).
+  # scan_mode=continuous additionally drains provider event queues on each
+  # tick when AGENT_BOM_{AWS,AZURE,GCP}_EVENT_* is set (stamps last_event_at).
   connectionsScheduler:
     enabled: false
   serviceMesh:

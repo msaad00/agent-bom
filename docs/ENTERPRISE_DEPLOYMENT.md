@@ -21,12 +21,22 @@ agent-bom publishes two images. They are a deployment-flexibility split, **not a
 
 | Image | Base | What's inside | When to pull it |
 |---|---|---|---|
-| `agentbom/agent-bom` | Python 3.14 Alpine (~150 MB) | FastAPI/Starlette + scanner + cloud SDKs + MCP server. The pre-built Next.js dashboard is **bundled inside the wheel** as static assets. | Always. Single-host pilots and `pip install` users only need this one. |
+| `agentbom/agent-bom` | Python 3.14 Alpine (~150 MB) | FastAPI/Starlette + scanner + cloud SDKs + MCP server, plus the pre-built Next.js dashboard as static assets. | Always. Single-host pilots and `pip install` users only need this one. |
 | `agentbom/agent-bom-ui` | Node 24 Debian slim (~250 MB) | Next.js standalone server only. No Python, no cloud SDKs, no MCP runtime. | K8s deployments that want the UI tier scaled / deployed / restricted independently of the API tier. |
 
 ### Why the API image alone serves the dashboard
 
-The `agent-bom serve` process mounts `ui_dist/` as static files when present in the install (`src/agent_bom/api/server.py:685-708`). The wheel's `[tool.setuptools.package-data]` declaration (`pyproject.toml:189`) ships `ui_dist/**` so a `pip install agent-bom[api]` is sufficient. The dashboard answers at the same origin as the API — no second container, no reverse proxy, no separate ingress.
+The `agent-bom serve` process mounts `ui_dist/` as static files when present in the install (`src/agent_bom/api/server.py`, `_mount_dashboard`). What ships where:
+
+| Artifact | Contains the dashboard? | How to confirm |
+|---|---|---|
+| `agent_bom-<version>-py3-none-any.whl` (PyPI) | Yes. `[tool.setuptools.package-data]` ships `ui_dist/**`. | `unzip -l agent_bom-*.whl \| grep -c ui_dist` |
+| `agentbom/agent-bom` (API image) | Yes, in every release **after 0.97.5** — release CI carries the built dashboard into the image build context and the `container-gate` job fails the release if it is absent. Images up to and including **0.97.5 do not**: `agent-bom serve` prints `Dashboard  Not bundled` and every UI route 404s. | `docker run --rm --entrypoint python agentbom/agent-bom:<tag> -c "import agent_bom,pathlib;print((pathlib.Path(agent_bom.__file__).parent/'ui_dist'/'index.html').is_file())"` |
+| `agentbom/agent-bom-ui` (UI image) | Yes — it *is* the dashboard, as a standalone Next.js server. Pull it for the tier-split reasons below, not because the API image needs it. | `docker run --rm -p 3000:3000 agentbom/agent-bom-ui:<tag>` |
+
+When the assets are present the dashboard answers at the same origin as the API — no second container, no reverse proxy, no separate ingress.
+
+Note that `GET /` returns `200` either way: without the bundled assets it serves the JSON API service card rather than the dashboard document. Check for the packaged `index.html` (above) or request a UI route such as `/vulns`, which 404s when the dashboard is missing.
 
 ```bash
 pip install 'agent-bom[api]'
@@ -46,11 +56,11 @@ Reasons that hold up:
 
 Reasons that **do not** hold up:
 
-- *"You need the UI image for the dashboard to work."* — false. Verified above.
+- *"You need the UI image for the dashboard to work."* — not on releases after 0.97.5. The wheel bundles the dashboard, and so does the API image; the table above gives the one-line check for whichever artifact you are holding. On 0.97.5 and earlier the API image genuinely did not, so those tags need the UI image (or a `pip install 'agent-bom[api]'` deployment) to get a dashboard.
 
 ### Practical operator guidance
 
-**Single-process default**: pull `agentbom/agent-bom` only. The dashboard ships inside the wheel and serves at the same origin as the API. This is the right answer for `agent-bom serve`, dev, CI, air-gapped registry mirrors, and API-only pilots.
+**Single-process default**: pull `agentbom/agent-bom` only. The wheel bundles the dashboard and so does the API image on releases after 0.97.5, so it serves at the same origin as the API. This is the right answer for `agent-bom serve`, dev, CI, air-gapped registry mirrors, and API-only pilots.
 
 **Pull both** when you specifically want one of these properties:
 

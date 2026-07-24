@@ -174,7 +174,11 @@ def _inv(account_id: str, *, status: str = "ok") -> dict:
 
 def test_inventory_fanout_merges_each_account(monkeypatch) -> None:
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["111111111111", "222222222222"])
+    monkeypatch.setattr(
+        aws_orgs,
+        "list_member_account_ids",
+        lambda profile=None, *, force=False, session=None: ["111111111111", "222222222222"],
+    )
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
 
     scanned: list[str] = []
@@ -316,7 +320,11 @@ def _cis_report(account_id: str) -> CISBenchmarkReport:
 
 
 def test_cis_fanout_per_account_attribution(monkeypatch) -> None:
-    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["111111111111", "222222222222"])
+    monkeypatch.setattr(
+        aws_orgs,
+        "list_member_account_ids",
+        lambda profile=None, *, force=False, session=None: ["111111111111", "222222222222"],
+    )
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
 
     def _fake_run(*, session=None, checks=None):

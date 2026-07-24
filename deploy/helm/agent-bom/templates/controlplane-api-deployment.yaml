@@ -64,6 +64,14 @@ spec:
             {{- if .Values.controlPlane.connectionsScheduler.enabled }}
             - name: AGENT_BOM_CONNECTIONS_SCHEDULER
               value: "1"
+            {{- with .Values.controlPlane.connectionsScheduler.maxConcurrency }}
+            - name: AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.controlPlane.connectionsScheduler.pollSeconds }}
+            - name: AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
             {{- end }}
           {{- with .Values.controlPlane.api.env }}
             {{- toYaml . | nindent 12 }}

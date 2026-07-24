@@ -940,13 +940,20 @@ def test_helm_connections_scheduler_env_gated_by_values():
         "controlPlane.connectionsScheduler.enabled=false",
     )
     assert "AGENT_BOM_CONNECTIONS_SCHEDULER" not in off
+    assert "AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY" not in off
 
     on = _render(
         "controlPlane.migrations.enabled=false",
         "controlPlane.connectionsScheduler.enabled=true",
+        "controlPlane.connectionsScheduler.maxConcurrency=6",
+        "controlPlane.connectionsScheduler.pollSeconds=30",
     )
     assert "name: AGENT_BOM_CONNECTIONS_SCHEDULER" in on
     assert 'value: "1"' in on
+    assert "name: AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY" in on
+    assert 'value: "6"' in on
+    assert "name: AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS" in on
+    assert 'value: "30"' in on
 
 
 def test_helm_event_collector_deployment_gated_by_values():

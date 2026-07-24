@@ -59,6 +59,37 @@ deployments should enable the distributed scan queue (claim / lease) and scale
 on the active-scan metric (KEDA / Helm). Do not assume `adaptive_backpressure`
 alone coordinates across pods.
 
+## Connections scheduler (CAS + drain concurrency)
+
+Cloud Connections cadence is a separate loop from `/v1/schedules`:
+
+- **Opt-in** via `AGENT_BOM_CONNECTIONS_SCHEDULER` (Helm:
+  `controlPlane.connectionsScheduler.enabled`). Per-connection
+  `scan_interval_minutes` still required for due full scans.
+- **Cluster-safe CAS** — due full scans claim via
+  `ConnectionStore.claim_due_scan` (conditional update on `last_scan_at`). The
+  winning replica runs the brokered scan; losers no-op.
+- **Bounded concurrency** — `AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY`
+  (default `4`; Helm `controlPlane.connectionsScheduler.maxConcurrency`) caps
+  both due full-scans and continuous event drains. Each unit of work is one
+  `asyncio.to_thread` under an asyncio semaphore.
+- **Continuous drain** — `scan_mode=continuous` connections drain provider
+  event queues (`consume_aws_events` / Azure / GCP) in parallel before due
+  claims. Scheduler path passes AWS `wait_seconds=0` so empty SQS long-polls
+  do not stall the tick. Events stamp `last_event_at` only; full-scan cadence
+  remains on `last_scan_at`.
+- **Nested org ThreadPool** — when a connection uses
+  `inventory_scope=organization`, the brokered scan itself fans member
+  accounts/subscriptions/projects through a provider `ThreadPoolExecutor`
+  (capped workers). That pool is nested *inside* one scheduler semaphore slot;
+  raise `maxConcurrency` carefully under org-wide Connections.
+- **Scan-on-create** — `auto_scan_on_create` shares the
+  `adaptive_backpressure("cloud_connection_scan")` lane with `POST …/scan`
+  (await `to_thread`; enqueue-to-`scan_queue` is a follow-up).
+
+Optional Helm `controlPlane.connectionsScheduler.pollSeconds` injects
+`AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS`.
+
 ## Checklist (when changing this lane)
 
 1. New scanner driver declares `failure_mode` + `execution_state` in the registry.

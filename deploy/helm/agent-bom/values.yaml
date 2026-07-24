@@ -461,8 +461,12 @@ controlPlane:
   # on the API Deployment. Cadence still requires a per-connection interval;
   # scan_mode=continuous additionally drains provider event queues on each
   # tick when AGENT_BOM_{AWS,AZURE,GCP}_EVENT_* is set (stamps last_event_at).
+  # maxConcurrency bounds both due full-scans and continuous event drains;
+  # pollSeconds is how often the loop re-checks for due work (optional).
   connectionsScheduler:
     enabled: false
+    maxConcurrency: 4
+    # pollSeconds: 60
   serviceMesh:
     enabled: false
     provider: istio

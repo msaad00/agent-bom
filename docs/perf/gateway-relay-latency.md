@@ -48,7 +48,7 @@ At concurrency **500** (200 requests per level in this run), the gate trips if
 ## Environment
 
 - Platform: macOS-26.5.2-arm64-arm-64bit-Mach-O
-- Host: Wegzs-MacBook-Pro.local
+- Host: local-benchmark-host
 - Python: 3.13.5
 - agent-bom: 0.97.5 (worktree at `origin/main` / `v0.97.5`)
 - Upstream: loopback FastAPI echo MCP (operator YAML → private-network approved)
@@ -123,4 +123,4 @@ pool, not the load generator).
 
 `gate_tripped=true` → proceed to Phase 2 (Python-only relay interface +
 contract tests). Do not implement a Go sidecar until that contract exists
-(ADR-009).
+(ADR-009). Phase 2 Python extract: [`docs/design/GATEWAY_RELAY_CONTRACT.md`](../design/GATEWAY_RELAY_CONTRACT.md).

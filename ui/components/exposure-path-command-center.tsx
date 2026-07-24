@@ -20,6 +20,7 @@ import {
   Wrench,
 } from "lucide-react";
 import {
+  exposurePathKey,
   pathDisplayTitle,
   pathFixLabel,
   pathSpanLabel,
@@ -30,7 +31,9 @@ import {
 import { GRAPH_ROLE_STYLE } from "@/lib/exposure-path-graph-style";
 import { formatExposureEntityTitle } from "@/lib/entity-display";
 import {
+  COLLAPSED_HOPS_NODE_ID,
   buildPathGraphLayout,
+  shouldCollapsePath,
   wrapGraphText,
   truncateGraphText,
 } from "@/lib/exposure-path-graph-layout";
@@ -201,8 +204,10 @@ export function ExposurePathCommandCenter({
         </div>
 
         {view === "path" ? (
-          <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[#05070b] p-1">
-            <ExposurePathGraph path={path} />
+          <section aria-label="Selected exposure path graph" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] p-1">
+            {/* Keyed by path so selecting a new path re-enters the fit-first
+                frame instead of inheriting the previous path's expanded board. */}
+            <ExposurePathGraph key={exposurePathKey(path)} path={path} />
           </section>
         ) : view === "list" ? (
           <ExposurePathNeighborExplorer path={path} scanId={scanId} />
@@ -308,101 +313,155 @@ function MetricPill({
 }
 
 function ExposurePathGraph({ path }: { path: ExposurePath }) {
-  const layout = buildPathGraphLayout(path);
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = shouldCollapsePath(path.hops.length);
+  const layout = buildPathGraphLayout(path, { expanded });
+  // Only the fully expanded board is wider than its container, so scrolling is
+  // opt-in: the collapsed board shrinks to fit and never clips a hop.
+  const scrollable = collapsible && expanded;
 
   return (
-    <div className="overflow-x-auto p-2" data-testid="exposure-path-graph-scroll">
-      <svg
-        viewBox={`0 0 ${layout.width} ${layout.height}`}
-        width={layout.width}
-        height={layout.height}
-        preserveAspectRatio="xMinYMid meet"
-        role="img"
-        aria-label={`Selected exposure path graph for ${pathDisplayTitle(path)}`}
-        className="mx-auto block shrink-0"
-      >
-        <defs>
-          <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8" />
-          </marker>
-          <filter id="node-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.45" />
-          </filter>
-        </defs>
+    <div className="space-y-2">
+      <div className={scrollable ? "overflow-x-auto p-2" : "p-2"} data-testid="exposure-path-graph-scroll">
+        <svg
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          {...(scrollable
+            ? { width: layout.width, height: layout.height }
+            : {
+                width: "100%",
+                style: { maxWidth: layout.fitWidth, aspectRatio: `${layout.width} / ${layout.height}` },
+              })}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label={`Selected exposure path graph for ${pathDisplayTitle(path)}`}
+          className={`mx-auto block ${scrollable ? "shrink-0" : ""}`}
+        >
+          <defs>
+            <marker id="exposure-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L0,6 L9,3 z" style={{ fill: "var(--text-tertiary)" }} />
+            </marker>
+          </defs>
 
-        <rect x="0" y="0" width={layout.width} height={layout.height} fill="#05070b" />
+          <rect x="0" y="0" width={layout.width} height={layout.height} style={{ fill: "var(--surface-panel)" }} />
 
-        {layout.edges.map((edge) => (
-          <path
-            key={edge.id}
-            d={edge.path}
-            fill="none"
-            stroke={edge.stroke}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            markerEnd="url(#exposure-arrow)"
-            opacity="0.88"
-          />
-        ))}
-
-        {layout.relationshipLabels.map((label) => (
-          <g key={label.id} transform={`translate(${label.x} ${label.y})`}>
-            <rect
-              x={-label.width / 2}
-              y="-11"
-              width={label.width}
-              height="22"
-              rx="11"
-              fill="#0f172a"
-              stroke="#334155"
+          {layout.edges.map((edge) => (
+            <path
+              key={edge.id}
+              d={edge.path}
+              fill="none"
+              style={{ stroke: edge.stroke }}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              markerEnd="url(#exposure-arrow)"
+              opacity="0.88"
             />
-            <text x="0" y="4" textAnchor="middle" fill="#cbd5e1" fontSize="11" fontFamily="var(--font-mono), monospace">
-              {label.text}
-            </text>
-          </g>
-        ))}
+          ))}
 
-        {layout.nodes.map((node, index) => {
-          const style = GRAPH_ROLE_STYLE[node.role] ?? GRAPH_ROLE_STYLE.unknown;
-          const meta = ROLE_META[node.role] ?? ROLE_META.unknown;
-          const titleLines = wrapGraphText(node.label, layout.labelChars, 2);
-          return (
-            <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`}>
+          {layout.relationshipLabels.map((label) => (
+            <g key={label.id} transform={`translate(${label.x} ${label.y})`}>
               <rect
-                width={layout.nodeWidth}
-                height={layout.nodeHeight}
-                rx="14"
-                fill={style.fill}
-                stroke={style.stroke}
-                strokeWidth="2"
-                filter="url(#node-glow)"
+                x={-label.width / 2}
+                y="-11"
+                width={label.width}
+                height="22"
+                rx="11"
+                style={{ fill: "var(--surface-elevated)", stroke: "var(--border-strong)" }}
               />
-              <text x="14" y="20" fill={style.accent} fontSize="9" fontWeight="700" letterSpacing="1.4" fontFamily="var(--font-mono), monospace">
-                {meta.label.toUpperCase()}
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                style={{ fill: "var(--text-secondary)" }}
+                fontSize="11"
+                fontFamily="var(--font-mono), monospace"
+              >
+                {label.text}
               </text>
-              <text x="14" y="40" fill={style.text} fontSize="13" fontWeight="600" fontFamily="var(--font-sans), system-ui">
-                {titleLines.map((line, lineIndex) => (
-                  <tspan key={`${node.id}-line-${lineIndex}`} x="14" dy={lineIndex === 0 ? 0 : 15}>
-                    {line}
-                  </tspan>
-                ))}
-              </text>
-              {node.subtitle ? (
+            </g>
+          ))}
+
+          {layout.nodes.map((node, index) => {
+            const style = GRAPH_ROLE_STYLE[node.role] ?? GRAPH_ROLE_STYLE.unknown;
+            const summaryNode = node.id === COLLAPSED_HOPS_NODE_ID;
+            const roleLabel = summaryNode ? "Hidden hops" : (ROLE_META[node.role] ?? ROLE_META.unknown).label;
+            const titleLines = wrapGraphText(node.label, layout.labelChars, 2);
+            return (
+              <g key={`${node.id}-${index}`} transform={`translate(${node.x} ${node.y})`}>
+                <rect
+                  width={layout.nodeWidth}
+                  height={layout.nodeHeight}
+                  rx="14"
+                  // CSS drop-shadow rather than an feDropShadow flood: it takes
+                  // the theme's shadow token directly, so the node lift follows
+                  // the theme instead of flooding fixed black in light mode.
+                  style={{
+                    fill: style.fill,
+                    stroke: style.stroke,
+                    filter: "drop-shadow(0 2px 6px var(--shadow-color))",
+                  }}
+                  strokeWidth="2"
+                  strokeDasharray={summaryNode ? "6 4" : undefined}
+                />
                 <text
                   x="14"
-                  y={titleLines.length > 1 ? 72 : 58}
-                  fill="#94a3b8"
-                  fontSize="10"
+                  y="20"
+                  style={{ fill: style.accent }}
+                  fontSize="9"
+                  fontWeight="700"
+                  letterSpacing="1.4"
+                  fontFamily="var(--font-mono), monospace"
+                >
+                  {roleLabel.toUpperCase()}
+                </text>
+                <text
+                  x="14"
+                  y="40"
+                  style={{ fill: style.text }}
+                  fontSize="13"
+                  fontWeight="600"
                   fontFamily="var(--font-sans), system-ui"
                 >
-                  {truncateGraphText(node.subtitle, 24)}
+                  {titleLines.map((line, lineIndex) => (
+                    <tspan key={`${node.id}-line-${lineIndex}`} x="14" dy={lineIndex === 0 ? 0 : 15}>
+                      {line}
+                    </tspan>
+                  ))}
                 </text>
-              ) : null}
-              <title>{`${meta.label}: ${node.label}${node.subtitle ? ` · ${node.subtitle}` : ""}`}</title>
-            </g>
-          );
-        })}
-      </svg>
+                {node.subtitle ? (
+                  <text
+                    x="14"
+                    y={titleLines.length > 1 ? 72 : 58}
+                    style={{ fill: "var(--text-secondary)" }}
+                    fontSize="10"
+                    fontFamily="var(--font-sans), system-ui"
+                  >
+                    {truncateGraphText(node.subtitle, 24)}
+                  </text>
+                ) : null}
+                <title>{`${roleLabel}: ${node.label}${node.subtitle ? ` · ${node.subtitle}` : ""}`}</title>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {collapsible ? (
+        <div className="flex items-center justify-center gap-2 pb-1 text-[11px]">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+          >
+            {expanded ? "Collapse to fit" : `Show all ${layout.totalHopCount} hops`}
+          </button>
+          <span className="text-[color:var(--text-tertiary)]">
+            {expanded
+              ? "Full chain at full size — scroll horizontally."
+              : `${layout.hiddenHopSummary} summarised to keep the chain on screen.`}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

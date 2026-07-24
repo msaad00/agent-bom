@@ -70,6 +70,17 @@ These rules are mandatory for screenshots, docs images, and shipped graph UI.
 - The first frame must fit its text. Labels, counts, badges, and legends must
   not overflow cards, controls, chips, side panels, or graph nodes at the
   documented desktop and mobile widths.
+- Fitting and staying readable are one rule, not two. Shrink-to-fit is only a
+  fit if the text stays legible: a board scaled far enough to squeeze a long
+  chain into the container is as broken as one that scrolls the chain
+  off-screen. Derive a minimum scale from the smallest text the view actually
+  renders, and when a layout would need to go below it, collapse or aggregate
+  instead of scaling.
+- A collapsed span must name what it hides, by kind. `+9 more` is not
+  acceptable when the hidden hops are the security payoff; `+9 hops hidden ·
+  3 credentials · 3 tools` is, because the first frame still says which
+  capabilities and secrets are on the path. The full view stays one control
+  away.
 - Dense views must use ranked subgraphs, clustering, pagination, or progressive
   expansion. Do not publish a whole-tenant graph that reads as edge spaghetti.
 - Long names must use truncation plus detail-on-hover or side-panel expansion.

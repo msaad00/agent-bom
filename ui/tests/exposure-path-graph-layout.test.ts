@@ -2,13 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import type { ExposureEntityRef, ExposurePath } from "@/lib/exposure-path";
 import {
+  COLLAPSED_HOPS_NODE_ID,
+  FIT_REFERENCE_WIDTH,
   MAX_NODE_HEIGHT,
   MAX_NODE_WIDTH,
+  MAX_READABLE_BOARD_WIDTH,
   MIN_NODE_HEIGHT,
   MIN_NODE_WIDTH,
+  MIN_READABLE_SCALE,
   buildPathGraphLayout,
   labelCharsForWidth,
+  naturalBoardWidth,
   nodeSizeForCount,
+  shouldCollapsePath,
+  summarizeHiddenHops,
   wrapGraphText,
 } from "@/lib/exposure-path-graph-layout";
 
@@ -18,6 +25,31 @@ function makePath(nodeCount: number): ExposurePath {
     label: `entity-with-a-fairly-long-name-${index}`,
     role: index === 0 ? "agent" : "package",
   }));
+  return makePathFromHops(hops);
+}
+
+/**
+ * Shape of the highest-ranked demo exposure path once the graph carries tool and
+ * credential hops: agent -> server -> package -> finding -> 3 tools -> 3
+ * credentials. 11 hops is the widest board the product has to frame.
+ */
+function makeElevenHopPath(): ExposurePath {
+  return makePathFromHops([
+    { id: "agent:cursor", label: "Cursor IDE Agent", role: "agent" },
+    { id: "server:shell-runner", label: "shell-runner-server", role: "server" },
+    { id: "pkg:pyyaml", label: "pyyaml@5.3", role: "package" },
+    { id: "vuln:CVE-2020-14343", label: "CVE-2020-14343", role: "finding" },
+    { id: "tool:run_shell", label: "run_shell", role: "tool" },
+    { id: "tool:exec_command", label: "exec_command", role: "tool" },
+    { id: "tool:read_file", label: "read_file", role: "tool" },
+    { id: "cred:SNOWFLAKE_PASSWORD", label: "SNOWFLAKE_PASSWORD", role: "credential" },
+    { id: "cred:DATABASE_URL", label: "DATABASE_URL", role: "credential" },
+    { id: "cred:AWS_SECRET_ACCESS_KEY", label: "AWS_SECRET_ACCESS_KEY", role: "credential" },
+    { id: "store:warehouse", label: "prod-warehouse", role: "environment" },
+  ]);
+}
+
+function makePathFromHops(hops: ExposureEntityRef[]): ExposurePath {
   return {
     id: "path-test",
     label: hops.map((hop) => hop.label).join(" -> "),
@@ -95,7 +127,7 @@ describe("buildPathGraphLayout auto-fit", () => {
 
   it("tightly bounds every node inside the viewBox with no overflow", () => {
     for (const count of [1, 2, 3, 6, 10]) {
-      const layout = buildPathGraphLayout(makePath(count));
+      const layout = buildPathGraphLayout(makePath(count), { expanded: true });
       for (const node of layout.nodes) {
         expect(node.x).toBeGreaterThanOrEqual(0);
         expect(node.y).toBeGreaterThanOrEqual(0);
@@ -109,7 +141,7 @@ describe("buildPathGraphLayout auto-fit", () => {
   it("keeps a long path on one left-to-right row so edges never orphan", () => {
     // 7 hops is the demo critical-path shape. A prior 4-column wrap put the
     // finding on a second row with a vertical connector that read as broken.
-    const layout = buildPathGraphLayout(makePath(7));
+    const layout = buildPathGraphLayout(makePath(7), { expanded: true });
     expect(layout.nodes).toHaveLength(7);
     const distinctY = new Set(layout.nodes.map((node) => Math.round(node.y)));
     expect(distinctY.size).toBe(1);
@@ -127,7 +159,7 @@ describe("buildPathGraphLayout auto-fit", () => {
   });
 
   it("grows horizontally for dense paths instead of wrapping into rows", () => {
-    const layout = buildPathGraphLayout(makePath(10));
+    const layout = buildPathGraphLayout(makePath(10), { expanded: true });
     const distinctY = new Set(layout.nodes.map((node) => Math.round(node.y)));
     expect(distinctY.size).toBe(1);
     expect(layout.width).toBeGreaterThan(buildPathGraphLayout(makePath(2)).width);
@@ -136,8 +168,108 @@ describe("buildPathGraphLayout auto-fit", () => {
   });
 
   it("produces one edge per hop transition", () => {
-    const layout = buildPathGraphLayout(makePath(5));
+    const layout = buildPathGraphLayout(makePath(5), { expanded: true });
     expect(layout.edges).toHaveLength(4);
     expect(layout.relationshipLabels).toHaveLength(4);
+  });
+});
+
+describe("board fit budget", () => {
+  it("derives the readable board budget from the shell width and the text floor", () => {
+    // 1400px shell cap - lg:px-8 (64) - card padding (44) - board insets (24).
+    expect(FIT_REFERENCE_WIDTH).toBe(1268);
+    // 11px relationship label must not scale below the 10px design-system floor.
+    expect(MIN_READABLE_SCALE).toBeCloseTo(0.9, 5);
+    expect(MAX_READABLE_BOARD_WIDTH).toBe(Math.floor(FIT_REFERENCE_WIDTH / MIN_READABLE_SCALE));
+  });
+
+  it("reports the natural board width the current node metrics produce", () => {
+    // Regression anchors measured from MAX/MIN_NODE_WIDTH + COLUMN_GAP + MARGIN_X.
+    expect(naturalBoardWidth(2)).toBe(564);
+    expect(naturalBoardWidth(3)).toBe(884);
+    expect(naturalBoardWidth(4)).toBe(1176);
+    expect(naturalBoardWidth(5)).toBe(1459);
+    expect(naturalBoardWidth(9)).toBe(2444);
+    expect(naturalBoardWidth(11)).toBe(3004);
+  });
+
+  it("collapses only the chains that cannot fit at a readable scale", () => {
+    // 4 hops (1176px) still fits 1268px at 1x — the demo hero keeps every hop.
+    expect(shouldCollapsePath(4)).toBe(false);
+    for (const count of [1, 2, 3, 4]) {
+      expect(naturalBoardWidth(count)).toBeLessThanOrEqual(MAX_READABLE_BOARD_WIDTH);
+      expect(shouldCollapsePath(count)).toBe(false);
+    }
+    // 5+ hops would need a sub-0.9 scale, so the middle collapses instead.
+    for (const count of [5, 7, 9, 11, 20]) {
+      expect(naturalBoardWidth(count)).toBeGreaterThan(MAX_READABLE_BOARD_WIDTH);
+      expect(shouldCollapsePath(count)).toBe(true);
+    }
+  });
+});
+
+describe("summarizeHiddenHops", () => {
+  it("names the security-significant kinds first", () => {
+    const summary = summarizeHiddenHops([
+      { id: "pkg:a", label: "a", role: "package" },
+      { id: "tool:a", label: "a", role: "tool" },
+      { id: "tool:b", label: "b", role: "tool" },
+      { id: "cred:a", label: "a", role: "credential" },
+    ]);
+    expect(summary).toBe("1 credential · 2 tools");
+  });
+
+  it("returns an empty summary when nothing is hidden", () => {
+    expect(summarizeHiddenHops([])).toBe("");
+  });
+});
+
+describe("collapsed exposure-path board", () => {
+  it("fits the 11-hop demo shape in the first frame without horizontal scroll", () => {
+    const layout = buildPathGraphLayout(makeElevenHopPath());
+
+    expect(layout.collapsed).toBe(true);
+    expect(layout.totalHopCount).toBe(11);
+    // Pinned entry hop, one summary node, pinned crown-jewel hop.
+    expect(layout.nodes).toHaveLength(3);
+    expect(layout.nodes[0]!.id).toBe("agent:cursor");
+    expect(layout.nodes[2]!.id).toBe("store:warehouse");
+    // Fits the reference board at 1x — no scaling, no clipping, no scroll.
+    expect(layout.width).toBe(884);
+    expect(layout.fitWidth).toBe(layout.width);
+    expect(layout.width).toBeLessThanOrEqual(FIT_REFERENCE_WIDTH);
+  });
+
+  it("names the hidden tool and credential hops on the summary node", () => {
+    const layout = buildPathGraphLayout(makeElevenHopPath());
+    const summaryNode = layout.nodes[1]!;
+
+    expect(summaryNode.id).toBe(COLLAPSED_HOPS_NODE_ID);
+    expect(layout.hiddenHopCount).toBe(9);
+    expect(summaryNode.label).toBe("+9 hops hidden");
+    // The security payoff must be named, not silently scrolled off-screen.
+    expect(layout.hiddenHopSummary).toBe("3 credentials · 3 tools");
+    expect(summaryNode.subtitle).toBe(layout.hiddenHopSummary);
+  });
+
+  it("restores every hop when expanded", () => {
+    const layout = buildPathGraphLayout(makeElevenHopPath(), { expanded: true });
+
+    expect(layout.collapsed).toBe(false);
+    expect(layout.hiddenHopCount).toBe(0);
+    expect(layout.hiddenHopSummary).toBe("");
+    expect(layout.nodes).toHaveLength(11);
+    expect(layout.nodes.map((node) => node.id)).toContain("tool:run_shell");
+    expect(layout.nodes.map((node) => node.id)).toContain("cred:AWS_SECRET_ACCESS_KEY");
+    expect(layout.width).toBe(3004);
+  });
+
+  it("keeps every hop for a path that already fits", () => {
+    const layout = buildPathGraphLayout(makePath(4));
+
+    expect(layout.collapsed).toBe(false);
+    expect(layout.nodes).toHaveLength(4);
+    expect(layout.nodes.every((node) => node.id !== COLLAPSED_HOPS_NODE_ID)).toBe(true);
+    expect(layout.width).toBe(1176);
   });
 });

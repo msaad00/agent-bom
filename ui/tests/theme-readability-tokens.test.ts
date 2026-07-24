@@ -7,6 +7,30 @@ import { SEVERITY_HEX } from "@/lib/theme-colors";
 
 const GLOBALS = path.join(process.cwd(), "app/globals.css");
 
+/** Every semantic role the exposure-path board paints. */
+const GRAPH_ROLE_TOKENS = [
+  "agent",
+  "server",
+  "package",
+  "finding",
+  "credential",
+  "tool",
+  "environment",
+  "cluster",
+  "unknown",
+] as const;
+
+/**
+ * Modules that paint the exposure-path board. They render inside a themed card,
+ * so a literal hex here renders a near-black slab on a white surface in light
+ * mode; all paint must come from CSS custom properties.
+ */
+const THEMED_GRAPH_SOURCES = [
+  "components/exposure-path-command-center.tsx",
+  "lib/exposure-path-graph-style.ts",
+  "lib/exposure-path-graph-layout.ts",
+];
+
 describe("theme readability tokens", () => {
   const css = readFileSync(GLOBALS, "utf8");
 
@@ -40,5 +64,21 @@ describe("theme readability tokens", () => {
 
   it("binds Tailwind dark utilities to the explicit application theme", () => {
     expect(css).toContain('@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));');
+  });
+
+  it("defines a graph role palette for both themes", () => {
+    const light = css.slice(css.indexOf(':root[data-theme="light"]'));
+    const dark = css.slice(0, css.indexOf(':root[data-theme="light"]'));
+    for (const role of GRAPH_ROLE_TOKENS) {
+      expect(dark).toMatch(new RegExp(`--graph-${role}:\\s*#[0-9a-f]{6};`));
+      expect(light).toMatch(new RegExp(`--graph-${role}:\\s*#[0-9a-f]{6};`));
+    }
+  });
+
+  it("keeps the exposure-path board free of hardcoded hex paint", () => {
+    for (const source of THEMED_GRAPH_SOURCES) {
+      const contents = readFileSync(path.join(process.cwd(), source), "utf8");
+      expect(contents.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+    }
   });
 });

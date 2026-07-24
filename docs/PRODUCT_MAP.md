@@ -50,7 +50,7 @@ the map-level view of the same flow is:
 
 1. **Discover** from local files, packages, MCP clients, cloud APIs, imports, or runtime events.
 2. **Match and enrich** with advisory, exploitability, posture, policy, identity, and cloud context.
-3. **Normalize** into the unified `Finding` model and `ContextGraph`.
+3. **Normalize** into the unified `Finding` model and `UnifiedGraph`.
 4. **Persist** locally or in the control plane: SQLite for local/small installs, Postgres for shared state, ClickHouse or Snowflake for analytics-style history where configured.
 5. **Operate** through the CLI, CI, REST API, dashboard, MCP tools, proxy/gateway, and export formatters.
 

@@ -118,6 +118,6 @@ agent-bom mcp server                      # stdio MCP server: 77 tools, 6 resour
 ## One model, every door
 
 Whichever path you take, the underlying evidence is the same unified `Finding`
-and `ContextGraph`. Humans get a cockpit; agents and pipelines get callable
+and `UnifiedGraph`. Humans get a cockpit; agents and pipelines get callable
 primitives over identical data. That is the product shape — see
 [`ARCHITECTURE.md`](ARCHITECTURE.md) for the layered view.

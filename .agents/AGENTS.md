@@ -48,7 +48,7 @@ agent-bom/
 High-signal entry points:
 
 - CLI scan path: `src/agent_bom/cli/agents/__init__.py`
-- scanner driver metadata: `src/agent_bom/scanner_drivers.py`
+- scanner driver metadata: `src/agent_bom/cli/_scanner_registry.py`
 - API app and routes: `src/agent_bom/api/server.py`, `src/agent_bom/api/routes/`
 - graph persistence/API: `src/agent_bom/db/graph_store.py`, `src/agent_bom/api/routes/graph.py`
 - MCP tools/server: `src/agent_bom/mcp_server.py`, `src/agent_bom/mcp_tools/`

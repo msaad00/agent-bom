@@ -7,6 +7,7 @@ All coordinates are checked to stay inside lane panels (no text or card overflow
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -502,7 +503,7 @@ def _lane_sublabel(x: int | float, y: int | float, label: str, t: dict) -> str:
     )
 
 
-def how_it_works(theme_name: str) -> str:
+def _legacy_how_it_works(theme_name: str) -> str:
     t = THEMES[theme_name]
     w, h = 1160, 560
     margin_x = 26
@@ -884,6 +885,126 @@ def how_it_works(theme_name: str) -> str:
     return "\n".join(parts)
 
 
+def how_it_works(theme_name: str) -> str:
+    """Render the canonical Scan / Centralize / Enforce product lanes."""
+    palette = {
+        "dark": {
+            "bg0": "#0b1220",
+            "bg1": "#0f1c24",
+            "bg2": "#10261f",
+            "lane1_0": "#0f766e",
+            "lane1_1": "#0f766e",
+            "lane2_0": "#0369a1",
+            "lane2_1": "#0369a1",
+            "lane3_0": "#b45309",
+            "lane3_1": "#b45309",
+            "glow1": "#34d399",
+            "glow2": "#22d3ee",
+            "brand": "#34d399",
+            "title": "#f8fafc",
+            "muted": "#94a3b8",
+            "scan": "#5eead4",
+            "scan_bar": "#34d399",
+            "scan_cmd": "#67e8f9",
+            "central": "#7dd3fc",
+            "central_bar": "#38bdf8",
+            "enforce": "#fcd34d",
+            "enforce_bar": "#fbbf24",
+            "divider": "#1e293b",
+            "lane_opacity": "0.35",
+            "lane_end_opacity": "0.05",
+        },
+        "light": {
+            "bg0": "#f8fafc",
+            "bg1": "#f1f5f9",
+            "bg2": "#ecfdf5",
+            "lane1_0": "#ccfbf1",
+            "lane1_1": "#f0fdfa",
+            "lane2_0": "#e0f2fe",
+            "lane2_1": "#f0f9ff",
+            "lane3_0": "#ffedd5",
+            "lane3_1": "#fffbeb",
+            "glow1": "#14b8a6",
+            "glow2": "#0ea5e9",
+            "brand": "#0f766e",
+            "title": "#0f172a",
+            "muted": "#475569",
+            "scan": "#0f766e",
+            "scan_bar": "#0f766e",
+            "scan_cmd": "#0e7490",
+            "central": "#0369a1",
+            "central_bar": "#0284c7",
+            "enforce": "#b45309",
+            "enforce_bar": "#d97706",
+            "divider": "#e2e8f0",
+            "lane_opacity": "0.95",
+            "lane_end_opacity": "0.4",
+        },
+    }[theme_name]
+
+    parts = _svg_open(
+        1120,
+        420,
+        "agent-bom - three product lanes",
+        "Scan locally, centralize evidence, enforce runtime - one Finding + UnifiedGraph model.",
+    )
+    parts.extend(
+        [
+            "<defs>",
+            '<linearGradient id="bg" x1="0" y1="0" x2="1120" y2="420" gradientUnits="userSpaceOnUse">',
+            f'<stop offset="0%" stop-color="{palette["bg0"]}"/>',
+            f'<stop offset="55%" stop-color="{palette["bg1"]}"/>',
+            f'<stop offset="100%" stop-color="{palette["bg2"]}"/>',
+            "</linearGradient>",
+            '<linearGradient id="lane1" x1="48" y1="140" x2="360" y2="360" gradientUnits="userSpaceOnUse">',
+            f'<stop offset="0%" stop-color="{palette["lane1_0"]}" stop-opacity="{palette["lane_opacity"]}"/>',
+            f'<stop offset="100%" stop-color="{palette["lane1_1"]}" stop-opacity="{palette["lane_end_opacity"]}"/>',
+            "</linearGradient>",
+            '<linearGradient id="lane2" x1="392" y1="140" x2="704" y2="360" gradientUnits="userSpaceOnUse">',
+            f'<stop offset="0%" stop-color="{palette["lane2_0"]}" stop-opacity="{palette["lane_opacity"]}"/>',
+            f'<stop offset="100%" stop-color="{palette["lane2_1"]}" stop-opacity="{palette["lane_end_opacity"]}"/>',
+            "</linearGradient>",
+            '<linearGradient id="lane3" x1="736" y1="140" x2="1048" y2="360" gradientUnits="userSpaceOnUse">',
+            f'<stop offset="0%" stop-color="{palette["lane3_0"]}" stop-opacity="{palette["lane_opacity"]}"/>',
+            f'<stop offset="100%" stop-color="{palette["lane3_1"]}" stop-opacity="{palette["lane_end_opacity"]}"/>',
+            "</linearGradient>",
+            '<filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>',
+            "</defs>",
+            '<rect width="1120" height="420" rx="20" fill="url(#bg)"/>',
+            f'<circle cx="180" cy="90" r="120" fill="{palette["glow1"]}" opacity="0.08" filter="url(#soft)"/>',
+            f'<circle cx="920" cy="340" r="140" fill="{palette["glow2"]}" opacity="0.07" filter="url(#soft)"/>',
+            _text(48, 52, "AGENT-BOM", **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "13", "font-weight": "700", "letter-spacing": "0.22em", "fill": palette["brand"]}),
+            _text(48, 92, "One evidence model. Three ways in.", **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "28", "font-weight": "700", "fill": palette["title"]}),
+            _text(48, 118, "Scan / control plane / runtime enforcement. Same Finding + UnifiedGraph everywhere.", **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "14", "fill": palette["muted"]}),
+        ]
+    )
+
+    lanes = (
+        (48, 320, "lane1", palette["scan_bar"], palette["scan"], "01  SCAN", "Local CLI / CI", ("Inventory, findings, fix-first,", "SARIF / SBOM / HTML - no server."), "agent-bom scan .", palette["scan_cmd"]),
+        (392, 320, "lane2", palette["central_bar"], palette["central"], "02  CENTRALIZE", "Self-hosted plane", ("Fleet, graph, compliance,", "audit - your VPC / Postgres."), "agent-bom serve", palette["central"]),
+        (736, 336, "lane3", palette["enforce_bar"], palette["enforce"], "03  ENFORCE", "Runtime gateway", ("Allow / warn / block MCP", "tool calls with signed audit."), "agent-bom gateway serve --help", palette["enforce"]),
+    )
+    for x, width, gradient, bar, accent, label, title, body, command, command_color in lanes:
+        parts.extend(
+            [
+                f'<rect x="{x}" y="148" width="{width}" height="200" rx="4" fill="url(#{gradient})"/>',
+                f'<rect x="{x}" y="148" width="4" height="200" fill="{bar}"/>',
+                _text(x + 24, 178, label, **{"font-family": "'IBM Plex Mono',ui-monospace,monospace", "font-size": "11", "font-weight": "700", "letter-spacing": "0.16em", "fill": accent}),
+                _text(x + 24, 214, title, **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "22", "font-weight": "700", "fill": palette["title"]}),
+                _text(x + 24, 242, body[0], **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "13", "fill": palette["muted"]}),
+                _text(x + 24, 260, body[1], **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "13", "fill": palette["muted"]}),
+                _text(x + 24, 312, command, **{"font-family": "'IBM Plex Mono',ui-monospace,monospace", "font-size": "12", "fill": command_color}),
+            ]
+        )
+
+    parts.extend(
+        [
+            f'<rect x="48" y="372" width="1024" height="1" fill="{palette["divider"]}"/>',
+            _text(48, 398, "Finding + UnifiedGraph is the spine - CLI, API, UI, and MCP share it.", **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "12", "fill": palette["muted"]}),
+            "</svg>",
+        ]
+    )
+    return "\n".join(parts)
 
 
 def architecture(theme_name: str) -> str:
@@ -897,7 +1018,7 @@ def architecture(theme_name: str) -> str:
     sources = [
         ("package", "Supply chain", "15 eco"),
         ("mcp", "Agents & MCP", "29 clients"),
-        ("cloud", "Cloud", "4 providers"),
+        ("cloud", "Cloud", "4 connect · 16 scan"),
         ("iac", "IaC & OCI", "TF·K8s·img"),
         ("lock", "Secrets", "refs only"),
         ("model", "Models", "13 formats"),
@@ -921,6 +1042,7 @@ def architecture(theme_name: str) -> str:
         ("gate", "Gateway", "runtime"),
         ("mcp", "MCP server", f"{MCP_TOOL_COUNT} tools"),
         ("fleet", "Fleet jobs", "Helm·EKS"),
+        ("audit", "Scheduler / events", "cadence·change"),
     ]
     people = [("cli", "CLI"), ("ui", "Web UI")]
     agents = [("mcp", "MCP"), ("api", "SDK")]
@@ -1051,9 +1173,9 @@ def architecture(theme_name: str) -> str:
     col_w = (tier_w - 24 - col_gap) // 2
     left_x = margin_x + 12
     right_x = left_x + col_w + col_gap
-    mini_gap = 6
+    mini_gap = 4
     mini_w = (col_w - mini_gap) // 2
-    mini_h = 32
+    mini_h = 29
     grid_y = y2 + 32
 
     def _mini_chip(gx: int, gy: int, icon: str, title: str, badge: str, *, highlight: bool = False) -> None:
@@ -1071,22 +1193,6 @@ def architecture(theme_name: str) -> str:
         gy = grid_y + row * (mini_h + mini_gap)
         _mini_chip(gx, gy, icon, title, badge)
 
-    parts.append(
-        f'<rect x="{right_x}" y="{y2 + h2 - 24}" width="{col_w}" height="18" rx="6" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
-        + _text(
-            right_x + col_w // 2,
-            y2 + h2 - 11,
-            "OIDC · SAML · SCIM · RBAC",
-            **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "6.5",
-                "font-weight": "700",
-                "fill": t["chip"],
-            },
-        )
-    )
-
     parts.append(_tier_down_arrow(cx, y2 + h2 + 2, "DELIVER", ARCH_LAYER_COLORS["platform"][1]))
 
     # Tier 4 — consumers
@@ -1094,9 +1200,10 @@ def architecture(theme_name: str) -> str:
     parts.append(_tier_band(y3, h3, "consumers"))
     parts.append(_arch_tier_label(margin_x + 12, y3 + 10, tier_w - 24, "CONSUMERS & ARTIFACTS", "deliver", "consumers", t))
 
-    cons_col_w = (tier_w - 24 - col_gap) // 2
+    cons_gap = 12
+    cons_col_w = (tier_w - 24 - 2 * cons_gap) // 3
     cons_left = margin_x + 12
-    cons_right = cons_left + cons_col_w + col_gap
+    cons_right = cons_left + cons_col_w + cons_gap
 
     def _consumer_mini(y: int, x: int, cw: int, icon: str, label: str) -> int:
         mh = 30
@@ -1157,8 +1264,8 @@ def architecture(theme_name: str) -> str:
         ay += h_card + 5
 
     art_y = y3 + 34
-    art_x = margin_x + 12 + (tier_w - 24) * 0.58
-    art_w = tier_w - 24 - (tier_w - 24) * 0.58 - 8
+    art_x = cons_right + cons_col_w + cons_gap
+    art_w = cons_col_w
     parts.append(
         _text(
             art_x + art_w // 2,
@@ -1516,6 +1623,9 @@ def _audit_layout(svg: str, *, margin: int = 2) -> list[str]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Fail when committed SVGs differ from generated output")
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     copy_issues = _audit_persona_copy()
     if copy_issues:
@@ -1537,8 +1647,13 @@ def main() -> None:
         if github_issues:
             raise SystemExit(f"{filename} GitHub SVG issues: {github_issues}")
         path = OUT / filename
-        path.write_text(svg, encoding="utf-8")
-        print(f"wrote {path}")
+        if args.check:
+            if not path.exists() or path.read_text(encoding="utf-8") != svg:
+                raise SystemExit(f"generated SVG drift: {path}; run {Path(__file__).name}")
+            print(f"checked {path}")
+        else:
+            path.write_text(svg, encoding="utf-8")
+            print(f"wrote {path}")
 
 
 if __name__ == "__main__":

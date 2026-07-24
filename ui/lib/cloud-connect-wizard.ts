@@ -498,17 +498,21 @@ export function buildCloudShellGrantScript(provider: string, externalId?: string
 
 /**
  * Consistent read-only role name minted in every member account by the org
- * StackSet — the same name the org fan-out assumes per account
- * (`AGENT_BOM_AWS_ORG_ROLE_NAME`, default `agent-bom-readonly` in
- * `src/agent_bom/cloud/aws_organizations.py`). Keep the two in lockstep.
+ * StackSet — the same name org scan fan-out assumes when
+ * `AGENT_BOM_AWS_ORG_INVENTORY` is enabled (`AGENT_BOM_AWS_ORG_ROLE_NAME`,
+ * default `agent-bom-readonly` in `src/agent_bom/cloud/aws_organizations.py`).
+ * Keep the two in lockstep.
  */
 export const DEFAULT_AWS_ORG_ROLE_NAME = "agent-bom-readonly";
 
 /**
- * Whole-AWS-Organization onboarding via a CloudFormation StackSet — the
- * org-scale path (deploy ONCE from the management / delegated-admin account,
- * every member account gets an identical read-only role, and new accounts
- * auto-enroll) instead of onboarding accounts one at a time.
+ * Whole-AWS-Organization *grant* onboarding via a CloudFormation StackSet —
+ * deploy ONCE from the management / delegated-admin account so every member
+ * account gets an identical read-only role (new accounts auto-enroll). This
+ * is role deployment only — it does not enable org-wide scan fan-out.
+ * Scanner fan-out still requires `AGENT_BOM_AWS_ORG_INVENTORY` on the control
+ * plane / scanner (a Connections scan covers the registered management-account
+ * role only until that flag is set).
  *
  * Mirrors the commands in `deploy/cloudformation/README.md` and deploys the
  * shipped `deploy/cloudformation/agent-bom-readonly-role.yaml` template. The
@@ -552,8 +556,10 @@ export function buildAwsOrgStackSetScript(
     `  --operation-preferences MaxConcurrentPercentage=100,FailureTolerancePercentage=20`,
     ``,
     `# 3. Register THIS management account's ${name} role ARN in the next step.`,
-    `#    agent-bom enumerates the org and assumes the same read-only role in each`,
-    `#    member account (short-lived STS + this ExternalId) — read-only, no keys.`,
+    `#    StackSet deploys the read-only role into member accounts (grant only).`,
+    `#    Org scan fan-out needs AGENT_BOM_AWS_ORG_INVENTORY on the control plane /`,
+    `#    scanner; a Connections scan covers the management-account role only until`,
+    `#    that flag is set. STS + this ExternalId — read-only, no keys.`,
   ].join("\n");
 }
 

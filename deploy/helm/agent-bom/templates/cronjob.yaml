@@ -89,6 +89,14 @@ spec:
                 - name: AGENT_BOM_AWS_MAX_REGIONS
                   value: {{ .maxRegions | quote }}
                 {{- end }}
+                {{- if eq (toString .orgInventory) "true" }}
+                - name: AGENT_BOM_AWS_ORG_INVENTORY
+                  value: "1"
+                {{- end }}
+                {{- if .maxAccounts }}
+                - name: AGENT_BOM_AWS_MAX_ACCOUNTS
+                  value: {{ .maxAccounts | quote }}
+                {{- end }}
                 {{- end }}
                 {{- end }}
                 {{- with $cloud.azure }}
@@ -120,6 +128,14 @@ spec:
                 {{- if .impersonateSa }}
                 - name: AGENT_BOM_GCP_IMPERSONATE_SA
                   value: {{ .impersonateSa | quote }}
+                {{- end }}
+                {{- if eq (toString .allProjects) "true" }}
+                - name: AGENT_BOM_GCP_ALL_PROJECTS
+                  value: "1"
+                {{- end }}
+                {{- if .maxProjects }}
+                - name: AGENT_BOM_GCP_MAX_PROJECTS
+                  value: {{ .maxProjects | quote }}
                 {{- end }}
                 {{- end }}
                 {{- end }}

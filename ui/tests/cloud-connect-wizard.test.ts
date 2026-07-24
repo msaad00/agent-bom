@@ -89,9 +89,9 @@ describe("cloud-connect-wizard", () => {
   });
 
   it("builds an org-wide CloudFormation StackSet grant (deploy once, auto-enroll)", () => {
-    // The org-scale path: one StackSet from the management account mints an
-    // identical read-only role in every member account and auto-enrolls new ones,
-    // instead of onboarding accounts one by one.
+    // Grant-only path: one StackSet from the management account mints an
+    // identical read-only role in every member account and auto-enrolls new ones.
+    // Scan fan-out is a separate AGENT_BOM_AWS_ORG_INVENTORY opt-in.
     const script = buildAwsOrgStackSetScript("abc123");
     expect(DEFAULT_AWS_ORG_ROLE_NAME).toBe("agent-bom-readonly");
     // StackSet create + rollout commands, matching deploy/cloudformation/README.md.
@@ -101,7 +101,7 @@ describe("cloud-connect-wizard", () => {
     expect(script).toContain("--auto-deployment Enabled=true");
     expect(script).toContain('OrganizationalUnitIds="${ROOT_OU_ID}"');
     expect(script).toContain("CAPABILITY_NAMED_IAM");
-    // The consistent role name the org fan-out assumes in each account.
+    // The consistent role name StackSet mints (and org scan fan-out assumes).
     expect(script).toContain("agent-bom-readonly");
     // The ExternalId round-trips into the StackSet parameters.
     expect(script).toContain("EXTERNAL_ID=abc123");
@@ -110,6 +110,10 @@ describe("cloud-connect-wizard", () => {
     expect(script).toContain("deploy/cloudformation/agent-bom-readonly-role.yaml");
     // Honest: register the management account's role ARN afterwards.
     expect(script.toLowerCase()).toContain("management");
+    // Honest: grant ≠ scan fan-out.
+    expect(script).toContain("AGENT_BOM_AWS_ORG_INVENTORY");
+    expect(script).toMatch(/grant only/i);
+    expect(script).not.toMatch(/enumerates the org and assumes/i);
   });
 
   it("defaults the StackSet role name and falls back to a placeholder ExternalId", () => {

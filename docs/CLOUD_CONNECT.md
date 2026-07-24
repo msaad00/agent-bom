@@ -45,10 +45,12 @@ all-subscriptions / all-projects **scan** fan-out requires the scanner/CLI
 env flags on the control plane, CLI process, or Helm scanner Job
 (`AGENT_BOM_AWS_ORG_INVENTORY`, `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
 `AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5) — Connections `/scan` does not turn
-them on. On the Helm CronJob, only Azure has a first-class chart value today
-(`scanner.cloud.azure.allSubscriptions` → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`);
-AWS org and GCP all-projects go through `scanner.env` (or CLI), not dedicated
-chart keys. Control-plane `tenant_id` is the agent-bom tenancy key — it is
+them on. On the Helm CronJob, first-class chart values map to those flags:
+`scanner.cloud.aws.orgInventory` → `AGENT_BOM_AWS_ORG_INVENTORY`,
+`scanner.cloud.azure.allSubscriptions` → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
+`scanner.cloud.gcp.allProjects` → `AGENT_BOM_GCP_ALL_PROJECTS` (optional
+`maxAccounts` / `maxSubscriptions` / `maxProjects` cap the run). Control-plane
+`tenant_id` is the agent-bom tenancy key — it is
 **not** an Azure AD tenant or AWS account ID; one CP tenant can own many
 connections. Recurring connection scans need both scheduler opt-in
 (`AGENT_BOM_CONNECTIONS_SCHEDULER`) and a per-connection

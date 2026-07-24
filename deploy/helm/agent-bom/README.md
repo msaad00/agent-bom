@@ -105,6 +105,9 @@ blank `collectorImage.tag` falls back to `image.tag`.
 | `scanner.enabled` | `true` | Deploy CronJob scanner |
 | `scanner.schedule` | `0 */6 * * *` | Cron schedule |
 | `scanner.allNamespaces` | `true` | Scan all namespaces |
+| `scanner.cloud.aws.orgInventory` | `false` | `AGENT_BOM_AWS_ORG_INVENTORY` — org member-account scan fan-out |
+| `scanner.cloud.azure.allSubscriptions` | `false` | `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS` |
+| `scanner.cloud.gcp.allProjects` | `false` | `AGENT_BOM_GCP_ALL_PROJECTS` |
 | `collectorImage.repository` | `agentbom/agent-bom-collector` | Cloud-SDK collector image the scan CronJob runs |
 | `collectorImage.tag` | release version | Collector tag — override to bump the SDK layer independently of the control plane; blank falls back to `image.tag` |
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments |

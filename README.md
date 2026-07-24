@@ -50,7 +50,7 @@ isolation.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas: AppSec/GRC, Platform/SRE, Developers, and AI/MCP owners with matching outcomes" width="900" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas: AppSec, GRC, Platform/SRE, Agent builders, and Security engineers with matching outcomes" width="900" />
   </picture>
 </p>
 

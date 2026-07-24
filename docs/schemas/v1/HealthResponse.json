@@ -261,6 +261,11 @@
       "title": "Configured Auth Modes",
       "type": "array"
     },
+    "connections_scheduler_enabled": {
+      "default": false,
+      "title": "Connections Scheduler Enabled",
+      "type": "boolean"
+    },
     "entitlements": {
       "$ref": "#/$defs/EntitlementHealth"
     },

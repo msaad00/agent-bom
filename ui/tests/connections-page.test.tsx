@@ -262,6 +262,7 @@ describe("ConnectionsPage — Connect segment", () => {
         regions: ["us-east-1"],
         auth_params: {},
         inventory_scope: "account",
+        auto_scan_on_create: true,
       }),
     );
 
@@ -426,6 +427,7 @@ describe("ConnectionsPage — Connect segment", () => {
           display_name: "Org production",
           external_id: setupId,
           inventory_scope: "organization",
+          auto_scan_on_create: true,
         }),
       ),
     );
@@ -466,6 +468,7 @@ describe("ConnectionsPage — Connect segment", () => {
         regions: [],
         auth_params: { project_id: "proj-123" },
         inventory_scope: "account",
+        auto_scan_on_create: true,
       }),
     );
 
@@ -492,6 +495,28 @@ describe("ConnectionsPage — Connect segment", () => {
     await waitFor(() =>
       expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
         expect.objectContaining({ provider: "aws", external_id: setupId, regions: ["all"] }),
+      ),
+    );
+  });
+
+  it("defaults auto first scan on in the wizard create payload", async () => {
+    apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
+    apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    const wizard = openAwsWizard();
+    const setupId = fillAwsDetails(wizard);
+    expect(within(wizard).getByTestId("wizard-auto-scan-on-create")).toBeChecked();
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() =>
+      expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auto_scan_on_create: true,
+          display_name: "Production account",
+          external_id: setupId,
+        }),
       ),
     );
   });
@@ -796,6 +821,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
         { ...CREATED_RECORD, status: "active", last_event_at: "2026-06-27T01:30:00Z", scan_interval_minutes: 60 },
       ],
       count: 1,
+      connections_scheduler_enabled: true,
     });
 
     render(<ConnectionsPage />);
@@ -803,6 +829,63 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
 
     expect(screen.getByText("Event-driven")).toBeInTheDocument();
     expect(screen.queryByText("Scheduled scan")).toBeNull();
+  });
+
+  it("shows Organization, Continuous, and Event-driven chips when state warrants", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [
+        {
+          ...CREATED_RECORD,
+          status: "active",
+          inventory_scope: "organization",
+          scan_mode: "continuous",
+          last_event_at: "2026-06-27T01:30:00Z",
+          scan_interval_minutes: 60,
+        },
+      ],
+      count: 1,
+      connections_scheduler_enabled: true,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    expect(screen.getByTestId("connection-org-scope-chip")).toHaveTextContent("Organization");
+    expect(screen.getByTestId("connection-continuous-chip")).toHaveTextContent("Continuous");
+    expect(screen.getByTestId("connection-event-driven-chip")).toHaveTextContent("Event-driven");
+  });
+
+  it("shows a scheduler-disabled banner when intervals are set but the scheduler is off", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [{ ...CREATED_RECORD, status: "active", scan_interval_minutes: 60 }],
+      count: 1,
+      connections_scheduler_enabled: false,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    const banner = screen.getByTestId("connections-scheduler-disabled-banner");
+    expect(banner).toHaveTextContent("Scheduler disabled on this control plane");
+    expect(banner).toHaveTextContent("AGENT_BOM_CONNECTIONS_SCHEDULER");
+  });
+
+  it("does not show the scheduler banner when the scheduler is enabled", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [{ ...CREATED_RECORD, status: "active", scan_interval_minutes: 60 }],
+      count: 1,
+      connections_scheduler_enabled: true,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    expect(screen.queryByTestId("connections-scheduler-disabled-banner")).toBeNull();
   });
 
   it("updates the recurring scan schedule without exposing secrets", async () => {

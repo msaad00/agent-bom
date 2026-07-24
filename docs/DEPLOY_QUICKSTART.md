@@ -430,8 +430,8 @@ See [`docs/operations/ENV_VARS.md`](operations/ENV_VARS.md) for the full enrichm
 
 ## What is not automatic yet (honest boundaries)
 
-- **No single UI wizard** for “click Connect AWS” — today: Terraform connect modules + API `POST /v1/cloud/connections`. UI connections tab is the registration surface.
-- **No agentless continuous CSPM agent** — inventory is scheduled CronJob + opt-in CLI/API scans + fleet push.
+- **Connections wizard ships** — browser **Connections** (`/connections`) walks Provider → Setup → Details (grant script + `POST /v1/cloud/connections`). Headless parity: Terraform connect modules and the same API. See [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md) §1c and the Practical enable path.
+- **Continuous mid-interval refresh needs a queue** — cadence (`AGENT_BOM_CONNECTIONS_SCHEDULER` + `scan_interval_minutes`) is opt-in; `scan_mode=continuous` additionally needs a provider event queue env. Helm scanner CronJob remains a separate Job/CLI path.
 - **AKS/GKE platform Terraform** — collector Helm overlays exist; full one-apply platform modules are EKS-only today.
 - **MSSP multi-tenant provider ops** — self-hosted team tenancy (OIDC/SCIM) ships; provider-style tenant automation is a later track.
 
@@ -444,4 +444,5 @@ See [`docs/operations/ENV_VARS.md`](operations/ENV_VARS.md) for the full enrichm
 - [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md) — long enterprise rollout
 - [`deploy/RUNBOOK.md`](../deploy/RUNBOOK.md) — cross-cloud collector federation
 - [`docs/design/OIDC_DISCOVERY_SHIM.md`](design/OIDC_DISCOVERY_SHIM.md) — legacy IdP MCP OIDC discovery
+- [`docs/design/CONNECTIONS_AND_SOURCES_PANE.md`](design/CONNECTIONS_AND_SOURCES_PANE.md) — Connections / Sources hub taxonomy
 - [`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md) — published chooser

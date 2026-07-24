@@ -1561,6 +1561,7 @@ def test_write_rate_limit_classifier_covers_scan_and_runtime_ingest():
     assert RateLimitMiddleware._is_write_rate_limited("/v1/scan", "POST") is True
     assert RateLimitMiddleware._is_write_rate_limited("/v1/scan/dataset-cards", "POST") is True
     assert RateLimitMiddleware._is_write_rate_limited("/v1/cloud/runtime-evidence/ingest", "POST") is True
+    assert RateLimitMiddleware._is_write_rate_limited("/v1/cloud/connections/events/ingest", "POST") is True
     assert RateLimitMiddleware._is_write_rate_limited("/v1/cloud/runtime-evidence/ingest", "GET") is False
     assert RateLimitMiddleware._is_write_rate_limited("/v1/findings", "GET") is False
     assert RateLimitMiddleware._is_write_rate_limited("/v1/findings", "POST") is False

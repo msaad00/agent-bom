@@ -39,10 +39,17 @@ services:
       # operator can connect a cloud + run a scan (viewer is read-only and would
       # 403 on create/scan). DEMO_ESTATE still clamps to viewer for public demos.
       AGENT_BOM_NO_AUTH_ROLE: ${AGENT_BOM_NO_AUTH_ROLE:-analyst}
+      # Optional: enable Connections recurring scans for local evaluation.
+      # Intervals alone do nothing until this is set (default off in Helm).
+      AGENT_BOM_CONNECTIONS_SCHEDULER: ${AGENT_BOM_CONNECTIONS_SCHEDULER:-1}
       # Connection-secret at-rest key is auto-seeded to /home/abom/.agent-bom/
       # connections.key on first run (persisted in the data volume) so creating a
       # cloud connection does not 503. Set AGENT_BOM_CONNECTIONS_KEY / a managed
       # provider to bring your own; AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1 disables it.
+      # Recurring connection scans stay OFF here. Opt in with
+      # AGENT_BOM_CONNECTIONS_SCHEDULER=1 (and a per-connection
+      # scan_interval_minutes). Helm: controlPlane.connectionsScheduler.enabled.
+      # See docs/CLOUD_CONNECT.md Practical enable path.
     ports:
       - "127.0.0.1:8422:8422"
     volumes:

@@ -13,6 +13,11 @@ Design notes:
   ``AGENT_BOM_CONNECTIONS_SCHEDULER`` is truthy (read live), so it never runs in
   CLI/dev. A connection is only eligible when it carries an interval; the field
   is null (manual-only) by default.
+* **Continuous event drain.** Each tick, *before* due full scans, connections
+  with ``scan_mode=continuous`` and a provider event-queue env configured drain
+  a bounded batch via ``consume_*`` (AWS/Azure/GCP). That path stamps
+  ``last_event_at`` only — full-scan cadence still goes through
+  ``claim_due_scan`` / ``last_scan_at``.
 * **Cluster-safe.** Multiple control-plane replicas may run this loop. Each due
   connection is claimed via an atomic compare-and-swap on ``last_scan_at``
   (``ConnectionStore.claim_due_scan``): the first replica to advance the stored
@@ -29,7 +34,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from agent_bom.api.connection_store import (
     STATUS_ACTIVE,
@@ -48,6 +55,13 @@ logger = logging.getLogger(__name__)
 
 # Every supported provider is broker-enabled and therefore schedulable.
 _SCHEDULABLE_PROVIDERS: frozenset[str] = frozenset({"aws", "azure", "gcp", "snowflake"})
+
+# Provider → (event_ingest module, consume_* name). Snowflake has no consumer.
+_CONTINUOUS_CONSUMERS: dict[str, tuple[str, str]] = {
+    "aws": ("agent_bom.cloud.event_ingest", "consume_aws_events"),
+    "azure": ("agent_bom.cloud.azure_event_ingest", "consume_azure_events"),
+    "gcp": ("agent_bom.cloud.gcp_event_ingest", "consume_gcp_events"),
+}
 
 
 def connections_scheduler_enabled() -> bool:
@@ -120,6 +134,64 @@ def claim_due_connections(store: ConnectionStore, now: datetime) -> list[CloudCo
     return won
 
 
+def _load_continuous_consumer(
+    provider: str,
+) -> tuple[Callable[[], bool], Callable[..., dict[str, Any]]] | None:
+    """Return ``(event_ingest_enabled, consume_*)`` for *provider*, or None."""
+    import importlib
+
+    spec = _CONTINUOUS_CONSUMERS.get((provider or "").strip().lower())
+    if spec is None:
+        return None
+    module_name, consume_name = spec
+    module = importlib.import_module(module_name)
+    enabled = getattr(module, "event_ingest_enabled", None)
+    consume = getattr(module, consume_name, None)
+    if not callable(enabled) or not callable(consume):
+        return None
+    return enabled, consume
+
+
+def drain_continuous_events(store: ConnectionStore) -> int:
+    """Drain provider event queues for ``scan_mode=continuous`` connections.
+
+    No-op when the scheduler flag is off. For each continuous connection whose
+    provider has a queue/subscription env configured, call the matching
+    ``consume_*`` (bounded, fail-closed). Events update ``last_event_at`` only
+    inside the consumer — this helper never advances ``last_scan_at``.
+
+    Returns the number of connections for which a consume was attempted.
+    """
+    if not connections_scheduler_enabled():
+        return 0
+
+    attempted = 0
+    for record in store.list_continuous():
+        loaded = _load_continuous_consumer(record.provider)
+        if loaded is None:
+            continue
+        enabled, consume = loaded
+        try:
+            if not enabled():
+                continue
+        except Exception:  # noqa: BLE001 - defensive; never sink the tick
+            logger.exception(
+                "Continuous event-ingest enabled check failed for connection %s",
+                record.id,
+            )
+            continue
+        attempted += 1
+        try:
+            consume(record, tenant_id=record.tenant_id, store=store)
+        except Exception:  # noqa: BLE001 - one bad consume never sinks the tick
+            logger.exception(
+                "Continuous event drain failed for connection %s (provider=%s)",
+                record.id,
+                record.provider,
+            )
+    return attempted
+
+
 def execute_connection_scan(record: CloudConnectionRecord) -> bool:
     """Run the broker scan for a claimed connection and persist the outcome.
 
@@ -175,10 +247,15 @@ async def run_due_scans_once(
 ) -> int:
     """Claim and run every due connection scan once, with bounded concurrency.
 
-    Returns the number of connections this replica claimed and attempted. Each
+    Drains continuous event queues first (when the scheduler is enabled and a
+    provider queue env is set), then claims due full scans. Returns the number
+    of connections this replica claimed and attempted for full scans. Each
     brokered scan runs in a worker thread (boto3 is blocking) under a semaphore
     so at most *max_concurrency* scans run at a time.
     """
+    # Event drain before full scans so mid-interval posture updates land first.
+    await asyncio.to_thread(drain_continuous_events, store)
+
     claimed = claim_due_connections(store, now)
     if not claimed:
         return 0

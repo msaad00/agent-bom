@@ -8,7 +8,7 @@ name: Surface Freshness
 #
 # Optional repo variables (Settings -> Secrets and variables -> Actions -> Variables):
 #   SMITHERY_SERVER_QUALIFIED_NAME — override Smithery listing name; defaults to agent-bom/agent-bom
-#   GLAMA_LISTING_URL  — Glama public listing JSON endpoint (enables Glama probe)
+#   GLAMA_LISTING_URL  — override Glama listing URL (default: glama.ai/.../msaad00/agent-bom)
 #   DOCKER_IMAGE       — override default ghcr.io/msaad00/agent-bom
 
 on:
@@ -81,7 +81,7 @@ jobs:
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "",
-              "Required repo variables for full coverage: `GLAMA_LISTING_URL`. Smithery defaults to `agent-bom/agent-bom`; set `SMITHERY_SERVER_QUALIFIED_NAME` only if the listing name changes.",
+              "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agent-bom/agent-bom`).",
               "",
               "_Maintained automatically by the surface-freshness workflow. Self-closes when every surface is fresh and monitored._",
             ].join("\n");

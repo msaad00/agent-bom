@@ -44,12 +44,24 @@ GLAMA_SCRIPT = ROOT / "scripts" / "check_glama_listing.py"
 
 PYPI_PACKAGE = "agent-bom"
 DEFAULT_DOCKER_IMAGE = "ghcr.io/msaad00/agent-bom"
+DEFAULT_SMITHERY_SERVER = "agent-bom/agent-bom"
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_ATTEMPTS = 3
 DEFAULT_BACKOFF = 5.0
 
 OK_STATUSES = {"fresh"}
 ALERT_STATUSES = {"stale", "not_configured", "unreachable"}
+
+
+
+def _env_or(name: str, default: str) -> str:
+    """Return env var if non-blank; otherwise ``default``.
+
+    GitHub Actions injects unset ``vars.*`` as empty strings into ``env:``, so
+    ``os.environ.get(name, default)`` would keep ``""`` and skip the default.
+    """
+    value = (os.environ.get(name) or "").strip()
+    return value or default
 
 
 def _expected_version() -> str:
@@ -266,8 +278,8 @@ def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, A
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected", default=None, help="Override expected version (defaults to pyproject.toml).")
-    parser.add_argument("--docker-image", default=os.environ.get("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
-    parser.add_argument("--smithery-server", default=os.environ.get("SMITHERY_SERVER_QUALIFIED_NAME", "agent-bom/agent-bom"))
+    parser.add_argument("--docker-image", default=_env_or("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
+    parser.add_argument("--smithery-server", default=_env_or("SMITHERY_SERVER_QUALIFIED_NAME", DEFAULT_SMITHERY_SERVER))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--attempts", type=int, default=DEFAULT_ATTEMPTS)
     parser.add_argument("--backoff-seconds", type=float, default=DEFAULT_BACKOFF)

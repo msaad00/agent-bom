@@ -731,7 +731,14 @@ def discover_inventory_all_regions(
     }
 
 
-def discover_all_account_inventories(profile: str | None = None, *, force: bool = False) -> list[dict[str, Any]]:
+def discover_all_account_inventories(
+    profile: str | None = None,
+    *,
+    force: bool = False,
+    session: Any = None,
+    external_id: str | None = None,
+    role_name: str | None = None,
+) -> list[dict[str, Any]]:
     """Inventory EVERY member account of the AWS Organization (multi-account fan-out).
 
     The AWS counterpart of Azure's all-subscriptions and GCP's all-projects
@@ -741,6 +748,11 @@ def discover_all_account_inventories(profile: str | None = None, *, force: bool 
     session. Results are partitioned by ``account_id`` so the graph keeps every
     account distinct under the org → OU ``CONTAINS`` tree and cross-account attack
     paths correlate.
+
+    When ``session`` is supplied (brokered management-account session), org
+    enumeration and member AssumeRole use that session. ``external_id`` and
+    ``role_name`` thread into each member AssumeRole (Connections scans pass the
+    connection ExternalId and ``auth_params.member_role_name`` / default).
 
     Returns a LIST of per-account inventory payloads (the exact shape the graph
     builder's ``_iter_cloud_inventories`` consumes). Partial-permission tolerant:
@@ -767,7 +779,7 @@ def discover_all_account_inventories(profile: str | None = None, *, force: bool 
     from agent_bom.cloud import aws_organizations
 
     try:
-        account_ids = aws_organizations.list_member_account_ids(profile, force=True)
+        account_ids = aws_organizations.list_member_account_ids(profile, force=True, session=session)
     except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
         logger.warning("AWS org account enumeration failed: %s", sanitize_discovery_warning(exc))
         account_ids = []
@@ -775,7 +787,7 @@ def discover_all_account_inventories(profile: str | None = None, *, force: bool 
     if not account_ids:
         # Standalone account (not in an org) or no org visibility — fall back to
         # the single ambient-credential inventory so the scan still produces data.
-        return [discover_inventory(profile=profile, force=True)]
+        return [discover_inventory(profile=profile, force=True, session=session)]
 
     cap = aws_organizations.max_accounts()
     capped = account_ids[:cap]
@@ -788,7 +800,13 @@ def discover_all_account_inventories(profile: str | None = None, *, force: bool 
 
     def _scan(account_id: str) -> dict[str, Any]:
         try:
-            session = aws_organizations.assume_account_session(account_id, profile=profile)
+            assumed = aws_organizations.assume_account_session(
+                account_id,
+                profile=profile,
+                role_name=role_name,
+                external_id=external_id,
+                base_session=session,
+            )
         except Exception as exc:  # noqa: BLE001 — a denied account is skipped, not fatal
             return {
                 **_empty_payload(region=""),
@@ -796,7 +814,7 @@ def discover_all_account_inventories(profile: str | None = None, *, force: bool 
                 "account_id": account_id,
                 "warnings": [f"Account {account_id} skipped: {sanitize_discovery_warning(exc)}"],
             }
-        return discover_inventory(session=session, force=True)
+        return discover_inventory(session=assumed, force=True)
 
     payloads: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(8, len(capped))) as executor:

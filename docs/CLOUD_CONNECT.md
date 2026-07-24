@@ -35,17 +35,18 @@ brokered catalog.
 The dashboard **Connections** page runs the same read-only grant flow as a
 three-step wizard: **Provider → Setup → Details**.
 
-**Scope (single target vs org fan-out).** Each connection — and
+**Scope (single target vs org fan-out).** By default each connection — and
 `POST /v1/cloud/connections/{id}/scan` — covers **one** AWS account, Azure
 subscription, or GCP project (AWS "All enabled regions" is still that one
-account). The AWS Connections wizard may offer **Whole organization**
-CloudFormation StackSet scripts: that is **grant onboarding** (mint the
-read-only role across member accounts), not scan fan-out. Org /
-all-subscriptions / all-projects **scan** fan-out requires the scanner/CLI
-env flags on the control plane, CLI process, or Helm scanner Job
-(`AGENT_BOM_AWS_ORG_INVENTORY`, `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
-`AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5) — Connections `/scan` does not turn
-them on. On the Helm CronJob, first-class chart values map to those flags:
+account). Set `inventory_scope=organization` on the connection (AWS Connections
+wizard **Whole organization** does this) so Connections `/scan` fans inventory
+across member accounts / subscriptions / projects via the brokered management
+credential. StackSet (or equivalent) is still required so member accounts have
+the read-only role to assume. CLI enrichment and Helm scanner Jobs remain gated
+by env flags (`AGENT_BOM_AWS_ORG_INVENTORY`, `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
+`AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5) — those flags are unchanged and are
+**not** required for per-connection fan-out. On the Helm CronJob, first-class
+chart values map to those CLI flags:
 `scanner.cloud.aws.orgInventory` → `AGENT_BOM_AWS_ORG_INVENTORY`,
 `scanner.cloud.azure.allSubscriptions` → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
 `scanner.cloud.gcp.allProjects` → `AGENT_BOM_GCP_ALL_PROJECTS` (optional
@@ -57,9 +58,6 @@ connections. Recurring connection scans need both scheduler opt-in
 `scan_interval_minutes` (default concurrency 4). Org fan-out caps: AWS 200
 (`AGENT_BOM_AWS_MAX_ACCOUNTS`), Azure 500
 (`AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS`), GCP 200 (`AGENT_BOM_GCP_MAX_PROJECTS`).
-
-- **Next:** expose org fan-out as a per-connection option in Connections and
-  shard the scheduler — on the existing Python control plane (not a Go rewrite).
 
 - **One ExternalId, carried end-to-end.** For AWS the wizard generates a single
   high-entropy `sts:ExternalId` **once** and carries it unchanged from Setup into

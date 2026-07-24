@@ -3038,6 +3038,10 @@ _MAX_CIS_FANOUT_WORKERS = 8
 def run_all_account_benchmarks(
     checks: list[str] | None = None,
     profile: str | None = None,
+    *,
+    session: Any = None,
+    external_id: str | None = None,
+    role_name: str | None = None,
 ) -> CISBenchmarkReport:
     """Run the CIS AWS benchmark for EVERY member account of the organization.
 
@@ -3051,6 +3055,9 @@ def run_all_account_benchmarks(
     is benchmarked concurrently (bounded thread pool) and the per-account results
     are aggregated into one :class:`CISBenchmarkReport` with every check tagged by
     its ``account_id``.
+
+    ``session`` / ``external_id`` / ``role_name`` mirror the inventory fan-out so
+    Connections org scans can reuse the brokered management session.
 
     Read-only and partial-permission tolerant: an account whose read-only role
     cannot be assumed is skipped with a warning rather than failing the whole run.
@@ -3072,14 +3079,14 @@ def run_all_account_benchmarks(
         raise CloudDiscoveryError("boto3 is required for CIS AWS Benchmark checks. Install with: pip install 'agent-bom[aws]'")
 
     try:
-        account_ids = aws_organizations.list_member_account_ids(profile, force=True)
+        account_ids = aws_organizations.list_member_account_ids(profile, force=True, session=session)
     except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
         logger.warning("AWS org account enumeration failed: %s", sanitize_discovery_warning(exc))
         account_ids = []
 
     if not account_ids:
         # Standalone account (not in an org) — single-account benchmark.
-        return run_benchmark(profile=profile, checks=checks)
+        return run_benchmark(profile=profile, checks=checks, session=session)
 
     cap = aws_organizations.max_accounts()
     capped = account_ids[:cap]
@@ -3091,8 +3098,14 @@ def run_all_account_benchmarks(
         )
 
     def _run_one(account_id: str) -> tuple[str, CISBenchmarkReport]:
-        session = aws_organizations.assume_account_session(account_id, profile=profile)
-        return account_id, run_benchmark(session=session, checks=checks)
+        assumed = aws_organizations.assume_account_session(
+            account_id,
+            profile=profile,
+            role_name=role_name,
+            external_id=external_id,
+            base_session=session,
+        )
+        return account_id, run_benchmark(session=assumed, checks=checks)
 
     # Deterministic aggregation: collect per-account reports keyed by id, then
     # merge in enumeration order so output is stable across runs.

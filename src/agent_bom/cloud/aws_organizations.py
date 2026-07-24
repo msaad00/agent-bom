@@ -77,8 +77,17 @@ _DEFAULT_MAX_ACCOUNTS = 200
 _AWS_ORG_ASSUME_PERMISSION = "sts:AssumeRole"
 
 
-def discover_organization(profile: str | None = None, *, force: bool = False) -> dict[str, Any]:
+def discover_organization(
+    profile: str | None = None,
+    *,
+    force: bool = False,
+    session: Any = None,
+) -> dict[str, Any]:
     """Enumerate the AWS Organization: OUs, member accounts, and SCPs (read-only).
+
+    When ``session`` is supplied (e.g. a brokered management-account session from
+    a Connections scan), it is used instead of building one from ``profile`` /
+    the ambient credential chain.
 
     Returns a payload destined for ``report_json["aws_organization"]`` carrying a
     ``status``: ``disabled`` / ``boto3_missing`` / ``no_credentials`` /
@@ -99,17 +108,27 @@ def discover_organization(profile: str | None = None, *, force: bool = False) ->
     if not force and os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() not in _TRUTHY:
         return result
 
+    # A caller-supplied session (Connections broker) must work without boto3 in
+    # the ambient env — only build a Session from profile/ambient when needed.
+    if session is None:
+        try:
+            import boto3
+        except ImportError:
+            result["status"] = "boto3_missing"
+            result["warnings"] = [
+                "boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"
+            ]
+            return result
+
     try:
-        import boto3  # noqa: F401
         from botocore.exceptions import NoCredentialsError
     except ImportError:
-        result["status"] = "boto3_missing"
-        result["warnings"] = ["boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"]
-        return result
+        NoCredentialsError = Exception  # type: ignore[misc,assignment]  # noqa: N806
 
     warnings: list[str] = result["warnings"]
     try:
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        if session is None:
+            session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         org = session.client("organizations")
     except Exception as exc:  # noqa: BLE001
         result["status"] = "no_credentials"
@@ -359,7 +378,12 @@ def max_accounts() -> int:
     return value if value > 0 else _DEFAULT_MAX_ACCOUNTS
 
 
-def list_member_account_ids(profile: str | None = None, *, force: bool = False) -> list[str]:
+def list_member_account_ids(
+    profile: str | None = None,
+    *,
+    force: bool = False,
+    session: Any = None,
+) -> list[str]:
     """Return every ACTIVE member account id in the organization (read-only).
 
     The fan-out source for the AWS multi-account inventory and CIS benchmark.
@@ -368,7 +392,7 @@ def list_member_account_ids(profile: str | None = None, *, force: bool = False) 
     into and would only add noise). Returns ``[]`` for a standalone account (not
     in an org) or when the org cannot be read. Never raises.
     """
-    org = discover_organization(profile=profile, force=force)
+    org = discover_organization(profile=profile, force=force, session=session)
     if not isinstance(org, dict) or org.get("status") != "ok":
         return []
     account_ids: list[str] = []
@@ -393,6 +417,7 @@ def assume_account_session(
     region: str | None = None,
     session_name: str = _ORG_SESSION_NAME,
     duration_seconds: int = 3600,
+    base_session: Any = None,
 ) -> Any:
     """Assume the read-only role in *account_id* and return a boto3 session.
 
@@ -402,6 +427,10 @@ def assume_account_session(
     those — no long-lived key is created or logged. The ExternalId (when set) is
     presented to satisfy the confused-deputy condition but never logged.
 
+    When ``base_session`` is supplied (e.g. a brokered Connections management
+    session), STS is called through that session instead of the ambient /
+    profile chain.
+
     Raises on failure (boto3 missing, AssumeRole denied) so the caller can skip
     the account with a warning rather than sinking the whole fan-out.
     """
@@ -410,7 +439,10 @@ def assume_account_session(
     role = (role_name or os.environ.get(ORG_ROLE_NAME_ENV, "").strip() or _DEFAULT_ORG_ROLE_NAME).strip()
     ext = external_id if external_id is not None else os.environ.get(ORG_EXTERNAL_ID_ENV, "").strip()
 
-    base = boto3.Session(profile_name=profile) if profile else boto3.Session()
+    if base_session is not None:
+        base = base_session
+    else:
+        base = boto3.Session(profile_name=profile) if profile else boto3.Session()
     sts = base.client("sts")
     role_arn = f"arn:aws:iam::{account_id}:role/{role}"
     assume_kwargs: dict[str, Any] = {

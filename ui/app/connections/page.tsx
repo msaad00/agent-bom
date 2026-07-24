@@ -2179,6 +2179,17 @@ function UnifiedRow({
           </span>
           <div className="flex items-center gap-1.5">
             <CategoryChip category={row.category} />
+            {isCloud &&
+            (connection!.inventory_scope === "organization" ||
+              connection!.auth_params?.inventory_scope === "organization") ? (
+              <span
+                className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
+                title="Connections scan fans out across organization member accounts"
+                data-testid="connection-org-scope-chip"
+              >
+                Organization
+              </span>
+            ) : null}
             {mode ? (
               <span
                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${mode.tone}`}
@@ -2763,7 +2774,18 @@ function ConnectionDetailDrawer({
       eyebrow={providerLabel(connection.provider)}
       title={connection.display_name}
       subtitle={
-        <span className="font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
+          {connection.inventory_scope === "organization" ||
+          connection.auth_params?.inventory_scope === "organization" ? (
+            <span
+              className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
+              data-testid="connection-org-scope-chip"
+            >
+              Organization
+            </span>
+          ) : null}
+        </span>
       }
       headerAside={<StatusPill status={connection.status} />}
       footer={
@@ -3514,6 +3536,7 @@ function AddConnectionWizard({
       external_id: externalId,
       regions,
       auth_params: authParams,
+      inventory_scope: isAws && awsScope === "organization" ? "organization" : "account",
     };
 
     setSubmitting(true);
@@ -3641,7 +3664,7 @@ function AddConnectionWizard({
                   ) : null}
                   <p className="text-[var(--foreground)]">
                     {isOrgScope ? (
-                      "Deploy one CloudFormation StackSet from your AWS Organization management (or delegated-admin) account. That grant mints the read-only role in every member account and auto-enrolls new ones — then paste this management account's role ARN in the next step. Org-wide scan fan-out still needs AGENT_BOM_AWS_ORG_INVENTORY on the control plane / scanner; a connection scan covers the management-account role only until that flag is set."
+                      "Deploy one CloudFormation StackSet from your AWS Organization management (or delegated-admin) account. That grant mints the read-only role in every member account and auto-enrolls new ones — then paste this management account's role ARN in the next step. This connection is stored with inventory_scope=organization so Run scan fans out across member accounts (member roles must be deployed)."
                     ) : (
                       <>
                         Run this in your {provider.label} to create the read-only grant, then paste the{" "}
@@ -3680,10 +3703,11 @@ function AddConnectionWizard({
                         </li>
                         <li className="flex items-start gap-1.5">
                           <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
-                          Scan fan-out across member accounts requires{" "}
-                          <code className="font-mono">AGENT_BOM_AWS_ORG_INVENTORY</code> on the control plane /
-                          scanner (Helm: <code className="font-mono">scanner.cloud.aws.orgInventory</code>). Until
-                          then, a connection scan covers the management-account role only.
+                          With Whole organization selected, this connection stores{" "}
+                          <code className="font-mono">inventory_scope=organization</code> so Connections Run scan
+                          fans out across member accounts (StackSet must have deployed the member roles). CLI /
+                          Helm scanner Jobs still use <code className="font-mono">AGENT_BOM_AWS_ORG_INVENTORY</code>{" "}
+                          when you scan outside Connections.
                         </li>
                       </ul>
                     </div>

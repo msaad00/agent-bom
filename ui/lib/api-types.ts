@@ -3455,6 +3455,8 @@ export interface CloudConnectionRecord {
   scan_interval_minutes: number | null;
   /** Non-secret provider-specific params (Azure tenant/subscription, GCP project, Snowflake user/role/warehouse). */
   auth_params?: Record<string, string>;
+  /** ``account`` (default) or ``organization`` — org fans Connections scan across member accounts. */
+  inventory_scope?: "account" | "organization" | string;
 }
 
 export interface CloudConnectionsResponse {
@@ -3475,11 +3477,15 @@ export interface CloudConnectionCreateRequest {
   auth_params?: Record<string, string>;
   /** Optional recurring read-only scan cadence. Null/default means manual-only. */
   scan_interval_minutes?: number | null;
+  /** ``account`` (default) or ``organization`` for Connections scan fan-out. */
+  inventory_scope?: "account" | "organization";
 }
 
 export interface CloudConnectionUpdateRequest {
   /** Recurring read-only scan cadence. Null disables scheduling. */
   scan_interval_minutes: number | null;
+  /** Optional org fan-out scope for subsequent Connections scans. */
+  inventory_scope?: "account" | "organization";
 }
 
 export interface AuthorizationEvidenceSummary {

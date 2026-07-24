@@ -91,7 +91,7 @@ describe("cloud-connect-wizard", () => {
   it("builds an org-wide CloudFormation StackSet grant (deploy once, auto-enroll)", () => {
     // Grant-only path: one StackSet from the management account mints an
     // identical read-only role in every member account and auto-enrolls new ones.
-    // Scan fan-out is a separate AGENT_BOM_AWS_ORG_INVENTORY opt-in.
+    // Member roles are grant-only here; Connections inventory_scope=organization fans scan.
     const script = buildAwsOrgStackSetScript("abc123");
     expect(DEFAULT_AWS_ORG_ROLE_NAME).toBe("agent-bom-readonly");
     // StackSet create + rollout commands, matching deploy/cloudformation/README.md.
@@ -110,7 +110,8 @@ describe("cloud-connect-wizard", () => {
     expect(script).toContain("deploy/cloudformation/agent-bom-readonly-role.yaml");
     // Honest: register the management account's role ARN afterwards.
     expect(script.toLowerCase()).toContain("management");
-    // Honest: grant ≠ scan fan-out.
+    // Honest: StackSet is grant; Connections inventory_scope fans scan; CLI still has the env flag.
+    expect(script).toContain("inventory_scope=organization");
     expect(script).toContain("AGENT_BOM_AWS_ORG_INVENTORY");
     expect(script).toMatch(/grant only/i);
     expect(script).not.toMatch(/enumerates the org and assumes/i);

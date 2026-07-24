@@ -261,6 +261,7 @@ describe("ConnectionsPage — Connect segment", () => {
         external_id: setupId,
         regions: ["us-east-1"],
         auth_params: {},
+        inventory_scope: "account",
       }),
     );
 
@@ -368,15 +369,15 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(stackSet.textContent).toContain("agent-bom-readonly");
     expect(stackSet.textContent).toContain(`EXTERNAL_ID=${setupId}`);
 
-    // Honest copy: StackSet is grant onboarding; scan fan-out needs the env flag.
+    // Honest copy: StackSet is grant onboarding; Connections org scope fans scan.
     const explainer = within(wizard).getByTestId("wizard-org-explainer").textContent ?? "";
     expect(explainer).toMatch(/every member account/i);
     expect(explainer).toMatch(/auto-enroll|automatically/i);
     expect(explainer).toMatch(/read-only/i);
     expect(explainer).toMatch(/management account|delegated admin/i);
-    expect(explainer).toMatch(/AGENT_BOM_AWS_ORG_INVENTORY/);
-    expect(explainer).toMatch(/management-account role only|management.account role only/i);
-    expect(stackSet.textContent).toContain("AGENT_BOM_AWS_ORG_INVENTORY");
+    expect(explainer).toMatch(/inventory_scope=organization/);
+    expect(explainer).toMatch(/fans out across member accounts/i);
+    expect(stackSet.textContent).toMatch(/inventory_scope=organization|AGENT_BOM_AWS_ORG_INVENTORY/);
     expect(stackSet.textContent).not.toMatch(/enumerates the org and assumes/i);
 
     // The single-account CLI grant script is hidden while in org scope.
@@ -385,6 +386,49 @@ describe("ConnectionsPage — Connect segment", () => {
     // The ExternalId still carries into Details unchanged (management-account role).
     fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
     expect(within(wizard).getByTestId("wizard-external-id-details").textContent!.trim()).toBe(setupId);
+  });
+
+  it("create payload includes inventory_scope=organization when Whole organization selected", async () => {
+    apiMock.createCloudConnection.mockResolvedValue({
+      ...CREATED_RECORD,
+      inventory_scope: "organization",
+    });
+    apiMock.testCloudConnection.mockResolvedValue({
+      schema_version: "cloud.connections.test.v1",
+      connection_id: "conn-1",
+      tenant_id: "tenant-acme",
+      provider: "aws",
+      ok: true,
+      detail: "ok",
+    });
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const wizard = openAwsWizard();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    fireEvent.click(within(wizard).getByRole("button", { name: /Whole organization/i }));
+    const setupId = within(wizard).getByTestId("wizard-external-id").textContent!.trim();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+
+    fireEvent.change(within(wizard).getByPlaceholderText("Production account"), {
+      target: { value: "Org production" },
+    });
+    fireEvent.change(within(wizard).getByPlaceholderText(/arn:aws:iam/), {
+      target: { value: "arn:aws:iam::111111111111:role/agent-bom-readonly" },
+    });
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() =>
+      expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "aws",
+          display_name: "Org production",
+          external_id: setupId,
+          inventory_scope: "organization",
+        }),
+      ),
+    );
   });
 
   it("maps provider-specific GCP fields to role_ref / external_id / auth_params", async () => {
@@ -421,6 +465,7 @@ describe("ConnectionsPage — Connect segment", () => {
         external_id: SECRET,
         regions: [],
         auth_params: { project_id: "proj-123" },
+        inventory_scope: "account",
       }),
     );
 

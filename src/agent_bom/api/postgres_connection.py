@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.api.connection_store import CloudConnectionRecord, _row_to_record
+from agent_bom.api.connection_store import CloudConnectionRecord, _decode_inventory_scope, _row_to_record
 from agent_bom.api.postgres_common import (
     ConnectionPool,
     _ensure_tenant_rls,
@@ -53,7 +53,8 @@ class PostgresConnectionStore:
                     last_scan_id          TEXT,
                     scan_interval_minutes INTEGER,
                     auth_params           TEXT NOT NULL DEFAULT '{}',
-                    last_event_at         TEXT
+                    last_event_at         TEXT,
+                    inventory_scope       TEXT NOT NULL DEFAULT 'account'
                 )
             """)
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_interval_minutes INTEGER")
@@ -62,6 +63,9 @@ class PostgresConnectionStore:
             # the column stays NOT NULL and legacy connections read as no-params.
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auth_params TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS last_event_at TEXT")
+            conn.execute(
+                "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS inventory_scope TEXT NOT NULL DEFAULT 'account'"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -76,8 +80,9 @@ class PostgresConnectionStore:
                 INSERT INTO cloud_connections
                     (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                      regions, status, status_detail, created_at, updated_at, last_scan_at,
-                     last_scan_id, scan_interval_minutes, auth_params, last_event_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     last_scan_id, scan_interval_minutes, auth_params, last_event_at,
+                     inventory_scope)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     provider = EXCLUDED.provider,
                     display_name = EXCLUDED.display_name,
@@ -91,7 +96,8 @@ class PostgresConnectionStore:
                     last_scan_id = EXCLUDED.last_scan_id,
                     scan_interval_minutes = EXCLUDED.scan_interval_minutes,
                     auth_params = EXCLUDED.auth_params,
-                    last_event_at = EXCLUDED.last_event_at
+                    last_event_at = EXCLUDED.last_event_at,
+                    inventory_scope = EXCLUDED.inventory_scope
                 """,
                 (
                     record.id,
@@ -110,6 +116,7 @@ class PostgresConnectionStore:
                     record.scan_interval_minutes,
                     json.dumps(record.auth_params),
                     record.last_event_at,
+                    _decode_inventory_scope(record.inventory_scope),
                 ),
             )
             conn.commit()

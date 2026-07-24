@@ -17,6 +17,7 @@ POSTGRES_STORE_PARITY = VERSIONS_DIR / "20260717_01_postgres_store_parity.py"
 GRAPH_ANALYSIS_STATUS = VERSIONS_DIR / "20260717_02_graph_analysis_status.py"
 GRAPH_SNAPSHOT_JSON_PARITY = VERSIONS_DIR / "20260717_03_graph_snapshot_json_parity.py"
 RUNTIME_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260718_01_runtime_schema_authority.py"
+CLOUD_CONNECTIONS_SCOPE_COLUMNS = VERSIONS_DIR / "20260724_02_cloud_connections_scope_columns.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
@@ -187,6 +188,27 @@ def test_runtime_schema_authority_is_the_alembic_head() -> None:
     assert re.search(r'revision\s*=\s*"20260718_01"', sql)
     assert re.search(r'down_revision\s*=\s*"20260717_03"', sql)
     assert "load_runtime_schema_sql" in sql
+
+
+def test_cloud_connections_scope_columns_migration_is_idempotent_and_chained() -> None:
+    """Existing deployments get the three Connections columns from a revision.
+
+    The corrected runtime-schema.sql only reaches a database that replays
+    20260718_01, i.e. a fresh install. Databases already at head need the
+    additive ALTERs, with types and defaults identical to the store's DDL so
+    both paths converge on one shape.
+    """
+    sql = CLOUD_CONNECTIONS_SCOPE_COLUMNS.read_text()
+    assert re.search(r'revision\s*=\s*"20260724_02"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260724_01"', sql)
+    for column_ddl in (
+        "ADD COLUMN IF NOT EXISTS inventory_scope TEXT NOT NULL DEFAULT 'account'",
+        "ADD COLUMN IF NOT EXISTS scan_mode TEXT NOT NULL DEFAULT 'full'",
+        "ADD COLUMN IF NOT EXISTS auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE",
+    ):
+        assert f"ALTER TABLE IF EXISTS cloud_connections {column_ddl}" in sql
+    assert "VALUES ('cloud_connections', 1, now())" in sql
+    assert "ON CONFLICT(component) DO UPDATE SET" in sql
 
 
 def test_hub_partition_migration_uses_the_psycopg_driver_connection(monkeypatch):

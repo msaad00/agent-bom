@@ -21,9 +21,12 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def reset_postgres_pool():
     from agent_bom.api import postgres_common
+    from agent_bom.cloud.runtime_workload_evidence_store import reset_runtime_workload_evidence_store
 
     postgres_common.reset_pool()
+    reset_runtime_workload_evidence_store()
     yield
+    reset_runtime_workload_evidence_store()
     pool = postgres_common._pool
     if pool is not None:
         pool.close()
@@ -91,6 +94,49 @@ def test_demo_estate_bootstrap_uses_secret_aware_migrated_postgres(monkeypatch):
     assert int(summary.get("findings") or 0) > 0
     jobs = store.list_all(tenant_id="default")
     assert any(job.job_id == summary["job_id"] and job.result and job.result.get("findings") for job in jobs)
+
+
+def test_runtime_workload_evidence_shared_pool_roundtrip_and_rls():
+    from agent_bom.api.postgres_common import _get_pool
+    from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal
+    from agent_bom.cloud.runtime_workload_evidence_store import PostgresRuntimeWorkloadEvidenceStore
+
+    suffix = uuid4().hex
+    tenant_a = f"runtime-a-{suffix}"
+    tenant_b = f"runtime-b-{suffix}"
+
+    def signal(tenant_id: str) -> RuntimeWorkloadSignal:
+        return RuntimeWorkloadSignal(
+            tenant_id=tenant_id,
+            provider="aws",
+            account_id="123456789012",
+            workload_ref="i-shared",
+            signal_type="ioc_detection",
+            severity="high",
+            observed_at="2026-07-24T00:00:00Z",
+            source_id="ci-edr",
+            source_kind="edr",
+            dedup_key="shared-event",
+            title="CI runtime evidence",
+            evidence={"kind": "integration"},
+        )
+
+    store = PostgresRuntimeWorkloadEvidenceStore()
+    assert store.put_batch([signal(tenant_a)]) == 1
+    assert store.put_batch([signal(tenant_b)]) == 1
+    assert [row.tenant_id for row in store.list_for_tenant(tenant_a)] == [tenant_a]
+    assert [row.tenant_id for row in store.list_for_tenant(tenant_b)] == [tenant_b]
+
+    with _get_pool().connection() as connection:
+        marker = connection.execute(
+            "SELECT version FROM control_plane_schema_versions WHERE component = %s",
+            ("runtime_workload_evidence",),
+        ).fetchone()
+        rls = connection.execute(
+            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = 'public.runtime_workload_evidence'::regclass"
+        ).fetchone()
+    assert marker == (1,)
+    assert rls == (True, True)
 
 
 def test_budget_pk_migration_targets_visible_relation_across_search_path():

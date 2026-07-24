@@ -337,7 +337,8 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     assert 'git ls-files --error-unmatch "$legacy_overlay"' in workflow
     assert "docker-compose.demo-override.pretracked." in workflow
     assert 'mv "$legacy_overlay" "$legacy_backup"' in workflow
-    assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index("git fetch --prune --tags origin main")
+    exact_main_fetch = "git fetch --prune --tags origin +refs/heads/main:refs/remotes/origin/main"
+    assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index(exact_main_fetch)
     # Release automation must deploy the exact successful release SHA, never
     # mutable main, and must not race through a second release event trigger.
     assert "git pull --ff-only" not in workflow

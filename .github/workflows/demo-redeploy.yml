@@ -170,7 +170,7 @@ jobs:
 
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
           echo "== resolve exact release ref =="
-          git fetch --prune --tags origin main
+          git fetch --prune --tags origin +refs/heads/main:refs/remotes/origin/main
           TARGET_COMMIT=$(git rev-parse --verify "${RELEASE_REF}^{commit}")
           if ! git merge-base --is-ancestor "$TARGET_COMMIT" origin/main; then
             echo "ERROR: requested release ref is not an ancestor of origin/main." >&2

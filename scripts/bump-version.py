@@ -74,6 +74,11 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
         re.compile(r"(CLI walkthrough</b> — )\d+\.\d+\.\d+( console demo</summary>)"),
         r"\g<1>{v}\g<2>",
     ),
+    (
+        "README.md",
+        re.compile(r"(oci://ghcr\.io/msaad00/charts/agent-bom --version )\d+\.\d+\.\d+"),
+        r"\g<1>{v}",
+    ),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/archive/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),

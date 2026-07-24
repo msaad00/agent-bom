@@ -94,6 +94,33 @@ def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
     assert "Smithery manifest" in readme
 
 
+def test_readme_storefront_keeps_quick_start_deploy_and_version_pins() -> None:
+    """README storefront: visible Quick start + Deploy, honest version, AppSec ≠ GRC."""
+    import re
+    import tomllib
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+    # Top-level sections stay visible (not only buried in <details>).
+    assert re.search(r"^## Quick start\s*$", readme, re.M)
+    assert re.search(r"^## Deploy & self-host\s*$", readme, re.M)
+    assert re.search(r"^## See the product\s*$", readme, re.M)
+
+    # Persona alt text keeps AppSec and GRC as separate lanes.
+    assert "AppSec/GRC" not in readme
+    assert "AppSec / GRC" not in readme
+    assert "AppSec, GRC" in readme
+
+    # Helm OCI pin and CLI walkthrough label match pyproject.
+    assert f"oci://ghcr.io/msaad00/charts/agent-bom --version {version}" in readme
+    assert f"CLI walkthrough</b> — {version} console demo" in readme
+    assert f"msaad00/agent-bom@v{version}" in readme
+
+    # Logo honesty: CLI is text wordmark; UI/demo show the mark.
+    assert "wordmark as text" in readme or "text wordmark" in readme
+
+
 def test_permissions_doc_keeps_network_boundary_scoped() -> None:
     permissions = (ROOT / "docs" / "PERMISSIONS.md").read_text(encoding="utf-8")
 

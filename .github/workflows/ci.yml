@@ -743,7 +743,9 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Observed worst case is ~17.6 minutes on the slowest matrix leg; 25 keeps
+    # real headroom while surfacing a hung suite well before a 35-minute burn.
+    timeout-minutes: 25
     permissions:
       contents: read
     needs: changes
@@ -786,7 +788,7 @@ jobs:
           # Keep PR matrix worker count bounded on hosted runners. `-n auto`
           # can overcommit CPU/RAM enough for GitHub to terminate the runner
           # before pytest prints a failure summary.
-          # 3.11 keeps 4 workers (passes, and fewer would risk the 35-min
+          # 3.11 keeps 4 workers (passes, and fewer would risk the job
           # timeout); 3.13/3.14 drop to 2 so the parallel run's peak RAM stays
           # under the hosted-runner limit (4 heavy interpreters OOM the VM,
           # surfacing as "runner received a shutdown signal" / exit 143).
@@ -799,10 +801,12 @@ jobs:
           else
             PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
           fi
+          # --durations=25 names the slowest tests in the log, so a run that
+          # drifts toward the job timeout comes with its own evidence.
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
+            uv run pytest tests/ -v --tb=short --durations=25 --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
           else
-            uv run pytest tests/ -q --tb=short -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
+            uv run pytest tests/ -q --tb=short --durations=25 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
           fi
 
       - name: Graph accuracy fixture guard (#2259)

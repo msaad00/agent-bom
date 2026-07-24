@@ -1,4 +1,4 @@
-.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
+.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes secrets platform-up fullstack-up event-collector-go-test
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -31,6 +31,9 @@ test:  ## Run unit tests
 lint:  ## Run linters (ruff + mypy)
 	ruff check src/ tests/
 	mypy src/ --ignore-missing-imports --disable-error-code import-untyped
+
+event-collector-go-test:  ## Run Go tests for runtime/event-collector (Phase 1 stub)
+	cd runtime/event-collector && go test ./...
 
 format:  ## Format code with ruff
 	ruff format src/ tests/

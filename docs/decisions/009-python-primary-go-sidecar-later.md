@@ -85,3 +85,11 @@ experimental flag + Helm values stub. Revisit only with stronger evidence
 (pool tuning, multi-replica EKS soak, or a clear SLO miss that Python cannot
 close).
 
+### Next Go candidate
+
+**Event/log collector** (queue poll → normalize → control-plane ingest) is the
+next measured Go migration target. See
+[`docs/design/EVENT_COLLECTOR_CONTRACT.md`](../design/EVENT_COLLECTOR_CONTRACT.md).
+Gateway pure-relay remains a **deferred** experimental path (issue #4427); do
+not promote a Go gateway-relay sidecar until new evidence trips the gate.
+

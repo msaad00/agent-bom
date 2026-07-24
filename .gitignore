@@ -79,3 +79,7 @@ agent-bom-report.json
 
 # Go gateway-relay spike build output
 runtime/gateway-relay/bin/
+# Go runtime worker binaries (local builds; not release artifacts)
+runtime/event-collector/event-collector
+runtime/event-collector/cmd/event-collector/event-collector
+**/event-collector/event-collector

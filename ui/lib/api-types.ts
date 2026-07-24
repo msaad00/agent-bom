@@ -3492,8 +3492,8 @@ export interface CloudConnectionCreateRequest {
 }
 
 export interface CloudConnectionUpdateRequest {
-  /** Recurring read-only scan cadence. Null disables scheduling. */
-  scan_interval_minutes: number | null;
+  /** Recurring read-only scan cadence. Null disables scheduling. Omitted = leave unchanged. */
+  scan_interval_minutes?: number | null;
   /** Optional org fan-out scope for subsequent Connections scans. */
   inventory_scope?: "account" | "organization";
   /** Optional scan cadence mode. */

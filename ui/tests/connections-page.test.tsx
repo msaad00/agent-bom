@@ -262,6 +262,7 @@ describe("ConnectionsPage — Connect segment", () => {
         regions: ["us-east-1"],
         auth_params: {},
         inventory_scope: "account",
+        scan_mode: "full",
         auto_scan_on_create: true,
       }),
     );
@@ -427,6 +428,7 @@ describe("ConnectionsPage — Connect segment", () => {
           display_name: "Org production",
           external_id: setupId,
           inventory_scope: "organization",
+          scan_mode: "full",
           auto_scan_on_create: true,
         }),
       ),
@@ -468,6 +470,7 @@ describe("ConnectionsPage — Connect segment", () => {
         regions: [],
         auth_params: { project_id: "proj-123" },
         inventory_scope: "account",
+        scan_mode: "full",
         auto_scan_on_create: true,
       }),
     );
@@ -514,6 +517,42 @@ describe("ConnectionsPage — Connect segment", () => {
       expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
         expect.objectContaining({
           auto_scan_on_create: true,
+          scan_mode: "full",
+          display_name: "Production account",
+          external_id: setupId,
+        }),
+      ),
+    );
+  });
+
+  it("create payload includes scan_mode=continuous when Continuous is checked", async () => {
+    apiMock.createCloudConnection.mockResolvedValue({
+      ...CREATED_RECORD,
+      scan_mode: "continuous",
+    });
+    apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    const wizard = openAwsWizard();
+    const setupId = fillAwsDetails(wizard);
+
+    const continuous = within(wizard).getByTestId("wizard-scan-mode-continuous");
+    expect(continuous).not.toBeChecked();
+    expect(within(wizard).queryByTestId("wizard-continuous-queue-hint")).toBeNull();
+
+    fireEvent.click(continuous);
+    expect(continuous).toBeChecked();
+    expect(within(wizard).getByTestId("wizard-continuous-queue-hint")).toHaveTextContent(
+      /event queue/i,
+    );
+
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() =>
+      expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scan_mode: "continuous",
           display_name: "Production account",
           external_id: setupId,
         }),
@@ -913,6 +952,42 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
       expect(screen.getByText("Production account scan schedule updated.")).toBeInTheDocument(),
     );
     expect(document.body.textContent).not.toContain(SECRET);
+  });
+
+  it("patches scan_mode from the schedule Continuous checkbox", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [{ ...CREATED_RECORD, status: "active", scan_interval_minutes: 60 }],
+      count: 1,
+      connections_scheduler_enabled: true,
+    });
+    apiMock.updateCloudConnection.mockResolvedValue({
+      ...CREATED_RECORD,
+      status: "active",
+      scan_interval_minutes: 60,
+      scan_mode: "continuous",
+      updated_at: "2026-06-27T02:00:00Z",
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    const continuous = screen.getByTestId("schedule-scan-mode-continuous");
+    expect(continuous).not.toBeChecked();
+    expect(screen.queryByTestId("schedule-continuous-queue-hint")).toBeNull();
+
+    fireEvent.click(continuous);
+
+    await waitFor(() =>
+      expect(apiMock.updateCloudConnection).toHaveBeenCalledWith("conn-1", {
+        scan_mode: "continuous",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Production account scan mode updated.")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("schedule-continuous-queue-hint")).toHaveTextContent(/event queue/i);
   });
 
   it("deletes a connection through the API", async () => {

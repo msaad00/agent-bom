@@ -207,10 +207,43 @@ class TestServerRegister:
             "external_id": SECRET,
             "regions": ["us-east-1"],
             "auth_params": {},
+            "inventory_scope": None,
+            "scan_mode": None,
+            "auto_scan_on_create": None,
         }
         assert client.tested == ["conn-9"]
         assert client.scanned == []
         assert client.closed is True
+
+    def test_register_passes_scope_mode_and_auto_scan_flags(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeClient.instances = []
+        monkeypatch.setattr("agent_bom.client.AgentBomClient", _FakeClient)
+        r = CliRunner().invoke(
+            _main(),
+            [
+                "connect", "aws",
+                "--role-arn", "arn:aws:iam::123456789012:role/ro",
+                "--external-id", SECRET,
+                "--server", "https://cp.example.com",
+                "--api-key", "k-123",
+                "--inventory-scope", "organization",
+                "--scan-mode", "continuous",
+                "--no-auto-scan-on-create",
+            ],
+        )
+        assert r.exit_code == 0, r.output
+        client = _FakeClient.instances[-1]
+        assert client.create_kwargs == {
+            "provider": "aws",
+            "display_name": "Amazon Web Services (read-only)",
+            "role_ref": "arn:aws:iam::123456789012:role/ro",
+            "external_id": SECRET,
+            "regions": [],
+            "auth_params": {},
+            "inventory_scope": "organization",
+            "scan_mode": "continuous",
+            "auto_scan_on_create": False,
+        }
 
     def test_scan_flag_triggers_server_scan(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _FakeClient.instances = []
@@ -255,10 +288,16 @@ class TestSchemaConsistency:
             regions=["us-east-1"],
             auth_params={"k": "v"},
             scan_interval_minutes=60,
+            inventory_scope="organization",
+            scan_mode="continuous",
+            auto_scan_on_create=False,
         )
         assert set(body) <= set(CloudConnectionCreate.model_fields)
         # The body must validate against the API's own request model.
         CloudConnectionCreate(**body)
+        assert body["inventory_scope"] == "organization"
+        assert body["scan_mode"] == "continuous"
+        assert body["auto_scan_on_create"] is False
 
     def test_client_posts_create_body_to_v1_route(self) -> None:
         from agent_bom.api.routes.cloud_connections import CloudConnectionCreate
@@ -285,6 +324,9 @@ class TestSchemaConsistency:
                 role_ref="r",
                 external_id=SECRET,
                 regions=["us-east-1"],
+                inventory_scope="organization",
+                scan_mode="continuous",
+                auto_scan_on_create=False,
             )
         finally:
             client.close()
@@ -293,4 +335,7 @@ class TestSchemaConsistency:
         assert str(captured["url"]).endswith("/v1/cloud/connections")
         body = captured["json"]
         assert body["external_id"] == SECRET
+        assert body["inventory_scope"] == "organization"
+        assert body["scan_mode"] == "continuous"
+        assert body["auto_scan_on_create"] is False
         CloudConnectionCreate(**body)  # type: ignore[arg-type]

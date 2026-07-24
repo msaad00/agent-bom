@@ -41,6 +41,9 @@ def build_connection_create_body(
     regions: Sequence[str] | None = None,
     auth_params: Mapping[str, str] | None = None,
     scan_interval_minutes: int | None = None,
+    inventory_scope: str | None = None,
+    scan_mode: str | None = None,
+    auto_scan_on_create: bool | None = None,
 ) -> dict[str, Any]:
     """Build the ``CloudConnectionCreate`` request body (API-schema field names).
 
@@ -61,6 +64,12 @@ def build_connection_create_body(
         body["auth_params"] = {str(k): str(v) for k, v in auth_params.items()}
     if scan_interval_minutes is not None:
         body["scan_interval_minutes"] = scan_interval_minutes
+    if inventory_scope is not None:
+        body["inventory_scope"] = inventory_scope
+    if scan_mode is not None:
+        body["scan_mode"] = scan_mode
+    if auto_scan_on_create is not None:
+        body["auto_scan_on_create"] = bool(auto_scan_on_create)
     return body
 
 

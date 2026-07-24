@@ -14,8 +14,7 @@ import (
 	"github.com/msaad00/agent-bom/runtime/event-collector/internal/normalize"
 )
 
-// IngestPath is the intended Phase 2 control-plane route.
-// Until that route ships, callers may observe HTTP 404 — that is expected in Phase 1.
+// IngestPath is the control-plane route for posture change-event batches.
 const IngestPath = "/v1/cloud/connections/events/ingest"
 
 // Batch is the JSON body for ingest.
@@ -40,8 +39,7 @@ func NewClient(controlPlaneURL, apiKey string) *Client {
 }
 
 // ForwardBatch POSTs events to the control plane ingest path.
-// Phase 1: a 404 means the OpenAPI route is not shipped yet — callers should
-// treat that as "not ready", not as a successful drop.
+// Non-2xx (including 404) and transport errors fail closed so callers can redrive.
 func (c *Client) ForwardBatch(ctx context.Context, events []*normalize.CloudChangeEvent) error {
 	if c == nil || c.ControlPlaneURL == "" {
 		return fmt.Errorf("forward: control-plane URL is required")
@@ -68,9 +66,6 @@ func (c *Client) ForwardBatch(ctx context.Context, events []*normalize.CloudChan
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("forward: ingest path not found (Phase 2 route pending): %s returned 404: %s", IngestPath, strings.TrimSpace(string(respBody)))
-	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("forward: control plane returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}

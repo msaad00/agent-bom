@@ -1,7 +1,7 @@
 # Design: event/log collector contract (posture change events)
 
-**Status:** Phase 1 foundation (Go stub + contract). Control-plane ingest
-route and Helm Deployment land in **Phase 2**.
+**Status:** Phase 2 — control-plane ingest route shipped; Go forward wired;
+Helm Deployment gated by `eventCollector.enabled` (default false).
 
 **Relates to:** [ADR-009](../decisions/009-python-primary-go-sidecar-later.md)
 (Python-primary; optional Go sidecar for proven hot paths).
@@ -17,7 +17,7 @@ SQS / queue poll  →  normalize (CloudTrail / EventBridge)  →  POST batch to 
 
 | Lane | Path / owner | Purpose |
 |------|----------------|---------|
-| Posture change events (this contract) | Go collector → `POST /v1/cloud/connections/events/ingest` (Phase 2) | Queue-driven resource-change signals for scoped CIS re-eval |
+| Posture change events (this contract) | Go collector → `POST /v1/cloud/connections/events/ingest` | Queue-driven resource-change signals for scoped CIS re-eval |
 | Runtime evidence (separate) | `POST /v1/cloud/runtime-evidence/ingest` | CWPP / EDR workload signals (metadata only) |
 
 Do not merge these lanes. The collector never writes CIS findings itself.
@@ -32,7 +32,7 @@ Do not merge these lanes. The collector never writes CIS findings itself.
 | `dispatch_change_event`, connection broker, CIS subset, persist | **Python** control plane |
 | Auth, tenant, RBAC, account-bound fail-closed checks | **Python** (on ingest) |
 
-## Intended control-plane path (Phase 2 — not in OpenAPI yet)
+## Control-plane path
 
 ```http
 POST {control-plane}/v1/cloud/connections/events/ingest
@@ -55,21 +55,22 @@ Content-Type: application/json
 }
 ```
 
-Until Phase 2 lands the route, the Go forwarder may receive **HTTP 404**. That is
-expected for Phase 1; operators should run `--mode stub` (no AWS calls, no
-forward required for CI) and rely on `go test` for normalize coverage.
+Auth-by-default (`scan` permission). Each event is matched to a tenant connection
+by provider + account (from `role_ref`); unmatched accounts are skipped
+fail-closed. Dispatch errors are sanitized in the response.
 
-## Go binary surfaces (Phase 1)
+## Go binary surfaces
 
 - Module: `github.com/msaad00/agent-bom/runtime/event-collector`
 - Listen: `--listen :8092` (default)
 - Flags: `--control-plane-url`, `--api-key-file`, `--mode stub|sqs`
 - `GET /healthz` — liveness
-- Dev helper (optional): `POST /v1/normalize/cloudtrail` — body = EventBridge /
+- Dev helper: `POST /v1/normalize/cloudtrail` — body = EventBridge /
   CloudTrail JSON; response = normalized `CloudChangeEvent` or 400
-- `--mode stub`: no AWS SDK calls; process serves health/normalize only
-- `--mode sqs`: reserved for Phase 2+ (bounded poll); Phase 1 may refuse or no-op
-  with a clear log line
+- Dev helper: `POST /v1/forward/cloudtrail` — normalize then POST to
+  `{control-plane-url}/v1/cloud/connections/events/ingest`
+- `--mode stub`: no AWS SDK calls; process serves health/normalize/forward
+- `--mode sqs`: reserved for bounded poll (not wired yet); forward helpers work
 
 ## Fail-open / fail-closed
 
@@ -85,8 +86,6 @@ forward required for CI) and rely on `go test` for normalize coverage.
 - No cloud inventory rewrite into Go.
 - No Azure / GCP collectors in Phase 1.
 - No moving CIS evaluation into Go.
-- No OpenAPI route in Phase 1 (avoids `make preflight` churn).
-- **Helm Deployment in Phase 2** — Phase 1 may leave a commented values stub only.
 
 ## Verification
 
@@ -98,5 +97,6 @@ make event-collector-go-test
 ## Code
 
 - Go: [`runtime/event-collector/`](../../runtime/event-collector/)
+- Helm: `eventCollector.*` in [`deploy/helm/agent-bom/values.yaml`](../../deploy/helm/agent-bom/values.yaml)
 - Python reference normalize / dispatch:
   [`src/agent_bom/cloud/event_ingest.py`](../../src/agent_bom/cloud/event_ingest.py)

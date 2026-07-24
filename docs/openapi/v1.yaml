@@ -881,18 +881,77 @@ components:
       - verified_at
       title: CampaignVerificationResponse
       type: object
+    CloudChangeEventIngestItem:
+      additionalProperties: false
+      description: "One normalized posture-change event (event-collector \u2192 control\
+        \ plane)."
+      properties:
+        account:
+          maxLength: 128
+          minLength: 1
+          title: Account
+          type: string
+        action:
+          maxLength: 256
+          minLength: 1
+          title: Action
+          type: string
+        arn:
+          default: ''
+          maxLength: 2048
+          title: Arn
+          type: string
+        provider:
+          maxLength: 64
+          minLength: 1
+          title: Provider
+          type: string
+        raw:
+          additionalProperties: true
+          title: Raw
+          type: object
+        region:
+          default: ''
+          maxLength: 64
+          title: Region
+          type: string
+        resource_id:
+          maxLength: 512
+          minLength: 1
+          title: Resource Id
+          type: string
+        resource_type:
+          maxLength: 64
+          minLength: 1
+          title: Resource Type
+          type: string
+      required:
+      - provider
+      - account
+      - resource_type
+      - resource_id
+      - action
+      title: CloudChangeEventIngestItem
+      type: object
     CloudConnectionCreate:
       additionalProperties: false
       description: "Request body for creating a connection. ``external_id`` is write-only.\n\
         \n``scan_interval_minutes`` opts the connection into recurring background\
         \ scans\n(Phase B.2). Null (the default) means manual-only \u2014 the scheduler\
-        \ ignores it."
+        \ ignores it.\n``scan_mode`` is ``full`` (default) or ``continuous``; continuous\
+        \ drains\nprovider event queues on each scheduler tick when a queue env is\
+        \ set.\n``auto_scan_on_create`` defaults true and runs the brokered scan path\
+        \ after\npersist (failure marks ``error``; the row is kept)."
       properties:
         auth_params:
           additionalProperties:
             type: string
           title: Auth Params
           type: object
+        auto_scan_on_create:
+          default: true
+          title: Auto Scan On Create
+          type: boolean
         display_name:
           maxLength: 200
           minLength: 1
@@ -925,6 +984,10 @@ components:
           - type: integer
           - type: 'null'
           title: Scan Interval Minutes
+        scan_mode:
+          default: full
+          title: Scan Mode
+          type: string
       required:
       - provider
       - display_name
@@ -939,10 +1002,15 @@ components:
 
         ``scan_interval_minutes`` is set to the supplied value; null disables the
 
-        recurring scan (back to manual-only). Optional ``inventory_scope`` updates
+        recurring scan (back to manual-only). Optional ``inventory_scope``,
 
-        org fan-out for subsequent scans.'
+        ``scan_mode``, and ``auto_scan_on_create`` update when provided.'
       properties:
+        auto_scan_on_create:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Auto Scan On Create
         inventory_scope:
           anyOf:
           - type: string
@@ -953,7 +1021,27 @@ components:
           - type: integer
           - type: 'null'
           title: Scan Interval Minutes
+        scan_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scan Mode
       title: CloudConnectionUpdate
+      type: object
+    CloudConnectionsEventsIngestRequest:
+      additionalProperties: false
+      description: Batch body for ``POST /v1/cloud/connections/events/ingest``.
+      properties:
+        events:
+          items:
+            $ref: '#/components/schemas/CloudChangeEventIngestItem'
+          maxItems: 100
+          minItems: 1
+          title: Events
+          type: array
+      required:
+      - events
+      title: CloudConnectionsEventsIngestRequest
       type: object
     ClusterPostureRequest:
       additionalProperties: false
@@ -2317,6 +2405,10 @@ components:
             type: string
           title: Configured Auth Modes
           type: array
+        connections_scheduler_enabled:
+          default: false
+          title: Connections Scheduler Enabled
+          type: boolean
         entitlements:
           $ref: '#/components/schemas/EntitlementHealth'
         status:
@@ -6192,14 +6284,13 @@ paths:
       tags:
       - cloud-connections
     post:
-      description: 'Create a read-only cloud connection for the authenticated tenant.
-
-
-        The ``external_id`` secret is encrypted at rest before persistence and is
-
-        never echoed back. If no encryption key is configured the request fails
-
-        closed with 503 rather than storing the secret in plaintext.'
+      description: "Create a read-only cloud connection for the authenticated tenant.\n\
+        \nThe ``external_id`` secret is encrypted at rest before persistence and is\n\
+        never echoed back. If no encryption key is configured the request fails\n\
+        closed with 503 rather than storing the secret in plaintext. When\n``auto_scan_on_create``\
+        \ is true (the default), the same brokered scan path\nas ``POST \u2026/scan``\
+        \ runs after persist; scan failure marks the connection\n``error`` with a\
+        \ sanitized detail but does not roll back the create."
       operationId: create_connection_v1_cloud_connections_post
       parameters:
       - in: header
@@ -6248,6 +6339,64 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Create Connection
+      tags:
+      - cloud-connections
+  /v1/cloud/connections/events/ingest:
+    post:
+      description: "Accept a batch of normalized cloud change events from the event\
+        \ collector.\n\nAuth-by-default (``scan`` permission). Each event is matched\
+        \ to a tenant\nconnection by provider + account (from ``role_ref``); unmatched\
+        \ accounts are\nskipped fail-closed (no confused-deputy scan). Heavy dispatch\
+        \ runs off the\nevent loop. Errors are sanitized \u2014 never returned raw."
+      operationId: ingest_connection_events_v1_cloud_connections_events_ingest_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloudConnectionsEventsIngestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Ingest Connection Events V1 Cloud Connections Events
+                  Ingest Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Ingest Connection Events
       tags:
       - cloud-connections
   /v1/cloud/connections/{connection_id}:

@@ -61,6 +61,10 @@ spec:
           env:
             - name: AGENT_BOM_CONTROL_PLANE_REPLICAS
               value: {{ $apiReplicaFloor | quote }}
+            {{- if .Values.controlPlane.connectionsScheduler.enabled }}
+            - name: AGENT_BOM_CONNECTIONS_SCHEDULER
+              value: "1"
+            {{- end }}
           {{- with .Values.controlPlane.api.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}

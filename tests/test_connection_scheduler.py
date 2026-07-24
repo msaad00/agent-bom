@@ -23,11 +23,14 @@ from agent_bom.api import connection_crypto
 from agent_bom.api.connection_scheduler import (
     claim_due_connections,
     connections_scheduler_enabled,
+    drain_continuous_events,
     is_due,
     run_due_scans_once,
     select_due_connections,
 )
 from agent_bom.api.connection_store import (
+    SCAN_MODE_CONTINUOUS,
+    SCAN_MODE_FULL,
     STATUS_ACTIVE,
     STATUS_ERROR,
     STATUS_PENDING,
@@ -72,6 +75,7 @@ def _record(
     scan_interval_minutes: int | None = 60,
     last_scan_at: str | None = None,
     status: str = STATUS_PENDING,
+    scan_mode: str = SCAN_MODE_FULL,
 ) -> CloudConnectionRecord:
     return CloudConnectionRecord(
         id=str(uuid.uuid4()),
@@ -86,6 +90,7 @@ def _record(
         updated_at="2026-06-26T00:00:00+00:00",
         last_scan_at=last_scan_at,
         scan_interval_minutes=scan_interval_minutes,
+        scan_mode=scan_mode,
     )
 
 
@@ -350,3 +355,141 @@ def test_scheduler_enabled_when_flag_truthy(value: str) -> None:
 def test_scheduler_disabled_when_flag_falsy(value: str) -> None:
     os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = value
     assert connections_scheduler_enabled() is False
+
+
+# --------------------------------------------------------------------------- #
+# Continuous event drain (before due full scans)
+# --------------------------------------------------------------------------- #
+
+
+def test_drain_continuous_events_invokes_provider_consume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Continuous + provider queue env → consume_* once; last_scan_at untouched."""
+    from agent_bom.api.connection_store import get_connection_store
+
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+    consumed: list[str] = []
+
+    def _fake_consume(record: CloudConnectionRecord, **kwargs: Any) -> dict[str, Any]:
+        consumed.append(record.id)
+        # Mimic event_ingest: stamp last_event_at only.
+        fresh = get_connection_store().get(record.tenant_id, record.id)
+        assert fresh is not None
+        fresh.last_event_at = "2026-07-24T12:00:00+00:00"
+        get_connection_store().put(fresh)
+        return {"status": "ok", "processed": 1}
+
+    monkeypatch.setattr("agent_bom.cloud.event_ingest.consume_aws_events", _fake_consume)
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    continuous = _record(
+        scan_mode=SCAN_MODE_CONTINUOUS,
+        scan_interval_minutes=60,
+        last_scan_at=(_now() - timedelta(minutes=5)).isoformat(),
+    )
+    store.put(continuous)
+    prior_last_scan = continuous.last_scan_at
+
+    count = drain_continuous_events(store)
+    assert count == 1
+    assert consumed == [continuous.id]
+    fetched = store.get(continuous.tenant_id, continuous.id)
+    assert fetched is not None
+    assert fetched.last_event_at == "2026-07-24T12:00:00+00:00"
+    # Full-scan cadence untouched by event drain.
+    assert fetched.last_scan_at == prior_last_scan
+
+
+def test_drain_continuous_events_scheduler_off_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    os.environ.pop("AGENT_BOM_CONNECTIONS_SCHEDULER", None)
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+    consumed: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.cloud.event_ingest.consume_aws_events",
+        lambda record, **k: consumed.append(record.id) or {"status": "ok"},
+    )
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(_record(scan_mode=SCAN_MODE_CONTINUOUS))
+
+    assert drain_continuous_events(store) == 0
+    assert consumed == []
+
+
+def test_drain_continuous_events_full_mode_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+    consumed: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.cloud.event_ingest.consume_aws_events",
+        lambda record, **k: consumed.append(record.id) or {"status": "ok"},
+    )
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(_record(scan_mode=SCAN_MODE_FULL))
+
+    assert drain_continuous_events(store) == 0
+    assert consumed == []
+
+
+def test_drain_continuous_events_skips_without_provider_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ.pop("AGENT_BOM_AWS_EVENT_QUEUE_URL", None)
+    consumed: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.cloud.event_ingest.consume_aws_events",
+        lambda record, **k: consumed.append(record.id) or {"status": "ok"},
+    )
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    store.put(_record(scan_mode=SCAN_MODE_CONTINUOUS))
+
+    assert drain_continuous_events(store) == 0
+    assert consumed == []
+
+
+@pytest.mark.asyncio
+async def test_run_once_drains_continuous_before_due_full_scans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each tick drains continuous events first, then claims due full scans."""
+    os.environ["AGENT_BOM_CONNECTIONS_SCHEDULER"] = "1"
+    os.environ["AGENT_BOM_AWS_EVENT_QUEUE_URL"] = "https://sqs.example/queue"
+    order: list[str] = []
+
+    def _fake_consume(record: CloudConnectionRecord, **kwargs: Any) -> dict[str, Any]:
+        order.append(f"drain:{record.id}")
+        return {"status": "ok", "processed": 0}
+
+    monkeypatch.setattr("agent_bom.cloud.event_ingest.consume_aws_events", _fake_consume)
+    calls = _install_scan_mocks(monkeypatch)
+    # Wrap scan so we can assert ordering vs drain.
+    from agent_bom.api import connection_scheduler as sched
+
+    real_execute = sched.execute_connection_scan
+
+    def _tracked_execute(record: CloudConnectionRecord) -> bool:
+        order.append(f"scan:{record.id}")
+        return real_execute(record)
+
+    monkeypatch.setattr(sched, "execute_connection_scan", _tracked_execute)
+
+    store = InMemoryConnectionStore()
+    set_connection_store(store)
+    continuous_due = _record(
+        scan_mode=SCAN_MODE_CONTINUOUS,
+        scan_interval_minutes=60,
+        last_scan_at=None,
+    )
+    store.put(continuous_due)
+
+    count = await run_due_scans_once(store, _now())
+    assert count == 1
+    assert order[0] == f"drain:{continuous_due.id}"
+    assert order[1] == f"scan:{continuous_due.id}"
+    assert calls["scanned_ids"] == [continuous_due.id]

@@ -117,7 +117,12 @@ AGENT_BOM_CONNECTIONS_KEY_PROVIDER
 AGENT_BOM_CONNECTIONS_KEY_REF
 # HashiCorp Vault token for provider=vault, sent as the X-Vault-Token header on the read-only KV v2 GET; secret, env/reference-only, never logged.
 AGENT_BOM_VAULT_TOKEN
-# opt-in flag (default OFF) enabling the background loop that re-scans due cloud connections (Phase B.2); read live in api/connection_scheduler.py
+# opt-in flag (default OFF) enabling the background loop that re-scans due cloud
+# connections (Phase B.2); read live in api/connection_scheduler.py. Helm:
+# controlPlane.connectionsScheduler.enabled injects AGENT_BOM_CONNECTIONS_SCHEDULER=1.
+# Cadence requires BOTH this flag and a per-connection scan_interval_minutes.
+# scan_mode=continuous additionally needs a provider event queue for mid-interval
+# refresh; event drain is not wired until a follow-up change.
 AGENT_BOM_CONNECTIONS_SCHEDULER
 # opt-in flag (default OFF) enabling the scheduled findings-export loop (#4040); read live in api/export_scheduler.py
 AGENT_BOM_EXPORT_SCHEDULER

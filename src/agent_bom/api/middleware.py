@@ -1965,6 +1965,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     _WRITE_RATE_LIMIT_PATHS = frozenset(
         {
             "/v1/cloud/runtime-evidence/ingest",
+            "/v1/cloud/connections/events/ingest",
         }
     )
 

@@ -1079,7 +1079,6 @@ async def _default_upstream_caller(
     import httpx
 
     from agent_bom.runtime.egress_transport import build_pinned_async_client
-
     from agent_bom.runtime.gateway_relay_contract import gateway_relay_backend
 
     allow_private = True if gateway_relay_backend() == "go" else upstream.private_network_approved

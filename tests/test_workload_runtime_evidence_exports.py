@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from agent_bom.cloud.runtime_workload_evidence import (
@@ -127,6 +128,15 @@ def test_optional_enrichment_failure_does_not_suppress_core_findings(caplog) -> 
             del tenant_id, limit
             raise RuntimeError("postgresql://agent_bom_app:secret-value@db.internal/agent_bom unavailable")
 
+    # Pin capture to the emitting logger. Under xdist worksteal, an earlier test
+    # (e.g. setup_logging(level="ERROR")) can leave the agent_bom logger tree at
+    # ERROR+, which filters this WARNING and empties caplog.text — the Python
+    # 3.14 main failure mode for this assertion.
+    evidence_logger = logging.getLogger("agent_bom.cloud.runtime_workload_evidence")
+    prev_propagate = evidence_logger.propagate
+    evidence_logger.propagate = True
+    caplog.set_level(logging.WARNING, logger="agent_bom.cloud.runtime_workload_evidence")
+
     set_runtime_workload_evidence_store(UnavailableStore())  # type: ignore[arg-type]
     try:
         finding = _workload_finding()
@@ -138,6 +148,7 @@ def test_optional_enrichment_failure_does_not_suppress_core_findings(caplog) -> 
         assert "optional runtime workload evidence enrichment unavailable" in caplog.text
         assert "secret-value" not in caplog.text
     finally:
+        evidence_logger.propagate = prev_propagate
         set_runtime_workload_evidence_store(None)
 
 

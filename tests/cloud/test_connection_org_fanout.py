@@ -73,15 +73,79 @@ def _aws_record(*, inventory_scope: str = "account", auth_params: dict[str, Any]
     )
 
 
-def test_connection_org_fanout_enabled_from_column_and_auth_params() -> None:
+def test_connection_org_fanout_enabled_reads_the_column() -> None:
     assert connection_org_fanout_enabled(_aws_record(inventory_scope="account")) is False
     assert connection_org_fanout_enabled(_aws_record(inventory_scope="organization")) is True
-    assert (
-        connection_org_fanout_enabled(
-            _aws_record(inventory_scope="account", auth_params={"inventory_scope": "organization"})
-        )
-        is True
+
+
+def test_legacy_auth_params_scope_is_promoted_into_the_column_once() -> None:
+    """A pre-column row keeps its org intent, but as column state — not a shadow."""
+    record = _aws_record(inventory_scope="account", auth_params={"inventory_scope": "organization"})
+
+    assert record.inventory_scope == "organization"
+    assert "inventory_scope" not in record.auth_params
+    assert connection_org_fanout_enabled(record) is True
+
+    # Once promoted the column is the only switch: turning it off turns fan-out off.
+    record.inventory_scope = "account"
+    assert connection_org_fanout_enabled(record) is False
+
+
+def test_patch_to_account_scope_turns_org_fanout_off_end_to_end() -> None:
+    """Create carrying a legacy ``auth_params`` scope, then PATCH it back to account.
+
+    Regression for the blast-radius disagreement: the API body, the stored
+    column, ``connection_org_fanout_enabled`` (what the scan actually does), and
+    the UI chip must all report the same scope after the update.
+    """
+    from agent_bom.api.connection_store import get_connection_store
+    from agent_bom.api.server import app
+
+    client = TestClient(app)
+    headers = {
+        "X-Agent-Bom-Role": "admin",
+        "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+        "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+    }
+    created = client.post(
+        "/v1/cloud/connections",
+        headers=headers,
+        json={
+            "provider": "aws",
+            "display_name": "Legacy org mgmt",
+            "role_ref": "arn:aws:iam::111111111111:role/agent-bom-readonly",
+            "external_id": "ext-legacy-scope",
+            "regions": ["us-east-1"],
+            "auth_params": {"inventory_scope": "organization"},
+            "auto_scan_on_create": False,
+        },
     )
+    assert created.status_code in (200, 201), created.text
+    body = created.json()
+    connection_id = body["id"]
+    # The response must not claim "account" while the scan fans the whole org.
+    assert body["inventory_scope"] == "organization"
+    assert "inventory_scope" not in body["auth_params"]
+
+    store = get_connection_store()
+    stored = store.get("tenant-alpha", connection_id)
+    assert stored is not None
+    assert stored.inventory_scope == "organization"
+    assert connection_org_fanout_enabled(stored) is True
+
+    patched = client.patch(
+        f"/v1/cloud/connections/{connection_id}",
+        headers=headers,
+        json={"inventory_scope": "account"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["inventory_scope"] == "account"
+
+    after = store.get("tenant-alpha", connection_id)
+    assert after is not None
+    assert after.inventory_scope == "account"
+    assert after.auth_params.get("inventory_scope") is None
+    assert connection_org_fanout_enabled(after) is False
 
 
 def test_aws_org_connection_scan_calls_discover_all_with_session(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -195,6 +259,75 @@ def test_create_api_accepts_inventory_scope() -> None:
     assert resp.status_code in (200, 201), resp.text
     body = resp.json()
     assert body["inventory_scope"] == "organization"
+
+
+def test_create_body_scope_wins_over_a_legacy_auth_params_scope() -> None:
+    """An explicit ``account`` request is never widened by the legacy blob."""
+    from agent_bom.api.server import app
+
+    client = TestClient(app)
+    headers = {
+        "X-Agent-Bom-Role": "admin",
+        "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+        "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+    }
+
+    def _create(payload: dict[str, Any]) -> dict[str, Any]:
+        resp = client.post("/v1/cloud/connections", headers=headers, json=payload)
+        assert resp.status_code in (200, 201), resp.text
+        body: dict[str, Any] = resp.json()
+        return body
+
+    base = {
+        "provider": "aws",
+        "display_name": "Explicit account scope",
+        "role_ref": "arn:aws:iam::111111111111:role/agent-bom-readonly",
+        "external_id": "ext-explicit-scope",
+        "regions": ["us-east-1"],
+        "auto_scan_on_create": False,
+    }
+    explicit = _create({**base, "inventory_scope": "account", "auth_params": {"inventory_scope": "organization"}})
+    assert explicit["inventory_scope"] == "account"
+    assert "inventory_scope" not in explicit["auth_params"]
+
+    # An unparseable legacy scope narrows to the default instead of widening.
+    unknown = _create({**base, "auth_params": {"inventory_scope": "whole-org"}})
+    assert unknown["inventory_scope"] == "account"
+    assert "inventory_scope" not in unknown["auth_params"]
+
+
+def _member_payload(account_id: str) -> dict[str, Any]:
+    return {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": account_id,
+        "buckets": [{"name": f"bucket-{account_id}"}],
+        "roles": [{"name": f"role-{account_id}"}],
+        "warnings": [],
+    }
+
+
+def test_annotate_inventory_counts_covers_single_account_and_org_fanout() -> None:
+    """Org fan-out persists a list of per-account payloads, not one dict.
+
+    The scan-result panel sums ``resource_count`` / ``identity_count`` per
+    account, so an unannotated list collapses every count to zero.
+    """
+    single = _member_payload("111111111111")
+    routes._annotate_inventory_counts(single)
+    assert single["resource_count"] == 1
+    assert single["identity_count"] == 1
+
+    fanout = [_member_payload("111111111111"), _member_payload("222222222222")]
+    routes._annotate_inventory_counts(fanout)
+    assert [item["resource_count"] for item in fanout] == [1, 1]
+    assert [item["identity_count"] for item in fanout] == [1, 1]
+    assert all(isinstance(item["node_summary"], dict) for item in fanout)
+
+    # Non-payload shapes stay untouched rather than raising.
+    mixed: list[Any] = ["not-a-payload", None]
+    routes._annotate_inventory_counts(mixed)
+    assert mixed == ["not-a-payload", None]
 
 
 def test_discover_organization_accepts_session() -> None:

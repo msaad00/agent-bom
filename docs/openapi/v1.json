@@ -1331,9 +1331,15 @@
             "type": "string"
           },
           "inventory_scope": {
-            "default": "account",
-            "title": "Inventory Scope",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inventory Scope"
           },
           "provider": {
             "title": "Provider",

@@ -52,7 +52,11 @@ chart values map to those CLI flags:
 `scanner.cloud.gcp.allProjects` → `AGENT_BOM_GCP_ALL_PROJECTS` (optional
 `maxAccounts` / `maxSubscriptions` / `maxProjects` cap the run). Connections org
 gate = the row's `inventory_scope=organization`; Helm `orgInventory` never
-flips that row. Control-plane
+flips that row. That column is the **only** switch: `PATCH
+{"inventory_scope":"account"}` turns fan-out off, and a legacy row that carried
+the scope under `auth_params` is promoted into the column on read (the
+`auth_params` key is dropped) so the API, the stored row, the scan, and the UI
+scope chip always report the same blast radius. Control-plane
 `tenant_id` is the agent-bom tenancy key — it is
 **not** an Azure AD tenant or AWS account ID; one CP tenant can own many
 connections. Recurring connection scans need both scheduler opt-in
@@ -89,9 +93,11 @@ End-to-end for one org-scoped AWS connection that keeps evaluating:
 5. **Helm scheduler** — `--set controlPlane.connectionsScheduler.enabled=true`
    (injects `AGENT_BOM_CONNECTIONS_SCHEDULER=1` on the API). Pilot compose leaves
    this off; set the env explicitly if you want recurrence locally.
-6. **Continuous + queue** — for mid-interval event drain, keep
-   `scan_mode=continuous` and set the provider queue/subscription env on the
-   API (`AGENT_BOM_AWS_EVENT_QUEUE_URL` / Azure / GCP equivalents). Drain stamps
+6. **Continuous + queue** — mid-interval event drain needs **both** gates:
+   `AGENT_BOM_CONNECTIONS_SCHEDULER=1` from step 5 (the drain is a scheduler
+   tick and no-ops without it, even with a queue configured) **and** the
+   provider queue/subscription env on the API (`AGENT_BOM_AWS_EVENT_QUEUE_URL` /
+   Azure / GCP equivalents) with `scan_mode=continuous`. Drain stamps
    `last_event_at`; full inventory still follows the due-scan claim path.
 
 Do **not** set `scanner.cloud.aws.orgInventory` unless you also want the

@@ -1,7 +1,9 @@
 # Design: event/log collector contract (posture change events)
 
-**Status:** Phase 2 — control-plane ingest route shipped; Go forward wired;
-Helm Deployment gated by `eventCollector.enabled` (default false).
+**Status:** Phase 2 — control-plane ingest route shipped; Go forward wired.
+The Helm Deployment is gated by both `eventCollector.enabled` and
+`eventCollector.image.repository`, and both are empty/false by default, so a
+stock install renders no collector objects.
 
 **Relates to:** [ADR-009](../decisions/009-python-primary-go-sidecar-later.md)
 (Python-primary; optional Go sidecar for proven hot paths).
@@ -29,8 +31,9 @@ Do not merge these lanes. The collector never writes CIS findings itself.
 | Bounded queue poll loop (SQS later; stub mode today) | **Go** `runtime/event-collector` |
 | Minimal CloudTrail / EventBridge → `CloudChangeEvent` normalize | **Go** (parity with `parse_cloudtrail_event`) |
 | Forward batch to control plane (`Authorization: Bearer …`) | **Go** |
+| Inbound auth on the collector's own HTTP surface | **Go** (see [Inbound auth](#inbound-auth)) |
 | `dispatch_change_event`, connection broker, CIS subset, persist | **Python** control plane |
-| Auth, tenant, RBAC, account-bound fail-closed checks | **Python** (on ingest) |
+| Tenant, RBAC, account-bound fail-closed checks | **Python** (on ingest) |
 
 ## Control-plane path
 
@@ -62,23 +65,63 @@ fail-closed. Dispatch errors are sanitized in the response.
 ## Go binary surfaces
 
 - Module: `github.com/msaad00/agent-bom/runtime/event-collector`
-- Listen: `--listen :8092` (default)
-- Flags: `--control-plane-url`, `--api-key-file`, `--mode stub|sqs`
-- `GET /healthz` — liveness
+- Listen: `--listen 127.0.0.1:8092` (default) — loopback only; binding a
+  routable address is an explicit operator decision
+- Flags: `--control-plane-url`, `--api-key-file`, `--inbound-token-file`,
+  `--enable-dev-endpoints`, `--mode stub|sqs`
+- `GET /healthz` — liveness; unauthenticated so a kubelet probe works, and it
+  returns only `status` and `mode`
 - Dev helper: `POST /v1/normalize/cloudtrail` — body = EventBridge /
   CloudTrail JSON; response = normalized `CloudChangeEvent` or 400
 - Dev helper: `POST /v1/forward/cloudtrail` — normalize then POST to
   `{control-plane-url}/v1/cloud/connections/events/ingest`
-- `--mode stub`: no AWS SDK calls; process serves health/normalize/forward
-- `--mode sqs`: reserved for bounded poll (not wired yet); forward helpers work
+- Both `/v1` helpers are **off by default**. They are served only with
+  `--enable-dev-endpoints` **and** `--inbound-token-file`, and each request
+  must carry that token (see [Inbound auth](#inbound-auth)).
+- `--mode stub`: no AWS SDK calls; process serves health, plus the `/v1`
+  helpers when they are explicitly enabled
+- `--mode sqs`: reserved for bounded poll (not wired yet). The queue lane —
+  not the `/v1` helpers — is the intended production path
+
+## Inbound auth
+
+The collector holds a control-plane API key with `scan` permission and attaches
+it to everything it forwards. Any caller able to reach a `/v1` helper therefore
+borrows that credential, so the helpers carry their own authentication:
+
+- Callers must send `Authorization: Bearer <token>` matching the contents of
+  `--inbound-token-file`. The comparison is constant-time over SHA-256 digests.
+- A failed check returns **401 with an empty body** — no detail about the
+  collector's configuration, and no forward is attempted.
+- The inbound token is a **separate secret from `--api-key-file`**. Startup
+  fails if the two flags name the same file or resolve to the same value; an
+  ingress credential equal to the egress credential means learning one yields
+  the other.
+
+### Fail-closed rules
+
+| Condition | Behavior |
+|-----------|----------|
+| `--enable-dev-endpoints` not set | `/v1` routes are not registered → 404 |
+| `--enable-dev-endpoints` set, no `--inbound-token-file` | Startup fails; the process refuses to serve |
+| `--inbound-token-file` present but empty | Startup fails |
+| Inbound token equals the egress API key | Startup fails |
+| Wrong / missing / non-Bearer credential | 401, empty body, no forward |
+
+Inbound auth is defense in depth, not a substitute for network isolation. When
+the collector is deployed on a routable address (a Kubernetes pod IP, where the
+kubelet must reach `/healthz`), pair it with a NetworkPolicy that admits only
+the intended producer.
 
 ## Fail-open / fail-closed
 
 | Layer | Default | Notes |
 |-------|---------|-------|
+| Collector `/v1` surface | fail-closed | Off unless `--enable-dev-endpoints` **and** `--inbound-token-file`; unauthenticated callers get 401 and no forward |
+| Listen address | fail-closed | Loopback by default; exposing it is explicit |
 | Normalize | fail-closed | Malformed / unsupported service → skip (no crash) |
 | Forward | fail-closed on non-2xx / transport error | Leave message for redelivery when SQS lands; stub has nothing to redrive |
-| Account / tenant binding | Python on ingest | Collector does not broaden trust |
+| Account / tenant binding | Python on ingest | Collector does not broaden trust: reaching it requires its own credential, and the control plane still re-derives tenant from auth and rejects events whose account does not match the connection's `role_ref` |
 
 ## Non-goals
 
@@ -92,6 +135,25 @@ fail-closed. Dispatch errors are sanitized in the response.
 ```bash
 make event-collector-go-test
 # equivalent: cd runtime/event-collector && go test ./...
+```
+
+Local run with the dev helpers enabled:
+
+```bash
+umask 077 && openssl rand -hex 32 > /tmp/collector-inbound.token
+
+go run ./cmd/event-collector \
+  --control-plane-url=http://127.0.0.1:8420 \
+  --api-key-file=/tmp/agent-bom-api.key \
+  --inbound-token-file=/tmp/collector-inbound.token \
+  --enable-dev-endpoints
+
+curl -sS -X POST http://127.0.0.1:8092/v1/forward/cloudtrail \
+  -H "Authorization: Bearer $(cat /tmp/collector-inbound.token)" \
+  -H 'Content-Type: application/json' \
+  --data @cloudtrail-event.json
+# → {"status":"forwarded","path":"/v1/cloud/connections/events/ingest"}
+# without the header → 401 with an empty body, and nothing is forwarded
 ```
 
 ## Code

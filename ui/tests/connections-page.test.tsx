@@ -543,9 +543,9 @@ describe("ConnectionsPage — Connect segment", () => {
 
     fireEvent.click(continuous);
     expect(continuous).toBeChecked();
-    expect(within(wizard).getByTestId("wizard-continuous-queue-hint")).toHaveTextContent(
-      /event queue/i,
-    );
+    const wizardHint = within(wizard).getByTestId("wizard-continuous-queue-hint");
+    expect(wizardHint).toHaveTextContent(/event queue/i);
+    expect(wizardHint).toHaveTextContent("AGENT_BOM_CONNECTIONS_SCHEDULER");
 
     fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
 
@@ -896,6 +896,28 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     expect(screen.getByTestId("connection-event-driven-chip")).toHaveTextContent("Event-driven");
   });
 
+  it("does not claim Organization scope when only auth_params carries the legacy scope", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [
+        {
+          ...CREATED_RECORD,
+          status: "active",
+          inventory_scope: "account",
+          auth_params: { inventory_scope: "organization" },
+        },
+      ],
+      count: 1,
+      connections_scheduler_enabled: true,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    expect(screen.queryByTestId("connection-org-scope-chip")).toBeNull();
+  });
+
   it("shows a scheduler-disabled banner when intervals are set but the scheduler is off", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
@@ -911,6 +933,30 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     const banner = screen.getByTestId("connections-scheduler-disabled-banner");
     expect(banner).toHaveTextContent("Scheduler disabled on this control plane");
     expect(banner).toHaveTextContent("AGENT_BOM_CONNECTIONS_SCHEDULER");
+  });
+
+  it("shows the scheduler-disabled banner for continuous connections with no interval", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [
+        {
+          ...CREATED_RECORD,
+          status: "active",
+          scan_mode: "continuous",
+          scan_interval_minutes: null,
+        },
+      ],
+      count: 1,
+      connections_scheduler_enabled: false,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    const banner = screen.getByTestId("connections-scheduler-disabled-banner");
+    expect(banner).toHaveTextContent("AGENT_BOM_CONNECTIONS_SCHEDULER");
+    expect(banner).toHaveTextContent(/continuous/i);
   });
 
   it("does not show the scheduler banner when the scheduler is enabled", async () => {
@@ -987,7 +1033,9 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     await waitFor(() =>
       expect(screen.getByText("Production account scan mode updated.")).toBeInTheDocument(),
     );
-    expect(screen.getByTestId("schedule-continuous-queue-hint")).toHaveTextContent(/event queue/i);
+    const scheduleHint = screen.getByTestId("schedule-continuous-queue-hint");
+    expect(scheduleHint).toHaveTextContent(/event queue/i);
+    expect(scheduleHint).toHaveTextContent("AGENT_BOM_CONNECTIONS_SCHEDULER");
   });
 
   it("deletes a connection through the API", async () => {

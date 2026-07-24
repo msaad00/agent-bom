@@ -28,10 +28,15 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Iterator, Protocol
 
 from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal
+
+if TYPE_CHECKING:
+    from psycopg import Connection
+    from psycopg_pool import ConnectionPool
 
 _COLUMNS = (
     "tenant_id",
@@ -138,6 +143,8 @@ class SQLiteRuntimeWorkloadEvidenceStore:
 
     def init_schema(self) -> None:
         with self._connect() as connection:
+            from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS runtime_workload_evidence (
@@ -168,6 +175,7 @@ class SQLiteRuntimeWorkloadEvidenceStore:
             # Drop the stale index that ordered by (tenant_id, workload_id,
             # observed_at) — unusable for the tenant read's ORDER BY.
             connection.execute("DROP INDEX IF EXISTS idx_rwe_tenant_workload_time")
+            ensure_sqlite_schema_version(connection, "runtime_workload_evidence")
 
     def put_batch(self, signals: list[RuntimeWorkloadSignal]) -> int:
         if not signals:
@@ -189,69 +197,117 @@ class SQLiteRuntimeWorkloadEvidenceStore:
 
 
 class PostgresRuntimeWorkloadEvidenceStore:
-    """Shared Postgres backend with application-level tenant scoping.
+    """Shared Postgres backend with migration-owned schema and tenant RLS.
 
-    Uses a direct connection (not the RLS pool) so tenant isolation is enforced by
-    the leading ``tenant_id`` predicate and the composite dedup key — the same
-    model the stage-1 lifecycle store uses. ``table`` is parameterizable so tests
-    can isolate into a throwaway relation.
+    Production construction uses the shared secret-aware Postgres pool and the
+    same request-scoped tenant session as the rest of the control plane. An
+    explicit ``dsn`` remains available only for isolated development/tests that
+    own a throwaway table.
     """
 
-    def __init__(self, dsn: str, *, table: str = "runtime_workload_evidence") -> None:
+    def __init__(
+        self,
+        dsn: str | None = None,
+        *,
+        table: str = "runtime_workload_evidence",
+        pool: ConnectionPool | None = None,
+    ) -> None:
         if not table.replace("_", "").isalnum():
             raise ValueError("table name must be alphanumeric/underscore")
         self._dsn = dsn
         self.table = table
+        self._pool: Any = None
+        if dsn is not None and pool is not None:
+            raise ValueError("Pass either dsn or pool, not both")
+        if dsn is None:
+            from agent_bom.api.postgres_common import _get_pool
+
+            self._pool = pool or _get_pool()
+        else:
+            self._pool = None
         self.init_schema()
 
     def _connect(self) -> Any:
+        if self._dsn is None:
+            raise RuntimeError("Direct Postgres connections require an explicit development/test DSN")
         import psycopg
 
         return psycopg.connect(self._dsn)
 
+    @contextmanager
+    def _tenant_connection(self, tenant_id: str) -> Iterator[Connection]:
+        if self._pool is None:
+            with self._connect() as conn:
+                yield conn
+            return
+
+        from agent_bom.api.postgres_common import (
+            _tenant_connection,
+            reset_current_tenant,
+            set_current_tenant,
+        )
+
+        token = set_current_tenant(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                yield conn
+        finally:
+            reset_current_tenant(token)
+
+    def _create_schema(self, conn: Connection) -> None:
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.table} (
+                tenant_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                workload_ref TEXT NOT NULL,
+                dedup_key TEXT NOT NULL,
+                workload_id TEXT NOT NULL,
+                signal_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, provider, account_id, workload_ref, dedup_key)
+            )
+            """  # noqa: S608
+        )
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{self.table}_tenant_observed_dedup "  # noqa: S608
+            f"ON {self.table} (tenant_id, observed_at DESC, dedup_key DESC)"
+        )
+        conn.execute(f"DROP INDEX IF EXISTS idx_{self.table}_tenant_time")  # noqa: S608
+        conn.commit()
+
     def init_schema(self) -> None:
+        if self._pool is not None:
+            from agent_bom.api.storage_schema import ensure_postgres_schema_version
+
+            with self._pool.connection() as conn:
+                if not ensure_postgres_schema_version(conn, "runtime_workload_evidence"):
+                    return
+                self._create_schema(conn)
+            return
+
         with self._connect() as conn:
-            conn.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {self.table} (
-                    tenant_id TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    account_id TEXT NOT NULL,
-                    workload_ref TEXT NOT NULL,
-                    dedup_key TEXT NOT NULL,
-                    workload_id TEXT NOT NULL,
-                    signal_type TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    observed_at TEXT NOT NULL,
-                    source_id TEXT NOT NULL,
-                    source_kind TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    PRIMARY KEY (tenant_id, provider, account_id, workload_ref, dedup_key)
-                )
-                """  # noqa: S608
-            )
-            # Match the ``list_for_tenant`` ORDER BY (observed_at DESC, dedup_key
-            # DESC) under the leading tenant predicate so the read is sargable at
-            # scale instead of a seq-scan + sort.
-            conn.execute(
-                f"CREATE INDEX IF NOT EXISTS idx_{self.table}_tenant_observed_dedup "  # noqa: S608
-                f"ON {self.table} (tenant_id, observed_at DESC, dedup_key DESC)"
-            )
-            # Drop the stale (tenant_id, workload_id, observed_at) index that could
-            # not serve that ORDER BY.
-            conn.execute(f"DROP INDEX IF EXISTS idx_{self.table}_tenant_time")  # noqa: S608
-            conn.commit()
+            self._create_schema(conn)
 
     def put_batch(self, signals: list[RuntimeWorkloadSignal]) -> int:
         if not signals:
             return 0
+        tenant_ids = {signal.tenant_id for signal in signals}
+        if len(tenant_ids) != 1:
+            raise ValueError("A runtime workload evidence batch must contain exactly one tenant")
+        tenant_id = next(iter(tenant_ids))
         placeholders = ",".join("%s" for _ in _COLUMNS)
         sql = (
             f"INSERT INTO {self.table} ({','.join(_COLUMNS)}) VALUES ({placeholders}) "  # noqa: S608  # nosec B608 — table validated in __init__, values parameterized
             "ON CONFLICT (tenant_id, provider, account_id, workload_ref, dedup_key) DO NOTHING"
         )
         inserted = 0
-        with self._connect() as conn:
+        with self._tenant_connection(tenant_id) as conn:
             with conn.cursor() as cur:
                 for signal in signals:
                     cur.execute(sql, _row_values(signal))
@@ -260,7 +316,7 @@ class PostgresRuntimeWorkloadEvidenceStore:
         return inserted
 
     def list_for_tenant(self, tenant_id: str, *, limit: int = 5000) -> list[RuntimeWorkloadSignal]:
-        with self._connect() as conn:
+        with self._tenant_connection(tenant_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT payload_json FROM {self.table} WHERE tenant_id = %s "  # noqa: S608  # nosec B608 — table validated in __init__, values parameterized
@@ -272,6 +328,8 @@ class PostgresRuntimeWorkloadEvidenceStore:
 
     def drop_table(self) -> None:
         """Drop the backing relation (test cleanup helper)."""
+        if self._pool is not None:
+            raise RuntimeError("Migration-owned Postgres tables cannot be dropped by the runtime store")
         with self._connect() as conn:
             conn.execute(f"DROP TABLE IF EXISTS {self.table}")  # noqa: S608
             conn.commit()
@@ -314,7 +372,10 @@ def get_runtime_workload_evidence_store() -> RuntimeWorkloadEvidenceStore:
             dsn = selection.dsn or os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_DB", "")
             if not dsn.strip():
                 raise RuntimeError("Postgres workload-evidence store selected but no Postgres URL is configured")
-            _default_store = PostgresRuntimeWorkloadEvidenceStore(dsn.strip())
+            # The production store resolves the configured URL, mounted secret
+            # file/IAM token, pool bounds, and tenant RLS through postgres_common.
+            # The raw password-free Compose DSN must never be connected directly.
+            _default_store = PostgresRuntimeWorkloadEvidenceStore()
         elif selection.backend is BackendKind.MEMORY:
             _default_store = InMemoryRuntimeWorkloadEvidenceStore()
         else:

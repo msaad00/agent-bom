@@ -333,16 +333,33 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     assert "demo estate smoke" in workflow
     assert "/v1/findings?limit=1" in workflow
     # v0.97.4 made the demo overlay tracked. The VM's older untracked copy must
-    # be preserved outside the checkout path before git pull can fast-forward.
+    # be preserved outside the checkout path before exact-ref checkout.
     assert 'git ls-files --error-unmatch "$legacy_overlay"' in workflow
     assert "docker-compose.demo-override.pretracked." in workflow
     assert 'mv "$legacy_overlay" "$legacy_backup"' in workflow
-    assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index("git pull --ff-only")
-    # Compose one-shot failures must expose the migration container's state and
-    # bounded logs through SSM; otherwise deployment failures are unactionable.
+    exact_main_fetch = "git fetch --prune --tags origin +refs/heads/main:refs/remotes/origin/main"
+    assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index(exact_main_fetch)
+    # Release automation must deploy the exact successful release SHA, never
+    # mutable main, and must not race through a second release event trigger.
+    assert "git pull --ff-only" not in workflow
+    assert 'git rev-parse --verify "${RELEASE_REF}^{commit}"' in workflow
+    assert 'git checkout --detach "$TARGET_COMMIT"' in workflow
+    assert 'test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"' in workflow
+    assert "\n  release:\n" not in workflow
+    assert "release_ref:" in workflow
+    # Static preflight precedes build and in-place promotion.
+    assert workflow.index("hosted_poc_preflight.py --write-secret") < workflow.index("compose build")
+    assert workflow.index("compose build") < workflow.index("compose up -d")
+    # Compose failures must expose bounded, sanitized API/migration evidence.
     assert "compose failure status" in workflow
-    assert "migration failure logs" in workflow
-    assert "logs --no-color --tail=200 migrate" in workflow
+    assert "emit_sanitized_logs" in workflow
+    assert "logs --no-color --tail=120 api migrate" in workflow
+    assert "sanitize_text" in workflow
+    assert "tail -c 24000" in workflow
+    assert "logs --no-color --tail=200 migrate >&2" not in workflow
+    assert "demo was NOT promoted" not in workflow
+    assert "in-place container replacement" in workflow
+    assert "Automatic rollback was not attempted" in workflow
 
     # Security gate remains platform + hosted-poc only (no demo anon flags).
     preflight_src = (root / "scripts" / "deploy" / "hosted_poc_preflight.py").read_text(encoding="utf-8")

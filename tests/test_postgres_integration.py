@@ -21,9 +21,12 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def reset_postgres_pool():
     from agent_bom.api import postgres_common
+    from agent_bom.cloud.runtime_workload_evidence_store import reset_runtime_workload_evidence_store
 
     postgres_common.reset_pool()
+    reset_runtime_workload_evidence_store()
     yield
+    reset_runtime_workload_evidence_store()
     pool = postgres_common._pool
     if pool is not None:
         pool.close()
@@ -71,18 +74,107 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert any(item.job_id == job_id for item in results)
 
 
+def test_demo_estate_bootstrap_uses_secret_aware_migrated_postgres(monkeypatch):
+    """Compose's password-free app DSN must still persist demo findings."""
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.stores import set_job_store
+    from agent_bom.cloud.runtime_workload_evidence_store import reset_runtime_workload_evidence_store
+    from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE_FORCE", "1")
+    store = PostgresJobStore()
+    set_job_store(store)
+    reset_runtime_workload_evidence_store()
+
+    summary = maybe_bootstrap_demo_estate()
+
+    assert summary.get("scan_error") is not True
+    assert summary.get("seeded") is True
+    assert int(summary.get("findings") or 0) > 0
+    jobs = store.list_all(tenant_id="default")
+    assert any(job.job_id == summary["job_id"] and job.result and job.result.get("findings") for job in jobs)
+
+
+def test_runtime_workload_evidence_shared_pool_roundtrip_and_rls():
+    from agent_bom.api.postgres_common import _get_pool
+    from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal
+    from agent_bom.cloud.runtime_workload_evidence_store import PostgresRuntimeWorkloadEvidenceStore
+
+    suffix = uuid4().hex
+    tenant_a = f"runtime-a-{suffix}"
+    tenant_b = f"runtime-b-{suffix}"
+
+    def signal(tenant_id: str) -> RuntimeWorkloadSignal:
+        return RuntimeWorkloadSignal(
+            tenant_id=tenant_id,
+            provider="aws",
+            account_id="123456789012",
+            workload_ref="i-shared",
+            signal_type="ioc_detection",
+            severity="high",
+            observed_at="2026-07-24T00:00:00Z",
+            source_id="ci-edr",
+            source_kind="edr",
+            dedup_key="shared-event",
+            title="CI runtime evidence",
+            evidence={"kind": "integration"},
+        )
+
+    store = PostgresRuntimeWorkloadEvidenceStore()
+    assert store.put_batch([signal(tenant_a)]) == 1
+    assert store.put_batch([signal(tenant_b)]) == 1
+    assert [row.tenant_id for row in store.list_for_tenant(tenant_a)] == [tenant_a]
+    assert [row.tenant_id for row in store.list_for_tenant(tenant_b)] == [tenant_b]
+
+    with _get_pool().connection() as connection:
+        marker = connection.execute(
+            "SELECT version FROM control_plane_schema_versions WHERE component = %s",
+            ("runtime_workload_evidence",),
+        ).fetchone()
+        rls = connection.execute(
+            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = 'public.runtime_workload_evidence'::regclass"
+        ).fetchone()
+    assert marker == (1,)
+    assert rls == (True, True)
+
+
+def _postgres_connect(**kwargs):
+    """Connect with the shared password-file/IAM-aware secret resolution."""
+    import psycopg
+
+    from agent_bom.api.postgres_common import resolve_postgres_secret, resolve_postgres_url
+
+    connect_kwargs = dict(kwargs)
+    password = resolve_postgres_secret()
+    if password is not None:
+        connect_kwargs["password"] = password
+    return psycopg.connect(resolve_postgres_url(), **connect_kwargs)
+
+
 def test_budget_pk_migration_targets_visible_relation_across_search_path():
-    """The inspected and altered table must be the same visible relation."""
+    """The inspected and altered table must be the same visible relation.
+
+    Migration DDL needs CREATE SCHEMA; the Compose/CI app role is DML-only, so
+    prefer an explicit migrator/admin DSN when provided and otherwise use the
+    password-file-aware app connection (skipping if schema DDL is denied).
+    """
     import psycopg
 
     from agent_bom.api.postgres_cost import BUDGET_PK_MIGRATION_SQL
 
-    dsn = os.environ["AGENT_BOM_POSTGRES_URL"]
+    admin_dsn = os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL", "").strip()
     suffix = uuid4().hex[:12]
     first_schema = f"empty_{suffix}"
     data_schema = f"budget_{suffix}"
+
+    def _connect(**kwargs):
+        if admin_dsn:
+            return psycopg.connect(admin_dsn, **kwargs)
+        return _postgres_connect(**kwargs)
+
     try:
-        with psycopg.connect(dsn) as conn:
+        with _connect() as conn:
             try:
                 conn.execute(f'CREATE SCHEMA "{first_schema}"')
                 conn.execute(f'CREATE SCHEMA "{data_schema}"')
@@ -104,7 +196,7 @@ def test_budget_pk_migration_targets_visible_relation_across_search_path():
             ).fetchall()
             assert [row[0] for row in columns] == ["tenant_id", "agent", "cost_center", "owner", "workflow"]
     finally:
-        with psycopg.connect(dsn, autocommit=True) as cleanup:
+        with _connect(autocommit=True) as cleanup:
             cleanup.execute(f'DROP SCHEMA IF EXISTS "{first_schema}" CASCADE')
             cleanup.execute(f'DROP SCHEMA IF EXISTS "{data_schema}" CASCADE')
 
@@ -335,9 +427,7 @@ def test_postgres_graph_build_workspace_rls_blocks_cross_tenant_raw_select():
     finally:
         reset_current_tenant(token_b)
 
-    assert cross_tenant_rows == [], (
-        "graph_build_workspace_nodes RLS leaked tenant A data into a session bound to tenant B"
-    )
+    assert cross_tenant_rows == [], "graph_build_workspace_nodes RLS leaked tenant A data into a session bound to tenant B"
 
     # Cleanup under tenant A (and edges table is unused here).
     token_a = set_current_tenant(tenant_a)

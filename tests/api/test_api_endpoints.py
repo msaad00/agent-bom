@@ -360,6 +360,13 @@ def test_ui_csp_headers_do_not_allow_eval():
     assert "'unsafe-eval'" not in vercel_config
     assert "script-src-attr 'none'" in canonical
     assert "script-src-attr 'none'" in vercel_config
+
+    # SECURITY.md is read by buyers and auditors, so it must not overstate the
+    # policy it documents. Only the local dev server relaxes script-src.
+    security_md = (root / "SECURITY.md").read_text(encoding="utf-8")
+    for line in security_md.splitlines():
+        if "vercel.json" in line:
+            assert "unsafe-eval" not in line, f"SECURITY.md claims eval is allowed in vercel.json: {line!r}"
     # Removing 'unsafe-inline' from script-src is a #1954 follow-up that
     # needs a build-time hash collector for Next.js streaming inline scripts.
     # The hash of THEME_BOOTSTRAP_SCRIPT is already inventoried in

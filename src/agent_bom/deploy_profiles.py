@@ -148,6 +148,11 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             set_arguments=("gateway.enabled=true",),
             set_file_arguments=(("gateway.upstreamsYaml", examples / "gateway-upstreams.example.yaml"),),
         ),
+        HelmValidationProfile(
+            name="airgap-vuln-db",
+            description="Disconnected control plane with a Secret-mounted vulns.db and no egress.",
+            values_files=(examples / "airgap-vuln-db-values.yaml",),
+        ),
     ]
 
 

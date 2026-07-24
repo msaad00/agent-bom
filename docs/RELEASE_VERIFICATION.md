@@ -26,7 +26,9 @@ signed release evidence.
 | Security guards | `uv run python scripts/check_exception_sanitization.py` and `uv run python scripts/check_provisioning_readonly.py` | API/gateway/runtime errors are sanitized and cloud provisioning stays read-only. |
 | Backend tests | `uv run pytest -q` | Python 3.11/3.13/3.14 CI must pass; local focused suites should cover changed areas. |
 | UI build | `cd ui && npm run typecheck && npm run lint && npm run build && npm run bundle:check && npm run test:run` | The dashboard builds, tests pass, and client JS stays under budget. |
-| Package build | `uv build --out-dir /tmp/agent-bom-build` | Wheel and sdist build from a clean tree. |
+| Dashboard bundle | `make build-ui` | Runs the export build (`NEXT_EXPORT=1`) and copies it to `src/agent_bom/ui_dist` with CSP hashes. **Required before the package build** — the UI-build row above leaves nothing in `src/agent_bom/ui_dist`, and `ui_dist` is gitignored, so a `uv build` without this step produces a dashboard-less wheel and a dashboard-less image. |
+| Package build | `make build-ui && uv build --out-dir /tmp/agent-bom-build` | Wheel and sdist build from a clean tree. |
+| Packaged dashboard | `unzip -l /tmp/agent-bom-build/agent_bom-*.whl \| grep -c ui_dist` | Non-zero. Zero means the wheel ships no dashboard: `agent-bom serve` prints `Dashboard  Not bundled` and every UI route 404s. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
 | Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real report, graph, posture, and no coverage warnings. |
 | Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
@@ -114,6 +116,7 @@ docker pull "agentbom/agent-bom-ui:${TAG}"
 | Step | Tool | Default policy |
 |---|---|---|
 | Pre-publish candidate | `agent-bom image` in `container-gate` | fail on fixable `MEDIUM+`, `.image-scan-ignore` allowlist |
+| Pre-publish dashboard | `Dashboard release gate` in `container-gate` | fail if the candidate image has no packaged `ui_dist`, or if `GET /` does not return the dashboard document |
 | Post-publish UI tag | `docker manifest inspect` in `docker-publish-ui` | fail if `agentbom/agent-bom-ui:<tag>` is not pullable |
 | Post-publish registry image | Trivy in `published-image-scan-gate` | fail on `CRITICAL,HIGH`, `--ignore-unfixed`, same allowlist |
 

@@ -9,11 +9,26 @@
 
 controlPlane:
   enabled: true
+  # The chart defaults the Alembic Postgres hook on, and it fails the render
+  # when no AGENT_BOM_POSTGRES_URL is in scope. This file is a standalone
+  # air-gap profile with no database of its own, so the control plane runs on
+  # its SQLite default. Layer examples/byo-postgres-values.yaml after this file
+  # (and drop this block) when the disconnected cluster does have Postgres.
+  migrations:
+    postgres:
+      enabled: false
   api:
     env:
       - name: AGENT_BOM_DB_PATH
         value: /var/lib/agent-bom/vulns.db
       - name: AGENT_BOM_VULN_DB_OFFLINE
+        value: "1"
+      # No egress: skip the CLI's PyPI release check and default every scan
+      # path to the local cache, so pod startup does not retry an unreachable
+      # pypi.org before serving.
+      - name: AGENT_BOM_OFFLINE
+        value: "1"
+      - name: AGENT_BOM_SKIP_UPDATE_CHECK
         value: "1"
       # Swagger UI and ReDoc fetch assets from public CDNs. Disable those
       # interactive routes in disconnected deployments; use the checked-in
@@ -34,6 +49,10 @@ scanner:
     - name: AGENT_BOM_DB_PATH
       value: /var/lib/agent-bom/vulns.db
     - name: AGENT_BOM_VULN_DB_OFFLINE
+      value: "1"
+    - name: AGENT_BOM_OFFLINE
+      value: "1"
+    - name: AGENT_BOM_SKIP_UPDATE_CHECK
       value: "1"
   extraVolumes:
     - name: vuln-db

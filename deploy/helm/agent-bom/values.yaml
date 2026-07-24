@@ -260,6 +260,28 @@ monitor:
 gateway:
   enabled: false
   replicas: 2
+  # Pure-relay backend for JSON-RPC upstream forwards (ADR-009 Phase 3 spike).
+  # python (default): in-process PythonHttpRelayTransport — unchanged install.
+  # go: set AGENT_BOM_GATEWAY_RELAY_BACKEND=go and optionally run the
+  # runtime/gateway-relay sidecar (see gateway.relayGoSidecar).
+  relayBackend: python
+  relayGoUrl: "http://127.0.0.1:8091"
+  relayGoSidecar:
+    # Optional sidecar container when relayBackend=go. Default false so stock
+    # installs stay Python-only. Image must contain the gateway-relay binary.
+    enabled: false
+    port: 8091
+    image:
+      repository: ""  # e.g. agentbom/gateway-relay — empty skips rendering
+      tag: ""
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
   autoscaling:
     enabled: false
     minReplicas: 2

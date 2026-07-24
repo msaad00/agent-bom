@@ -93,6 +93,12 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
           env:
+            - name: AGENT_BOM_GATEWAY_RELAY_BACKEND
+              value: {{ .Values.gateway.relayBackend | default "python" | quote }}
+            {{- if eq (.Values.gateway.relayBackend | default "python") "go" }}
+            - name: AGENT_BOM_GATEWAY_RELAY_GO_URL
+              value: {{ .Values.gateway.relayGoUrl | default "http://127.0.0.1:8091" | quote }}
+            {{- end }}
             {{- with .Values.gateway.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -117,6 +123,39 @@ spec:
             {{- with .Values.gateway.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+        {{- $sidecar := .Values.gateway.relayGoSidecar | default dict }}
+        {{- if and (eq (.Values.gateway.relayBackend | default "python") "go") ($sidecar.enabled | default false) ($sidecar.image).repository }}
+        - name: gateway-relay
+          image: "{{ $sidecar.image.repository }}:{{ $sidecar.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ $sidecar.image.pullPolicy | default "IfNotPresent" }}
+          args:
+            - "-listen"
+            - "127.0.0.1:{{ $sidecar.port | default 8091 }}"
+          ports:
+            - name: relay
+              containerPort: {{ $sidecar.port | default 8091 }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: relay
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: relay
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          resources:
+            {{- toYaml ($sidecar.resources | default dict) | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        {{- end }}
       volumes:
         - name: upstreams
           configMap:

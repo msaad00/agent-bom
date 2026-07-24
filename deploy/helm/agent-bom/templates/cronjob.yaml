@@ -90,6 +90,7 @@ spec:
                   value: {{ .maxRegions | quote }}
                 {{- end }}
                 {{- if eq (toString .orgInventory) "true" }}
+                {{/* Job/CLI org fan-out only — Connections uses inventory_scope=organization */}}
                 - name: AGENT_BOM_AWS_ORG_INVENTORY
                   value: "1"
                 {{- end }}

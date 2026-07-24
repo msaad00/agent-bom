@@ -44,13 +44,15 @@ across member accounts / subscriptions / projects via the brokered management
 credential. StackSet (or equivalent) is still required so member accounts have
 the read-only role to assume. CLI enrichment and Helm scanner Jobs remain gated
 by env flags (`AGENT_BOM_AWS_ORG_INVENTORY`, `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
-`AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5) — those flags are unchanged and are
-**not** required for per-connection fan-out. On the Helm CronJob, first-class
+`AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5) — those flags are **Job/CLI only** and
+are **not** required for per-connection fan-out. On the Helm CronJob, first-class
 chart values map to those CLI flags:
 `scanner.cloud.aws.orgInventory` → `AGENT_BOM_AWS_ORG_INVENTORY`,
 `scanner.cloud.azure.allSubscriptions` → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`,
 `scanner.cloud.gcp.allProjects` → `AGENT_BOM_GCP_ALL_PROJECTS` (optional
-`maxAccounts` / `maxSubscriptions` / `maxProjects` cap the run). Control-plane
+`maxAccounts` / `maxSubscriptions` / `maxProjects` cap the run). Connections org
+gate = the row's `inventory_scope=organization`; Helm `orgInventory` never
+flips that row. Control-plane
 `tenant_id` is the agent-bom tenancy key — it is
 **not** an Azure AD tenant or AWS account ID; one CP tenant can own many
 connections. Recurring connection scans need both scheduler opt-in
@@ -68,6 +70,33 @@ defaults true and runs the brokered scan path immediately after Create
 Org fan-out caps: AWS 200
 (`AGENT_BOM_AWS_MAX_ACCOUNTS`), Azure 500
 (`AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS`), GCP 200 (`AGENT_BOM_GCP_MAX_PROJECTS`).
+
+### Practical enable path
+
+End-to-end for one org-scoped AWS connection that keeps evaluating:
+
+1. **Wizard** — dashboard **Connections** → Provider (AWS) → Setup. Prefer
+   **Whole organization** so the grant script is StackSet-shaped and Details
+   will store `inventory_scope=organization`.
+2. **StackSet (or equivalent)** — apply the generated grant so every member
+   account has the read-only role (ExternalId match). Confirm Role ARN output.
+3. **Connection** — Details: paste Role ARN + ExternalId, set cadence
+   (`scan_interval_minutes`), optional `scan_mode=continuous`, create. With
+   `auto_scan_on_create` (default true) the first brokered `/scan` runs
+   immediately and fans members when `inventory_scope=organization`.
+4. **Cadence** — interval on the row alone is inert until the control-plane
+   scheduler is on.
+5. **Helm scheduler** — `--set controlPlane.connectionsScheduler.enabled=true`
+   (injects `AGENT_BOM_CONNECTIONS_SCHEDULER=1` on the API). Pilot compose leaves
+   this off; set the env explicitly if you want recurrence locally.
+6. **Continuous + queue** — for mid-interval event drain, keep
+   `scan_mode=continuous` and set the provider queue/subscription env on the
+   API (`AGENT_BOM_AWS_EVENT_QUEUE_URL` / Azure / GCP equivalents). Drain stamps
+   `last_event_at`; full inventory still follows the due-scan claim path.
+
+Do **not** set `scanner.cloud.aws.orgInventory` unless you also want the
+**Helm CronJob / CLI** org-inventory Job path. That flag does not substitute
+for `inventory_scope=organization` on the Connections row.
 
 - **One ExternalId, carried end-to-end.** For AWS the wizard generates a single
   high-entropy `sts:ExternalId` **once** and carries it unchanged from Setup into

@@ -43,6 +43,10 @@ services:
       # connections.key on first run (persisted in the data volume) so creating a
       # cloud connection does not 503. Set AGENT_BOM_CONNECTIONS_KEY / a managed
       # provider to bring your own; AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1 disables it.
+      # Recurring connection scans stay OFF here. Opt in with
+      # AGENT_BOM_CONNECTIONS_SCHEDULER=1 (and a per-connection
+      # scan_interval_minutes). Helm: controlPlane.connectionsScheduler.enabled.
+      # See docs/CLOUD_CONNECT.md Practical enable path.
     ports:
       - "127.0.0.1:8422:8422"
     volumes:

@@ -105,9 +105,10 @@ blank `collectorImage.tag` falls back to `image.tag`.
 | `scanner.enabled` | `true` | Deploy CronJob scanner |
 | `scanner.schedule` | `0 */6 * * *` | Cron schedule |
 | `scanner.allNamespaces` | `true` | Scan all namespaces |
-| `scanner.cloud.aws.orgInventory` | `false` | `AGENT_BOM_AWS_ORG_INVENTORY` — org member-account scan fan-out |
-| `scanner.cloud.azure.allSubscriptions` | `false` | `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS` |
-| `scanner.cloud.gcp.allProjects` | `false` | `AGENT_BOM_GCP_ALL_PROJECTS` |
+| `scanner.cloud.aws.orgInventory` | `false` | Job/CLI only → `AGENT_BOM_AWS_ORG_INVENTORY`. Connections org fan-out uses `inventory_scope=organization` on the connection row, not this value. |
+| `scanner.cloud.azure.allSubscriptions` | `false` | Job/CLI only → `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS` (same Connections vs Job split as `orgInventory`) |
+| `scanner.cloud.gcp.allProjects` | `false` | Job/CLI only → `AGENT_BOM_GCP_ALL_PROJECTS` (same Connections vs Job split as `orgInventory`) |
+| `controlPlane.connectionsScheduler.enabled` | `false` | Injects `AGENT_BOM_CONNECTIONS_SCHEDULER=1` on the API; still requires per-connection `scan_interval_minutes` |
 | `collectorImage.repository` | `agentbom/agent-bom-collector` | Cloud-SDK collector image the scan CronJob runs |
 | `collectorImage.tag` | release version | Collector tag — override to bump the SDK layer independently of the control plane; blank falls back to `image.tag` |
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments |

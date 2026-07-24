@@ -1,4 +1,4 @@
-# agent-bom v0.97.4 terminal demo
+# agent-bom v0.97.5 terminal demo
 # Shows: posture-led scan → findings queue → fix-first → package gate
 
 Output docs/images/demo-latest.gif

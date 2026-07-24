@@ -887,9 +887,9 @@ components:
         \n``scan_interval_minutes`` opts the connection into recurring background\
         \ scans\n(Phase B.2). Null (the default) means manual-only \u2014 the scheduler\
         \ ignores it.\n``scan_mode`` is ``full`` (default) or ``continuous``; continuous\
-        \ intends\nevent-driven mid-interval refresh once an event queue is wired.\
-        \ ``auto_scan_on_create``\ndefaults true and is persisted for a follow-up\
-        \ create-time scan path."
+        \ drains\nprovider event queues on each scheduler tick when a queue env is\
+        \ set.\n``auto_scan_on_create`` defaults true and runs the brokered scan path\
+        \ after\npersist (failure marks ``error``; the row is kept)."
       properties:
         auth_params:
           additionalProperties:
@@ -6213,14 +6213,13 @@ paths:
       tags:
       - cloud-connections
     post:
-      description: 'Create a read-only cloud connection for the authenticated tenant.
-
-
-        The ``external_id`` secret is encrypted at rest before persistence and is
-
-        never echoed back. If no encryption key is configured the request fails
-
-        closed with 503 rather than storing the secret in plaintext.'
+      description: "Create a read-only cloud connection for the authenticated tenant.\n\
+        \nThe ``external_id`` secret is encrypted at rest before persistence and is\n\
+        never echoed back. If no encryption key is configured the request fails\n\
+        closed with 503 rather than storing the secret in plaintext. When\n``auto_scan_on_create``\
+        \ is true (the default), the same brokered scan path\nas ``POST \u2026/scan``\
+        \ runs after persist; scan failure marks the connection\n``error`` with a\
+        \ sanitized detail but does not roll back the create."
       operationId: create_connection_v1_cloud_connections_post
       parameters:
       - in: header

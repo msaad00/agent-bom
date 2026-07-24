@@ -58,11 +58,14 @@ connections. Recurring connection scans need both scheduler opt-in
 `controlPlane.connectionsScheduler.enabled=true` which injects that env) and a
 per-connection `scan_interval_minutes` (default concurrency 4). Cadence is the
 **intersection** of those two — an interval alone does nothing until the
-scheduler is enabled. `scan_mode=continuous` records intent for event-driven
-mid-interval refresh; that path still needs a provider event queue and a drain
-loop (not wired in this foundation change). `auto_scan_on_create` defaults true
-on Create and is persisted for a follow-up create-time scan path. Org fan-out
-caps: AWS 200
+scheduler is enabled. `scan_mode=continuous` enables mid-interval event drain
+on each scheduler tick when a provider event queue/subscription env is set
+(`AGENT_BOM_AWS_EVENT_QUEUE_URL`, `AGENT_BOM_AZURE_EVENT_QUEUE`,
+`AGENT_BOM_GCP_EVENT_SUBSCRIPTION`); drain stamps `last_event_at` only — full
+scans still use `claim_due_scan` / `last_scan_at`. `auto_scan_on_create`
+defaults true and runs the brokered scan path immediately after Create
+(failure marks the row `error` with a sanitized detail; the connection is kept).
+Org fan-out caps: AWS 200
 (`AGENT_BOM_AWS_MAX_ACCOUNTS`), Azure 500
 (`AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS`), GCP 200 (`AGENT_BOM_GCP_MAX_PROJECTS`).
 

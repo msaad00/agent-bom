@@ -128,6 +128,7 @@ class ConnectionStore(Protocol):
     def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]: ...
     def delete(self, tenant_id: str, connection_id: str) -> bool: ...
     def list_schedulable(self) -> list[CloudConnectionRecord]: ...
+    def list_continuous(self) -> list[CloudConnectionRecord]: ...
     def claim_due_scan(self, record: CloudConnectionRecord, claimed_at: str) -> bool: ...
 
 
@@ -296,9 +297,7 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         last_event_at=row[event_idx] if len(row) > event_idx else None,
         inventory_scope=_decode_inventory_scope(row[scope_idx]) if len(row) > scope_idx else INVENTORY_SCOPE_ACCOUNT,
         scan_mode=_decode_scan_mode(row[scan_mode_idx]) if len(row) > scan_mode_idx else SCAN_MODE_FULL,
-        auto_scan_on_create=(
-            _decode_auto_scan_on_create(row[auto_scan_idx]) if len(row) > auto_scan_idx else True
-        ),
+        auto_scan_on_create=(_decode_auto_scan_on_create(row[auto_scan_idx]) if len(row) > auto_scan_idx else True),
     )
 
 
@@ -357,6 +356,10 @@ class InMemoryConnectionStore:
         with self._lock:
             return [_copy_record(r) for r in self._rows.values() if r.scan_interval_minutes is not None]
 
+    def list_continuous(self) -> list[CloudConnectionRecord]:
+        with self._lock:
+            return [_copy_record(r) for r in self._rows.values() if _decode_scan_mode(r.scan_mode) == SCAN_MODE_CONTINUOUS]
+
     def claim_due_scan(self, record: CloudConnectionRecord, claimed_at: str) -> bool:
         """Atomically claim a due scan, gated on the last-seen ``last_scan_at``.
 
@@ -412,17 +415,11 @@ class SQLiteConnectionStore:
         if "last_event_at" not in columns:
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN last_event_at TEXT")
         if "inventory_scope" not in columns:
-            self._conn.execute(
-                "ALTER TABLE cloud_connections ADD COLUMN inventory_scope TEXT NOT NULL DEFAULT 'account'"
-            )
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN inventory_scope TEXT NOT NULL DEFAULT 'account'")
         if "scan_mode" not in columns:
-            self._conn.execute(
-                "ALTER TABLE cloud_connections ADD COLUMN scan_mode TEXT NOT NULL DEFAULT 'full'"
-            )
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN scan_mode TEXT NOT NULL DEFAULT 'full'")
         if "auto_scan_on_create" not in columns:
-            self._conn.execute(
-                "ALTER TABLE cloud_connections ADD COLUMN auto_scan_on_create INTEGER NOT NULL DEFAULT 1"
-            )
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN auto_scan_on_create INTEGER NOT NULL DEFAULT 1")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -500,6 +497,17 @@ class SQLiteConnectionStore:
             "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
             "scan_mode, auto_scan_on_create "
             "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
+        ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def list_continuous(self) -> list[CloudConnectionRecord]:
+        rows = self._conn.execute(
+            "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
+            "scan_mode, auto_scan_on_create "
+            "FROM cloud_connections WHERE scan_mode = ? ORDER BY created_at, id",
+            (SCAN_MODE_CONTINUOUS,),
         ).fetchall()
         return [_row_to_record(row) for row in rows]
 

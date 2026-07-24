@@ -139,18 +139,42 @@ def test_runtime_workload_evidence_shared_pool_roundtrip_and_rls():
     assert rls == (True, True)
 
 
+def _postgres_connect(**kwargs):
+    """Connect with the shared password-file/IAM-aware secret resolution."""
+    import psycopg
+
+    from agent_bom.api.postgres_common import resolve_postgres_secret, resolve_postgres_url
+
+    connect_kwargs = dict(kwargs)
+    password = resolve_postgres_secret()
+    if password is not None:
+        connect_kwargs["password"] = password
+    return psycopg.connect(resolve_postgres_url(), **connect_kwargs)
+
+
 def test_budget_pk_migration_targets_visible_relation_across_search_path():
-    """The inspected and altered table must be the same visible relation."""
+    """The inspected and altered table must be the same visible relation.
+
+    Migration DDL needs CREATE SCHEMA; the Compose/CI app role is DML-only, so
+    prefer an explicit migrator/admin DSN when provided and otherwise use the
+    password-file-aware app connection (skipping if schema DDL is denied).
+    """
     import psycopg
 
     from agent_bom.api.postgres_cost import BUDGET_PK_MIGRATION_SQL
 
-    dsn = os.environ["AGENT_BOM_POSTGRES_URL"]
+    admin_dsn = os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL", "").strip()
     suffix = uuid4().hex[:12]
     first_schema = f"empty_{suffix}"
     data_schema = f"budget_{suffix}"
+
+    def _connect(**kwargs):
+        if admin_dsn:
+            return psycopg.connect(admin_dsn, **kwargs)
+        return _postgres_connect(**kwargs)
+
     try:
-        with psycopg.connect(dsn) as conn:
+        with _connect() as conn:
             try:
                 conn.execute(f'CREATE SCHEMA "{first_schema}"')
                 conn.execute(f'CREATE SCHEMA "{data_schema}"')
@@ -172,7 +196,7 @@ def test_budget_pk_migration_targets_visible_relation_across_search_path():
             ).fetchall()
             assert [row[0] for row in columns] == ["tenant_id", "agent", "cost_center", "owner", "workflow"]
     finally:
-        with psycopg.connect(dsn, autocommit=True) as cleanup:
+        with _connect(autocommit=True) as cleanup:
             cleanup.execute(f'DROP SCHEMA IF EXISTS "{first_schema}" CASCADE')
             cleanup.execute(f'DROP SCHEMA IF EXISTS "{data_schema}" CASCADE')
 

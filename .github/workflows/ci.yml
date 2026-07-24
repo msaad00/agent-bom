@@ -927,6 +927,8 @@ jobs:
       # mounted file through the shared Postgres connection factory.
       AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app@127.0.0.1:5432/agentbom_test
       AGENT_BOM_POSTGRES_PASSWORD_FILE: /tmp/agent-bom-postgres-app-password
+      # Migrator/admin DSN for DDL-only integration checks (CREATE SCHEMA).
+      AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://postgres:testpass@127.0.0.1:5432/agentbom_test
       AGENT_BOM_POSTGRES_POOL_MIN_SIZE: "1"
       AGENT_BOM_POSTGRES_POOL_MAX_SIZE: "4"
       AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS: "5"

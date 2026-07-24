@@ -35,6 +35,22 @@ brokered catalog.
 The dashboard **Connections** page runs the same read-only grant flow as a
 three-step wizard: **Provider → Setup → Details**.
 
+**Scope (single target vs org fan-out).** Each connection — and
+`POST /v1/cloud/connections/{id}/scan` — covers **one** AWS account, Azure
+subscription, or GCP project. Cross-account / all-subscriptions / all-projects
+fan-out is **not** a Connections-wizard option today; use the env-flag CLI or
+Helm CronJob paths (`AGENT_BOM_AWS_ORG_INVENTORY`,
+`AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS`, `AGENT_BOM_GCP_ALL_PROJECTS`; see §§3–5).
+Control-plane `tenant_id` is the agent-bom tenancy key — it is **not** an Azure
+AD tenant or AWS account ID; one CP tenant can own many connections. Recurring
+connection scans are scheduler opt-in (`AGENT_BOM_CONNECTIONS_SCHEDULER`,
+default concurrency 4). Org fan-out caps: AWS 200
+(`AGENT_BOM_AWS_MAX_ACCOUNTS`), Azure 500
+(`AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS`), GCP 200 (`AGENT_BOM_GCP_MAX_PROJECTS`).
+
+- **Next:** expose org fan-out as a per-connection option in Connections and
+  shard the scheduler — on the existing Python control plane (not a Go rewrite).
+
 - **One ExternalId, carried end-to-end.** For AWS the wizard generates a single
   high-entropy `sts:ExternalId` **once** and carries it unchanged from Setup into
   Details. The value embedded in the copy-ready grant script (the one you paste

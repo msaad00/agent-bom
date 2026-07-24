@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 from agent_bom.api.connection_store import (
+    SCAN_MODE_CONTINUOUS,
     CloudConnectionRecord,
     _decode_inventory_scope,
     _decode_scan_mode,
@@ -70,15 +71,9 @@ class PostgresConnectionStore:
             # the column stays NOT NULL and legacy connections read as no-params.
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auth_params TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS last_event_at TEXT")
-            conn.execute(
-                "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS inventory_scope TEXT NOT NULL DEFAULT 'account'"
-            )
-            conn.execute(
-                "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_mode TEXT NOT NULL DEFAULT 'full'"
-            )
-            conn.execute(
-                "ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE"
-            )
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS inventory_scope TEXT NOT NULL DEFAULT 'account'")
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_mode TEXT NOT NULL DEFAULT 'full'")
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -185,6 +180,22 @@ class PostgresConnectionStore:
                 "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
                 "scan_mode, auto_scan_on_create "
                 "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
+            ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def list_continuous(self) -> list[CloudConnectionRecord]:
+        """Cross-tenant fetch of ``scan_mode=continuous`` connections (event drain).
+
+        RLS-bypassed like :meth:`list_schedulable` — trusted scheduler task.
+        """
+        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
+                "scan_interval_minutes, auth_params, last_event_at, inventory_scope, "
+                "scan_mode, auto_scan_on_create "
+                "FROM cloud_connections WHERE scan_mode = %s ORDER BY created_at, id",
+                (SCAN_MODE_CONTINUOUS,),
             ).fetchall()
         return [_row_to_record(row) for row in rows]
 

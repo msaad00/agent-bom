@@ -93,9 +93,10 @@ class CloudConnectionCreate(BaseModel):
 
     ``scan_interval_minutes`` opts the connection into recurring background scans
     (Phase B.2). Null (the default) means manual-only — the scheduler ignores it.
-    ``scan_mode`` is ``full`` (default) or ``continuous``; continuous intends
-    event-driven mid-interval refresh once an event queue is wired. ``auto_scan_on_create``
-    defaults true and is persisted for a follow-up create-time scan path.
+    ``scan_mode`` is ``full`` (default) or ``continuous``; continuous drains
+    provider event queues on each scheduler tick when a queue env is set.
+    ``auto_scan_on_create`` defaults true and runs the brokered scan path after
+    persist (failure marks ``error``; the row is kept).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -221,7 +222,6 @@ def _validate_scan_mode(mode: str | None) -> str:
     return raw
 
 
-
 def _validate_regions(regions: list[str]) -> list[str]:
     from agent_bom.cloud.aws_inventory import ALL_REGIONS_SENTINEL
 
@@ -250,7 +250,10 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 
     The ``external_id`` secret is encrypted at rest before persistence and is
     never echoed back. If no encryption key is configured the request fails
-    closed with 503 rather than storing the secret in plaintext.
+    closed with 503 rather than storing the secret in plaintext. When
+    ``auto_scan_on_create`` is true (the default), the same brokered scan path
+    as ``POST …/scan`` runs after persist; scan failure marks the connection
+    ``error`` with a sanitized detail but does not roll back the create.
     """
     tenant_id = _tenant(request)
     provider = body.provider.strip().lower()
@@ -308,6 +311,45 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         tenant_id=tenant_id,
         provider=record.provider,
     )
+
+    # Default auto_scan_on_create=true: run the same brokered scan path as
+    # POST …/scan. Failure marks the row error (sanitized detail) but never
+    # rolls back the create — the connection stays fetchable for remediation.
+    if auto_scan_on_create:
+        actor = _actor(request)
+        try:
+            summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
+        except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
+            detail = _safe_connection_detail(exc)
+            _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
+            _logger.exception("Cloud connection scan-on-create failed for connection %s", record.id)
+            log_action(
+                "cloud_connection.scan",
+                actor=actor,
+                resource=f"cloud-connection/{record.id}",
+                tenant_id=tenant_id,
+                provider=record.provider,
+                outcome="failure",
+            )
+        else:
+            scan_id = str(summary.get("scan_id") or "")
+            _mark_connection(
+                record,
+                status=STATUS_ACTIVE,
+                status_detail="",
+                last_scan_at=_now(),
+                last_scan_id=scan_id or None,
+            )
+            log_action(
+                "cloud_connection.scan",
+                actor=actor,
+                resource=f"cloud-connection/{record.id}",
+                tenant_id=tenant_id,
+                provider=record.provider,
+                outcome="success",
+                scan_id=scan_id,
+            )
+
     return record.to_public_dict()
 
 
@@ -616,9 +658,7 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
             "provider": "aws",
             "status": "ok",
             "account_count": len(inventory_payload),
-            "accounts": [
-                _summarize_inventory_payload("aws", item) for item in inventory_payload if isinstance(item, dict)
-            ],
+            "accounts": [_summarize_inventory_payload("aws", item) for item in inventory_payload if isinstance(item, dict)],
         }
     else:
         inventory_summary = _summarize_inventory_payload("aws", inventory_payload)
@@ -664,13 +704,9 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     subscription_id = str(record.auth_params.get("subscription_id") or "").strip() or None
 
     if connection_org_fanout_enabled(record):
-        inventory_payload: Any = azure_inventory.discover_all_subscription_inventories(
-            credential=credential, force=True
-        )
+        inventory_payload: Any = azure_inventory.discover_all_subscription_inventories(credential=credential, force=True)
     else:
-        inventory_payload = azure_inventory.discover_inventory(
-            subscription_id=subscription_id, credential=credential, force=True
-        )
+        inventory_payload = azure_inventory.discover_inventory(subscription_id=subscription_id, credential=credential, force=True)
     cis_report = run_azure_cis(subscription_id=subscription_id, credential=credential)
     cis_dict = cis_report.to_dict()
 
@@ -697,9 +733,7 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
             "provider": "azure",
             "status": "ok",
             "account_count": len(inventory_payload),
-            "accounts": [
-                _summarize_inventory_payload("azure", item) for item in inventory_payload if isinstance(item, dict)
-            ],
+            "accounts": [_summarize_inventory_payload("azure", item) for item in inventory_payload if isinstance(item, dict)],
         }
     else:
         inventory_summary = _summarize_inventory_payload("azure", inventory_payload)
@@ -739,13 +773,9 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     project_id = str(record.auth_params.get("project_id") or "").strip() or None
 
     if connection_org_fanout_enabled(record):
-        inventory_payload: Any = gcp_inventory.discover_all_project_inventories(
-            credentials=credentials, force=True
-        )
+        inventory_payload: Any = gcp_inventory.discover_all_project_inventories(credentials=credentials, force=True)
     else:
-        inventory_payload = gcp_inventory.discover_inventory(
-            project_id=project_id, credentials=credentials, force=True
-        )
+        inventory_payload = gcp_inventory.discover_inventory(project_id=project_id, credentials=credentials, force=True)
     cis_report = run_gcp_cis(project_id=project_id, credentials=credentials)
     cis_dict = cis_report.to_dict()
 
@@ -760,9 +790,7 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
             "provider": "gcp",
             "status": "ok",
             "account_count": len(inventory_payload),
-            "accounts": [
-                _summarize_inventory_payload("gcp", item) for item in inventory_payload if isinstance(item, dict)
-            ],
+            "accounts": [_summarize_inventory_payload("gcp", item) for item in inventory_payload if isinstance(item, dict)],
         }
     else:
         inventory_summary = _summarize_inventory_payload("gcp", inventory_payload)

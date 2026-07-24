@@ -636,12 +636,15 @@ def _app() -> Any:
 
 
 def _create_body() -> dict[str, Any]:
+    # Opt out of create-time scan by default so CRUD / explicit /scan tests stay
+    # focused; product default remains true when the field is omitted.
     return {
         "provider": "aws",
         "display_name": "prod-readonly",
         "role_ref": "arn:aws:iam::123456789012:role/agent-bom-readonly",
         "external_id": "super-secret-external-id",
         "regions": ["us-east-1"],
+        "auto_scan_on_create": False,
     }
 
 
@@ -668,11 +671,14 @@ def test_api_viewer_can_list_and_get_but_not_mutate() -> None:
 
     assert client.get("/v1/cloud/connections", headers=headers).status_code == 200
     assert client.get(f"/v1/cloud/connections/{record.id}", headers=headers).status_code == 200
-    assert client.patch(
-        f"/v1/cloud/connections/{record.id}",
-        json={"scan_interval_minutes": 60},
-        headers=headers,
-    ).status_code == 403
+    assert (
+        client.patch(
+            f"/v1/cloud/connections/{record.id}",
+            json={"scan_interval_minutes": 60},
+            headers=headers,
+        ).status_code
+        == 403
+    )
     assert client.delete(f"/v1/cloud/connections/{record.id}", headers=headers).status_code == 403
 
 
@@ -822,20 +828,38 @@ def test_api_patch_requires_scan_permission() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_api_create_defaults_scan_mode_full_and_auto_scan_on_create_true() -> None:
+def test_api_create_defaults_scan_mode_full_and_auto_scan_on_create_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Omit auto_scan_on_create so the API default (true) applies; stub the runner
+    # so create does not hit a real broker.
+    monkeypatch.setattr(
+        "agent_bom.api.routes.cloud_connections._run_connection_scan",
+        lambda record, tenant_id: {"scan_id": "default-auto", "status": "completed"},
+    )
     client = TestClient(_app())
-    created = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()
+    body = _create_body()
+    del body["auto_scan_on_create"]
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
     assert created["scan_mode"] == "full"
     assert created["auto_scan_on_create"] is True
+    assert created["status"] == "active"
+    assert created["last_scan_id"] == "default-auto"
 
 
-def test_api_create_accepts_continuous_scan_mode() -> None:
+def test_api_create_accepts_continuous_scan_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "agent_bom.api.routes.cloud_connections._run_connection_scan",
+        lambda record, tenant_id: {"scan_id": "cont-auto", "status": "completed"},
+    )
     client = TestClient(_app())
     body = _create_body()
     body["scan_mode"] = "continuous"
+    del body["auto_scan_on_create"]  # product default true
     created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
     assert created["scan_mode"] == "continuous"
     assert created["auto_scan_on_create"] is True
+    assert created["last_scan_id"] == "cont-auto"
 
 
 def test_api_create_rejects_invalid_scan_mode() -> None:
@@ -847,12 +871,84 @@ def test_api_create_rejects_invalid_scan_mode() -> None:
     assert "scan_mode" in resp.json()["detail"]
 
 
-def test_api_create_persists_auto_scan_on_create_false() -> None:
+def test_api_create_persists_auto_scan_on_create_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    scanned: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.api.routes.cloud_connections._run_connection_scan",
+        lambda record, tenant_id: scanned.append(record.id) or {"scan_id": "should-not-run"},
+    )
     client = TestClient(_app())
     body = _create_body()
     body["auto_scan_on_create"] = False
     created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
     assert created["auto_scan_on_create"] is False
+    assert created["status"] == STATUS_PENDING
+    assert created["last_scan_id"] is None
+    assert scanned == []
+
+
+def test_api_create_auto_scan_on_create_true_invokes_scan_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    scanned: list[tuple[str, str]] = []
+
+    def _fake_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+        scanned.append((record.id, tenant_id))
+        return {"scan_id": "scan-on-create-1", "status": "completed"}
+
+    monkeypatch.setattr("agent_bom.api.routes.cloud_connections._run_connection_scan", _fake_scan)
+    client = TestClient(_app())
+    body = _create_body()
+    body["auto_scan_on_create"] = True
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
+    assert created["status"] == "active"
+    assert created["last_scan_id"] == "scan-on-create-1"
+    assert created["last_scan_at"] is not None
+    assert scanned == [(created["id"], "tenant-alpha")]
+
+
+def test_api_create_auto_scan_on_create_false_does_not_invoke_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    scanned: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.api.routes.cloud_connections._run_connection_scan",
+        lambda record, tenant_id: scanned.append(record.id) or {"scan_id": "x"},
+    )
+    client = TestClient(_app())
+    body = _create_body()
+    body["auto_scan_on_create"] = False
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
+    assert created["id"]
+    assert scanned == []
+    assert created["status"] == STATUS_PENDING
+
+
+def test_api_create_auto_scan_failure_marks_error_connection_still_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_bom.cloud.connection_broker import ConnectionBrokerError
+
+    def _boom(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+        raise ConnectionBrokerError(
+            "AssumeRole failed",
+            remediation="Check the role trust policy ExternalId condition.",
+        )
+
+    monkeypatch.setattr("agent_bom.api.routes.cloud_connections._run_connection_scan", _boom)
+    client = TestClient(_app())
+    body = _create_body()
+    body["auto_scan_on_create"] = True
+    resp = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers())
+    # Create itself succeeded — scan failure must not roll back or 5xx the create.
+    assert resp.status_code == 201
+    created = resp.json()
+    cid = created["id"]
+    assert created["status"] == "error"
+    assert created["status_detail"]
+    assert "super-secret-external-id" not in created["status_detail"]
+    assert "AssumeRole failed" not in created["status_detail"]  # raw broker msg not leaked
+    # Connection remains fetchable (not rolled back).
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers())
+    assert fetched.status_code == 200
+    assert fetched.json()["status"] == "error"
+    assert fetched.json()["status_detail"]
 
 
 def test_api_patch_updates_scan_mode_and_auto_scan_on_create() -> None:
@@ -1233,9 +1329,7 @@ def test_broker_secret_failure_does_not_leak(monkeypatch: pytest.MonkeyPatch) ->
 _BROKER_SESSION_SENTINEL = object()
 
 
-def _install_scan_mocks(
-    monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, inventory: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def _install_scan_mocks(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, inventory: dict[str, Any] | None = None) -> dict[str, Any]:
     """Patch the broker + AWS inventory/CIS the scan route reuses.
 
     Captures the session each discovery call receives so a test can assert the

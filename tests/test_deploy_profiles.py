@@ -34,6 +34,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
         "mesh-hardening",
         "snowflake-backend",
         "gateway-runtime",
+        "airgap-vuln-db",
     ]
     for profile in profiles:
         for values_file in profile.values_files:
@@ -174,15 +175,71 @@ def test_production_profile_renders_ingress_with_real_paths():
         text=True,
     )
     assert ingress_hosts_missing_paths(result.stdout) == []
-    ingress = [
-        doc
-        for doc in yaml.safe_load_all(result.stdout)
-        if isinstance(doc, dict) and doc.get("kind") == "Ingress"
-    ]
+    ingress = [doc for doc in yaml.safe_load_all(result.stdout) if isinstance(doc, dict) and doc.get("kind") == "Ingress"]
     assert ingress, "production profile should render a control-plane Ingress"
     for manifest in ingress:
         for rule in manifest["spec"]["rules"]:
             assert rule["http"]["paths"], f"host {rule.get('host')} has no ingress paths"
+
+
+def test_airgap_profile_uses_the_shipped_standalone_example():
+    repo_root = Path(__file__).resolve().parent.parent
+    profiles = {profile.name: profile for profile in helm_validation_profiles(repo_root)}
+    airgap = profiles["airgap-vuln-db"]
+    example_dir = repo_root / "deploy" / "helm" / "agent-bom" / "examples"
+    assert airgap.values_files == (example_dir / "airgap-vuln-db-values.yaml",)
+    assert airgap.set_arguments == ()
+
+
+def test_airgap_example_disables_egress_dependent_startup_work():
+    """The one profile whose premise is no egress must not call out to PyPI."""
+    repo_root = Path(__file__).resolve().parent.parent
+    example = repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "airgap-vuln-db-values.yaml"
+    values = yaml.safe_load(example.read_text())
+
+    for name, env in (
+        ("controlPlane.api", values["controlPlane"]["api"]["env"]),
+        ("scanner", values["scanner"]["env"]),
+    ):
+        by_name = {entry["name"]: entry["value"] for entry in env}
+        for required in ("AGENT_BOM_VULN_DB_OFFLINE", "AGENT_BOM_OFFLINE", "AGENT_BOM_SKIP_UPDATE_CHECK"):
+            assert by_name.get(required) == "1", f"{name} is missing {required}=1"
+
+    # The chart defaults the Postgres migration hook on; a standalone air-gap
+    # render carries no Postgres URL, so the example must opt out explicitly.
+    assert values["controlPlane"]["migrations"]["postgres"]["enabled"] is False
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm binary not available")
+def test_airgap_example_renders_standalone_as_documented():
+    """The example's own step 4 documents a single ``-f`` invocation."""
+    repo_root = Path(__file__).resolve().parent.parent
+    chart_dir = helm_chart_dir(repo_root)
+    values = repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "airgap-vuln-db-values.yaml"
+    result = subprocess.run(
+        ["helm", "template", "agent-bom-airgap", str(chart_dir), "-f", str(values)],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    manifests = [doc for doc in yaml.safe_load_all(result.stdout) if isinstance(doc, dict)]
+    assert not [doc for doc in manifests if doc.get("kind") == "Job" and "postgres-migrate" in doc["metadata"]["name"]], (
+        "the air-gap render must not schedule a Postgres migration hook it has no database for"
+    )
+    assert ingress_hosts_missing_paths(result.stdout) == []
+
+    api = [
+        doc
+        for doc in manifests
+        if doc.get("kind") == "Deployment" and doc["metadata"]["labels"].get("app.kubernetes.io/component") == "api"
+    ]
+    assert api, "air-gap profile should render a control-plane API Deployment"
+    env = {entry["name"]: entry.get("value") for entry in api[0]["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env.get("AGENT_BOM_SKIP_UPDATE_CHECK") == "1"
+    assert env.get("AGENT_BOM_OFFLINE") == "1"
 
 
 def test_install_helm_profile_script_prints_packaged_command():

@@ -268,6 +268,16 @@ jobs:
           name: python-package-distributions
           path: dist/
 
+      # src/agent_bom/ui_dist is gitignored and exists only here. Jobs that build
+      # a container run their own fresh checkout, so without this hand-off the
+      # published API image ships with no dashboard and every UI route 404s.
+      - name: Upload built dashboard
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dashboard-ui-dist
+          path: src/agent_bom/ui_dist
+          if-no-files-found: error
+
   pypi-publish:
     name: Publish to PyPI
     needs: [build, self-scan-gate, container-gate]
@@ -349,6 +359,15 @@ jobs:
       - name: Extract version from tag
         id: meta
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      # Restore the dashboard the build job produced. This checkout cannot
+      # contain it (src/agent_bom/ui_dist is gitignored), and the Dockerfile's
+      # `COPY src/ ./src/` is what carries it into the installed wheel.
+      - name: Restore built dashboard into the build context
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dashboard-ui-dist
+          path: src/agent_bom/ui_dist
 
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -851,11 +870,66 @@ jobs:
         with:
           persist-credentials: false
 
+      # Gate the same image shape that docker-publish ships: without this the
+      # candidate image differs from the published one and the dashboard
+      # assertion below would be meaningless.
+      - name: Restore built dashboard into the build context
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dashboard-ui-dist
+          path: src/agent_bom/ui_dist
+
       - name: Build release candidate image
         run: docker build -t agent-bom:release-test .
 
       - name: Smoke test release image
         run: docker run --rm agent-bom:release-test --version
+
+      - name: Dashboard release gate
+        # 0.97.5 published an API image with no agent_bom/ui_dist while the
+        # deployment guide told operators that single image serves the
+        # dashboard. A dashboard-less image still answers `/` with 200 (the
+        # JSON service card) and only 404s on the UI routes, so the status code
+        # alone proves nothing: assert the assets are installed AND that `/`
+        # returns the packaged dashboard document.
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [ $status -ne 0 ]; then
+              docker logs agent-bom-dashboard-smoke || true
+            fi
+            docker stop agent-bom-dashboard-smoke >/dev/null 2>&1 || true
+            exit $status
+          }
+          docker run --rm --entrypoint python agent-bom:release-test -c '
+          import pathlib, sys
+          import agent_bom
+          index = pathlib.Path(agent_bom.__file__).parent / "ui_dist" / "index.html"
+          if not index.is_file():
+              sys.exit(f"packaged dashboard missing: {index} is not in the image")
+          print(f"packaged dashboard present: {index}")
+          '
+          docker run -d --rm --name agent-bom-dashboard-smoke -p 8422:8422 \
+            agent-bom:release-test serve --host 0.0.0.0 --port 8422 --api-key release-gate-key
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8422/healthz >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          code=$(curl -sS -o /tmp/dashboard-root.html -w '%{http_code}' http://127.0.0.1:8422/)
+          if [ "$code" != "200" ]; then
+            echo "::error::GET / returned ${code}; the API image is not serving the bundled dashboard"
+            exit 1
+          fi
+          grep -q '/_next/static' /tmp/dashboard-root.html || {
+            echo "::error::GET / returned 200 but referenced no dashboard assets; the response is the API service card, not the packaged UI"
+            head -c 512 /tmp/dashboard-root.html
+            exit 1
+          }
+          echo "OK: the release candidate image serves the bundled dashboard at /"
 
       - name: Image vulnerability scan gate
         # Self-hosted release image gate (dogfood). The agent-bom:release-test

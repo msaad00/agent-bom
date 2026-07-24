@@ -108,13 +108,22 @@ def discover_organization(
     if not force and os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() not in _TRUTHY:
         return result
 
+    # A caller-supplied session (Connections broker) must work without boto3 in
+    # the ambient env — only build a Session from profile/ambient when needed.
+    if session is None:
+        try:
+            import boto3
+        except ImportError:
+            result["status"] = "boto3_missing"
+            result["warnings"] = [
+                "boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"
+            ]
+            return result
+
     try:
-        import boto3  # noqa: F401
         from botocore.exceptions import NoCredentialsError
     except ImportError:
-        result["status"] = "boto3_missing"
-        result["warnings"] = ["boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"]
-        return result
+        NoCredentialsError = Exception  # type: ignore[misc,assignment]
 
     warnings: list[str] = result["warnings"]
     try:

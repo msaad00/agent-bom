@@ -114,6 +114,10 @@ def test_aws_org_connection_scan_calls_discover_all_with_session(monkeypatch: py
         lambda **kw: MagicMock(to_dict=lambda: {"checks": [], "warnings": []}),
     )
     monkeypatch.setattr(
+        "agent_bom.cloud.aws_cis_benchmark.run_all_account_benchmarks",
+        lambda **kw: MagicMock(to_dict=lambda: {"checks": [], "warnings": []}),
+    )
+    monkeypatch.setattr(
         aws_organizations,
         "discover_organization",
         lambda **kw: {"status": "ok", "org_id": "o-test", "accounts": []},

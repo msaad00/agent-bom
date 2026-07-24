@@ -560,7 +560,15 @@ def integration_options(fn):
                 "--slack-bot-token", default=None, envvar="SLACK_BOT_TOKEN", metavar="TOKEN", help="Slack bot token for app discovery"
             ),
             click.option(
-                "--push-url", default=None, envvar="AGENT_BOM_PUSH_URL", metavar="URL", help="Push scan results to central dashboard URL"
+                "--push-url",
+                default=None,
+                envvar="AGENT_BOM_PUSH_URL",
+                metavar="URL",
+                help=(
+                    "Push the scan report to a control plane. Accepts a base URL "
+                    "(http://127.0.0.1:8422) or the full endpoint "
+                    "(https://host/v1/results/push). Authenticate with --push-api-key."
+                ),
             ),
             click.option(
                 "--push-api-key", default=None, envvar="AGENT_BOM_PUSH_API_KEY", metavar="KEY", help="API key for push authentication"

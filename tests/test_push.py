@@ -420,3 +420,59 @@ def test_push_async_uses_collector_client_tls_material(monkeypatch, tmp_path) ->
 
     assert captured["cert"] == (str(cert), str(key))
     assert captured["verify"] == str(ca)
+
+
+# ─── normalize_scan_push_url ─────────────────────────────────────────────────
+
+
+class TestNormalizeScanPushUrl:
+    """`scan --push-url` accepts a control-plane base URL, not only the endpoint."""
+
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [
+            # Bare base URL — the obvious input, previously POSTed to `/` and 405'd.
+            ("http://127.0.0.1:8422", "http://127.0.0.1:8422/v1/results/push"),
+            ("http://127.0.0.1:8422/", "http://127.0.0.1:8422/v1/results/push"),
+            ("https://agent-bom.example.com///", "https://agent-bom.example.com/v1/results/push"),
+            # Already explicit — must not be double-suffixed.
+            ("http://127.0.0.1:8422/v1/results/push", "http://127.0.0.1:8422/v1/results/push"),
+            ("http://127.0.0.1:8422/v1/results/push/", "http://127.0.0.1:8422/v1/results/push"),
+            # A versioned base URL grows only the endpoint tail.
+            ("https://agent-bom.example.com/v1", "https://agent-bom.example.com/v1/results/push"),
+            # Fleet inventory sync stays where the operator pointed it.
+            ("https://agent-bom.example.com/v1/fleet/sync", "https://agent-bom.example.com/v1/fleet/sync"),
+            # Reverse proxy mounting the control plane under a path prefix.
+            ("https://corp.example.com/agent-bom", "https://corp.example.com/agent-bom/v1/results/push"),
+            ("https://corp.example.com/agent-bom/", "https://corp.example.com/agent-bom/v1/results/push"),
+            (
+                "https://corp.example.com/agent-bom/v1/results/push",
+                "https://corp.example.com/agent-bom/v1/results/push",
+            ),
+            # Query strings survive normalization.
+            ("http://127.0.0.1:8422?tenant=acme", "http://127.0.0.1:8422/v1/results/push?tenant=acme"),
+            (
+                "http://127.0.0.1:8422/v1/results/push?tenant=acme",
+                "http://127.0.0.1:8422/v1/results/push?tenant=acme",
+            ),
+            # Surrounding whitespace from shell/env plumbing.
+            ("  http://127.0.0.1:8422  ", "http://127.0.0.1:8422/v1/results/push"),
+        ],
+    )
+    def test_normalizes(self, given, expected):
+        from agent_bom.push import normalize_scan_push_url
+
+        assert normalize_scan_push_url(given) == expected
+
+    @pytest.mark.parametrize("given", ["", "   ", "not-a-url", "/v1/results/push"])
+    def test_leaves_non_absolute_input_for_url_validation(self, given):
+        """A malformed value is returned untouched so the URL policy reports on it."""
+        from agent_bom.push import normalize_scan_push_url
+
+        assert normalize_scan_push_url(given) == given.strip()
+
+    def test_is_idempotent(self):
+        from agent_bom.push import normalize_scan_push_url
+
+        once = normalize_scan_push_url("http://127.0.0.1:8422")
+        assert normalize_scan_push_url(once) == once

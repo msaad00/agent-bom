@@ -25,6 +25,34 @@ logger = logging.getLogger(__name__)
 
 _LOCAL_CONTROL_PLANE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
+SCAN_PUSH_PATH = "/v1/results/push"
+
+
+def normalize_scan_push_url(push_url: str) -> str:
+    """Resolve a control-plane URL to the scan-report ingest endpoint.
+
+    Mirrors ``agent_bom.fleet.sync_client._default_fleet_sync_url``: a base URL —
+    including one behind a reverse-proxy path prefix — grows
+    :data:`SCAN_PUSH_PATH`, while a URL that already names a versioned API path
+    is left alone so ``/v1/fleet/sync`` inventory pushes keep working. Anything
+    that is not an absolute http(s) URL is returned untouched for the outbound
+    URL policy to reject with its own message.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    candidate = (push_url or "").strip()
+    parsed = urlsplit(candidate)
+    if not parsed.scheme or not parsed.netloc:
+        return candidate
+
+    path = parsed.path.rstrip("/")
+    segments = [segment for segment in path.split("/") if segment]
+    if "v1" not in segments:
+        path += SCAN_PUSH_PATH
+    elif segments[-1] == "v1":
+        path += SCAN_PUSH_PATH[len("/v1") :]
+    return urlunsplit(parsed._replace(path=path))
+
 
 def _validate_push_destination_url(push_url: str) -> None:
     """Validate fleet/scan push URLs with the same local-pilot carve-out as findings push."""
@@ -136,9 +164,7 @@ def _push_tls_cert() -> str | tuple[str, str] | None:
     if cert_file and key_file:
         return cert_file, key_file
     if cert_file or key_file:
-        logger.warning(
-            "Ignoring partial collector push TLS config; set both AGENT_BOM_PUSH_TLS_CERT_FILE and AGENT_BOM_PUSH_TLS_KEY_FILE"
-        )
+        logger.warning("Ignoring partial collector push TLS config; set both AGENT_BOM_PUSH_TLS_CERT_FILE and AGENT_BOM_PUSH_TLS_KEY_FILE")
     return None
 
 

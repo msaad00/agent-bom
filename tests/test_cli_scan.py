@@ -87,6 +87,19 @@ def test_scan_help():
     assert "graph (raw graph JSON)" not in full_normalized
 
 
+def test_scan_help_advertises_the_control_plane_push_handoff():
+    """`--push-url` is the scan → control-plane handoff; it must not be hidden."""
+    result = _run(["scan", "--help"])
+
+    assert result.exit_code == 0
+    assert "--push-url" in result.output
+
+    normalized = " ".join(result.output.split())
+    # The help text states both accepted forms so a base URL is not a guess.
+    assert "/v1/results/push" in normalized
+    assert "base URL" in normalized
+
+
 def test_scan_agent_mode_emits_machine_envelope(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_CONFIG", raising=False)
     result = _run(["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"])

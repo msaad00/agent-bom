@@ -507,6 +507,9 @@ class AgentBomClient:
         regions: Sequence[str] | None = None,
         auth_params: Mapping[str, str] | None = None,
         scan_interval_minutes: int | None = None,
+        inventory_scope: str | None = None,
+        scan_mode: str | None = None,
+        auto_scan_on_create: bool | None = None,
     ) -> JsonObject:
         """Register a read-only cloud connection with the control plane.
 
@@ -525,6 +528,9 @@ class AgentBomClient:
             regions=regions,
             auth_params=auth_params,
             scan_interval_minutes=scan_interval_minutes,
+            inventory_scope=inventory_scope,
+            scan_mode=scan_mode,
+            auto_scan_on_create=auto_scan_on_create,
         )
         return self._request("POST", "/v1/cloud/connections", json=body)
 

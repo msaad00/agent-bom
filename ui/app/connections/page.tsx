@@ -1066,6 +1066,24 @@ function ConnectionsHub() {
     }
   }
 
+  async function handleScanModeChange(connection: CloudConnectionRecord, continuous: boolean) {
+    setScheduleErrors((prev) => {
+      const next = { ...prev };
+      delete next[connection.id];
+      return next;
+    });
+    try {
+      const updated = await api.updateCloudConnection(connection.id, {
+        scan_mode: continuous ? "continuous" : "full",
+      });
+      setConnections((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setMessage(`${updated.display_name} scan mode updated.`);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "Failed to update scan mode.";
+      setScheduleErrors((prev) => ({ ...prev, [connection.id]: detail }));
+    }
+  }
+
   async function handleFleetSync() {
     setSyncingFleet(true);
     setFleetSyncSummary(null);
@@ -1435,6 +1453,7 @@ function ConnectionsHub() {
           onCloudScan={(c) => void handleScan(c)}
           onCloudDelete={(c) => void handleDelete(c)}
           onCloudScheduleChange={(c, v) => void handleScheduleChange(c, v)}
+          onCloudScanModeChange={(c, continuous) => void handleScanModeChange(c, continuous)}
           isDemoMode={isDemoMode}
           dataSourcesService={dataSourcesService}
           servicesRegistry={counts?.services}
@@ -1671,6 +1690,7 @@ interface SourcesSegmentProps {
   onCloudScan: (connection: CloudConnectionRecord) => void;
   onCloudDelete: (connection: CloudConnectionRecord) => void;
   onCloudScheduleChange: (connection: CloudConnectionRecord, value: string) => void;
+  onCloudScanModeChange: (connection: CloudConnectionRecord, continuous: boolean) => void;
   isDemoMode: boolean;
   dataSourcesService: ReturnType<typeof serviceEntry>;
   servicesRegistry: Parameters<typeof serviceEntry>[0];
@@ -1719,6 +1739,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
     onCloudScan,
     onCloudDelete,
     onCloudScheduleChange,
+    onCloudScanModeChange,
     isDemoMode,
     dataSourcesService,
     servicesRegistry,
@@ -1865,6 +1886,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
                   onCloudScan={onCloudScan}
                   onCloudDelete={onCloudDelete}
                   onCloudScheduleChange={onCloudScheduleChange}
+                  onCloudScanModeChange={onCloudScanModeChange}
                 />
               ))}
             </tbody>
@@ -2162,6 +2184,7 @@ function UnifiedRow({
   onCloudScan,
   onCloudDelete,
   onCloudScheduleChange,
+  onCloudScanModeChange,
 }: {
   row: UnifiedSourceRow;
   connection: CloudConnectionRecord | null;
@@ -2172,11 +2195,13 @@ function UnifiedRow({
   onCloudScan: (connection: CloudConnectionRecord) => void;
   onCloudDelete: (connection: CloudConnectionRecord) => void;
   onCloudScheduleChange: (connection: CloudConnectionRecord, value: string) => void;
+  onCloudScanModeChange: (connection: CloudConnectionRecord, continuous: boolean) => void;
 }) {
   const isCloud = row.origin === "cloud" && connection != null;
   const isBusy = isCloud ? busyId === connection!.id : false;
   const scannable = isCloud ? SCANNABLE_PROVIDERS.has(connection!.provider) : false;
   const mode = isCloud ? eventMode(connection!) : null;
+  const continuous = isCloud && isContinuousMode(connection!);
 
   return (
     <tr className="group border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
@@ -2218,7 +2243,7 @@ function UnifiedRow({
                 Organization
               </span>
             ) : null}
-            {isCloud && isContinuousMode(connection!) ? (
+            {continuous ? (
               <span
                 className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-200"
                 title="Continuous mode: event-driven refresh between full scans"
@@ -2248,24 +2273,45 @@ function UnifiedRow({
       <td className="whitespace-nowrap px-4 py-3 text-[var(--text-secondary)]">{formatWhen(row.lastScanAt)}</td>
       <td className="px-4 py-3">
         {isCloud ? (
-          <>
-            <label className="sr-only" htmlFor={`schedule-${connection!.id}`}>
-              Scan schedule
-            </label>
-            <select
-              id={`schedule-${connection!.id}`}
-              value={connection!.scan_interval_minutes?.toString() ?? ""}
-              disabled={!canManage}
-              onChange={(event) => onCloudScheduleChange(connection!, event.target.value)}
-              className="w-36 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {SCHEDULE_OPTIONS.map(([label, value]) => (
-                <option key={label} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor={`schedule-${connection!.id}`}>
+                Scan schedule
+              </label>
+              <select
+                id={`schedule-${connection!.id}`}
+                value={connection!.scan_interval_minutes?.toString() ?? ""}
+                disabled={!canManage}
+                onChange={(event) => onCloudScheduleChange(connection!, event.target.value)}
+                className="w-36 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {SCHEDULE_OPTIONS.map(([label, value]) => (
+                  <option key={label} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={continuous}
+                  disabled={!canManage}
+                  onChange={(event) => onCloudScanModeChange(connection!, event.target.checked)}
+                  className="h-3.5 w-3.5 shrink-0 accent-sky-500 disabled:cursor-not-allowed"
+                  data-testid="schedule-scan-mode-continuous"
+                />
+                Continuous
+              </label>
+            </div>
+            {continuous ? (
+              <p
+                className="max-w-[16rem] text-[10px] leading-snug text-[var(--text-tertiary)]"
+                data-testid="schedule-continuous-queue-hint"
+              >
+                Mid-interval refresh needs a provider event queue env on the control plane.
+              </p>
+            ) : null}
+          </div>
         ) : (
           <span className="tabular-nums text-[var(--text-secondary)]">
             {row.scheduleCount} schedule{row.scheduleCount === 1 ? "" : "s"}
@@ -3367,6 +3413,7 @@ interface WizardForm {
   regions: string;
   auth: Record<string, string>;
   auto_scan_on_create: boolean;
+  scan_mode: "full" | "continuous";
 }
 
 function buildWizardForm(provider: string): WizardForm {
@@ -3378,6 +3425,7 @@ function buildWizardForm(provider: string): WizardForm {
     regions: "",
     auth: {},
     auto_scan_on_create: true,
+    scan_mode: "full",
   };
 }
 
@@ -3587,6 +3635,7 @@ function AddConnectionWizard({
       regions,
       auth_params: authParams,
       inventory_scope: isAws && awsScope === "organization" ? "organization" : "account",
+      scan_mode: form.scan_mode,
       auto_scan_on_create: form.auto_scan_on_create,
     };
 
@@ -3962,6 +4011,35 @@ function AddConnectionWizard({
                     <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
                       Default on. Starts a read-only inventory + CIS scan once the connection is saved.
                     </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={form.scan_mode === "continuous"}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        scan_mode: event.target.checked ? "continuous" : "full",
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-sky-500"
+                    data-testid="wizard-scan-mode-continuous"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-[var(--foreground)]">Continuous</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                      Event-driven mid-interval refresh between full cadence scans.
+                    </span>
+                    {form.scan_mode === "continuous" ? (
+                      <span
+                        className="mt-1.5 block text-[11px] text-[var(--text-tertiary)]"
+                        data-testid="wizard-continuous-queue-hint"
+                      >
+                        Mid-interval refresh needs a provider event queue env on the control plane
+                        (for example AGENT_BOM_AWS_EVENT_QUEUE_URL).
+                      </span>
+                    ) : null}
                   </span>
                 </label>
                 {provider.usesRegions ? (

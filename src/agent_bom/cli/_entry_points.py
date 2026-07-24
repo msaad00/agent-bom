@@ -383,6 +383,34 @@ def _connect_options(source: _ConnectSource) -> list[click.Parameter]:
             click.Option(["--api-key"], help="API key for --server registration."),
             click.Option(["--tenant"], help="Control-plane tenant id for --server registration."),
             click.Option(
+                ["--inventory-scope"],
+                type=click.Choice(["account", "organization"], case_sensitive=False),
+                default=None,
+                help=(
+                    "Connections inventory scope for --server registration "
+                    "(account=target only; organization=fan-out on scan). Default: API account."
+                ),
+            ),
+            click.Option(
+                ["--scan-mode"],
+                type=click.Choice(["full", "continuous"], case_sensitive=False),
+                default=None,
+                help=(
+                    "Scan mode for --server registration (full=cadence only; continuous=also "
+                    "drain event queues mid-interval when a queue env is set). Default: API full."
+                ),
+            ),
+            click.Option(
+                ["--no-auto-scan-on-create"],
+                "no_auto_scan_on_create",
+                is_flag=True,
+                default=False,
+                help=(
+                    "Disable auto_scan_on_create for --server registration "
+                    "(API default is on)."
+                ),
+            ),
+            click.Option(
                 ["--scan", "do_scan"],
                 is_flag=True,
                 help="After establishing, trigger a scan (server /scan, else local scan guidance).",
@@ -601,6 +629,9 @@ def _register_via_server(
     api_key: str,
     tenant: str,
     do_scan: bool,
+    inventory_scope: str | None = None,
+    scan_mode: str | None = None,
+    auto_scan_on_create: bool | None = None,
 ) -> None:
     """Register the connection with a control plane, then run its /test (and /scan).
 
@@ -619,6 +650,9 @@ def _register_via_server(
             external_id=external_id,
             regions=regions,
             auth_params=auth_params,
+            inventory_scope=inventory_scope,
+            scan_mode=scan_mode,
+            auto_scan_on_create=auto_scan_on_create,
         )
         connection_id = str(created.get("id") or "")
         con.print(f"[green]Registered[/green] {source.title} connection [bold]{connection_id}[/bold] on {server}.")  # type: ignore[attr-defined]
@@ -653,6 +687,11 @@ def _make_connect_subcommand(source: _ConnectSource) -> click.Command:
         api_key = str(kwargs.get("api_key") or "").strip()
         tenant = str(kwargs.get("tenant") or "").strip()
         do_scan = bool(kwargs.get("do_scan"))
+        inventory_scope_raw = kwargs.get("inventory_scope")
+        inventory_scope = str(inventory_scope_raw).strip().lower() if inventory_scope_raw else None
+        scan_mode_raw = kwargs.get("scan_mode")
+        scan_mode = str(scan_mode_raw).strip().lower() if scan_mode_raw else None
+        auto_scan_on_create: bool | None = False if kwargs.get("no_auto_scan_on_create") else None
 
         if not role_ref or not external_id:
             secret_flag = next(f.flag for f in _CONNECT_FIELDS[source.name] if f.kind in ("secret", "secret_file"))
@@ -676,6 +715,9 @@ def _make_connect_subcommand(source: _ConnectSource) -> click.Command:
                 api_key=api_key,
                 tenant=tenant,
                 do_scan=do_scan,
+                inventory_scope=inventory_scope,
+                scan_mode=scan_mode,
+                auto_scan_on_create=auto_scan_on_create,
             )
         else:
             _local_verify(

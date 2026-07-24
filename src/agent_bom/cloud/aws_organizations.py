@@ -123,7 +123,7 @@ def discover_organization(
     try:
         from botocore.exceptions import NoCredentialsError
     except ImportError:
-        NoCredentialsError = Exception  # type: ignore[misc,assignment]
+        NoCredentialsError = Exception  # type: ignore[misc,assignment]  # noqa: N806
 
     warnings: list[str] = result["warnings"]
     try:

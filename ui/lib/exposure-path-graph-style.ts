@@ -7,14 +7,35 @@ export interface GraphRoleStyle {
   accent: string;
 }
 
+/**
+ * How much of the role hue is mixed into the node surface. 10% keeps the hue
+ * readable as a tint in both themes while leaving the role accent (the hue at
+ * full strength) above 4.5:1 against the resulting fill.
+ */
+const NODE_FILL_MIX = "10%";
+
+function roleStyle(hue: string): GraphRoleStyle {
+  return {
+    fill: `color-mix(in srgb, var(${hue}) ${NODE_FILL_MIX}, var(--surface))`,
+    stroke: `var(${hue})`,
+    text: "var(--foreground)",
+    accent: `var(${hue})`,
+  };
+}
+
+/**
+ * Paint for one exposure-path node per semantic role. Every value resolves
+ * through theme tokens (`--graph-*` in `app/globals.css`) so the board follows
+ * the active theme instead of rendering a fixed dark slab on a light card.
+ */
 export const GRAPH_ROLE_STYLE: Record<ExposureEntityRole, GraphRoleStyle> = {
-  agent: { fill: "#052e24", stroke: "#10b981", text: "#d1fae5", accent: "#34d399" },
-  server: { fill: "#082f49", stroke: "#0ea5e9", text: "#e0f2fe", accent: "#38bdf8" },
-  package: { fill: "#422006", stroke: "#f59e0b", text: "#fef3c7", accent: "#fbbf24" },
-  finding: { fill: "#450a0a", stroke: "#ef4444", text: "#fee2e2", accent: "#f87171" },
-  credential: { fill: "#3b0764", stroke: "#d946ef", text: "#fae8ff", accent: "#e879f9" },
-  tool: { fill: "#2e1065", stroke: "#a855f7", text: "#f3e8ff", accent: "#c084fc" },
-  environment: { fill: "#164e63", stroke: "#06b6d4", text: "#cffafe", accent: "#22d3ee" },
-  cluster: { fill: "#312e81", stroke: "#6366f1", text: "#e0e7ff", accent: "#818cf8" },
-  unknown: { fill: "#1e293b", stroke: "#64748b", text: "#f1f5f9", accent: "#94a3b8" },
+  agent: roleStyle("--graph-agent"),
+  server: roleStyle("--graph-server"),
+  package: roleStyle("--graph-package"),
+  finding: roleStyle("--graph-finding"),
+  credential: roleStyle("--graph-credential"),
+  tool: roleStyle("--graph-tool"),
+  environment: roleStyle("--graph-environment"),
+  cluster: roleStyle("--graph-cluster"),
+  unknown: roleStyle("--graph-unknown"),
 };

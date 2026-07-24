@@ -102,6 +102,22 @@
   --color-analyze: #d29922;
   --color-output: #3fb950;
   --color-protect: #f778ba;
+
+  /*
+   * Security-graph role hues — one per semantic layer of an exposure path.
+   * Node borders and role chips use the hue directly; node fills mix a small
+   * amount of it into --surface, so the board follows the theme instead of
+   * baking in a dark palette.
+   */
+  --graph-agent: #34d399;
+  --graph-server: #38bdf8;
+  --graph-package: #fbbf24;
+  --graph-finding: #f87171;
+  --graph-credential: #e879f9;
+  --graph-tool: #c084fc;
+  --graph-environment: #22d3ee;
+  --graph-cluster: #818cf8;
+  --graph-unknown: #94a3b8;
 }
 
 :root[data-theme="light"] {
@@ -162,6 +178,21 @@
   --status-danger: var(--severity-critical);
   --status-danger-bg: var(--severity-critical-bg);
   --status-danger-border: var(--severity-critical-border);
+
+  /*
+   * Security-graph role hues, darkened for the light theme: the same hue paints
+   * the node border and the role chip, so it has to clear 4.5:1 against a node
+   * fill that is now a pale tint of white rather than a dark slab.
+   */
+  --graph-agent: #047857;
+  --graph-server: #0369a1;
+  --graph-package: #92400e;
+  --graph-finding: #b91c1c;
+  --graph-credential: #a21caf;
+  --graph-tool: #7e22ce;
+  --graph-environment: #155e75;
+  --graph-cluster: #4338ca;
+  --graph-unknown: #475569;
 }
 
 @theme inline {

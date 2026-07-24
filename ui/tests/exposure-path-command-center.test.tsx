@@ -65,6 +65,29 @@ const basePath: ExposurePath = {
   },
 };
 
+/**
+ * Longest board the product has to frame: agent -> server -> package -> finding
+ * -> 3 tools -> 3 credentials -> data store. At 11 hops the natural board is
+ * 3004px, more than twice the widest desktop content width the shell allows.
+ */
+const longPath: ExposurePath = {
+  ...basePath,
+  id: "path-long",
+  hops: [
+    { id: "agent:cursor", label: "Cursor IDE Agent", role: "agent" },
+    { id: "server:shell-runner", label: "shell-runner-server", role: "server" },
+    { id: "pkg:pyyaml", label: "pyyaml@5.3", role: "package" },
+    { id: "vuln:CVE-2020-14343", label: "CVE-2020-14343", role: "finding" },
+    { id: "tool:run_shell", label: "run_shell", role: "tool" },
+    { id: "tool:exec_command", label: "exec_command", role: "tool" },
+    { id: "tool:read_file", label: "read_file", role: "tool" },
+    { id: "cred:SNOWFLAKE_PASSWORD", label: "SNOWFLAKE_PASSWORD", role: "credential" },
+    { id: "cred:DATABASE_URL", label: "DATABASE_URL", role: "credential" },
+    { id: "cred:AWS_SECRET_ACCESS_KEY", label: "AWS_SECRET_ACCESS_KEY", role: "credential" },
+    { id: "store:warehouse", label: "prod-warehouse", role: "environment" },
+  ],
+};
+
 describe("ExposurePathCommandCenter", () => {
   it("renders a compact path header with collapsed evidence by default", () => {
     render(
@@ -156,6 +179,68 @@ describe("ExposurePathCommandCenter", () => {
     expect(
       screen.queryByRole("img", { name: /Selected exposure path graph for/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("fits a long chain in the first frame and names the hops it summarises", () => {
+    render(<ExposurePathCommandCenter path={longPath} />);
+
+    const board = screen.getByRole("img", { name: /Selected exposure path graph for/ });
+    // Shrink-to-fit board: capped at its natural width, never a fixed overflow.
+    expect(board).toHaveAttribute("width", "100%");
+    expect(board.style.maxWidth).toBe("884px");
+    // Collapsed board fits, so its wrapper must not offer horizontal scroll.
+    expect(screen.getByTestId("exposure-path-graph-scroll")).not.toHaveClass("overflow-x-auto");
+
+    // Entry hop and crown-jewel hop stay pinned; the middle is summarised by
+    // kind so the tool and credential hops are still named in the first frame.
+    expect(within(board).getByText("Cursor IDE Agent")).toBeInTheDocument();
+    expect(within(board).getByText("prod-warehouse")).toBeInTheDocument();
+    expect(within(board).getByText("+9 hops hidden")).toBeInTheDocument();
+    expect(within(board).getByText("3 credentials · 3 tools")).toBeInTheDocument();
+    expect(within(board).queryByText("run_shell")).not.toBeInTheDocument();
+  });
+
+  it("round-trips the long-chain board between collapsed and fully expanded", () => {
+    render(<ExposurePathCommandCenter path={longPath} />);
+
+    const toggle = screen.getByRole("button", { name: "Show all 11 hops" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggle);
+    const expandedBoard = screen.getByRole("img", { name: /Selected exposure path graph for/ });
+    expect(within(expandedBoard).getByText("run_shell")).toBeInTheDocument();
+    expect(within(expandedBoard).getByText("exec_command")).toBeInTheDocument();
+    expect(within(expandedBoard).getByText("DATABASE_URL")).toBeInTheDocument();
+    expect(within(expandedBoard).queryByText("+9 hops hidden")).not.toBeInTheDocument();
+    // Expanded board renders at 1x and scrolls horizontally instead of scaling.
+    expect(expandedBoard).toHaveAttribute("width", "3004");
+    expect(screen.getByTestId("exposure-path-graph-scroll")).toHaveClass("overflow-x-auto");
+
+    const collapse = screen.getByRole("button", { name: "Collapse to fit" });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(collapse);
+    const collapsedBoard = screen.getByRole("img", { name: /Selected exposure path graph for/ });
+    expect(within(collapsedBoard).getByText("+9 hops hidden")).toBeInTheDocument();
+    expect(within(collapsedBoard).queryByText("run_shell")).not.toBeInTheDocument();
+  });
+
+  it("re-enters the fit-first frame when a different path is selected", () => {
+    const { rerender } = render(<ExposurePathCommandCenter path={longPath} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 11 hops" }));
+    expect(screen.getByRole("button", { name: "Collapse to fit" })).toBeInTheDocument();
+
+    // Selecting another long path must not inherit the expanded board — the
+    // first frame of a new investigation has to fit again.
+    rerender(<ExposurePathCommandCenter path={{ ...longPath, id: "path-long-2" }} />);
+    expect(screen.getByRole("button", { name: "Show all 11 hops" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Collapse to fit" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer a collapse toggle for a path that already fits", () => {
+    render(<ExposurePathCommandCenter path={{ ...basePath, hops: basePath.hops.slice(0, 4) }} />);
+
+    expect(screen.queryByRole("button", { name: /Show all \d+ hops/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("exposure-path-graph-scroll")).not.toHaveClass("overflow-x-auto");
   });
 
   it("renders the interactive graph inline in graph view instead of an 'opens below' placeholder", () => {

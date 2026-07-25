@@ -46,6 +46,15 @@ const job = {
   },
 };
 
+const jobWithoutTelemetry = {
+  ...job,
+  job_id: "job-no-telemetry",
+  source_id: undefined,
+  created_at: "2026-05-28T08:00:00Z",
+  completed_at: "2026-05-28T08:02:00Z",
+  request: {},
+};
+
 test("jobs page links sources to completed evidence surfaces", async ({ page }) => {
   await page.route("**/health", async (route) => {
     await route.fulfill({
@@ -95,9 +104,9 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
       contentType: "application/json",
       body: JSON.stringify({
         schema_version: "v1",
-        jobs: [job],
-        count: 1,
-        total: 1,
+        jobs: [job, jobWithoutTelemetry],
+        count: 2,
+        total: 2,
         limit: 200,
         offset: 0,
       }),
@@ -157,6 +166,42 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
           }),
           JSON.stringify({
             type: "step",
+            step_id: "extraction",
+            status: "done",
+            message: "Extracted 8 packages",
+            started_at: "2026-05-28T10:12:10Z",
+            completed_at: "2026-05-28T10:12:25Z",
+            stats: { packages: 8 },
+          }),
+          JSON.stringify({
+            type: "step",
+            step_id: "scanning",
+            status: "done",
+            message: "Scanned collected inventory",
+            started_at: "2026-05-28T10:12:25Z",
+            completed_at: "2026-05-28T10:13:05Z",
+            stats: { findings: 3 },
+          }),
+          JSON.stringify({
+            type: "step",
+            step_id: "enrichment",
+            status: "done",
+            message: "Enriched observed findings",
+            started_at: "2026-05-28T10:13:05Z",
+            completed_at: "2026-05-28T10:13:25Z",
+            stats: { findings: 3 },
+          }),
+          JSON.stringify({
+            type: "step",
+            step_id: "analysis",
+            status: "done",
+            message: "Analyzed evidence relationships",
+            started_at: "2026-05-28T10:13:25Z",
+            completed_at: "2026-05-28T10:13:50Z",
+            stats: { critical_findings: 1 },
+          }),
+          JSON.stringify({
+            type: "step",
             step_id: "output",
             status: "done",
             message: "Report generated",
@@ -168,6 +213,17 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
       }),
     });
   });
+  await page.route("**/v1/scan/job-no-telemetry", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...jobWithoutTelemetry,
+        started_at: jobWithoutTelemetry.created_at,
+        progress: [],
+        result: { summary: jobWithoutTelemetry.summary },
+      }),
+    });
+  });
 
   await page.goto("/jobs");
   await page.waitForLoadState("networkidle");
@@ -176,10 +232,16 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
   await expect(page.getByTestId("source-job-evidence-workflow")).toContainText("Source → job → evidence");
   await expect(page.getByTestId("job-pipeline-job-prod-cloud")).toBeVisible();
   await expect(page.getByText("Prod cloud account")).toBeVisible();
-  await expect(page.getByText("3 CVEs · 1 critical · 8 packages")).toBeVisible();
+  await expect(page.getByText("3 CVEs · 1 critical · 8 packages").first()).toBeVisible();
 
-  const mainContent = page.locator("#main-content");
-  await expect(mainContent.getByRole("link", { name: "Findings", exact: true })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
-  await expect(mainContent.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
-  await expect(mainContent.getByRole("link", { name: "Compliance", exact: true })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
+  const prodRow = page.getByRole("row").filter({ hasText: "Prod cloud account" });
+  await expect(prodRow.getByRole("link", { name: "Findings", exact: true })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
+  await expect(prodRow.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
+  await expect(prodRow.getByRole("link", { name: "Compliance", exact: true })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
+
+  await page.getByRole("button", { name: "Expand pipeline" }).last().click();
+  const unavailable = page.getByTestId("job-pipeline-job-no-telemetry");
+  await expect(unavailable.getByText("Stage telemetry unavailable", { exact: true })).toBeVisible();
+  await expect(unavailable.getByText("Per-stage telemetry unavailable", { exact: true })).toBeVisible();
+  await expect(unavailable).toContainText("The scan result is available, but this executor did not emit stage events or stage timestamps.");
 });

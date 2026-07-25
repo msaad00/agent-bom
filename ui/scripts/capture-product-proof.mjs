@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { chromium } from "@playwright/test";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
 
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const REPO_ROOT = path.resolve(UI_ROOT, "..");
@@ -19,9 +21,31 @@ const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";
 const CAPTURE_THEME = process.env.CAPTURE_THEME === "light" ? "light" : "dark";
 
 const baseUrlFromEnv = process.env.CAPTURE_BASE_URL;
+if (baseUrlFromEnv) {
+  throw new Error(
+    "CAPTURE_BASE_URL is not allowed for release product proof; capture must use the local committed standalone build",
+  );
+}
 const PORT = Number(process.env.CAPTURE_PORT || "3137");
-const BASE_URL = baseUrlFromEnv || `http://127.0.0.1:${PORT}`;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 let captureOutputDir = IMAGE_DIR;
+const execFileAsync = promisify(execFile);
+
+async function captureSourceProvenance() {
+  const [{ stdout: commit }, { stdout: status }] = await Promise.all([
+    execFileAsync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT }),
+    execFileAsync("git", ["status", "--porcelain"], { cwd: REPO_ROOT }),
+  ]);
+  if (status.trim()) {
+    throw new Error("Release product proof requires a clean committed source tree, including no untracked inputs");
+  }
+  return { source_commit: commit.trim(), source_tree: "clean" };
+}
+
+async function screenshotSha256(filePath) {
+  const digest = createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
+  return `sha256:${digest}`;
+}
 
 function severityId(severity) {
   return { none: 0, low: 1, medium: 2, high: 3, critical: 4 }[severity] ?? 0;
@@ -669,14 +693,59 @@ function scanJob() {
     job_id: SCAN_ID,
     status: "done",
     created_at: CREATED_AT,
-    request: {},
-    progress: [],
+    started_at: CREATED_AT,
+    completed_at: "2026-06-03T20:32:00Z",
+    request: { source_id: "source-proof-repo", path: "/workspace/sample-repository" },
+    progress: [
+      { step_id: "discovery", started_at: "2026-06-03T20:30:00Z", completed_at: "2026-06-03T20:30:12Z", message: "Discovered 15 synthetic agents", stats: { agents: 15 } },
+      { step_id: "extraction", started_at: "2026-06-03T20:30:12Z", completed_at: "2026-06-03T20:30:28Z", message: "Extracted package and source inventory", stats: { packages: 126 } },
+      { step_id: "scanning", started_at: "2026-06-03T20:30:28Z", completed_at: "2026-06-03T20:31:16Z", message: "Completed configured read-only scanners", stats: { findings: 15 } },
+      { step_id: "enrichment", started_at: "2026-06-03T20:31:16Z", completed_at: "2026-06-03T20:31:34Z", message: "Attached local advisory and policy context", stats: { enriched: 15 } },
+      { step_id: "analysis", started_at: "2026-06-03T20:31:34Z", completed_at: "2026-06-03T20:31:53Z", message: "Calculated reachability and bounded paths", stats: { paths: 3 } },
+      { step_id: "output", started_at: "2026-06-03T20:31:53Z", completed_at: "2026-06-03T20:32:00Z", message: "Persisted findings, graph, and report evidence", stats: { reports: 1 } },
+    ].map((event) => JSON.stringify({ type: "step", status: "done", ...event })),
     summary: scanSummary(agents.length),
     result: {
       agents,
       blast_radius: buildBlastRadius(),
       remediation_plan: remediationPlan,
       scan_sources: ["demo-scan", "fleet-sync", "gateway-runtime"],
+    },
+  };
+}
+
+function agentLifecycleFixture() {
+  const nodes = [
+    ["agent", "developer-copilot", 40, 220, {}],
+    ["server", "github-enterprise MCP", 300, 100, {}],
+    ["server", "filesystem MCP", 300, 340, {}],
+    ["package", "next", 570, 80, { version: "16.2.6", ecosystem: "npm" }],
+    ["tool", "create_pull_request", 570, 220, {}],
+    ["credential", "GITHUB_FINE_GRAINED_TOKEN", 570, 360, { description: "Credential name only; value never collected" }],
+    ["cve", "DEMO-VULN-21441", 840, 80, { severity: "critical", fixed_version: "16.2.7" }],
+  ].map(([nodeType, label, x, y, extra], index) => ({
+    id: `lifecycle-${index + 1}`,
+    type: "lifecycleNode",
+    position: { x, y },
+    data: { nodeType, label, ...extra },
+  }));
+  const edges = [
+    [0, 1], [0, 2], [1, 3], [1, 4], [1, 5], [3, 6],
+  ].map(([source, target], index) => ({
+    id: `lifecycle-edge-${index + 1}`,
+    source: nodes[source].id,
+    target: nodes[target].id,
+    type: "smoothstep",
+  }));
+  return {
+    nodes,
+    edges,
+    stats: {
+      total_servers: 2,
+      total_packages: 1,
+      total_tools: 1,
+      total_credentials: 1,
+      total_vulnerabilities: 1,
     },
   };
 }
@@ -1387,6 +1456,7 @@ async function installRoutes(page) {
     count: scanJob().result.agents.length,
     warnings: [],
   }));
+  await page.route("**/v1/agents/developer-copilot/lifecycle", (route) => fulfill(route, agentLifecycleFixture()));
   await page.route((url) => {
     try {
       return new URL(url).pathname === "/v1/jobs";
@@ -1686,7 +1756,6 @@ async function waitForServer(url) {
 }
 
 async function startServerIfNeeded() {
-  if (baseUrlFromEnv) return null;
   const standaloneRoot = path.join(UI_ROOT, ".next", "standalone");
   const standaloneStatic = path.join(standaloneRoot, ".next", "static");
   const standalonePublic = path.join(standaloneRoot, "public");
@@ -1807,6 +1876,12 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
       const matched = rejected instanceof RegExp ? rejected.test(visibleText) : visibleText.includes(rejected);
       if (matched) throw new Error(`Rejected content ${String(rejected)} is visible on ${urlPath}`);
     }
+    if (options.assertNoHorizontalOverflow) {
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      );
+      if (overflow) throw new Error(`Horizontal overflow is visible on ${urlPath}`);
+    }
     for (const expectedPath of options.expectedApiPaths ?? []) {
       if (!successfulApiPaths.has(expectedPath)) {
         throw new Error(`Expected API response ${expectedPath} was not observed on ${urlPath}`);
@@ -1839,7 +1914,7 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
 }
 
 async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
-  const screenshots = [
+  const screenshotEntries = [
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
@@ -1872,6 +1947,16 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       path: "new-scan-live.png",
       page: "/scan?capture=1",
       scope: "New Scan workspace with collector plan, read-only boundary, expected evidence, connected sources, and recent job context",
+    },
+    {
+      path: "jobs-pipeline-live.png",
+      page: "/jobs?capture=1",
+      scope: "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
+    },
+    {
+      path: "agent-lifecycle-live.png",
+      page: "/agents?name=developer-copilot&view=lifecycle&capture=1",
+      scope: "Developer agent lifecycle across MCP servers, package, tool, credential name, and synthetic finding",
     },
     {
       path: "mesh-live.png",
@@ -1931,14 +2016,32 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       page: "/remediation?capture=1",
       scope: "Fix-first remediation table with prioritized packages and framework context",
     },
-  ].map((entry) => ({
-    presentation: `${CAPTURE_THEME} desktop`,
-    ...entry,
-    visible_version: RELEASE_VERSION,
-  }));
+    {
+      path: "remediation-light-live.png",
+      page: "/remediation?capture=1",
+      scope: "Fix-first remediation workflow in the light theme",
+      presentation: "light desktop",
+    },
+    {
+      path: "remediation-mobile-live.png",
+      page: "/remediation?capture=1",
+      scope: "Fix-first remediation workflow at a 390 by 844 viewport",
+      presentation: "dark mobile",
+    },
+  ];
+  const screenshots = await Promise.all(
+    screenshotEntries.map(async (entry) => ({
+      presentation: `${CAPTURE_THEME} desktop`,
+      ...entry,
+      visible_version: RELEASE_VERSION,
+      sha256: await screenshotSha256(path.join(outputDir, entry.path)),
+    })),
+  );
+  const provenance = await captureSourceProvenance();
   const manifest = {
     release_version: RELEASE_VERSION,
     captured_at: new Date().toISOString(),
+    ...provenance,
     capture_note:
       "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
     screenshots,
@@ -2013,6 +2116,27 @@ async function main() {
     }, {
       expectedText: ["New Scan", "What this scan produces", "Read-only boundary", /Collector plan/i, /Recent scans/i],
       expectedApiPaths: ["/v1/cloud/connections", "/v1/sources", "/v1/jobs"],
+    });
+    await capture(page, "/jobs?capture=1", "jobs-pipeline-live.png", async (jobsPage) => {
+      await jobsPage.getByTestId(`job-pipeline-${SCAN_ID}`).waitFor({ state: "visible", timeout: 20_000 });
+      await jobsPage.getByText("Timing & activity", { exact: true }).scrollIntoViewIfNeeded();
+      await jobsPage.evaluate(() => window.scrollBy({ top: -540, behavior: "instant" }));
+    }, {
+      expectedText: ["Scan pipeline DAG", "6/6 stages complete", "Wall clock 2m 0s", "Timing & activity", "12.0s"],
+      rejectedText: [/Loading jobs/i, /Loading persisted pipeline events/i, /Stage telemetry unavailable/i],
+      expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`],
+      minGraphNodes: 6,
+      minGraphEdges: 5,
+    });
+    await capture(page, "/agents?name=developer-copilot&view=lifecycle&capture=1", "agent-lifecycle-live.png", async (agentsPage) => {
+      await agentsPage.getByText("Lifecycle Graph", { exact: true }).waitFor({ state: "visible", timeout: 20_000 });
+      await fitReactFlow(agentsPage);
+    }, {
+      expectedText: ["Lifecycle Graph", "developer-copilot", "github-enterprise MCP", "create_pull_request", "DEMO-VULN-21441"],
+      rejectedText: [/Loading/i],
+      expectedApiPaths: ["/v1/agents/developer-copilot/lifecycle"],
+      minGraphNodes: 7,
+      minGraphEdges: 6,
     });
     await capture(page, "/mesh?capture=1", "mesh-live.png", async (meshPage) => {
       // ReactFlow can preserve a hidden, pre-measurement node tree across an
@@ -2203,6 +2327,11 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: 'section[aria-label="Selected exposure path graph"]',
     });
+    await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
+      expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14", "DEMO-VULN-21441"],
+      rejectedText: [/Loading prioritized campaigns/i],
+      expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+    });
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
     await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", undefined, {
@@ -2218,6 +2347,14 @@ async function main() {
       expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: 'section[aria-label="Selected exposure path graph"]',
+      rejectedText: [/Loading/i],
+      assertNoHorizontalOverflow: true,
+    });
+    await capture(mobilePage, "/remediation?capture=1", "remediation-mobile-live.png", undefined, {
+      expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14"],
+      rejectedText: [/Loading prioritized campaigns/i],
+      expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+      assertNoHorizontalOverflow: true,
     });
     await writeScreenshotManifest(stageDir);
     for (const artifact of await fs.readdir(stageDir)) {

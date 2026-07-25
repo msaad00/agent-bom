@@ -118,3 +118,34 @@ test("every packaged product route renders and enabled controls are named", asyn
     expect(unnamed, `${path} has enabled buttons without an accessible label`).toEqual([]);
   }
 });
+
+test("representative global actions change state, focus content, and navigate", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await routeBaseline(page);
+  await page.addInitScript(() => window.localStorage.setItem("agent-bom-theme", "dark"));
+  await page.goto("/help", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "Switch to light theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("agent-bom-theme"))).toBe("light");
+
+  const collapseSidebar = page.getByRole("button", { name: "Collapse sidebar" });
+  const expandSidebar = page.getByRole("button", { name: "Expand sidebar" });
+  if (await expandSidebar.isVisible()) {
+    await expandSidebar.click();
+    await expect(collapseSidebar).toBeVisible();
+  }
+  await collapseSidebar.click();
+  await expect(expandSidebar).toBeVisible();
+  await expandSidebar.click();
+  await expect(collapseSidebar).toBeVisible();
+
+  await page.getByText("Search pages...", { exact: true }).click();
+  await page.getByRole("button", { name: "Focus main content" }).click();
+  await expect(page.locator("#main-content")).toBeFocused();
+
+  await page.getByText("Search pages...", { exact: true }).click();
+  await page.getByPlaceholder("Search pages and commands...").fill("Jobs");
+  await page.getByRole("link", { name: /Scan Jobs/ }).click();
+  await page.waitForURL((url) => url.pathname === "/jobs");
+});

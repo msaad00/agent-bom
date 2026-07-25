@@ -79,8 +79,10 @@ expected.
 
 The browser experience keeps the evidence shared while presenting task-focused
 workspaces: fix-first findings, path-first investigation, control evidence, and
-posture summaries. Graph views use observed nodes and relationships and expose
-fit, zoom, pan, layout, and personal positioning controls.
+posture summaries. Graph views preserve provenance where source evidence
+provides it: collected, inferred, static, and runtime relationships remain
+distinct, while unavailable provenance is not upgraded to observed. Interactive
+views expose fit, zoom, pan, layout, and personal positioning controls.
 
 ## Who it is for
 
@@ -109,7 +111,7 @@ product-state proof, not customer or advisory evidence.
 
 | Investigation | Remediation |
 |:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with observed graph evidence" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Compact prioritized remediation workflow" width="430" /> |
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with provenance-aware synthetic graph evidence" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Compact prioritized remediation workflow" width="430" /> |
 
 | Cloud and environment lineage | Agent mesh |
 |:---:|:---:|
@@ -137,6 +139,9 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.99.0` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
+
+> Examples target `v0.99.0`; confirm release availability before copying an
+> exact pin. Otherwise, use the latest version shown on PyPI.
 
 [Deployment overview](site-docs/deployment/overview.md) ·
 [Enterprise configuration](docs/ENTERPRISE.md) ·

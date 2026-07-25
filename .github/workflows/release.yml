@@ -431,7 +431,15 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$TOKEN"
-          DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)
+          PUBLISHED_README="$RUNNER_TEMP/DOCKER_HUB_README.published.md"
+          python scripts/render_docker_storefront.py \
+            --version "${{ steps.meta.outputs.version }}" \
+            --input DOCKER_HUB_README.md \
+            --output "$PUBLISHED_README"
+          AGENT_BOM_RELEASE_FINALIZE=1 AGENT_BOM_DOCKER_README_PATH="$PUBLISHED_README" \
+            python scripts/check_release_consistency.py \
+            || { echo "::error::Rendered Docker Hub README failed finalization contract"; exit 1; }
+          DESCRIPTION=$(jq -Rs . < "$PUBLISHED_README")
           SHORT_DESCRIPTION_JSON=$(printf '%s' "$SHORT_DESCRIPTION" | jq -Rs .)
           RESPONSE_FILE=$(mktemp)
           HTTP_CODE=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" -X PATCH \

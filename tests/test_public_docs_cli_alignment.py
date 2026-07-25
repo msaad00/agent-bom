@@ -94,6 +94,33 @@ def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
     assert "Smithery manifest" in readme
 
 
+def test_release_prep_does_not_call_unpublished_version_current() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
+
+    assert "0.99.0` | Current stable" not in docker_hub
+    assert "confirm release availability before copying an" in readme
+    assert "verify registry availability before pinning" in docker_hub
+
+
+def test_readme_distinguishes_graph_relationship_provenance() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Graph views use observed nodes and relationships" not in readme
+    assert "collected, inferred, static, and runtime" in readme
+    assert "observed graph evidence" not in readme
+
+
+def test_release_verification_blocks_on_stale_registry_surfaces() -> None:
+    verification = (ROOT / "docs" / "RELEASE_VERIFICATION.md").read_text(encoding="utf-8")
+
+    assert "Registry surface freshness" in verification
+    assert "Glama" in verification
+    assert "do not mark the release complete" in verification.lower()
+    assert "Browser behavioral lock-in" in verification
+    assert "this matrix does not claim one browser test per control" in verification
+
+
 def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     """README storefront keeps one clear story and a two-command first run."""
     import re

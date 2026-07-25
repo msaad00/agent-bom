@@ -246,10 +246,24 @@ def _log_control_plane_auth_posture() -> None:
         )
 
 
+def _apply_worker_thread_limit() -> None:
+    """Cap offloaded worker threads so they cannot outrun the connection pool.
+
+    AnyIO's default limiter is per-event-loop, so this runs at startup inside
+    the running loop rather than at import time.
+    """
+    import anyio.to_thread
+
+    from agent_bom.config import WORKER_THREAD_LIMIT
+
+    anyio.to_thread.current_default_thread_limiter().total_tokens = WORKER_THREAD_LIMIT
+
+
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
     _log_control_plane_auth_posture()
+    _apply_worker_thread_limit()
     configure_otel_tracing()
     # Priority: Snowflake > Postgres > SQLite > InMemory (lazy default)
     snowflake_configured = bool(os.environ.get("SNOWFLAKE_ACCOUNT"))

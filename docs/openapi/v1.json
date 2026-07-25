@@ -24045,7 +24045,7 @@
     },
     "/v1/jobs": {
       "get": {
-        "description": "List all scan jobs (for the UI job history panel).\n\nSearch and status predicates are applied by the persistence backend before\npagination, so totals and exports describe the full filtered collection.",
+        "description": "List all scan jobs (for the UI job history panel).\n\nSearch and status predicates are applied by the persistence backend before\npagination, so totals and exports describe the full filtered collection.\n\nThe store reads run in a worker thread. ``count_summary`` and\n``count_summary_by_status`` are unbounded aggregates, and the dashboard\nactivity feed polls this route continuously, so running them inline would\nstall every unrelated route for the duration of each poll. Backpressure\nsheds excess concurrent reads with ``429 + Retry-After`` rather than piling\nup worker threads \u2014 the same guard ``/findings`` uses.",
         "operationId": "list_jobs_v1_jobs_get",
         "parameters": [
           {

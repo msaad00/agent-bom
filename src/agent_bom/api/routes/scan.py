@@ -1646,7 +1646,42 @@ async def list_jobs(
 
     Search and status predicates are applied by the persistence backend before
     pagination, so totals and exports describe the full filtered collection.
+
+    The store reads run in a worker thread. ``count_summary`` and
+    ``count_summary_by_status`` are unbounded aggregates, and the dashboard
+    activity feed polls this route continuously, so running them inline would
+    stall every unrelated route for the duration of each poll. Backpressure
+    sheds excess concurrent reads with ``429 + Retry-After`` rather than piling
+    up worker threads — the same guard ``/findings`` uses.
     """
+    try:
+        async with adaptive_backpressure("jobs"):
+            return await anyio.to_thread.run_sync(
+                _list_jobs_impl,
+                request,
+                limit,
+                offset,
+                include_details,
+                q,
+                status,
+            )
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+def _list_jobs_impl(
+    request: Request,
+    limit: int,
+    offset: int,
+    include_details: bool,
+    q: str | None,
+    status: JobStatus | None,
+) -> dict:
+    """Synchronous body of :func:`list_jobs`, run in a worker thread."""
     tenant_id = _tenant_id(request)
     store = _get_store()
     query = q.strip() if q else None
@@ -1673,11 +1708,7 @@ async def list_jobs(
         total = len(summary)
         summary = summary[offset : offset + limit]
     count_summary_by_status = getattr(store, "count_summary_by_status", None)
-    status_counts = (
-        count_summary_by_status(tenant_id=tenant_id, query=query)
-        if callable(count_summary_by_status)
-        else {}
-    )
+    status_counts = count_summary_by_status(tenant_id=tenant_id, query=query) if callable(count_summary_by_status) else {}
     enriched: list[dict[str, Any]] = []
     for item in summary:
         in_mem = _jobs_get(item["job_id"])

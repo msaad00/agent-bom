@@ -60,8 +60,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agent_bom.package_import_names import import_names_for_distribution
-from agent_bom.package_utils import normalize_package_ecosystem, normalize_package_name
+from agent_bom.package_utils import (
+    import_names_for_distribution,
+    normalize_package_ecosystem,
+    normalize_package_name,
+)
 
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach

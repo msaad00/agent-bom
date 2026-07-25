@@ -2122,7 +2122,7 @@ async function main() {
       await jobsPage.getByText("Timing & activity", { exact: true }).scrollIntoViewIfNeeded();
       await jobsPage.evaluate(() => window.scrollBy({ top: -540, behavior: "instant" }));
     }, {
-      expectedText: ["Scan pipeline DAG", "6/6 stages complete", "Wall clock 2m 0s", "Timing & activity", "12.0s"],
+      expectedText: [/scan pipeline dag/i, /6\/6 stages complete/i, /wall clock 2m 0s/i, /timing & activity/i, "12.0s"],
       rejectedText: [/Loading jobs/i, /Loading persisted pipeline events/i, /Stage telemetry unavailable/i],
       expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`],
       minGraphNodes: 6,

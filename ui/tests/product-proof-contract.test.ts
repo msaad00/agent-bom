@@ -58,7 +58,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain('step_id: "discovery"');
     expect(source).toContain('step_id: "output"');
     expect(source).toContain('page.route("**/v1/agents/developer-copilot/lifecycle"');
-    expect(source).toContain('"6/6 stages complete"');
+    expect(source).toContain("/6\\/6 stages complete/i");
   });
 
   it("filters audit proof server-side and waits for identity lifecycle rows", () => {

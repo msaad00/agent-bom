@@ -184,5 +184,6 @@ def test_invite_url_present_only_when_base_configured_and_carries_no_secret(invi
     assert body["invite_url"] is not None
     parsed = urlparse(body["invite_url"])
     assert (parsed.scheme, parsed.netloc) == ("https", "app.example.com")
+    assert parsed.path == "/login"
     assert body["tenant_id"] in parsed.path + "?" + parsed.query
     assert body["raw_key"] not in body["invite_url"]

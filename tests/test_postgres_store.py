@@ -759,6 +759,34 @@ def test_key_store_add_get_list_verify_remove(mock_pool):
     assert store.remove(api_key.key_id) is True
 
 
+def test_key_store_provisions_tenant_and_first_key_in_one_rls_scope(mock_pool):
+    """Hosted provisioning must create the FK root before the RLS-scoped key."""
+    from agent_bom.api.auth import Role, create_api_key
+    from agent_bom.api.postgres_common import _current_tenant, reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresKeyStore
+
+    store = PostgresKeyStore(pool=mock_pool)
+    _, api_key = create_api_key("example-owner", Role.ADMIN, tenant_id="example-tenant")
+    mock_pool._conn.executed.clear()
+    mock_pool._conn.transaction_events.clear()
+
+    operator_token = set_current_tenant("operator")
+    try:
+        store.provision_tenant_key(api_key, team_name="Example Organization")
+        assert _current_tenant.get() == "operator"
+    finally:
+        reset_current_tenant(operator_token)
+
+    statements = [(sql.strip().lower(), params) for sql, params in mock_pool._conn.executed]
+    tenant_session = next(params for sql, params in statements if "set_config('app.tenant_id'" in sql)
+    team_insert = next(index for index, (sql, _params) in enumerate(statements) if sql.startswith("insert into teams"))
+    key_insert = next(index for index, (sql, _params) in enumerate(statements) if sql.startswith("insert into api_keys"))
+
+    assert tenant_session == (api_key.tenant_id,)
+    assert team_insert < key_insert
+    assert mock_pool._conn.transaction_events == ["commit"]
+
+
 def test_key_store_mark_rotating_updates_overlap_metadata(mock_pool):
     from agent_bom.api.auth import Role, create_api_key
     from agent_bom.api.postgres_store import PostgresKeyStore

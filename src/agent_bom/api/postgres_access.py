@@ -9,7 +9,16 @@ from agent_bom.api.auth import ApiKey, Role, verify_api_key
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
-from .postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
+from .postgres_common import (
+    Connection,
+    ConnectionPool,
+    _ensure_tenant_rls,
+    _get_pool,
+    _tenant_connection,
+    bypass_tenant_rls,
+    reset_current_tenant,
+    set_current_tenant,
+)
 
 
 class PostgresKeyStore:
@@ -134,16 +143,9 @@ class PostgresKeyStore:
             principal_id=row[15] if len(row) > 15 else None,
         )
 
-    def add(self, key: ApiKey) -> None:
-        with _tenant_connection(self._pool) as conn:
-            conn.execute(
-                """INSERT INTO api_keys
-                   (
-                     key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
-                     created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                     scim_subject_id, owner, principal_id, revoked
-                   )
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+    @staticmethod
+    def _insert_key(conn: Connection, key: ApiKey, *, update_existing: bool) -> None:
+        conflict_clause = """
                    ON CONFLICT (key_id) DO UPDATE SET
                      key_hash = EXCLUDED.key_hash,
                      key_salt = EXCLUDED.key_salt,
@@ -160,27 +162,63 @@ class PostgresKeyStore:
                      scim_subject_id = EXCLUDED.scim_subject_id,
                      owner = EXCLUDED.owner,
                      principal_id = EXCLUDED.principal_id,
-                     revoked = FALSE""",
-                (
-                    key.key_id,
-                    key.key_hash,
-                    key.key_salt,
-                    key.key_prefix,
-                    key.name,
-                    key.role.value,
-                    key.tenant_id,
-                    json.dumps(key.scopes),
-                    key.created_at,
-                    key.expires_at,
-                    key.revoked_at,
-                    key.rotation_overlap_until,
-                    key.replacement_key_id,
-                    key.scim_subject_id,
-                    key.owner,
-                    key.principal_id,
-                ),
-            )
+                     revoked = FALSE""" if update_existing else ""
+        conn.execute(
+            """INSERT INTO api_keys
+                   (
+                     key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+                     created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
+                     scim_subject_id, owner, principal_id, revoked
+                   )
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+                   """ + conflict_clause,
+            (
+                key.key_id,
+                key.key_hash,
+                key.key_salt,
+                key.key_prefix,
+                key.name,
+                key.role.value,
+                key.tenant_id,
+                json.dumps(key.scopes),
+                key.created_at,
+                key.expires_at,
+                key.revoked_at,
+                key.rotation_overlap_until,
+                key.replacement_key_id,
+                key.scim_subject_id,
+                key.owner,
+                key.principal_id,
+            ),
+        )
+
+    def add(self, key: ApiKey) -> None:
+        with _tenant_connection(self._pool) as conn:
+            self._insert_key(conn, key, update_existing=True)
             conn.commit()
+
+    def provision_tenant_key(self, key: ApiKey, *, team_name: str) -> None:
+        """Create a tenant FK root and its first key in one RLS-scoped transaction.
+
+        The invitation request begins under the operator tenant. Temporarily
+        binding the new tenant lets the ``api_keys`` FORCE-RLS ``WITH CHECK``
+        policy authorize only that tenant's key without enabling the global RLS
+        bypass. A key-id conflict is deliberately not upserted: the exception
+        rolls back the preceding team insert instead of moving an existing key
+        across tenants.
+        """
+        tenant_id = key.tenant_id
+        token = set_current_tenant(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                conn.execute(
+                    "INSERT INTO teams (team_id, name, slug) VALUES (%s, %s, %s)",
+                    (tenant_id, team_name.strip() or tenant_id, tenant_id),
+                )
+                self._insert_key(conn, key, update_existing=False)
+                conn.commit()
+        finally:
+            reset_current_tenant(token)
 
     def remove(self, key_id: str) -> bool:
         with _tenant_connection(self._pool) as conn:

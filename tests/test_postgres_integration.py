@@ -8,6 +8,7 @@ against a real server instead of the MockConnection unit-test harness.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -72,6 +73,54 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert same_tenant.triggered_by == "ci-postgres-contract"
     assert other_tenant is None
     assert any(item.job_id == job_id for item in results)
+
+
+def test_postgres_invitation_provisions_team_and_key_atomically_under_new_tenant_rls():
+    """An operator admin may provision a distinct tenant without an RLS or FK failure."""
+    import psycopg
+
+    from agent_bom.api.auth import Role, create_api_key
+    from agent_bom.api.postgres_access import PostgresKeyStore
+    from agent_bom.api.postgres_common import _get_pool, reset_current_tenant, set_current_tenant
+
+    suffix = uuid4().hex
+    tenant_id = f"invite-{suffix}"
+    raw_key, api_key = create_api_key("invited-owner", Role.ADMIN, tenant_id=tenant_id)
+    store = PostgresKeyStore()
+
+    operator_token = set_current_tenant(f"operator-{suffix}")
+    try:
+        store.provision_tenant_key(api_key, team_name="Example Organization")
+    finally:
+        reset_current_tenant(operator_token)
+
+    invited_token = set_current_tenant(tenant_id)
+    try:
+        assert store.verify(raw_key) is not None
+        stored = store.get(api_key.key_id)
+        assert stored is not None
+        assert stored.tenant_id == tenant_id
+        with _get_pool().connection() as conn:
+            team = conn.execute("SELECT team_id, name, slug FROM teams WHERE team_id = %s", (tenant_id,)).fetchone()
+    finally:
+        reset_current_tenant(invited_token)
+
+    assert team == (tenant_id, "Example Organization", tenant_id)
+
+    # Reusing an existing key id must fail closed and roll back the team row;
+    # otherwise a partial invitation leaves an orphan tenant behind.
+    rejected_tenant_id = f"invite-rejected-{suffix}"
+    colliding_key = replace(api_key, tenant_id=rejected_tenant_id)
+    operator_token = set_current_tenant(f"operator-{suffix}")
+    try:
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            store.provision_tenant_key(colliding_key, team_name="Rejected Organization")
+    finally:
+        reset_current_tenant(operator_token)
+
+    with _get_pool().connection() as conn:
+        rejected_team = conn.execute("SELECT team_id FROM teams WHERE team_id = %s", (rejected_tenant_id,)).fetchone()
+    assert rejected_team is None
 
 
 def test_demo_estate_bootstrap_uses_secret_aware_migrated_postgres(monkeypatch):

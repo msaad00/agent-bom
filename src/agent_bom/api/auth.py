@@ -456,6 +456,16 @@ class KeyStore:
         with self._lock:
             self._keys.append(key)
 
+    def provision_tenant_key(self, key: ApiKey, *, team_name: str) -> None:
+        """Provision a tenant's first key for the in-memory self-hosted store.
+
+        The in-memory backend has no separate team registry, so provisioning is
+        equivalent to adding the already tenant-scoped key. Persistent stores
+        override this method to create their tenant FK root atomically.
+        """
+        del team_name
+        self.add(key)
+
     def remove(self, key_id: str) -> bool:
         with self._lock:
             for key in self._keys:
@@ -528,6 +538,7 @@ class KeyStoreProtocol(Protocol):
     """Interface shared by in-memory and persistent API key stores."""
 
     def add(self, key: ApiKey) -> None: ...
+    def provision_tenant_key(self, key: ApiKey, *, team_name: str) -> None: ...
     def remove(self, key_id: str) -> bool: ...
     def revoke_by_principal_id(self, principal_id: str, tenant_id: str | None = None) -> list[str]: ...
     def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool: ...

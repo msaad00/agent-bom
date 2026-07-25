@@ -945,7 +945,7 @@ def _hosted_invite_url(tenant_id: str) -> str | None:
         return None
     from urllib.parse import quote
 
-    return f"{base.rstrip('/')}/signin?tenant={quote(tenant_id, safe='')}"
+    return f"{base.rstrip('/')}/login?tenant={quote(tenant_id, safe='')}"
 
 
 @router.post("/auth/invitations", tags=["enterprise"], status_code=201)
@@ -987,7 +987,10 @@ async def create_invitation(request: Request, req: InvitationRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
-    get_key_store().add(api_key)
+    get_key_store().provision_tenant_key(
+        api_key,
+        team_name=(req.organization or "").strip() or tenant_id,
+    )
 
     # The new tenant carries no quota overrides, so the process-level defaults
     # bound it immediately — surface them so the operator sees the applied cap.

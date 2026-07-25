@@ -123,6 +123,7 @@ function categoryFor(id: string): "ai" | "governance" | "cloud" {
 function CompliancePageContent() {
   const searchParams = useSearchParams();
   const queryParam = searchParams.get("q") ?? "";
+  const scanParam = searchParams.get("scan") ?? "";
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
   const [atlasCatalog, setAtlasCatalog] = useState<MitreAtlasCatalogMetadata | null>(null);
@@ -297,7 +298,7 @@ function CompliancePageContent() {
 
   useEffect(() => {
     void Promise.allSettled([
-      api.getCompliance(),
+      api.getCompliance(scanParam),
       api.getFrameworkCatalogs(),
       api.getHubPosture(),
     ])
@@ -319,7 +320,7 @@ function CompliancePageContent() {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [scanParam]);
 
   if (loading) {
     return (

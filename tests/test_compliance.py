@@ -91,6 +91,29 @@ def test_compliance_no_scans():
     _clear_jobs()
 
 
+def test_compliance_can_scope_posture_to_a_selected_scan():
+    _clear_jobs()
+    _add_done_job(
+        [{"vulnerability_id": "CVE-ALPHA", "severity": "critical", "owasp_tags": ["LLM01"]}],
+        job_id="scan-alpha",
+    )
+    _add_done_job(
+        [{"vulnerability_id": "CVE-BETA", "severity": "high", "owasp_tags": ["LLM02"]}],
+        job_id="scan-beta",
+    )
+
+    response = TestClient(app).get("/v1/compliance?scan_id=scan-alpha", headers=_AUTH_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["scan_count"] == 1
+    llm01 = next(control for control in data["owasp_llm_top10"] if control["code"] == "LLM01")
+    llm02 = next(control for control in data["owasp_llm_top10"] if control["code"] == "LLM02")
+    assert llm01["findings"] == 1
+    assert llm02["findings"] == 0
+    _clear_jobs()
+
+
 def test_compliance_by_framework_no_scans_is_no_data():
     """The single-framework endpoint must not report score 100 / a clean pass on
     a zero-scan tenant — every control trivially "passes" with no evidence, so

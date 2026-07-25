@@ -7,6 +7,7 @@ import { ChevronRight, ExternalLink, FileSearch, Loader2, Radar, ShieldAlert } f
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
+import { securityGraphHref } from "@/lib/page-links";
 import { Drawer } from "@/components/drawer";
 import {
   findingsDrawerEyebrow,
@@ -342,7 +343,7 @@ function PathTab({ vuln }: { vuln: EnrichedVuln }) {
           </p>
         )}
         <Link
-          href={`/security-graph?focus=${encodeURIComponent(vuln.id)}`}
+          href={securityGraphHref({ cve: vuln.id })}
           className="mt-3 inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
         >
           Open in security graph <ChevronRight className="h-3 w-3" />

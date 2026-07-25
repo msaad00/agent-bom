@@ -6,6 +6,8 @@
 import { getSessionAuthHeaders } from "./auth";
 import { getConfiguredApiUrl } from "./runtime-config";
 import type {
+  JobListItem,
+  JobStatus,
   ScanRequest,
   SSEEvent,
   ScanJob,
@@ -772,13 +774,43 @@ export const api = {
     post<ModelFilesResponse>("/v1/scan/model-files", body),
 
   /** List all jobs */
-  listJobs: (options?: { includeDetails?: boolean; limit?: number; offset?: number }) => {
+  listJobs: (options?: {
+    includeDetails?: boolean;
+    limit?: number;
+    offset?: number;
+    query?: string | undefined;
+    status?: JobStatus | undefined;
+  }) => {
     const params = new URLSearchParams();
     if (options?.includeDetails) params.set("include_details", "true");
     if (typeof options?.limit === "number") params.set("limit", String(options.limit));
     if (typeof options?.offset === "number") params.set("offset", String(options.offset));
+    if (options?.query?.trim()) params.set("q", options.query.trim());
+    if (options?.status) params.set("status", options.status);
     const qs = params.toString();
     return get<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Fetch every server-filtered job page for a complete JSON export. */
+  exportJobs: async (options?: { query?: string | undefined; status?: JobStatus | undefined }) => {
+    const limit = 1000;
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+    const jobs: JobListItem[] = [];
+    while (offset < total) {
+      const params = new URLSearchParams();
+      params.set("include_details", "true");
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      if (options?.query?.trim()) params.set("q", options.query.trim());
+      if (options?.status) params.set("status", options.status);
+      const page = await get<JobsResponse>(`/v1/jobs?${params.toString()}`);
+      jobs.push(...page.jobs);
+      total = page.total ?? jobs.length;
+      if (page.jobs.length === 0) break;
+      offset += page.jobs.length;
+    }
+    return jobs;
   },
 
   /** Quick agent discovery (no CVE scan) */
@@ -1171,7 +1203,12 @@ export const api = {
   getPostureCounts: () => get<PostureCountsResponse>("/v1/posture/counts"),
 
   /** Compliance posture across all completed scans */
-  getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
+  getCompliance: (scanId?: string) => {
+    const params = new URLSearchParams();
+    if (scanId?.trim()) params.set("scan_id", scanId.trim());
+    const query = params.toString();
+    return get<ComplianceResponse>(`/v1/compliance${query ? `?${query}` : ""}`);
+  },
 
   /**
    * Catalog-backed NIST SP 800-53 Rev 5 drill: per-control status, evidencing

@@ -30,34 +30,16 @@ export function mergePipelineSteps(
   return merged;
 }
 
-/**
- * Cloud-connection scans (and other non-pipeline jobs) finish without ever
- * emitting the six-stage `step` events, which used to leave a completed job
- * reading "0/6 stages complete" in an all-pending gray DAG. When a job has
- * genuinely finished (`done`) but carries no per-stage events, mark all six
- * stages as done so the DAG honestly reflects a completed run. Jobs that did
- * stream real step events keep their true per-stage states untouched.
- *
- * Returns `synthesized: true` when the stages were inferred rather than
- * observed, so callers can label the timeline as summarized.
- */
-export function synthesizePipelineSteps(
+export type PipelineTelemetryState = "observed" | "partial" | "unavailable";
+
+/** Classify persisted/streamed stage telemetry without inventing events. */
+export function resolvePipelineTelemetry(
   steps: Map<string, StepEvent>,
-  status: JobStatus,
-): { steps: Map<string, StepEvent>; synthesized: boolean } {
-  if (steps.size > 0 || status !== "done") {
-    return { steps, synthesized: false };
-  }
-  const synthesized = new Map<string, StepEvent>();
-  for (const step of PIPELINE_STEPS) {
-    synthesized.set(step.id, {
-      type: "step",
-      step_id: step.id,
-      status: "done",
-      message: "Completed",
-    });
-  }
-  return { steps: synthesized, synthesized: true };
+  _status: JobStatus,
+): { steps: Map<string, StepEvent>; state: PipelineTelemetryState } {
+  if (steps.size === 0) return { steps, state: "unavailable" };
+  const everyStageObserved = PIPELINE_STEPS.every((step) => steps.has(step.id));
+  return { steps, state: everyStageObserved ? "observed" : "partial" };
 }
 
 export function formatDurationMs(ms: number | null | undefined): string {
@@ -71,34 +53,31 @@ export function formatDurationMs(ms: number | null | undefined): string {
 }
 
 /**
- * Honest wall-clock label. A synchronous scan (cloud-connection runs, dry
- * runs) finishes with no streamed timing, so its elapsed time collapses to
- * ~0ms — reporting "0ms" is misleading. Show "summarized" instead of faking a
- * duration, and "running…" while a live scan has no end yet.
+ * Honest wall-clock label. A missing or collapsed duration is unavailable;
+ * only measured positive durations are rendered.
  */
 export function describeWallClock(
   wallClockMs: number | null | undefined,
-  opts: { synthesized?: boolean; running?: boolean } = {},
+  opts: { unavailable?: boolean; running?: boolean } = {},
 ): string {
-  if (opts.synthesized) return "summarized";
+  if (opts.unavailable) return "Unavailable";
   if (wallClockMs == null) return opts.running ? "running…" : "—";
-  if (wallClockMs <= 0) return "summarized";
+  if (wallClockMs <= 0) return "Unavailable";
   return formatDurationMs(wallClockMs);
 }
 
 /**
  * Honest per-stage timing cell. Real streamed stages show their measured
- * duration; a summarized (synthesized) stage says so rather than claiming a
- * crisp "done" with no numbers behind it.
+ * duration; an absent event is unavailable instead of a factual zero.
  */
 export function formatStageDuration(
   duration: number | null | undefined,
   status: StepStatus | undefined,
-  synthesized = false,
+  unavailable = false,
 ): string {
   if (duration != null) return formatDurationMs(duration);
   if (status === "running") return "running…";
-  if (synthesized && (status === "done" || status === "skipped")) return "summarized";
+  if (unavailable) return "Unavailable";
   if (status === "done") return "done";
   if (status === "skipped") return "skipped";
   return "—";

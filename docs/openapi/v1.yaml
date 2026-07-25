@@ -6996,6 +6996,15 @@ paths:
         Returns per-control pass/warning/fail status and an overall compliance score.'
       operationId: get_compliance_v1_compliance_get
       parameters:
+      - in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 200
+            type: string
+          - type: 'null'
+          title: Scan Id
       - in: header
         name: X-Agent-Bom-Role
         required: false
@@ -15516,7 +15525,9 @@ paths:
       description: 'List all scan jobs (for the UI job history panel).
 
 
-        Supports pagination via ``limit`` (default 50, max 1000) and ``offset``.'
+        Search and status predicates are applied by the persistence backend before
+
+        pagination, so totals and exports describe the full filtered collection.'
       operationId: list_jobs_v1_jobs_get
       parameters:
       - in: query
@@ -15543,6 +15554,23 @@ paths:
           default: false
           title: Include Details
           type: boolean
+      - in: query
+        name: q
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 200
+            type: string
+          - type: 'null'
+          title: Q
+      - in: query
+        name: status
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/JobStatus'
+          - type: 'null'
+          title: Status
       responses:
         '200':
           content:

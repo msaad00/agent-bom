@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   api,
   RemediationItem,
@@ -355,6 +356,8 @@ export default function RemediationPageWrapper() {
 }
 
 function RemediationPage() {
+  const searchParams = useSearchParams();
+  const queryParam = (searchParams.get("q") ?? "").trim().toLowerCase();
   const [items, setItems] = useState<RemediationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -428,6 +431,26 @@ function RemediationPage() {
   const displayed = useMemo(() => {
     let list = items;
 
+    if (queryParam) {
+      list = list.filter((item) =>
+        [
+          item.package,
+          ...item.vulnerabilities,
+          ...(item.owasp_tags ?? []),
+          ...(item.atlas_tags ?? []),
+          ...(item.nist_ai_rmf_tags ?? []),
+          ...(item.owasp_mcp_tags ?? []),
+          ...(item.owasp_agentic_tags ?? []),
+          ...(item.eu_ai_act_tags ?? []),
+          ...(item.nist_csf_tags ?? []),
+          ...(item.iso_27001_tags ?? []),
+          ...(item.soc2_tags ?? []),
+          ...(item.cis_tags ?? []),
+          ...(item.affected_agents ?? []),
+        ].some((value) => value.toLowerCase().includes(queryParam)),
+      );
+    }
+
     if (severityFilter !== "all") {
       list = list.filter(
         (i) => i.severity.toLowerCase() === severityFilter
@@ -461,12 +484,12 @@ function RemediationPage() {
     });
 
     return list;
-  }, [items, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
+  }, [items, queryParam, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
 
   // Reset page on filter/sort change
   useEffect(() => {
     setPage(1);
-  }, [severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
+  }, [queryParam, severityFilter, frameworkFilter, fixableOnly, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
   const paged = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

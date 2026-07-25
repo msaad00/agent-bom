@@ -594,6 +594,45 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
 
 
 @pytest.mark.asyncio
+async def test_list_jobs_applies_search_and_status_before_count_and_pagination():
+    _jobs.clear()
+
+    class _Store:
+        def list_summary(self, tenant_id: str | None = None, **kwargs) -> list[dict]:
+            assert tenant_id == "tenant-alpha"
+            assert kwargs == {
+                "limit": 25,
+                "offset": 50,
+                "query": "alpha source",
+                "status": JobStatus.RUNNING,
+            }
+            return []
+
+        def count_summary(self, tenant_id: str | None = None, **kwargs) -> int:
+            assert tenant_id == "tenant-alpha"
+            assert kwargs == {"query": "alpha source", "status": JobStatus.RUNNING}
+            return 72
+
+        def count_summary_by_status(self, tenant_id: str | None = None, **kwargs) -> dict[str, int]:
+            assert tenant_id == "tenant-alpha"
+            assert kwargs == {"query": "alpha source"}
+            return {"pending": 2, "running": 72}
+
+    req = _request("tenant-alpha")
+    with patch.object(scan_routes, "_get_store", return_value=_Store()):
+        listed = await scan_routes.list_jobs(
+            req,
+            limit=25,
+            offset=50,
+            q="alpha source",
+            status=JobStatus.RUNNING,
+        )
+
+    assert listed["total"] == 72
+    assert listed["status_counts"] == {"pending": 2, "running": 72}
+
+
+@pytest.mark.asyncio
 async def test_schedule_routes_enforce_tenant_schedule_quota(monkeypatch):
     store = InMemoryScheduleStore()
     set_schedule_store(store)

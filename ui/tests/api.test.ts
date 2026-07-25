@@ -135,6 +135,57 @@ describe('api.listJobs', () => {
     expect(result.count).toBe(1)
   })
 
+  it('serializes server-backed search, status, and pagination filters', async () => {
+    const fetchMock = mockFetch({ jobs: [], count: 0, total: 0, status_counts: {} })
+    global.fetch = fetchMock
+
+    await api.listJobs({ includeDetails: true, query: 'alpha source', status: 'running', limit: 25, offset: 50 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/jobs?include_details=true&limit=25&offset=50&q=alpha+source&status=running',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('exports every server-filtered page instead of the visible browser page', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve({
+          jobs: [{ job_id: 'job-1', status: 'done', created_at: '2026-01-01T00:00:00Z' }],
+          count: 1,
+          total: 2,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve({
+          jobs: [{ job_id: 'job-2', status: 'done', created_at: '2026-01-02T00:00:00Z' }],
+          count: 1,
+          total: 2,
+        }),
+      })
+    global.fetch = fetchMock
+
+    const exported = await api.exportJobs({ query: 'alpha', status: 'done' })
+
+    expect(exported.map((job) => job.job_id)).toEqual(['job-1', 'job-2'])
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/v1/jobs?include_details=true&limit=1000&offset=0&q=alpha&status=done',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/v1/jobs?include_details=true&limit=1000&offset=1&q=alpha&status=done',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
   it('does not propagate browser-stored API keys and relies on same-origin credentials', async () => {
     setSessionApiKey("pilot-key-123")
     const fetchMock = mockFetch({ jobs: [], count: 0 })
@@ -185,6 +236,20 @@ describe('api.listFindings', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/v1/findings?limit=25&finding_class=misconfiguration',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+})
+
+describe('api.getCompliance', () => {
+  it('serializes the selected scan contract', async () => {
+    const fetchMock = mockFetch({ scan_count: 0 })
+    global.fetch = fetchMock
+
+    await api.getCompliance('scan/1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/compliance?scan_id=scan%2F1',
       expect.objectContaining({ credentials: 'include' }),
     )
   })

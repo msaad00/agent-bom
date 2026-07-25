@@ -54,6 +54,7 @@ def _assert_canonical_envelope(body: dict) -> None:
     assert isinstance(body["findings"], list)
     assert body["count"] == len(body["findings"])
     assert body["has_more"] == bool(body["next_cursor"])
+    assert isinstance(body["filters"], dict)
     assert isinstance(body["warnings"], list)
     assert body["schema_version"] == "v1"
 

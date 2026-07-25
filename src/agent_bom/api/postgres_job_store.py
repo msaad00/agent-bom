@@ -19,7 +19,7 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
-from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _require_tenant_scope
+from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _literal_like_pattern, _require_tenant_scope
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -279,6 +279,8 @@ class PostgresJobStore:
         all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
+        query: str | None = None,
+        status: object | None = None,
     ) -> list[dict]:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_summary()")
 
@@ -293,12 +295,23 @@ class PostgresJobStore:
         base_sql = """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id,
                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
                       FROM scan_jobs"""
+        clauses: list[str] = []
         params: list[object] = []
-        if tenant_id is None:
-            sql = f"{base_sql} ORDER BY created_at DESC"
-        else:
-            sql = f"{base_sql} WHERE team_id = %s ORDER BY created_at DESC"
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
             params.append(tenant_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(str(getattr(status, "value", status)))
+        normalized_query = (query or "").strip().casefold()
+        if normalized_query:
+            clauses.append(
+                "LOWER(CONCAT_WS(' ', job_id, triggered_by, schedule_id, target::text, "
+                "data ->> 'source_id', data #>> '{request,source_id}')) LIKE %s ESCAPE '\\'"
+            )
+            params.append(_literal_like_pattern(normalized_query))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = f"{base_sql}{where} ORDER BY created_at DESC"
         if limit is not None:
             sql = f"{sql} LIMIT %s OFFSET %s"
             params.extend([max(1, int(limit)), max(0, int(offset))])
@@ -324,13 +337,58 @@ class PostgresJobStore:
                 for row in rows
             ]
 
-    def count_summary(self, tenant_id: str | None = None) -> int:
+    def count_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+        status: object | None = None,
+    ) -> int:
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(str(getattr(status, "value", status)))
+        normalized_query = (query or "").strip().casefold()
+        if normalized_query:
+            clauses.append(
+                "LOWER(CONCAT_WS(' ', job_id, triggered_by, schedule_id, target::text, "
+                "data ->> 'source_id', data #>> '{request,source_id}')) LIKE %s ESCAPE '\\'"
+            )
+            params.append(_literal_like_pattern(normalized_query))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                row = conn.execute("SELECT COUNT(*) FROM scan_jobs").fetchone()
-            else:
-                row = conn.execute("SELECT COUNT(*) FROM scan_jobs WHERE team_id = %s", (tenant_id,)).fetchone()
+            row = conn.execute(f"SELECT COUNT(*) FROM scan_jobs{where}", tuple(params)).fetchone()  # nosec B608
         return int(row[0]) if row else 0
+
+    def count_summary_by_status(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+    ) -> dict[str, int]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
+        normalized_query = (query or "").strip().casefold()
+        if normalized_query:
+            clauses.append(
+                "LOWER(CONCAT_WS(' ', job_id, triggered_by, schedule_id, target::text, "
+                "data ->> 'source_id', data #>> '{request,source_id}')) LIKE %s ESCAPE '\\'"
+            )
+            params.append(_literal_like_pattern(normalized_query))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(  # nosec B608
+                f"SELECT status, COUNT(*) FROM scan_jobs{where} GROUP BY status",
+                tuple(params),
+            ).fetchall()
+        return {str(status): int(count) for status, count in rows}
 
     def query_cis_benchmark_checks(
         self,

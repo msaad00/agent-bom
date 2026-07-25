@@ -43,6 +43,7 @@ FINDING_LIST_ENVELOPE_KEYS: tuple[str, ...] = (
     "cursor",
     "next_cursor",
     "has_more",
+    "filters",
     "warnings",
 )
 
@@ -57,6 +58,7 @@ def finding_list_envelope(
     scan_id: str | None = None,
     cursor: str = "",
     next_cursor: str = "",
+    filters: dict[str, Any] | None = None,
     warnings: list[str] | None = None,
     total_approximate: bool = False,
     schema_version: str = FINDING_LIST_SCHEMA_VERSION,
@@ -78,6 +80,7 @@ def finding_list_envelope(
         "cursor": cursor,
         "next_cursor": next_cursor,
         "has_more": bool(next_cursor),
+        "filters": filters if filters is not None else {},
         "warnings": warnings if warnings is not None else [],
     }
     if total_approximate:

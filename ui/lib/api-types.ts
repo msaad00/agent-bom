@@ -1905,6 +1905,7 @@ export interface JobsResponse {
   total?: number | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  status_counts?: Partial<Record<JobStatus, number>> | undefined;
 }
 
 export interface JobListItem {

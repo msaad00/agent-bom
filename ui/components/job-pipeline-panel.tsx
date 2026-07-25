@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { ScanPipeline } from "@/components/scan-pipeline";
+import { complianceHref, findingsHref, securityGraphHref } from "@/lib/page-links";
 import {
   api,
   PIPELINE_STEPS,
@@ -26,8 +27,9 @@ import {
   formatStageDuration,
   mergePipelineSteps,
   parsePipelineStepsFromProgress,
+  resolvePipelineTelemetry,
   summarizePipeline,
-  synthesizePipelineSteps,
+  type PipelineTelemetryState,
 } from "@/lib/scan-pipeline-progress";
 import {
   PIPELINE_GRAPH,
@@ -105,18 +107,17 @@ function deriveResultView(
 
 // Which evidence surfaces are most relevant to drill into from a given stage.
 function stageLinks(stepId: string, jobId: string): { href: string; label: string }[] {
-  const encoded = encodeURIComponent(jobId);
   switch (stepId) {
     case "scanning":
     case "enrichment":
-      return [{ href: `/findings?scan=${encoded}`, label: "Findings" }];
+      return [{ href: findingsHref({ scan: jobId }), label: "Findings" }];
     case "analysis":
       return [
-        { href: `/security-graph?scan=${encoded}`, label: "Graph" },
-        { href: `/findings?scan=${encoded}`, label: "Findings" },
+        { href: securityGraphHref({ scan: jobId }), label: "Graph" },
+        { href: findingsHref({ scan: jobId }), label: "Findings" },
       ];
     case "output":
-      return [{ href: `/compliance?scan=${encoded}`, label: "Compliance" }];
+      return [{ href: complianceHref({ scan: jobId }), label: "Compliance" }];
     default:
       return [];
   }
@@ -127,12 +128,12 @@ function stageLinks(stepId: string, jobId: string): { href: string; label: strin
 function StatusBanner({
   status,
   streaming,
-  synthesized,
+  telemetryState,
   error,
 }: {
   status: JobStatus;
   streaming: boolean;
-  synthesized: boolean;
+  telemetryState: PipelineTelemetryState;
   error?: string | undefined;
 }) {
   const active = status === "running" || status === "pending";
@@ -162,8 +163,10 @@ function StatusBanner({
         ? "Scan running — live"
         : "Scan running"
       : done
-        ? synthesized
-          ? "Scan complete (stages summarized)"
+        ? telemetryState === "unavailable"
+          ? "Scan complete · stage telemetry unavailable"
+          : telemetryState === "partial"
+            ? "Scan complete · partial stage telemetry"
           : "Scan complete"
         : status;
 
@@ -227,12 +230,10 @@ export function JobPipelinePanel({
     };
   }, [jobId]);
 
-  const { steps, synthesized } = useMemo(() => {
+  const { steps, state: telemetryState } = useMemo(() => {
     const persisted = parsePipelineStepsFromProgress(job?.progress ?? []);
     const merged = mergePipelineSteps(persisted, liveSteps);
-    // A finished job with no step events (e.g. cloud-connection scans) is
-    // shown as 6/6 done rather than an all-pending "0/6".
-    return synthesizePipelineSteps(merged, status);
+    return resolvePipelineTelemetry(merged, status);
   }, [job?.progress, liveSteps, status]);
 
   const summary = useMemo(
@@ -249,9 +250,9 @@ export function JobPipelinePanel({
   const { lanes, stats: resultStats } = useMemo<ResultView>(
     () =>
       status === "done"
-        ? deriveResultView(job, listSummary, synthesized)
+        ? deriveResultView(job, listSummary, job == null)
         : { lanes: undefined, stats: [] },
-    [status, job, listSummary, synthesized],
+    [status, job, listSummary],
   );
 
   const recentMessages = useMemo(() => {
@@ -289,13 +290,17 @@ export function JobPipelinePanel({
             <StatusBanner
               status={status}
               streaming={streaming}
-              synthesized={synthesized}
+              telemetryState={telemetryState}
               error={job?.error}
             />
             <span className="text-sm text-[var(--text-secondary)]">
               {summary.currentStepLabel
                 ? summary.currentStepLabel
-                : `${summary.completedSteps}/${summary.totalSteps} stages complete`}
+                : telemetryState === "unavailable"
+                  ? "Stage telemetry unavailable"
+                  : telemetryState === "partial"
+                    ? `${steps.size}/${summary.totalSteps} stages observed`
+                    : `${summary.completedSteps}/${summary.totalSteps} stages complete`}
             </span>
           </div>
           {resultStats.length > 0 ? (
@@ -316,7 +321,7 @@ export function JobPipelinePanel({
             Wall clock{" "}
             <span className="font-mono text-[var(--text-secondary)]">
               {describeWallClock(summary.wallClockMs, {
-                synthesized,
+                unavailable: telemetryState === "unavailable" && summary.wallClockMs == null,
                 running: status === "running" || status === "pending",
               })}
             </span>
@@ -341,15 +346,30 @@ export function JobPipelinePanel({
 
       {/* DAG + drill-in detail side panel */}
       <div className="mt-4 flex flex-col gap-3 lg:flex-row">
-        <ScanPipeline
-          steps={steps}
-          lanes={lanes}
-          className="h-[300px] flex-1 rounded-lg border border-[var(--border-subtle)]"
-          selectedStepId={selectedStepId}
-          onStepClick={(nodeId) =>
-            setSelectedStepId((current) => (current === nodeId ? null : nodeId))
-          }
-        />
+        {telemetryState !== "observed" && !loading && !isActive ? (
+          <div className="flex h-[160px] flex-1 items-center justify-center rounded-lg border border-dashed border-[var(--border-subtle)] px-6 text-center">
+            <div>
+              <p className="text-sm font-medium text-[var(--text-secondary)]">
+                {telemetryState === "partial" ? "Partial stage telemetry" : "Per-stage telemetry unavailable"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                {telemetryState === "partial"
+                  ? `${steps.size} of ${summary.totalSteps} stages emitted events. Missing stages are not inferred.`
+                  : "The scan result is available, but this executor did not emit stage events or stage timestamps."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <ScanPipeline
+            steps={steps}
+            lanes={lanes}
+            className="h-[300px] flex-1 rounded-lg border border-[var(--border-subtle)]"
+            selectedStepId={selectedStepId}
+            onStepClick={(nodeId) =>
+              setSelectedStepId((current) => (current === nodeId ? null : nodeId))
+            }
+          />
+        )}
         {selectedStepId ? (
           <aside className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] p-3 lg:w-64">
             <div className="flex items-start justify-between gap-2">
@@ -445,7 +465,7 @@ export function JobPipelinePanel({
                     >
                       <dt className="text-[var(--text-secondary)]">{step.label}</dt>
                       <dd className="font-mono text-[var(--text-secondary)]">
-                        {formatStageDuration(duration, stepStatus, synthesized)}
+                        {formatStageDuration(duration, stepStatus, !steps.has(step.id))}
                       </dd>
                     </div>
                   );

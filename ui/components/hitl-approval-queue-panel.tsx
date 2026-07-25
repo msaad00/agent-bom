@@ -6,6 +6,7 @@ import { CheckCircle2, Loader2, ShieldAlert, XCircle } from "lucide-react";
 
 import { api } from "@/lib/api";
 import type { HitlApprovalQueueItem } from "@/lib/api-types";
+import { findingsHref } from "@/lib/page-links";
 
 export function HitlApprovalQueuePanel() {
   const [items, setItems] = useState<HitlApprovalQueueItem[]>([]);
@@ -111,7 +112,7 @@ export function HitlApprovalQueuePanel() {
                       {item.linked_finding_ids.slice(0, 4).map((fid) => (
                         <Link
                           key={fid}
-                          href={`/findings?search=${encodeURIComponent(fid)}`}
+                          href={findingsHref({ q: fid })}
                           className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-emerald-300 hover:underline"
                         >
                           {fid}

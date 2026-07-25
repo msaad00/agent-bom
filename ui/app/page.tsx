@@ -493,8 +493,8 @@ function JobRow({ job }: { job: JobListItem }) {
     pending: "bg-[color:var(--text-tertiary)]",
     cancelled: "bg-[color:var(--text-tertiary)]",
   };
-  const vulnCount = job.summary?.total_vulnerabilities ?? 0;
-  const critCount = job.summary?.critical_findings ?? 0;
+  const vulnCount = job.summary?.total_vulnerabilities;
+  const critCount = job.summary?.critical_findings;
 
   // Detect scan source tags
   const tags: string[] = [];
@@ -525,11 +525,13 @@ function JobRow({ job }: { job: JobListItem }) {
       <div className="flex items-center gap-3 text-xs">
         {job.status === "done" && (
           <>
-            {critCount > 0 && (
+            {critCount != null && critCount > 0 && (
               <span className="text-red-400 font-mono font-semibold">{critCount} CRIT</span>
             )}
-            {vulnCount > 0 && (
+            {vulnCount != null ? (
               <span className="text-[color:var(--text-secondary)]">{vulnCount} vuln{vulnCount !== 1 ? "s" : ""}</span>
+            ) : (
+              <span className="text-[color:var(--text-tertiary)]">Metrics unavailable</span>
             )}
           </>
         )}

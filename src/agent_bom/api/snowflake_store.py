@@ -29,6 +29,7 @@ from .exception_store import ExceptionStatus, VulnException
 from .fleet_store import FleetAgent, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
 from .server import ScanJob
+from .store import _literal_like_pattern
 
 if TYPE_CHECKING:
     from .schedule_store import ScanSchedule
@@ -222,23 +223,42 @@ class SnowflakeJobStore:
                 cur.execute("SELECT data FROM scan_jobs WHERE tenant_id = %s ORDER BY created_at DESC", (tenant_id,))
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
 
-    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+    def list_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        all_tenants: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+        query: str | None = None,
+        status: object | None = None,
+    ) -> list[dict]:
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, data, schedule_id
-                       FROM scan_jobs
-                       ORDER BY created_at DESC"""
+            clauses: list[str] = []
+            params: list[object] = []
+            if tenant_id is not None:
+                clauses.append("tenant_id = %s")
+                params.append(tenant_id)
+            if status is not None:
+                clauses.append("status = %s")
+                params.append(str(getattr(status, "value", status)))
+            normalized_query = (query or "").strip().casefold()
+            if normalized_query:
+                clauses.append(
+                    "LOWER(CONCAT_WS(' ', job_id, data:triggered_by::STRING, schedule_id, "
+                    "data:target::STRING, data:source_id::STRING, data:request:source_id::STRING)) LIKE %s ESCAPE '\\'"
                 )
-            else:
-                cur.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, data, schedule_id
-                       FROM scan_jobs
-                       WHERE tenant_id = %s
-                       ORDER BY created_at DESC""",
-                    (tenant_id,),
-                )
+                params.append(_literal_like_pattern(normalized_query))
+            where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            sql = (
+                "SELECT job_id, tenant_id, status, created_at, completed_at, data, schedule_id "
+                f"FROM scan_jobs{where} ORDER BY created_at DESC"
+            )
+            if limit is not None:
+                sql = f"{sql} LIMIT %s OFFSET %s"
+                params.extend([max(1, int(limit)), max(0, int(offset))])
+            cur.execute(sql, tuple(params))
             summaries: list[dict] = []
             for row in cur.fetchall():
                 triggered_by = None
@@ -275,6 +295,60 @@ class SnowflakeJobStore:
                     }
                 )
             return summaries
+
+    def count_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+        status: object | None = None,
+    ) -> int:
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(str(getattr(status, "value", status)))
+        normalized_query = (query or "").strip().casefold()
+        if normalized_query:
+            clauses.append(
+                "LOWER(CONCAT_WS(' ', job_id, data:triggered_by::STRING, schedule_id, "
+                "data:target::STRING, data:source_id::STRING, data:request:source_id::STRING)) LIKE %s ESCAPE '\\'"
+            )
+            params.append(_literal_like_pattern(normalized_query))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(f"SELECT COUNT(*) FROM scan_jobs{where}", tuple(params))
+            row = cur.fetchone()
+        return int(row[0]) if row else 0
+
+    def count_summary_by_status(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+    ) -> dict[str, int]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        normalized_query = (query or "").strip().casefold()
+        if normalized_query:
+            clauses.append(
+                "LOWER(CONCAT_WS(' ', job_id, data:triggered_by::STRING, schedule_id, "
+                "data:target::STRING, data:source_id::STRING, data:request:source_id::STRING)) LIKE %s ESCAPE '\\'"
+            )
+            params.append(_literal_like_pattern(normalized_query))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(f"SELECT status, COUNT(*) FROM scan_jobs{where} GROUP BY status", tuple(params))
+            rows = cur.fetchall()
+        return {str(status): int(count) for status, count in rows}
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY

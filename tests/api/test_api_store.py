@@ -63,6 +63,30 @@ def test_in_memory_list_summary():
     assert "status" in summary[0]
 
 
+def test_in_memory_list_summary_filters_before_pagination_and_counts():
+    store = InMemoryJobStore()
+    store.put(_make_job("alpha-running", status=JobStatus.RUNNING, triggered_by="connection:alpha"))
+    store.put(_make_job("alpha-done", status=JobStatus.DONE, triggered_by="connection:alpha"))
+    store.put(_make_job("beta-done", status=JobStatus.DONE, triggered_by="connection:beta"))
+
+    rows = store.list_summary(all_tenants=True, query="alpha", status=JobStatus.DONE, limit=1, offset=0)
+
+    assert [row["job_id"] for row in rows] == ["alpha-done"]
+    assert store.count_summary(query="alpha", status=JobStatus.DONE) == 1
+    assert store.count_summary_by_status(query="alpha") == {"running": 1, "done": 1}
+
+
+def test_in_memory_list_summary_pages_beyond_two_hundred_after_filtering():
+    store = InMemoryJobStore(max_retained_jobs=None)
+    for index in range(225):
+        store.put(_make_job(f"bulk-{index:03d}", status=JobStatus.DONE, triggered_by="bulk-source"))
+
+    rows = store.list_summary(all_tenants=True, query="bulk-source", limit=25, offset=200)
+
+    assert len(rows) == 25
+    assert store.count_summary(query="bulk-source") == 225
+
+
 def test_in_memory_cleanup():
     store = InMemoryJobStore()
     store.put(_make_job("j1", status=JobStatus.DONE, completed_at="2020-01-01T00:00:00+00:00"))
@@ -328,6 +352,25 @@ def test_sqlite_list_summary():
         assert summary[0]["triggered_by"] == "api-user"
         assert "status" in summary[0]
         assert "created_at" in summary[0]
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
+def test_sqlite_list_summary_filters_before_pagination_and_counts():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        store = SQLiteJobStore(db_path=db_path)
+        store.put(_make_job("alpha-running", status=JobStatus.RUNNING, triggered_by="connection:alpha"))
+        store.put(_make_job("alpha-done", status=JobStatus.DONE, triggered_by="connection:alpha"))
+        store.put(_make_job("beta-done", status=JobStatus.DONE, triggered_by="connection:beta"))
+
+        rows = store.list_summary(all_tenants=True, query="alpha", status=JobStatus.DONE, limit=1, offset=0)
+
+        assert [row["job_id"] for row in rows] == ["alpha-done"]
+        assert store.count_summary(query="alpha", status=JobStatus.DONE) == 1
+        assert store.count_summary_by_status(query="alpha") == {"done": 1, "running": 1}
+        assert store.count_summary(query="%") == 0
     finally:
         Path(db_path).unlink(missing_ok=True)
 

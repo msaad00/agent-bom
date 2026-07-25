@@ -1,12 +1,13 @@
 "use client";
 
-import { Suspense, Fragment, useEffect, useMemo, useState } from "react";
+import { Suspense, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { PaginationBar } from "@/components/pagination-bar";
 import { JobPipelinePanel } from "@/components/job-pipeline-panel";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { api, formatDate, type JobListItem, type JobStatus, type ScanSchedule, type SourceRecord } from "@/lib/api";
+import { complianceHref, findingsHref, securityGraphHref } from "@/lib/page-links";
 import {
   CheckCircle2,
   ChevronDown,
@@ -57,7 +58,7 @@ function statusColor(s: JobStatus) {
   }
 }
 
-const STATUS_TABS = ["all", "pending", "running", "done", "failed", "cancelled"];
+const STATUS_TABS: ("all" | JobStatus)[] = ["all", "pending", "running", "done", "failed", "cancelled"];
 
 function sourceIdForJob(job: JobListItem): string {
   const direct = typeof job.source_id === "string" ? job.source_id.trim() : "";
@@ -78,11 +79,9 @@ function sourceForJob(
 
 function evidenceSummary(job: JobListItem): string {
   const summary = job.summary;
-  if (!summary) return "No summary";
-  const vulns = summary.total_vulnerabilities ?? 0;
-  const critical = summary.critical_findings ?? 0;
-  const packages = summary.total_packages ?? 0;
-  return `${vulns} CVEs · ${critical} critical · ${packages} packages`;
+  if (!summary) return "Evidence metrics unavailable";
+  const metric = (value: number | undefined) => value == null ? "Unavailable" : String(value);
+  return `${metric(summary.total_vulnerabilities)} CVEs · ${metric(summary.critical_findings)} critical · ${metric(summary.total_packages)} packages`;
 }
 
 function scanOutcome(job: JobListItem): "complete" | "partial" | "failed" | undefined {
@@ -102,7 +101,10 @@ function JobsPageContent() {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [search, setSearch] = useState(queryParam);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | JobStatus>("all");
+  const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Partial<Record<JobStatus, number>>>({});
+  const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(1);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [workflowOpen, setWorkflowOpen] = useState(true);
@@ -113,30 +115,54 @@ function JobsPageContent() {
     setPage(1);
   }, [queryParam]);
 
-  const load = () => {
+  const loadJobs = useCallback(() => {
     setLoading(true);
     setError("");
-    Promise.allSettled([
-      api.listJobs({ includeDetails: true, limit: 200 }),
-      api.listSources(),
-      api.listSchedules(),
-    ])
-      .then(([jobsResult, sourcesResult, schedulesResult]) => {
-        if (jobsResult.status === "fulfilled") {
-          setJobs(jobsResult.value.jobs);
-        } else {
-          setError(jobsResult.reason instanceof Error ? jobsResult.reason.message : "Unable to load jobs");
-        }
-        setSources(sourcesResult.status === "fulfilled" ? sourcesResult.value.sources : []);
-        setSchedules(schedulesResult.status === "fulfilled" ? schedulesResult.value : []);
+    api.listJobs({
+      includeDetails: true,
+      limit: PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
+      query: search,
+      status: statusFilter === "all" ? undefined : statusFilter,
+    })
+      .then((response) => {
+        setJobs(response.jobs);
+        setTotal(response.total ?? response.count);
+        setStatusCounts(response.status_counts ?? {});
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Unable to load job workflow");
+        setError(err instanceof Error ? err.message : "Unable to load jobs");
       })
       .finally(() => setLoading(false));
-  };
+  }, [page, search, statusFilter]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(loadJobs, 200);
+    return () => window.clearTimeout(timer);
+  }, [loadJobs]);
+
+  useEffect(() => {
+    Promise.allSettled([api.listSources(), api.listSchedules()]).then(([sourcesResult, schedulesResult]) => {
+      setSources(sourcesResult.status === "fulfilled" ? sourcesResult.value.sources : []);
+      setSchedules(schedulesResult.status === "fulfilled" ? schedulesResult.value : []);
+    });
+  }, []);
+
+  async function handleExport() {
+    setExporting(true);
+    setError("");
+    try {
+      const exported = await api.exportJobs({
+        query: search,
+        status: statusFilter === "all" ? undefined : statusFilter,
+      });
+      downloadJson(exported, `jobs-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unable to export jobs");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function handleDelete(jobId: string, e: React.MouseEvent) {
     e.preventDefault();
@@ -144,7 +170,7 @@ function JobsPageContent() {
     setDeleting(jobId);
     try {
       await api.deleteScan(jobId);
-      setJobs((prev) => prev.filter((j) => j.job_id !== jobId));
+      loadJobs();
     } finally {
       setDeleting(null);
     }
@@ -154,10 +180,6 @@ function JobsPageContent() {
   const sourceByLastJobId = useMemo(
     () => new Map(sources.filter((source) => source.last_job_id).map((source) => [source.last_job_id as string, source])),
     [sources],
-  );
-  const evidenceReadyJobs = useMemo(
-    () => jobs.filter((job) => job.status === "done" && scanOutcome(job) !== "failed"),
-    [jobs],
   );
   const featuredJob = useMemo(() => {
     const running = jobs.find((job) => job.status === "running");
@@ -171,21 +193,12 @@ function JobsPageContent() {
       })[0];
   }, [jobs]);
 
-  const filteredJobs = jobs
-    .filter((j) => statusFilter === "all" || j.status === statusFilter)
-    .filter((j) => {
-      if (!search) return true;
-      const normalized = search.toLowerCase();
-      const linkedSource = sourceForJob(j, sourceById, sourceByLastJobId);
-      return (
-        j.job_id.toLowerCase().includes(normalized) ||
-        sourceIdForJob(j).toLowerCase().includes(normalized) ||
-        (linkedSource?.display_name ?? "").toLowerCase().includes(normalized) ||
-        (linkedSource?.owner ?? "").toLowerCase().includes(normalized)
-      );
-    });
-  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / PAGE_SIZE));
-  const pagedJobs = filteredJobs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const allCount = STATUS_TABS.slice(1).reduce(
+    (sum, status) => sum + (statusCounts[status as JobStatus] ?? 0),
+    0,
+  );
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pagedJobs = jobs;
 
   return (
     <div className="space-y-6">
@@ -195,14 +208,15 @@ function JobsPageContent() {
           <p className="text-[var(--text-secondary)] text-sm mt-1">Completed and in-flight evidence runs</p>
         </div>
         <div className="flex items-center gap-2">
-          {jobs.length > 0 && (
+          {allCount > 0 && (
             <button
-              onClick={() => downloadJson(filteredJobs, `jobs-${new Date().toISOString().slice(0, 10)}.json`)}
+              onClick={() => void handleExport()}
+              disabled={exporting}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
               title="Export job list as JSON"
             >
-              <Download className="w-3.5 h-3.5" />
-              Export
+              {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {exporting ? "Exporting…" : "Export"}
             </button>
           )}
           <Link
@@ -219,11 +233,11 @@ function JobsPageContent() {
       {error && (
         <div className="flex items-center gap-3 p-3 bg-red-950/30 border border-red-800/40 rounded-lg">
           <p className="text-red-400 text-sm flex-1">{error}</p>
-          <button onClick={load} className="text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] px-2 py-1 border border-[var(--border-subtle)] rounded">Retry</button>
+          <button onClick={loadJobs} className="text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] px-2 py-1 border border-[var(--border-subtle)] rounded">Retry</button>
         </div>
       )}
 
-      {!loading && jobs.length === 0 && (
+      {!loading && allCount === 0 && !search && statusFilter === "all" && (
         <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
           <Clock className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
           <p className="text-[var(--text-tertiary)] text-sm">No scan jobs yet.</p>
@@ -252,10 +266,10 @@ function JobsPageContent() {
                   {sources.length} sources · {sources.filter((source) => source.enabled).length} enabled
                 </span>
                 <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
-                  {jobs.filter((job) => job.status === "running").length} running · {jobs.length} total jobs
+                  {statusCounts.running ?? 0} running · {allCount} total jobs
                 </span>
                 <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
-                  {evidenceReadyJobs.length} evidence-ready
+                  {statusCounts.done ?? 0} completed
                 </span>
                 <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1">
                   {schedules.filter((schedule) => schedule.enabled).length} active schedules
@@ -317,7 +331,7 @@ function JobsPageContent() {
         </section>
       )}
 
-      {jobs.length > 0 && (
+      {(allCount > 0 || search || statusFilter !== "all") && (
         <>
           {/* Status filter tabs + search */}
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -333,8 +347,8 @@ function JobsPageContent() {
                   }`}
                 >
                   {s === "all"
-                    ? `All (${jobs.length})`
-                    : `${statusLabel(s)} (${jobs.filter((j) => j.status === s).length})`}
+                    ? `All (${allCount})`
+                    : `${statusLabel(s)} (${statusCounts[s] ?? 0})`}
                 </button>
               ))}
             </div>
@@ -342,7 +356,7 @@ function JobsPageContent() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)]" />
               <input
                 type="text"
-                placeholder="Search jobs or sources…"
+                placeholder="Search jobs or source IDs…"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg pl-8 pr-3 py-1.5 text-sm text-[var(--foreground)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)]"
@@ -437,9 +451,9 @@ function JobsPageContent() {
                             <p className="text-[11px] text-[var(--text-tertiary)]">{evidenceSummary(job)}</p>
                             <div className="flex flex-wrap gap-1.5">
                               {[
-                                { href: `/findings?scan=${encodeURIComponent(job.job_id)}`, label: "Findings" },
-                                { href: `/security-graph?scan=${encodeURIComponent(job.job_id)}`, label: "Graph" },
-                                { href: `/compliance?scan=${encodeURIComponent(job.job_id)}`, label: "Compliance" },
+                                { href: findingsHref({ scan: job.job_id }), label: "Findings" },
+                                { href: securityGraphHref({ scan: job.job_id }), label: "Graph" },
+                                { href: complianceHref({ scan: job.job_id }), label: "Compliance" },
                               ].map((link) => (
                                 <Link
                                   key={link.label}
@@ -502,7 +516,7 @@ function JobsPageContent() {
           <PaginationBar
             page={page}
             totalPages={totalPages}
-            totalItems={filteredJobs.length}
+            totalItems={total}
             onPrevious={() => setPage((p) => Math.max(1, p - 1))}
             onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
           />

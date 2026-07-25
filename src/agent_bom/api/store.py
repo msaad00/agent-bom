@@ -26,6 +26,61 @@ _JOB_TTL_SECONDS = 3600  # 1 hour
 DEMO_ESTATE_TRIGGERED_BY = "demo-estate-bootstrap"
 
 
+def _literal_like_pattern(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _job_search_text(job: ScanJob) -> str:
+    request_source = getattr(job.request, "source_id", None)
+    values = (
+        job.job_id,
+        job.source_id,
+        request_source,
+        job.triggered_by,
+        job.schedule_id,
+        json.dumps(job.target, sort_keys=True) if job.target is not None else None,
+    )
+    return " ".join(str(value) for value in values if value).casefold()
+
+
+def _job_summary_search_text(row: dict) -> str:
+    values = (
+        row.get("job_id"),
+        row.get("source_id"),
+        row.get("triggered_by"),
+        row.get("schedule_id"),
+        json.dumps(row.get("target"), sort_keys=True) if row.get("target") is not None else None,
+    )
+    return " ".join(str(value) for value in values if value).casefold()
+
+
+def _sqlite_job_summary_filter(
+    tenant_id: str | None,
+    *,
+    query: str | None = None,
+    status: JobStatus | None = None,
+) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if status is not None:
+        clauses.append("status = ?")
+        params.append(status.value if isinstance(status, JobStatus) else str(status))
+    normalized_query = (query or "").strip().casefold()
+    if normalized_query:
+        clauses.append(
+            "LOWER(COALESCE(job_id, '') || ' ' || COALESCE(triggered_by, '') || ' ' || "
+            "COALESCE(schedule_id, '') || ' ' || COALESCE(target, '') || ' ' || "
+            "COALESCE(json_extract(data, '$.source_id'), '') || ' ' || "
+            "COALESCE(json_extract(data, '$.request.source_id'), '')) LIKE ? ESCAPE '\\'"
+        )
+        params.append(_literal_like_pattern(normalized_query))
+    return (f" WHERE {' AND '.join(clauses)}" if clauses else "", params)
+
+
 def _require_tenant_scope(tenant_id: str | None, all_tenants: bool, method: str) -> None:
     """Fail closed when a request-path read/write omits a tenant scope.
 
@@ -53,8 +108,22 @@ class JobStore(Protocol):
         all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
+        query: str | None = None,
+        status: JobStatus | None = None,
     ) -> list[dict]: ...
-    def count_summary(self, tenant_id: str | None = None) -> int: ...
+    def count_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+        status: JobStatus | None = None,
+    ) -> int: ...
+    def count_summary_by_status(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+    ) -> dict[str, int]: ...
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int: ...
 
 
@@ -125,6 +194,8 @@ class InMemoryJobStore:
         all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
+        query: str | None = None,
+        status: JobStatus | None = None,
     ) -> list[dict]:
         _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.list_summary()")
         with self._lock:
@@ -148,6 +219,11 @@ class InMemoryJobStore:
             ]
             if tenant_id is not None:
                 rows = [row for row in rows if row["tenant_id"] == tenant_id]
+            if status is not None:
+                rows = [row for row in rows if row["status"] == status]
+            normalized_query = (query or "").strip().casefold()
+            if normalized_query:
+                rows = [row for row in rows if normalized_query in _job_summary_search_text(row)]
             rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
             if offset:
                 rows = rows[offset:]
@@ -155,11 +231,39 @@ class InMemoryJobStore:
                 rows = rows[:limit]
             return rows
 
-    def count_summary(self, tenant_id: str | None = None) -> int:
+    def count_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+        status: JobStatus | None = None,
+    ) -> int:
         with self._lock:
-            if tenant_id is None:
-                return len(self._jobs)
-            return sum(1 for job in self._jobs.values() if job.tenant_id == tenant_id)
+            rows = [job for job in self._jobs.values() if tenant_id is None or job.tenant_id == tenant_id]
+            if status is not None:
+                rows = [job for job in rows if job.status == status]
+            normalized_query = (query or "").strip().casefold()
+            if normalized_query:
+                rows = [job for job in rows if normalized_query in _job_search_text(job)]
+            return len(rows)
+
+    def count_summary_by_status(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+    ) -> dict[str, int]:
+        with self._lock:
+            normalized_query = (query or "").strip().casefold()
+            counts: dict[str, int] = {}
+            for job in self._jobs.values():
+                if tenant_id is not None and job.tenant_id != tenant_id:
+                    continue
+                if normalized_query and normalized_query not in _job_search_text(job):
+                    continue
+                key = job.status.value if isinstance(job.status, JobStatus) else str(job.status)
+                counts[key] = counts.get(key, 0) + 1
+            return counts
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._lock:
@@ -366,18 +470,16 @@ class SQLiteJobStore:
         all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
+        query: str | None = None,
+        status: JobStatus | None = None,
     ) -> list[dict]:
         _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.list_summary()")
         try:
             base_sql = """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
                                  batch_id, parent_job_id, child_job_ids, target, target_index, target_count
                           FROM jobs"""
-            params: list[Any] = []
-            if tenant_id is None:
-                sql = f"{base_sql} ORDER BY created_at DESC"
-            else:
-                sql = f"{base_sql} WHERE tenant_id = ? ORDER BY created_at DESC"
-                params.append(tenant_id)
+            where, params = _sqlite_job_summary_filter(tenant_id, query=query, status=status)
+            sql = f"{base_sql}{where} ORDER BY created_at DESC"
             if limit is not None:
                 sql = f"{sql} LIMIT ? OFFSET ?"
                 params.extend([int(limit), max(0, int(offset))])
@@ -406,13 +508,34 @@ class SQLiteJobStore:
             self._shrink_connection_memory()
             self._close_thread_connection()
 
-    def count_summary(self, tenant_id: str | None = None) -> int:
+    def count_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+        status: JobStatus | None = None,
+    ) -> int:
         try:
-            if tenant_id is None:
-                row = self._conn.execute("SELECT COUNT(*) FROM jobs").fetchone()
-            else:
-                row = self._conn.execute("SELECT COUNT(*) FROM jobs WHERE tenant_id = ?", (tenant_id,)).fetchone()
+            where, params = _sqlite_job_summary_filter(tenant_id, query=query, status=status)
+            row = self._conn.execute(f"SELECT COUNT(*) FROM jobs{where}", params).fetchone()  # nosec B608
             return int(row[0]) if row else 0
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
+
+    def count_summary_by_status(
+        self,
+        tenant_id: str | None = None,
+        *,
+        query: str | None = None,
+    ) -> dict[str, int]:
+        try:
+            where, params = _sqlite_job_summary_filter(tenant_id, query=query)
+            rows = self._conn.execute(  # nosec B608
+                f"SELECT status, COUNT(*) FROM jobs{where} GROUP BY status",
+                params,
+            ).fetchall()
+            return {str(status): int(count) for status, count in rows}
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

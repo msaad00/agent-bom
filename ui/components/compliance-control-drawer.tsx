@@ -5,6 +5,7 @@ import { Package, Server, X } from "lucide-react";
 
 import { useEscToClose } from "@/hooks/use-esc-to-close";
 import type { ComplianceControl } from "@/lib/api";
+import { findingsHref, remediationHref, securityGraphHref } from "@/lib/page-links";
 
 function statusLabel(status: ComplianceControl["status"]): string {
   switch (status) {
@@ -147,25 +148,22 @@ export function ComplianceControlDrawer({
 
         <div className="mt-6 flex flex-wrap gap-2 border-t border-[color:var(--border-subtle)] pt-4">
           <Link
-            href={`/findings?q=${encodeURIComponent(control.code)}`}
+            href={findingsHref({ q: control.code })}
             className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-600"
           >
             View findings
           </Link>
           <Link
-            href={(() => {
-              const params = new URLSearchParams();
-              if (control.affected_packages[0]) params.set("package", control.affected_packages[0]);
-              if (control.affected_agents[0]) params.set("agent", control.affected_agents[0]);
-              const qs = params.toString();
-              return qs ? `/security-graph?${qs}` : "/security-graph";
-            })()}
+            href={securityGraphHref({
+              packageName: control.affected_packages[0],
+              agent: control.affected_agents[0],
+            })}
             className="rounded-lg border border-sky-700/40 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-800 dark:text-sky-200 transition hover:border-sky-600"
           >
             Evidence in security graph
           </Link>
           <Link
-            href={`/remediation?q=${encodeURIComponent(control.code)}`}
+            href={remediationHref({ q: control.code })}
             className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition hover:text-[color:var(--foreground)]"
           >
             Remediation

@@ -25,10 +25,10 @@ import os
 import secrets
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
@@ -422,7 +422,10 @@ def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/compliance", tags=["compliance"])
-async def get_compliance(request: Request) -> dict:
+async def get_compliance(
+    request: Request,
+    scan_id: Annotated[str | None, Query(max_length=200)] = None,
+) -> dict:
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
     OWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.
 
@@ -431,6 +434,12 @@ async def get_compliance(request: Request) -> dict:
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
     tenant_jobs = _tenant_jobs(request)
+    if scan_id:
+        tenant_jobs = [
+            job
+            for job in tenant_jobs
+            if job.job_id == scan_id or (job.result and str(job.result.get("scan_id") or "") == scan_id)
+        ]
 
     # Collect blast_radius entries from all completed scans
     all_blast: list[dict] = []

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { PIPELINE_STEPS } from "@/lib/api";
+
 import {
   describeWallClock,
   formatDurationMs,
@@ -7,8 +9,8 @@ import {
   jobWallClockMs,
   mergePipelineSteps,
   parsePipelineStepsFromProgress,
+  resolvePipelineTelemetry,
   summarizePipeline,
-  synthesizePipelineSteps,
 } from "@/lib/scan-pipeline-progress";
 
 describe("scan-pipeline-progress", () => {
@@ -103,38 +105,56 @@ describe("scan-pipeline-progress", () => {
     })).toBe(30_000);
   });
 
-  it("synthesizes all six stages as done for a finished job with no step events", () => {
-    const { steps, synthesized } = synthesizePipelineSteps(new Map(), "done");
-    expect(synthesized).toBe(true);
-    expect(steps.size).toBe(6);
-    for (const step of steps.values()) {
-      expect(step.status).toBe("done");
-    }
+  it("marks finished jobs without step events unavailable instead of fabricating stages", () => {
+    const { steps, state } = resolvePipelineTelemetry(new Map(), "done");
+    expect(state).toBe("unavailable");
+    expect(steps.size).toBe(0);
 
     const summary = summarizePipeline(steps, {
       created_at: "2026-06-27T00:00:00Z",
       completed_at: "2026-06-27T00:00:05Z",
       status: "done",
     });
-    expect(summary.completedSteps).toBe(6);
+    expect(summary.completedSteps).toBe(0);
     expect(summary.currentStepLabel).toBeNull();
   });
 
-  it("reports summarized instead of a misleading 0ms wall clock", () => {
+  it("distinguishes partial telemetry from a complete observed pipeline", () => {
+    const partial = resolvePipelineTelemetry(
+      parsePipelineStepsFromProgress([
+        JSON.stringify({ type: "step", step_id: "discovery", status: "done", message: "done" }),
+      ]),
+      "done",
+    );
+    expect(partial.state).toBe("partial");
+
+    const observed = resolvePipelineTelemetry(
+      new Map(
+        PIPELINE_STEPS.map((step) => [
+          step.id,
+          { type: "step" as const, step_id: step.id, status: "done" as const, message: "done" },
+        ]),
+      ),
+      "done",
+    );
+    expect(observed.state).toBe("observed");
+  });
+
+  it("reports unavailable instead of a misleading 0ms wall clock", () => {
     // Synchronous cloud scan: created_at === completed_at → 0ms elapsed.
     expect(
-      describeWallClock(0, { synthesized: true }),
-    ).toBe("summarized");
-    expect(describeWallClock(0)).toBe("summarized");
+      describeWallClock(0, { unavailable: true }),
+    ).toBe("Unavailable");
+    expect(describeWallClock(0)).toBe("Unavailable");
     expect(describeWallClock(null, { running: true })).toBe("running…");
     expect(describeWallClock(null)).toBe("—");
     expect(describeWallClock(2_000)).toBe("2.0s");
   });
 
-  it("labels summarized stage timing honestly rather than a bare done", () => {
+  it("labels unavailable stage timing honestly rather than a bare done", () => {
     expect(formatStageDuration(2_000, "done")).toBe("2.0s");
     expect(formatStageDuration(null, "running")).toBe("running…");
-    expect(formatStageDuration(null, "done", true)).toBe("summarized");
+    expect(formatStageDuration(null, "done", true)).toBe("Unavailable");
     expect(formatStageDuration(null, "done", false)).toBe("done");
     expect(formatStageDuration(null, "skipped", false)).toBe("skipped");
     expect(formatStageDuration(null, "pending")).toBe("—");
@@ -149,12 +169,12 @@ describe("scan-pipeline-progress", () => {
         message: "Found 3 agents",
       }),
     ]);
-    const done = synthesizePipelineSteps(real, "done");
-    expect(done.synthesized).toBe(false);
+    const done = resolvePipelineTelemetry(real, "done");
+    expect(done.state).toBe("partial");
     expect(done.steps.size).toBe(1);
 
-    const running = synthesizePipelineSteps(new Map(), "running");
-    expect(running.synthesized).toBe(false);
+    const running = resolvePipelineTelemetry(new Map(), "running");
+    expect(running.state).toBe("unavailable");
     expect(running.steps.size).toBe(0);
   });
 });

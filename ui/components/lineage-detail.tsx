@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
+import { graphLayerHref } from "@/lib/page-links";
 import {
   reachColorClass,
   reachFormula,
@@ -601,7 +602,7 @@ export function LineageDetailPanel({
                 .map(([key, value]) => (
                   <Link
                     key={key}
-                    href={`/graph?q=${encodeURIComponent(key)}`}
+                    href={graphLayerHref(key)}
                     className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
                   >
                     {prettifyKey(key)}: {value}

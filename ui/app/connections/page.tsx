@@ -18,8 +18,6 @@ import {
   ArrowLeft,
   ChevronRight,
   Boxes,
-  Fingerprint,
-  KeyRound,
   FileSearch,
   GitGraph,
   ListChecks,
@@ -2998,26 +2996,6 @@ function HandoffLink({
       <Icon className="h-3.5 w-3.5" />
       {label}
     </Link>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
-        <Icon className="h-3.5 w-3.5 text-emerald-400" />
-        {label}
-      </div>
-      <p className="mt-1.5 text-lg font-semibold text-[var(--foreground)]">{value}</p>
-    </div>
   );
 }
 

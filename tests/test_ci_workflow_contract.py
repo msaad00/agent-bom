@@ -79,6 +79,11 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     assert _ci()["jobs"]["test"]["timeout-minutes"] == 25
 
 
+def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:
+    """Full-suite Alpine runs must outlive the observed 25-minute ceiling."""
+    assert _ci()["jobs"]["test-alpine"]["timeout-minutes"] == 35
+
+
 def test_pull_request_pytest_reports_slowest_tests() -> None:
     """PR runs surface the slowest tests so timeout regressions have evidence."""
     text = CI_WORKFLOW.read_text(encoding="utf-8")

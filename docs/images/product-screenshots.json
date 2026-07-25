@@ -1,85 +1,85 @@
 {
-  "release_version": "0.97.5",
-  "captured_at": "2026-07-23T02:40:45.203Z",
-  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data \u2014 sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
+  "release_version": "0.98.0",
+  "captured_at": "2026-07-24T23:44:45.864Z",
+  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
       "page": "/?capture=1",
-      "scope": "Overview command center \u2014 posture grade, unique findings breakdown, scan coverage, and operational lanes",
-      "visible_version": "0.97.5"
+      "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
+      "visible_version": "0.98.0"
     },
     {
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "cloud-accounts-live.png",
       "page": "/connections?capture=1",
-      "scope": "Connections hub \u2014 scalable connector gallery across cloud, code, AI, and data sources",
-      "visible_version": "0.97.5"
+      "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
+      "visible_version": "0.98.0"
     },
     {
       "path": "new-scan-live.png",
       "page": "/scan?capture=1",
       "scope": "New Scan workspace with collector plan, read-only boundary, expected evidence, connected sources, and recent job context",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "gateway-policies-live.png",
       "page": "/runtime?tab=gateway&capture=1",
       "scope": "Runtime gateway KPI rollup, enforcement posture, and recent tool-call evidence",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
       "scope": "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "context-map-live.png",
       "page": "/context?capture=1",
-      "scope": "Context map with path focus off \u2014 tools, credentials, servers, and lateral agent links (not CVE-only)",
-      "visible_version": "0.97.5"
+      "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
+      "visible_version": "0.98.0"
     },
     {
       "path": "fleet-state-live.png",
       "page": "/fleet?capture=1",
       "scope": "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "identity-audit-live.png",
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "dependency-map-live.png",
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     },
     {
       "path": "remediation-live.png",
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
-      "visible_version": "0.97.5"
+      "visible_version": "0.98.0"
     }
   ]
 }

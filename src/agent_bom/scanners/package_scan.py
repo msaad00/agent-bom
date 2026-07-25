@@ -151,9 +151,7 @@ def default_scan_options(
         offline=_scanners_patchable("offline_mode") if offline is None else offline,
         compliance_enabled=compliance_enabled,
         resolve_transitive=resolve_transitive,
-        prefer_local_db=(
-            prefer_local_db if prefer_local_db is not None else _scanners_patchable("prefer_local_db")
-        ),
+        prefer_local_db=(prefer_local_db if prefer_local_db is not None else _scanners_patchable("prefer_local_db")),
         demo_advisories=demo_advisories,
         project_dir=project_dir,
     )
@@ -467,6 +465,64 @@ def _version_matches_list(version: str, versions_list: list[str], ecosystem: str
     return False
 
 
+def _range_windows(events: list[dict]) -> list[tuple[str | None, str | None, str | None]]:
+    """Split OSV range ``events`` into ``(introduced, fixed, last_affected)`` windows.
+
+    A window opens on ``introduced`` and closes on ``fixed`` or
+    ``last_affected``; one left open at the end runs through latest. A range
+    with no ``introduced`` at all is vulnerable from 0.
+    """
+    windows: list[tuple[str | None, str | None, str | None]] = []
+    introduced: str | None = None
+    window_open = False
+    for event in events:
+        if "introduced" in event:
+            if window_open:
+                windows.append((introduced, None, None))
+            introduced = event["introduced"]
+            window_open = True
+        elif "fixed" in event:
+            windows.append((introduced, event["fixed"], None))
+            introduced, window_open = None, False
+        elif "last_affected" in event:
+            windows.append((introduced, None, event["last_affected"]))
+            introduced, window_open = None, False
+    if window_open:
+        windows.append((introduced, None, None))
+    if not windows:
+        windows.append((None, None, None))
+    return windows
+
+
+def _version_in_window(
+    version: str,
+    window: tuple[str | None, str | None, str | None],
+    ecosystem: str,
+) -> bool:
+    """Return whether *version* falls inside one vulnerable window."""
+    from agent_bom.version_utils import compare_version_order
+
+    introduced, fixed, last_affected = window
+
+    if introduced is not None and introduced != "0":
+        intro_cmp = compare_version_order(version, introduced, ecosystem)
+        # An uncomparable lower bound cannot rule the version out.
+        if intro_cmp is not None and intro_cmp < 0:
+            return False
+
+    if fixed is not None:
+        fixed_cmp = compare_version_order(version, fixed, ecosystem)
+        if fixed_cmp is not None and fixed_cmp >= 0:
+            return False
+
+    if last_affected is not None:
+        last_cmp = compare_version_order(version, last_affected, ecosystem)
+        if last_cmp is not None and last_cmp > 0:
+            return False
+
+    return True
+
+
 def _is_version_affected(
     vuln_data: dict,
     package_name: str,
@@ -530,27 +586,12 @@ def _is_version_affected(
                 continue
 
             events = rng.get("events", [])
-            # If range has fixed/last_affected but no introduced, assume introduced=0
-            has_introduced = any("introduced" in e for e in events)
-            is_affected = not has_introduced  # default: affected if no introduced
-            for event in events:
-                if "introduced" in event:
-                    intro = event["introduced"]
-                    if intro == "0":
-                        is_affected = True
-                    else:
-                        intro_cmp = compare_version_order(package_version, intro, ecosystem)
-                        is_affected = True if intro_cmp is None else intro_cmp >= 0
-                elif "fixed" in event:
-                    fixed_cmp = compare_version_order(package_version, event["fixed"], ecosystem)
-                    if fixed_cmp is not None and fixed_cmp >= 0:
-                        is_affected = False
-                elif "last_affected" in event:
-                    last_cmp = compare_version_order(package_version, event["last_affected"], ecosystem)
-                    if last_cmp is not None and last_cmp > 0:
-                        is_affected = False
-
-            if is_affected:
+            # A range may carry several vulnerable windows as alternating
+            # introduced/fixed events. Collect them first, then test each on its
+            # own: treating a later ``introduced`` as a reset of the running
+            # verdict discards an earlier window the version already matched.
+            windows = _range_windows(events)
+            if any(_version_in_window(package_version, window, ecosystem) for window in windows):
                 return True
 
     # If we found the package in affected but no range matched AND no version
@@ -1191,9 +1232,7 @@ async def scan_packages(
     # Query the local SQLite DB for packages not already covered by the
     # deterministic demo manifest. Packages covered by the DB skip OSV calls.
     local_db_targets = [p for p in scannable if _db_key(p) not in db_covered]
-    local_db_count, local_db_covered = (
-        _scanners_patchable("_scan_packages_local_db")(local_db_targets) if local_db_targets else (0, set())
-    )
+    local_db_count, local_db_covered = _scanners_patchable("_scan_packages_local_db")(local_db_targets) if local_db_targets else (0, set())
     local_count += local_db_count
     db_covered.update(local_db_covered)
     if local_count:

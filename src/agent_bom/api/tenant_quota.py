@@ -467,8 +467,10 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
 
     defaults = default_tenant_quotas()
     overrides = get_tenant_quota_overrides(tenant_id)
-    effective = dict(defaults)
-    effective.update(overrides)
+    effective = effective_tenant_quotas(tenant_id)
+    from agent_bom.api.managed_trial import MANAGED_TRIAL_QUOTA_CAPS, managed_trial_enabled
+
+    trial_enabled = managed_trial_enabled()
 
     def _entry(quota_name: QuotaName, current: int) -> dict[str, int | bool | str | None]:
         limit = effective[quota_name]
@@ -486,6 +488,11 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
             else:
                 status = "ok"
                 recommended_action = "Usage is within the enforced tenant quota."
+        source = "tenant_override" if quota_name in overrides else "global_default"
+        if trial_enabled and quota_name in MANAGED_TRIAL_QUOTA_CAPS:
+            requested = overrides.get(quota_name)
+            if requested is None or requested <= 0 or requested >= MANAGED_TRIAL_QUOTA_CAPS[quota_name]:
+                source = "managed_trial_cap"
         return {
             "limit": limit,
             "default_limit": defaults[quota_name],
@@ -493,7 +500,7 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
             "current": current,
             "remaining": None if limit <= 0 else max(limit - current, 0),
             "enforced": limit > 0,
-            "source": "tenant_override" if quota_name in overrides else "global_default",
+            "source": source,
             "utilization_pct": utilization_pct,
             "status": status,
             "recommended_action": recommended_action,
@@ -526,12 +533,14 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
     provider_peak = _safe_count(_provider_peak)
 
     return {
-        "source": "tenant_override" if overrides else "global_default",
+        "source": "managed_trial_policy" if trial_enabled else ("tenant_override" if overrides else "global_default"),
         "per_tenant_overrides": True,
         "active_override": bool(overrides),
         "override_endpoint": "/v1/auth/quota",
         "message": (
-            "Tenant quotas resolve from tenant-specific overrides with global defaults as fallback."
+            "Managed-trial quota caps are enforced; tenant overrides can only tighten them."
+            if trial_enabled
+            else "Tenant quotas resolve from tenant-specific overrides with global defaults as fallback."
             if overrides
             else "Tenant quotas resolve from global defaults. Tenant-specific overrides can be configured when needed."
         ),

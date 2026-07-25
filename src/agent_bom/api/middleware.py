@@ -1490,6 +1490,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # headers for the configured origin set.
         if request.method == "OPTIONS":
             return await call_next(request)
+        from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_route_allowed
+
+        if managed_trial_enabled() and not managed_trial_route_allowed(request.method, request.url.path):
+            return JSONResponse(status_code=403, content={"detail": "This API route is disabled in managed trial mode."})
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
         if self._is_dashboard_public_request(request.url.path, request.method):

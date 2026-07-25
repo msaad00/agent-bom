@@ -1381,6 +1381,9 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
 
     record = _require_connection(request, connection_id)
     _reject_showcase_connection(record)
+    from agent_bom.api.managed_trial import enforce_stored_connection_envelope
+
+    enforce_stored_connection_envelope(record)
     tenant_id = record.tenant_id
     actor = _actor(request)
 
@@ -1453,6 +1456,9 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     """
     record = _require_connection(request, connection_id)
     _reject_showcase_connection(record)
+    from agent_bom.api.managed_trial import enforce_stored_connection_envelope
+
+    enforce_stored_connection_envelope(record)
     tenant_id = record.tenant_id
     actor = _actor(request)
 

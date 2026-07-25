@@ -8,7 +8,7 @@ an operator-run evaluation environment; it never activates itself implicitly.
 from __future__ import annotations
 
 import os
-from typing import Final
+from typing import Final, Protocol
 
 from fastapi import HTTPException
 
@@ -34,11 +34,68 @@ MANAGED_TRIAL_ANALYST_SCOPES: Final[tuple[str, ...]] = (
     "graph:read",
 )
 
+_MANAGED_TRIAL_AUTH_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
+    {
+        ("GET", "/v1/auth/me"),
+        ("POST", "/v1/auth/session"),
+        ("DELETE", "/v1/auth/session"),
+        ("GET", "/v1/auth/oidc/login"),
+        ("GET", "/v1/auth/oidc/callback"),
+    }
+)
+_CONNECTIONS_PATH: Final = "/v1/cloud/connections"
+_GRAPH_PATH: Final = "/v1/graph"
+
+
+class StoredConnection(Protocol):
+    """Minimum persisted connection shape needed by request and worker gates."""
+
+    provider: str
+    regions: list[str]
+    inventory_scope: str
+    scan_mode: str
+    scan_interval_minutes: int | None
+
 
 def managed_trial_enabled() -> bool:
     """Return whether the operator explicitly enabled managed-trial policy."""
 
     return os.environ.get("AGENT_BOM_MANAGED_TRIAL_MODE", "").strip().lower() in _TRUTHY
+
+
+def managed_trial_route_allowed(method: str, path: str) -> bool:
+    """Return whether an API route belongs to the managed-trial surface.
+
+    This is intentionally a pure allowlist independent of principal type. The
+    authentication middleware applies it before resolving API keys, OIDC
+    bearers, or browser sessions, so no broader role can reopen a denied route.
+    Non-API paths remain governed by the normal dashboard/static/health rules.
+    """
+
+    normalized_method = method.upper()
+    if normalized_method == "HEAD":
+        normalized_method = "GET"
+    if normalized_method == "OPTIONS":
+        return True
+    if not (path == "/v1" or path.startswith("/v1/") or path == "/scim" or path.startswith("/scim/")):
+        return True
+    if (normalized_method, path) in _MANAGED_TRIAL_AUTH_ROUTES:
+        return True
+    if normalized_method == "GET" and (path == _GRAPH_PATH or path.startswith(f"{_GRAPH_PATH}/")):
+        return True
+    if normalized_method == "POST" and path in {"/v1/graph/query", "/v1/graph/should-i-deploy"}:
+        return True
+    if normalized_method == "GET" and path == "/v1/findings":
+        return True
+    if path == _CONNECTIONS_PATH:
+        return normalized_method in {"GET", "POST"}
+    if path.startswith(f"{_CONNECTIONS_PATH}/"):
+        suffix = path.removeprefix(f"{_CONNECTIONS_PATH}/")
+        parts = suffix.split("/")
+        if normalized_method == "GET":
+            return len(parts) == 1 and bool(parts[0])
+        return normalized_method == "POST" and len(parts) == 2 and bool(parts[0]) and parts[1] in {"test", "scan"}
+    return False
 
 
 def enforce_connection_envelope(
@@ -68,6 +125,25 @@ def enforce_connection_envelope(
             status_code=403,
             detail=f"Managed trial connections allow at most {MANAGED_TRIAL_MAX_REGIONS} AWS regions.",
         )
+
+
+def enforce_stored_connection_envelope(record: StoredConnection) -> None:
+    """Revalidate persisted settings before test, enqueue, or worker execution.
+
+    Stored rows can predate managed-trial mode or be changed by an operator.
+    Callers must therefore validate the current row at every execution boundary
+    instead of assuming the create-time contract is still true.
+    """
+
+    if not managed_trial_enabled():
+        return
+    enforce_connection_envelope(
+        provider=str(record.provider or "").strip().lower(),
+        regions=[str(region).strip().lower() for region in record.regions],
+        inventory_scope=str(record.inventory_scope or "").strip().lower(),
+        scan_mode=str(record.scan_mode or "").strip().lower(),
+        scan_interval_minutes=record.scan_interval_minutes,
+    )
 
 
 def require_managed_trial_feature(feature: str) -> None:

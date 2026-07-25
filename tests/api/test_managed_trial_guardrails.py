@@ -6,10 +6,18 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from starlette.testclient import TestClient
 
+from agent_bom.api import managed_trial
 from agent_bom.api.connection_scheduler import connections_scheduler_enabled
-from agent_bom.api.connection_store import InMemoryConnectionStore, get_connection_store, set_connection_store
+from agent_bom.api.connection_store import (
+    SCAN_MODE_FULL,
+    CloudConnectionRecord,
+    InMemoryConnectionStore,
+    get_connection_store,
+    set_connection_store,
+)
 from agent_bom.api.middleware import APIKeyMiddleware, RateLimitMiddleware
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.routes import cloud_connections
@@ -20,6 +28,7 @@ from agent_bom.api.tenant_quota import (
     consume_managed_trial_scan_credit,
     current_managed_trial_scan_credits,
     effective_tenant_quotas,
+    get_tenant_quota_runtime,
     reset_managed_trial_scan_credit_store,
     set_tenant_quota_overrides,
 )
@@ -54,12 +63,32 @@ def _body(**updates: object) -> CloudConnectionCreate:
     payload: dict[str, object] = {
         "provider": "aws",
         "display_name": "sandbox",
-        "role_ref": "arn:aws:iam::123456789012:role/agent-bom-readonly",
+        "role_ref": "arn:aws:iam::000000000000:role/agent-bom-readonly",
         "external_id": "write-only-secret",
         "regions": ["us-east-1"],
     }
     payload.update(updates)
     return CloudConnectionCreate.model_validate(payload)
+
+
+def _stored_connection(**updates: object) -> CloudConnectionRecord:
+    payload: dict[str, object] = {
+        "id": "connection-stale",
+        "tenant_id": "tenant-trial",
+        "provider": "aws",
+        "display_name": "stale connection",
+        "role_ref": "arn:aws:iam::000000000000:role/agent-bom-readonly",
+        "external_id_encrypted": "encrypted:synthetic",
+        "regions": ["us-east-1"],
+        "inventory_scope": "account",
+        "scan_mode": SCAN_MODE_FULL,
+        "scan_interval_minutes": None,
+        "auto_scan_on_create": False,
+    }
+    payload.update(updates)
+    record = CloudConnectionRecord(**payload)  # type: ignore[arg-type]
+    get_connection_store().put(record)
+    return record
 
 
 def test_managed_trial_defaults_are_bounded() -> None:
@@ -70,6 +99,67 @@ def test_managed_trial_defaults_are_bounded() -> None:
     assert quotas["cloud_connections"] == 2
     assert quotas["cloud_connections_per_provider"] == 2
     assert quotas["scan_credits_24h"] == 8
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/v1/auth/me"),
+        ("POST", "/v1/auth/session"),
+        ("DELETE", "/v1/auth/session"),
+        ("GET", "/v1/auth/oidc/login"),
+        ("GET", "/v1/auth/oidc/callback"),
+        ("GET", "/v1/cloud/connections"),
+        ("POST", "/v1/cloud/connections"),
+        ("GET", "/v1/cloud/connections/connection-one"),
+        ("POST", "/v1/cloud/connections/connection-one/test"),
+        ("POST", "/v1/cloud/connections/connection-one/scan"),
+        ("GET", "/v1/findings"),
+        ("GET", "/v1/graph/node/node-one"),
+        ("POST", "/v1/graph/query"),
+    ],
+)
+def test_managed_trial_route_allowlist_is_explicit(method: str, path: str) -> None:
+    assert managed_trial.managed_trial_route_allowed(method, path) is True
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/v1/auth/keys"),
+        ("POST", "/v1/scan"),
+        ("PATCH", "/v1/cloud/connections/connection-one"),
+        ("DELETE", "/v1/cloud/connections/connection-one"),
+        ("POST", "/v1/cloud/connections/events/ingest"),
+        ("POST", "/v1/findings/bulk"),
+        ("POST", "/v1/graph/presets"),
+        ("GET", "/v1/schedules"),
+        ("POST", "/scim/v2/Users"),
+    ],
+)
+def test_managed_trial_route_policy_defaults_to_deny(method: str, path: str) -> None:
+    assert managed_trial.managed_trial_route_allowed(method, path) is False
+
+
+def test_managed_trial_route_denial_precedes_every_principal_resolver() -> None:
+    app = FastAPI()
+
+    @app.get("/v1/auth/keys")
+    async def _forbidden_surface() -> dict[str, bool]:
+        return {"reached": True}
+
+    app.add_middleware(APIKeyMiddleware, api_key="")
+    client = TestClient(app)
+
+    attempts = (
+        {"headers": {"x-api-key": "synthetic-api-key"}},
+        {"headers": {"authorization": "Bearer synthetic.oidc.token"}},
+        {"headers": {"cookie": "agent_bom_session=synthetic-browser-session"}},
+    )
+    for attempt in attempts:
+        response = client.get("/v1/auth/keys", **attempt)
+        assert response.status_code == 403
+        assert response.json() == {"detail": "This API route is disabled in managed trial mode."}
 
 
 def test_managed_trial_disables_connection_scheduler_even_when_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,6 +227,71 @@ def test_managed_trial_scan_credits_are_atomic_and_do_not_charge_denials() -> No
     assert statuses.count(200) == 8
     assert statuses.count(429) == 2
     assert current_managed_trial_scan_credits("tenant-trial") == 8
+
+
+def test_managed_trial_runtime_reports_the_same_clamped_quotas_as_enforcement() -> None:
+    set_tenant_quota_overrides(
+        "tenant-trial",
+        {
+            "active_scan_jobs": 9,
+            "retained_scan_jobs": 200,
+            "cloud_connections": 99,
+            "cloud_connections_per_provider": 50,
+            "scan_credits_24h": 100,
+        },
+    )
+
+    effective = effective_tenant_quotas("tenant-trial")
+    runtime = get_tenant_quota_runtime("tenant-trial")
+
+    for quota_name, enforced_limit in effective.items():
+        assert runtime["usage"][quota_name]["limit"] == enforced_limit  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"provider": "database", "regions": []},
+        {"inventory_scope": "organization"},
+        {"regions": []},
+        {"regions": ["ALL"]},
+        {"regions": ["us-east-1", "us-east-2", "us-west-1", "us-west-2", "eu-west-1", "eu-west-2"]},
+    ],
+)
+def test_connection_test_and_scan_revalidate_stale_trial_records_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    updates: dict[str, object],
+) -> None:
+    record = _stored_connection(**updates)
+    broker_calls: list[str] = []
+    scan_calls: list[str] = []
+    monkeypatch.setattr(cloud_connections, "_test_connection_broker", lambda _record: broker_calls.append("test"))
+    monkeypatch.setattr(
+        cloud_connections,
+        "_run_connection_scan",
+        lambda _record, _tenant_id: scan_calls.append("scan"),
+    )
+
+    with pytest.raises(HTTPException) as test_exc:
+        asyncio.run(cloud_connections.test_connection(request=object(), connection_id=record.id))
+    with pytest.raises(HTTPException) as scan_exc:
+        asyncio.run(cloud_connections.scan_connection(request=object(), connection_id=record.id))
+
+    assert test_exc.value.status_code == 403
+    assert scan_exc.value.status_code == 403
+    assert broker_calls == []
+    assert scan_calls == []
+    assert current_managed_trial_scan_credits("tenant-trial") == 0
+
+
+def test_worker_time_validator_rejects_stale_trial_connection() -> None:
+    record = _stored_connection(inventory_scope="organization")
+
+    with pytest.raises(HTTPException) as exc_info:
+        managed_trial.enforce_stored_connection_envelope(record)
+
+    assert exc_info.value.status_code == 403
+    assert "account scope" in str(exc_info.value.detail)
 
 
 def test_self_hosted_provider_quota_is_configurable_without_trial_restrictions(monkeypatch: pytest.MonkeyPatch) -> None:

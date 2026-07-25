@@ -412,28 +412,46 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         norm_name = normalize_package_name(pkg_name, ecosystem)
 
         for rng in aff.get("ranges", []):
-            introduced = None
-            fixed = None
-            last_affected = None
+            # OSV encodes per-branch fixes as alternating introduced/fixed
+            # events inside ONE range. Each pair is its own vulnerable window;
+            # keeping only the last one hides every earlier branch.
+            windows: list[tuple[str, str, str]] = []
+            introduced: Optional[str] = None
+            window_open = False
             for event in rng.get("events", []):
                 if "introduced" in event:
+                    if window_open:
+                        windows.append((introduced or "", "", ""))
                     introduced = event["introduced"]
+                    window_open = True
                 if "fixed" in event:
                     fixed = event["fixed"]
                     if fixed_version is None:
                         fixed_version = fixed
+                    windows.append((introduced or "", fixed, ""))
+                    introduced = None
+                    window_open = False
                 if "last_affected" in event:
-                    last_affected = event["last_affected"]
-            affected_rows.append(
-                {
-                    "vuln_id": vuln_id,
-                    "ecosystem": ecosystem.lower(),
-                    "package_name": norm_name,
-                    "introduced": introduced or "",
-                    "fixed": fixed or "",
-                    "last_affected": last_affected or "",
-                }
-            )
+                    windows.append((introduced or "", "", event["last_affected"]))
+                    introduced = None
+                    window_open = False
+            if window_open:
+                # Introduced with no fix yet — vulnerable through latest.
+                windows.append((introduced or "", "", ""))
+            if not windows:
+                windows.append(("", "", ""))
+
+            for win_introduced, win_fixed, win_last_affected in windows:
+                affected_rows.append(
+                    {
+                        "vuln_id": vuln_id,
+                        "ecosystem": ecosystem.lower(),
+                        "package_name": norm_name,
+                        "introduced": win_introduced,
+                        "fixed": win_fixed,
+                        "last_affected": win_last_affected,
+                    }
+                )
 
     # Extract CWE IDs from database_specific (GHSA advisories store them here)
     cwe_ids_list: list[str] = []

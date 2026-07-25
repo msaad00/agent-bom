@@ -128,7 +128,10 @@ function JobsPageContent() {
       .then((response) => {
         setJobs(response.jobs);
         setTotal(response.total ?? response.count);
-        setStatusCounts(response.status_counts ?? {});
+        setStatusCounts(response.status_counts ?? response.jobs.reduce<Partial<Record<JobStatus, number>>>((counts, job) => {
+          counts[job.status] = (counts[job.status] ?? 0) + 1;
+          return counts;
+        }, {}));
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Unable to load jobs");

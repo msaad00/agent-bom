@@ -70,7 +70,7 @@ describe("interactive React Flow surface contract", () => {
 
   it("bounds the agent lifecycle canvas inside the application shell", () => {
     const content = source("app/agents/page.tsx");
-    expect(content).toContain('className="h-[calc(100dvh-4rem)] w-full');
+    expect(content).toContain('className="h-[calc(100dvh-5rem)] w-full');
     expect(content).not.toContain('className="h-screen w-screen');
   });
 

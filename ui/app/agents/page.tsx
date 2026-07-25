@@ -1578,7 +1578,7 @@ function AgentLifecycle({ agentName }: { agentName: string }) {
   }
 
   return (
-    <div className="h-[calc(100dvh-4rem)] w-full bg-[color:var(--surface)]">
+    <div className="h-[calc(100dvh-5rem)] w-full bg-[color:var(--surface)]">
       <ReactFlowProvider>
         <LifecycleFlow data={data} agentName={agentName} />
       </ReactFlowProvider>

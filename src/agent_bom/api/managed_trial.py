@@ -41,6 +41,9 @@ _MANAGED_TRIAL_AUTH_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("DELETE", "/v1/auth/session"),
         ("GET", "/v1/auth/oidc/login"),
         ("GET", "/v1/auth/oidc/callback"),
+        ("POST", "/v1/auth/trial/oidc/start"),
+        ("POST", "/v1/auth/trial/oidc/start-form"),
+        ("POST", "/v1/auth/trial-invitations"),
     }
 )
 _CONNECTIONS_PATH: Final = "/v1/cloud/connections"
@@ -81,6 +84,8 @@ def managed_trial_route_allowed(method: str, path: str) -> bool:
         return True
     if (normalized_method, path) in _MANAGED_TRIAL_AUTH_ROUTES:
         return True
+    if path.startswith("/v1/auth/trial-tenants/"):
+        return normalized_method in {"GET", "POST"}
     if normalized_method == "GET" and (path == _GRAPH_PATH or path.startswith(f"{_GRAPH_PATH}/")):
         return True
     if normalized_method == "POST" and path in {"/v1/graph/query", "/v1/graph/should-i-deploy"}:

@@ -499,6 +499,10 @@ API_MAX_SCAN_CREDITS_24H_PER_TENANT = _int("AGENT_BOM_API_MAX_SCAN_CREDITS_24H_P
 # request guards re-read the environment so tests and process supervisors can
 # validate configuration changes without changing self-hosted defaults.
 MANAGED_TRIAL_MODE = _bool("AGENT_BOM_MANAGED_TRIAL_MODE", False)
+# Reserved tenant that may perform cross-tenant trial lifecycle operations.
+# The route guard re-reads the environment so test and deployment overrides are
+# applied without weakening the default operator boundary.
+PLATFORM_OPERATOR_TENANT_ID = _str("AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID", "default")
 # Per-request fan-out ceiling: a single POST /v1/scan expands one batchable
 # target field per child job, so an uncapped request could enqueue unbounded
 # work bounded only by the tenant active-scan quota churn. Reject over-cap

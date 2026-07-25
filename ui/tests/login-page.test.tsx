@@ -101,6 +101,12 @@ describe("LoginPage", () => {
     expect(screen.getByText("Sign in with SSO, or use an API key as a fallback.")).toBeInTheDocument();
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    const invitationInput = screen.getByLabelText("Invitation token");
+    expect(invitationInput).toHaveAttribute("type", "password");
+    expect(invitationInput).toHaveAttribute("name", "token");
+    const invitationForm = invitationInput.closest("form");
+    expect(invitationForm).toHaveAttribute("method", "post");
+    expect(invitationForm).toHaveAttribute("action", "/v1/auth/trial/oidc/start-form");
     expect(
       screen.queryByText("Single sign-on is handled by your identity provider or reverse proxy."),
     ).not.toBeInTheDocument();

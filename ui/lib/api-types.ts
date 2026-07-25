@@ -3560,21 +3560,14 @@ export interface CloudConnectionTestResponse {
   connection: CloudConnectionRecord;
 }
 
-/** Response from `POST /v1/cloud/connections/{id}/scan` (AWS, Azure, GCP, Snowflake). */
+/** Accepted durable job from `POST /v1/cloud/connections/{id}/scan`. */
 export interface CloudConnectionScanResponse {
   schema_version: string;
   connection_id: string;
   tenant_id: string;
   provider: string;
-  scan_id: string;
-  inventory: CloudConnectionScanInventory;
-  cis_benchmark: CloudConnectionScanCis;
-  audit_metadata: {
-    read_only: boolean;
-    writes_performed: boolean;
-    note: string;
-  };
-  connection: CloudConnectionRecord;
+  job_id: string;
+  status: "pending" | "running" | "done" | "failed" | "cancelled" | string;
 }
 
 /** One traced tool-call span resolved to the exact attack path it hit (#3898). */

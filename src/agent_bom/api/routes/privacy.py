@@ -9,7 +9,10 @@ from typing import Any, cast
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.audit_log import get_audit_log, log_action
+from agent_bom.api.auth import get_key_store
+from agent_bom.api.connection_store import get_connection_store
 from agent_bom.api.stores import (
+    _get_credential_ref_store,
     _get_exception_store,
     _get_fleet_store,
     _get_graph_store,
@@ -80,6 +83,13 @@ def _redact_source(record: Any) -> dict[str, Any]:
     return data
 
 
+def _redact_credential(record: Any) -> dict[str, Any]:
+    data = _dump_record(record)
+    if data.get("external_ref"):
+        data["external_ref"] = "[redacted]"
+    return data
+
+
 def _try_records(name: str, func: Callable[[], list[Any]], unavailable: dict[str, str]) -> list[Any]:
     try:
         return func()
@@ -103,6 +113,17 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
     schedules = _try_records("scan_schedules", lambda: _get_schedule_store().list_all(tenant_id=tenant_id), unavailable)
     sources = _try_records("sources", lambda: _get_source_store().list_all(tenant_id=tenant_id), unavailable)
     exceptions = _try_records("exceptions", lambda: _get_exception_store().list_all(tenant_id=tenant_id), unavailable)
+    cloud_connections = _try_records(
+        "cloud_connections",
+        lambda: get_connection_store().list_for_tenant(tenant_id),
+        unavailable,
+    )
+    credential_refs = _try_records(
+        "credential_refs",
+        lambda: _get_credential_ref_store().list_all(tenant_id=tenant_id),
+        unavailable,
+    )
+    api_keys = _try_records("api_keys", lambda: get_key_store().list_keys(tenant_id=tenant_id), unavailable)
     graph_snapshots = _try_records(
         "graph_snapshots",
         lambda: _get_graph_store().list_snapshots(tenant_id=tenant_id, limit=record_limit),
@@ -122,6 +143,9 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
         "scan_schedules": len(schedules),
         "sources": len(sources),
         "exceptions": len(exceptions),
+        "cloud_connections": len(cloud_connections),
+        "credential_refs": len(credential_refs),
+        "api_keys": len(api_keys),
         "graph_snapshots": len(graph_snapshots),
         "tenant_quota_overrides": 1 if quota is not None else 0,
         "audit_log_entries_retained": get_audit_log().count(tenant_id=tenant_id),
@@ -133,7 +157,7 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
         "retention": {
             "audit_log": "retained_immutable_hmac_chain",
             "policy_audit_log": "retained_for_security_evidence",
-            "api_keys": "retained_manage_with_api_key_lifecycle",
+            "api_keys": "deleted_on_confirmed_tenant_purge",
         },
     }
     if unavailable:
@@ -147,6 +171,9 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
             "scan_schedules": [_dump_record(record) for record in schedules[:limit]],
             "sources": [_redact_source(record) for record in sources[:limit]],
             "exceptions": [_dump_record(record) for record in exceptions[:limit]],
+            "cloud_connections": [record.to_public_dict() for record in cloud_connections[:limit]],
+            "credential_refs": [_redact_credential(record) for record in credential_refs[:limit]],
+            "api_keys": [record.to_dict() for record in api_keys[:limit]],
             "graph_snapshots": graph_snapshots[:limit],
             "tenant_quota_overrides": quota or {},
         }
@@ -168,6 +195,8 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
     schedules = _get_schedule_store().list_all(tenant_id=tenant_id)
     sources = _get_source_store().list_all(tenant_id=tenant_id)
     exceptions = _get_exception_store().list_all(tenant_id=tenant_id)
+    connections = get_connection_store().list_for_tenant(tenant_id)
+    credentials = _get_credential_ref_store().list_all(tenant_id=tenant_id)
 
     deleted = {
         "jobs": sum(1 for record in jobs if _get_store().delete(str(record["job_id"]), tenant_id=tenant_id)),
@@ -176,6 +205,13 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
         "scan_schedules": sum(1 for record in schedules if _get_schedule_store().delete(record.schedule_id, tenant_id=tenant_id)),
         "sources": sum(1 for record in sources if _get_source_store().delete(record.source_id)),
         "exceptions": sum(1 for record in exceptions if _get_exception_store().delete(record.exception_id, tenant_id=tenant_id)),
+        "cloud_connections": sum(1 for record in connections if get_connection_store().delete(tenant_id, record.id)),
+        "credential_refs": sum(
+            1
+            for record in credentials
+            if _get_credential_ref_store().delete(record.credential_ref_id, tenant_id=tenant_id)
+        ),
+        "api_keys": get_key_store().delete_tenant(tenant_id),
         "tenant_quota_overrides": 1 if _get_tenant_quota_store().delete(tenant_id) else 0,
         "graph_rows": _delete_graph_tenant(tenant_id),
     }

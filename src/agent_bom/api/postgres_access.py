@@ -311,6 +311,13 @@ class PostgresKeyStore:
             rows = conn.execute(query, params).fetchall()
             return [self._row_to_key(row) for row in rows]
 
+    def delete_tenant(self, tenant_id: str) -> int:
+        """Permanently remove keys after an explicitly confirmed tenant purge."""
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute("DELETE FROM api_keys WHERE team_id = %s", (tenant_id,))
+            conn.commit()
+            return int(cursor.rowcount)
+
     def verify(self, raw_key: str) -> ApiKey | None:
         prefix = raw_key[:12]
         with bypass_tenant_rls():

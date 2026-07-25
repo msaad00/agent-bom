@@ -15,7 +15,7 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -121,7 +121,13 @@ def _pkce_signing_key() -> bytes:
     )
 
 
-def seal_pkce_cookie(*, code_verifier: str, nonce: str, max_age_seconds: int | None = None) -> str:
+def seal_pkce_cookie(
+    *,
+    code_verifier: str,
+    nonce: str,
+    max_age_seconds: int | None = None,
+    managed_trial_invitation_digest: str | None = None,
+) -> str:
     ttl = max_age_seconds if max_age_seconds is not None else _login_ttl_seconds()
     payload = {
         "v": 1,
@@ -129,12 +135,16 @@ def seal_pkce_cookie(*, code_verifier: str, nonce: str, max_age_seconds: int | N
         "nonce": nonce,
         "exp": int(time.time()) + ttl,
     }
+    if managed_trial_invitation_digest is not None:
+        from agent_bom.api.managed_trial_invitation import validate_token_digest
+
+        payload["managed_trial_invitation_digest"] = validate_token_digest(managed_trial_invitation_digest)
     body = _b64url(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     sig = _b64url(hmac.new(_pkce_signing_key(), body.encode("ascii"), hashlib.sha256).digest())
     return f"{body}.{sig}"
 
 
-def open_pkce_cookie(value: str) -> tuple[str, str, str]:
+def _open_pkce_payload(value: str) -> dict[str, Any]:
     try:
         body, sig = value.split(".", 1)
     except ValueError as exc:
@@ -146,13 +156,31 @@ def open_pkce_cookie(value: str) -> tuple[str, str, str]:
         payload = json.loads(_b64url_decode(body))
     except (json.JSONDecodeError, ValueError) as exc:
         raise OIDCError("OIDC PKCE cookie payload invalid") from exc
-    if int(payload.get("exp") or 0) < int(time.time()):
+    if not isinstance(payload, dict):
+        raise OIDCError("OIDC PKCE cookie payload invalid")
+    typed_payload = cast(dict[str, Any], payload)
+    if int(typed_payload.get("exp") or 0) < int(time.time()):
         raise OIDCError("OIDC PKCE cookie expired")
+    return typed_payload
+
+
+def open_pkce_cookie(value: str) -> tuple[str, str, str]:
+    payload = _open_pkce_payload(value)
     verifier = str(payload.get("code_verifier") or "")
     nonce = str(payload.get("nonce") or "")
     if not verifier or not nonce:
         raise OIDCError("OIDC PKCE cookie missing verifier/nonce")
     return verifier, nonce, "/"
+
+
+def managed_trial_invitation_digest_from_pkce_cookie(value: str) -> str | None:
+    payload = _open_pkce_payload(value)
+    raw = payload.get("managed_trial_invitation_digest")
+    if raw is None:
+        return None
+    from agent_bom.api.managed_trial_invitation import validate_token_digest
+
+    return validate_token_digest(str(raw))
 
 
 def build_authorize_url(

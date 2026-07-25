@@ -63,8 +63,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agent_bom.api.connection_store import (
-    STATUS_ACTIVE,
     STATUS_ERROR,
+    STATUS_PENDING,
     CloudConnectionRecord,
     ConnectionStore,
     get_connection_store,
@@ -78,6 +78,7 @@ from agent_bom.config import (
     CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES,
     CONNECTIONS_SCHEDULER_POLL_SECONDS,
 )
+from agent_bom.security import sanitize_error, sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -415,16 +416,16 @@ def _persist_scan_outcome(
     except Exception:  # noqa: BLE001 - persistence failure never sinks the tick
         logger.exception("Persisting the scheduled scan outcome failed for connection %s", record.id)
         return False
-    return outcome == "success"
+    return outcome in {"success", "accepted"}
 
 
 def execute_connection_scan(record: CloudConnectionRecord) -> bool:
-    """Run the broker scan for a claimed connection and persist the outcome.
+    """Queue a durable scan for a claimed connection and persist the handoff.
 
-    Reuses the provider-dispatching scan-launch path (``_run_connection_scan``)
-    and the lifecycle mutator (``_mark_connection``). On success the connection
-    moves to ``active`` + a fresh ``last_scan_at``; on failure it is marked
-    ``error`` with the same curated detail the HTTP scan route persists.
+    The scheduler performs no provider I/O.  It reserves the same durable
+    ``ScanJob`` as manual and create-time scans, and the bounded scan worker
+    executes the brokered read-only collection later.  On an admission or
+    dispatch failure the connection moves to ``error`` with fixed safe text.
 
     The connection's tenant is bound for the whole unit of work — the loop runs
     outside any HTTP request, so nothing else populates the tenant contextvar
@@ -435,37 +436,32 @@ def execute_connection_scan(record: CloudConnectionRecord) -> bool:
     Never raises — returns whether the scan ran *and* was recorded, so one bad
     connection cannot sink the loop.
     """
-    from agent_bom.api.routes.cloud_connections import (
-        _now,
-        _run_connection_scan,
-        _safe_connection_detail,
-    )
+    from agent_bom.api.routes.cloud_connections import _now, queue_connection_scan_record
 
     token = set_current_tenant(record.tenant_id)
     try:
         try:
-            summary = _run_connection_scan(record, record.tenant_id)
+            job = queue_connection_scan_record(record, actor="scheduler")
         except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
-            logger.exception("Scheduled cloud connection scan failed for connection %s", record.id)
+            logger.error(
+                "Scheduled cloud connection enqueue failed for connection %s: %s",
+                record.id,
+                sanitize_text(sanitize_error(exc, generic=True)),
+            )
             _persist_scan_outcome(
                 record,
                 status=STATUS_ERROR,
-                # ``status_detail`` is returned verbatim by
-                # ``GET /v1/cloud/connections``, so it follows the HTTP scan
-                # route's policy: only curated remediation text, never the
-                # broker's free-form message (which can carry an ARN, an
-                # account id, or the ExternalId).
-                status_detail=_safe_connection_detail(exc),
+                status_detail="Scheduled scan could not be queued. Retry after checking worker and database health.",
                 outcome="failure",
             )
             return False
         return _persist_scan_outcome(
             record,
-            status=STATUS_ACTIVE,
+            status=STATUS_PENDING,
             status_detail="",
             last_scan_at=_now(),
-            outcome="success",
-            scan_id=summary.get("scan_id"),
+            outcome="accepted",
+            scan_id=job.job_id,
         )
     except Exception:  # noqa: BLE001 - contract: this function never raises
         logger.exception(

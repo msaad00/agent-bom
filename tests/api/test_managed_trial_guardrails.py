@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from agent_bom.api import managed_trial
@@ -109,6 +110,9 @@ def test_managed_trial_defaults_are_bounded() -> None:
         ("DELETE", "/v1/auth/session"),
         ("GET", "/v1/auth/oidc/login"),
         ("GET", "/v1/auth/oidc/callback"),
+        ("GET", "/v1/auth/trial-tenants/trial-example-123"),
+        ("POST", "/v1/auth/trial-tenants/trial-example-123/suspend"),
+        ("POST", "/v1/auth/trial-tenants/trial-example-123/cleanup/retry"),
         ("GET", "/v1/cloud/connections"),
         ("POST", "/v1/cloud/connections"),
         ("GET", "/v1/cloud/connections/connection-one"),
@@ -229,6 +233,40 @@ def test_managed_trial_scan_credits_are_atomic_and_do_not_charge_denials() -> No
     assert current_managed_trial_scan_credits("tenant-trial") == 8
 
 
+def test_concurrent_idempotent_connection_scan_reserves_one_job_and_one_credit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
+    from agent_bom.api.routes import scan as scan_routes
+    from agent_bom.api.stores import set_idempotency_store
+
+    record = _stored_connection(id="connection-idempotent")
+    set_idempotency_store(InMemoryIdempotencyStore())
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: None)
+
+    def _scan() -> str:
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": f"/v1/cloud/connections/{record.id}/scan",
+                "headers": [(b"idempotency-key", b"same-request")],
+                "query_string": b"",
+            }
+        )
+        accepted = asyncio.run(cloud_connections.scan_connection(request, record.id))
+        return accepted.job_id
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            job_ids = list(executor.map(lambda _index: _scan(), range(2)))
+        assert job_ids[0] == job_ids[1]
+        assert len(_get_store().list_all("tenant-trial")) == 1
+        assert current_managed_trial_scan_credits("tenant-trial") == 1
+    finally:
+        set_idempotency_store(None)
+
+
 def test_managed_trial_runtime_reports_the_same_clamped_quotas_as_enforcement() -> None:
     set_tenant_quota_overrides(
         "tenant-trial",
@@ -335,9 +373,9 @@ def test_connection_scan_reservation_enforces_active_and_retained_job_quotas() -
     )
     store.put(pending)
 
-    record = type("Record", (), {"id": "connection-one", "tenant_id": "tenant-trial"})()
+    record = _stored_connection(id="connection-one")
     with pytest.raises(HTTPException) as exc_info:
-        cloud_connections._reserve_connection_scan_job(record)
+        cloud_connections.queue_connection_scan_record(record, actor="trial-user")
 
     assert exc_info.value.status_code == 429
     assert "concurrent scan jobs" in str(exc_info.value.detail).lower()
@@ -358,7 +396,7 @@ def test_connection_scan_reservation_enforces_active_and_retained_job_quotas() -
         )
 
     with pytest.raises(HTTPException) as retained_exc:
-        cloud_connections._reserve_connection_scan_job(record)
+        cloud_connections.queue_connection_scan_record(record, actor="trial-user")
 
     assert retained_exc.value.status_code == 429
     assert "retained_scan_jobs" in str(retained_exc.value.detail)

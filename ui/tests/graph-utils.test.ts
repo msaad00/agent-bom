@@ -7,9 +7,16 @@ import {
   legendItemsForVisibleGraph,
   minimapNodeColor,
   NODE_COLOR_MAP,
+  relationshipEdgeLabelPresentation,
   relationshipLegendItem,
   readableGraphEdges,
 } from "@/lib/graph-utils";
+
+it("keeps relationship labels screen-readable across zoom levels", () => {
+  const distant = relationshipEdgeLabelPresentation({ zoom: 0.4 });
+  const close = relationshipEdgeLabelPresentation({ zoom: 1.6 });
+  expect(Number(distant.labelStyle?.fontSize)).toBeGreaterThan(Number(close.labelStyle?.fontSize));
+});
 
 describe("graph utility metadata", () => {
   it("uses generated schema metadata for production node legends", () => {

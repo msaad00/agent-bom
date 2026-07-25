@@ -116,6 +116,10 @@ function InvestigationFlow({
     scope: presentationScope,
     layout: "dagre-lr",
   });
+  const presentedEdges = useMemo(
+    () => readableGraphEdges(edges, undefined, { zoom: presentation.viewport.zoom }),
+    [edges, presentation.viewport.zoom],
+  );
   useEffect(() => {
     if (nodes.length === 0 || presentation.hasSavedState) return;
     const raf = requestAnimationFrame(() => {
@@ -156,7 +160,7 @@ function InvestigationFlow({
       <ReactFlow
         key={presentation.storageKey}
         nodes={presentation.nodes}
-        edges={edges}
+        edges={presentedEdges}
         nodeTypes={lineageNodeTypes}
         fitView={!presentation.hasSavedState}
         fitViewOptions={fitOptions}
@@ -172,6 +176,7 @@ function InvestigationFlow({
         nodesFocusable
         edgesFocusable
         elementsSelectable
+        deleteKeyCode={null}
         onNodesChange={presentation.onNodesChange}
         onNodeDragStop={presentation.onNodeDragStop}
         onMoveEnd={presentation.onMoveEnd}
@@ -425,7 +430,7 @@ export function SecurityGraphInvestigation({
           </ReactFlowProvider>
         )}
 
-        <div className="pointer-events-none absolute left-3 top-3 max-w-[min(24rem,calc(100vw-2rem))]">
+        <div className="pointer-events-auto absolute left-3 top-3 max-w-[min(24rem,calc(100vw-2rem))]">
           <GraphLegend items={legendItems} />
         </div>
       </div>

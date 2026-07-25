@@ -6,6 +6,7 @@ import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
   useReactFlow, ReactFlowProvider,
   type Edge,
+  type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -20,7 +21,8 @@ import type { AttackFlowNodeData, AttackFlowResponse } from "@/lib/api";
 import { SeverityBadge } from "@/components/severity-badge";
 import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, ATTACK_FLOW_MINIMAP_COLORS } from "@/lib/graph-utils";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
-import { FullscreenButton } from "@/components/graph-chrome";
+import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -261,10 +263,35 @@ function StatsBar({ stats }: { stats: AttackFlowResponse["stats"] }) {
 
 function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id: string; job: ScanJob; flowData: AttackFlowResponse; filters: AttackFlowFilters; onFiltersChange: (f: AttackFlowFilters) => void }) {
   const [selectedNode, setSelectedNode] = useState<AttackFlowNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const flowInstance = useReactFlow();
   const blastRadius = job.result?.blast_radius ?? [];
 
-  const nodes = flowData.nodes?.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> }));
+  const nodes = useMemo(
+    () => flowData.nodes?.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> })) as Node[],
+    [flowData.nodes],
+  );
   const edges = flowData.edges as unknown as Edge[];
+  const presentation = useGraphPresentation({
+    nodes,
+    scope: {
+      tenantId: "local",
+      subject: "local-viewer",
+      snapshotId: id,
+      lens: "attack-flow",
+      scope: JSON.stringify(filters),
+    },
+    layout: "attack-flow",
+  });
+
+  const fitVisible = useCallback(
+    () => void flowInstance.fitView({ padding: 0.2, duration: 240 }),
+    [flowInstance],
+  );
+  const fitSelection = useCallback(() => {
+    const node = selectedNodeId ? flowInstance.getNode(selectedNodeId) : undefined;
+    if (node) void flowInstance.fitView({ nodes: [node], padding: 0.7, duration: 240 });
+  }, [flowInstance, selectedNodeId]);
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
@@ -279,6 +306,15 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
           </div>
           <div className="flex items-center gap-3">
             <StatsBar stats={flowData.stats} />
+            <GraphInteractionToolbar
+              editing={presentation.editing}
+              hasSelection={Boolean(selectedNodeId)}
+              onFitVisible={fitVisible}
+              onFitSelection={fitSelection}
+              onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
+              onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
+              onToggleEditing={presentation.toggleEditing}
+            />
             <FullscreenButton />
             <ExportButton />
           </div>
@@ -293,13 +329,32 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
             <button onClick={() => onFiltersChange({ cve: "", severity: "", framework: "", agent: "" })} className="text-xs text-emerald-400 hover:text-emerald-300 underline">Clear all filters</button>
           </div>
         ) : (
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.1} maxZoom={2} defaultEdgeOptions={{ type: "smoothstep" }} proOptions={{ hideAttribution: true }} onNodeClick={(_event, node) => setSelectedNode(node.data as unknown as AttackFlowNodeData)} onPaneClick={() => setSelectedNode(null)}>
+          <ReactFlow
+            key={presentation.storageKey}
+            nodes={presentation.nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView={!presentation.hasSavedState}
+            defaultViewport={presentation.viewport}
+            minZoom={0.1}
+            maxZoom={2}
+            deleteKeyCode={null}
+            nodesDraggable={presentation.editing}
+            nodesConnectable={false}
+            onNodesChange={presentation.onNodesChange}
+            onNodeDragStop={presentation.onNodeDragStop}
+            onMoveEnd={presentation.onMoveEnd}
+            defaultEdgeOptions={{ type: "smoothstep" }}
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={(_event, node) => { setSelectedNode(node.data as unknown as AttackFlowNodeData); setSelectedNodeId(node.id); }}
+            onPaneClick={() => { setSelectedNode(null); setSelectedNodeId(null); }}
+          >
             <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
             <Controls className={CONTROLS_CLASS} />
             <MiniMap nodeColor={(n) => { const d = n.data as unknown as AttackFlowNodeData; return ATTACK_FLOW_MINIMAP_COLORS[d.nodeType] ?? "#52525b"; }} className={MINIMAP_CLASS} />
           </ReactFlow>
         )}
-        {selectedNode && <DetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />}
+        {selectedNode && <DetailPanel data={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} />}
       </div>
       <div className="px-4 py-2 border-t border-[var(--border-subtle)] flex items-center gap-4 text-[10px] text-[var(--text-tertiary)]">
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-red-600 bg-red-950" /> CVE</span>

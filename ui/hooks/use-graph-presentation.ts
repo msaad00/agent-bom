@@ -105,8 +105,10 @@ export function useGraphPresentation<T extends Node>({
   const onNodesChange = useCallback(
     (changes: NodeChange<T>[]) => {
       const allowed = editing
-        ? changes
-        : changes.filter((change) => change.type !== "position");
+        ? changes.filter((change) => change.type !== "remove")
+        : changes.filter(
+            (change) => change.type !== "position" && change.type !== "remove",
+          );
       if (allowed.length === 0) return;
       setPresentedNodes((current) => {
         const next = applyNodeChanges(allowed, current) as T[];

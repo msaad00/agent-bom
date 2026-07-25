@@ -80,4 +80,12 @@ describe("useGraphPresentation", () => {
       locked: false,
     });
   });
+
+  it("never removes evidence nodes from presentation state", () => {
+    const { result } = renderHook(() =>
+      useGraphPresentation({ nodes, scope, layout: "dagre-lr" }),
+    );
+    act(() => result.current.onNodesChange([{ id: "package:a", type: "remove" }]));
+    expect(result.current.nodes.map((node) => node.id)).toEqual(["package:a"]);
+  });
 });

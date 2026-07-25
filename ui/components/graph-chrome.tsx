@@ -392,7 +392,7 @@ export function GraphInteractionToolbar({
 }) {
   const buttonClass = "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40";
   return (
-    <div aria-label="Graph layout controls" className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/90 p-1">
+    <div role="toolbar" aria-label="Graph layout controls" className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/90 p-1">
       <button type="button" className={buttonClass} onClick={onFitVisible} aria-label="Fit visible graph">
         <Focus className="h-3.5 w-3.5" aria-hidden="true" /> Fit
       </button>

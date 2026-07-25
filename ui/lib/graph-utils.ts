@@ -391,6 +391,7 @@ export function relationshipEdgeLabelText(
 
 export function relationshipEdgeLabelPresentation(options?: {
   captureMode?: boolean;
+  zoom?: number;
 }): Pick<
   import("@xyflow/react").Edge,
   | "labelShowBg"
@@ -400,6 +401,7 @@ export function relationshipEdgeLabelPresentation(options?: {
   | "labelStyle"
 > {
   const captureMode = options?.captureMode ?? false;
+  const zoom = Math.max(0.2, Math.min(options?.zoom ?? 1, 2.5));
   return {
     labelShowBg: true,
     labelBgPadding: [8, 4],
@@ -410,7 +412,7 @@ export function relationshipEdgeLabelPresentation(options?: {
     },
     labelStyle: {
       fill: "#f4f4f5",
-      fontSize: 12,
+      fontSize: Math.max(10, Math.min(24, 12 / zoom)),
       fontWeight: 650,
     },
   };
@@ -527,6 +529,7 @@ export function readableGraphEdges(
     activeOpacity?: number;
     quietAnimation?: boolean;
     captureMode?: boolean;
+    zoom?: number;
   } = {},
 ): Edge[] {
   const {
@@ -536,6 +539,7 @@ export function readableGraphEdges(
     activeOpacity = 0.96,
     quietAnimation = true,
     captureMode = false,
+    zoom = 1,
   } = options;
 
   return edges.map((edge): Edge => {
@@ -567,7 +571,7 @@ export function readableGraphEdges(
         ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
         : undefined);
     const labelPresentation = label
-      ? relationshipEdgeLabelPresentation({ captureMode })
+      ? relationshipEdgeLabelPresentation({ captureMode, zoom })
       : {};
 
     return {

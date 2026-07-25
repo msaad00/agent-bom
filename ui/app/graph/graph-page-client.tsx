@@ -10,6 +10,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useViewport,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -147,6 +148,7 @@ import {
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import { useAuthState } from "@/components/auth-provider";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { selectGraphSubgraph } from "@/lib/graph-presentation";
 
 // The whole current-scan graph loads in one request (no numbered pagination).
 // The bound matches the interactive render budget: past it, the overview
@@ -698,6 +700,7 @@ export default function GraphPageClient() {
 
 function GraphPageInner() {
   const reactFlow = useReactFlow();
+  const graphViewport = useViewport();
   const { session } = useAuthState();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
@@ -1375,6 +1378,10 @@ function GraphPageInner() {
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
     [flow.nodes],
   );
+  const attackPathNodeIds = useMemo(
+    () => (selectedAttackPath ? new Set(selectedAttackPath.hops) : null),
+    [selectedAttackPath],
+  );
 
   // Sibling aggregation (#2257). Threshold tracks the active filter
   // preset — operator triage (focused) collapses faster than topology
@@ -1447,10 +1454,14 @@ function GraphPageInner() {
   // renderers upstream, so ReactFlow only ever lays out small/medium graphs
   // where dagre is the better fit.
   const graphLayoutKind = "dagre-lr";
+  const layoutInput = useMemo(
+    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds),
+    [aggregated.edges, aggregated.nodes, attackPathNodeIds],
+  );
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
     graphLayoutKind,
-    aggregated.nodes,
-    aggregated.edges,
+    layoutInput.nodes,
+    layoutInput.edges,
     {
       force: {
         idealEdgeLength: filters.agentName ? 168 : 196,
@@ -1479,11 +1490,6 @@ function GraphPageInner() {
         ? getLocalNeighborhoodIds(activeFocusId, layoutEdges)
         : null,
     [activeFocusId, layoutEdges],
-  );
-
-  const attackPathNodeIds = useMemo(
-    () => (selectedAttackPath ? new Set(selectedAttackPath.hops) : null),
-    [selectedAttackPath],
   );
 
   const attackPathEdgeKeys = useMemo(
@@ -1767,7 +1773,7 @@ function GraphPageInner() {
             },
             labelStyle: {
               fill: "#f4f4f5",
-              fontSize: 12,
+              fontSize: Math.max(10, Math.min(24, 12 / Math.max(graphViewport.zoom, 0.2))),
               fontWeight: 650,
             },
             animated: captureMode ? false : Boolean(inPath || edge.animated),
@@ -1846,6 +1852,7 @@ function GraphPageInner() {
       highSignalOpacity: graphLayoutKind === "dagre-lr" ? 0.6 : 0.48,
       inactiveOpacity: 0.06,
       captureMode,
+      zoom: graphViewport.zoom,
     });
   }, [
     layoutEdges,
@@ -1855,6 +1862,7 @@ function GraphPageInner() {
     blastRadius,
     graphLayoutKind,
     captureMode,
+    graphViewport.zoom,
   ]);
 
   // Drift lens edge emphasis — new/changed edges adopt their change-kind colour
@@ -3219,6 +3227,7 @@ function GraphPageInner() {
               nodesFocusable
               edgesFocusable
               elementsSelectable
+              deleteKeyCode={null}
               onlyRenderVisibleElements={shouldVirtualizeReactFlowNodes({
                 rollupActive: rollupNavigationActive,
               })}

@@ -63,6 +63,8 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { StatStrip } from "@/components/stat-strip";
 import { Collapsible } from "@/components/collapsible";
 import { Drawer } from "@/components/drawer";
+import { GraphInteractionToolbar } from "@/components/graph-chrome";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
 
@@ -1414,16 +1416,40 @@ function LifecycleFlow({
   data: AgentLifecycleResponse;
   agentName: string;
 }) {
-  const { fitView } = useReactFlow();
+  const flowInstance = useReactFlow();
   const [selectedNode, setSelectedNode] = useState<Node<AttackFlowNodeData> | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const presentation = useGraphPresentation({
+    nodes: data.nodes as Node[],
+    scope: {
+      tenantId: "local",
+      subject: "local-viewer",
+      snapshotId: agentName,
+      lens: "agent-lifecycle",
+      scope: "full",
+    },
+    layout: "agent-lifecycle",
+  });
 
   useEffect(() => {
-    setTimeout(() => fitView({ padding: 0.2 }), 100);
-  }, [fitView, data]);
+    if (!presentation.hasSavedState) {
+      setTimeout(() => flowInstance.fitView({ padding: 0.2 }), 100);
+    }
+  }, [data, flowInstance, presentation.hasSavedState]);
 
   const onNodeClick = useCallback((_: unknown, node: Node) => {
     setSelectedNode(node as Node<AttackFlowNodeData>);
+    setSelectedNodeId(node.id);
   }, []);
+
+  const fitVisible = useCallback(
+    () => void flowInstance.fitView({ padding: 0.2, duration: 240 }),
+    [flowInstance],
+  );
+  const fitSelection = useCallback(() => {
+    const node = selectedNodeId ? flowInstance.getNode(selectedNodeId) : undefined;
+    if (node) void flowInstance.fitView({ nodes: [node], padding: 0.7, duration: 240 });
+  }, [flowInstance, selectedNodeId]);
 
   const handleExport = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1451,6 +1477,15 @@ function LifecycleFlow({
         </div>
         <div className="flex items-center gap-4">
           <StatsBar stats={data.stats} />
+          <GraphInteractionToolbar
+            editing={presentation.editing}
+            hasSelection={Boolean(selectedNodeId)}
+            onFitVisible={fitVisible}
+            onFitSelection={fitSelection}
+            onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
+            onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
+            onToggleEditing={presentation.toggleEditing}
+          />
           <button
             onClick={handleExport}
             className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 text-xs border border-[color:var(--border-subtle)] rounded px-2 py-1"
@@ -1461,13 +1496,22 @@ function LifecycleFlow({
       </div>
 
       <ReactFlow
-        nodes={data.nodes as Node[]}
+        key={presentation.storageKey}
+        nodes={presentation.nodes}
         edges={data.edges as Edge[]}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
-        fitView
+        onPaneClick={() => { setSelectedNode(null); setSelectedNodeId(null); }}
+        fitView={!presentation.hasSavedState}
+        defaultViewport={presentation.viewport}
         minZoom={0.1}
         maxZoom={2}
+        deleteKeyCode={null}
+        nodesDraggable={presentation.editing}
+        nodesConnectable={false}
+        onNodesChange={presentation.onNodesChange}
+        onNodeDragStop={presentation.onNodeDragStop}
+        onMoveEnd={presentation.onMoveEnd}
         className="!bg-[color:var(--surface)]"
       >
         <Background color="#27272a" gap={20} />
@@ -1480,7 +1524,7 @@ function LifecycleFlow({
       </ReactFlow>
 
       {selectedNode && (
-        <DetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+        <DetailPanel node={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} />
       )}
     </div>
   );

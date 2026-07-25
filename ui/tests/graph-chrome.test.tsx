@@ -103,6 +103,8 @@ describe("GraphInteractionToolbar", () => {
     };
     render(<GraphInteractionToolbar editing={false} hasSelection {...actions} />);
 
+    expect(screen.getByRole("toolbar", { name: /graph layout controls/i })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: /fit visible/i }));
     fireEvent.click(screen.getByRole("button", { name: /fit selection/i }));
     fireEvent.click(screen.getByRole("button", { name: /auto-layout/i }));

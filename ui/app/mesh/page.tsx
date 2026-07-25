@@ -714,6 +714,7 @@ export default function MeshPage() {
             nodesFocusable
             edgesFocusable
             elementsSelectable
+            deleteKeyCode={null}
             onlyRenderVisibleElements
             defaultEdgeOptions={{ type: "smoothstep" }}
             proOptions={{ hideAttribution: true }}

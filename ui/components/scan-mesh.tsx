@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
-  ReactFlow, Background, Controls, MiniMap, type Node, type Edge,
+  ReactFlow, Background, Controls, MiniMap, type Node, type Edge, type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useGraphLayout } from "@/lib/use-graph-layout";
@@ -15,13 +15,17 @@ import { MeshStats } from "@/components/mesh-stats";
 import { buildMeshGraph, getConnectedIds, type MeshStatsData } from "@/lib/mesh-graph";
 import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor, readableGraphEdges } from "@/lib/graph-utils";
 import { READABLE_LINEAGE_DAGRE_LR } from "@/lib/graph-node-dimensions";
-import { GraphLegend } from "@/components/graph-chrome";
+import { GraphInteractionToolbar, GraphLegend } from "@/components/graph-chrome";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { selectGraphSubgraph } from "@/lib/graph-presentation";
 
 export function ScanMeshView({ id }: { id: string }) {
   const [job, setJob] = useState<ScanJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
 
@@ -41,16 +45,16 @@ export function ScanMeshView({ id }: { id: string }) {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [job]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
-    dagreLr: READABLE_LINEAGE_DAGRE_LR,
-  });
-
-  const connectedIds = useMemo(() => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null), [hoveredNodeId, layoutEdges]);
   const pathFocusIds = useMemo(() => {
     if (!pathFocusEnabled || !stats.topExposurePath || hoveredNodeId) return null;
     return new Set(stats.topExposurePath.nodeIds);
   }, [hoveredNodeId, pathFocusEnabled, stats.topExposurePath]);
+  const layoutInput = useMemo(() => selectGraphSubgraph(rawNodes, rawEdges, pathFocusIds), [pathFocusIds, rawEdges, rawNodes]);
+  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", layoutInput.nodes, layoutInput.edges, {
+    dagreLr: READABLE_LINEAGE_DAGRE_LR,
+  });
 
+  const connectedIds = useMemo(() => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null), [hoveredNodeId, layoutEdges]);
   const displayNodes = useMemo(() => {
     if (pathFocusIds) {
       return layoutNodes?.map((n) => ({
@@ -62,17 +66,24 @@ export function ScanMeshView({ id }: { id: string }) {
     return layoutNodes?.map((n) => ({ ...n, data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) } }));
   }, [layoutNodes, connectedIds, pathFocusIds]);
 
+  const presentation = useGraphPresentation({
+    nodes: displayNodes as Node<LineageNodeData>[],
+    scope: { tenantId: "local", subject: "local-viewer", snapshotId: id, lens: "mesh", scope: pathFocusEnabled ? "path" : "full" },
+    layout: "dagre-lr",
+  });
+
   const displayEdges = useMemo(() => {
     return readableGraphEdges(layoutEdges, connectedIds ?? pathFocusIds, {
       baseOpacity: 0.3,
       highSignalOpacity: 0.58,
       inactiveOpacity: 0.06,
+      zoom: presentation.viewport.zoom,
     });
-  }, [layoutEdges, connectedIds, pathFocusIds]);
+  }, [layoutEdges, connectedIds, pathFocusIds, presentation.viewport.zoom]);
 
   const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);
 
-  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => { setSelectedNode(node.data as LineageNodeData); setHoveredNodeId(null); }, []);
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => { setSelectedNode(node.data as LineageNodeData); setSelectedNodeId(node.id); setHoveredNodeId(null); }, []);
   const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => { setHoveredNodeId(node.id); }, []);
   const onNodeMouseLeave = useCallback(() => { setHoveredNodeId(null); }, []);
 
@@ -98,7 +109,15 @@ export function ScanMeshView({ id }: { id: string }) {
             Agent-centered shared infrastructure for scan {id.slice(0, 8)} — {job.created_at ? new Date(job.created_at).toLocaleDateString() : ""}
           </p>
         </div>
-        <GraphLegend items={legendItems} />
+        <div className="flex items-center gap-2">
+          <GraphLegend items={legendItems} />
+          <GraphInteractionToolbar
+            editing={presentation.editing} hasSelection={Boolean(selectedNodeId)}
+            onFitVisible={() => void flowInstance?.fitView({ padding: 0.2, duration: 240 })}
+            onFitSelection={() => { const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined; if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240 }); }}
+            onAutoLayout={presentation.autoLayout} onReset={presentation.reset} onToggleEditing={presentation.toggleEditing}
+          />
+        </div>
       </div>
       <MeshStats
         stats={stats}
@@ -107,12 +126,19 @@ export function ScanMeshView({ id }: { id: string }) {
       />
       <div className="flex-1 relative">
         <ReactFlow
-          nodes={displayNodes} edges={displayEdges} nodeTypes={lineageNodeTypes}
-          fitView minZoom={0.05} maxZoom={2.5}
+          key={presentation.storageKey}
+          nodes={presentation.nodes} edges={displayEdges} nodeTypes={lineageNodeTypes}
+          fitView={!presentation.hasSavedState}
+          defaultViewport={presentation.viewport}
+          minZoom={0.05} maxZoom={2.5}
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
+          deleteKeyCode={null}
+          nodesDraggable={presentation.editing} nodesConnectable={false}
+          onNodesChange={presentation.onNodesChange} onNodeDragStop={presentation.onNodeDragStop}
+          onMoveEnd={presentation.onMoveEnd} onInit={setFlowInstance}
           onNodeClick={onNodeClick} onNodeMouseEnter={onNodeMouseEnter} onNodeMouseLeave={onNodeMouseLeave}
-          onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
+          onPaneClick={() => { setSelectedNode(null); setSelectedNodeId(null); setHoveredNodeId(null); }}
         >
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
           <Controls className={CONTROLS_CLASS} />
@@ -121,7 +147,7 @@ export function ScanMeshView({ id }: { id: string }) {
         {selectedNode && (
           <GraphEntityDrawer
             data={selectedNode}
-            onClose={() => setSelectedNode(null)}
+            onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
             enrich={false}
           />
         )}

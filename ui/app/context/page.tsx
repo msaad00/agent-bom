@@ -14,6 +14,7 @@ import {
   MiniMap,
   type Node,
   type Edge,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -58,7 +59,9 @@ import {
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
-import { FullscreenButton } from "@/components/graph-chrome";
+import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { useAuthState } from "@/components/auth-provider";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
@@ -289,6 +292,8 @@ export default function ContextPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -298,6 +303,7 @@ export default function ContextPage() {
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
+  const { session } = useAuthState();
 
   useEffect(() => {
     if (captureMode) {
@@ -462,6 +468,19 @@ export default function ContextPage() {
     }));
   }, [layoutNodes, connectedIds, searchMatches, pathFocusIds]);
 
+  const presentation = useGraphPresentation({
+    nodes: displayNodes as Node<LineageNodeData>[],
+    scope: {
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: selectedJobId || "unselected",
+      lens: "context",
+      scope: JSON.stringify({ agent: selectedAgent, pathFocusEnabled }),
+    },
+    layout: "dagre-lr",
+    enabled: !captureMode,
+  });
+
   const displayEdges = useMemo(() => {
     const activeSet =
       searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
@@ -476,8 +495,9 @@ export default function ContextPage() {
       highSignalOpacity: pathFocusIds ? 0.95 : 0.56,
       inactiveOpacity: 0.06,
       captureMode,
+      zoom: presentation.viewport.zoom,
     });
-  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode]);
+  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom]);
 
   const legendItems = useMemo(() => {
     const extras =
@@ -511,8 +531,15 @@ export default function ContextPage() {
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
+    setSelectedNodeId(node.id);
     setHoveredNodeId(null);
   }, []);
+
+  const fitVisible = useCallback(() => void flowInstance?.fitView({ ...viewportOptions, duration: 240 }), [flowInstance, viewportOptions]);
+  const fitSelection = useCallback(() => {
+    const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined;
+    if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240, maxZoom: 1.4 });
+  }, [flowInstance, selectedNodeId]);
 
   const onNodeMouseEnter = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -634,6 +661,15 @@ export default function ContextPage() {
             </button>
           )}
           <FullscreenButton />
+          <GraphInteractionToolbar
+            editing={presentation.editing}
+            hasSelection={Boolean(selectedNodeId)}
+            onFitVisible={fitVisible}
+            onFitSelection={fitSelection}
+            onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
+            onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
+            onToggleEditing={presentation.toggleEditing}
+          />
         </div>
         <GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} />
       </div>
@@ -696,22 +732,31 @@ export default function ContextPage() {
                 }`}
               >
             <ReactFlow
-              key={captureMode ? "context-capture" : "context-interactive"}
-              nodes={displayNodes}
+              key={captureMode ? "context-capture" : presentation.storageKey}
+              nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypes}
-              fitView
+              fitView={!presentation.hasSavedState}
+              defaultViewport={presentation.viewport}
               fitViewOptions={viewportOptions}
               minZoom={0.16}
               maxZoom={2.8}
               onlyRenderVisibleElements
               defaultEdgeOptions={{ type: "smoothstep" }}
               proOptions={{ hideAttribution: true }}
+              deleteKeyCode={null}
+              nodesDraggable={!captureMode && presentation.editing}
+              nodesConnectable={false}
+              onNodesChange={presentation.onNodesChange}
+              onNodeDragStop={presentation.onNodeDragStop}
+              onMoveEnd={presentation.onMoveEnd}
+              onInit={setFlowInstance}
               onNodeClick={onNodeClick}
               onNodeMouseEnter={onNodeMouseEnter}
               onNodeMouseLeave={onNodeMouseLeave}
               onPaneClick={() => {
                 setSelectedNode(null);
+                setSelectedNodeId(null);
                 setHoveredNodeId(null);
               }}
             >
@@ -733,7 +778,7 @@ export default function ContextPage() {
           {selectedNode && (
             <GraphEntityDrawer
               data={selectedNode}
-              onClose={() => setSelectedNode(null)}
+              onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
               enrich={false}
             />
           )}

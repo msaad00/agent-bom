@@ -1057,7 +1057,11 @@ jobs:
         needs.changes.outputs.alpine == 'true'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Version and dependency changes run the full suite under musl. The
+    # 0.98.0 release candidate reached the previous 25-minute ceiling while
+    # tests were still active, so keep a finite budget with enough Alpine
+    # headroom to finish and report an actual test result.
+    timeout-minutes: 35
     permissions:
       contents: read
     needs: [changes]

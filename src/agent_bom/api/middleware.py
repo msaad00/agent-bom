@@ -1033,6 +1033,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/v1/auth/session",
             "/v1/auth/oidc/login",
             "/v1/auth/oidc/callback",
+            "/v1/auth/trial/oidc/start",
+            "/v1/auth/trial/oidc/start-form",
             "/v1/auth/snowflake/login",
             "/v1/auth/snowflake/callback",
             "/v1/auth/saml/metadata",
@@ -1052,6 +1054,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/v1/auth/session",
             "/v1/auth/oidc/login",
             "/v1/auth/oidc/callback",
+            "/v1/auth/trial/oidc/start",
+            "/v1/auth/trial/oidc/start-form",
             "/v1/auth/snowflake/login",
             "/v1/auth/snowflake/callback",
             "/v1/auth/saml/metadata",
@@ -1181,10 +1185,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/scim/v2", "admin"),
         ("DELETE", "/scim/v2", "admin"),
         ("GET", "/v1/auth/quota", "admin"),
+        ("GET", "/v1/auth/trial-tenants/", "admin"),
         ("GET", "/v1/auth/keys", "admin"),
         ("GET", "/v1/tenant/", "admin"),
         ("PUT", "/v1/auth/quota", "admin"),
         ("POST", "/v1/auth/invitations", "admin"),
+        ("POST", "/v1/auth/trial-invitations", "admin"),
+        ("POST", "/v1/auth/trial-tenants/", "admin"),
         ("POST", "/v1/auth/keys", "admin"),
         ("POST", "/v1/auth/keys/", "admin"),
         ("DELETE", "/v1/auth/quota", "admin"),
@@ -1272,8 +1279,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/scim/v2", "auth.scim:write"),
         ("DELETE", "/scim/v2", "auth.scim:write"),
         ("GET", "/v1/auth/quota", "auth.quota:read"),
+        ("GET", "/v1/auth/trial-tenants/", "auth.invitations:read"),
         ("GET", "/v1/tenant/", "privacy.data:read"),
         ("POST", "/v1/auth/invitations", "auth.keys:write"),
+        ("POST", "/v1/auth/trial-invitations", "auth.invitations:write"),
+        ("POST", "/v1/auth/trial-tenants/", "auth.invitations:write"),
         ("POST", "/v1/auth/keys", "auth.keys:write"),
         ("POST", "/v1/auth/keys/", "auth.keys:write"),
         ("POST", "/v1/credentials", "source:write"),
@@ -1810,6 +1820,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         subject = str(payload.get("sub") or "browser-session")
         tenant_id = str(payload.get("tenant_id") or "default")
         auth_method = str(payload.get("auth_method") or "browser_session")
+        if auth_method == "managed_trial_oidc":
+            from agent_bom.api.tenant_lifecycle import tenant_access_active
+
+            if not tenant_access_active(tenant_id):
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized — managed trial is inactive"})
         effective_role = session_role
         if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):
             resolved_role, scim_error = self._resolve_runtime_role(
@@ -1843,6 +1858,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized — browser session key is no longer active"})
             required_scope = self._required_scope(request.method, request.url.path)
             if not stored.has_scope(required_scope):
+                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
+        elif auth_method == "managed_trial_oidc":
+            required_scope = self._required_scope(request.method, request.url.path)
+            session_scopes = {str(scope) for scope in (payload.get("scopes") or [])}
+            if required_scope and required_scope not in session_scopes:
                 return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
 
         request.state.api_key_name = subject

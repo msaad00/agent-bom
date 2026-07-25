@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { KeyRound, Loader2, Snowflake } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { BrandLogo } from "@/components/brand-logo";
@@ -36,8 +35,10 @@ function isApiReachabilityFailure(message: string): boolean {
 
 export function LoginPanel({
   title = "Sign in to agent-bom",
+  trialInvitation,
 }: {
   title?: string;
+  trialInvitation?: ReactNode;
 }) {
   const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
@@ -46,7 +47,11 @@ export function LoginPanel({
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
+        <span
+          role="status"
+          aria-label="Loading authentication"
+          className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-emerald-400"
+        />
       </div>
     );
   }
@@ -115,7 +120,7 @@ export function LoginPanel({
               {browserOidcConfigured ? (
                 <a
                   href={OIDC_BROWSER_LOGIN_PATH}
-                  className="flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400"
+                  className="login-sso-button login-sso-browser"
                 >
                   {ssoPreset.buttonLabel}
                 </a>
@@ -125,11 +130,10 @@ export function LoginPanel({
                   href={SNOWFLAKE_OAUTH_LOGIN_PATH}
                   className={
                     browserOidcConfigured
-                      ? "flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)]"
-                      : "flex w-full items-center justify-center gap-2 rounded-xl bg-[#29B5E8] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1a9fd0]"
+                      ? "login-sso-button login-sso-secondary"
+                      : "login-sso-button login-sso-snowflake"
                   }
                 >
-                  <Snowflake className="h-4 w-4" aria-hidden="true" />
                   Sign in with Snowflake
                 </a>
               ) : null}
@@ -157,6 +161,8 @@ export function LoginPanel({
               </div>
             </div>
           ) : null}
+
+          {browserOidcConfigured ? trialInvitation : null}
 
           <form
             onSubmit={async (event) => {
@@ -190,13 +196,12 @@ export function LoginPanel({
               API key
             </label>
             <div className="relative">
-              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
               <input
                 id="agent-bom-browser-session-api-key"
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] py-2.5 pl-9 pr-3 font-mono text-sm text-[var(--foreground)] outline-none ring-0 placeholder:text-[var(--text-tertiary)] focus:border-emerald-500"
+                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-3 py-2.5 font-mono text-sm text-[var(--foreground)] outline-none ring-0 placeholder:text-[var(--text-tertiary)] focus:border-emerald-500"
                 placeholder="Paste your API key"
                 autoComplete="off"
                 autoFocus={!ssoConfigured}
@@ -214,8 +219,8 @@ export function LoginPanel({
               disabled={!apiKey.trim()}
               className={
                 ssoConfigured
-                  ? "mt-5 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] disabled:cursor-not-allowed disabled:border-[var(--border-subtle)] disabled:bg-[var(--background)] disabled:text-[var(--text-tertiary)]"
-                  : "mt-5 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-[var(--on-accent)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-[var(--surface-elevated)] disabled:text-[var(--text-tertiary)]"
+                  ? "login-submit login-submit-sso"
+                  : "login-submit login-submit-key"
               }
             >
               Sign in

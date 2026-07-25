@@ -18,8 +18,6 @@ import {
   ArrowLeft,
   ChevronRight,
   Boxes,
-  Fingerprint,
-  KeyRound,
   FileSearch,
   GitGraph,
   ListChecks,
@@ -97,7 +95,6 @@ import {
   type ConnectDepth,
 } from "@/lib/cloud-connect-wizard";
 import { serviceEntry } from "@/lib/service-registry";
-import { authorizationEvidenceCopy } from "@/lib/authorization-evidence";
 import { vendorLogo } from "@/lib/vendor-logos";
 import { FirstRunJourney } from "@/components/first-run-journey";
 import {
@@ -740,12 +737,6 @@ function ModeChip({ mode }: { mode: IngestMode }) {
   );
 }
 
-function formatPassRate(rate: number | null): string {
-  if (rate == null) return "—";
-  const pct = rate <= 1 ? rate * 100 : rate;
-  return `${pct.toFixed(0)}%`;
-}
-
 function evidenceLinks(scanId: string) {
   const encoded = encodeURIComponent(scanId);
   return [
@@ -996,6 +987,7 @@ function ConnectionsHub() {
     try {
       const result = await api.scanCloudConnection(connection.id);
       setScanResults((prev) => ({ ...prev, [connection.id]: result }));
+      setMessage(`${connection.display_name} scan queued.`);
       await refresh();
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Scan failed.";
@@ -2853,7 +2845,7 @@ function ConnectionDetailDrawer({
   onDelete: (connection: CloudConnectionRecord) => void;
 }) {
   if (!connection) return null;
-  const handoffScanId = result?.scan_id ?? connection.last_scan_id;
+  const handoffScanId = result?.job_id ?? connection.last_scan_id;
   const statusDetail = connection.status === "error" ? connection.status_detail : "";
 
   return (
@@ -2946,58 +2938,21 @@ function ConnectionDetailDrawer({
 }
 
 function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
-  const { inventory, cis_benchmark: cis } = result;
-  const isSnowflake = inventory.agent_count != null;
-  const warnings = inventory.warnings ?? [];
-  const authorizationCopy = inventory.authorization_evidence
-    ? authorizationEvidenceCopy(inventory.authorization_evidence)
-    : null;
   return (
     <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
-          <ShieldCheck className="h-4 w-4 text-emerald-400" />
-          Read-only scan complete
+          <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+          Read-only scan queued
         </p>
-        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">scan {result.scan_id.slice(0, 8)}</span>
+        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">job {result.job_id.slice(0, 8)}</span>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {isSnowflake ? (
-          <StatTile icon={Boxes} label="Agents" value={String(inventory.agent_count ?? 0)} />
-        ) : (
-          <>
-            <StatTile icon={Boxes} label="Resources" value={String(inventory.resource_count ?? 0)} />
-            <StatTile icon={Fingerprint} label="Identities" value={String(inventory.identity_count ?? 0)} />
-          </>
-        )}
-        <StatTile
-          icon={CheckCircle2}
-          label="CIS passed"
-          value={cis.passed == null ? "—" : `${cis.passed}/${cis.total ?? "—"}`}
-        />
-        <StatTile icon={KeyRound} label="CIS pass rate" value={formatPassRate(cis.pass_rate)} />
-      </div>
-      {authorizationCopy ? (
-        <div className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--foreground)]">
-              <Shield className="h-3.5 w-3.5 text-sky-500" /> Authorization evidence
-            </p>
-            <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--text-secondary)]">
-              {authorizationCopy.label}
-            </span>
-          </div>
-          <p className="mt-1.5 text-[11px] leading-5 text-[color:var(--text-secondary)]">
-            {authorizationCopy.detail}
-          </p>
-        </div>
-      ) : null}
-      {warnings.length > 0 ? (
-        <p className="mt-3 text-[11px] leading-5 text-amber-300">{warnings.join(" · ")}</p>
-      ) : null}
-      <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">{result.audit_metadata.note}</p>
+      <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">
+        The durable worker will broker the stored read-only credential and persist inventory, CIS evidence, findings,
+        and graph data. The job page reports progress and sanitized failures.
+      </p>
       <div className="mt-4 flex flex-wrap gap-2">
-        {evidenceLinks(result.scan_id).map(({ label, href, icon: Icon }) => (
+        {evidenceLinks(result.job_id).slice(0, 2).map(({ label, href, icon: Icon }) => (
           <HandoffLink key={label} label={label} href={href} icon={Icon} />
         ))}
       </div>
@@ -3041,26 +2996,6 @@ function HandoffLink({
       <Icon className="h-3.5 w-3.5" />
       {label}
     </Link>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
-        <Icon className="h-3.5 w-3.5 text-emerald-400" />
-        {label}
-      </div>
-      <p className="mt-1.5 text-lg font-semibold text-[var(--foreground)]">{value}</p>
-    </div>
   );
 }
 
@@ -3553,7 +3488,7 @@ function AddConnectionWizard({
     setScanError(null);
     try {
       const result = await api.scanCloudConnection(createdRecord.id);
-      setScanId(typeof result.scan_id === "string" ? result.scan_id : null);
+      setScanId(typeof result.job_id === "string" ? result.job_id : null);
       setScanState("ok");
     } catch (err) {
       setScanError(err instanceof Error ? err.message : "First scan failed.");

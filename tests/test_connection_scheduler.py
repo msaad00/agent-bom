@@ -2,15 +2,15 @@
 
 Covers due-detection (interval elapsed vs not, never-scanned, no-interval),
 the cluster-safe compare-and-swap claim (a second replica cannot double-run a
-claimed scan), the run-once orchestration (scan triggered + ``last_scan_at``
-advanced + status ``active``), failure isolation (a failing connection is marked
-``error`` and the loop continues), non-AWS skip (the broker is AWS-only), and the
-env toggle that keeps the loop off in CLI/dev.
+claimed scan), the run-once orchestration (durable job queued + ``last_scan_at``
+advanced + status ``pending``), failure isolation (a rejected enqueue is marked
+``error`` and the loop continues), provider-neutral admission, and the env toggle
+that keeps the loop off in CLI/dev.
 
 Also covers the three hardening invariants the scheduler must hold:
 
-* the persisted ``status_detail`` follows the same policy as the HTTP scan route
-  (``_safe_connection_detail``) so no broker text reaches ``GET /v1/cloud/connections``;
+* the persisted ``status_detail`` uses fixed safe text so no exception text
+  reaches ``GET /v1/cloud/connections``;
 * every per-connection unit of work runs with the connection's Postgres tenant
   bound, and a raising scan restores the previous tenant;
 * no persistence failure escapes a tick — ``execute_connection_scan`` never
@@ -31,6 +31,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -52,7 +53,6 @@ from agent_bom.api.connection_scheduler import (
 from agent_bom.api.connection_store import (
     SCAN_MODE_CONTINUOUS,
     SCAN_MODE_FULL,
-    STATUS_ACTIVE,
     STATUS_ERROR,
     STATUS_PENDING,
     CloudConnectionRecord,
@@ -130,9 +130,6 @@ def _record(
     )
 
 
-_BROKER_SESSION_SENTINEL = object()
-
-
 class _TenantRecordingStore(InMemoryConnectionStore):
     """In-memory store that records the bound Postgres tenant on every write.
 
@@ -169,56 +166,25 @@ def _install_scan_mocks(
     fail: bool = False,
     fail_ids: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Patch the broker + AWS inventory/CIS the scheduler's scan path reuses.
+    """Patch durable queue admission, the scheduler's owned execution boundary.
 
-    *fail* fails every broker exchange; *fail_ids* fails only those connections
-    so a tick can mix a failing and a healthy connection.
+    *fail* rejects every enqueue; *fail_ids* rejects only those connections so a
+    tick can mix a rejected and an accepted handoff. Provider execution belongs
+    to the scan worker and is intentionally outside these scheduler tests.
     """
-    from agent_bom.cloud import aws_cis_benchmark, aws_inventory, connection_broker
+    from agent_bom.api.routes import cloud_connections
 
-    calls: dict[str, Any] = {"scanned_ids": [], "scan_tenants": []}
+    calls: dict[str, Any] = {"queued_ids": [], "queue_tenants": []}
 
-    def _fake_broker(record: CloudConnectionRecord, **kwargs: Any) -> Any:
-        calls["scanned_ids"].append(record.id)
-        calls["scan_tenants"].append((record.id, _current_tenant.get()))
+    def _fake_queue(record: CloudConnectionRecord, *, actor: str) -> Any:
+        assert actor == "scheduler"
+        calls["queued_ids"].append(record.id)
+        calls["queue_tenants"].append((record.id, _current_tenant.get()))
         if fail or (fail_ids is not None and record.id in fail_ids):
-            raise connection_broker.ConnectionBrokerError(_BROKER_FAILURE_MESSAGE)
-        return _BROKER_SESSION_SENTINEL
+            raise RuntimeError(_BROKER_FAILURE_MESSAGE)
+        return SimpleNamespace(job_id=f"scheduled-{record.id}")
 
-    def _fake_inventory(region: str | None = None, force: bool = False, session: Any = None, **kwargs: Any) -> dict[str, Any]:
-        return {
-            "provider": "aws",
-            "status": "ok",
-            "account_id": "123456789012",
-            "region": region or "us-east-1",
-            "buckets": [],
-            "instances": [],
-            "security_groups": [],
-            "roles": [],
-            "users": [],
-            "warnings": [],
-        }
-
-    class _FakeCISReport:
-        def to_dict(self) -> dict[str, Any]:
-            return {
-                "benchmark": "CIS AWS Foundations",
-                "benchmark_version": "3.0.0",
-                "account_id": "123456789012",
-                "region": "us-east-1",
-                "pass_rate": 50.0,
-                "passed": 1,
-                "failed": 1,
-                "total": 2,
-                "checks": [],
-            }
-
-    def _fake_cis(region: str | None = None, session: Any = None, **kwargs: Any) -> Any:
-        return _FakeCISReport()
-
-    monkeypatch.setattr(connection_broker, "broker_session", _fake_broker)
-    monkeypatch.setattr(aws_inventory, "discover_inventory", _fake_inventory)
-    monkeypatch.setattr(aws_cis_benchmark, "run_benchmark", _fake_cis)
+    monkeypatch.setattr(cloud_connections, "queue_connection_scan_record", _fake_queue)
     return calls
 
 
@@ -314,7 +280,7 @@ def test_claim_due_connections_claims_all_providers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_once_triggers_scan_and_updates_last_scan_at(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_once_queues_scan_and_updates_last_scan_at(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _install_scan_mocks(monkeypatch)
     store = InMemoryConnectionStore()
     set_connection_store(store)
@@ -323,11 +289,11 @@ async def test_run_once_triggers_scan_and_updates_last_scan_at(monkeypatch: pyte
 
     count = await run_due_scans_once(store, _now())
     assert count == 1
-    assert calls["scanned_ids"] == [record.id]
+    assert calls["queued_ids"] == [record.id]
 
     fetched = store.get(record.tenant_id, record.id)
     assert fetched is not None
-    assert fetched.status == STATUS_ACTIVE
+    assert fetched.status == STATUS_PENDING
     assert fetched.status_detail == ""
     assert fetched.last_scan_at is not None
 
@@ -344,13 +310,13 @@ async def test_run_once_no_due_connections_is_noop(monkeypatch: pytest.MonkeyPat
 
     count = await run_due_scans_once(store, now)
     assert count == 0
-    assert calls["scanned_ids"] == []
+    assert calls["queued_ids"] == []
 
 
 @pytest.mark.asyncio
-async def test_run_once_failing_connection_marked_error_and_loop_continues(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Broker always fails: every claimed scan errors, but the run still completes
-    # for both connections (one bad connection never sinks the loop).
+async def test_run_once_rejected_enqueue_marked_error_and_loop_continues(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Queue admission always fails, but the run still completes for both
+    # connections (one bad connection never sinks the loop).
     _install_scan_mocks(monkeypatch, fail=True)
     store = InMemoryConnectionStore()
     set_connection_store(store)
@@ -371,19 +337,14 @@ async def test_run_once_failing_connection_marked_error_and_loop_continues(monke
 
 
 @pytest.mark.asyncio
-async def test_scheduled_failure_detail_matches_http_scan_route_policy(
+async def test_scheduled_enqueue_failure_detail_is_fixed_and_sanitized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The persisted detail must be exactly what the HTTP scan route would store.
+    """A queue failure persists fixed text without exception-controlled data.
 
     ``status_detail`` is returned verbatim by ``GET /v1/cloud/connections``, so
-    the scheduler cannot apply a weaker policy than the route: both go through
-    ``_safe_connection_detail``, which never surfaces the broker's free-form
-    message.
+    queue, database, and quota exceptions must not control its contents.
     """
-    from agent_bom.api.routes.cloud_connections import _safe_connection_detail
-    from agent_bom.cloud.connection_broker import ConnectionBrokerError
-
     _install_scan_mocks(monkeypatch, fail=True)
     store = InMemoryConnectionStore()
     set_connection_store(store)
@@ -392,11 +353,14 @@ async def test_scheduled_failure_detail_matches_http_scan_route_policy(
 
     assert await run_due_scans_once(store, _now()) == 1
 
-    expected = _safe_connection_detail(ConnectionBrokerError(_BROKER_FAILURE_MESSAGE))
     fetched = store.get(record.tenant_id, record.id)
     assert fetched is not None
-    assert fetched.status_detail == expected
+    assert fetched.status_detail == (
+        "Scheduled scan could not be queued. Retry after checking worker and database health."
+    )
     assert "AccessDenied" not in fetched.status_detail
+    assert _LEAK_EXTERNAL_ID not in fetched.status_detail
+    assert _LEAK_ACCOUNT_ARN not in fetched.status_detail
 
 
 # --------------------------------------------------------------------------- #
@@ -441,7 +405,7 @@ def test_execute_connection_scan_restores_tenant_after_failure(
     assert _current_tenant.get() == "default"
 
 
-def test_failing_scan_does_not_leak_tenant_into_next_connection(
+def test_rejected_enqueue_does_not_leak_tenant_into_next_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two tenants in one tick: the first raising must not taint the second."""
@@ -458,7 +422,7 @@ def test_failing_scan_does_not_leak_tenant_into_next_connection(
     assert execute_connection_scan(failing) is False
     assert execute_connection_scan(healthy) is True
 
-    assert dict(calls["scan_tenants"]) == {failing.id: "tenant-a", healthy.id: "tenant-b"}
+    assert dict(calls["queue_tenants"]) == {failing.id: "tenant-a", healthy.id: "tenant-b"}
     assert store.observed_tenant(healthy.id) == "tenant-b"
     assert _current_tenant.get() == "default"
 
@@ -522,10 +486,10 @@ async def test_run_once_survives_a_connection_whose_store_write_fails(
     count = await run_due_scans_once(store, _now())
 
     assert count == 2
-    assert set(calls["scanned_ids"]) == {broken.id, healthy.id}
+    assert set(calls["queued_ids"]) == {broken.id, healthy.id}
     fetched = store.get(healthy.tenant_id, healthy.id)
     assert fetched is not None
-    assert fetched.status == STATUS_ACTIVE
+    assert fetched.status == STATUS_PENDING
 
 
 @pytest.mark.asyncio
@@ -603,32 +567,9 @@ async def test_drain_continuous_events_survives_a_raising_drain_task(
 
 
 @pytest.mark.asyncio
-async def test_run_once_scans_non_aws_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A non-AWS provider is now broker-enabled and is scanned by the scheduler."""
-    from agent_bom.cloud import connection_broker, gcp_cis_benchmark, gcp_inventory
-
-    scanned: list[str] = []
-    monkeypatch.setattr(
-        connection_broker,
-        "broker_session",
-        lambda record, **k: scanned.append(record.id) or _BROKER_SESSION_SENTINEL,
-    )
-    monkeypatch.setattr(
-        gcp_inventory,
-        "discover_inventory",
-        lambda project_id=None, credentials=None, force=False, **k: {
-            "provider": "gcp",
-            "status": "ok",
-            "project_id": "proj",
-            "warnings": [],
-        },
-    )
-
-    class _FakeCIS:
-        def to_dict(self) -> dict[str, Any]:
-            return {"benchmark": "CIS GCP", "benchmark_version": "3.0", "pass_rate": 100.0, "passed": 2, "failed": 0, "total": 2}
-
-    monkeypatch.setattr(gcp_cis_benchmark, "run_benchmark", lambda project_id=None, credentials=None, **k: _FakeCIS())
+async def test_run_once_queues_non_aws_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The scheduler admits non-AWS providers to the same durable queue."""
+    calls = _install_scan_mocks(monkeypatch)
 
     store = InMemoryConnectionStore()
     set_connection_store(store)
@@ -637,10 +578,10 @@ async def test_run_once_scans_non_aws_provider(monkeypatch: pytest.MonkeyPatch) 
 
     count = await run_due_scans_once(store, _now())
     assert count == 1
-    assert scanned == [gcp.id]
+    assert calls["queued_ids"] == [gcp.id]
     fetched = store.get(gcp.tenant_id, gcp.id)
     assert fetched is not None
-    assert fetched.status == STATUS_ACTIVE
+    assert fetched.status == STATUS_PENDING
     assert fetched.last_scan_at is not None
 
 
@@ -885,7 +826,7 @@ async def test_run_once_drains_continuous_before_due_full_scans(
     assert count == 1
     assert order[0] == f"drain:{continuous_due.id}"
     assert order[1] == f"scan:{continuous_due.id}"
-    assert calls["scanned_ids"] == [continuous_due.id]
+    assert calls["queued_ids"] == [continuous_due.id]
 
 
 # --------------------------------------------------------------------------- #

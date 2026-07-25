@@ -10,6 +10,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useViewport,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -18,11 +19,12 @@ import { AlertTriangle, Layers, Loader2, Radar, Route, ShieldAlert } from "lucid
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
-import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
+import { GraphEvidenceSummary } from "@/components/graph-evidence-summary";
 import { GraphAnalysisStatusBanner } from "@/components/graph-analysis-status";
 import {
   GraphEvidenceExportButton,
   FullscreenButton,
+  GraphInteractionToolbar,
 } from "@/components/graph-chrome";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
@@ -43,9 +45,12 @@ import {
   ASSET_DRIFT_GRAPH_SCOPE_PARAM,
   DEFAULT_FILTERS,
   createAssetLifecycleDriftGraphFilters,
+  createCloudEstateGraphFilters,
+  createEnvironmentGraphFilters,
   createExpandedGraphFilters,
   createFocusedGraphFilters,
   createImmediateGraphFilters,
+  createRepositoryGraphFilters,
   graphScopeLabelForFilters,
   graphScopePresetForFilters,
   type FilterState,
@@ -84,6 +89,7 @@ import {
   changeKindForNode,
   CHANGE_KIND_META,
   CONTROLS_CLASS,
+  graphNodeDisplayLabels,
   legendItemsForVisibleGraph,
   MINIMAP_BG,
   MINIMAP_CLASS,
@@ -101,7 +107,6 @@ import {
   summarizeReachability,
   type ReachabilitySummary,
 } from "@/lib/graph-reachability";
-import { evaluateGraphUx } from "@/lib/graph-ux-evaluation";
 import {
   api,
   ApiRateLimitError,
@@ -142,6 +147,9 @@ import {
   type EvidenceLensFilter,
 } from "@/lib/filter-algebra";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+import { useAuthState } from "@/components/auth-provider";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
 
 // The whole current-scan graph loads in one request (no numbered pagination).
 // The bound matches the interactive render budget: past it, the overview
@@ -693,6 +701,8 @@ export default function GraphPageClient() {
 
 function GraphPageInner() {
   const reactFlow = useReactFlow();
+  const graphViewport = useViewport();
+  const { session, loading: authLoading } = useAuthState();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -1369,6 +1379,10 @@ function GraphPageInner() {
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
     [flow.nodes],
   );
+  const attackPathNodeIds = useMemo(
+    () => (selectedAttackPath ? new Set(selectedAttackPath.hops) : null),
+    [selectedAttackPath],
+  );
 
   // Sibling aggregation (#2257). Threshold tracks the active filter
   // preset — operator triage (focused) collapses faster than topology
@@ -1441,10 +1455,14 @@ function GraphPageInner() {
   // renderers upstream, so ReactFlow only ever lays out small/medium graphs
   // where dagre is the better fit.
   const graphLayoutKind = "dagre-lr";
+  const layoutInput = useMemo(
+    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds),
+    [aggregated.edges, aggregated.nodes, attackPathNodeIds],
+  );
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
     graphLayoutKind,
-    aggregated.nodes,
-    aggregated.edges,
+    layoutInput.nodes,
+    layoutInput.edges,
     {
       force: {
         idealEdgeLength: filters.agentName ? 168 : 196,
@@ -1473,11 +1491,6 @@ function GraphPageInner() {
         ? getLocalNeighborhoodIds(activeFocusId, layoutEdges)
         : null,
     [activeFocusId, layoutEdges],
-  );
-
-  const attackPathNodeIds = useMemo(
-    () => (selectedAttackPath ? new Set(selectedAttackPath.hops) : null),
-    [selectedAttackPath],
   );
 
   const attackPathEdgeKeys = useMemo(
@@ -1761,8 +1774,8 @@ function GraphPageInner() {
             },
             labelStyle: {
               fill: "#f4f4f5",
-              fontSize: 11,
-              fontWeight: 600,
+              fontSize: Math.max(10, Math.min(24, 12 / Math.max(graphViewport.zoom, 0.2))),
+              fontWeight: 650,
             },
             animated: captureMode ? false : Boolean(inPath || edge.animated),
             style: {
@@ -1840,6 +1853,8 @@ function GraphPageInner() {
       highSignalOpacity: graphLayoutKind === "dagre-lr" ? 0.6 : 0.48,
       inactiveOpacity: 0.06,
       captureMode,
+      zoom: graphViewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
     });
   }, [
     layoutEdges,
@@ -1849,14 +1864,26 @@ function GraphPageInner() {
     blastRadius,
     graphLayoutKind,
     captureMode,
+    graphViewport.zoom,
+    displayNodes,
   ]);
+
+  const accessibleBaseDisplayEdges = useMemo(
+    () => readableGraphEdges(baseDisplayEdges, undefined, {
+      captureMode,
+      zoom: graphViewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
+      preserveVisualStyle: true,
+    }),
+    [baseDisplayEdges, captureMode, displayNodes, graphViewport.zoom],
+  );
 
   // Drift lens edge emphasis — new/changed edges adopt their change-kind colour
   // so the lens reads as one system with the node rings. Inert (identity) when
   // the lens is disengaged.
   const displayEdges = useMemo(() => {
-    if (!driftLensEngaged) return baseDisplayEdges;
-    return baseDisplayEdges.map((edge): Edge => {
+    if (!driftLensEngaged) return accessibleBaseDisplayEdges;
+    return accessibleBaseDisplayEdges.map((edge): Edge => {
       const relationship =
         typeof edge.data?.relationship === "string"
           ? edge.data.relationship
@@ -1887,12 +1914,7 @@ function GraphPageInner() {
         },
       };
     });
-  }, [baseDisplayEdges, driftLensEngaged, driftIndex]);
-
-  const graphEvaluation = useMemo(
-    () => evaluateGraphUx(graphData, displayNodes, displayEdges),
-    [displayEdges, displayNodes, graphData],
-  );
+  }, [accessibleBaseDisplayEdges, driftLensEngaged, driftIndex]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -1919,6 +1941,61 @@ function GraphPageInner() {
         mode: "lineage",
       }),
     [captureMode, displayEdges.length, displayNodes.length, selectedNode],
+  );
+  const presentationScope = useMemo(
+    () => ({
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: selectedScanId || "unselected",
+      lens: selectedAttackPath ? "investigation" : "lineage",
+      scope: JSON.stringify({
+        preset: graphScopePresetForFilters(filters),
+        agent: filters.agentName,
+        severity: filters.severity,
+        path: selectedAttackPathKey,
+        rollup: rollupStack.at(-1)?.id ?? null,
+        topology: graphTopologyKey(displayNodes, displayEdges),
+      }),
+    }),
+    [displayEdges, displayNodes, filters, rollupStack, selectedAttackPath, selectedAttackPathKey, selectedScanId, session?.auth_method, session?.subject, session?.tenant_id],
+  );
+  const presentation = useGraphPresentation({
+    nodes: displayNodes,
+    scope: presentationScope,
+    layout: graphLayoutKind,
+    enabled: !captureMode && !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
+  });
+  const fitVisible = useCallback(() => {
+    void reactFlow.fitView({ ...viewportOptions, duration: 240 });
+  }, [reactFlow, viewportOptions]);
+  const fitSelection = useCallback(() => {
+    if (!selectedNodeId) return;
+    const node = reactFlow.getNode(selectedNodeId);
+    if (node) {
+      void reactFlow.fitView({
+        nodes: [node],
+        padding: 0.7,
+        duration: 240,
+        maxZoom: 1.4,
+      });
+    }
+  }, [reactFlow, selectedNodeId]);
+  const autoLayout = useCallback(() => {
+    presentation.autoLayout();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+  const resetLayout = useCallback(() => {
+    presentation.reset();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+  const relationshipEvidenceCount = useMemo(
+    () =>
+      graphData?.edges.filter(
+        (edge) => Object.keys(edge.evidence ?? {}).length > 0,
+      ).length ?? null,
+    [graphData],
   );
 
   const hasContextualGraph = useMemo(
@@ -2314,7 +2391,7 @@ function GraphPageInner() {
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
 
-      <div className="border-b border-[var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3">
+      <div className="graph-page-header">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
@@ -2359,7 +2436,7 @@ function GraphPageInner() {
             <select
               value={selectedScanId}
               onChange={(event) => setSelectedScanId(event.target.value)}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none"
+              className="graph-page-select"
             >
               {snapshots.map((snapshot) => (
                 <option key={snapshot.scan_id} value={snapshot.scan_id}>
@@ -2376,6 +2453,15 @@ function GraphPageInner() {
               }
             />
             <FullscreenButton />
+            {presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <GraphInteractionToolbar
+              editing={presentation.editing}
+              hasSelection={Boolean(selectedNodeId)}
+              onFitVisible={fitVisible}
+              onFitSelection={fitSelection}
+              onAutoLayout={autoLayout}
+              onReset={resetLayout}
+              onToggleEditing={presentation.toggleEditing}
+            />}
           </div>
         </div>
 
@@ -2391,12 +2477,12 @@ function GraphPageInner() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search nodes, tags, severities, or attributes"
-              className="min-w-[260px] flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:border-sky-600 focus:outline-none"
+              className="graph-page-search"
             />
             <button
               type="submit"
               disabled={searching || !selectedScanId}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-sm text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="graph-page-action"
             >
               {searching ? "Searching..." : "Search"}
             </button>
@@ -2415,7 +2501,7 @@ function GraphPageInner() {
             {sourceNodeCount > 0 && (
               <span
                 data-testid="graph-compression-summary"
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)]"
+                className="graph-chip-neutral"
               >
                 {compressedGroupCount > 0
                   ? `${compressedGroupCount} compressed groups`
@@ -2423,7 +2509,7 @@ function GraphPageInner() {
               </span>
             )}
             {loadingGraph && (
-              <span className="flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200">
+              <span className="graph-chip-sky-soft">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 refreshing
               </span>
@@ -2435,7 +2521,7 @@ function GraphPageInner() {
 
           {activeScopePreset === "assetDrift" && (
             <div className="mt-3 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+              <div className="graph-callout-orange">
                 <span>
                   Asset lifecycle drift lens — governance and{" "}
                   <span className="font-mono">exhibits_drift</span> edges with
@@ -2443,7 +2529,7 @@ function GraphPageInner() {
                 </span>
                 <a
                   href="/drift"
-                  className="rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+                  className="graph-chip-orange"
                 >
                   Open drift incidents
                 </a>
@@ -2467,7 +2553,7 @@ function GraphPageInner() {
           )}
 
           {investigationMode && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+            <div className="graph-callout-sky">
               <span>
                 Root-centered investigation:{" "}
                 <span className="font-mono">{investigationMode.rootId}</span>
@@ -2536,7 +2622,7 @@ function GraphPageInner() {
                     type="button"
                     data-testid={`graph-search-result-${result.id}`}
                     onClick={() => void focusSearchResult(result)}
-                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--surface)]"
+                    className="graph-page-result"
                   >
                     <p className="truncate text-sm font-medium text-[var(--foreground)]">
                       {result.label}
@@ -2578,20 +2664,34 @@ function GraphPageInner() {
           )}
         </div>
 
-        {/* #3932: one collapsed-by-default "Advanced controls" shelf keeps the
-            canvas above the fold. It nests the three former full-width bands —
-            View controls, operator evaluation/diff lenses, and the ranked
-            attack-path queue — so the operator reaches them in one place
-            without any of them stacking on the default page load. */}
+        <div className="mt-2">
+          <GraphEvidenceSummary
+            capturedAt={activeSnapshot?.created_at ?? null}
+            returnedNodes={graphData?.completeness?.returned ?? graphData?.nodes.length ?? null}
+            totalNodes={graphData?.completeness?.total ?? graphData?.pagination.total ?? null}
+            evidencedEdges={relationshipEvidenceCount}
+            totalEdges={graphData?.edges.length ?? null}
+            completeness={
+              graphData?.completeness?.status ??
+              (graphData && graphData.nodes.length < graphData.pagination.total
+                ? "truncated"
+                : graphData
+                  ? "complete"
+                  : null)
+            }
+          />
+        </div>
+
+        {/* One collapsed drawer keeps secondary controls off the default path.
+            Its content uses flat sections rather than nested control drawers. */}
         <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group">
-          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
+          <summary className="graph-drawer-summary">
             <div>
               <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                 Advanced controls
               </span>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                View controls, operator evaluation and diff lenses, and the
-                ranked attack-path queue.
+                Scope, evidence overlays, snapshot diff, and the ranked path queue.
               </p>
             </div>
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
@@ -2602,24 +2702,18 @@ function GraphPageInner() {
             </span>
           </summary>
           <div className="space-y-3 border-t border-[var(--border-subtle)]/80 p-3">
-          <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 group">
-            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+          <section aria-labelledby="graph-view-controls" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                <h3 id="graph-view-controls" className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                   View controls
-                </span>
+                </h3>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   Change scope, layers, severity, traversal, and page size
                   without changing the persisted graph.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
-                show
-              </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
-                hide
-              </span>
-            </summary>
+            </div>
             <div className="mt-3 space-y-3">
               <div className="flex flex-wrap gap-2 text-[11px]">
                 <button
@@ -2662,6 +2756,30 @@ function GraphPageInner() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setFilters(createCloudEstateGraphFilters())}
+                  className={scopeButtonClass(activeScopePreset === "cloudEstate")}
+                  title="Type-based view of cloud accounts, identities, resources, and attached findings; does not assert collection provenance"
+                >
+                  Cloud estate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilters(createRepositoryGraphFilters())}
+                  className={scopeButtonClass(activeScopePreset === "repository")}
+                  title="Type-based view of repository files, packages, and attached findings; does not assert collection provenance"
+                >
+                  Repository
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilters(createEnvironmentGraphFilters())}
+                  className={scopeButtonClass(activeScopePreset === "environment")}
+                  title="Type-based view of environment, agent, service, resource, and finding nodes; does not assert collection provenance"
+                >
+                  Environment
+                </button>
+                <button
+                  type="button"
                   onClick={() =>
                     setFilters(
                       createAssetLifecycleDriftGraphFilters(
@@ -2696,23 +2814,13 @@ function GraphPageInner() {
                 variant="panel"
               />
             </div>
-          </details>
+          </section>
 
-        <details className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70">
-          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-            Operator details · evaluation, diff, lenses
-          </summary>
+        <section aria-labelledby="graph-operator-tools" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70">
+          <h3 id="graph-operator-tools" className="px-3 py-2 text-xs font-medium text-[var(--text-secondary)]">
+            Evidence, drift, and operator tools
+          </h3>
           <div className="space-y-3 border-t border-[var(--border-subtle)]/80 px-3 py-3">
-            <div className="rounded-xl border border-[var(--border-subtle)]/80 bg-[var(--background)]/50 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                Graph evaluation
-              </p>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                Score {Math.round(graphEvaluation.score)} ({graphEvaluation.grade})
-              </p>
-              <GraphEvaluationSummary evaluation={graphEvaluation} />
-            </div>
-
         {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
             viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/
             Scope/Window) were removed — the inline summary above already
@@ -2721,7 +2829,7 @@ function GraphPageInner() {
             stop them from owning a full screen of vertical space on every
             page-load. */}
         {activeSnapshot && (
-          <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 group">
+          <details className="group graph-drawer-section">
             <summary className="flex flex-wrap items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
@@ -2751,7 +2859,7 @@ function GraphPageInner() {
               </div>
             </summary>
             {diffError ? (
-              <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+              <div className="graph-callout-amber">
                 {diffError}
               </div>
             ) : loadingDiff && !graphDiff ? (
@@ -2902,7 +3010,7 @@ function GraphPageInner() {
           </ul>
         </details>
           </div>
-        </details>
+        </section>
 
         {attackPaths.length > 0 && (
           <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/60 p-3 group">
@@ -2937,7 +3045,7 @@ function GraphPageInner() {
                   onClick={() => {
                     setSelectedAttackPathKey(null);
                   }}
-                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+                  className="graph-page-secondary-action"
                 >
                   Clear path focus
                 </button>
@@ -3045,7 +3153,7 @@ function GraphPageInner() {
       <div className="flex-1 flex relative min-h-[68vh]">
         <div className="flex-1 relative min-h-[60vh] flex flex-col">
           {selectedAttackPath && (
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+            <div className="graph-callout-orange-compact">
               <span>
                 Focused attack path · risk{" "}
                 {selectedAttackPath.composite_risk.toFixed(1)} ·{" "}
@@ -3057,7 +3165,7 @@ function GraphPageInner() {
                   onClick={() => {
                     setSelectedAttackPathKey(null);
                   }}
-                  className="rounded-lg border border-orange-400/30 bg-orange-950/40 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+                  className="graph-chip-orange-muted"
                 >
                   Clear focus
                 </button>
@@ -3116,17 +3224,26 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
-              key={captureMode ? "lineage-capture" : "lineage-interactive"}
-              nodes={displayNodes}
+              key={captureMode ? "lineage-capture" : presentation.storageKey}
+              nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}
-              fitView
+              fitView={!presentation.hasSavedState}
               fitViewOptions={viewportOptions}
+              defaultViewport={presentation.viewport}
               minZoom={0.16}
               maxZoom={2.5}
-              zoomOnScroll={false}
+              zoomOnScroll={!captureMode}
+              zoomOnPinch={!captureMode}
               panOnScroll={false}
-              preventScrolling={false}
+              panOnDrag={!captureMode}
+              preventScrolling={!captureMode}
+              nodesDraggable={!captureMode && presentation.editing}
+              nodesConnectable={false}
+              nodesFocusable
+              edgesFocusable
+              elementsSelectable
+              deleteKeyCode={null}
               onlyRenderVisibleElements={shouldVirtualizeReactFlowNodes({
                 rollupActive: rollupNavigationActive,
               })}
@@ -3135,6 +3252,9 @@ function GraphPageInner() {
               onNodeClick={onNodeClick}
               onNodeMouseEnter={onNodeMouseEnter}
               onNodeMouseLeave={onNodeMouseLeave}
+              onNodesChange={presentation.onNodesChange}
+              onNodeDragStop={presentation.onNodeDragStop}
+              onMoveEnd={presentation.onMoveEnd}
               onPaneClick={() => {
                 setSelectedNode(null);
                 setSelectedNodeId(null);
@@ -3295,7 +3415,7 @@ function ReachabilityDrillInPanel({
         <button
           type="button"
           onClick={onClear}
-          className="rounded-lg border border-rose-400/30 bg-rose-950/60 px-2.5 py-1 text-rose-100 transition hover:border-rose-300"
+          className="graph-chip-rose"
         >
           Clear reachability
         </button>
@@ -3410,7 +3530,7 @@ function BlastRadiusPanel({
         <button
           type="button"
           onClick={onClear}
-          className="rounded-lg border border-violet-400/30 bg-violet-950/60 px-2.5 py-1 text-violet-100 transition hover:border-violet-300"
+          className="graph-chip-violet"
         >
           Clear blast radius
         </button>
@@ -3505,7 +3625,7 @@ function RollupNavigationPanel({
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300"
+          className="graph-chip-emerald"
         >
           Open node view
         </button>
@@ -3529,7 +3649,7 @@ function RollupNavigationPanel({
               <button
                 type="button"
                 onClick={() => onBreadcrumb(index)}
-                className="max-w-[12rem] truncate rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300"
+                className="graph-chip-emerald-truncate"
               >
                 {crumb.label}
               </button>
@@ -3595,7 +3715,7 @@ function PathTagList({
         {tags.map((tag) => (
           <span
             key={`${label}-${tag}`}
-            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/80 px-2 py-1 text-[11px] text-[var(--text-secondary)]"
+            className="graph-chip-elevated"
           >
             {tag}
           </span>

@@ -327,6 +327,205 @@ body {
   box-shadow: inset 2px 0 0 0 var(--accent);
 }
 
+/* Login submit variants live in CSS so the client route does not repeat long utility strings. */
+.login-submit {
+  @apply mt-5 w-full rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed;
+}
+.login-submit-sso {
+  @apply border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] disabled:border-[var(--border-subtle)] disabled:bg-[var(--background)] disabled:text-[var(--text-tertiary)];
+}
+.login-submit-key {
+  @apply bg-emerald-500 text-[var(--on-accent)] hover:bg-emerald-400 disabled:bg-[var(--surface-elevated)] disabled:text-[var(--text-tertiary)];
+}
+.login-sso-button {
+  @apply flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition;
+}
+.login-sso-browser {
+  @apply bg-emerald-500 text-[var(--on-accent)] hover:bg-emerald-400;
+}
+.login-sso-secondary {
+  @apply gap-2 border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)];
+}
+.login-sso-snowflake {
+  @apply gap-2 bg-[#29B5E8] text-white hover:bg-[#1a9fd0];
+}
+
+/* Dense remediation rows share these styles outside route JavaScript so the
+   command center stays compact without duplicating long utility strings. */
+.risk-campaign-card { @apply rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] shadow-sm; }
+.risk-campaign-summary { @apply grid cursor-pointer list-none gap-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center; }
+.risk-campaign-summary::-webkit-details-marker,
+.risk-campaign-queue-summary::-webkit-details-marker { display: none; }
+.risk-campaign-severity { @apply rounded-full border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--status-danger)]; }
+.risk-campaign-priority { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-xs text-[color:var(--text-secondary)]; }
+.risk-campaign-reduction { @apply rounded-lg border border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] px-2.5 py-1 text-xs font-medium text-[color:var(--status-success)]; }
+.risk-campaign-body { @apply border-t border-[color:var(--border-subtle)] px-3 pb-3; }
+.risk-campaign-explainer { @apply mt-4 grid gap-3 border-t border-[color:var(--border-subtle)] pt-4 lg:grid-cols-[1fr_1.3fr]; }
+.risk-campaign-evidence-label { @apply col-span-2 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)] sm:col-span-4; }
+.risk-campaign-factor { @apply rounded-lg bg-[color:var(--surface-muted)] p-2.5; }
+.risk-campaign-factor-label,
+.risk-campaign-factor-status { @apply text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]; }
+.risk-campaign-factor-status { @apply mt-0.5; }
+.risk-campaign-factor-value { @apply mt-1 text-sm font-semibold tabular-nums text-[color:var(--foreground)]; }
+.risk-campaign-evidence-note { @apply col-span-2 text-[10px] leading-4 text-[color:var(--text-tertiary)] sm:col-span-4; }
+.risk-campaign-method { @apply rounded-lg border border-[color:var(--border-subtle)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]; }
+.risk-campaign-method-cell { @apply rounded-md bg-[color:var(--surface-muted)] px-2 py-1.5; }
+.risk-campaign-method-label { @apply text-[9px] uppercase tracking-wide text-[color:var(--text-tertiary)]; }
+.risk-campaign-actions { @apply mt-4 flex flex-col gap-3 border-t border-[color:var(--border-subtle)] pt-4 sm:flex-row sm:items-center sm:justify-between; }
+.risk-campaign-select { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-1.5 text-xs text-[color:var(--foreground)]; }
+.risk-campaign-status-pill { @apply rounded-full border border-[color:var(--border-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[color:var(--text-secondary)]; }
+.risk-campaign-link-action { @apply inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50; }
+.risk-campaign-ticket-primary,
+.risk-campaign-verify-button { @apply inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:opacity-50; }
+.risk-campaign-ticket-primary { @apply disabled:cursor-not-allowed; }
+.risk-campaign-verify-button { @apply shrink-0 justify-center disabled:cursor-wait; }
+.risk-campaign-ticket-secondary { @apply inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-50; }
+.risk-campaign-warning { @apply mt-3 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs text-[color:var(--text-secondary)]; }
+.risk-campaign-assignment { @apply mt-3 grid gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end; }
+.risk-campaign-input { @apply mt-1 block w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-2 text-xs text-[color:var(--foreground)]; }
+.risk-campaign-save { @apply rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:opacity-50; }
+.risk-campaign-verification-result { @apply mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]; }
+.risk-campaign-reload { @apply rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]; }
+.risk-campaign-card .risk-campaign-reload { @apply mt-2; }
+.risk-campaign-queue { @apply rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]; }
+.risk-campaign-queue-summary { @apply flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-2.5; }
+.risk-campaign-queue-label { @apply text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--status-warn)]; }
+.risk-campaign-count-pill { @apply rounded-full border border-[color:var(--border-subtle)] px-2 py-0.5 text-[10px] text-[color:var(--text-tertiary)]; }
+.risk-campaign-queue-entry { @apply rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3; }
+.risk-campaign-load-more { @apply mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-wait disabled:opacity-50; }
+.risk-campaign-header { @apply flex flex-col gap-3 md:flex-row md:items-end md:justify-between; }
+.risk-campaign-kicker { @apply text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--accent)]; }
+.risk-campaign-investigate { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[color:var(--text-secondary)]; }
+.risk-campaign-window { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[color:var(--text-tertiary)]; }
+.risk-campaign-truncated { @apply flex items-start gap-2 rounded-xl border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2.5 text-xs text-[color:var(--text-secondary)]; }
+.risk-link-button { @apply text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50; }
+.risk-collapsed-label { @apply text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] group-open:hidden; }
+.risk-priority-toggle { @apply mt-3 inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)]; }
+.risk-entry-meta { @apply mt-1 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]; }
+.risk-page-title { @apply mt-1 text-xl font-semibold tracking-tight text-[color:var(--foreground)]; }
+.risk-entry-layout { @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between; }
+.risk-proof-note { @apply flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]; }
+.risk-card-title { @apply truncate text-sm font-semibold text-[color:var(--foreground)]; }
+.risk-card-meta { @apply mt-1 truncate text-[11px] text-[color:var(--text-tertiary)]; }
+.risk-number { @apply font-semibold tabular-nums text-[color:var(--foreground)]; }
+.risk-queue-body { @apply border-t border-[color:var(--border-subtle)] px-3 pb-3; }
+.risk-entry-title { @apply text-sm font-semibold text-[color:var(--foreground)]; }
+.risk-status-copy { @apply mt-3 text-xs text-[color:var(--text-secondary)]; }
+.risk-helper-copy { @apply mt-2 text-xs text-[color:var(--text-secondary)]; }
+.risk-entry-copy { @apply mt-1 text-xs text-[color:var(--text-secondary)]; }
+.risk-page-copy { @apply mt-1 text-sm text-[color:var(--text-secondary)]; }
+.risk-error-copy { @apply mt-3 text-xs text-[color:var(--status-danger)]; }
+.risk-empty-copy { @apply mt-3 text-xs text-[color:var(--text-tertiary)]; }
+
+/* Shared graph chrome is loaded by several routes. Keep its presentation in
+   CSS so route chunks carry behavior and evidence only, not repeated tokens. */
+.graph-legend-toggle { @apply items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] backdrop-blur-sm transition-colors hover:bg-[var(--surface-elevated)]; }
+.graph-legend-count { @apply rounded-full bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]; }
+.graph-legend-popover { @apply max-h-[60vh] w-[min(30rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-[var(--foreground)] backdrop-blur-md; }
+.graph-legend-dock { @apply border-t border-[var(--border-subtle)] pt-2 open:pt-3; }
+.graph-legend-dock-summary { @apply flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1.5 text-xs; }
+.graph-legend-dock-summary::-webkit-details-marker { display: none; }
+.graph-legend-dock-label { @apply shrink-0 font-medium uppercase tracking-[0.16em] text-[var(--text-tertiary)]; }
+.graph-legend-preview { @apply flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 group-open:hidden; }
+.graph-legend-preview-item { @apply inline-flex max-w-[8rem] items-center gap-1 text-[10px] text-[var(--text-secondary)]; }
+.graph-legend-expand { @apply ml-auto shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]; }
+.graph-legend-dock-content { @apply mt-2 max-h-[min(40vh,18rem)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3; }
+.graph-icon-button { @apply flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] backdrop-blur-sm transition-colors hover:bg-[var(--surface-elevated)]; }
+.graph-layout-toolbar { @apply flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/90 p-1; }
+.graph-layout-button { @apply inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40; }
+.graph-flow-controls { @apply !rounded-lg !border-[var(--border-subtle)] !bg-[var(--surface)]/90 !backdrop-blur-sm [&>button]:!border-[var(--border-subtle)] [&>button]:!bg-[var(--surface-elevated)] [&>button]:!text-[var(--text-secondary)] [&>button:hover]:!bg-[var(--surface-muted)]; }
+.graph-flow-minimap { @apply !rounded-lg !border-[var(--border-subtle)] !bg-[var(--surface)]/90 !backdrop-blur-sm; }
+.graph-export-select { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none; }
+.graph-export-button { @apply inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/45 bg-cyan-50 px-2.5 py-1.5 text-xs font-medium text-cyan-800 transition-colors hover:border-cyan-700 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:border-cyan-800 dark:hover:bg-cyan-950/50; }
+.graph-evidence-summary { @apply grid gap-2 md:grid-cols-3; }
+.graph-evidence-item { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2; }
+.graph-evidence-label { @apply flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]; }
+.graph-evidence-value { @apply mt-1 truncate text-xs font-medium text-[var(--foreground)]; }
+.graph-evidence-detail { @apply mt-0.5 text-[10px] capitalize text-[var(--text-tertiary)]; }
+.attack-flow-node { @apply min-w-[140px] max-w-[220px] rounded-lg border-2 px-3 py-2 shadow-lg backdrop-blur; }
+.attack-flow-handle { @apply !h-2 !w-2 !border-[var(--border-strong)] !bg-[var(--text-tertiary)]; }
+.attack-flow-node-label { @apply truncate text-xs font-semibold text-[var(--foreground)]; }
+.attack-flow-kev { @apply rounded border border-red-700 bg-red-950 px-1 py-0.5 font-mono text-[10px] text-red-400; }
+.attack-flow-tag { @apply rounded border px-1 font-mono text-[9px]; }
+.attack-flow-tag-purple { @apply border-purple-800/50 bg-purple-950/60 text-purple-400; }
+.attack-flow-tag-amber { @apply border-amber-800/50 bg-amber-950/60 text-amber-400; }
+.attack-flow-tag-cyan { @apply border-cyan-800/50 bg-cyan-950/60 text-cyan-400; }
+.attack-flow-kev-banner { @apply flex items-center gap-1.5 rounded border border-red-800 bg-red-950 px-2 py-1.5 font-mono text-xs text-red-400; }
+.attack-flow-export { @apply flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)]; }
+.attack-flow-select { @apply rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-secondary)] focus:border-emerald-600 focus:outline-none; }
+.attack-flow-header { @apply space-y-2 border-b border-[var(--border-subtle)] px-4 py-3; }
+.attack-flow-legend { @apply flex items-center gap-4 border-t border-[var(--border-subtle)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]; }
+.attack-flow-meta { @apply font-mono text-[10px] text-[var(--text-secondary)]; }
+.attack-flow-meta-muted { @apply font-mono text-[10px] text-[var(--text-tertiary)]; }
+.attack-flow-drawer-kicker { @apply text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]; }
+.attack-flow-drawer-title { @apply mt-0.5 break-all text-sm font-semibold text-[var(--foreground)]; }
+.attack-flow-close { @apply p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]; }
+.attack-flow-stat-value { @apply font-mono text-lg font-bold text-[var(--foreground)]; }
+.attack-flow-external-link { @apply flex items-center gap-1.5 text-xs text-emerald-400 transition-colors hover:text-emerald-300; }
+.attack-flow-filter-label { @apply mb-1 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]; }
+.attack-flow-clear-small { @apply text-[10px] text-[var(--text-tertiary)] underline transition-colors hover:text-[var(--text-secondary)]; }
+.attack-flow-back { @apply text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]; }
+.attack-flow-empty { @apply flex h-full flex-col items-center justify-center gap-3 text-[var(--text-secondary)]; }
+.attack-flow-clear { @apply text-xs text-emerald-400 underline hover:text-emerald-300; }
+.attack-flow-swatch { @apply h-2.5 w-2.5 rounded border-2; }
+.attack-flow-loading { @apply flex h-[80vh] items-center justify-center text-[var(--text-secondary)]; }
+.attack-flow-error { @apply flex h-[80vh] flex-col items-center justify-center gap-3 text-[var(--text-secondary)]; }
+.graph-page-header { @apply border-b border-[var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3; }
+.graph-page-select { @apply rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none; }
+.graph-page-search { @apply min-w-[260px] flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:border-sky-600 focus:outline-none; }
+.graph-page-action { @apply rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-sm text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40; }
+.graph-page-result { @apply rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--surface)]; }
+.graph-page-secondary-action { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]; }
+.graph-callout-orange { @apply flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100; }
+.graph-callout-orange-compact { @apply mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100; }
+.graph-callout-sky { @apply mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100; }
+.graph-callout-amber { @apply mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200; }
+.graph-chip-neutral { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)]; }
+.graph-chip-sky-soft { @apply flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200; }
+.graph-chip-orange { @apply rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300; }
+.graph-chip-orange-muted { @apply rounded-lg border border-orange-400/30 bg-orange-950/40 px-2.5 py-1 text-orange-100 transition hover:border-orange-300; }
+.graph-chip-rose { @apply rounded-lg border border-rose-400/30 bg-rose-950/60 px-2.5 py-1 text-rose-100 transition hover:border-rose-300; }
+.graph-chip-violet { @apply rounded-lg border border-violet-400/30 bg-violet-950/60 px-2.5 py-1 text-violet-100 transition hover:border-violet-300; }
+.graph-chip-emerald { @apply rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300; }
+.graph-chip-emerald-truncate { @apply max-w-[12rem] truncate rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300; }
+.graph-chip-elevated { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/80 px-2 py-1 text-[11px] text-[var(--text-secondary)]; }
+.graph-drawer-summary { @apply flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2; }
+.graph-drawer-summary::-webkit-details-marker { display: none; }
+.graph-drawer-section { @apply rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3; }
+.agents-secondary-action { @apply flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)]; }
+.agents-search { @apply w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none; }
+.agents-primary-action { @apply inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)]; }
+.agents-toolbar-action { @apply inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]; }
+.agents-chip { @apply rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)]; }
+.agents-type-chip { @apply rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] uppercase text-[color:var(--text-secondary)]; }
+.agents-small-chip { @apply rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]; }
+.agents-flow-controls { @apply !rounded-lg !border-[color:var(--border-subtle)] !bg-[color:var(--surface-muted)] [&>button]:!border-[color:var(--border-subtle)] [&>button]:!bg-[color:var(--surface-elevated)] [&>button]:!text-[color:var(--text-secondary)]; }
+.agents-section-chip { @apply rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-secondary)]; }
+.agents-mono-chip { @apply rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 font-mono text-[color:var(--text-secondary)]; }
+.agents-info-callout { @apply flex items-start gap-2 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]; }
+.agents-flow-header { @apply absolute inset-x-0 top-0 z-10 flex items-center justify-between border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/90 px-4 py-3 backdrop-blur-sm; }
+.agents-flow-export { @apply flex items-center gap-1 rounded border border-[color:var(--border-subtle)] px-2 py-1 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]; }
+.agents-status-chip { @apply rounded border border-emerald-800 bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-300; }
+.agents-cloud-chip { @apply rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300; }
+.agents-flow-drawer { @apply absolute right-4 top-4 z-50 w-72 overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] shadow-2xl; }
+.agents-collapse-toggle { @apply cursor-pointer text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]; }
+.agents-scan-action { @apply flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500; }
+.agents-section-label { @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]; }
+.agents-row-button { @apply flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-[color:var(--surface-elevated)]/50; }
+.agents-icon-button { @apply shrink-0 rounded p-0.5 text-[color:var(--text-tertiary)] transition-colors hover:text-[color:var(--foreground)]; }
+.agents-back-link-sm { @apply mb-2 flex items-center gap-1 text-sm text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]; }
+.agents-sticky-header { @apply sticky top-0 z-10 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 backdrop-blur-sm; }
+.agents-search-icon { @apply pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]; }
+.agents-inline-link { @apply flex items-center gap-1 text-sm text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]; }
+.agents-panel { @apply overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]; }
+.agents-emerald-chip { @apply rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300; }
+.agents-section-label-emerald { @apply mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300; }
+.agents-back-link { @apply mb-6 flex items-center gap-1 text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]; }
+.agents-mini-badge { @apply rounded bg-[color:var(--surface-elevated)] px-2 py-0.5 text-xs text-[color:var(--text-secondary)]; }
+.agents-warning-chip { @apply rounded border border-yellow-800 bg-yellow-950 px-2 py-0.5 font-mono text-[11px] text-yellow-300; }
+.agents-elevated-card { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3; }
+.agents-stat-card { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2; }
+
 /* Stat card gradient backgrounds — driven by severity/status tokens */
 .stat-critical {
   background: linear-gradient(

@@ -1128,6 +1128,27 @@ async def _cleanup_loop() -> None:
                 "nhi lifecycle cleanup skipped this tick; check the agent-identity store and governance audit-log backend connectivity",
                 exc_info=True,
             )
+        # Managed-trial lifecycle: access is revoked at expiry, while data is
+        # deleted only after the configured grace period. This hook is opt-in
+        # and never runs in ordinary self-hosted deployments.
+        try:
+            from agent_bom.api.managed_trial import managed_trial_enabled
+
+            if managed_trial_enabled():
+                from agent_bom.api.tenant_lifecycle import run_managed_trial_lifecycle_tick
+
+                lifecycle_result = await asyncio.to_thread(run_managed_trial_lifecycle_tick)
+                if lifecycle_result["expired"] or lifecycle_result["deleted"]:
+                    _logger.info(
+                        "managed-trial lifecycle: %d expired, %d deleted",
+                        lifecycle_result["expired"],
+                        lifecycle_result["deleted"],
+                    )
+        except Exception:  # noqa: BLE001 — lifecycle cleanup remains retryable
+            _logger.warning(
+                "managed-trial lifecycle cleanup skipped this tick; check the lifecycle and tenant stores",
+                exc_info=True,
+            )
         # Unstick jobs that have been RUNNING for too long
         try:
             from datetime import datetime, timezone

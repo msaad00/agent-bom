@@ -19,6 +19,7 @@ import {
   Handle,
   Position,
   ReactFlowProvider,
+  type Edge,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -48,6 +49,7 @@ import {
   type PipelineNodeKind,
   type ScannerDomain,
 } from "@/lib/scan-pipeline-graph";
+import { graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
 
 // ── Step node component ─────────────────────────────────────────────────────
 
@@ -274,6 +276,14 @@ function ScanPipelineInner({
       rowGap: 16,
     },
   });
+  const displayEdges = useMemo(
+    () =>
+      readableGraphEdges(edges as Edge[], undefined, {
+        nodeLabels: graphNodeDisplayLabels(nodes),
+        preserveVisualStyle: true,
+      }),
+    [edges, nodes],
+  );
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -286,7 +296,7 @@ function ScanPipelineInner({
     <div className={`relative h-[180px] ${className ?? ""}`}>
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={displayEdges}
         nodeTypes={nodeTypes}
         fitView
         // Re-fit whenever the node set changes so a live pipeline that grows

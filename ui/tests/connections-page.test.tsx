@@ -280,11 +280,12 @@ describe("ConnectionsPage — Connect segment", () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
     apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
     apiMock.scanCloudConnection.mockResolvedValue({
-      schema_version: "cloud.connections.scan.v1",
+      schema_version: "cloud.connections.scan.accepted.v1",
       connection_id: "conn-1",
       tenant_id: "tenant-acme",
       provider: "aws",
-      scan_id: "abcdef12-3456-7890-abcd-ef1234567890",
+      job_id: "abcdef12-3456-7890-abcd-ef1234567890",
+      status: "pending",
     });
 
     render(<ConnectionsPage />);
@@ -659,7 +660,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     navState.search = "tab=sources";
   });
 
-  it("runs a read-only scan and shows inventory counts + CIS pass rate", async () => {
+  it("queues a durable read-only scan and links to its job", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "tenant-acme",
@@ -667,35 +668,12 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
       count: 1,
     });
     apiMock.scanCloudConnection.mockResolvedValue({
-      schema_version: "cloud.connections.scan.v1",
+      schema_version: "cloud.connections.scan.accepted.v1",
       connection_id: "conn-1",
       tenant_id: "tenant-acme",
       provider: "aws",
-      scan_id: "abcdef12-3456-7890-abcd-ef1234567890",
-      inventory: {
-        provider: "aws",
-        account: "123456789012",
-        region: "us-east-1",
-        resource_count: 42,
-        identity_count: 7,
-        node_summary: { buckets: 3, instances: 5, security_groups: 4, roles: 6, users: 1 },
-        warnings: [],
-      },
-      cis_benchmark: {
-        benchmark: "CIS AWS",
-        benchmark_version: "1.5",
-        passed: 30,
-        failed: 10,
-        total: 40,
-        pass_rate: 0.75,
-      },
-      audit_metadata: { read_only: true, writes_performed: false, note: "Read-only scan." },
-      connection: {
-        ...CREATED_RECORD,
-        status: "active",
-        last_scan_at: "2026-06-27T01:00:00Z",
-        last_scan_id: "abcdef12-3456-7890-abcd-ef1234567890",
-      },
+      job_id: "abcdef12-3456-7890-abcd-ef1234567890",
+      status: "pending",
     });
 
     render(<ConnectionsPage />);
@@ -706,27 +684,18 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Production account" }));
     const drawer = await screen.findByRole("dialog", { name: "Production account" });
-    await waitFor(() => expect(within(drawer).getByText("Read-only scan complete")).toBeInTheDocument());
-
-    expect(within(drawer).getByText("42")).toBeInTheDocument();
-    expect(within(drawer).getByText("7")).toBeInTheDocument();
-    expect(within(drawer).getByText("30/40")).toBeInTheDocument();
-    expect(within(drawer).getByText("75%")).toBeInTheDocument();
+    await waitFor(() => expect(within(drawer).getByText("Read-only scan queued")).toBeInTheDocument());
     expect(within(drawer).getByRole("link", { name: "Scan result" })).toHaveAttribute(
       "href",
       "/scan?id=abcdef12-3456-7890-abcd-ef1234567890",
     );
-    expect(within(drawer).getByRole("link", { name: "Findings" })).toHaveAttribute(
+    expect(within(drawer).getByRole("link", { name: "Jobs" })).toHaveAttribute(
       "href",
-      "/findings?scan=abcdef12-3456-7890-abcd-ef1234567890",
-    );
-    expect(within(drawer).getByRole("link", { name: "Graph" })).toHaveAttribute(
-      "href",
-      "/graph?scan_id=abcdef12-3456-7890-abcd-ef1234567890",
+      "/jobs?q=abcdef12-3456-7890-abcd-ef1234567890",
     );
   });
 
-  it("shows authorization evidence completeness without exposing raw evidence records", async () => {
+  it("shows the accepted Azure job without exposing provider evidence records", async () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "tenant-acme",
@@ -734,33 +703,12 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
       count: 1,
     });
     apiMock.scanCloudConnection.mockResolvedValue({
-      schema_version: "cloud.connections.scan.v1",
+      schema_version: "cloud.connections.scan.accepted.v1",
       connection_id: "conn-1",
       tenant_id: "tenant-acme",
       provider: "azure",
-      scan_id: "azure-scan-1",
-      inventory: {
-        provider: "azure",
-        resource_count: 4,
-        identity_count: 2,
-        authorization_evidence: {
-          status: "partial",
-          required_source_count: 3,
-          complete_source_count: 2,
-          partial_source_count: 1,
-          indeterminate_source_count: 0,
-        },
-      },
-      cis_benchmark: {
-        benchmark: "CIS Azure",
-        benchmark_version: "2.0",
-        passed: 1,
-        failed: 0,
-        total: 1,
-        pass_rate: 1,
-      },
-      audit_metadata: { read_only: true, writes_performed: false, note: "Read-only scan." },
-      connection: { ...CREATED_RECORD, provider: "azure", status: "active" },
+      job_id: "azure-scan-1",
+      status: "pending",
     });
 
     render(<ConnectionsPage />);
@@ -770,9 +718,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Production account" }));
 
     const drawer = await screen.findByRole("dialog", { name: "Production account" });
-    expect(within(drawer).getByText("Authorization evidence")).toBeInTheDocument();
-    expect(within(drawer).getByText("Partial")).toBeInTheDocument();
-    expect(within(drawer).getByText(/2 of 3 required evidence sources are complete/i)).toBeInTheDocument();
+    expect(within(drawer).getByText("Read-only scan queued")).toBeInTheDocument();
     expect(within(drawer).queryByText(/binding|diagnostic/i)).not.toBeInTheDocument();
   });
 

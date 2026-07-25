@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock3,
   Network,
   RefreshCw,
   ShieldCheck,
@@ -236,79 +235,63 @@ function CampaignCard({
   >;
 
   return (
-    <article className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 shadow-sm md:p-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--status-danger)]">
-              {campaign.severity}
-            </span>
-            <span className="text-xs text-[color:var(--text-tertiary)]">
-              {campaign.finding_count} correlated finding{campaign.finding_count === 1 ? "" : "s"}
-            </span>
-            <span className="text-xs text-[color:var(--text-tertiary)]">Source: {campaign.source.replaceAll("_", " ")}</span>
+    <details className="group risk-campaign-card">
+      <summary className="risk-campaign-summary">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="risk-campaign-severity">{campaign.severity}</span>
+            <h3 className="risk-card-title">{campaign.title}</h3>
           </div>
-          <h3 className="mt-2 text-base font-semibold leading-6 text-[color:var(--foreground)] md:text-lg">
-            {campaign.title}
-          </h3>
-          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[color:var(--text-secondary)]">
-            <span><strong className="text-[color:var(--foreground)]">Owner:</strong> {campaign.owner || "Unassigned"}</span>
-            <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{formatDate(campaign.sla_due_at)}</span>
-            <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{VERIFICATION_LABELS[campaign.verification_status]}</span>
-          </div>
+          <p className="risk-card-meta">
+            {campaign.finding_count} finding{campaign.finding_count === 1 ? "" : "s"} · {campaign.owner || "Unassigned"} · {formatDate(campaign.sla_due_at)} · {VERIFICATION_LABELS[campaign.verification_status]}
+          </p>
         </div>
-
-        <div className="grid shrink-0 grid-cols-2 gap-2 sm:min-w-[19rem]">
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Priority</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-[color:var(--foreground)]">{campaign.priority_score}</div>
-            <button
-              type="button"
-              onClick={() => setExpanded((current) => !current)}
-              className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)]"
-              aria-expanded={expanded}
-            >
-              Why this priority {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            </button>
-          </div>
-          <div className="rounded-xl border border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] p-3">
-            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Expected reduction</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums text-[color:var(--status-success)]">
-              {campaign.expected_risk_reduction.modeled_window_percent}% modeled window risk
-            </div>
-            <div className="text-[10px] text-[color:var(--text-tertiary)]">{campaign.expected_risk_reduction.modeled_risk_points} modeled points</div>
-            {!campaign.expected_risk_reduction.portfolio_complete ? (
-              <div className="mt-1 text-[10px] text-[color:var(--status-warn)]">Bounded window; not full portfolio</div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+        <span className="risk-campaign-priority">
+          Priority <strong className="ml-1 tabular-nums text-[color:var(--foreground)]">{campaign.priority_score}</strong>
+        </span>
+        <span className="risk-campaign-reduction">
+          <span className="block">{campaign.expected_risk_reduction.modeled_window_percent}% modeled window risk</span>
+          {!campaign.expected_risk_reduction.portfolio_complete ? (
+            <span className="block text-[9px] font-normal text-[color:var(--status-warn)]">Bounded; not full portfolio</span>
+          ) : null}
+        </span>
+        <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)] transition group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="risk-campaign-body">
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="risk-priority-toggle"
+          aria-expanded={expanded}
+        >
+          Why this priority {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
 
       {expanded ? (
-        <div className="mt-4 grid gap-3 border-t border-[color:var(--border-subtle)] pt-4 lg:grid-cols-[1fr_1.3fr]">
+        <div className="risk-campaign-explainer">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <p className="col-span-2 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)] sm:col-span-4">
+            <p className="risk-campaign-evidence-label">
               Observed priority evidence
             </p>
             {factors.map(([factor, evidence]) => (
-              <div key={factor} className="rounded-lg bg-[color:var(--surface-muted)] p-2.5">
-                <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{factor.replace("_", " ")}</div>
-                <div className="mt-1 text-sm font-semibold tabular-nums text-[color:var(--foreground)]">
+              <div key={factor} className="risk-campaign-factor">
+                <div className="risk-campaign-factor-label">{factor.replace("_", " ")}</div>
+                <div className="risk-campaign-factor-value">
                   {factorValue(factor, evidence.value)}
                 </div>
-                <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{evidence.status}</div>
+                <div className="risk-campaign-factor-status">{evidence.status}</div>
               </div>
             ))}
-            <p className="col-span-2 text-[10px] leading-4 text-[color:var(--text-tertiary)] sm:col-span-4">
+            <p className="risk-campaign-evidence-note">
               Unknown evidence is neutral and adds no priority boost.
             </p>
           </div>
-          <div className="rounded-lg border border-[color:var(--border-subtle)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+          <div className="risk-campaign-method">
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {Object.entries(campaign.priority_score_components).map(([component, value]) => (
-                <div key={component} className="rounded-md bg-[color:var(--surface-muted)] px-2 py-1.5">
-                  <div className="text-[9px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{component.replaceAll("_", " ")}</div>
-                  <div className="font-semibold tabular-nums text-[color:var(--foreground)]">{value}</div>
+                <div key={component} className="risk-campaign-method-cell">
+                  <div className="risk-campaign-method-label">{component.replaceAll("_", " ")}</div>
+                  <div className="risk-number">{value}</div>
                 </div>
               ))}
             </div>
@@ -320,7 +303,7 @@ function CampaignCard({
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-3 border-t border-[color:var(--border-subtle)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="risk-campaign-actions">
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-[color:var(--text-tertiary)]" htmlFor={`campaign-state-${campaign.id}`}>Campaign state</label>
           <select
@@ -329,60 +312,60 @@ function CampaignCard({
             value={campaign.state}
             disabled={busy || !workflowActionable}
             onChange={(event) => void updateState(event.target.value as RiskCampaignState)}
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-1.5 text-xs text-[color:var(--foreground)]"
+            className="risk-campaign-select"
           >
             {Object.entries(STATE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
+          <span className="risk-campaign-status-pill">
             {VERIFICATION_LABELS[campaign.verification_status]}
           </span>
           <button
             type="button"
             disabled={busy || !workflowActionable}
             onClick={() => void verifyRemediation()}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="risk-campaign-link-action"
           >
             <ShieldCheck className="h-3.5 w-3.5" /> Re-verify remediation
           </button>
-          <button type="button" disabled={!workflowActionable} onClick={() => setEditingAssignment((current) => !current)} className="text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" disabled={!workflowActionable} onClick={() => setEditingAssignment((current) => !current)} className="risk-link-button">
             Edit owner and SLA
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
           {connections.length > 1 ? (
-            <select aria-label="Ticketing connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)} className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-1.5 text-xs text-[color:var(--foreground)]">
+            <select aria-label="Ticketing connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)} className="risk-campaign-select">
               {connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.display_name || connection.provider}</option>)}
             </select>
           ) : null}
-          <button type="button" disabled={busy || !workflowActionable || !connectionId} onClick={() => void ticketAction("create")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" disabled={busy || !workflowActionable || !connectionId} onClick={() => void ticketAction("create")} className="risk-campaign-ticket-primary">
             <Ticket className="h-3.5 w-3.5" /> {ticketProgress?.mode === "create" && ticketProgress.hasMore ? `Continue tickets (${ticketProgress.processed}/${ticketProgress.total})` : "Create campaign tickets"}
           </button>
-          <button type="button" disabled={busy || !workflowActionable} onClick={() => void ticketAction("sync")} className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" disabled={busy || !workflowActionable} onClick={() => void ticketAction("sync")} className="risk-campaign-ticket-secondary">
             <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} /> {ticketProgress?.mode === "sync" && ticketProgress.hasMore ? `Continue sync (${ticketProgress.processed}/${ticketProgress.total})` : "Sync tickets"}
           </button>
         </div>
       </div>
       {!workflowActionable ? (
-        <p role="status" className="mt-3 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+        <p role="status" className="risk-campaign-warning">
           Workflow actions are paused until the complete campaign membership is available. No partial ticket or verification state will be written.
         </p>
       ) : null}
       {editingAssignment ? (
-        <div className="mt-3 grid gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
+        <div className="risk-campaign-assignment">
           <label className="text-xs text-[color:var(--text-secondary)]">
             Campaign owner
-            <input aria-label="Campaign owner" value={owner} onChange={(event) => setOwner(event.target.value)} className="mt-1 block w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-2 text-xs text-[color:var(--foreground)]" />
+            <input aria-label="Campaign owner" value={owner} onChange={(event) => setOwner(event.target.value)} className="risk-campaign-input" />
           </label>
           <label className="text-xs text-[color:var(--text-secondary)]">
             Campaign SLA
-            <input aria-label="Campaign SLA" type="date" value={slaDate} onChange={(event) => setSlaDate(event.target.value)} className="mt-1 block w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--background)] px-2.5 py-2 text-xs text-[color:var(--foreground)]" />
+            <input aria-label="Campaign SLA" type="date" value={slaDate} onChange={(event) => setSlaDate(event.target.value)} className="risk-campaign-input" />
           </label>
-          <button type="button" disabled={busy} onClick={() => void saveAssignment()} className="rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:opacity-50">Save owner and SLA</button>
+          <button type="button" disabled={busy} onClick={() => void saveAssignment()} className="risk-campaign-save">Save owner and SLA</button>
         </div>
       ) : null}
-      {actionMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--text-secondary)]">{actionMessage}</p> : null}
+      {actionMessage ? <p role="status" className="risk-status-copy">{actionMessage}</p> : null}
       {verificationResult ? (
-        <div role="status" className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+        <div role="status" className="risk-campaign-verification-result">
           <strong className="text-[color:var(--foreground)]">
             {verificationResult.remaining_count === 0
               ? "No original findings remain."
@@ -391,12 +374,13 @@ function CampaignCard({
           Evidence: {verificationResult.evidence_scope.source.replaceAll("_", " ")}, complete {verificationResult.evidence_scope.finding_window_days}-day window.
         </div>
       ) : null}
-      {actionError ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{actionError}</p> : null}
+      {actionError ? <p role="alert" className="risk-error-copy">{actionError}</p> : null}
       {versionConflict ? (
-        <button type="button" onClick={onReload} className="mt-2 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Reload campaigns</button>
+        <button type="button" onClick={onReload} className="risk-campaign-reload">Reload campaigns</button>
       ) : null}
-      {connections.length === 0 ? <p className="mt-3 text-xs text-[color:var(--text-tertiary)]"><Link href="/connections">Connect ticketing</Link> to create new campaign tickets. Existing ticket links can still be synced.</p> : null}
-    </article>
+      {connections.length === 0 ? <p className="risk-empty-copy"><Link href="/connections">Connect ticketing</Link> to create new campaign tickets. Existing ticket links can still be synced.</p> : null}
+      </div>
+    </details>
   );
 }
 
@@ -473,43 +457,48 @@ function VerificationQueue() {
   }, []);
 
   return (
-    <section aria-labelledby="verification-queue-title" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--status-warn)]">Durable workflow evidence</div>
-          <h3 id="verification-queue-title" className="mt-1 text-base font-semibold text-[color:var(--foreground)]">Awaiting re-verification</h3>
-          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Inactive campaigns remain here after a rescan until canonical evidence confirms the original findings are gone.</p>
+    <details
+      className="group risk-campaign-queue"
+      open={entries.length > 0 || Boolean(error)}
+    >
+      <summary className="risk-campaign-queue-summary">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="risk-campaign-queue-label">Re-verification</span>
+          <h3 id="verification-queue-title" className="risk-entry-title">Awaiting re-verification</h3>
+          <span className="risk-campaign-count-pill">{entries.length} waiting</span>
         </div>
         {error ? (
-          <button type="button" onClick={() => void load(retryCursor)} className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Retry verification queue</button>
-        ) : null}
-      </div>
-      {loading ? <p role="status" className="mt-3 text-xs text-[color:var(--text-tertiary)]">Loading verification queue…</p> : null}
-      {error ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{error}</p> : null}
+          <button type="button" onClick={() => void load(retryCursor)} className="risk-campaign-reload">Retry verification queue</button>
+        ) : <span className="risk-collapsed-label">show</span>}
+      </summary>
+      <div className="risk-queue-body">
+      <p className="risk-helper-copy">Inactive campaigns stay here until canonical evidence confirms the original findings are gone.</p>
+      {loading ? <p role="status" className="risk-empty-copy">Loading verification queue…</p> : null}
+      {error ? <p role="alert" className="risk-error-copy">{error}</p> : null}
       {successMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--status-success)]">{successMessage}</p> : null}
       {!loading && entries.length === 0 && !error ? (
-        <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">No inactive campaigns await re-verification.</p>
+        <p className="risk-empty-copy">No inactive campaigns await re-verification.</p>
       ) : null}
       {!loading && entries.length > 0 ? (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {entries.map((entry) => {
             const result = results[entry.campaign_id];
             return (
-              <article key={entry.campaign_id} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <article key={entry.campaign_id} className="risk-campaign-queue-entry">
+                <div className="risk-entry-layout">
                   <div className="min-w-0">
-                    <h4 className="text-sm font-semibold text-[color:var(--foreground)]">{entry.title}</h4>
-                    <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+                    <h4 className="risk-entry-title">{entry.title}</h4>
+                    <p className="risk-entry-copy">
                       {entry.original_member_count} original findings · Owner: {entry.owner || "Unassigned"} · {formatDate(entry.sla_due_at)}
                     </p>
-                    <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--text-tertiary)]">{VERIFICATION_LABELS[entry.verification_status]} · inactive snapshot</p>
+                    <p className="risk-entry-meta">{VERIFICATION_LABELS[entry.verification_status]} · inactive snapshot</p>
                   </div>
                   <button
                     type="button"
                     disabled={busyId === entry.campaign_id}
                     onClick={() => void verify(entry)}
                     aria-label={`Re-verify ${entry.title}`}
-                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-wait disabled:opacity-50"
+                    className="risk-campaign-verify-button"
                   >
                     <ShieldCheck className="h-3.5 w-3.5" /> {busyId === entry.campaign_id ? "Verifying…" : "Re-verify"}
                   </button>
@@ -529,12 +518,13 @@ function VerificationQueue() {
           type="button"
           disabled={loadingMore || nextCursor === null}
           onClick={() => void load(nextCursor)}
-          className="mt-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--accent)] disabled:cursor-wait disabled:opacity-50"
+          className="risk-campaign-load-more"
         >
           {loadingMore ? "Loading more…" : "Load more awaiting verification"}
         </button>
       ) : null}
-    </section>
+      </div>
+    </details>
   );
 }
 
@@ -586,19 +576,19 @@ export function RiskCampaignCommandCenter() {
         <PageErrorState title={error} detail="No campaign status has been inferred. Retry the authoritative API." action={{ label: "Retry campaigns", onClick: () => void load() }} />
       ) : campaigns.length === 0 ? (
         <PageEmptyState title="No prioritized campaigns yet" detail="No campaign was returned for the current 90-day findings window. This is not an all-clear result." icon={Network} actions={[{ label: "Run a scan", href: "/scan" }, { label: "Review findings", href: "/findings", variant: "secondary" }]} />
-      ) : <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      ) : <div className="risk-campaign-header">
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--accent)]">Prioritized remediation</div>
-          <h2 id="risk-campaigns-title" className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--foreground)]">Risk campaigns</h2>
-          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">{campaigns.length} campaigns cluster {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} into owner-ready work.</p>
+          <div className="risk-campaign-kicker">Prioritized remediation</div>
+          <h2 id="risk-campaigns-title" className="risk-page-title">Risk campaigns</h2>
+          <p className="risk-page-copy">{campaigns.length} campaigns cluster {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} into owner-ready work.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
-          <Link href="/security-graph" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[color:var(--text-secondary)]">Open investigation</Link>
-          <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[color:var(--text-tertiary)]">Last {windowDays} days</span>
+          <Link href="/security-graph" className="risk-campaign-investigate">Open investigation</Link>
+          <span className="risk-campaign-window">Last {windowDays} days</span>
         </div>
       </div>}
       {!loading && !error && campaigns.length > 0 && truncated ? (
-        <div role="status" className="flex items-start gap-2 rounded-xl border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2.5 text-xs text-[color:var(--text-secondary)]">
+        <div role="status" className="risk-campaign-truncated">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--status-warn)]" />
           <span>
             <strong className="text-[color:var(--foreground)]">Results may be incomplete.</strong>{" "}
@@ -609,10 +599,10 @@ export function RiskCampaignCommandCenter() {
       <VerificationQueue />
       {!loading && !error && campaigns.length > 0 ? (
         <>
-          <div className="grid gap-4 2xl:grid-cols-2">
+          <div className="grid gap-2">
             {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
           </div>
-          <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">
+          <div className="risk-proof-note">
             <CheckCircle2 className="h-3.5 w-3.5" /> Priority and expected reduction are supplied by the server; ticket actions use stored connections.
           </div>
         </>

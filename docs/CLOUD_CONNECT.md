@@ -35,6 +35,12 @@ brokered catalog.
 The dashboard **Connections** page runs the same read-only grant flow as a
 three-step wizard: **Provider → Setup → Details**.
 
+Manual connection scans are durable jobs: `POST
+/v1/cloud/connections/{id}/scan` returns `202` with a `job_id`; poll `GET
+/v1/scan/{job_id}` for completion. Send an `Idempotency-Key` header when a
+caller may retry the POST so the retry receives the original job instead of
+starting duplicate work.
+
 **Scope (single target vs org fan-out).** By default each connection — and
 `POST /v1/cloud/connections/{id}/scan` — covers **one** AWS account, Azure
 subscription, or GCP project (AWS "All enabled regions" is still that one

@@ -6,6 +6,7 @@ import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
   useReactFlow, ReactFlowProvider,
   type Edge,
+  type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -18,9 +19,12 @@ import {
 } from "@/lib/api";
 import type { AttackFlowNodeData, AttackFlowResponse } from "@/lib/api";
 import { SeverityBadge } from "@/components/severity-badge";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, ATTACK_FLOW_MINIMAP_COLORS } from "@/lib/graph-utils";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, ATTACK_FLOW_MINIMAP_COLORS, graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
-import { FullscreenButton } from "@/components/graph-chrome";
+import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { graphTopologyKey } from "@/lib/graph-presentation";
+import { useAuthState } from "@/components/auth-provider";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -57,40 +61,40 @@ function AttackFlowNode({ data }: { data: AttackFlowNodeData }) {
   const showSource = nodeType !== "agent" && nodeType !== "credential" && nodeType !== "tool";
 
   return (
-    <div className={`rounded-lg border-2 px-3 py-2 min-w-[140px] max-w-[220px] shadow-lg backdrop-blur ${colorClass}`}>
-      {showTarget && <Handle type="target" position={Position.Left} className="!bg-[var(--text-tertiary)] !w-2 !h-2 !border-[var(--border-strong)]" />}
+    <div className={`attack-flow-node ${colorClass}`}>
+      {showTarget && <Handle type="target" position={Position.Left} className="attack-flow-handle" />}
       <div className="flex items-center gap-1.5 mb-0.5">
         <Icon className="w-3.5 h-3.5 shrink-0" />
-        <span className="text-xs font-semibold text-[var(--foreground)] truncate">{data.label}</span>
+        <span className="attack-flow-node-label">{data.label}</span>
       </div>
       <div className="flex flex-wrap gap-1 mt-1">
         {nodeType === "cve" && data.severity && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${severityColor(data.severity)}`}>{data.severity}</span>
         )}
         {nodeType === "cve" && data.is_kev && (
-          <span className="text-[10px] px-1 py-0.5 rounded border font-mono border-red-700 bg-red-950 text-red-400">KEV</span>
+          <span className="attack-flow-kev">KEV</span>
         )}
         {nodeType === "cve" && data.cvss_score != null && (
-          <span className="text-[10px] text-[var(--text-secondary)] font-mono">CVSS {data.cvss_score.toFixed(1)}</span>
+          <span className="attack-flow-meta">CVSS {data.cvss_score.toFixed(1)}</span>
         )}
-        {nodeType === "package" && data.version && <span className="text-[10px] text-[var(--text-secondary)] font-mono">@{data.version}</span>}
-        {nodeType === "package" && data.ecosystem && <span className="text-[10px] text-[var(--text-tertiary)] font-mono">{data.ecosystem}</span>}
-        {nodeType === "agent" && data.agent_type && <span className="text-[10px] text-[var(--text-secondary)] font-mono">{data.agent_type}</span>}
+        {nodeType === "package" && data.version && <span className="attack-flow-meta">@{data.version}</span>}
+        {nodeType === "package" && data.ecosystem && <span className="attack-flow-meta-muted">{data.ecosystem}</span>}
+        {nodeType === "agent" && data.agent_type && <span className="attack-flow-meta">{data.agent_type}</span>}
       </div>
       {nodeType === "cve" && (data.owasp_tags?.length || data.atlas_tags?.length || data.owasp_mcp_tags?.length) ? (
         <div className="flex flex-wrap gap-0.5 mt-1">
           {data.owasp_tags?.slice(0, 2).map((tag) => (
-            <span key={tag} className="text-[9px] font-mono bg-purple-950/60 border border-purple-800/50 text-purple-400 rounded px-1">{tag}</span>
+            <span key={tag} className="attack-flow-tag attack-flow-tag-purple">{tag}</span>
           ))}
           {data.owasp_mcp_tags?.slice(0, 2).map((tag) => (
-            <span key={tag} className="text-[9px] font-mono bg-amber-950/60 border border-amber-800/50 text-amber-400 rounded px-1">{tag}</span>
+            <span key={tag} className="attack-flow-tag attack-flow-tag-amber">{tag}</span>
           ))}
           {data.atlas_tags?.slice(0, 1).map((tag) => (
-            <span key={tag} className="text-[9px] font-mono bg-cyan-950/60 border border-cyan-800/50 text-cyan-400 rounded px-1">{tag}</span>
+            <span key={tag} className="attack-flow-tag attack-flow-tag-cyan">{tag}</span>
           ))}
         </div>
       ) : null}
-      {showSource && <Handle type="source" position={Position.Right} className="!bg-[var(--text-tertiary)] !w-2 !h-2 !border-[var(--border-strong)]" />}
+      {showSource && <Handle type="source" position={Position.Right} className="attack-flow-handle" />}
     </div>
   );
 }
@@ -109,26 +113,26 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
       <div className="p-4 space-y-4">
         <div className="flex items-start justify-between">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">{typeLabels[data.nodeType] ?? data.nodeType}</span>
-            <h3 className="text-sm font-semibold text-[var(--foreground)] mt-0.5 break-all">{data.label}</h3>
+            <span className="attack-flow-drawer-kicker">{typeLabels[data.nodeType] ?? data.nodeType}</span>
+            <h3 className="attack-flow-drawer-title">{data.label}</h3>
           </div>
-          <button onClick={onClose} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="attack-flow-close"><X className="w-4 h-4" /></button>
         </div>
         {data.nodeType === "cve" && (
           <div className="space-y-3">
             {data.severity && <SeverityBadge severity={data.severity} />}
             <div className="grid grid-cols-2 gap-2">
-              {data.cvss_score != null && <div className="bg-[var(--surface)] rounded-lg p-2 text-center"><div className="text-lg font-bold font-mono text-[var(--foreground)]">{data.cvss_score.toFixed(1)}</div><div className="text-[10px] text-[var(--text-tertiary)]">CVSS</div></div>}
-              {data.epss_score != null && <div className="bg-[var(--surface)] rounded-lg p-2 text-center"><div className="text-lg font-bold font-mono text-[var(--foreground)]">{(data.epss_score * 100).toFixed(1)}%</div><div className="text-[10px] text-[var(--text-tertiary)]">EPSS</div></div>}
+              {data.cvss_score != null && <div className="bg-[var(--surface)] rounded-lg p-2 text-center"><div className="attack-flow-stat-value">{data.cvss_score.toFixed(1)}</div><div className="text-[10px] text-[var(--text-tertiary)]">CVSS</div></div>}
+              {data.epss_score != null && <div className="bg-[var(--surface)] rounded-lg p-2 text-center"><div className="attack-flow-stat-value">{(data.epss_score * 100).toFixed(1)}%</div><div className="text-[10px] text-[var(--text-tertiary)]">EPSS</div></div>}
             </div>
-            {data.is_kev && <div className="text-xs font-mono bg-red-950 border border-red-800 text-red-400 rounded px-2 py-1.5 flex items-center gap-1.5"><AlertTriangle className="w-3 h-3" />CISA Known Exploited Vulnerability</div>}
+            {data.is_kev && <div className="attack-flow-kev-banner"><AlertTriangle className="w-3 h-3" />CISA Known Exploited Vulnerability</div>}
             {data.fixed_version && <div className="text-xs text-[var(--text-secondary)]">Fix available: <span className="text-emerald-400 font-mono font-semibold">{data.fixed_version}</span></div>}
             {data.owasp_tags && data.owasp_tags.length > 0 && <FrameworkTags title="OWASP LLM Top 10" tags={data.owasp_tags} catalog={OWASP_LLM_TOP10} color="purple" />}
             {data.owasp_mcp_tags && data.owasp_mcp_tags.length > 0 && <FrameworkTags title="OWASP MCP Top 10" tags={data.owasp_mcp_tags} catalog={OWASP_MCP_TOP10} color="amber" />}
             {data.atlas_tags && data.atlas_tags.length > 0 && <FrameworkTags title="MITRE ATLAS" tags={data.atlas_tags} catalog={MITRE_ATLAS} color="cyan" />}
             {data.risk_score != null && <div className="text-xs text-[var(--text-secondary)]">Risk score: <span className="text-red-400 font-mono font-bold">{data.risk_score}</span></div>}
             {osvUrl && (
-              <a href={osvUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors">
+              <a href={osvUrl} target="_blank" rel="noopener noreferrer" className="attack-flow-external-link">
                 <ExternalLink className="w-3 h-3" />View on OSV
               </a>
             )}
@@ -147,7 +151,7 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
 function FrameworkTags({ title, tags, catalog, color }: { title: string; tags: string[]; catalog: Record<string, string>; color: string }) {
   return (
     <div>
-      <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1">{title}</div>
+      <div className="attack-flow-filter-label">{title}</div>
       <div className="space-y-1">
         {tags?.map((tag) => (
           <div key={tag} className={`text-xs font-mono bg-${color}-950/40 border border-${color}-800/50 text-${color}-400 rounded px-2 py-1`}>
@@ -173,7 +177,7 @@ function ExportButton() {
   }, [getNodes, getEdges]);
 
   return (
-    <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] transition-colors">
+    <button onClick={handleExport} className="attack-flow-export">
       <Download className="w-3 h-3" />Export JSON
     </button>
   );
@@ -202,7 +206,7 @@ function FilterBar({ filters, onChange, blastRadius }: { filters: AttackFlowFilt
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <Filter className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
-      <select value={filters.cve} onChange={(e) => onChange({ ...filters, cve: e.target.value })} className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600">
+      <select value={filters.cve} onChange={(e) => onChange({ ...filters, cve: e.target.value })} className="attack-flow-select">
         <option value="">All CVEs</option>
         {cveIds?.map((id) => <option key={id} value={id}>{id}</option>)}
       </select>
@@ -212,19 +216,19 @@ function FilterBar({ filters, onChange, blastRadius }: { filters: AttackFlowFilt
         ))}
       </div>
       {frameworkTags.length > 0 && (
-        <select value={filters.framework} onChange={(e) => onChange({ ...filters, framework: e.target.value })} className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600">
+        <select value={filters.framework} onChange={(e) => onChange({ ...filters, framework: e.target.value })} className="attack-flow-select">
           <option value="">All Frameworks</option>
           {frameworkTags?.map((tag) => <option key={tag} value={tag}>{tag} {OWASP_LLM_TOP10[tag] ? `- ${OWASP_LLM_TOP10[tag]}` : OWASP_MCP_TOP10[tag] ? `- ${OWASP_MCP_TOP10[tag]}` : MITRE_ATLAS[tag] ? `- ${MITRE_ATLAS[tag]}` : ""}</option>)}
         </select>
       )}
       {agentNames.length > 0 && (
-        <select value={filters.agent} onChange={(e) => onChange({ ...filters, agent: e.target.value })} className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600">
+        <select value={filters.agent} onChange={(e) => onChange({ ...filters, agent: e.target.value })} className="attack-flow-select">
           <option value="">All Agents</option>
           {agentNames?.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
       )}
       {(filters.cve || filters.severity || filters.framework || filters.agent) && (
-        <button onClick={() => onChange({ cve: "", severity: "", framework: "", agent: "" })} className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors underline">Clear filters</button>
+        <button onClick={() => onChange({ cve: "", severity: "", framework: "", agent: "" })} className="attack-flow-clear-small">Clear filters</button>
       )}
     </div>
   );
@@ -260,18 +264,50 @@ function StatsBar({ stats }: { stats: AttackFlowResponse["stats"] }) {
 // ─── Flow Content ───────────────────────────────────────────────────────────
 
 function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id: string; job: ScanJob; flowData: AttackFlowResponse; filters: AttackFlowFilters; onFiltersChange: (f: AttackFlowFilters) => void }) {
+  const { session, loading: authLoading } = useAuthState();
   const [selectedNode, setSelectedNode] = useState<AttackFlowNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const flowInstance = useReactFlow();
   const blastRadius = job.result?.blast_radius ?? [];
 
-  const nodes = flowData.nodes?.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> }));
-  const edges = flowData.edges as unknown as Edge[];
+  const nodes = useMemo(
+    () => flowData.nodes?.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> })) as Node[],
+    [flowData.nodes],
+  );
+  const edges = useMemo(
+    () => readableGraphEdges(flowData.edges as unknown as Edge[], undefined, { nodeLabels: graphNodeDisplayLabels(nodes) }),
+    [flowData.edges, nodes],
+  );
+  const presentation = useGraphPresentation({
+    nodes,
+    scope: {
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: id,
+      lens: "attack-flow",
+      scope: JSON.stringify({ filters, topology: graphTopologyKey(nodes, edges) }),
+    },
+    layout: "attack-flow",
+    enabled: !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
+  });
+
+  const fitVisible = useCallback(
+    () => void flowInstance.fitView({ padding: 0.2, duration: 240 }),
+    [flowInstance],
+  );
+  const fitSelection = useCallback(() => {
+    const node = selectedNodeId ? flowInstance.getNode(selectedNodeId) : undefined;
+    if (node) void flowInstance.fitView({ nodes: [node], padding: 0.7, duration: 240 });
+  }, [flowInstance, selectedNodeId]);
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
-      <div className="px-4 py-3 border-b border-[var(--border-subtle)] space-y-2">
+      <div className="attack-flow-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href={`/scan?id=${id}`} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"><ArrowLeft className="w-4 h-4" /></Link>
+            <Link href={`/scan?id=${id}`} className="attack-flow-back"><ArrowLeft className="w-4 h-4" /></Link>
             <div>
               <h1 className="text-lg font-semibold text-[var(--foreground)]">Attack Flow</h1>
               <p className="text-xs text-[var(--text-tertiary)]">CVE &rarr; Package &rarr; Server &rarr; Agent blast radius chain</p>
@@ -279,6 +315,15 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
           </div>
           <div className="flex items-center gap-3">
             <StatsBar stats={flowData.stats} />
+            {presentation.enabled && nodes.length > 0 && <GraphInteractionToolbar
+              editing={presentation.editing}
+              hasSelection={Boolean(selectedNodeId)}
+              onFitVisible={fitVisible}
+              onFitSelection={fitSelection}
+              onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
+              onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
+              onToggleEditing={presentation.toggleEditing}
+            />}
             <FullscreenButton />
             <ExportButton />
           </div>
@@ -287,27 +332,46 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
       </div>
       <div className="flex-1 relative">
         {flowData.nodes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] gap-3">
+          <div className="attack-flow-empty">
             <Filter className="w-8 h-8 text-[var(--text-tertiary)]" />
             <p className="text-sm">No results match the current filters</p>
-            <button onClick={() => onFiltersChange({ cve: "", severity: "", framework: "", agent: "" })} className="text-xs text-emerald-400 hover:text-emerald-300 underline">Clear all filters</button>
+            <button onClick={() => onFiltersChange({ cve: "", severity: "", framework: "", agent: "" })} className="attack-flow-clear">Clear all filters</button>
           </div>
         ) : (
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.1} maxZoom={2} defaultEdgeOptions={{ type: "smoothstep" }} proOptions={{ hideAttribution: true }} onNodeClick={(_event, node) => setSelectedNode(node.data as unknown as AttackFlowNodeData)} onPaneClick={() => setSelectedNode(null)}>
+          <ReactFlow
+            key={presentation.storageKey}
+            nodes={presentation.nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView={!presentation.hasSavedState}
+            defaultViewport={presentation.viewport}
+            minZoom={0.1}
+            maxZoom={2}
+            deleteKeyCode={null}
+            nodesDraggable={presentation.editing}
+            nodesConnectable={false}
+            onNodesChange={presentation.onNodesChange}
+            onNodeDragStop={presentation.onNodeDragStop}
+            onMoveEnd={presentation.onMoveEnd}
+            defaultEdgeOptions={{ type: "smoothstep" }}
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={(_event, node) => { setSelectedNode(node.data as unknown as AttackFlowNodeData); setSelectedNodeId(node.id); }}
+            onPaneClick={() => { setSelectedNode(null); setSelectedNodeId(null); }}
+          >
             <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
             <Controls className={CONTROLS_CLASS} />
             <MiniMap nodeColor={(n) => { const d = n.data as unknown as AttackFlowNodeData; return ATTACK_FLOW_MINIMAP_COLORS[d.nodeType] ?? "#52525b"; }} className={MINIMAP_CLASS} />
           </ReactFlow>
         )}
-        {selectedNode && <DetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />}
+        {selectedNode && <DetailPanel data={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} />}
       </div>
-      <div className="px-4 py-2 border-t border-[var(--border-subtle)] flex items-center gap-4 text-[10px] text-[var(--text-tertiary)]">
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-red-600 bg-red-950" /> CVE</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-[var(--border-strong)] bg-[var(--surface)]" /> Package</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-blue-600 bg-blue-950" /> Server</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-emerald-600 bg-emerald-950" /> Agent</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-yellow-600 bg-yellow-950" /> Credential</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-purple-600 bg-purple-950" /> Tool</span>
+      <div className="attack-flow-legend">
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-red-600 bg-red-950" /> CVE</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-[var(--border-strong)] bg-[var(--surface)]" /> Package</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-blue-600 bg-blue-950" /> Server</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-emerald-600 bg-emerald-950" /> Agent</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-yellow-600 bg-yellow-950" /> Credential</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-purple-600 bg-purple-950" /> Tool</span>
       </div>
     </div>
   );
@@ -337,8 +401,8 @@ export function AttackFlowView({ id }: { id: string }) {
     return () => window.clearTimeout(timer);
   }, [id, filters]);
 
-  if (loading && !flowData) return <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading attack flow...</div>;
-  if (error) return <div className="flex flex-col items-center justify-center h-[80vh] text-[var(--text-secondary)] gap-3"><AlertTriangle className="w-8 h-8 text-amber-500" /><p className="text-sm">Could not load attack flow</p><p className="text-xs text-[var(--text-tertiary)]">{error}</p><Link href={`/scan?id=${id}`} className="text-xs text-emerald-400 hover:text-emerald-300 underline">Back to scan results</Link></div>;
+  if (loading && !flowData) return <div className="attack-flow-loading"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading attack flow...</div>;
+  if (error) return <div className="attack-flow-error"><AlertTriangle className="w-8 h-8 text-amber-500" /><p className="text-sm">Could not load attack flow</p><p className="text-xs text-[var(--text-tertiary)]">{error}</p><Link href={`/scan?id=${id}`} className="attack-flow-clear">Back to scan results</Link></div>;
   if (!job || !flowData) return null;
 
   return <ReactFlowProvider><AttackFlowContent id={id} job={job} flowData={flowData} filters={filters} onFiltersChange={setFilters} /></ReactFlowProvider>;

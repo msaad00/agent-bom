@@ -8,6 +8,7 @@ import {
   MiniMap,
   type Node,
   type Edge,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -44,18 +45,22 @@ import {
   MINIMAP_MASK,
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
+  graphNodeDisplayLabels,
   legendItemsForVisibleGraph,
   minimapNodeColor,
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
-import { FullscreenButton } from "@/components/graph-chrome";
+import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+import { useAuthState } from "@/components/auth-provider";
+import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 
 // ─── Filter Toolbar ─────────────────────────────────────────────────────────
 
@@ -194,10 +199,12 @@ export default function MeshPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const [layoutMode, setLayoutMode] = useState<MeshLayoutMode>("topology");
   const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
 
   // Filters
   const [nodeFilter, setNodeFilter] = useState<NodeTypeFilter>({
@@ -211,6 +218,7 @@ export default function MeshPage() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const { counts } = useDeploymentContext();
+  const { session, loading: authLoading } = useAuthState();
   const captureMode = useCaptureMode();
 
   useEffect(() => {
@@ -344,7 +352,17 @@ export default function MeshPage() {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [activeResult, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
 
-  const { nodes: visibleNodes, edges: visibleEdges } = useGraphLayout(layoutMode, rawNodes, rawEdges, {
+  const pathFocusIds = useMemo(() => {
+    if (!pathFocusEnabled || !stats.topExposurePath || searchQuery || hoveredNodeId) return null;
+    return new Set(stats.topExposurePath.nodeIds);
+  }, [hoveredNodeId, pathFocusEnabled, searchQuery, stats.topExposurePath]);
+  const pathFocusActive = Boolean(pathFocusIds);
+  const layoutInput = useMemo(
+    () => selectGraphSubgraph(rawNodes, rawEdges, pathFocusIds),
+    [pathFocusIds, rawEdges, rawNodes],
+  );
+
+  const { nodes: visibleNodes, edges: visibleEdges } = useGraphLayout(layoutMode, layoutInput.nodes, layoutInput.edges, {
     radial: {
       baseRadius: captureMode ? 170 : 260,
       ringSpacing: captureMode ? 150 : 240,
@@ -360,11 +378,12 @@ export default function MeshPage() {
       minSeparation: LINEAGE_MIN_SEPARATION,
     },
   });
+  const typedVisibleNodes = visibleNodes as Node<LineageNodeData>[];
 
   // Search highlighting
   const searchMatches = useMemo(
-    () => (searchQuery ? searchNodes(visibleNodes, searchQuery) : null),
-    [visibleNodes, searchQuery]
+    () => (searchQuery ? searchNodes(typedVisibleNodes, searchQuery) : null),
+    [typedVisibleNodes, searchQuery]
   );
 
   const toggleAgent = useCallback((name: string) => {
@@ -382,35 +401,28 @@ export default function MeshPage() {
     [hoveredNodeId, visibleEdges]
   );
 
-  const pathFocusIds = useMemo(() => {
-    if (!pathFocusEnabled || !stats.topExposurePath || searchQuery || hoveredNodeId) return null;
-    return new Set(stats.topExposurePath.nodeIds);
-  }, [hoveredNodeId, pathFocusEnabled, searchQuery, stats.topExposurePath]);
-
-  const pathFocusActive = Boolean(pathFocusIds);
-
-  const displayNodes = useMemo(() => {
+  const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
     if (searchMatches && searchMatches.size > 0) {
-      return visibleNodes?.map((n) => ({
+      return typedVisibleNodes.map((n) => ({
         ...n,
         data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id), renderBand: "detail" as const },
       }));
     }
     if (pathFocusIds) {
-      return visibleNodes
-        ?.filter((n) => pathFocusIds.has(n.id))
+      return typedVisibleNodes
+        .filter((n) => pathFocusIds.has(n.id))
         .map((n) => ({
           ...n,
           data: { ...n.data, dimmed: false, highlighted: true, renderBand: "detail" as const },
         }));
     }
     if (!connectedIds) {
-      return visibleNodes?.map((n) => ({
+      return typedVisibleNodes.map((n) => ({
         ...n,
         data: { ...n.data, renderBand: "detail" as const },
       }));
     }
-    return visibleNodes?.map((n) => ({
+    return typedVisibleNodes.map((n) => ({
       ...n,
       data: {
         ...n.data,
@@ -419,7 +431,7 @@ export default function MeshPage() {
         renderBand: "detail" as const,
       },
     }));
-  }, [visibleNodes, connectedIds, searchMatches, pathFocusIds]);
+  }, [typedVisibleNodes, connectedIds, searchMatches, pathFocusIds]);
 
   const displayEdges = useMemo(() => {
     const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
@@ -434,8 +446,9 @@ export default function MeshPage() {
       highSignalOpacity: pathFocusActive ? 0.95 : 0.58,
       inactiveOpacity: 0.06,
       captureMode,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
     });
-  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, pathFocusActive, captureMode]);
+  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, pathFocusActive, captureMode, displayNodes]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -463,8 +476,50 @@ export default function MeshPage() {
     [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
 
+  const presentationScope = useMemo(
+    () => ({
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: selectedJob || "unselected",
+      lens: "mesh",
+      scope: JSON.stringify({
+        agents: [...selectedAgents].sort(),
+        severity: severityFilter,
+        vulnerableOnly,
+        topology: graphTopologyKey(displayNodes, displayEdges),
+      }),
+    }),
+    [displayEdges, displayNodes, selectedAgents, selectedJob, session?.auth_method, session?.subject, session?.tenant_id, severityFilter, vulnerableOnly],
+  );
+  const presentation = useGraphPresentation({
+    nodes: displayNodes,
+    scope: presentationScope,
+    layout: layoutMode,
+    enabled: !captureMode && !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
+  });
+
+  const fitVisible = useCallback(() => {
+    void flowInstance?.fitView({ ...viewportOptions, duration: 240 });
+  }, [flowInstance, viewportOptions]);
+  const fitSelection = useCallback(() => {
+    if (!flowInstance || !selectedNodeId) return;
+    const node = flowInstance.getNode(selectedNodeId);
+    if (node) void flowInstance.fitView({ nodes: [node], padding: 0.7, duration: 240, maxZoom: 1.4 });
+  }, [flowInstance, selectedNodeId]);
+  const autoLayout = useCallback(() => {
+    presentation.autoLayout();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+  const resetLayout = useCallback(() => {
+    presentation.reset();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
+    setSelectedNodeId(node.id);
     setHoveredNodeId(null);
   }, []);
 
@@ -578,6 +633,15 @@ export default function MeshPage() {
               ))}
             </select>
             <FullscreenButton />
+            {presentation.enabled && !captureMode && displayNodes.length > 0 && <GraphInteractionToolbar
+              editing={presentation.editing}
+              hasSelection={Boolean(selectedNodeId)}
+              onFitVisible={fitVisible}
+              onFitSelection={fitSelection}
+              onAutoLayout={autoLayout}
+              onReset={resetLayout}
+              onToggleEditing={presentation.toggleEditing}
+            />}
           </div>
         </div>
         <GraphLensSwitcher variant="compact" legendItems={legendItems} />
@@ -635,25 +699,41 @@ export default function MeshPage() {
             command="agent-bom scan -p . -f graph"
           />
         ) : (
-          <ReactFlow
-            key={captureMode ? "mesh-capture" : "mesh-interactive"}
-            nodes={displayNodes}
+          <ReactFlow<Node<LineageNodeData>, Edge>
+            key={captureMode ? "mesh-capture" : presentation.storageKey}
+            nodes={presentation.nodes}
             edges={displayEdges}
             nodeTypes={lineageNodeTypes}
-            fitView
+            fitView={!presentation.hasSavedState}
             fitViewOptions={viewportOptions}
+            defaultViewport={presentation.viewport}
             minZoom={0.16}
             maxZoom={2.5}
-            zoomOnScroll={false}
+            zoomOnScroll={!captureMode}
+            zoomOnPinch={!captureMode}
             panOnScroll={false}
-            preventScrolling={false}
+            panOnDrag={!captureMode}
+            preventScrolling={!captureMode}
+            nodesDraggable={!captureMode && presentation.editing}
+            nodesConnectable={false}
+            nodesFocusable
+            edgesFocusable
+            elementsSelectable
+            deleteKeyCode={null}
             onlyRenderVisibleElements
             defaultEdgeOptions={{ type: "smoothstep" }}
             proOptions={{ hideAttribution: true }}
             onNodeClick={onNodeClick}
             onNodeMouseEnter={onNodeMouseEnter}
             onNodeMouseLeave={onNodeMouseLeave}
-            onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
+            onNodesChange={presentation.onNodesChange}
+            onNodeDragStop={presentation.onNodeDragStop}
+            onMoveEnd={presentation.onMoveEnd}
+            onInit={(instance) => {
+              setFlowInstance(instance);
+              void instance.setViewport(presentation.viewport);
+            }}
+            onPaneClick={() => { setSelectedNode(null); setSelectedNodeId(null); setHoveredNodeId(null); }}
           >
             <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
             {!captureMode && <Controls className={CONTROLS_CLASS} />}
@@ -671,7 +751,7 @@ export default function MeshPage() {
         {selectedNode && (
           <GraphEntityDrawer
             data={selectedNode}
-            onClose={() => setSelectedNode(null)}
+            onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
             enrich={false}
           />
         )}

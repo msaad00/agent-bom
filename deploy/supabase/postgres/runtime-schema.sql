@@ -59,6 +59,40 @@ CREATE INDEX IF NOT EXISTS auth_session_attempts_key_attempted_at_idx ON auth_se
 CREATE INDEX IF NOT EXISTS auth_session_attempts_attempted_at_idx ON auth_session_attempts(attempted_at);
 CREATE INDEX IF NOT EXISTS revoked_session_nonces_expires_at_idx ON revoked_session_nonces(expires_at);
 
+CREATE TABLE IF NOT EXISTS managed_trial_invitations (
+  invitation_id TEXT PRIMARY KEY,
+  token_digest TEXT NOT NULL UNIQUE CHECK (token_digest ~ '^[0-9a-f]{64}$'),
+  email TEXT NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+  state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','accepted','expired','revoked')),
+  created_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  accepted_at TIMESTAMPTZ,
+  verified_subject TEXT,
+  CHECK (expires_at > created_at),
+  CHECK (
+    (state = 'accepted' AND accepted_at IS NOT NULL AND verified_subject IS NOT NULL)
+    OR (state IN ('pending','expired') AND accepted_at IS NULL AND verified_subject IS NULL)
+    OR state = 'revoked'
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_managed_trial_invitations_tenant_state ON managed_trial_invitations(tenant_id,state,expires_at);
+CREATE TABLE IF NOT EXISTS managed_trial_tenants (
+  tenant_id TEXT PRIMARY KEY,
+  state TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active','suspended','expired','deleted')),
+  created_at TIMESTAMPTZ NOT NULL,
+  trial_ends_at TIMESTAMPTZ NOT NULL,
+  cleanup_after TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  cleanup_attempts INTEGER NOT NULL DEFAULT 0 CHECK (cleanup_attempts >= 0),
+  cleanup_error TEXT,
+  cleanup_completed_at TIMESTAMPTZ,
+  CHECK (trial_ends_at >= created_at),
+  CHECK (cleanup_after >= trial_ends_at),
+  CHECK ((state = 'deleted' AND cleanup_completed_at IS NOT NULL) OR state <> 'deleted')
+);
+CREATE INDEX IF NOT EXISTS idx_managed_trial_tenants_due ON managed_trial_tenants(state,trial_ends_at,cleanup_after);
+
 CREATE TABLE IF NOT EXISTS runtime_observations (tenant_id TEXT NOT NULL, observation_id TEXT NOT NULL, session_id TEXT NOT NULL, observed_at TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(tenant_id,observation_id));
 CREATE TABLE IF NOT EXISTS runtime_sessions (tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, last_seen TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(tenant_id,session_id));
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_tenant_session_time ON runtime_observations(tenant_id,session_id,observed_at DESC);
@@ -163,7 +197,7 @@ BEGIN
     'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','runtime_workload_evidence','scim_users','scim_groups',
     'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides',
     'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections',
-    'control_plane_sources','credential_refs','audit_chain_checkpoint','compliance_hub_findings','hub_findings_current',
+    'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_findings_current',
     'hub_findings_current_observations','hub_cve_intel','hub_framework_refs'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',t);
@@ -190,6 +224,6 @@ SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
  'agent_identities','runtime_events','runtime_workload_evidence','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
- 'shared_auth_state','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config'
+ 'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config'
 ]) component
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;

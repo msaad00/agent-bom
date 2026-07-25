@@ -154,40 +154,12 @@ describe("ScanForm", () => {
   it("runs a brokered cloud scan for the selected connection", async () => {
     const user = userEvent.setup();
     const scanCloudConnection = vi.spyOn(api, "scanCloudConnection").mockResolvedValue({
-      schema_version: "cloud.connections.scan.v1",
+      schema_version: "cloud.connections.scan.accepted.v1",
       connection_id: "conn-aws-1",
       tenant_id: "default",
       provider: "aws",
-      scan_id: "scan-abc",
-      inventory: {
-        provider: "aws",
-        account: "123456789012",
-        region: "us-east-1",
-        resource_count: 1,
-        identity_count: 1,
-        node_summary: {
-          buckets: 0,
-          instances: 0,
-          security_groups: 0,
-          roles: 0,
-          users: 0,
-        },
-        warnings: [],
-      },
-      cis_benchmark: {
-        benchmark: "CIS AWS",
-        benchmark_version: "1.5",
-        passed: 1,
-        failed: 0,
-        total: 1,
-        pass_rate: 1,
-      },
-      audit_metadata: {
-        read_only: true,
-        writes_performed: false,
-        note: "Read-only scan.",
-      },
-      connection: mockConnection,
+      job_id: "scan-abc",
+      status: "pending",
     });
 
     render(<ScanForm initialConnectionId="conn-aws-1" />);

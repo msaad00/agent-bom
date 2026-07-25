@@ -1669,7 +1669,7 @@ export const api = {
   /** Validate the stored read-only credential without running inventory/CIS. */
   testCloudConnection: (id: string) =>
     post<CloudConnectionTestResponse>(`/v1/cloud/connections/${encodeURIComponent(id)}/test`, {}),
-  /** Launch a read-only scan via the credential broker (AWS, Azure, GCP, Snowflake). */
+  /** Queue a durable read-only scan via the credential broker. */
   scanCloudConnection: (id: string) =>
     post<CloudConnectionScanResponse>(`/v1/cloud/connections/${encodeURIComponent(id)}/scan`, {}),
 

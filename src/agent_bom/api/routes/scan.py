@@ -27,6 +27,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import os
@@ -1119,23 +1120,21 @@ def enqueue_scan_job(
     triggered_by: str,
     request_body: ScanRequest,
     source_id: str | None = None,
+    quota_guarded: bool = False,
+    dispatch: bool = True,
 ) -> ScanJob:
-    """Persist and queue a scan job for async execution."""
+    """Persist and optionally dispatch a scan job for async execution.
+
+    ``quota_guarded`` is reserved for a caller already holding the tenant quota
+    guard while it atomically admits an adjacent resource such as a trial scan
+    credit and idempotency record.  It prevents a non-reentrant nested lock.
+    """
     store = _get_store()
     targets = scan_request_targets(request_body)
 
-    def _dispatch(job: ScanJob) -> None:
-        # In a clustered control plane, hand the job to the shared dispatch queue
-        # so any replica can claim and run it (work-stealing). Single-node
-        # deployments keep running the job on this process directly.
-        from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
-
-        if distributed_scans_enabled() and store_supports_dispatch(store):
-            store.enqueue_for_dispatch(job)
-        else:
-            submit_scan_job(job)
-
     if len(targets) > 1:
+        if quota_guarded:
+            raise ValueError("quota_guarded admission only supports one scan job")
         batch_id = str(uuid.uuid4())
         now = _now()
         parent_job_id = str(uuid.uuid4())
@@ -1193,7 +1192,7 @@ def enqueue_scan_job(
                 pass
 
         for child in child_jobs:
-            _dispatch(child)
+            dispatch_scan_job(child)
         return parent
 
     job = ScanJob(
@@ -1209,11 +1208,16 @@ def enqueue_scan_job(
     # concurrent requests serialise here and the second caller's check sees
     # the first caller's row. Without this, a tenant exceeds quota by N
     # under load (audit-4 P1).
-    with tenant_quota_guard(
-        tenant_id,
-        lambda: enforce_active_scan_quota(tenant_id),
-        lambda: enforce_retained_jobs_quota(tenant_id),
-    ):
+    admission = (
+        contextlib.nullcontext()
+        if quota_guarded
+        else tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_active_scan_quota(tenant_id),
+            lambda: enforce_retained_jobs_quota(tenant_id),
+        )
+    )
+    with admission:
         store.put(job)
         _jobs_put(job.job_id, job)
         # Recompute after durable enqueue so the gauge survives missed
@@ -1223,8 +1227,50 @@ def enqueue_scan_job(
         except Exception:  # noqa: BLE001
             pass
 
-    _dispatch(job)
+    if not dispatch:
+        return job
+    try:
+        dispatch_scan_job(job)
+    except Exception as exc:  # noqa: BLE001 - local/shared dispatch boundary
+        # The job row already exists. Never leave it looking claimable when the
+        # handoff failed, because an HTTP retry could otherwise create a second
+        # job while this orphan remains permanently pending.
+        job.status = JobStatus.FAILED
+        job.completed_at = _now()
+        job.error = "Scan dispatch failed before execution."
+        job.progress.append("Dispatch failed before execution")
+        try:
+            store.put(job)
+        except Exception as persist_exc:  # noqa: BLE001
+            _logger.error(
+                "Failed to persist scan dispatch failure job=%s: %s",
+                job.job_id,
+                sanitize_error(persist_exc, generic=True),
+            )
+        _jobs_put(job.job_id, job, compact_terminal=True)
+        try:
+            reconcile_scan_jobs_active(store)
+        except Exception:  # noqa: BLE001
+            pass
+        _logger.error(
+            "Scan dispatch failed job=%s: %s",
+            job.job_id,
+            sanitize_error(exc, generic=True),
+        )
+        raise RuntimeError("Scan dispatch failed before execution.") from None
     return job
+
+
+def dispatch_scan_job(job: ScanJob) -> None:
+    """Dispatch an already-persisted scan through the configured durable queue."""
+
+    store = _get_store()
+    from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+    if distributed_scans_enabled() and store_supports_dispatch(store):
+        store.enqueue_for_dispatch(job)
+    else:
+        submit_scan_job(job)
 
 
 # ─── Core Scan Endpoints ─────────────────────────────────────────────────────

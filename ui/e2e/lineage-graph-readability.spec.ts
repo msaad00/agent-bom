@@ -270,3 +270,29 @@ for (const theme of ["dark", "light"] as const) {
     await captureGraphScreenshot(page, testInfo, theme);
   });
 }
+
+test("lineage graph controls zoom, move, persist, lock, fit, and auto-layout", async ({ page }) => {
+  await routeGraphPage(page);
+  await page.goto("/graph", { waitUntil: "domcontentloaded" });
+  await page.waitForURL((url) => url.pathname === "/graph" && url.searchParams.has("layers"));
+
+  const canvas = page.locator(".react-flow").last();
+  const node = canvas.locator(".react-flow__node").first();
+  await expect(node).toBeVisible();
+  const before = await node.boundingBox();
+  expect(before).not.toBeNull();
+
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await node.dragTo(canvas, { targetPosition: { x: 220, y: 220 } });
+  const saved = await page.evaluate(() =>
+    Object.keys(localStorage).some((key) => key.startsWith("agent-bom:graph-presentation:v1:")),
+  );
+  expect(saved).toBe(true);
+
+  await canvas.hover();
+  await page.mouse.wheel(0, -240);
+  await page.getByRole("button", { name: "Fit visible graph" }).click();
+  await page.getByRole("button", { name: "Auto-layout graph" }).click();
+  await page.getByRole("button", { name: "Lock layout" }).click();
+  await expect(page.getByRole("button", { name: "Edit layout" })).toBeVisible();
+});

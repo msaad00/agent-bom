@@ -6,17 +6,23 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+from agent_bom.api.auth import KeyStore, Role, create_api_key_record, set_key_store
+from agent_bom.api.connection_store import CloudConnectionRecord, InMemoryConnectionStore, set_connection_store
+from agent_bom.api.credential_store import InMemoryCredentialRefStore
 from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
 from agent_bom.api.fleet_store import FleetAgent, InMemoryFleetStore
 from agent_bom.api.graph_store import SQLiteGraphStore
-from agent_bom.api.models import JobStatus, ScanJob, ScanRequest, SourceKind, SourceRecord
+from agent_bom.api.models import CredentialRefRecord, JobStatus, ScanJob, ScanRequest, SourceKind, SourceRecord
 from agent_bom.api.policy_store import GatewayPolicy, InMemoryPolicyStore
+from agent_bom.api.postgres_access import PostgresKeyStore
+from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 from agent_bom.api.routes.privacy import delete_tenant_data, export_tenant_data
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import (
+    set_credential_ref_store,
     set_exception_store,
     set_fleet_store,
     set_graph_store,
@@ -64,6 +70,9 @@ def tenant_stores():
     quota = InMemoryTenantQuotaStore()
     graph = _GraphStore()
     audit = InMemoryAuditLog()
+    connections = InMemoryConnectionStore()
+    credentials = InMemoryCredentialRefStore()
+    keys = KeyStore()
 
     set_job_store(jobs)
     set_fleet_store(fleet)
@@ -74,6 +83,9 @@ def tenant_stores():
     set_tenant_quota_store(quota)
     set_graph_store(graph)
     set_audit_log(audit)
+    set_connection_store(connections)
+    set_credential_ref_store(credentials)
+    set_key_store(keys)
 
     for tenant_id in ("tenant-a", "tenant-b"):
         jobs.put(
@@ -110,6 +122,33 @@ def tenant_stores():
         )
         exceptions.put(VulnException(exception_id=f"exception-{tenant_id}", vuln_id="CVE-2026-0001", tenant_id=tenant_id))
         quota.put(tenant_id, {"scan_jobs": 10})
+        connections.put(
+            CloudConnectionRecord(
+                id=f"connection-{tenant_id}",
+                tenant_id=tenant_id,
+                provider="aws",
+                display_name=f"Connection {tenant_id}",
+                role_ref="arn:aws:iam::000000000000:role/ReadOnly",
+                external_id_encrypted="encrypted-secret",
+            )
+        )
+        credentials.put(
+            CredentialRefRecord(
+                credential_ref_id=f"credential-{tenant_id}",
+                tenant_id=tenant_id,
+                display_name=f"Credential {tenant_id}",
+                provider="aws",
+                external_ref="secret/example",
+            )
+        )
+        keys.add(
+            create_api_key_record(
+                f"abom_{tenant_id}_secret",
+                name=f"Key {tenant_id}",
+                role=Role.ADMIN,
+                tenant_id=tenant_id,
+            )
+        )
 
     yield {
         "jobs": jobs,
@@ -120,6 +159,9 @@ def tenant_stores():
         "exceptions": exceptions,
         "quota": quota,
         "graph": graph,
+        "connections": connections,
+        "credentials": credentials,
+        "keys": keys,
     }
 
 
@@ -135,6 +177,11 @@ def test_tenant_data_export_is_tenant_scoped_and_redacts_source_secrets(tenant_s
     assert response["records"]["fleet_agents"][0]["agent_id"] == "agent-tenant-a"
     assert response["records"]["sources"][0]["credential_ref"] == "[redacted]"
     assert response["records"]["sources"][0]["config"] == {"redacted": True}
+    assert response["counts"]["cloud_connections"] == 1
+    assert response["counts"]["credential_refs"] == 1
+    assert response["counts"]["api_keys"] == 1
+    assert response["records"]["credential_refs"][0]["external_ref"] == "[redacted]"
+    assert "key_hash" not in response["records"]["api_keys"][0]
     assert "retained_immutable_hmac_chain" == response["retention"]["audit_log"]
 
 
@@ -215,10 +262,54 @@ def test_tenant_data_delete_removes_only_authenticated_tenant(tenant_stores) -> 
     assert response["deleted"]["exceptions"] == 1
     assert response["deleted"]["tenant_quota_overrides"] == 1
     assert response["deleted"]["graph_rows"] == 1
+    assert response["deleted"]["cloud_connections"] == 1
+    assert response["deleted"]["credential_refs"] == 1
+    assert response["deleted"]["api_keys"] == 1
 
     assert tenant_stores["jobs"].get("job-tenant-a", tenant_id="tenant-a") is None
     assert tenant_stores["jobs"].get("job-tenant-b", tenant_id="tenant-b") is not None
     assert tenant_stores["sources"].get("source-tenant-b") is not None
+    assert tenant_stores["connections"].get("tenant-a", "connection-tenant-a") is None
+    assert tenant_stores["connections"].get("tenant-b", "connection-tenant-b") is not None
+    assert tenant_stores["credentials"].get("credential-tenant-a", tenant_id="tenant-a") is None
+    assert tenant_stores["credentials"].get("credential-tenant-b", tenant_id="tenant-b") is not None
+    assert tenant_stores["keys"].list_keys(tenant_id="tenant-a") == []
+    assert len(tenant_stores["keys"].list_keys(tenant_id="tenant-b")) == 1
+
+
+def test_postgres_key_purge_is_bound_to_current_tenant() -> None:
+    class _Connection:
+        def __init__(self) -> None:
+            self.executed: list[tuple[str, tuple[object, ...] | None]] = []
+            self.committed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(self, sql: str, params: tuple[object, ...] | None = None):
+            self.executed.append((sql, params))
+            return SimpleNamespace(rowcount=2 if sql.startswith("DELETE FROM api_keys") else 0)
+
+        def commit(self) -> None:
+            self.committed = True
+
+    connection = _Connection()
+    pool = SimpleNamespace(connection=lambda: connection)
+    store = PostgresKeyStore.__new__(PostgresKeyStore)
+    store._pool = pool
+
+    token = set_current_tenant("tenant-a")
+    try:
+        assert store.delete_tenant("tenant-a") == 2
+    finally:
+        reset_current_tenant(token)
+
+    assert connection.committed is True
+    assert ("DELETE FROM api_keys WHERE team_id = %s", ("tenant-a",)) in connection.executed
+    assert ("SELECT set_config('app.tenant_id', %s, true)", ("tenant-a",)) in connection.executed
 
 
 def test_sqlite_graph_store_delete_tenant_removes_graph_rows(tmp_path) -> None:

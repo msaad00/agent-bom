@@ -7,9 +7,16 @@ import {
   legendItemsForVisibleGraph,
   minimapNodeColor,
   NODE_COLOR_MAP,
+  relationshipEdgeLabelPresentation,
   relationshipLegendItem,
   readableGraphEdges,
 } from "@/lib/graph-utils";
+
+it("keeps relationship labels screen-readable across zoom levels", () => {
+  const distant = relationshipEdgeLabelPresentation({ zoom: 0.4 });
+  const close = relationshipEdgeLabelPresentation({ zoom: 1.6 });
+  expect(Number(distant.labelStyle?.fontSize)).toBeGreaterThan(Number(close.labelStyle?.fontSize));
+});
 
 describe("graph utility metadata", () => {
   it("uses generated schema metadata for production node legends", () => {
@@ -97,10 +104,46 @@ describe("graph utility metadata", () => {
     expect(edges[0]!.style?.opacity).toBeLessThan(edges[1]!.style?.opacity as number);
     expect(edges[0]!.style?.strokeWidth).toBeLessThanOrEqual(1.5);
 
-    const focused = readableGraphEdges(edges, new Set(["b", "c"]));
+    const focused = readableGraphEdges(edges, new Set(["b", "c"]), {
+      nodeLabels: new Map([["b", "Package"], ["c", "CVE-2026-0001"]]),
+    });
     expect(focused[0]!.style?.opacity).toBeLessThan(0.1);
     expect(focused[1]!.style?.opacity).toBeGreaterThan(0.9);
     expect(focused[1]!.style?.strokeWidth).toBeGreaterThanOrEqual(2.6);
+    expect(focused[1]!.label).toBe("Has CVE");
+    expect(focused[1]!.labelStyle).toMatchObject({ fontSize: 12 });
+    expect(focused[1]!.ariaLabel).toMatch(/relationship from Package to CVE-2026-0001/i);
+    expect(focused[1]!.ariaLabel).not.toMatch(/\bb\b|\bc\b/);
+  });
+
+  it("never exposes shared resource identifiers in labels or edge accessibility text", () => {
+    const [edge] = readableGraphEdges(
+      [{
+        id: "private-source/private-target",
+        source: "private-source",
+        target: "private-target",
+        data: { relationship: "shares_server", server: "arn:aws:private:server" },
+      }],
+      new Set(["private-source", "private-target"]),
+      { nodeLabels: new Map([["private-source", "Agent"], ["private-target", "Server"]]) },
+    );
+
+    expect(edge?.label).toBe("Shares Server");
+    expect(edge?.ariaLabel).toBe("Shares Server relationship from Agent to Server");
+    expect(String(edge?.label)).not.toContain("arn:aws:private:server");
+    expect(edge?.ariaLabel).not.toContain("arn:aws:private:server");
+    expect(edge?.ariaLabel).not.toContain("private-");
+  });
+
+  it("uses generic ARIA endpoints when display labels are unavailable", () => {
+    const [edge] = readableGraphEdges([{
+      id: "edge-private",
+      source: "arn:aws:private:source",
+      target: "arn:aws:private:target",
+      data: { relationship: "uses" },
+    }]);
+    expect(edge?.ariaLabel).toBe("Uses relationship from source node to target node");
+    expect(edge?.ariaLabel).not.toContain("arn:aws");
   });
 
   it("uses a stable non-animated edge profile for capture mode", () => {

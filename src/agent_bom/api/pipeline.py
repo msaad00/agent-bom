@@ -872,6 +872,28 @@ def _run_scan_sync(job: ScanJob) -> None:
     repo_stack = ExitStack()
 
     try:
+        # Cloud-connection scans share the same durable ScanJob queue and worker
+        # lifecycle as regular scans, but their evidence collector starts from a
+        # tenant-scoped encrypted connection rather than local path targets.
+        # Dispatch before the generic discovery pipeline so the API request never
+        # performs provider I/O inline and worker reclaims keep the same job id.
+        from agent_bom.api.routes.cloud_connections import (
+            execute_queued_connection_scan,
+            is_queued_connection_scan,
+        )
+
+        if is_queued_connection_scan(job):
+            from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+
+            with lock:
+                job.progress.append("Starting queued cloud connection scan")
+            tenant_token = set_current_tenant(job.tenant_id or "default")
+            try:
+                execute_queued_connection_scan(job)
+            finally:
+                reset_current_tenant(tenant_token)
+            return
+
         from agent_bom.discovery import discover_all
         from agent_bom.output import to_json
         from agent_bom.parsers import extract_packages

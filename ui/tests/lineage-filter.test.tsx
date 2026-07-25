@@ -5,8 +5,12 @@ import {
   DEFAULT_FILTERS,
   FilterPanel,
   createAssetLifecycleDriftGraphFilters,
+  createCloudEstateGraphFilters,
+  createEnvironmentGraphFilters,
   createExpandedGraphFilters,
   createImmediateGraphFilters,
+  createRepositoryGraphFilters,
+  GRAPH_SCOPE_DESCRIPTIONS,
   graphScopeLabelForFilters,
   graphScopePresetForFilters,
   type FilterState,
@@ -26,6 +30,32 @@ describe("FilterPanel", () => {
     expect(DEFAULT_FILTERS.severity).toBeNull();
     expect(graphScopePresetForFilters(DEFAULT_FILTERS)).toBe("relevant");
     expect(graphScopeLabelForFilters(DEFAULT_FILTERS)).toBe("Relevant paths");
+  });
+
+  it("offers factual type-based scopes without claiming collection provenance", () => {
+    const cloud = createCloudEstateGraphFilters();
+    const repository = createRepositoryGraphFilters();
+    const environment = createEnvironmentGraphFilters();
+
+    expect(cloud.layers.account).toBe(true);
+    expect(cloud.layers.cloudResource).toBe(true);
+    expect(cloud.layers.sourceFile).toBe(false);
+    expect(graphScopePresetForFilters(cloud)).toBe("cloudEstate");
+
+    expect(repository.layers.directory).toBe(true);
+    expect(repository.layers.sourceFile).toBe(true);
+    expect(repository.layers.package).toBe(true);
+    expect(repository.layers.account).toBe(false);
+    expect(graphScopePresetForFilters(repository)).toBe("repository");
+
+    expect(environment.layers.environment).toBe(true);
+    expect(environment.layers.agent).toBe(true);
+    expect(environment.layers.server).toBe(true);
+    expect(graphScopePresetForFilters(environment)).toBe("environment");
+    for (const preset of ["cloudEstate", "repository", "environment"] as const) {
+      expect(GRAPH_SCOPE_DESCRIPTIONS[preset]).toMatch(/^Type-based view/);
+      expect(GRAPH_SCOPE_DESCRIPTIONS[preset]).not.toMatch(/observed/i);
+    }
   });
 
   it("names graph scope presets by operator workflow instead of raw depth", () => {

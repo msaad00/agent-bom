@@ -529,3 +529,6 @@ AGENT_BOM_JIRA_OAUTH_CLIENT_SECRET
 # (POST /v1/auth/invitations) so operators can set the invite link target without
 # a restart. Presentation-only; never carries a secret. No scalar config knob.
 AGENT_BOM_HOSTED_INVITE_BASE_URL
+
+# Opt-in managed-trial invitation endpoints; disabled unless explicitly enabled.
+AGENT_BOM_MANAGED_TRIAL_INVITATIONS

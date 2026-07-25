@@ -1,14 +1,9 @@
-"""Cloud-connection test/scan handlers must offload their blocking broker work.
+"""Cloud-connection tests offload I/O; scans hand off to durable workers.
 
-``test_connection`` brokers real provider network I/O and ``scan_connection``
-runs a full inventory + CIS cloud scan. Run directly on the event loop those
-synchronous calls freeze ``/health`` and every unrelated request for the whole
-broker exchange / scan (measured: one POST /test against a black-holed endpoint
-froze the API for 10+ seconds). They now funnel the synchronous body through
-``anyio.to_thread.run_sync`` under an adaptive-backpressure guard — the same
-idiom the sibling cloud/governance routes use — preserving the exact success
-payloads and 502 failure semantics, and shedding bursts with a 429 instead of
-marking the connection errored.
+``test_connection`` brokers provider network I/O and therefore uses
+``anyio.to_thread.run_sync`` under adaptive backpressure. Scan requests reserve
+a durable job and return before provider I/O; the scan worker owns its bounded
+execution envelope.
 """
 
 from __future__ import annotations
@@ -66,19 +61,39 @@ def test_test_connection_offloads_broker(monkeypatch, wired):
     assert result["connection_id"] == "conn-1"
 
 
-def test_scan_connection_offloads_scan(monkeypatch, wired):
-    record, offloaded = wired
+def test_scan_connection_queues_without_provider_io(monkeypatch, wired):
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.routes import scan as scan_routes
+
+    _record, offloaded = wired
+    dispatched: list[str] = []
     monkeypatch.setattr(
         cloud_connections,
         "_run_connection_scan",
-        lambda record, tenant_id: {"scan_id": "s-1", "status": "completed"},
+        lambda *args, **kwargs: pytest.fail("the request must not run provider I/O"),
+    )
+    monkeypatch.setattr(
+        scan_routes,
+        "enqueue_scan_job",
+        lambda **kwargs: ScanJob(
+            job_id="s-1",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-07-25T00:00:00+00:00",
+            request=ScanRequest(),
+        ),
+    )
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
+
+    result = asyncio.run(
+        cloud_connections.scan_connection(request=SimpleNamespace(headers={}), connection_id="conn-1")
     )
 
-    result = asyncio.run(cloud_connections.scan_connection(request=object(), connection_id="conn-1"))
-
-    assert len(offloaded) == 1, f"scan_connection must offload the scan exactly once; saw {offloaded}"
-    assert result["scan_id"] == "s-1"
-    assert result["connection"] == record.to_public_dict()
+    assert offloaded == []
+    assert result.job_id == "s-1"
+    assert result.status == "pending"
+    assert dispatched == ["s-1"]
 
 
 def test_test_connection_failure_still_502_and_marks_error(monkeypatch, wired):
@@ -101,8 +116,11 @@ def test_test_connection_failure_still_502_and_marks_error(monkeypatch, wired):
     assert marks and marks[0]["status"] == cloud_connections.STATUS_ERROR
 
 
-def test_scan_connection_backpressure_shed_is_429_not_error(monkeypatch, wired):
-    record, offloaded = wired
+def test_scan_connection_durable_handoff_does_not_enter_request_backpressure(monkeypatch, wired):
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.routes import scan as scan_routes
+
+    _record, offloaded = wired
     marks: list[dict] = []
     monkeypatch.setattr(cloud_connections, "_mark_connection", lambda record, **kwargs: marks.append(kwargs))
 
@@ -112,21 +130,33 @@ def test_scan_connection_backpressure_shed_is_429_not_error(monkeypatch, wired):
         yield  # pragma: no cover
 
     monkeypatch.setattr(cloud_connections, "adaptive_backpressure", _shedding)
+    monkeypatch.setattr(
+        scan_routes,
+        "enqueue_scan_job",
+        lambda **kwargs: ScanJob(
+            job_id="s-queued",
+            tenant_id=kwargs["tenant_id"],
+            source_id=kwargs["source_id"],
+            triggered_by=kwargs["triggered_by"],
+            created_at="2026-07-25T00:00:00+00:00",
+            request=ScanRequest(),
+        ),
+    )
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: None)
 
-    from fastapi import HTTPException
+    accepted = asyncio.run(
+        cloud_connections.scan_connection(request=SimpleNamespace(headers={}), connection_id="conn-1")
+    )
 
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(cloud_connections.scan_connection(request=object(), connection_id="conn-1"))
-
-    assert exc_info.value.status_code == 429
-    assert (exc_info.value.headers or {}).get("Retry-After") == "7"
-    assert offloaded == [], "a shed request must never reach the broker"
-    assert marks == [], "a shed request must not flip the connection to error"
+    assert accepted.status == "pending"
+    assert offloaded == []
+    assert marks == []
 
 
-def test_create_connection_scan_on_create_uses_backpressure(monkeypatch):
-    """auto_scan_on_create must share the cloud_connection_scan backpressure lane."""
+def test_create_connection_scan_on_create_queues_durable_job(monkeypatch):
+    """auto_scan_on_create reserves the same durable job as manual scans."""
     from agent_bom.api.connection_store import InMemoryConnectionStore, set_connection_store
+    from agent_bom.api.routes import scan as scan_routes
     from agent_bom.api.routes.cloud_connections import CloudConnectionCreate
 
     store = InMemoryConnectionStore()
@@ -136,20 +166,8 @@ def test_create_connection_scan_on_create_uses_backpressure(monkeypatch):
     monkeypatch.setattr(cloud_connections, "log_action", lambda *a, **k: None)
     monkeypatch.setattr(cloud_connections, "_actor", lambda request: "tester")
     monkeypatch.setattr(cloud_connections, "_tenant", lambda request: "tenant-bp")
-    monkeypatch.setattr(
-        cloud_connections,
-        "_run_connection_scan",
-        lambda record, tenant_id: {"scan_id": "s-create", "status": "completed"},
-    )
-
-    paths: list[str] = []
-
-    @contextlib.asynccontextmanager
-    async def _track(path):
-        paths.append(path)
-        yield
-
-    monkeypatch.setattr(cloud_connections, "adaptive_backpressure", _track)
+    dispatched: list[object] = []
+    monkeypatch.setattr(scan_routes, "dispatch_scan_job", dispatched.append)
 
     body = CloudConnectionCreate(
         provider="aws",
@@ -161,19 +179,17 @@ def test_create_connection_scan_on_create_uses_backpressure(monkeypatch):
     )
     result = asyncio.run(cloud_connections.create_connection(request=object(), body=body))
 
-    assert paths == ["cloud_connection_scan"]
-    assert result["status"] == "active"
-    assert result["last_scan_id"] == "s-create"
+    assert result["status"] == "pending"
+    assert result["last_scan_id"] == dispatched[0].job_id
     fetched = store.get("tenant-bp", result["id"])
     assert fetched is not None
-    assert fetched.status == "active"
+    assert fetched.status == "pending"
 
 
-def test_create_connection_scan_on_create_backpressure_shed_is_429(monkeypatch):
-    """Shed on create leaves the row pending and returns 429 (retry via POST …/scan)."""
-    from fastapi import HTTPException
-
+def test_create_connection_scan_on_create_dispatch_failure_is_sanitized(monkeypatch):
+    """A dispatch failure keeps the created row and never exposes raw text."""
     from agent_bom.api.connection_store import InMemoryConnectionStore, set_connection_store
+    from agent_bom.api.routes import scan as scan_routes
     from agent_bom.api.routes.cloud_connections import CloudConnectionCreate
 
     store = InMemoryConnectionStore()
@@ -184,19 +200,11 @@ def test_create_connection_scan_on_create_backpressure_shed_is_429(monkeypatch):
     monkeypatch.setattr(cloud_connections, "_actor", lambda request: "tester")
     monkeypatch.setattr(cloud_connections, "_tenant", lambda request: "tenant-bp")
 
-    scanned: list[str] = []
     monkeypatch.setattr(
-        cloud_connections,
-        "_run_connection_scan",
-        lambda record, tenant_id: scanned.append(record.id) or {"scan_id": "x"},
+        scan_routes,
+        "dispatch_scan_job",
+        lambda job: (_ for _ in ()).throw(RuntimeError("synthetic dispatch credential")),
     )
-
-    @contextlib.asynccontextmanager
-    async def _shedding(path):
-        raise BackpressureRejectedError(path, "concurrency limit", 5)
-        yield  # pragma: no cover
-
-    monkeypatch.setattr(cloud_connections, "adaptive_backpressure", _shedding)
 
     body = CloudConnectionCreate(
         provider="aws",
@@ -206,15 +214,13 @@ def test_create_connection_scan_on_create_backpressure_shed_is_429(monkeypatch):
         regions=["us-east-1"],
         auto_scan_on_create=True,
     )
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(cloud_connections.create_connection(request=object(), body=body))
+    result = asyncio.run(cloud_connections.create_connection(request=object(), body=body))
 
-    assert exc_info.value.status_code == 429
-    assert (exc_info.value.headers or {}).get("Retry-After") == "5"
-    assert scanned == []
+    assert result["status"] == "error"
+    assert "synthetic dispatch credential" not in result["status_detail"]
     rows = store.list_for_tenant("tenant-bp")
     assert len(rows) == 1
-    assert rows[0].status == "pending"
+    assert rows[0].status == "error"
 
 
 @pytest.mark.asyncio

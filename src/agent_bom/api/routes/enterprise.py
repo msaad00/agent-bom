@@ -44,7 +44,7 @@ from urllib.parse import urlsplit
 import anyio.to_thread
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from agent_bom.api.models import (
     CreateKeyRequest,
@@ -75,6 +75,17 @@ class BrowserSessionRequest(BaseModel):
         min_length=1,
         description="API key to exchange for a same-origin httpOnly browser session cookie",
     )
+
+
+class ManagedTrialInvitationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(..., min_length=3, max_length=254)
+    organization: str = Field(..., min_length=1, max_length=128)
+
+
+class ManagedTrialOIDCStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: SecretStr
 
 
 class AuditExportVerifyRequest(BaseModel):
@@ -1021,6 +1032,181 @@ async def create_invitation(request: Request, req: InvitationRequest) -> dict:
     }
 
 
+@router.post("/auth/trial-invitations", tags=["enterprise"], status_code=201)
+async def create_managed_trial_invitation(request: Request, req: ManagedTrialInvitationRequest) -> dict[str, Any]:
+    """Create an email-bound managed-trial invitation without minting an API key.
+
+    This operator-only surface is opt-in and PostgreSQL-only in deployed use.
+    The raw token is returned once for a separate delivery adapter; persistence
+    contains only its SHA-256 digest.
+    """
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.managed_trial_invitation import (
+        ManagedTrialInvitationConfigurationError,
+        ManagedTrialInvitationError,
+        get_managed_trial_invitation_store,
+        issue_managed_trial_invitation,
+        managed_trial_invitations_enabled,
+    )
+
+    if not managed_trial_invitations_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    tenant_id = _new_invited_tenant_id(req.organization)
+    try:
+        issued = issue_managed_trial_invitation(
+            get_managed_trial_invitation_store(),
+            email=req.email,
+            tenant_id=tenant_id,
+            team_name=req.organization.strip(),
+        )
+    except ManagedTrialInvitationConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+    except ManagedTrialInvitationError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_error(exc, generic=True)) from exc
+
+    try:
+        log_action(
+            "auth.managed_trial_invitation_created",
+            actor=_request_actor(request),
+            resource=f"managed-trial-invitation/{issued.invitation.invitation_id}",
+            tenant_id=tenant_id,
+            details={"state": issued.invitation.state, "expires_at": issued.invitation.expires_at.isoformat()},
+        )
+    except Exception:
+        # The token cannot be recovered after this response; an audit backend
+        # outage must not strand a live invitation before the operator sees it.
+        _logger.warning("Managed-trial invitation creation audit write failed")
+    base = (os.environ.get("AGENT_BOM_HOSTED_INVITE_BASE_URL") or "").strip()
+    login_url = f"{base.rstrip('/')}/login" if base else None
+    return {
+        "invitation_id": issued.invitation.invitation_id,
+        "token": issued.raw_token,
+        "tenant_id": tenant_id,
+        "role": "analyst",
+        "state": issued.invitation.state,
+        "created_at": issued.invitation.created_at.isoformat(),
+        "expires_at": issued.invitation.expires_at.isoformat(),
+        "login_url": login_url,
+        "message": "Deliver the token once through a trusted adapter; it cannot be recovered later.",
+    }
+
+
+def _require_managed_trial_operator(request: Request) -> None:
+    """Keep cross-tenant trial operations in the reserved operator boundary."""
+
+    configured = os.environ.get("AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID", "default").strip() or "default"
+    if require_request_tenant_id(request) != configured:
+        raise HTTPException(status_code=403, detail="Managed-trial lifecycle operations require the platform operator tenant")
+
+
+def _trial_lifecycle_payload(record: Any) -> dict[str, Any]:
+    return {
+        "tenant_id": record.tenant_id,
+        "state": record.state.value,
+        "created_at": record.created_at.isoformat(),
+        "trial_ends_at": record.trial_ends_at.isoformat(),
+        "cleanup_after": record.cleanup_after.isoformat(),
+        "updated_at": record.updated_at.isoformat(),
+        "cleanup_attempts": record.cleanup_attempts,
+        "cleanup_pending": record.state.value == "expired",
+        "cleanup_error": record.cleanup_error,
+        "cleanup_completed_at": record.cleanup_completed_at.isoformat() if record.cleanup_completed_at else None,
+    }
+
+
+@router.get("/auth/trial-tenants/{tenant_id}", tags=["enterprise"])
+async def get_managed_trial_tenant(request: Request, tenant_id: str) -> dict[str, Any]:
+    """Return lifecycle and cleanup status for one operator-managed trial."""
+
+    from agent_bom.api.tenant_lifecycle import TenantLifecycleError, get_tenant_lifecycle_store
+    from agent_bom.platform_invariants import validate_customer_tenant_id
+
+    _require_managed_trial_operator(request)
+    target = validate_customer_tenant_id(tenant_id)
+    try:
+        record = get_tenant_lifecycle_store().get(target)
+    except TenantLifecycleError as exc:
+        raise HTTPException(status_code=404, detail="Managed-trial tenant not found") from exc
+    return _trial_lifecycle_payload(record)
+
+
+async def _transition_managed_trial_tenant(
+    request: Request,
+    tenant_id: str,
+    *,
+    action: str,
+) -> dict[str, Any]:
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.tenant_lifecycle import (
+        TenantLifecycleError,
+        TenantLifecycleState,
+        get_tenant_lifecycle_store,
+        revoke_tenant_access,
+    )
+    from agent_bom.platform_invariants import validate_customer_tenant_id
+
+    _require_managed_trial_operator(request)
+    target = validate_customer_tenant_id(tenant_id)
+    store = get_tenant_lifecycle_store()
+    try:
+        if action == "suspend":
+            revoked = revoke_tenant_access(target)
+            record = store.transition(target, state=TenantLifecycleState.SUSPENDED)
+        elif action == "resume":
+            revoked = {}
+            record = store.transition(target, state=TenantLifecycleState.ACTIVE)
+        elif action == "revoke":
+            revoked = revoke_tenant_access(target)
+            record = store.transition(target, state=TenantLifecycleState.EXPIRED)
+        elif action == "retry-cleanup":
+            from agent_bom.api.tenant_lifecycle import delete_tenant_records
+
+            current = store.get(target)
+            if current.state is not TenantLifecycleState.EXPIRED:
+                raise TenantLifecycleError("Cleanup may only run for an expired tenant")
+            deleted = delete_tenant_records(target)
+            record = store.transition(target, state=TenantLifecycleState.DELETED)
+            revoked = {"deleted_records": sum(deleted.values())}
+        else:
+            raise TenantLifecycleError("Unsupported lifecycle action")
+    except TenantLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=sanitize_error(exc, generic=True)) from exc
+    except Exception as exc:
+        if action == "retry-cleanup":
+            store.record_cleanup_failure(target, error=sanitize_error(exc, generic=True))
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+    log_action(
+        f"auth.managed_trial_tenant_{action.replace('-', '_')}",
+        actor=_request_actor(request),
+        resource=f"managed-trial-tenant/{target}",
+        tenant_id=target,
+        details={"state": record.state.value, "effects": revoked},
+    )
+    payload = _trial_lifecycle_payload(record)
+    payload["effects"] = revoked
+    return payload
+
+
+@router.post("/auth/trial-tenants/{tenant_id}/suspend", tags=["enterprise"])
+async def suspend_managed_trial_tenant(request: Request, tenant_id: str) -> dict[str, Any]:
+    return await _transition_managed_trial_tenant(request, tenant_id, action="suspend")
+
+
+@router.post("/auth/trial-tenants/{tenant_id}/resume", tags=["enterprise"])
+async def resume_managed_trial_tenant(request: Request, tenant_id: str) -> dict[str, Any]:
+    return await _transition_managed_trial_tenant(request, tenant_id, action="resume")
+
+
+@router.post("/auth/trial-tenants/{tenant_id}/revoke", tags=["enterprise"])
+async def revoke_managed_trial_tenant(request: Request, tenant_id: str) -> dict[str, Any]:
+    return await _transition_managed_trial_tenant(request, tenant_id, action="revoke")
+
+
+@router.post("/auth/trial-tenants/{tenant_id}/cleanup/retry", tags=["enterprise"])
+async def retry_managed_trial_tenant_cleanup(request: Request, tenant_id: str) -> dict[str, Any]:
+    return await _transition_managed_trial_tenant(request, tenant_id, action="retry-cleanup")
+
+
 @router.get("/auth/debug", tags=["enterprise"])
 async def auth_debug(request: Request) -> dict:
     """Introspect how the current request was authenticated.
@@ -1173,6 +1359,103 @@ def _allowed_post_login_path(raw: str | None) -> str:
     return f"{base_path}{suffix}"
 
 
+@router.post("/auth/trial/oidc/start", tags=["enterprise"])
+async def managed_trial_oidc_start(request: Request, body: ManagedTrialOIDCStartRequest) -> RedirectResponse:
+    """Validate a posted one-time invitation and start OIDC PKCE authentication."""
+    import hashlib
+
+    from agent_bom.api.managed_trial_invitation import (
+        ManagedTrialInvitationConfigurationError,
+        ManagedTrialInvitationError,
+        get_managed_trial_invitation_store,
+        managed_trial_invitations_enabled,
+    )
+    from agent_bom.api.oidc import OIDCError
+    from agent_bom.api.oidc_browser import (
+        OIDC_PKCE_COOKIE_NAME,
+        OIDCBrowserConfig,
+        build_authorize_url,
+        pkce_challenge_s256,
+        pkce_verifier,
+        seal_pkce_cookie,
+    )
+
+    if not managed_trial_invitations_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    _check_auth_session_rate_limit(request)
+    raw_token = body.token.get_secret_value()
+    if not raw_token.startswith("abti_") or len(raw_token) > 128:
+        raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation")
+    digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    try:
+        get_managed_trial_invitation_store().get_by_digest(digest)
+    except ManagedTrialInvitationConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+    except ManagedTrialInvitationError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation") from exc
+    try:
+        cfg = OIDCBrowserConfig.from_env()
+    except OIDCError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+    if not cfg.enabled:
+        raise HTTPException(status_code=503, detail="OIDC browser SSO is not configured")
+
+    state = _new_oidc_login_state()
+    nonce = secrets.token_urlsafe(32)
+    verifier = pkce_verifier()
+    try:
+        authorize_url = build_authorize_url(
+            cfg,
+            state=state,
+            nonce=nonce,
+            code_challenge=pkce_challenge_s256(verifier),
+        )
+        sealed = seal_pkce_cookie(
+            code_verifier=verifier,
+            nonce=nonce,
+            managed_trial_invitation_digest=digest,
+        )
+    except OIDCError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+
+    response = RedirectResponse(url=authorize_url, status_code=302)
+    response.set_cookie(
+        OIDC_PKCE_COOKIE_NAME,
+        sealed,
+        max_age=300,
+        httponly=True,
+        secure=_session_cookie_secure(request),
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.post("/auth/trial/oidc/start-form", include_in_schema=False)
+async def managed_trial_oidc_start_form(request: Request) -> RedirectResponse:
+    """Browser form adapter that keeps the invitation secret out of the URL.
+
+    The public JSON contract above remains the typed API.  This adapter accepts
+    only a bounded ``application/x-www-form-urlencoded`` body from ``/login``
+    and immediately delegates to the same validation and PKCE path.
+    """
+
+    from urllib.parse import parse_qs
+
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/x-www-form-urlencoded":
+        raise HTTPException(status_code=415, detail="Unsupported invitation form content type")
+    raw = await request.body()
+    if len(raw) > 512:
+        raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation")
+    try:
+        token = parse_qs(raw.decode("utf-8"), strict_parsing=True).get("token", [""])[0]
+        body = ManagedTrialOIDCStartRequest(token=SecretStr(token))
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation") from None
+    return await managed_trial_oidc_start(request, body)
+
+
 @router.get("/auth/oidc/login", tags=["enterprise"])
 async def oidc_browser_login(request: Request, return_to: str | None = None) -> RedirectResponse:
     """Start OIDC authorization-code + PKCE login for the dashboard."""
@@ -1235,11 +1518,18 @@ async def oidc_browser_callback(
     """Complete OIDC auth-code + PKCE login and mint a browser session cookie."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import Role, resolve_scim_user_role
+    from agent_bom.api.managed_trial_invitation import (
+        ManagedTrialInvitationConfigurationError,
+        ManagedTrialInvitationError,
+        get_managed_trial_invitation_store,
+        managed_trial_invitations_enabled,
+    )
     from agent_bom.api.oidc import OIDCError, claims_have_role_signal, claims_to_role
     from agent_bom.api.oidc_browser import (
         OIDC_PKCE_COOKIE_NAME,
         OIDCBrowserConfig,
         exchange_code_for_tokens,
+        managed_trial_invitation_digest_from_pkce_cookie,
         open_pkce_cookie,
         subject_from_claims,
         verify_browser_id_token,
@@ -1257,28 +1547,58 @@ async def oidc_browser_callback(
     if not sealed:
         raise HTTPException(status_code=401, detail="OIDC PKCE cookie missing")
 
+    managed_invitation = None
+    managed_invitation_store = None
+    managed_verified_email: str | None = None
     try:
         cfg = OIDCBrowserConfig.from_env()
         code_verifier, nonce, return_to = open_pkce_cookie(sealed)
+        managed_invitation_digest = managed_trial_invitation_digest_from_pkce_cookie(sealed)
         token_payload = exchange_code_for_tokens(cfg, code=code, code_verifier=code_verifier)
         id_token = str(token_payload.get("id_token") or "").strip()
         if not id_token:
             raise OIDCError("OIDC token response missing id_token")
         claims = verify_browser_id_token(cfg, id_token, nonce=nonce)
-        if cfg.oidc.require_role_claim and not claims_have_role_signal(claims, cfg.oidc.role_claim):
-            raise OIDCError(f"JWT missing required role claim '{cfg.oidc.role_claim}'")
-        role = claims_to_role(claims, cfg.oidc.role_claim)
-        tenant_id = cfg.oidc.resolve_tenant(claims)
-        subject = subject_from_claims(claims)
+        if managed_invitation_digest is not None:
+            if not managed_trial_invitations_enabled():
+                raise ManagedTrialInvitationError("Invalid or expired managed-trial invitation")
+            subject = str(claims.get("sub") or "").strip()
+            email = str(claims.get("email") or "").strip()
+            if claims.get("email_verified") is not True or not subject or not email:
+                raise ManagedTrialInvitationError("Invalid or expired managed-trial invitation")
+            managed_invitation_store = get_managed_trial_invitation_store()
+            managed_invitation = managed_invitation_store.get_by_digest(managed_invitation_digest)
+            managed_verified_email = email
+            role = Role.ANALYST.value
+            tenant_id = managed_invitation.tenant_id
+        else:
+            if cfg.oidc.require_role_claim and not claims_have_role_signal(claims, cfg.oidc.role_claim):
+                raise OIDCError(f"JWT missing required role claim '{cfg.oidc.role_claim}'")
+            role = claims_to_role(claims, cfg.oidc.role_claim)
+            tenant_id = cfg.oidc.resolve_tenant(claims)
+            subject = subject_from_claims(claims)
+    except ManagedTrialInvitationConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+    except ManagedTrialInvitationError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation") from exc
     except OIDCError as exc:
         raise HTTPException(status_code=401, detail=sanitize_error(exc)) from exc
 
-    scim_resolution = resolve_scim_user_role(tenant_id, subject)
-    effective_role = scim_resolution.role.value if scim_resolution.role is not None else role
-    try:
-        role_value = Role(effective_role).value
-    except ValueError:
-        role_value = Role.VIEWER.value
+    if managed_invitation is not None:
+        from agent_bom.api.managed_trial import MANAGED_TRIAL_ANALYST_SCOPES
+
+        role_value = Role.ANALYST.value
+        auth_method = "managed_trial_oidc"
+        scopes = list(MANAGED_TRIAL_ANALYST_SCOPES)
+    else:
+        scim_resolution = resolve_scim_user_role(tenant_id, subject)
+        effective_role = scim_resolution.role.value if scim_resolution.role is not None else role
+        try:
+            role_value = Role(effective_role).value
+        except ValueError:
+            role_value = Role.VIEWER.value
+        auth_method = "oidc_browser"
+        scopes = ["oidc-browser-session"]
 
     return_to = _allowed_post_login_path(return_to)
     response = RedirectResponse(url=return_to, status_code=302)
@@ -1288,18 +1608,39 @@ async def oidc_browser_callback(
         subject=subject,
         role=role_value,
         tenant_id=tenant_id,
-        auth_method="oidc_browser",
-        scopes=["oidc-browser-session"],
+        auth_method=auth_method,
+        scopes=scopes,
     )
+    if managed_invitation is not None and managed_invitation_store is not None and managed_verified_email is not None:
+        try:
+            managed_invitation_store.accept_digest(
+                managed_invitation.token_digest,
+                verified_email=managed_verified_email,
+                verified_subject=subject,
+            )
+        except ManagedTrialInvitationError as exc:
+            raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation") from exc
     secure = _session_cookie_secure(request)
     response.delete_cookie(OIDC_PKCE_COOKIE_NAME, httponly=True, secure=secure, samesite="lax", path="/")
-    log_action(
-        "auth.oidc_browser_login",
-        actor=subject,
-        resource="auth/oidc",
-        tenant_id=tenant_id,
-        details={"role": role_value, "auth_method": "oidc_browser"},
-    )
+    if managed_invitation is not None:
+        try:
+            log_action(
+                "auth.managed_trial_invitation_accepted",
+                actor=subject,
+                resource=f"managed-trial-invitation/{managed_invitation.invitation_id}",
+                tenant_id=tenant_id,
+                details={"role": role_value, "auth_method": auth_method},
+            )
+        except Exception:
+            _logger.warning("Managed-trial invitation acceptance audit write failed")
+    else:
+        log_action(
+            "auth.oidc_browser_login",
+            actor=subject,
+            resource="auth/oidc",
+            tenant_id=tenant_id,
+            details={"role": role_value, "auth_method": auth_method},
+        )
     return response
 
 

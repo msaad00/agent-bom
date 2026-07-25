@@ -25,6 +25,7 @@ import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
   CONTROLS_CLASS,
+  graphNodeDisplayLabels,
   MINIMAP_BG,
   MINIMAP_CLASS,
   MINIMAP_MASK,
@@ -38,7 +39,7 @@ import { buildFocusedGraphData } from "@/lib/security-graph-focus";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { useGraphLayout } from "@/lib/use-graph-layout";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
-import type { GraphPresentationScope } from "@/lib/graph-presentation";
+import { graphTopologyKey, type GraphPresentationScope } from "@/lib/graph-presentation";
 
 const INVESTIGATION_LAYERS = {
   provider: false,
@@ -92,6 +93,9 @@ function InvestigationFlow({
   onNodeSelect,
   selectedNodeId,
   presentationScope,
+  persistenceEnabled,
+  ownerActive,
+  localMode,
 }: {
   nodes: Node<LineageNodeData>[];
   edges: Edge[];
@@ -104,6 +108,9 @@ function InvestigationFlow({
   onNodeSelect: (id: string) => void;
   selectedNodeId: string | null;
   presentationScope: GraphPresentationScope;
+  persistenceEnabled: boolean;
+  ownerActive: boolean;
+  localMode: boolean;
 }) {
   const reactFlow = useReactFlow<Node<LineageNodeData>, Edge>();
   const { fitView } = reactFlow;
@@ -115,10 +122,16 @@ function InvestigationFlow({
     nodes,
     scope: presentationScope,
     layout: "dagre-lr",
+    enabled: persistenceEnabled,
+    ownerActive,
+    localMode,
   });
   const presentedEdges = useMemo(
-    () => readableGraphEdges(edges, undefined, { zoom: presentation.viewport.zoom }),
-    [edges, presentation.viewport.zoom],
+    () => readableGraphEdges(edges, undefined, {
+      zoom: presentation.viewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(nodes),
+    }),
+    [edges, nodes, presentation.viewport.zoom],
   );
   useEffect(() => {
     if (nodes.length === 0 || presentation.hasSavedState) return;
@@ -146,7 +159,7 @@ function InvestigationFlow({
 
   return (
     <div className="relative h-full">
-      <div className="absolute right-3 top-3 z-20">
+      {presentation.enabled && nodes.length > 0 && <div className="absolute right-3 top-3 z-20">
         <GraphInteractionToolbar
           editing={presentation.editing}
           hasSelection={Boolean(selectedNodeId)}
@@ -156,7 +169,7 @@ function InvestigationFlow({
           onReset={resetLayout}
           onToggleEditing={presentation.toggleEditing}
         />
-      </div>
+      </div>}
       <ReactFlow
         key={presentation.storageKey}
         nodes={presentation.nodes}
@@ -220,7 +233,7 @@ export function SecurityGraphInvestigation({
   /** Notify parent when expand/impact actions advance the investigation step. */
   onStepHint?: ((step: "expand" | "impact" | "fix") => void) | undefined;
 }) {
-  const { session } = useAuthState();
+  const { session, loading: authLoading } = useAuthState();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [drawerData, setDrawerData] = useState<LineageNodeData | null>(null);
   const [blastLoading, setBlastLoading] = useState(false);
@@ -251,7 +264,10 @@ export function SecurityGraphInvestigation({
   const layout = useGraphLayout("dagre-lr", flow.nodes, flow.edges, {
     dagreLr: { rankSep: 128, nodeSep: 48 },
   });
-  const displayEdges = useMemo(() => readableGraphEdges(layout.edges), [layout.edges]);
+  const displayEdges = useMemo(
+    () => readableGraphEdges(layout.edges, undefined, { nodeLabels: graphNodeDisplayLabels(layout.nodes) }),
+    [layout.edges, layout.nodes],
+  );
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(layout.nodes, displayEdges),
     [displayEdges, layout.nodes],
@@ -273,9 +289,12 @@ export function SecurityGraphInvestigation({
       subject: session?.subject || session?.auth_method || "local-viewer",
       snapshotId: scanId || "unselected",
       lens: "investigation",
-      scope: focusMode && attackPath ? attackPath.hops.join("=>") : "full-snapshot",
+      scope: JSON.stringify({
+        focus: focusMode && attackPath ? attackPath.hops.join("=>") : "full-snapshot",
+        topology: graphTopologyKey(layout.nodes, displayEdges),
+      }),
     }),
-    [attackPath, focusMode, scanId, session?.auth_method, session?.subject, session?.tenant_id],
+    [attackPath, displayEdges, focusMode, layout.nodes, scanId, session?.auth_method, session?.subject, session?.tenant_id],
   );
 
   const selectedNode = useMemo(
@@ -426,6 +445,9 @@ export function SecurityGraphInvestigation({
               onNodeSelect={setSelectedNodeId}
               selectedNodeId={selectedNodeId}
               presentationScope={presentationScope}
+              persistenceEnabled={!authLoading && Boolean(session)}
+              ownerActive={Boolean(session)}
+              localMode={session?.recommended_ui_mode === "no_auth"}
             />
           </ReactFlowProvider>
         )}

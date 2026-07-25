@@ -45,6 +45,7 @@ import {
   MINIMAP_MASK,
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
+  graphNodeDisplayLabels,
   legendItemsForVisibleGraph,
   minimapNodeColor,
   readableGraphEdges,
@@ -58,7 +59,7 @@ import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import { useAuthState } from "@/components/auth-provider";
-import { selectGraphSubgraph } from "@/lib/graph-presentation";
+import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 
 // ─── Filter Toolbar ─────────────────────────────────────────────────────────
@@ -217,7 +218,7 @@ export default function MeshPage() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const { counts } = useDeploymentContext();
-  const { session } = useAuthState();
+  const { session, loading: authLoading } = useAuthState();
   const captureMode = useCaptureMode();
 
   useEffect(() => {
@@ -445,8 +446,9 @@ export default function MeshPage() {
       highSignalOpacity: pathFocusActive ? 0.95 : 0.58,
       inactiveOpacity: 0.06,
       captureMode,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
     });
-  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, pathFocusActive, captureMode]);
+  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, pathFocusActive, captureMode, displayNodes]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -484,15 +486,18 @@ export default function MeshPage() {
         agents: [...selectedAgents].sort(),
         severity: severityFilter,
         vulnerableOnly,
+        topology: graphTopologyKey(displayNodes, displayEdges),
       }),
     }),
-    [selectedAgents, selectedJob, session?.auth_method, session?.subject, session?.tenant_id, severityFilter, vulnerableOnly],
+    [displayEdges, displayNodes, selectedAgents, selectedJob, session?.auth_method, session?.subject, session?.tenant_id, severityFilter, vulnerableOnly],
   );
   const presentation = useGraphPresentation({
     nodes: displayNodes,
     scope: presentationScope,
     layout: layoutMode,
-    enabled: !captureMode,
+    enabled: !captureMode && !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
   });
 
   const fitVisible = useCallback(() => {
@@ -628,7 +633,7 @@ export default function MeshPage() {
               ))}
             </select>
             <FullscreenButton />
-            <GraphInteractionToolbar
+            {presentation.enabled && !captureMode && displayNodes.length > 0 && <GraphInteractionToolbar
               editing={presentation.editing}
               hasSelection={Boolean(selectedNodeId)}
               onFitVisible={fitVisible}
@@ -636,7 +641,7 @@ export default function MeshPage() {
               onAutoLayout={autoLayout}
               onReset={resetLayout}
               onToggleEditing={presentation.toggleEditing}
-            />
+            />}
           </div>
         </div>
         <GraphLensSwitcher variant="compact" legendItems={legendItems} />

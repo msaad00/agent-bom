@@ -46,6 +46,64 @@ export function graphPresentationStorageKey(scope: GraphPresentationScope): stri
   ]))}`;
 }
 
+export function graphNodeStorageKey(nodeId: string): string {
+  return `n:${stableHash(nodeId)}`;
+}
+
+export function graphNodeSetKey(nodes: Pick<Node, "id">[]): string {
+  return stableHash(nodes.map((node) => node.id).sort().join("\u0000"));
+}
+
+export function graphTopologyKey(
+  nodes: Pick<Node, "id">[],
+  edges: Array<Pick<Edge, "source" | "target" | "data">>,
+): string {
+  const nodePart = nodes.map((node) => node.id).sort();
+  const edgePart = edges.map((edge) => {
+    const relationship = (edge.data as { relationship?: unknown } | undefined)?.relationship;
+    return `${edge.source}\u0001${typeof relationship === "string" ? relationship : "relationship"}\u0001${edge.target}`;
+  }).sort();
+  return stableHash(JSON.stringify([nodePart, edgePart]));
+}
+
+function ownerRegistryKey(tenantId: string, subject: string): string {
+  return `${STORAGE_PREFIX}:owner:${stableHash(`${tenantId}\u0000${subject}`)}`;
+}
+
+export function registerGraphPresentationKey(
+  storage: StorageAdapter | null | undefined,
+  scope: Pick<GraphPresentationScope, "tenantId" | "subject">,
+  key: string,
+): void {
+  if (!storage) return;
+  const registryKey = ownerRegistryKey(scope.tenantId, scope.subject);
+  try {
+    const parsed = JSON.parse(storage.getItem(registryKey) ?? "[]");
+    const keys = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.startsWith(STORAGE_PREFIX)) : [];
+    if (!keys.includes(key)) storage.setItem(registryKey, JSON.stringify([...keys, key]));
+  } catch {
+    try { storage.setItem(registryKey, JSON.stringify([key])); } catch { /* optional storage */ }
+  }
+}
+
+export function purgeGraphPresentationsForOwner(
+  storage: StorageAdapter | null | undefined,
+  tenantId: string,
+  subject: string,
+): void {
+  if (!storage) return;
+  const registryKey = ownerRegistryKey(tenantId, subject);
+  try {
+    const parsed = JSON.parse(storage.getItem(registryKey) ?? "[]");
+    if (Array.isArray(parsed)) {
+      for (const key of parsed) if (typeof key === "string" && key.startsWith(STORAGE_PREFIX)) storage.removeItem(key);
+    }
+    storage.removeItem(registryKey);
+  } catch {
+    try { storage.removeItem(registryKey); } catch { /* optional storage */ }
+  }
+}
+
 function finiteCoordinate(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= MAX_COORDINATE
     ? value
@@ -73,7 +131,7 @@ function sanitizeState(value: unknown): GraphPresentationState | null {
   const positions: Record<string, GraphPosition> = {};
   if (candidate.positions && typeof candidate.positions === "object") {
     for (const [id, position] of Object.entries(candidate.positions)) {
-      if (!id || !position || typeof position !== "object") continue;
+      if (!/^n:[a-f0-9]{16}$/.test(id) || !position || typeof position !== "object") continue;
       const x = finiteCoordinate((position as Partial<GraphPosition>).x);
       const y = finiteCoordinate((position as Partial<GraphPosition>).y);
       if (x !== null && y !== null) positions[id] = { x, y };
@@ -134,7 +192,7 @@ export function applyGraphPresentation<T extends Node>(
 ): T[] {
   if (!state) return nodes;
   return nodes.map((node) => {
-    const position = state.positions[node.id];
+    const position = state.positions[graphNodeStorageKey(node.id)];
     return position ? { ...node, position } : node;
   });
 }
@@ -143,7 +201,7 @@ export function graphPositions(nodes: Node[]): Record<string, GraphPosition> {
   return Object.fromEntries(
     nodes
       .filter((node) => finiteCoordinate(node.position.x) !== null && finiteCoordinate(node.position.y) !== null)
-      .map((node) => [node.id, { x: node.position.x, y: node.position.y }]),
+      .map((node) => [graphNodeStorageKey(node.id), { x: node.position.x, y: node.position.y }]),
   );
 }
 

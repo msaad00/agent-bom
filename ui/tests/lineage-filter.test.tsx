@@ -10,6 +10,7 @@ import {
   createExpandedGraphFilters,
   createImmediateGraphFilters,
   createRepositoryGraphFilters,
+  GRAPH_SCOPE_DESCRIPTIONS,
   graphScopeLabelForFilters,
   graphScopePresetForFilters,
   type FilterState,
@@ -31,7 +32,7 @@ describe("FilterPanel", () => {
     expect(graphScopeLabelForFilters(DEFAULT_FILTERS)).toBe("Relevant paths");
   });
 
-  it("offers observed-data scopes for cloud estates, repositories, and environments", () => {
+  it("offers factual type-based scopes without claiming collection provenance", () => {
     const cloud = createCloudEstateGraphFilters();
     const repository = createRepositoryGraphFilters();
     const environment = createEnvironmentGraphFilters();
@@ -51,6 +52,10 @@ describe("FilterPanel", () => {
     expect(environment.layers.agent).toBe(true);
     expect(environment.layers.server).toBe(true);
     expect(graphScopePresetForFilters(environment)).toBe("environment");
+    for (const preset of ["cloudEstate", "repository", "environment"] as const) {
+      expect(GRAPH_SCOPE_DESCRIPTIONS[preset]).toMatch(/^Type-based view/);
+      expect(GRAPH_SCOPE_DESCRIPTIONS[preset]).not.toMatch(/observed/i);
+    }
   });
 
   it("names graph scope presets by operator workflow instead of raw depth", () => {

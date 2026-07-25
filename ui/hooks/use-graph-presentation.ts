@@ -13,7 +13,9 @@ import {
   applyGraphPresentation,
   graphPositions,
   graphPresentationStorageKey,
+  purgeGraphPresentationsForOwner,
   readGraphPresentation,
+  registerGraphPresentationKey,
   removeGraphPresentation,
   writeGraphPresentation,
   type GraphPresentationScope,
@@ -36,24 +38,31 @@ export function useGraphPresentation<T extends Node>({
   scope,
   layout,
   enabled = true,
+  ownerActive = true,
+  localMode = false,
 }: {
   nodes: T[];
   scope: GraphPresentationScope;
   layout: string;
   enabled?: boolean;
+  ownerActive?: boolean;
+  localMode?: boolean;
 }) {
+  const persistenceEnabled = enabled && ownerActive && (
+    localMode || (scope.tenantId !== "local" && scope.subject !== "local-viewer")
+  );
   const storageKey = useMemo(() => graphPresentationStorageKey(scope), [scope]);
   const initialState = useMemo(
-    () => (enabled ? readGraphPresentation(browserStorage(), storageKey) : null),
-    [enabled, storageKey],
+    () => (persistenceEnabled ? readGraphPresentation(browserStorage(), storageKey) : null),
+    [persistenceEnabled, storageKey],
   );
-  const [editing, setEditing] = useState(() => enabled && initialState?.locked === false);
-  const [hasSavedState, setHasSavedState] = useState(() => Boolean(enabled && initialState));
+  const [editing, setEditing] = useState(() => persistenceEnabled && initialState?.locked === false);
+  const [hasSavedState, setHasSavedState] = useState(() => Boolean(persistenceEnabled && initialState));
   const accessibleNodes = useMemo(
     () =>
       nodes.map((node) => {
         const data = node.data as { label?: unknown; nodeType?: unknown };
-        const label = typeof data.label === "string" ? data.label : node.id;
+        const label = typeof data.label === "string" ? data.label : "Graph node";
         const kind = typeof data.nodeType === "string" ? `, ${data.nodeType}` : "";
         return { ...node, ariaLabel: node.ariaLabel ?? `${label}${kind}` } as T;
       }),
@@ -65,6 +74,19 @@ export function useGraphPresentation<T extends Node>({
   const [viewport, setViewport] = useState(initialState?.viewport ?? DEFAULT_VIEWPORT);
   const nodesRef = useRef(presentedNodes);
   const viewportRef = useRef(viewport);
+  const ownerRef = useRef(`${scope.tenantId}\u0000${scope.subject}`);
+  const wasOwnerActiveRef = useRef(ownerActive);
+
+  useEffect(() => {
+    const owner = `${scope.tenantId}\u0000${scope.subject}`;
+    const ownerChanged = ownerRef.current !== owner;
+    if ((ownerChanged || (!ownerActive && wasOwnerActiveRef.current)) && wasOwnerActiveRef.current) {
+      const [previousTenant, previousSubject] = ownerRef.current.split("\u0000");
+      purgeGraphPresentationsForOwner(browserStorage(), previousTenant ?? "", previousSubject ?? "");
+    }
+    ownerRef.current = owner;
+    wasOwnerActiveRef.current = ownerActive;
+  }, [ownerActive, scope.subject, scope.tenantId, storageKey]);
 
   useEffect(() => {
     nodesRef.current = presentedNodes;
@@ -74,7 +96,7 @@ export function useGraphPresentation<T extends Node>({
   }, [viewport]);
 
   useEffect(() => {
-    const stored = enabled ? readGraphPresentation(browserStorage(), storageKey) : null;
+    const stored = persistenceEnabled ? readGraphPresentation(browserStorage(), storageKey) : null;
     const compatible = stored?.layout === layout ? stored : null;
     const nextNodes = applyGraphPresentation(accessibleNodes, compatible);
     nodesRef.current = nextNodes;
@@ -82,13 +104,14 @@ export function useGraphPresentation<T extends Node>({
     const nextViewport = compatible?.viewport ?? DEFAULT_VIEWPORT;
     viewportRef.current = nextViewport;
     setViewport(nextViewport);
-    setEditing(enabled && compatible?.locked === false);
-    setHasSavedState(Boolean(enabled && compatible));
-  }, [accessibleNodes, enabled, layout, storageKey]);
+    setEditing(persistenceEnabled && compatible?.locked === false);
+    setHasSavedState(Boolean(persistenceEnabled && compatible));
+  }, [accessibleNodes, layout, persistenceEnabled, storageKey]);
 
   const persist = useCallback(
     (overrides: Partial<GraphPresentationState> = {}) => {
-      if (!enabled) return;
+      if (!persistenceEnabled) return;
+      registerGraphPresentationKey(browserStorage(), scope, storageKey);
       writeGraphPresentation(browserStorage(), storageKey, {
         version: 1,
         positions: graphPositions(nodesRef.current),
@@ -99,11 +122,12 @@ export function useGraphPresentation<T extends Node>({
       });
       setHasSavedState(true);
     },
-    [editing, enabled, layout, storageKey],
+    [editing, layout, persistenceEnabled, scope, storageKey],
   );
 
   const onNodesChange = useCallback(
     (changes: NodeChange<T>[]) => {
+      if (!persistenceEnabled) return;
       const allowed = editing
         ? changes.filter((change) => change.type !== "remove")
         : changes.filter(
@@ -116,12 +140,12 @@ export function useGraphPresentation<T extends Node>({
         return next;
       });
     },
-    [editing],
+    [editing, persistenceEnabled],
   );
 
   const onNodeDragStop = useCallback<OnNodeDrag<T>>(
     (_event, node) => {
-      if (!editing) return;
+      if (!persistenceEnabled || !editing) return;
       const next = nodesRef.current.map((current) =>
         current.id === node.id ? ({ ...current, position: node.position } as T) : current,
       );
@@ -129,21 +153,24 @@ export function useGraphPresentation<T extends Node>({
       setPresentedNodes(next);
       persist({ positions: graphPositions(next), locked: false });
     },
-    [editing, persist],
+    [editing, persist, persistenceEnabled],
   );
 
   const onMoveEnd = useCallback<OnMoveEnd>(
     (_event, nextViewport) => {
+      if (!persistenceEnabled) return;
       viewportRef.current = nextViewport;
       setViewport(nextViewport);
       persist({ viewport: nextViewport });
     },
-    [persist],
+    [persist, persistenceEnabled],
   );
 
   const toggleEditing = useCallback(() => {
+    if (!persistenceEnabled) return;
     setEditing((current) => {
       const next = !current;
+      registerGraphPresentationKey(browserStorage(), scope, storageKey);
       writeGraphPresentation(browserStorage(), storageKey, {
         version: 1,
         positions: graphPositions(nodesRef.current),
@@ -154,9 +181,10 @@ export function useGraphPresentation<T extends Node>({
       setHasSavedState(true);
       return next;
     });
-  }, [layout, storageKey]);
+  }, [layout, persistenceEnabled, scope, storageKey]);
 
   const reset = useCallback(() => {
+    if (!persistenceEnabled) return;
     removeGraphPresentation(browserStorage(), storageKey);
     nodesRef.current = accessibleNodes;
     setPresentedNodes(accessibleNodes);
@@ -164,25 +192,26 @@ export function useGraphPresentation<T extends Node>({
     setViewport(DEFAULT_VIEWPORT);
     setEditing(false);
     setHasSavedState(false);
-  }, [accessibleNodes, storageKey]);
+  }, [accessibleNodes, persistenceEnabled, storageKey]);
 
   const autoLayout = useCallback(() => {
+    if (!persistenceEnabled) return;
     nodesRef.current = accessibleNodes;
     setPresentedNodes(accessibleNodes);
-    if (enabled) {
-      writeGraphPresentation(browserStorage(), storageKey, {
-        version: 1,
-        positions: {},
-        viewport: viewportRef.current,
-        layout,
-        locked: !editing,
-      });
-      setHasSavedState(true);
-    }
-  }, [accessibleNodes, editing, enabled, layout, storageKey]);
+    registerGraphPresentationKey(browserStorage(), scope, storageKey);
+    writeGraphPresentation(browserStorage(), storageKey, {
+      version: 1,
+      positions: {},
+      viewport: viewportRef.current,
+      layout,
+      locked: !editing,
+    });
+    setHasSavedState(true);
+  }, [accessibleNodes, editing, layout, persistenceEnabled, scope, storageKey]);
 
   return {
     storageKey,
+    enabled: persistenceEnabled,
     nodes: presentedNodes,
     editing,
     hasSavedState,

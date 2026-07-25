@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -65,6 +65,9 @@ import { Collapsible } from "@/components/collapsible";
 import { Drawer } from "@/components/drawer";
 import { GraphInteractionToolbar } from "@/components/graph-chrome";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { graphTopologyKey } from "@/lib/graph-presentation";
+import { graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
+import { useAuthState } from "@/components/auth-provider";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
 
@@ -157,7 +160,7 @@ function DiscoveryProvenanceTags({ provenance }: { provenance: DiscoveryProvenan
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((tag) => (
-        <span key={tag} className="rounded border border-sky-500/30 dark:border-sky-900/60 bg-sky-500/10 dark:bg-sky-950/30 px-1.5 py-0.5 text-[10px] font-mono text-sky-700 dark:text-sky-300">
+        <span key={tag} className="agents-cloud-chip">
           {tag}
         </span>
       ))}
@@ -367,14 +370,14 @@ function AgentsList() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/agents/topology"
-            className="flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)]"
+            className="agents-secondary-action"
           >
             <Network className="h-4 w-4" />
             Agent mesh
           </Link>
           <Link
             href="/mesh"
-            className="flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)]"
+            className="agents-secondary-action"
           >
             <GitBranch className="h-4 w-4" />
             Mesh View
@@ -383,7 +386,7 @@ function AgentsList() {
       </div>
 
       {!loading && agents.length > 0 && !hintDismissed && (
-        <div className="flex items-start gap-2 rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]">
+          <div className="agents-info-callout">
           <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--accent)]" />
           <p className="min-w-0 flex-1">
             <span className="font-semibold text-[color:var(--foreground)]">Inventory-first:</span> this page is useful on
@@ -394,7 +397,7 @@ function AgentsList() {
             type="button"
             onClick={() => setHintDismissed(true)}
             aria-label="Dismiss hint"
-            className="shrink-0 rounded p-0.5 text-[color:var(--text-tertiary)] transition-colors hover:text-[color:var(--foreground)]"
+            className="agents-icon-button"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -438,13 +441,13 @@ function AgentsList() {
       {!loading && agents.length > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
+            <Search className="agents-search-icon" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search agents or agent type"
-              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-2 pl-9 pr-3 text-sm text-[color:var(--foreground)] placeholder-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none"
+              className="agents-search"
             />
           </div>
           <p className="text-xs text-[color:var(--text-tertiary)]">
@@ -572,14 +575,14 @@ function AgentDetailDrawer({
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/agents?name=${encodeURIComponent(agent.name)}`}
-            className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-[color:var(--accent-contrast)] transition hover:bg-[color:var(--accent-strong)]"
+            className="agents-primary-action"
           >
             <ArrowRight className="h-3.5 w-3.5" />
             Full detail
           </Link>
           <Link
             href={`/agents?name=${encodeURIComponent(agent.name)}&view=lifecycle`}
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+            className="agents-toolbar-action"
           >
             <GitBranch className="h-3.5 w-3.5" />
             Lifecycle graph
@@ -598,8 +601,8 @@ function AgentDetailDrawer({
         />
 
         {agent.discovery_provenance ? (
-          <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+          <div className="agents-elevated-card">
+            <div className="agents-section-label mb-2">
               <Shield className="h-3.5 w-3.5" />
               Asset discovery provenance
             </div>
@@ -620,7 +623,7 @@ function AgentDetailDrawer({
             return (
               <div
                 key={`${srv.name}-${index}`}
-                className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                className="agents-elevated-card"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -728,7 +731,7 @@ function AgentDetailDrawer({
                       {srv.tools.map((tool) => (
                         <span
                           key={tool.name}
-                          className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)]"
+                          className="agents-chip"
                         >
                           {tool.name}
                         </span>
@@ -796,7 +799,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
   if (error || !data) {
     return (
       <div className="min-h-screen bg-[color:var(--surface)] p-8">
-        <Link href="/agents" className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 mb-6">
+        <Link href="/agents" className="agents-back-link">
           <ArrowLeft className="w-4 h-4" /> Back to agents
         </Link>
         <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
@@ -826,9 +829,9 @@ function AgentDetail({ agentName }: { agentName: string }) {
   return (
     <div className="min-h-screen bg-[color:var(--surface)] text-[color:var(--foreground)]">
       {/* Header */}
-      <div className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 backdrop-blur-sm sticky top-0 z-10">
+      <div className="agents-sticky-header">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <Link href="/agents" className="text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)] flex items-center gap-1 text-sm mb-2">
+          <Link href="/agents" className="agents-back-link-sm">
             <ArrowLeft className="w-3.5 h-3.5" /> All Agents
           </Link>
           <div className="flex items-center justify-between">
@@ -850,7 +853,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
             </div>
             <Link
               href={`/agents?name=${encodeURIComponent(agentName)}&view=lifecycle`}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+              className="agents-scan-action"
             >
               <GitBranch className="w-4 h-4" />
               View Lifecycle Graph
@@ -864,23 +867,23 @@ function AgentDetail({ agentName }: { agentName: string }) {
           <div className="rounded-xl border border-sky-900/60 bg-sky-950/20 p-4">
             <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-sky-400">Observed state</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+              <div className="agents-stat-card">
                 <div className="text-[color:var(--text-tertiary)] text-xs">Lifecycle state</div>
                 <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.lifecycle_state}</div>
               </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+              <div className="agents-stat-card">
                 <div className="text-[color:var(--text-tertiary)] text-xs">Trust score</div>
                 <div className="mt-1 text-sm font-semibold text-emerald-400">{fleet.trust_score.toFixed(1)}</div>
               </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+              <div className="agents-stat-card">
                 <div className="text-[color:var(--text-tertiary)] text-xs">Last discovery</div>
                 <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.last_discovery || "not synced yet"}</div>
               </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+              <div className="agents-stat-card">
                 <div className="text-[color:var(--text-tertiary)] text-xs">Last scan</div>
                 <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.last_scan || "not scanned yet"}</div>
               </div>
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2">
+              <div className="agents-stat-card">
                 <div className="text-[color:var(--text-tertiary)] text-xs">Updated</div>
                 <div className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{fleet.updated_at || "unknown"}</div>
               </div>
@@ -947,15 +950,15 @@ function AgentDetail({ agentName }: { agentName: string }) {
                 0
               );
               return (
-                <div key={srv.name} className="bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl overflow-hidden">
+                <div key={srv.name} className="agents-panel">
                   <button
                     onClick={() => toggleServer(srv.name)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-[color:var(--surface-elevated)]/50 transition-colors"
+                    className="agents-row-button"
                   >
                     <div className="flex items-center gap-3">
                       {isExpanded ? <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" /> : <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" />}
                       <span className="font-medium">{srv.name}</span>
-                      <span className="text-xs bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] px-2 py-0.5 rounded">
+                      <span className="agents-mini-badge">
                         {srv.transport || "stdio"}
                       </span>
                       {srv.security_blocked && (
@@ -976,7 +979,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                       {srv.provenance?.observed_via?.map((source) => (
                         <span
                           key={source}
-                          className="rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 text-[10px] font-mono text-emerald-300"
+                          className="agents-emerald-chip"
                         >
                           {source}
                         </span>
@@ -995,7 +998,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                       <div className="grid gap-3 md:grid-cols-2">
                         {srv.command && (
                           <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
-                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                            <div className="agents-section-label mb-1">
                               <TerminalSquare className="h-3.5 w-3.5" />
                               Command
                             </div>
@@ -1006,7 +1009,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                         )}
                         {srv.url && (
                           <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
-                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                            <div className="agents-section-label mb-1">
                               <Link2 className="h-3.5 w-3.5" />
                               Remote URL
                             </div>
@@ -1028,7 +1031,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           </div>
                         )}
                         <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/60 px-3 py-2">
-                          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                          <div className="agents-section-label mb-1">
                             <Clock3 className="h-3.5 w-3.5" />
                             Discovery context
                           </div>
@@ -1043,7 +1046,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                               {srv.provenance.observed_via.map((source) => (
                                 <span
                                   key={source}
-                                  className="rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 text-[10px] font-mono text-emerald-300"
+                                  className="agents-emerald-chip"
                                 >
                                   {source}
                                 </span>
@@ -1103,12 +1106,12 @@ function AgentDetail({ agentName }: { agentName: string }) {
                                         {entry.confidence}
                                       </span>
                                       {entry.source_type && (
-                                        <span className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] uppercase text-[color:var(--text-secondary)]">
+                                        <span className="agents-type-chip">
                                           {entry.source_type}
                                         </span>
                                       )}
                                       {entry.last_verified && (
-                                        <span className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]">
+                                        <span className="agents-small-chip">
                                           Verified {entry.last_verified}
                                         </span>
                                       )}
@@ -1154,7 +1157,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           <h4 className="text-xs font-semibold text-yellow-400 mb-1">Credential-backed env vars</h4>
                           <div className="flex flex-wrap gap-1.5">
                             {srv.credential_env_vars?.map((envVar) => (
-                              <span key={envVar} className="rounded border border-yellow-800 bg-yellow-950 px-2 py-0.5 text-[11px] font-mono text-yellow-300">
+                              <span key={envVar} className="agents-warning-chip">
                                 {envVar}
                               </span>
                             ))}
@@ -1345,7 +1348,7 @@ function DetailPanel({
   const d = node.data;
   const Icon = NODE_ICONS[d.nodeType] ?? Bug;
   return (
-    <div className="absolute top-4 right-4 w-72 bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] rounded-xl shadow-2xl z-50 overflow-hidden">
+    <div className="agents-flow-drawer">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--border-subtle)]">
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4 text-[color:var(--text-secondary)]" />
@@ -1416,19 +1419,27 @@ function LifecycleFlow({
   data: AgentLifecycleResponse;
   agentName: string;
 }) {
+  const { session, loading: authLoading } = useAuthState();
   const flowInstance = useReactFlow();
   const [selectedNode, setSelectedNode] = useState<Node<AttackFlowNodeData> | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const lifecycleEdges = useMemo(
+    () => readableGraphEdges(data.edges as Edge[], undefined, { nodeLabels: graphNodeDisplayLabels(data.nodes as Node[]) }),
+    [data.edges, data.nodes],
+  );
   const presentation = useGraphPresentation({
     nodes: data.nodes as Node[],
     scope: {
-      tenantId: "local",
-      subject: "local-viewer",
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
       snapshotId: agentName,
       lens: "agent-lifecycle",
-      scope: "full",
+      scope: graphTopologyKey(data.nodes as Node[], lifecycleEdges),
     },
     layout: "agent-lifecycle",
+    enabled: !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
   });
 
   useEffect(() => {
@@ -1464,11 +1475,11 @@ function LifecycleFlow({
   return (
     <div className="relative w-full h-full">
       {/* Header bar */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-[color:var(--surface)]/90 backdrop-blur-sm border-b border-[color:var(--border-subtle)] px-4 py-3 flex items-center justify-between">
+      <div className="agents-flow-header">
         <div className="flex items-center gap-4">
           <Link
             href={`/agents?name=${encodeURIComponent(agentName)}`}
-            className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 text-sm"
+            className="agents-inline-link"
           >
             <ArrowLeft className="w-4 h-4" /> {agentName}
           </Link>
@@ -1477,7 +1488,7 @@ function LifecycleFlow({
         </div>
         <div className="flex items-center gap-4">
           <StatsBar stats={data.stats} />
-          <GraphInteractionToolbar
+          {presentation.enabled && presentation.nodes.length > 0 && <GraphInteractionToolbar
             editing={presentation.editing}
             hasSelection={Boolean(selectedNodeId)}
             onFitVisible={fitVisible}
@@ -1485,10 +1496,10 @@ function LifecycleFlow({
             onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
             onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
             onToggleEditing={presentation.toggleEditing}
-          />
+          />}
           <button
             onClick={handleExport}
-            className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 text-xs border border-[color:var(--border-subtle)] rounded px-2 py-1"
+            className="agents-flow-export"
           >
             <Download className="w-3.5 h-3.5" /> Export
           </button>
@@ -1498,7 +1509,7 @@ function LifecycleFlow({
       <ReactFlow
         key={presentation.storageKey}
         nodes={presentation.nodes}
-        edges={data.edges as Edge[]}
+        edges={lifecycleEdges}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
         onPaneClick={() => { setSelectedNode(null); setSelectedNodeId(null); }}
@@ -1515,7 +1526,7 @@ function LifecycleFlow({
         className="!bg-[color:var(--surface)]"
       >
         <Background color="#27272a" gap={20} />
-        <Controls className="!bg-[color:var(--surface-muted)] !border-[color:var(--border-subtle)] !rounded-lg [&>button]:!bg-[color:var(--surface-elevated)] [&>button]:!border-[color:var(--border-subtle)] [&>button]:!text-[color:var(--text-secondary)]" />
+        <Controls className="agents-flow-controls" />
         <MiniMap
           nodeColor={(n) => MINIMAP_COLORS[(n.data as AttackFlowNodeData)?.nodeType] ?? "#52525b"}
           className="!bg-[color:var(--surface-muted)] !border-[color:var(--border-subtle)] !rounded-lg"
@@ -1556,7 +1567,7 @@ function AgentLifecycle({ agentName }: { agentName: string }) {
   if (error || !data) {
     return (
       <div className="h-screen bg-[color:var(--surface)] p-8">
-        <Link href="/agents" className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] flex items-center gap-1 mb-6">
+        <Link href="/agents" className="agents-back-link">
           <ArrowLeft className="w-4 h-4" /> Back to agents
         </Link>
         <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
@@ -1629,7 +1640,7 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
   const redaction = REDACTION_LABEL[envelope.redaction_status] ?? envelope.redaction_status;
   return (
     <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+      <div className="agents-section-label-emerald">
         <Shield className="h-3.5 w-3.5" />
         Scan trust contract
       </div>
@@ -1637,10 +1648,10 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
         Scan ran from your local or self-hosted deployment boundary with read-only roles. Sensitive values are never collected or are redacted before storage.
       </p>
       <div className="mb-2 flex flex-wrap gap-1.5">
-        <span className="rounded border border-emerald-800 bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-300">
+        <span className="agents-status-chip">
           {mode}
         </span>
-        <span className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-secondary)]">
+        <span className="agents-section-chip">
           redaction: {redaction}
         </span>
       </div>
@@ -1649,7 +1660,7 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
           <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Scope</div>
           <div className="flex flex-wrap gap-1.5">
             {envelope.discovery_scope.map((s) => (
-              <span key={s} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 font-mono text-[color:var(--text-secondary)]">
+              <span key={s} className="agents-mono-chip">
                 {s}
               </span>
             ))}
@@ -1658,12 +1669,12 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
       )}
       {envelope.permissions_used.length > 0 && (
         <details className="mt-2 text-[11px] text-[color:var(--text-secondary)]">
-          <summary className="cursor-pointer text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]">
+          <summary className="agents-collapse-toggle">
             Permissions used ({envelope.permissions_used.length})
           </summary>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {envelope.permissions_used.map((p) => (
-              <span key={p} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 font-mono text-[color:var(--text-secondary)]">
+              <span key={p} className="agents-mono-chip">
                 {p}
               </span>
             ))}

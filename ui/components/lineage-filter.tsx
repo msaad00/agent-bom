@@ -113,9 +113,9 @@ export const GRAPH_SCOPE_LABELS: Record<GraphScopePreset, string> = {
 export const GRAPH_SCOPE_DESCRIPTIONS: Record<GraphScopePreset, string> = {
   immediate: "One-hop triage around a selected agent.",
   relevant: "Default fix-first graph with bounded path context.",
-  cloudEstate: "Observed cloud, account, identity, resource, and finding relationships.",
-  repository: "Observed repository files, packages, and attached findings.",
-  environment: "Observed environment, agent, service, resource, and finding relationships.",
+  cloudEstate: "Type-based view of cloud, account, identity, resource, and finding nodes.",
+  repository: "Type-based view of repository file, package, and finding nodes.",
+  environment: "Type-based view of environment, agent, service, resource, and finding nodes.",
   expanded: "Broader topology review with lower-priority context included.",
   assetDrift:
     "Governance and exhibits_drift paths tying estate containers to drift incidents.",

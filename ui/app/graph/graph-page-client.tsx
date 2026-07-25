@@ -89,6 +89,7 @@ import {
   changeKindForNode,
   CHANGE_KIND_META,
   CONTROLS_CLASS,
+  graphNodeDisplayLabels,
   legendItemsForVisibleGraph,
   MINIMAP_BG,
   MINIMAP_CLASS,
@@ -148,7 +149,7 @@ import {
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import { useAuthState } from "@/components/auth-provider";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
-import { selectGraphSubgraph } from "@/lib/graph-presentation";
+import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
 
 // The whole current-scan graph loads in one request (no numbered pagination).
 // The bound matches the interactive render budget: past it, the overview
@@ -701,7 +702,7 @@ export default function GraphPageClient() {
 function GraphPageInner() {
   const reactFlow = useReactFlow();
   const graphViewport = useViewport();
-  const { session } = useAuthState();
+  const { session, loading: authLoading } = useAuthState();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -1853,6 +1854,7 @@ function GraphPageInner() {
       inactiveOpacity: 0.06,
       captureMode,
       zoom: graphViewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
     });
   }, [
     layoutEdges,
@@ -1863,14 +1865,25 @@ function GraphPageInner() {
     graphLayoutKind,
     captureMode,
     graphViewport.zoom,
+    displayNodes,
   ]);
+
+  const accessibleBaseDisplayEdges = useMemo(
+    () => readableGraphEdges(baseDisplayEdges, undefined, {
+      captureMode,
+      zoom: graphViewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
+      preserveVisualStyle: true,
+    }),
+    [baseDisplayEdges, captureMode, displayNodes, graphViewport.zoom],
+  );
 
   // Drift lens edge emphasis — new/changed edges adopt their change-kind colour
   // so the lens reads as one system with the node rings. Inert (identity) when
   // the lens is disengaged.
   const displayEdges = useMemo(() => {
-    if (!driftLensEngaged) return baseDisplayEdges;
-    return baseDisplayEdges.map((edge): Edge => {
+    if (!driftLensEngaged) return accessibleBaseDisplayEdges;
+    return accessibleBaseDisplayEdges.map((edge): Edge => {
       const relationship =
         typeof edge.data?.relationship === "string"
           ? edge.data.relationship
@@ -1901,7 +1914,7 @@ function GraphPageInner() {
         },
       };
     });
-  }, [baseDisplayEdges, driftLensEngaged, driftIndex]);
+  }, [accessibleBaseDisplayEdges, driftLensEngaged, driftIndex]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -1941,15 +1954,18 @@ function GraphPageInner() {
         severity: filters.severity,
         path: selectedAttackPathKey,
         rollup: rollupStack.at(-1)?.id ?? null,
+        topology: graphTopologyKey(displayNodes, displayEdges),
       }),
     }),
-    [filters, rollupStack, selectedAttackPath, selectedAttackPathKey, selectedScanId, session?.auth_method, session?.subject, session?.tenant_id],
+    [displayEdges, displayNodes, filters, rollupStack, selectedAttackPath, selectedAttackPathKey, selectedScanId, session?.auth_method, session?.subject, session?.tenant_id],
   );
   const presentation = useGraphPresentation({
     nodes: displayNodes,
     scope: presentationScope,
     layout: graphLayoutKind,
-    enabled: !captureMode,
+    enabled: !captureMode && !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
   });
   const fitVisible = useCallback(() => {
     void reactFlow.fitView({ ...viewportOptions, duration: 240 });
@@ -2375,7 +2391,7 @@ function GraphPageInner() {
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
 
-      <div className="border-b border-[var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3">
+      <div className="graph-page-header">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
@@ -2420,7 +2436,7 @@ function GraphPageInner() {
             <select
               value={selectedScanId}
               onChange={(event) => setSelectedScanId(event.target.value)}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none"
+              className="graph-page-select"
             >
               {snapshots.map((snapshot) => (
                 <option key={snapshot.scan_id} value={snapshot.scan_id}>
@@ -2437,7 +2453,7 @@ function GraphPageInner() {
               }
             />
             <FullscreenButton />
-            <GraphInteractionToolbar
+            {presentation.enabled && !captureMode && displayNodes.length > 0 && graphRenderer.kind === "react-flow" && <GraphInteractionToolbar
               editing={presentation.editing}
               hasSelection={Boolean(selectedNodeId)}
               onFitVisible={fitVisible}
@@ -2445,7 +2461,7 @@ function GraphPageInner() {
               onAutoLayout={autoLayout}
               onReset={resetLayout}
               onToggleEditing={presentation.toggleEditing}
-            />
+            />}
           </div>
         </div>
 
@@ -2461,12 +2477,12 @@ function GraphPageInner() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search nodes, tags, severities, or attributes"
-              className="min-w-[260px] flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:border-sky-600 focus:outline-none"
+              className="graph-page-search"
             />
             <button
               type="submit"
               disabled={searching || !selectedScanId}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-sm text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="graph-page-action"
             >
               {searching ? "Searching..." : "Search"}
             </button>
@@ -2485,7 +2501,7 @@ function GraphPageInner() {
             {sourceNodeCount > 0 && (
               <span
                 data-testid="graph-compression-summary"
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)]"
+                className="graph-chip-neutral"
               >
                 {compressedGroupCount > 0
                   ? `${compressedGroupCount} compressed groups`
@@ -2493,7 +2509,7 @@ function GraphPageInner() {
               </span>
             )}
             {loadingGraph && (
-              <span className="flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200">
+              <span className="graph-chip-sky-soft">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 refreshing
               </span>
@@ -2505,7 +2521,7 @@ function GraphPageInner() {
 
           {activeScopePreset === "assetDrift" && (
             <div className="mt-3 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+              <div className="graph-callout-orange">
                 <span>
                   Asset lifecycle drift lens — governance and{" "}
                   <span className="font-mono">exhibits_drift</span> edges with
@@ -2513,7 +2529,7 @@ function GraphPageInner() {
                 </span>
                 <a
                   href="/drift"
-                  className="rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+                  className="graph-chip-orange"
                 >
                   Open drift incidents
                 </a>
@@ -2537,7 +2553,7 @@ function GraphPageInner() {
           )}
 
           {investigationMode && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+            <div className="graph-callout-sky">
               <span>
                 Root-centered investigation:{" "}
                 <span className="font-mono">{investigationMode.rootId}</span>
@@ -2606,7 +2622,7 @@ function GraphPageInner() {
                     type="button"
                     data-testid={`graph-search-result-${result.id}`}
                     onClick={() => void focusSearchResult(result)}
-                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--surface)]"
+                    className="graph-page-result"
                   >
                     <p className="truncate text-sm font-medium text-[var(--foreground)]">
                       {result.label}
@@ -2669,7 +2685,7 @@ function GraphPageInner() {
         {/* One collapsed drawer keeps secondary controls off the default path.
             Its content uses flat sections rather than nested control drawers. */}
         <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group">
-          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
+          <summary className="graph-drawer-summary">
             <div>
               <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                 Advanced controls
@@ -2742,7 +2758,7 @@ function GraphPageInner() {
                   type="button"
                   onClick={() => setFilters(createCloudEstateGraphFilters())}
                   className={scopeButtonClass(activeScopePreset === "cloudEstate")}
-                  title="Observed cloud accounts, identities, resources, and attached findings"
+                  title="Type-based view of cloud accounts, identities, resources, and attached findings; does not assert collection provenance"
                 >
                   Cloud estate
                 </button>
@@ -2750,7 +2766,7 @@ function GraphPageInner() {
                   type="button"
                   onClick={() => setFilters(createRepositoryGraphFilters())}
                   className={scopeButtonClass(activeScopePreset === "repository")}
-                  title="Observed repository files, packages, and attached findings; no inferred import edges"
+                  title="Type-based view of repository files, packages, and attached findings; does not assert collection provenance"
                 >
                   Repository
                 </button>
@@ -2758,7 +2774,7 @@ function GraphPageInner() {
                   type="button"
                   onClick={() => setFilters(createEnvironmentGraphFilters())}
                   className={scopeButtonClass(activeScopePreset === "environment")}
-                  title="Observed environment, agent, service, resource, and finding relationships"
+                  title="Type-based view of environment, agent, service, resource, and finding nodes; does not assert collection provenance"
                 >
                   Environment
                 </button>
@@ -2813,7 +2829,7 @@ function GraphPageInner() {
             stop them from owning a full screen of vertical space on every
             page-load. */}
         {activeSnapshot && (
-          <details className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 group">
+          <details className="group graph-drawer-section">
             <summary className="flex flex-wrap items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
@@ -2843,7 +2859,7 @@ function GraphPageInner() {
               </div>
             </summary>
             {diffError ? (
-              <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+              <div className="graph-callout-amber">
                 {diffError}
               </div>
             ) : loadingDiff && !graphDiff ? (
@@ -3029,7 +3045,7 @@ function GraphPageInner() {
                   onClick={() => {
                     setSelectedAttackPathKey(null);
                   }}
-                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+                  className="graph-page-secondary-action"
                 >
                   Clear path focus
                 </button>
@@ -3137,7 +3153,7 @@ function GraphPageInner() {
       <div className="flex-1 flex relative min-h-[68vh]">
         <div className="flex-1 relative min-h-[60vh] flex flex-col">
           {selectedAttackPath && (
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+            <div className="graph-callout-orange-compact">
               <span>
                 Focused attack path · risk{" "}
                 {selectedAttackPath.composite_risk.toFixed(1)} ·{" "}
@@ -3149,7 +3165,7 @@ function GraphPageInner() {
                   onClick={() => {
                     setSelectedAttackPathKey(null);
                   }}
-                  className="rounded-lg border border-orange-400/30 bg-orange-950/40 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+                  className="graph-chip-orange-muted"
                 >
                   Clear focus
                 </button>
@@ -3399,7 +3415,7 @@ function ReachabilityDrillInPanel({
         <button
           type="button"
           onClick={onClear}
-          className="rounded-lg border border-rose-400/30 bg-rose-950/60 px-2.5 py-1 text-rose-100 transition hover:border-rose-300"
+          className="graph-chip-rose"
         >
           Clear reachability
         </button>
@@ -3514,7 +3530,7 @@ function BlastRadiusPanel({
         <button
           type="button"
           onClick={onClear}
-          className="rounded-lg border border-violet-400/30 bg-violet-950/60 px-2.5 py-1 text-violet-100 transition hover:border-violet-300"
+          className="graph-chip-violet"
         >
           Clear blast radius
         </button>
@@ -3609,7 +3625,7 @@ function RollupNavigationPanel({
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300"
+          className="graph-chip-emerald"
         >
           Open node view
         </button>
@@ -3633,7 +3649,7 @@ function RollupNavigationPanel({
               <button
                 type="button"
                 onClick={() => onBreadcrumb(index)}
-                className="max-w-[12rem] truncate rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300"
+                className="graph-chip-emerald-truncate"
               >
                 {crumb.label}
               </button>
@@ -3699,7 +3715,7 @@ function PathTagList({
         {tags.map((tag) => (
           <span
             key={`${label}-${tag}`}
-            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/80 px-2 py-1 text-[11px] text-[var(--text-secondary)]"
+            className="graph-chip-elevated"
           >
             {tag}
           </span>

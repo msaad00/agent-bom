@@ -54,6 +54,7 @@ import {
   MINIMAP_MASK,
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
+  graphNodeDisplayLabels,
   legendItemsForVisibleGraph,
   minimapNodeColor,
   readableGraphEdges,
@@ -61,6 +62,7 @@ import {
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { graphTopologyKey } from "@/lib/graph-presentation";
 import { useAuthState } from "@/components/auth-provider";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
@@ -303,7 +305,7 @@ export default function ContextPage() {
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const { counts } = useDeploymentContext();
   const captureMode = useCaptureMode();
-  const { session } = useAuthState();
+  const { session, loading: authLoading } = useAuthState();
 
   useEffect(() => {
     if (captureMode) {
@@ -475,10 +477,12 @@ export default function ContextPage() {
       subject: session?.subject || session?.auth_method || "local-viewer",
       snapshotId: selectedJobId || "unselected",
       lens: "context",
-      scope: JSON.stringify({ agent: selectedAgent, pathFocusEnabled }),
+      scope: JSON.stringify({ agent: selectedAgent, pathFocusEnabled, topology: graphTopologyKey(displayNodes, layoutEdges) }),
     },
     layout: "dagre-lr",
-    enabled: !captureMode,
+    enabled: !captureMode && !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
   });
 
   const displayEdges = useMemo(() => {
@@ -496,8 +500,9 @@ export default function ContextPage() {
       inactiveOpacity: 0.06,
       captureMode,
       zoom: presentation.viewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
     });
-  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom]);
+  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom, displayNodes]);
 
   const legendItems = useMemo(() => {
     const extras =
@@ -661,7 +666,7 @@ export default function ContextPage() {
             </button>
           )}
           <FullscreenButton />
-          <GraphInteractionToolbar
+          {presentation.enabled && !captureMode && displayNodes.length > 0 && <GraphInteractionToolbar
             editing={presentation.editing}
             hasSelection={Boolean(selectedNodeId)}
             onFitVisible={fitVisible}
@@ -669,7 +674,7 @@ export default function ContextPage() {
             onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
             onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
             onToggleEditing={presentation.toggleEditing}
-          />
+          />}
         </div>
         <GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} />
       </div>

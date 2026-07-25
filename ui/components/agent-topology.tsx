@@ -9,6 +9,7 @@ import {
   useReactFlow,
   Handle,
   Position,
+  type Edge,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -28,6 +29,7 @@ import {
 import { useDagreLrLayout } from "@/lib/use-dagre-lr";
 import { useThemeMode } from "@/lib/theme-mode";
 import { TopologyDetailDrawer } from "@/components/topology-detail-drawer";
+import { graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
 
 const TOPOLOGY_CONTROLS_CLASS =
   "!rounded-lg !border !border-[color:var(--border-subtle)] !bg-[color:var(--surface-elevated)] !backdrop-blur-sm [&>button]:!border-[color:var(--border-subtle)] [&>button]:!bg-[color:var(--surface)] [&>button]:!text-[color:var(--text-secondary)] [&>button:hover]:!bg-[color:var(--surface-muted)] [&>button:hover]:!text-[color:var(--foreground)]";
@@ -130,6 +132,14 @@ function TopologyFlow({
     rankSep: 120,
     nodeSep: 28,
   });
+  const displayEdges = useMemo(
+    () =>
+      readableGraphEdges(edges as Edge[], undefined, {
+        nodeLabels: graphNodeDisplayLabels(nodes),
+        preserveVisualStyle: true,
+      }),
+    [edges, nodes],
+  );
   const backgroundDot = theme === "light" ? "#94a3b8" : "#5b6472";
 
   useEffect(() => {
@@ -158,7 +168,7 @@ function TopologyFlow({
   return (
     <ReactFlow
       nodes={nodes}
-      edges={edges}
+      edges={displayEdges}
       nodeTypes={nodeTypes}
       onNodeClick={handleNodeClick}
       fitView

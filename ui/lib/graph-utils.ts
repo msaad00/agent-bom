@@ -7,7 +7,7 @@ import type {
   LineageNodeData,
   LineageNodeType,
 } from "@/components/lineage-nodes";
-import type { Edge } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import {
   GRAPH_EDGE_KIND_META,
   GRAPH_NODE_KIND_META,
@@ -18,11 +18,9 @@ import type { GraphChangeKind, GraphDiffResponse } from "@/lib/api-types";
 
 // ─── Shared Styling Constants ────────────────────────────────────────────────
 
-export const CONTROLS_CLASS =
-  "!bg-[var(--surface)]/90 !border-[var(--border-subtle)] !rounded-lg !backdrop-blur-sm [&>button]:!bg-[var(--surface-elevated)] [&>button]:!border-[var(--border-subtle)] [&>button]:!text-[var(--text-secondary)] [&>button:hover]:!bg-[var(--surface-muted)]";
+export const CONTROLS_CLASS = "graph-flow-controls";
 
-export const MINIMAP_CLASS =
-  "!bg-[var(--surface)]/90 !border-[var(--border-subtle)] !rounded-lg !backdrop-blur-sm";
+export const MINIMAP_CLASS = "graph-flow-minimap";
 // React Flow forwards `bgColor` into an inline CSS custom property that its
 // stylesheet resolves with `var()`, so a token reference here follows the
 // light/dark toggle without any runtime JS (was a hardcoded near-black #09090b
@@ -380,12 +378,7 @@ export function relationshipEdgeLabelText(
   relationship: string,
   metadata?: Record<string, unknown>,
 ): string {
-  if (relationship === "shares_server") {
-    return `shared: ${(metadata?.server as string) ?? ""}`.trim();
-  }
-  if (relationship === "shares_credential" || relationship === "shares_cred") {
-    return `shared: ${(metadata?.credential as string) ?? ""}`.trim();
-  }
+  void metadata;
   return relationshipLegendItem(relationship).label;
 }
 
@@ -519,6 +512,17 @@ function edgeRelationship(edge: Edge): string {
   return typeof relationship === "string" ? relationship : "";
 }
 
+export function graphNodeDisplayLabels(
+  nodes: Array<Pick<Node, "id" | "data">>,
+): ReadonlyMap<string, string> {
+  return new Map(nodes.map((node) => {
+    const data = node.data as { label?: unknown; name?: unknown; title?: unknown };
+    const label = [data.label, data.name, data.title]
+      .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+    return [node.id, label ?? "graph node"];
+  }));
+}
+
 export function readableGraphEdges(
   edges: Edge[],
   activeNodeIds?: Set<string> | null,
@@ -530,6 +534,8 @@ export function readableGraphEdges(
     quietAnimation?: boolean;
     captureMode?: boolean;
     zoom?: number;
+    nodeLabels?: ReadonlyMap<string, string>;
+    preserveVisualStyle?: boolean;
   } = {},
 ): Edge[] {
   const {
@@ -540,6 +546,8 @@ export function readableGraphEdges(
     quietAnimation = true,
     captureMode = false,
     zoom = 1,
+    nodeLabels,
+    preserveVisualStyle = false,
   } = options;
 
   return edges.map((edge): Edge => {
@@ -557,16 +565,20 @@ export function readableGraphEdges(
     const captureInactiveOpacity = captureMode
       ? Math.max(inactiveOpacity, 0.18)
       : inactiveOpacity;
-    const opacity = activeNodeIds
+    const computedOpacity = activeNodeIds
       ? active
         ? activeOpacity
         : captureInactiveOpacity
       : highSignal
         ? captureHighSignalOpacity
         : captureBaseOpacity;
+    const opacity = preserveVisualStyle && typeof edge.style?.opacity === "number"
+      ? edge.style.opacity
+      : computedOpacity;
     const width = numericStrokeWidth(edge);
+    const safeSharedLabel = relationship.startsWith("shares_") || relationship === "shares_cred";
     const label =
-      edge.label ??
+      (safeSharedLabel ? undefined : edge.label) ??
       (relationship && (active || highSignal)
         ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
         : undefined);
@@ -578,10 +590,12 @@ export function readableGraphEdges(
       ...edge,
       label,
       ariaLabel: relationship
-        ? `${relationshipEdgeLabelText(relationship)} relationship from ${edge.source} to ${edge.target}`
-        : `Relationship from ${edge.source} to ${edge.target}`,
+        ? `${relationshipEdgeLabelText(relationship)} relationship from ${nodeLabels?.get(edge.source) ?? "source node"} to ${nodeLabels?.get(edge.target) ?? "target node"}`
+        : `Relationship from ${nodeLabels?.get(edge.source) ?? "source node"} to ${nodeLabels?.get(edge.target) ?? "target node"}`,
       ...labelPresentation,
-      animated: captureMode
+      animated: preserveVisualStyle && !captureMode
+        ? Boolean(edge.animated)
+        : captureMode
         ? false
         : quietAnimation
           ? Boolean(activeNodeIds && active && edge.animated)
@@ -589,7 +603,9 @@ export function readableGraphEdges(
       style: {
         ...edge.style,
         opacity,
-        strokeWidth: active
+        strokeWidth: preserveVisualStyle
+          ? width
+          : active
           ? Math.max(width, captureMode ? 3 : 2.6)
           : captureMode
             ? Math.max(Math.min(width, highSignal ? 2.2 : 1.6), 1.25)

@@ -16,16 +16,11 @@ import {
   FolderTree,
   KeyRound,
   Loader2,
-  Focus,
-  Lock,
   Maximize2,
   Minimize2,
-  Move,
-  RotateCcw,
   Server,
   Shield,
   Wrench,
-  WandSparkles,
 } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { api, type GraphExportFormat } from "@/lib/api";
@@ -104,16 +99,16 @@ export function GraphLegend({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`${embedded ? "hidden" : "flex"} items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-elevated)] backdrop-blur-sm`}
+        className={`${embedded ? "hidden" : "flex"} graph-legend-toggle`}
         aria-expanded={visible}
         aria-label={visible ? "Hide legend" : "Show legend"}
       >
         <span className="font-medium">Legend</span>
-        <span className="rounded-full bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{items.length}</span>
+        <span className="graph-legend-count">{items.length}</span>
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${visible ? "rotate-180" : ""}`} />
       </button>
       {visible && (
-        <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-[var(--shadow-color)]"} max-h-[60vh] overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-[var(--foreground)] backdrop-blur-md`}>
+        <div className={`${embedded ? "relative shadow-none" : "absolute right-0 top-full z-20 mt-2 shadow-2xl shadow-[var(--shadow-color)]"} graph-legend-popover`}>
           <GraphLegendContent items={items} />
         </div>
       )}
@@ -134,18 +129,18 @@ export function GraphLegendDock({
 
   return (
     <details
-      className="group border-t border-[var(--border-subtle)] pt-2 open:pt-3"
+      className="group graph-legend-dock"
       {...(defaultOpen ? { open: true } : {})}
     >
-      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1.5 text-xs [&::-webkit-details-marker]:hidden">
-        <span className="shrink-0 font-medium uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+      <summary className="graph-legend-dock-summary">
+        <span className="graph-legend-dock-label">
           Legend
         </span>
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 group-open:hidden">
+        <span className="graph-legend-preview">
           {preview.map((item) => (
             <span
               key={`preview:${item.label}:${item.kind}`}
-              className="inline-flex max-w-[8rem] items-center gap-1 text-[10px] text-[var(--text-secondary)]"
+              className="graph-legend-preview-item"
               title={item.label}
             >
               <LegendGlyph item={item} />
@@ -156,14 +151,14 @@ export function GraphLegendDock({
             <span className="text-[10px] text-[var(--text-tertiary)]">+{items.length - preview.length}</span>
           ) : null}
         </span>
-        <span className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] group-open:hidden">
+        <span className="graph-legend-expand group-open:hidden">
           expand
         </span>
-        <span className="ml-auto hidden shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] group-open:inline">
+        <span className="graph-legend-expand hidden group-open:inline">
           collapse
         </span>
       </summary>
-      <div className="mt-2 max-h-[min(40vh,18rem)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3">
+      <div className="graph-legend-dock-content">
         <GraphLegendContent items={items} />
       </div>
     </details>
@@ -364,7 +359,7 @@ export function FullscreenButton() {
   return (
     <button
       onClick={toggle}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] transition-colors backdrop-blur-sm"
+      className="graph-icon-button"
       title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
       aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
     >
@@ -390,20 +385,20 @@ export function GraphInteractionToolbar({
   onAutoLayout: () => void;
   onToggleEditing: () => void;
 }) {
-  const buttonClass = "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40";
+  const buttonClass = "graph-layout-button";
   return (
-    <div role="toolbar" aria-label="Graph layout controls" className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/90 p-1">
+    <div role="toolbar" aria-label="Graph layout controls" className="graph-layout-toolbar">
       <button type="button" className={buttonClass} onClick={onFitVisible} aria-label="Fit visible graph">
-        <Focus className="h-3.5 w-3.5" aria-hidden="true" /> Fit
+        Fit
       </button>
       <button type="button" className={buttonClass} onClick={onFitSelection} disabled={!hasSelection} aria-label="Fit selection">
-        <Move className="h-3.5 w-3.5" aria-hidden="true" /> Selection
+        Selection
       </button>
       <button type="button" className={buttonClass} onClick={onAutoLayout} aria-label="Auto-layout graph">
-        <WandSparkles className="h-3.5 w-3.5" aria-hidden="true" /> Auto
+        Auto
       </button>
       <button type="button" className={buttonClass} onClick={onReset} aria-label="Reset layout">
-        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset
+        Reset
       </button>
       <button
         type="button"
@@ -412,7 +407,6 @@ export function GraphInteractionToolbar({
         aria-label={editing ? "Lock layout" : "Edit layout"}
         aria-pressed={editing}
       >
-        {editing ? <Lock className="h-3.5 w-3.5" aria-hidden="true" /> : <Move className="h-3.5 w-3.5" aria-hidden="true" />}
         {editing ? "Lock" : "Edit"}
       </button>
     </div>
@@ -438,7 +432,7 @@ export function GraphExportButton({ filename }: { filename?: string }) {
   return (
     <button
       onClick={handleExport}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] transition-colors backdrop-blur-sm"
+      className="graph-icon-button"
     >
       <Download className="w-3.5 h-3.5" />
       Export
@@ -492,7 +486,7 @@ export function GraphEvidenceExportButton({
         aria-label="Graph evidence format"
         value={format}
         onChange={(event) => setFormat(event.target.value as GraphExportFormat)}
-        className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none"
+        className="graph-export-select"
       >
         {formats.map((item) => (
           <option key={item} value={item}>
@@ -504,7 +498,7 @@ export function GraphEvidenceExportButton({
         type="button"
         onClick={() => void handleDownload()}
         disabled={!scanId || exporting}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/45 bg-cyan-50 px-2.5 py-1.5 text-xs font-medium text-cyan-800 transition-colors hover:border-cyan-700 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:border-cyan-800 dark:hover:bg-cyan-950/50"
+        className="graph-export-button"
         title="Download the selected scan graph in an evidence format for review, import, or audit handoff."
       >
         {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}

@@ -13,13 +13,15 @@ import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nod
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { MeshStats } from "@/components/mesh-stats";
 import { buildMeshGraph, getConnectedIds, type MeshStatsData } from "@/lib/mesh-graph";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor, readableGraphEdges } from "@/lib/graph-utils";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, graphNodeDisplayLabels, legendItemsForVisibleNodes, minimapNodeColor, readableGraphEdges } from "@/lib/graph-utils";
 import { READABLE_LINEAGE_DAGRE_LR } from "@/lib/graph-node-dimensions";
 import { GraphInteractionToolbar, GraphLegend } from "@/components/graph-chrome";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
-import { selectGraphSubgraph } from "@/lib/graph-presentation";
+import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
+import { useAuthState } from "@/components/auth-provider";
 
 export function ScanMeshView({ id }: { id: string }) {
+  const { session, loading: authLoading } = useAuthState();
   const [job, setJob] = useState<ScanJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,8 +70,17 @@ export function ScanMeshView({ id }: { id: string }) {
 
   const presentation = useGraphPresentation({
     nodes: displayNodes as Node<LineageNodeData>[],
-    scope: { tenantId: "local", subject: "local-viewer", snapshotId: id, lens: "mesh", scope: pathFocusEnabled ? "path" : "full" },
+    scope: {
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: id,
+      lens: "mesh",
+      scope: JSON.stringify({ pathFocusEnabled, topology: graphTopologyKey(displayNodes, layoutEdges) }),
+    },
     layout: "dagre-lr",
+    enabled: !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
   });
 
   const displayEdges = useMemo(() => {
@@ -78,14 +89,27 @@ export function ScanMeshView({ id }: { id: string }) {
       highSignalOpacity: 0.58,
       inactiveOpacity: 0.06,
       zoom: presentation.viewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
     });
-  }, [layoutEdges, connectedIds, pathFocusIds, presentation.viewport.zoom]);
+  }, [layoutEdges, connectedIds, pathFocusIds, presentation.viewport.zoom, displayNodes]);
 
   const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => { setSelectedNode(node.data as LineageNodeData); setSelectedNodeId(node.id); setHoveredNodeId(null); }, []);
   const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => { setHoveredNodeId(node.id); }, []);
   const onNodeMouseLeave = useCallback(() => { setHoveredNodeId(null); }, []);
+  const fitVisible = useCallback(
+    () => void flowInstance?.fitView({ padding: 0.2, duration: 240 }),
+    [flowInstance],
+  );
+  const autoLayout = useCallback(() => {
+    presentation.autoLayout();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+  const resetLayout = useCallback(() => {
+    presentation.reset();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
 
   if (loading) return <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading mesh...</div>;
 
@@ -111,12 +135,12 @@ export function ScanMeshView({ id }: { id: string }) {
         </div>
         <div className="flex items-center gap-2">
           <GraphLegend items={legendItems} />
-          <GraphInteractionToolbar
+          {presentation.enabled && presentation.nodes.length > 0 && <GraphInteractionToolbar
             editing={presentation.editing} hasSelection={Boolean(selectedNodeId)}
-            onFitVisible={() => void flowInstance?.fitView({ padding: 0.2, duration: 240 })}
+            onFitVisible={fitVisible}
             onFitSelection={() => { const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined; if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240 }); }}
-            onAutoLayout={presentation.autoLayout} onReset={presentation.reset} onToggleEditing={presentation.toggleEditing}
-          />
+            onAutoLayout={autoLayout} onReset={resetLayout} onToggleEditing={presentation.toggleEditing}
+          />}
         </div>
       </div>
       <MeshStats

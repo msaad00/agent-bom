@@ -2560,6 +2560,36 @@ components:
       - cancelled
       title: JobStatus
       type: string
+    ManagedTrialInvitationRequest:
+      additionalProperties: false
+      properties:
+        email:
+          maxLength: 254
+          minLength: 3
+          title: Email
+          type: string
+        organization:
+          maxLength: 128
+          minLength: 1
+          title: Organization
+          type: string
+      required:
+      - email
+      - organization
+      title: ManagedTrialInvitationRequest
+      type: object
+    ManagedTrialOIDCStartRequest:
+      additionalProperties: false
+      properties:
+        token:
+          format: password
+          title: Token
+          type: string
+          writeOnly: true
+      required:
+      - token
+      title: ManagedTrialOIDCStartRequest
+      type: object
     ModelFilesRequest:
       additionalProperties: false
       description: Request body for POST /v1/scan/model-files.
@@ -5580,6 +5610,68 @@ paths:
               schema: {}
           description: Successful Response
       summary: Snowflake Oauth Login
+      tags:
+      - enterprise
+  /v1/auth/trial-invitations:
+    post:
+      description: 'Create an email-bound managed-trial invitation without minting
+        an API key.
+
+
+        This operator-only surface is opt-in and PostgreSQL-only in deployed use.
+
+        The raw token is returned once for a separate delivery adapter; persistence
+
+        contains only its SHA-256 digest.'
+      operationId: create_managed_trial_invitation_v1_auth_trial_invitations_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManagedTrialInvitationRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Create Managed Trial Invitation V1 Auth Trial Invitations
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Managed Trial Invitation
+      tags:
+      - enterprise
+  /v1/auth/trial/oidc/start:
+    post:
+      description: Validate a posted one-time invitation and start OIDC PKCE authentication.
+      operationId: managed_trial_oidc_start_v1_auth_trial_oidc_start_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManagedTrialOIDCStartRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Managed Trial Oidc Start
       tags:
       - enterprise
   /v1/baseline/compare:

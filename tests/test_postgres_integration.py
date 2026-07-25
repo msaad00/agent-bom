@@ -123,6 +123,68 @@ def test_postgres_invitation_provisions_team_and_key_atomically_under_new_tenant
     assert rejected_team is None
 
 
+def test_postgres_managed_trial_invitation_is_digest_only_email_bound_and_single_use():
+    from datetime import datetime, timezone
+
+    from agent_bom.api.managed_trial_invitation import (
+        ManagedTrialInvitationError,
+        issue_managed_trial_invitation,
+    )
+    from agent_bom.api.postgres_common import _get_pool, _tenant_connection, reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_managed_trial_invitation import PostgresManagedTrialInvitationStore
+
+    suffix = uuid4().hex
+    tenant_id = f"trial-{suffix}"
+    store = PostgresManagedTrialInvitationStore()
+    issued = issue_managed_trial_invitation(
+        store,
+        email="Analyst@Example.COM",
+        tenant_id=tenant_id,
+        team_name="Synthetic Trial",
+        now=datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc),
+    )
+
+    tenant_token = set_current_tenant(tenant_id)
+    try:
+        with _tenant_connection(_get_pool()) as conn:
+            row = conn.execute(
+                """SELECT invitation_id, token_digest, email, tenant_id, state,
+                          created_at, expires_at, accepted_at
+                   FROM managed_trial_invitations WHERE invitation_id = %s""",
+                (issued.invitation.invitation_id,),
+            ).fetchone()
+            key_count = conn.execute("SELECT count(*) FROM api_keys WHERE team_id = %s", (tenant_id,)).fetchone()[0]
+            column_names = {
+                value[0]
+                for value in conn.execute(
+                    """SELECT column_name FROM information_schema.columns
+                       WHERE table_schema = current_schema() AND table_name = 'managed_trial_invitations'"""
+                ).fetchall()
+            }
+    finally:
+        reset_current_tenant(tenant_token)
+
+    assert row is not None
+    assert row[1] == issued.invitation.token_digest
+    assert row[2] == "analyst@example.com"
+    assert issued.raw_token not in repr(row)
+    assert key_count == 0
+    assert not {"raw_token", "api_key", "oidc_subject"} & column_names
+
+    accepted = store.accept_digest(
+        issued.invitation.token_digest,
+        verified_email="analyst@example.com",
+        now=datetime(2026, 7, 24, 13, 0, tzinfo=timezone.utc),
+    )
+    assert accepted.state == "accepted"
+    with pytest.raises(ManagedTrialInvitationError):
+        store.accept_digest(
+            issued.invitation.token_digest,
+            verified_email="analyst@example.com",
+            now=datetime(2026, 7, 24, 13, 1, tzinfo=timezone.utc),
+        )
+
+
 def test_demo_estate_bootstrap_uses_secret_aware_migrated_postgres(monkeypatch):
     """Compose's password-free app DSN must still persist demo findings."""
     from agent_bom.api.postgres_store import PostgresJobStore

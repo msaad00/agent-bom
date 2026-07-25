@@ -18,6 +18,7 @@ GRAPH_ANALYSIS_STATUS = VERSIONS_DIR / "20260717_02_graph_analysis_status.py"
 GRAPH_SNAPSHOT_JSON_PARITY = VERSIONS_DIR / "20260717_03_graph_snapshot_json_parity.py"
 RUNTIME_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260718_01_runtime_schema_authority.py"
 CLOUD_CONNECTIONS_SCOPE_COLUMNS = VERSIONS_DIR / "20260724_02_cloud_connections_scope_columns.py"
+MANAGED_TRIAL_INVITATIONS = VERSIONS_DIR / "20260724_03_managed_trial_invitations.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
@@ -50,6 +51,20 @@ def test_alembic_scaffolding_exists():
     assert (ALEMBIC_DIR / "script.py.mako").exists()
     assert BASELINE.exists()
     assert GRAPH_HOT_PATH_INDEXES.exists()
+
+
+def test_managed_trial_invitation_migration_is_chained_and_secret_minimal() -> None:
+    sql = MANAGED_TRIAL_INVITATIONS.read_text()
+    assert re.search(r'revision\s*=\s*"20260724_03"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260724_02"', sql)
+    assert "CREATE TABLE IF NOT EXISTS managed_trial_invitations" in sql
+    for column in ("token_digest", "email", "team_id", "state", "created_at", "expires_at", "accepted_at"):
+        assert column in sql
+    for forbidden in ("raw_token", "api_key", "oidc_subject"):
+        assert forbidden not in sql
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+    assert "FORCE ROW LEVEL SECURITY" in sql
+    assert "managed_trial_invitations_tenant_isolation" in sql
 
 
 def test_baseline_migration_points_at_bootstrap_sql():

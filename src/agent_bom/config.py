@@ -492,6 +492,13 @@ API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_P
 API_MAX_RETAINED_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT", 500)
 API_MAX_FLEET_AGENTS_PER_TENANT = _int("AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT", 1_000)
 API_MAX_SCHEDULES_PER_TENANT = _int("AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT", 100)
+API_MAX_CLOUD_CONNECTIONS_PER_TENANT = _int("AGENT_BOM_API_MAX_CLOUD_CONNECTIONS_PER_TENANT", 0)
+API_MAX_CLOUD_CONNECTIONS_PER_PROVIDER = _int("AGENT_BOM_API_MAX_CLOUD_CONNECTIONS_PER_PROVIDER", 0)
+API_MAX_SCAN_CREDITS_24H_PER_TENANT = _int("AGENT_BOM_API_MAX_SCAN_CREDITS_24H_PER_TENANT", 0)
+# Explicit opt-in marker for the bounded operator-run evaluation policy. Runtime
+# request guards re-read the environment so tests and process supervisors can
+# validate configuration changes without changing self-hosted defaults.
+MANAGED_TRIAL_MODE = _bool("AGENT_BOM_MANAGED_TRIAL_MODE", False)
 # Per-request fan-out ceiling: a single POST /v1/scan expands one batchable
 # target field per child job, so an uncapped request could enqueue unbounded
 # work bounded only by the tenant active-scan quota churn. Reject over-cap

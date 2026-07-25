@@ -39,6 +39,7 @@ import logging
 import re
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
@@ -62,6 +63,7 @@ from agent_bom.api.connection_store import (
     get_connection_store,
 )
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenant_quota import enforce_cloud_connection_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.cloud.event_ingest import CloudChangeEvent, dispatch_change_event
 from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
@@ -77,6 +79,7 @@ _MAX_AUTH_PARAM_VALUE_LEN = 1024
 # Upper bound on a recurring scan interval (1 week) so a typo can't park a
 # connection effectively-never-scanning while still claiming to be scheduled.
 _MAX_SCAN_INTERVAL_MINUTES = 7 * 24 * 60
+_CONNECTION_SCAN_ID: ContextVar[str | None] = ContextVar("agent_bom_connection_scan_id", default=None)
 
 router = APIRouter(tags=["cloud-connections"])
 _logger = logging.getLogger(__name__)
@@ -284,6 +287,18 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     scan_mode = _validate_scan_mode(body.scan_mode)
     auto_scan_on_create = bool(body.auto_scan_on_create)
 
+    from agent_bom.api.managed_trial import enforce_connection_envelope, managed_trial_enabled
+
+    enforce_connection_envelope(
+        provider=provider,
+        regions=regions,
+        inventory_scope=inventory_scope,
+        scan_mode=scan_mode,
+        scan_interval_minutes=scan_interval_minutes,
+    )
+    if managed_trial_enabled():
+        auto_scan_on_create = False
+
     # Fail closed before doing anything if the store cannot encrypt the secret.
     if not connections_key_configured():
         raise HTTPException(
@@ -317,7 +332,11 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         scan_mode=scan_mode,
         auto_scan_on_create=auto_scan_on_create,
     )
-    get_connection_store().put(record)
+    with tenant_quota_guard(
+        tenant_id,
+        lambda: enforce_cloud_connection_quota(tenant_id, provider),
+    ):
+        get_connection_store().put(record)
     log_action(
         "cloud_connection.create",
         actor=_actor(request),
@@ -454,6 +473,9 @@ async def ingest_connection_events(
     skipped fail-closed (no confused-deputy scan). Heavy dispatch runs off the
     event loop. Errors are sanitized — never returned raw.
     """
+    from agent_bom.api.managed_trial import require_managed_trial_feature
+
+    require_managed_trial_feature("Continuous connection event ingest")
     tenant_id = _tenant(request)
     results: list[dict[str, Any]] = []
     dispatched = 0
@@ -591,14 +613,30 @@ async def update_connection(
     secret is untouched and never returned.
     """
     record = _require_connection(request, connection_id)
+    from agent_bom.api.managed_trial import enforce_connection_envelope, managed_trial_enabled
+
+    next_interval = record.scan_interval_minutes
     if "scan_interval_minutes" in body.model_fields_set:
-        record.scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
+        next_interval = _validate_scan_interval(body.scan_interval_minutes)
+    next_scope = _validate_inventory_scope(body.inventory_scope) if body.inventory_scope is not None else record.inventory_scope
+    next_mode = _validate_scan_mode(body.scan_mode) if body.scan_mode is not None else record.scan_mode
+    enforce_connection_envelope(
+        provider=record.provider,
+        regions=record.regions,
+        inventory_scope=next_scope,
+        scan_mode=next_mode,
+        scan_interval_minutes=next_interval,
+    )
+    if "scan_interval_minutes" in body.model_fields_set:
+        record.scan_interval_minutes = next_interval
     if body.inventory_scope is not None:
         record.inventory_scope = _validate_inventory_scope(body.inventory_scope)
     if body.scan_mode is not None:
         record.scan_mode = _validate_scan_mode(body.scan_mode)
     if body.auto_scan_on_create is not None:
         record.auto_scan_on_create = bool(body.auto_scan_on_create)
+    if managed_trial_enabled():
+        record.auto_scan_on_create = False
     record.updated_at = _now()
     get_connection_store().put(record)
     log_action(
@@ -727,18 +765,19 @@ def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, re
     report_json = to_json(report)
     _annotate_inventory_counts(report_json.get("cloud_inventory"))
     now = _now()
+    store = _get_store()
+    reserved = store.get(str(report.scan_id), tenant_id=tenant_id)
     job = ScanJob(
         job_id=report.scan_id,
         tenant_id=tenant_id,
-        created_at=now,
-        started_at=now,
+        created_at=reserved.created_at if reserved is not None else now,
+        started_at=reserved.started_at if reserved is not None else now,
         completed_at=now,
         status=JobStatus.DONE,
         request=ScanRequest(),
         result=report_json,
         triggered_by=f"cloud-connection/{record.id}",
     )
-    store = _get_store()
     store.put(job)
     _jobs_put(job.job_id, job, compact_terminal=True)
     _persist_graph_snapshot(job, report_json)
@@ -753,6 +792,71 @@ def _mark_connection_report_sources(report: Any, provider: str) -> None:
 def _scan_audit_metadata(note: str) -> dict[str, Any]:
     """Read-only audit envelope attached to every connection-scan summary."""
     return {"read_only": True, "writes_performed": False, "note": note}
+
+
+def _connection_report_scan_id() -> str:
+    """Use a pre-reserved job id when a request-path scan supplied one."""
+
+    return _CONNECTION_SCAN_ID.get() or str(uuid.uuid4())
+
+
+def _reserve_connection_scan_job(record: CloudConnectionRecord) -> Any:
+    """Atomically reserve tenant job capacity and one managed-trial credit."""
+
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.stores import _get_store, _jobs_put
+    from agent_bom.api.tenant_quota import (
+        consume_managed_trial_scan_credit,
+        enforce_active_scan_quota,
+        enforce_retained_jobs_quota,
+    )
+
+    now = _now()
+    job = ScanJob(
+        job_id=str(uuid.uuid4()),
+        tenant_id=record.tenant_id,
+        created_at=now,
+        started_at=now,
+        request=ScanRequest(),
+        triggered_by=f"cloud-connection/{record.id}",
+    )
+    store = _get_store()
+    with tenant_quota_guard(
+        record.tenant_id,
+        lambda: enforce_active_scan_quota(record.tenant_id),
+        lambda: enforce_retained_jobs_quota(record.tenant_id),
+    ):
+        # Consume only after both job checks pass so a capacity denial never
+        # burns a trial credit. The limiter operation is itself atomic across
+        # replicas when Postgres is configured.
+        consume_managed_trial_scan_credit(record.tenant_id)
+        store.put(job)
+        _jobs_put(job.job_id, job)
+    return job
+
+
+def _fail_connection_scan_job(job: Any, detail: str) -> None:
+    """Persist a terminal, sanitized failure for a reserved connection scan."""
+
+    from agent_bom.api.models import JobStatus
+    from agent_bom.api.stores import _get_store, _jobs_put
+
+    job.status = JobStatus.FAILED
+    job.completed_at = _now()
+    job.error = detail
+    _get_store().put(job)
+    _jobs_put(job.job_id, job, compact_terminal=True)
+
+
+def _discard_unused_scan_reservation(job: Any, summary: dict[str, Any]) -> None:
+    """Remove a reservation when an injected runner did not persist its job id."""
+
+    if str(summary.get("scan_id") or "") == job.job_id:
+        return
+    from agent_bom.api.stores import _get_store, _jobs_pop
+
+    _get_store().delete(job.job_id, tenant_id=job.tenant_id)
+    _jobs_pop(job.job_id)
 
 
 def _test_connection_broker(record: CloudConnectionRecord) -> None:
@@ -798,8 +902,6 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     across member accounts via the brokered management session — gated by the
     connection's ``inventory_scope``, not ``AGENT_BOM_AWS_ORG_INVENTORY``.
     """
-    import uuid as _uuid
-
     from agent_bom.api.connection_crypto import decrypt_secret
     from agent_bom.cloud import aws_inventory, aws_organizations
     from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
@@ -844,7 +946,7 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
 
     cis_dict = cis_report.to_dict()
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=_connection_report_scan_id())
     _mark_connection_report_sources(report, "aws")
     report.cloud_inventory_data = inventory_payload
     report.cis_benchmark_data = cis_dict
@@ -897,8 +999,6 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     ``azure_inventory.discover_inventory`` and Azure CIS ``run_benchmark`` the
     sibling cloud routes use run against the customer subscription. Read-only.
     """
-    import uuid as _uuid
-
     from agent_bom.cloud import azure_inventory
     from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
     from agent_bom.cloud.connection_broker import broker_session
@@ -927,7 +1027,7 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
         account_ref=account_ref,
     )
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=_connection_report_scan_id())
     _mark_connection_report_sources(report, "azure")
     report.cloud_inventory_data = inventory_payload
     report.azure_cis_benchmark_data = cis_dict
@@ -966,8 +1066,6 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     same ``gcp_inventory.discover_inventory`` and GCP CIS ``run_benchmark`` the
     sibling cloud routes use run against the customer project. Read-only.
     """
-    import uuid as _uuid
-
     from agent_bom.cloud import gcp_inventory
     from agent_bom.cloud.connection_broker import broker_session
     from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
@@ -984,7 +1082,7 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     cis_report = run_gcp_cis(project_id=project_id, credentials=credentials)
     cis_dict = cis_report.to_dict()
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=_connection_report_scan_id())
     _mark_connection_report_sources(report, "gcp")
     report.cloud_inventory_data = inventory_payload
     report.gcp_cis_benchmark_data = cis_dict
@@ -1071,8 +1169,6 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
     have run. The estate sweep is best-effort: a failure still returns agent
     discovery + CIS. Read-only.
     """
-    import uuid as _uuid
-
     from agent_bom.cloud import snowflake as snowflake_discovery
     from agent_bom.cloud.connection_broker import broker_session
     from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_snowflake_cis
@@ -1087,7 +1183,7 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
     try:
         agents, _warnings = snowflake_discovery.discover(conn=conn)
         cis_report = run_snowflake_cis(conn=conn)
-        report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+        report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=_connection_report_scan_id())
         _mark_connection_report_sources(report, "snowflake")
         # Sweep the estate into the report's snowflake_*_data blocks so the graph
         # builder materializes accounts/warehouses/databases/roles/users the same
@@ -1151,8 +1247,6 @@ def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str)
     Coverage states (executed/partial/skipped/unevaluable/failed) stay explicit so
     a denied/unreadable table is never reported clean. Read-only throughout.
     """
-    import uuid as _uuid
-
     from agent_bom.cloud.connection_broker import broker_session
     from agent_bom.cloud.db_content_scan import scan_database_content
     from agent_bom.cloud.db_data_classifier import db_sampling_enabled
@@ -1218,7 +1312,7 @@ def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str)
     account_ref = f"database:{account}" if account else None
     dspm_findings = build_inventory_dspm_findings(inventory, provider="database", account_ref=account_ref)
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=_connection_report_scan_id())
     _mark_connection_report_sources(report, "database")
     report.cloud_inventory_data = inventory
     scan_id = _persist_connection_report(record, tenant_id, report)
@@ -1365,13 +1459,19 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     if (record.provider or "").strip().lower() not in _SCAN_RUNNERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider '{record.provider}'.")
 
+    reservation: Any = None
     try:
         # The brokered scan runs synchronous provider inventory + CIS discovery
         # (minutes of network I/O); run it in a worker thread under backpressure
         # so a live scan can never stall the event loop (a burst sheds with a
         # 429 instead).
         async with adaptive_backpressure("cloud_connection_scan"):
-            summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
+            reservation = _reserve_connection_scan_job(record)
+            scan_id_token = _CONNECTION_SCAN_ID.set(reservation.job_id)
+            try:
+                summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
+            finally:
+                _CONNECTION_SCAN_ID.reset(scan_id_token)
     except BackpressureRejectedError as exc:
         # A shed request never started the scan — do not flip the connection to
         # error, just ask the caller to retry.
@@ -1380,11 +1480,15 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
         # Persist an actionable, secret-free detail (why + how to fix). Broker and
         # discovery errors are curated safe strings; anything unexpected falls back
         # to a fixed generic message. Full diagnostics go to the server log only.
         detail = _safe_connection_detail(exc)
+        if reservation is not None:
+            _fail_connection_scan_job(reservation, detail)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
         _logger.exception("Cloud connection scan failed for connection %s", record.id)
         log_action(
@@ -1397,6 +1501,8 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
         )
         raise HTTPException(status_code=502, detail=detail) from exc
 
+    if reservation is not None:
+        _discard_unused_scan_reservation(reservation, summary)
     scan_id = str(summary.get("scan_id") or "")
     _mark_connection(
         record,

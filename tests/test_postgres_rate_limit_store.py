@@ -26,9 +26,18 @@ class _FakeConnection:
         normalized = " ".join(sql.strip().lower().split())
         if normalized.startswith("create table") or normalized.startswith("create index"):
             return _FakeCursor()
+        if normalized.startswith("select pg_advisory_xact_lock"):
+            return _FakeCursor(rows=[(None,)])
         if normalized.startswith("delete from api_rate_limit_hits"):
-            cutoff = float(params[0]) if params else 0.0
-            self.hits = [(key, hit_at) for key, hit_at in self.hits if hit_at >= cutoff]
+            if params and len(params) == 2:
+                bucket_key, raw_cutoff = params
+                cutoff = float(raw_cutoff)
+                self.hits = [
+                    (key, hit_at) for key, hit_at in self.hits if key != bucket_key or hit_at >= cutoff
+                ]
+            else:
+                cutoff = float(params[0]) if params else 0.0
+                self.hits = [(key, hit_at) for key, hit_at in self.hits if hit_at >= cutoff]
             return _FakeCursor()
         if "insert into api_rate_limit_hits" in normalized:
             self.hits.append((params[0], float(params[1])))
@@ -38,6 +47,10 @@ class _FakeConnection:
             matching = [hit_at for key, hit_at in self.hits if key == bucket_key and hit_at >= float(window_start)]
             oldest = min(matching) if matching else None
             return _FakeCursor(rows=[(len(matching), oldest)])
+        if "select count(*)" in normalized:
+            bucket_key, window_start = params
+            matching = [hit_at for key, hit_at in self.hits if key == bucket_key and hit_at >= float(window_start)]
+            return _FakeCursor(rows=[(len(matching),)])
         return _FakeCursor()
 
     def __enter__(self):
@@ -104,3 +117,17 @@ def test_postgres_rate_limit_store_prunes_stale_hits():
     assert any("DELETE FROM api_rate_limit_hits" in sql for sql, _ in pool._conn.executed)
     assert not any(hit_at == base for _, hit_at in pool._conn.hits)
     assert any(hit_at == base + 120.0 for _, hit_at in pool._conn.hits)
+
+
+def test_postgres_rate_limit_store_consumes_below_limit_atomically() -> None:
+    pool = _FakePool()
+    store = PostgresRateLimitStore(window_seconds=60, pool=pool)
+    base = 1_700_000_300.0
+
+    assert store.consume_if_below("tenant:credit", base, 2)[:2] == (True, 1)
+    assert store.consume_if_below("tenant:credit", base + 1, 2)[:2] == (True, 2)
+    assert store.consume_if_below("tenant:credit", base + 2, 2)[:2] == (False, 2)
+    assert store.count("tenant:credit", base + 2) == 2
+
+    statements = [" ".join(sql.lower().split()) for sql, _params in pool._conn.executed]
+    assert any(statement.startswith("select pg_advisory_xact_lock") for statement in statements)

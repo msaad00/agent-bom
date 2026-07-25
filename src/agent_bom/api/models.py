@@ -911,6 +911,9 @@ class TenantQuotaUpdateRequest(BaseModel):
     retained_scan_jobs: int | None = Field(default=None, ge=0)
     fleet_agents: int | None = Field(default=None, ge=0)
     schedules: int | None = Field(default=None, ge=0)
+    cloud_connections: int | None = Field(default=None, ge=0)
+    cloud_connections_per_provider: int | None = Field(default=None, ge=0)
+    scan_credits_24h: int | None = Field(default=None, ge=0)
 
 
 class ExecScoreConfigUpdateRequest(BaseModel):

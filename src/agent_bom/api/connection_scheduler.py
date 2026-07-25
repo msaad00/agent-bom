@@ -104,6 +104,10 @@ def connections_scheduler_enabled() -> bool:
     so the loop never runs in CLI/dev — only when an operator opts in on the
     control plane.
     """
+    from agent_bom.api.managed_trial import managed_trial_enabled
+
+    if managed_trial_enabled():
+        return False
     raw = os.environ.get("AGENT_BOM_CONNECTIONS_SCHEDULER", "")
     return raw.strip().lower() in {"1", "true", "yes", "on", "enabled"}
 

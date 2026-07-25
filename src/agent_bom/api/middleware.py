@@ -735,6 +735,31 @@ class InMemoryRateLimitStore:
             reset_at = int((timestamps[0] if timestamps else now) + self._window)
             return len(timestamps), reset_at
 
+    def consume_if_below(self, key: str, now: float, limit: int) -> tuple[bool, int, int]:
+        """Atomically consume one sliding-window unit when below ``limit``."""
+
+        with self._lock:
+            self._cleanup(now)
+            timestamps = [timestamp for timestamp in self._hits.get(key, []) if now - timestamp < self._window]
+            accepted = len(timestamps) < limit
+            if accepted:
+                timestamps.append(now)
+                self._hits[key] = timestamps
+            reset_at = int((timestamps[0] if timestamps else now) + self._window)
+            return accepted, len(timestamps), reset_at
+
+    def count(self, key: str, now: float) -> int:
+        """Return current sliding-window usage without consuming a unit."""
+
+        with self._lock:
+            self._cleanup(now)
+            timestamps = [timestamp for timestamp in self._hits.get(key, []) if now - timestamp < self._window]
+            if timestamps:
+                self._hits[key] = timestamps
+            else:
+                self._hits.pop(key, None)
+            return len(timestamps)
+
 
 class PostgresRateLimitStore:
     """Shared sliding-window limiter backed by Postgres for horizontal scaling."""
@@ -787,6 +812,43 @@ class PostgresRateLimitStore:
         oldest = float(row[1]) if row and row[1] is not None else now
         reset_at = int(oldest + self._window)
         return count, reset_at
+
+    @staticmethod
+    def _advisory_key(key: str) -> int:
+        digest = hashlib.sha256(f"rate-limit:{key}".encode()).digest()
+        return int.from_bytes(digest[:8], "big", signed=True)
+
+    def consume_if_below(self, key: str, now: float, limit: int) -> tuple[bool, int, int]:
+        """Atomically consume one unit using a transaction advisory lock."""
+
+        window_start = now - self._window
+        with self._pool.connection() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(%s)", (self._advisory_key(key),))
+            conn.execute("DELETE FROM api_rate_limit_hits WHERE bucket_key = %s AND hit_at < %s", (key, window_start))
+            row = conn.execute(
+                "SELECT COUNT(*), MIN(hit_at) FROM api_rate_limit_hits WHERE bucket_key = %s AND hit_at >= %s",
+                (key, window_start),
+            ).fetchone()
+            current = int(row[0]) if row and row[0] is not None else 0
+            oldest = float(row[1]) if row and row[1] is not None else now
+            accepted = current < limit
+            if accepted:
+                conn.execute("INSERT INTO api_rate_limit_hits (bucket_key, hit_at) VALUES (%s, %s)", (key, now))
+                current += 1
+                if current == 1:
+                    oldest = now
+        return accepted, current, int(oldest + self._window)
+
+    def count(self, key: str, now: float) -> int:
+        """Return current sliding-window usage without consuming a unit."""
+
+        window_start = now - self._window
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM api_rate_limit_hits WHERE bucket_key = %s AND hit_at >= %s",
+                (key, window_start),
+            ).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
 
 
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
@@ -1186,6 +1248,14 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     )
 
     _SCOPE_RULES: tuple[tuple[str, str, str], ...] = (
+        ("GET", "/v1/cloud/connections", "cloud.connection:read"),
+        ("POST", "/v1/cloud/connections", "cloud.connection:write"),
+        ("PATCH", "/v1/cloud/connections/", "cloud.connection:write"),
+        ("DELETE", "/v1/cloud/connections/", "cloud.connection:write"),
+        ("GET", "/v1/findings", "finding:read"),
+        ("GET", "/v1/graph", "graph:read"),
+        ("POST", "/v1/graph/query", "graph:read"),
+        ("POST", "/v1/graph/should-i-deploy", "graph:read"),
         ("GET", "/v1/auth/keys", "auth.keys:read"),
         ("GET", "/v1/auth/secrets/lifecycle", "auth.secrets:read"),
         ("GET", "/v1/auth/secrets/rotation-plan", "auth.secrets:read"),
@@ -2032,6 +2102,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if method != "POST":
             return False
         if path.startswith("/v1/scan"):
+            return True
+        if path.startswith("/v1/cloud/connections"):
             return True
         return path in cls._WRITE_RATE_LIMIT_PATHS
 

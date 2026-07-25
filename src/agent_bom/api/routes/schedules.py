@@ -26,6 +26,9 @@ router = APIRouter()
 @router.post("/schedules", tags=["schedules"], status_code=201)
 async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     """Create a recurring scan schedule."""
+    from agent_bom.api.managed_trial import require_managed_trial_feature
+
+    require_managed_trial_feature("Scan schedules")
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.schedule_store import ScanSchedule
     from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression

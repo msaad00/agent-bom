@@ -28,12 +28,15 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_API_JOB_TTL` | `int` | `3600` | — |
 | `AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT` | `int` | `API_MAX_CONCURRENT_JOBS` | — |
 | `AGENT_BOM_API_MAX_BATCH_SCAN_TARGETS` | `int` | `100` | Per-request fan-out ceiling: a single POST /v1/scan expands one batchable target field per child job, so an uncapped request could enqueue unbounded work bounded only by the tenant active-scan quota churn. Reject over-cap requests at valida |
+| `AGENT_BOM_API_MAX_CLOUD_CONNECTIONS_PER_PROVIDER` | `int` | `0` | — |
+| `AGENT_BOM_API_MAX_CLOUD_CONNECTIONS_PER_TENANT` | `int` | `0` | — |
 | `AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT` | `int` | `1000` | — |
 | `AGENT_BOM_API_MAX_JOBS` | `int` | `10` | Used by api/server.py for the REST API job queue.  10 concurrent scan jobs prevents resource exhaustion on shared hosts. 1-hour TTL auto-cleans completed jobs.  200 in-memory ceiling triggers LRU eviction for long-running API instances. |
 | `AGENT_BOM_API_MAX_JOB_PROGRESS_EVENTS` | `int` | `500` | — |
 | `AGENT_BOM_API_MAX_MEMORY_JOBS` | `int` | `200` | — |
 | `AGENT_BOM_API_MAX_OCSF_INGEST_EVENTS` | `int` | `1000` | — |
 | `AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT` | `int` | `500` | — |
+| `AGENT_BOM_API_MAX_SCAN_CREDITS_24H_PER_TENANT` | `int` | `0` | — |
 | `AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT` | `int` | `100` | — |
 | `AGENT_BOM_API_SCAN_CLAIM_POLL_SECONDS` | `int` | `3` | — |
 | `AGENT_BOM_API_SCAN_LEASE_SECONDS` | `int` | `600` | Distributed scan dispatch (multi-replica work-stealing). When enabled, scan jobs are enqueued to a shared Postgres dispatch queue and any control-plane replica claims them via FOR UPDATE SKIP LOCKED, so scan throughput scales with replicas  |
@@ -53,6 +56,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD` | `int` | `50000` | Skip exact COUNT(*) on /v1/findings once cached total exceeds this threshold (0 = disabled). |
 | `AGENT_BOM_GCP_EVENT_MAX_BATCHES` | `int` | `10` | — |
 | `AGENT_BOM_GCP_EVENT_MAX_MESSAGES` | `int` | `10` | Event-driven GCP posture ingestion. When an operator wires Cloud Asset Inventory feed / audit logs → a Pub/Sub subscription (opt-in via AGENT_BOM_GCP_EVENT_SUBSCRIPTION, read live, default off), the bounded Pub/Sub consumer drains change ev |
+| `AGENT_BOM_MANAGED_TRIAL_MODE` | `bool` | `False` | Explicit opt-in marker for the bounded operator-run evaluation policy. Runtime request guards re-read the environment so tests and process supervisors can validate configuration changes without changing self-hosted defaults. |
 | `AGENT_BOM_NO_AUTH_ROLE` | `str` | `'viewer'` | Role granted when unauthenticated API access is explicitly enabled. Default preserves local/dev compatibility; demo-estate mode clamps this to viewer. |
 | `AGENT_BOM_NO_UI` | `bool` | `False` | Hide the bundled browser UI when serving an API-only/local control-plane process. Some CLI paths set this immediately before loading the API server, so the server still reads the live environment value at request time. |
 

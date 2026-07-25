@@ -5246,6 +5246,30 @@
             ],
             "title": "Active Scan Jobs"
           },
+          "cloud_connections": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud Connections"
+          },
+          "cloud_connections_per_provider": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud Connections Per Provider"
+          },
           "fleet_agents": {
             "anyOf": [
               {
@@ -5269,6 +5293,18 @@
               }
             ],
             "title": "Retained Scan Jobs"
+          },
+          "scan_credits_24h": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Credits 24H"
           },
           "schedules": {
             "anyOf": [

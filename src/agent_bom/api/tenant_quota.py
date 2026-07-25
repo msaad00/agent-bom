@@ -7,6 +7,7 @@ import hashlib
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any, Literal
@@ -18,8 +19,11 @@ from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_schedule_store, _get_store, _get_tenant_quota_store
 from agent_bom.config import (
     API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
+    API_MAX_CLOUD_CONNECTIONS_PER_PROVIDER,
+    API_MAX_CLOUD_CONNECTIONS_PER_TENANT,
     API_MAX_FLEET_AGENTS_PER_TENANT,
     API_MAX_RETAINED_JOBS_PER_TENANT,
+    API_MAX_SCAN_CREDITS_24H_PER_TENANT,
     API_MAX_SCHEDULES_PER_TENANT,
 )
 from agent_bom.security import sanitize_text
@@ -39,6 +43,9 @@ _logger = logging.getLogger(__name__)
 # follow-up so the storage layer can carry the lock through.
 _TENANT_QUOTA_LOCKS: dict[str, threading.Lock] = {}
 _TENANT_QUOTA_LOCKS_LOCK = threading.Lock()
+_MANAGED_TRIAL_SCAN_CREDIT_STORE: Any = None
+_MANAGED_TRIAL_SCAN_CREDIT_STORE_LOCK = threading.Lock()
+_SCAN_CREDIT_WINDOW_SECONDS = 24 * 60 * 60
 
 
 def _tenant_quota_lock(tenant_id: str) -> threading.Lock:
@@ -173,18 +180,45 @@ def tenant_quota_guard(tenant_id: str, *checks: Callable[[], None]) -> Iterator[
         yield
 
 
-QuotaName = Literal["active_scan_jobs", "retained_scan_jobs", "fleet_agents", "schedules"]
-QUOTA_NAMES: tuple[QuotaName, ...] = ("active_scan_jobs", "retained_scan_jobs", "fleet_agents", "schedules")
+QuotaName = Literal[
+    "active_scan_jobs",
+    "retained_scan_jobs",
+    "fleet_agents",
+    "schedules",
+    "cloud_connections",
+    "cloud_connections_per_provider",
+    "scan_credits_24h",
+]
+QUOTA_NAMES: tuple[QuotaName, ...] = (
+    "active_scan_jobs",
+    "retained_scan_jobs",
+    "fleet_agents",
+    "schedules",
+    "cloud_connections",
+    "cloud_connections_per_provider",
+    "scan_credits_24h",
+)
 
 
 def default_tenant_quotas() -> dict[QuotaName, int]:
     """Return the process-level default tenant quotas."""
-    return {
+    defaults: dict[QuotaName, int] = {
         "active_scan_jobs": API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
         "retained_scan_jobs": API_MAX_RETAINED_JOBS_PER_TENANT,
         "fleet_agents": API_MAX_FLEET_AGENTS_PER_TENANT,
         "schedules": API_MAX_SCHEDULES_PER_TENANT,
+        "cloud_connections": API_MAX_CLOUD_CONNECTIONS_PER_TENANT,
+        "cloud_connections_per_provider": API_MAX_CLOUD_CONNECTIONS_PER_PROVIDER,
+        "scan_credits_24h": API_MAX_SCAN_CREDITS_24H_PER_TENANT,
     }
+    from agent_bom.api.managed_trial import MANAGED_TRIAL_QUOTA_CAPS, managed_trial_enabled
+
+    if managed_trial_enabled():
+        for name in QUOTA_NAMES:
+            if name in MANAGED_TRIAL_QUOTA_CAPS:
+                defaults[name] = MANAGED_TRIAL_QUOTA_CAPS[name]
+        defaults["schedules"] = 0
+    return defaults
 
 
 def get_tenant_quota_overrides(tenant_id: str) -> dict[QuotaName, int]:
@@ -222,11 +256,78 @@ def effective_tenant_quotas(tenant_id: str) -> dict[QuotaName, int]:
     defaults = default_tenant_quotas()
     effective = dict(defaults)
     effective.update(get_tenant_quota_overrides(tenant_id))
+    from agent_bom.api.managed_trial import MANAGED_TRIAL_QUOTA_CAPS, managed_trial_enabled
+
+    if managed_trial_enabled():
+        # Trial quotas are hard ceilings. Overrides can tighten them, never turn
+        # them off (0 means unlimited in the self-hosted contract) or raise them.
+        for name in QUOTA_NAMES:
+            if name not in MANAGED_TRIAL_QUOTA_CAPS:
+                continue
+            cap = MANAGED_TRIAL_QUOTA_CAPS[name]
+            configured = effective[name]
+            effective[name] = cap if configured <= 0 else min(configured, cap)
     return effective
 
 
 def _quota_limit(tenant_id: str, quota_name: QuotaName) -> int:
     return effective_tenant_quotas(tenant_id)[quota_name]
+
+
+def _managed_trial_scan_credit_store() -> Any:
+    global _MANAGED_TRIAL_SCAN_CREDIT_STORE
+    if _MANAGED_TRIAL_SCAN_CREDIT_STORE is None:
+        with _MANAGED_TRIAL_SCAN_CREDIT_STORE_LOCK:
+            if _MANAGED_TRIAL_SCAN_CREDIT_STORE is None:
+                from agent_bom.api.middleware import _build_rate_limit_store
+
+                _MANAGED_TRIAL_SCAN_CREDIT_STORE = _build_rate_limit_store(_SCAN_CREDIT_WINDOW_SECONDS)
+    return _MANAGED_TRIAL_SCAN_CREDIT_STORE
+
+
+def reset_managed_trial_scan_credit_store() -> None:
+    """Reset lazy credit state (test isolation and explicit runtime reconfigure)."""
+
+    global _MANAGED_TRIAL_SCAN_CREDIT_STORE
+    with _MANAGED_TRIAL_SCAN_CREDIT_STORE_LOCK:
+        _MANAGED_TRIAL_SCAN_CREDIT_STORE = None
+
+
+def _scan_credit_key(tenant_id: str) -> str:
+    return f"tenant:{tenant_id}:managed-trial-scan-credit"
+
+
+def consume_managed_trial_scan_credit(tenant_id: str, *, now: float | None = None) -> int:
+    """Consume one rolling-24-hour trial scan credit or reject atomically."""
+
+    from agent_bom.api.managed_trial import managed_trial_enabled
+
+    if not managed_trial_enabled():
+        return 0
+    limit = _quota_limit(tenant_id, "scan_credits_24h")
+    timestamp = time.time() if now is None else float(now)
+    accepted, current, _reset_at = _managed_trial_scan_credit_store().consume_if_below(
+        _scan_credit_key(tenant_id), timestamp, limit
+    )
+    if not accepted:
+        _raise_quota_exceeded(
+            tenant_id=tenant_id,
+            quota_name="scan_credits_24h",
+            limit=limit,
+            current=current,
+        )
+    return int(current)
+
+
+def current_managed_trial_scan_credits(tenant_id: str, *, now: float | None = None) -> int:
+    """Return rolling-24-hour trial scan credits consumed without charging one."""
+
+    from agent_bom.api.managed_trial import managed_trial_enabled
+
+    if not managed_trial_enabled():
+        return 0
+    timestamp = time.time() if now is None else float(now)
+    return int(_managed_trial_scan_credit_store().count(_scan_credit_key(tenant_id), timestamp))
 
 
 def _raise_quota_exceeded(
@@ -329,6 +430,34 @@ def enforce_schedule_quota(tenant_id: str, attempted: int = 1) -> None:
         )
 
 
+def enforce_cloud_connection_quota(tenant_id: str, provider: str, attempted: int = 1) -> None:
+    """Limit total and per-provider cloud connections for a tenant."""
+
+    from agent_bom.api.connection_store import get_connection_store
+
+    records = get_connection_store().list_for_tenant(tenant_id)
+    total_limit = _quota_limit(tenant_id, "cloud_connections")
+    if total_limit > 0 and len(records) + attempted > total_limit:
+        _raise_quota_exceeded(
+            tenant_id=tenant_id,
+            quota_name="cloud_connections",
+            limit=total_limit,
+            current=len(records),
+            attempted=attempted,
+        )
+
+    provider_limit = _quota_limit(tenant_id, "cloud_connections_per_provider")
+    provider_count = sum(1 for record in records if record.provider == provider)
+    if provider_limit > 0 and provider_count + attempted > provider_limit:
+        _raise_quota_exceeded(
+            tenant_id=tenant_id,
+            quota_name="cloud_connections_per_provider",
+            limit=provider_limit,
+            current=provider_count,
+            attempted=attempted,
+        )
+
+
 def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
     """Return operator-facing quota status for a tenant.
 
@@ -384,6 +513,17 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
     retained_jobs = _safe_count(lambda: len(_get_store().list_all(tenant_id=tenant_id)))
     fleet_agents = _safe_count(lambda: len(_get_fleet_store().list_by_tenant(tenant_id)))
     schedules = _safe_count(lambda: len(_get_schedule_store().list_all(tenant_id=tenant_id)))
+    from agent_bom.api.connection_store import get_connection_store
+
+    connections = _safe_count(lambda: len(get_connection_store().list_for_tenant(tenant_id)))
+
+    def _provider_peak() -> int:
+        counts: dict[str, int] = {}
+        for record in get_connection_store().list_for_tenant(tenant_id):
+            counts[record.provider] = counts.get(record.provider, 0) + 1
+        return max(counts.values(), default=0)
+
+    provider_peak = _safe_count(_provider_peak)
 
     return {
         "source": "tenant_override" if overrides else "global_default",
@@ -401,5 +541,8 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
             "retained_scan_jobs": _entry("retained_scan_jobs", retained_jobs),
             "fleet_agents": _entry("fleet_agents", fleet_agents),
             "schedules": _entry("schedules", schedules),
+            "cloud_connections": _entry("cloud_connections", connections),
+            "cloud_connections_per_provider": _entry("cloud_connections_per_provider", provider_peak),
+            "scan_credits_24h": _entry("scan_credits_24h", current_managed_trial_scan_credits(tenant_id)),
         },
     }

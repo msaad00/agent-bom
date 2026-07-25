@@ -794,3 +794,16 @@ export const CONTEXT_LEGEND: LegendItem[] = [
     shape: "diamond",
   },
 ];
+
+/** Count evidence-path edges whose adjacent nodes are visible in the active scope. */
+export function countVisiblePathHops(
+  hops: readonly string[],
+  visibleNodeIds: Iterable<string>,
+): number {
+  const visible = new Set(visibleNodeIds);
+  let count = 0;
+  for (let index = 0; index < hops.length - 1; index += 1) {
+    if (visible.has(hops[index]!) && visible.has(hops[index + 1]!)) count += 1;
+  }
+  return count;
+}

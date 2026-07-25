@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GraphNodeKind, GRAPH_NODE_KIND_META } from "@/lib/graph-schema";
 import {
+  countVisiblePathHops,
   legendItemForNodeType,
   legendItemsForVisibleNodes,
   legendItemsForVisibleGraph,
@@ -11,6 +12,13 @@ import {
   relationshipLegendItem,
   readableGraphEdges,
 } from "@/lib/graph-utils";
+
+it("distinguishes evidence hops from hops visible in the active graph scope", () => {
+  const hops = ["identity", "role", "agent", "server", "package", "finding"];
+  expect(countVisiblePathHops(hops, hops)).toBe(5);
+  expect(countVisiblePathHops(hops, ["agent", "server", "package", "finding"])).toBe(3);
+  expect(countVisiblePathHops(hops, ["identity", "agent", "finding"])).toBe(0);
+});
 
 it("keeps relationship labels screen-readable across zoom levels", () => {
   const distant = relationshipEdgeLabelPresentation({ zoom: 0.4 });

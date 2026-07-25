@@ -199,7 +199,17 @@ def is_prerelease_version(version: str, ecosystem: str) -> bool:
 
 def _looks_like_commit_sha(version: str) -> bool:
     stripped = version.strip().lower().lstrip("v")
-    return bool(_HEXISH_RE.fullmatch(stripped))
+    if not _HEXISH_RE.fullmatch(stripped):
+        return False
+    if stripped.isdigit() and len(stripped) != 40:
+        # All-digit tokens are versions, not abbreviated SHAs. Date-stamped OS
+        # packages (ca-certificates 20230311, hwdata, tzdata) are common and
+        # every one of them would otherwise become uncomparable and fail closed
+        # — a missed CVE. An abbreviated SHA that happens to be all digits is
+        # possible but far rarer, and mistaking it for a version only costs an
+        # ordering comparison that a GIT-type range does not rely on.
+        return False
+    return True
 
 
 def _go_pseudo_timestamp(version: str) -> str | None:
@@ -593,9 +603,7 @@ _SEMVER_PRERELEASE_TAGS = frozenset(
 )
 
 
-_STRICT_SEMVER = re.compile(
-    r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
-)
+_STRICT_SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$")
 
 
 def _compare_strict_semver(left: str, right: str) -> int | None:

@@ -284,8 +284,6 @@ def main() -> int:
     required_github_markers = [
         "img.shields.io/github/actions/workflow/status",
         "img.shields.io/pypi/v/agent-bom",
-        "img.shields.io/docker/pulls/agentbom/agent-bom",
-        "img.shields.io/ossf-scorecard",
         "docs/images/demo-latest.gif",
     ]
     for marker in required_github_markers:

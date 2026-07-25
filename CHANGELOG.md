@@ -9,8 +9,34 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Removed
+## [0.99.0] - 2026-07-25
 
+### Added
+- Managed-trial invitation, quota, durable execution, suspension, expiry, and
+  cleanup contracts with PostgreSQL tenant isolation and replay protection.
+- Personal graph layouts with fit, zoom, pan, reset, auto-layout, edit/lock,
+  keyboard navigation, and locally persisted node positions and viewports.
+
+### Changed
+- Jobs, finding-class filters, page queries, exports, and totals now use the
+  server contract instead of a client-side sample window.
+- Pipeline telemetry distinguishes observed, partial, and unavailable evidence;
+  graph summaries report factual freshness, completeness, coverage, and
+  provenance instead of a synthesized quality score.
+- Findings, remediation, compliance, overview, and investigation use compact
+  task-focused workspaces with shared evidence and progressive disclosure.
+- README onboarding now starts with a repository scan, keeps synthetic data
+  optional, and presents developer, security, GRC, platform, leadership, and
+  AI/MCP workflows in a compact product story.
+
+### Fixed
+- Finding-class filters apply before pagination and export, deep links use typed
+  page-query contracts, and missing metrics are not presented as factual zeroes.
+- Focused graph paths are filtered before layout, relationship labels remain
+  readable at initial fit, and dragged nodes retain their positions without
+  changing relationship endpoints.
+
+### Removed
 - The optional Go runtime tier (`runtime/gateway-relay`, `runtime/event-collector`)
   is retired. Selecting the Go relay backend also unlocked private-network
   egress, bypassing the pinned transport's metadata/link-local block for a
@@ -2640,7 +2666,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.99.0...HEAD
+[0.99.0]: https://github.com/msaad00/agent-bom/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/msaad00/agent-bom/compare/v0.97.5...v0.98.0
 [0.97.5]: https://github.com/msaad00/agent-bom/compare/v0.97.4...v0.97.5
 [0.97.4]: https://github.com/msaad00/agent-bom/compare/v0.97.3...v0.97.4

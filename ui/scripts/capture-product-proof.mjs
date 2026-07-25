@@ -1844,6 +1844,19 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       path: "dashboard-live.png",
       page: "/?capture=1",
       scope: "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
+      presentation: `${CAPTURE_THEME} desktop`,
+    },
+    {
+      path: "dashboard-light-live.png",
+      page: "/?capture=1",
+      scope: "Overview command center in the light theme",
+      presentation: "light desktop",
+    },
+    {
+      path: "dashboard-mobile-live.png",
+      page: "/?capture=1",
+      scope: "Overview command center at a 390 by 844 viewport",
+      presentation: "dark mobile",
     },
     {
       path: "dashboard-paths-live.png",
@@ -1874,6 +1887,19 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       path: "security-graph-live.png",
       page: "/security-graph?capture=1",
       scope: "Prioritized attack path with graph evidence export and remediation handoff",
+      presentation: `${CAPTURE_THEME} desktop`,
+    },
+    {
+      path: "security-graph-light-live.png",
+      page: "/security-graph?capture=1",
+      scope: "Prioritized attack path in the light theme",
+      presentation: "light desktop",
+    },
+    {
+      path: "security-graph-mobile-live.png",
+      page: "/security-graph?capture=1",
+      scope: "Prioritized attack path at a 390 by 844 viewport",
+      presentation: "dark mobile",
     },
     {
       path: "lineage-graph-live.png",
@@ -1905,12 +1931,16 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       page: "/remediation?capture=1",
       scope: "Fix-first remediation table with prioritized packages and framework context",
     },
-  ].map((entry) => ({ ...entry, visible_version: RELEASE_VERSION }));
+  ].map((entry) => ({
+    presentation: `${CAPTURE_THEME} desktop`,
+    ...entry,
+    visible_version: RELEASE_VERSION,
+  }));
   const manifest = {
     release_version: RELEASE_VERSION,
     captured_at: new Date().toISOString(),
     capture_note:
-      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
+      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
     screenshots,
   };
   await fs.writeFile(path.join(outputDir, path.basename(SCREENSHOT_MANIFEST)), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -1949,11 +1979,15 @@ async function main() {
   try {
     await waitForServer(BASE_URL);
     browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 1440, height: 980 }, deviceScaleFactor: 1 });
-    await installRoutes(page);
-    await page.addInitScript((theme) => {
-      window.localStorage.setItem("agent-bom-theme", theme);
-    }, CAPTURE_THEME);
+    const newCapturePage = async (theme, viewport) => {
+      const capturePage = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+      await installRoutes(capturePage);
+      await capturePage.addInitScript((selectedTheme) => {
+        window.localStorage.setItem("agent-bom-theme", selectedTheme);
+      }, theme);
+      return capturePage;
+    };
+    const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
       expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
@@ -2152,6 +2186,38 @@ async function main() {
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
       expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14", "DEMO-VULN-21441"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+    });
+
+    const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
+    await capture(lightPage, "/?capture=1", "dashboard-light-live.png", undefined, {
+      expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
+      expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
+    });
+    await capture(lightPage, "/security-graph?capture=1", "security-graph-light-live.png", async (securityGraphPage) => {
+      await securityGraphPage
+        .getByRole("img", { name: /Selected exposure path graph for/i })
+        .waitFor({ state: "visible", timeout: 30_000 });
+      await scrollTo(securityGraphPage, 0);
+    }, {
+      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
+      readySelector: 'section[aria-label="Selected exposure path graph"]',
+    });
+
+    const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
+    await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", undefined, {
+      expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
+      expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
+    });
+    await capture(mobilePage, "/security-graph?capture=1", "security-graph-mobile-live.png", async (securityGraphPage) => {
+      await securityGraphPage
+        .getByRole("img", { name: /Selected exposure path graph for/i })
+        .waitFor({ state: "visible", timeout: 30_000 });
+      await scrollTo(securityGraphPage, 0);
+    }, {
+      expectedText: ["Investigation", "Contractor Reviewer", "Developer Copilot", "DEMO-VULN-21441"],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
+      readySelector: 'section[aria-label="Selected exposure path graph"]',
     });
     await writeScreenshotManifest(stageDir);
     for (const artifact of await fs.readdir(stageDir)) {

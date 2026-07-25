@@ -94,18 +94,39 @@ def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
     assert "Smithery manifest" in readme
 
 
-def test_readme_storefront_keeps_quick_start_deploy_and_version_pins() -> None:
-    """README storefront: visible Quick start + Deploy, honest version, AppSec ≠ GRC."""
+def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
+    """README storefront keeps one clear story and a two-command first run."""
     import re
-    import tomllib
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
-    # Top-level sections stay visible (not only buried in <details>).
-    assert re.search(r"^## Quick start\s*$", readme, re.M)
-    assert re.search(r"^## Deploy & self-host\s*$", readme, re.M)
-    assert re.search(r"^## See the product\s*$", readme, re.M)
+    sections = [
+        "What it is",
+        "Quick start",
+        "How it works",
+        "Who it is for",
+        "Self-host",
+        "Trust",
+    ]
+    positions = [readme.index(f"## {section}") for section in sections]
+    assert positions == sorted(positions)
+
+    hero = readme[: positions[0]]
+    assert hero.count("img.shields.io/") <= 2
+    assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
+    assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
+    assert '<a href="https://demo.agent-bom.com">Live demo</a>' in hero
+
+    quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
+    primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
+    assert primary_block is not None
+    commands = [line for line in primary_block.group(1).splitlines() if line.strip()]
+    assert commands == ["pip install agent-bom", "agent-bom scan ."]
+
+    assert "<summary><b>Try without a repository</b></summary>" in readme
+    assert "<summary><b>Product gallery</b></summary>" in readme
+    assert "persona-value-dark.svg" not in readme
+    assert "persona-value-light.svg" not in readme
 
     # Persona surfaces keep AppSec and GRC as separate lanes (never one card).
     assert "AppSec/GRC" not in readme
@@ -113,13 +134,9 @@ def test_readme_storefront_keeps_quick_start_deploy_and_version_pins() -> None:
     assert "| AppSec |" in readme
     assert "| GRC / audit |" in readme
 
-    # Helm OCI pin and CLI walkthrough label match pyproject.
-    assert f"oci://ghcr.io/msaad00/charts/agent-bom --version {version}" in readme
-    assert f"CLI walkthrough</b> — {version} console demo" in readme
-    assert f"msaad00/agent-bom@v{version}" in readme
-
-    # Logo honesty: CLI is text wordmark; UI/demo show the mark.
-    assert "wordmark as text" in readme or "text wordmark" in readme
+    # One architecture visual; product screenshots stay progressive-disclosure.
+    assert readme.count("how-it-works-dark.svg") == 1
+    assert "blast-radius-dark.svg" not in readme
 
 
 def test_readme_grc_persona_row_teaches_the_real_compliance_command() -> None:

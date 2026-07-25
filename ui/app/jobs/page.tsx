@@ -142,7 +142,7 @@ function JobsPageContent() {
   }, [loadJobs]);
 
   useEffect(() => {
-    Promise.allSettled([api.listSources(), api.listSchedules()]).then(([sourcesResult, schedulesResult]) => {
+    void Promise.allSettled([api.listSources(), api.listSchedules()]).then(([sourcesResult, schedulesResult]) => {
       setSources(sourcesResult.status === "fulfilled" ? sourcesResult.value.sources : []);
       setSchedules(schedulesResult.status === "fulfilled" ? schedulesResult.value : []);
     });

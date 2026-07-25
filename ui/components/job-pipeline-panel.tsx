@@ -233,8 +233,8 @@ export function JobPipelinePanel({
   const { steps, state: telemetryState } = useMemo(() => {
     const persisted = parsePipelineStepsFromProgress(job?.progress ?? []);
     const merged = mergePipelineSteps(persisted, liveSteps);
-    return resolvePipelineTelemetry(merged, status);
-  }, [job?.progress, liveSteps, status]);
+    return resolvePipelineTelemetry(merged);
+  }, [job?.progress, liveSteps]);
 
   const summary = useMemo(
     () =>

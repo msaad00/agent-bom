@@ -384,8 +384,9 @@ class PostgresJobStore:
             params.append(_literal_like_pattern(normalized_query))
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(  # nosec B608
-                f"SELECT status, COUNT(*) FROM scan_jobs{where} GROUP BY status",
+            rows = conn.execute(
+                # The WHERE fragments are fixed constants; all values are bound.
+                f"SELECT status, COUNT(*) FROM scan_jobs{where} GROUP BY status",  # nosec B608
                 tuple(params),
             ).fetchall()
         return {str(status): int(count) for status, count in rows}

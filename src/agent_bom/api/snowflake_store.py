@@ -253,7 +253,8 @@ class SnowflakeJobStore:
             where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
             sql = (
                 "SELECT job_id, tenant_id, status, created_at, completed_at, data, schedule_id "
-                f"FROM scan_jobs{where} ORDER BY created_at DESC"
+                # The WHERE fragments are fixed constants; all values are bound.
+                f"FROM scan_jobs{where} ORDER BY created_at DESC"  # nosec B608
             )
             if limit is not None:
                 sql = f"{sql} LIMIT %s OFFSET %s"
@@ -321,7 +322,11 @@ class SnowflakeJobStore:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute(f"SELECT COUNT(*) FROM scan_jobs{where}", tuple(params))
+            cur.execute(
+                # The WHERE fragments are fixed constants; all values are bound.
+                f"SELECT COUNT(*) FROM scan_jobs{where}",  # nosec B608
+                tuple(params),
+            )
             row = cur.fetchone()
         return int(row[0]) if row else 0
 
@@ -346,7 +351,11 @@ class SnowflakeJobStore:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute(f"SELECT status, COUNT(*) FROM scan_jobs{where} GROUP BY status", tuple(params))
+            cur.execute(
+                # The WHERE fragments are fixed constants; all values are bound.
+                f"SELECT status, COUNT(*) FROM scan_jobs{where} GROUP BY status",  # nosec B608
+                tuple(params),
+            )
             rows = cur.fetchall()
         return {str(status): int(count) for status, count in rows}
 

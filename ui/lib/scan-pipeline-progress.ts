@@ -35,7 +35,6 @@ export type PipelineTelemetryState = "observed" | "partial" | "unavailable";
 /** Classify persisted/streamed stage telemetry without inventing events. */
 export function resolvePipelineTelemetry(
   steps: Map<string, StepEvent>,
-  _status: JobStatus,
 ): { steps: Map<string, StepEvent>; state: PipelineTelemetryState } {
   if (steps.size === 0) return { steps, state: "unavailable" };
   const everyStageObserved = PIPELINE_STEPS.every((step) => steps.has(step.id));

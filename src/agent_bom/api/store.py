@@ -531,8 +531,9 @@ class SQLiteJobStore:
     ) -> dict[str, int]:
         try:
             where, params = _sqlite_job_summary_filter(tenant_id, query=query)
-            rows = self._conn.execute(  # nosec B608
-                f"SELECT status, COUNT(*) FROM jobs{where} GROUP BY status",
+            rows = self._conn.execute(
+                # The WHERE fragments are fixed constants; all values are bound.
+                f"SELECT status, COUNT(*) FROM jobs{where} GROUP BY status",  # nosec B608
                 params,
             ).fetchall()
             return {str(status): int(count) for status, count in rows}

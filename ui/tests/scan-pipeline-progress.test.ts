@@ -106,7 +106,7 @@ describe("scan-pipeline-progress", () => {
   });
 
   it("marks finished jobs without step events unavailable instead of fabricating stages", () => {
-    const { steps, state } = resolvePipelineTelemetry(new Map(), "done");
+    const { steps, state } = resolvePipelineTelemetry(new Map());
     expect(state).toBe("unavailable");
     expect(steps.size).toBe(0);
 
@@ -124,7 +124,6 @@ describe("scan-pipeline-progress", () => {
       parsePipelineStepsFromProgress([
         JSON.stringify({ type: "step", step_id: "discovery", status: "done", message: "done" }),
       ]),
-      "done",
     );
     expect(partial.state).toBe("partial");
 
@@ -135,7 +134,6 @@ describe("scan-pipeline-progress", () => {
           { type: "step" as const, step_id: step.id, status: "done" as const, message: "done" },
         ]),
       ),
-      "done",
     );
     expect(observed.state).toBe("observed");
   });
@@ -169,11 +167,11 @@ describe("scan-pipeline-progress", () => {
         message: "Found 3 agents",
       }),
     ]);
-    const done = resolvePipelineTelemetry(real, "done");
+    const done = resolvePipelineTelemetry(real);
     expect(done.state).toBe("partial");
     expect(done.steps.size).toBe(1);
 
-    const running = resolvePipelineTelemetry(new Map(), "running");
+    const running = resolvePipelineTelemetry(new Map());
     expect(running.state).toBe("unavailable");
     expect(running.steps.size).toBe(0);
   });

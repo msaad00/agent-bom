@@ -9,7 +9,8 @@ name: Demo redeploy
 #
 # Auth is short-lived OIDC role assumption (no stored SSH keys, no long-lived
 # AWS access keys). The workflow stays inert until the owner sets the repo
-# vars/secrets documented in docs/HOSTED_POC.md → "Demo redeploy".
+# protected `demo` environment vars/secrets documented in
+# docs/HOSTED_POC.md → "Demo redeploy".
 
 on:
   # Deploy only after the Release workflow succeeds. A direct release trigger
@@ -65,7 +66,7 @@ jobs:
               echo ""
               echo "\`DEMO_INSTANCE_ID\` is not set, so the hosted-demo redeploy is inert."
               echo ""
-              echo "To enable it, configure these repo settings:"
+              echo "To enable it, configure these protected \`demo\` environment settings:"
               echo "- **vars.DEMO_INSTANCE_ID** — EC2 instance id of the demo VM (\`i-...\`)"
               echo "- **vars.AWS_REGION** — region of the demo VM (defaults to \`us-east-1\`)"
               echo "- **vars.DEMO_DEPLOY_DIR** — repo checkout dir on the VM (defaults to \`/opt/agent-bom\`)"
@@ -74,6 +75,10 @@ jobs:
             echo "::notice::DEMO_INSTANCE_ID unset — hosted demo redeploy is inert. See job summary for the vars/secrets to configure."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
+            # Actions variables are not secrets and the repository is public.
+            # Treat the target identifier as operational metadata and mask it
+            # before any AWS command can echo it.
+            echo "::add-mask::${DEMO_INSTANCE_ID}"
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -83,6 +88,9 @@ jobs:
         with:
           role-to-assume: ${{ secrets.DEMO_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          mask-aws-account-id: true
+          role-duration-seconds: 900
+          unset-current-credentials: true
 
       - name: Redeploy over SSM Run Command
         if: steps.guard.outputs.configured == 'true'
@@ -241,7 +249,7 @@ jobs:
           # SSM `commands` is a JSON array; pass the whole script as one element.
           jq -n --rawfile script remote.sh '{commands: [$script]}' > params.json
 
-          echo "Sending redeploy command to ${DEMO_INSTANCE_ID} (ref ${RELEASE_REF}) ..."
+          echo "Sending redeploy command to the protected demo target (ref ${RELEASE_REF}) ..."
           command_id=$(aws ssm send-command \
             --instance-ids "${DEMO_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
@@ -249,7 +257,8 @@ jobs:
             --parameters file://params.json \
             --query "Command.CommandId" \
             --output text)
-          echo "SSM CommandId: ${command_id}"
+          echo "::add-mask::${command_id}"
+          echo "SSM command submitted."
 
           status="Pending"
           # Poll up to ~20 min (well under the 30 min job timeout) so a long

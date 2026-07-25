@@ -30,10 +30,12 @@ Run one small CPU-only VM. Recommended starting point:
 - Instance: `t3.large` or equivalent, 4 vCPU / 8-16 GB RAM
 - OS: Ubuntu LTS or Amazon Linux
 - Region: closest to you and the first demo users
-- Security group: `443` open; SSH/admin only from your IP
+- Security group: `443` from the trusted edge only; no inbound SSH/admin
 
 1. Create DNS, for example `demo.agent-bom.com`, pointing to the VM.
-2. Open inbound `443` only. Restrict SSH/admin access to known IPs.
+2. Allow inbound `443` only from the trusted edge (for example, Cloudflare's
+   published proxy CIDRs). Do not open SSH/admin ingress; use SSM for operator
+   access.
 3. Install Docker, Compose, and Caddy.
 4. Deploy `deploy/docker-compose.platform.yml`.
 5. Use Caddy or an ALB for HTTPS. Do not expose plain HTTP.
@@ -314,14 +316,15 @@ workflow automates it without any stored SSH keys or long-lived AWS credentials:
 
 The workflow is **inert until configured** — if `DEMO_INSTANCE_ID` is unset it
 logs the required settings and exits successfully instead of failing. To enable
-it, set these repo Actions **variables** and **secret**:
+it, set these values on the protected `demo` Actions **environment**, not at
+repository scope:
 
 | Setting | Kind | Purpose |
 |---|---|---|
-| `DEMO_INSTANCE_ID` | var | EC2 instance id of the demo VM (`i-...`). Gate: unset ⇒ workflow no-ops. |
-| `AWS_REGION` | var | Region of the demo VM. Defaults to `us-east-1` if unset. |
-| `DEMO_DEPLOY_DIR` | var | Repo checkout dir on the VM. Defaults to `/opt/agent-bom`. Must contain a `.git` directory — the remote script fails loud if it does not. |
-| `DEMO_DEPLOY_ROLE_ARN` | secret | IAM role ARN the workflow assumes via OIDC. Its trust policy must allow this repo's GitHub OIDC subject, and its permissions must allow `ssm:SendCommand` / `ssm:GetCommandInvocation` on the instance. |
+| `DEMO_INSTANCE_ID` | environment var | EC2 instance id of the demo VM (`i-...`). Gate: unset ⇒ workflow no-ops. |
+| `AWS_REGION` | environment var | Region of the demo VM. Defaults to `us-east-1` if unset. |
+| `DEMO_DEPLOY_DIR` | environment var | Repo checkout dir on the VM. Defaults to `/opt/agent-bom`. Must contain a `.git` directory — the remote script fails loud if it does not. |
+| `DEMO_DEPLOY_ROLE_ARN` | environment secret | IAM role ARN the workflow assumes via OIDC. Its trust policy must allow this repo's GitHub OIDC subject, and its permissions must allow `ssm:SendCommand` / `ssm:GetCommandInvocation` on the instance. |
 
 The instance also needs the SSM agent running and an instance profile granting
 `AmazonSSMManagedInstanceCore` so Run Command can reach it.
@@ -333,8 +336,8 @@ deploy or assume the AWS role. Two independent defenses:
 
 - **Protected environment.** The deploy job declares `environment: demo`. Create
   a repo Actions **Environment** named `demo` with **yourself as a required
-  reviewer**, and optionally restrict its deployment branches/tags to the default
-  branch and `v*.*.*` tags. Then every `release` / `workflow_dispatch` run
+  reviewer**, disable administrator bypass, and restrict deployments to protected
+  branches. Then every release-driven / `workflow_dispatch` run
   **pauses for your approval** before any AWS call. The workflow has **no**
   `pull_request` / `pull_request_target` trigger — it is release +
   `workflow_dispatch` only, so PRs cannot start it at all.
@@ -345,6 +348,10 @@ deploy or assume the AWS role. Two independent defenses:
   `ssm:GetCommandInvocation`. Fork/PR runs present a different `sub` and STS
   rejects them. `terraform output -raw role_arn` gives the value for
   `DEMO_DEPLOY_ROLE_ARN`.
+- **Public-log hygiene.** Mask the EC2 instance ID, SSM command ID, and AWS
+  account ID before emitting workflow diagnostics. Keep the OIDC session at the
+  15-minute minimum; no deployment identifier is an authentication credential,
+  but public logs should not disclose private infrastructure inventory.
 
 ## Snowflake Native App lane
 

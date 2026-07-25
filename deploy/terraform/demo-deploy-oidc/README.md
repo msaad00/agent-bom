@@ -49,18 +49,19 @@ terraform output -raw role_arn
 
 ## Wire it up
 
-1. **Repo secret** — paste `role_arn` into the repo Actions secret
-   `DEMO_DEPLOY_ROLE_ARN`.
-2. **Repo vars** — set `DEMO_INSTANCE_ID`, `AWS_REGION`, and (optionally)
-   `DEMO_DEPLOY_DIR`. See `docs/HOSTED_POC.md` → "Demo redeploy".
+1. **Environment secret** — paste `role_arn` into the protected `demo`
+   environment secret `DEMO_DEPLOY_ROLE_ARN`; do not store it at repository
+   scope.
+2. **Environment vars** — on `demo`, set `DEMO_INSTANCE_ID`, `AWS_REGION`, and
+   (optionally) `DEMO_DEPLOY_DIR`. See `docs/HOSTED_POC.md` → "Demo redeploy".
 3. **Protected environment** — in the repo, create an Actions **Environment**
-   named `demo` and add **yourself as a required reviewer**. Optionally restrict
-   its deployment branches/tags to the default branch and `v*.*.*` tags. This
+   named `demo`, add **yourself as a required reviewer**, disable administrator
+   bypass, and restrict deployments to protected branches. This
    makes every `release` / `workflow_dispatch` run **pause for your approval**
    before any AWS call, and the environment name is what the trust policy above
    is scoped to — the two defenses reinforce each other.
 
-Once configured, a published release (or a manual dispatch) queues a redeploy
+Once configured, a successful release (or a manual dispatch) queues a redeploy
 that waits for your approval, then runs `git pull` → `docker compose up -d
 --build` → fail-closed preflight → smoke on the VM, failing the job if the demo
 is unhealthy.

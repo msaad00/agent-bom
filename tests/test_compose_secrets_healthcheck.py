@@ -347,6 +347,15 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     assert 'test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"' in workflow
     assert "\n  release:\n" not in workflow
     assert "release_ref:" in workflow
+    # Public Actions logs must not disclose private infrastructure inventory,
+    # and the short-lived AWS session should expire shortly after the deploy.
+    assert 'echo "::add-mask::${DEMO_INSTANCE_ID}"' in workflow
+    assert 'echo "::add-mask::${command_id}"' in workflow
+    assert "Sending redeploy command to ${DEMO_INSTANCE_ID}" not in workflow
+    assert "SSM CommandId: ${command_id}" not in workflow
+    assert "mask-aws-account-id: true" in workflow
+    assert "role-duration-seconds: 900" in workflow
+    assert "unset-current-credentials: true" in workflow
     # Static preflight precedes build and in-place promotion.
     assert workflow.index("hosted_poc_preflight.py --write-secret") < workflow.index("compose build")
     assert workflow.index("compose build") < workflow.index("compose up -d")

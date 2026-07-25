@@ -535,6 +535,12 @@ API_BODY_MIN_BPS = _int("AGENT_BOM_BODY_MIN_BPS", 256)
 
 POSTGRES_POOL_MIN_SIZE = _int("AGENT_BOM_POSTGRES_POOL_MIN_SIZE", 5)
 POSTGRES_POOL_MAX_SIZE = _int("AGENT_BOM_POSTGRES_POOL_MAX_SIZE", 20)
+# Route handlers offload synchronous store reads to worker threads. AnyIO's
+# own default allows 40 concurrent threads, so leaving it alone lets offloaded
+# reads outnumber connections two to one and queue inside the pool until they
+# time out. Derived from the pool ceiling so the two cannot drift; raise it
+# explicitly only when offloaded work is not database-bound.
+WORKER_THREAD_LIMIT = _int("AGENT_BOM_WORKER_THREAD_LIMIT", POSTGRES_POOL_MAX_SIZE)
 POSTGRES_CONNECT_TIMEOUT_SECONDS = _int("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS", 5)
 POSTGRES_STATEMENT_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
 POSTGRES_GRAPH_SEARCH_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_GRAPH_SEARCH_TIMEOUT_MS", 3_000)

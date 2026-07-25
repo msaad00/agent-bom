@@ -496,7 +496,10 @@ async def create_browser_session(request: Request, response: Response, body: Bro
 
     store = get_key_store()
     if store.has_keys():
-        api_key = store.verify(raw_key)
+        # ``store.verify`` runs a ~21ms scrypt derivation (in-memory store) or a
+        # blocking DB read (Postgres store). This route is auth-exempt, so an
+        # unauthenticated caller could otherwise stall the event loop on demand.
+        api_key = await anyio.to_thread.run_sync(store.verify, raw_key)
         if api_key:
             _set_browser_session_cookie(
                 response,

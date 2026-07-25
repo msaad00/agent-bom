@@ -901,7 +901,10 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
         return proxy_context
 
     token = _ws_header_token(websocket)
-    header_context = _ws_auth_from_token(token, bearer=True)
+    # ``_ws_auth_from_token`` runs a scrypt derivation (or a blocking store
+    # read) inside ``store.verify``. This handshake happens before the socket
+    # is authenticated, so keep it off the event loop.
+    header_context = await anyio.to_thread.run_sync(partial(_ws_auth_from_token, token, bearer=True))
     if header_context is not None:
         await websocket.accept()
         return header_context
@@ -915,7 +918,7 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
 
     if isinstance(payload, dict) and payload.get("type") == "auth":
         token = str(payload.get("token", ""))
-        message_context = _ws_auth_from_token(token, bearer=False)
+        message_context = await anyio.to_thread.run_sync(partial(_ws_auth_from_token, token, bearer=False))
         if message_context is not None:
             await websocket.send_json({"type": "auth", "status": "ok"})
             return message_context

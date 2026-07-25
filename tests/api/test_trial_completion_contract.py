@@ -8,6 +8,7 @@ period.  All identifiers and credentials are synthetic.
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -211,9 +212,16 @@ def test_postgres_cleanup_discovers_all_tenant_tables_but_retains_audit_tombston
         def connection(self):
             yield _Connection()
 
+    class _SQL(str):
+        def format(self, identifier: object) -> "_SQL":
+            return _SQL(str(self).format(identifier))
+
+    fake_sql = SimpleNamespace(SQL=_SQL, Identifier=lambda table: f'"{table}"')
+
     monkeypatch.setattr("agent_bom.api.routes.privacy._delete_records", lambda tenant_id: {})
     monkeypatch.setattr("agent_bom.api.storage_schema.postgres_deployment_configured", lambda: True)
     monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", lambda: _Pool())
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(sql=fake_sql))
 
     result = delete_tenant_records("trial-synthetic-001")
 

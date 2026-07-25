@@ -80,7 +80,11 @@ class TestAwsScanFansOutOnAllRegions:
                 return {"benchmark": "cis", "passed": 0, "failed": 0, "total": 0, "pass_rate": 0}
 
         monkeypatch.setattr(aws_cis_benchmark, "run_benchmark", lambda **_kw: _Cis())
-        monkeypatch.setattr(routes, "_persist_connection_report", lambda record, tenant_id, report: "scan-123")
+        monkeypatch.setattr(
+            routes,
+            "_persist_connection_report",
+            lambda record, tenant_id, report, *, queued_job=None: "scan-123",
+        )
 
     def test_all_regions_uses_multi_region_discovery(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: dict[str, Any] = {}

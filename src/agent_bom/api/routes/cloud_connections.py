@@ -1702,7 +1702,7 @@ async def scan_connection(
         job.completed_at = _now()
         job.error = "Scan dispatch failed before execution."
         job.progress.append("Dispatch failed before execution")
-        _get_store().put(job)
+        await anyio.to_thread.run_sync(_get_store().put, job)
         _jobs_put(job.job_id, job, compact_terminal=True)
         _logger.error(
             "Cloud connection scan dispatch failed connection=%s job=%s: %s",

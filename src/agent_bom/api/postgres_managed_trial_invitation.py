@@ -28,7 +28,8 @@ class PostgresManagedTrialInvitationStore:
     def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "managed_trial_invitations")
+            if ensure_postgres_schema_version(conn, "managed_trial_invitations"):
+                conn.commit()
 
     @staticmethod
     def _from_row(row: tuple[Any, ...]) -> ManagedTrialInvitation:

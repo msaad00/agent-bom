@@ -433,8 +433,8 @@ def execute_connection_scan(record: CloudConnectionRecord) -> bool:
     reset lives in a ``finally`` so a raising scan cannot carry one tenant into
     the next connection's work.
 
-    Never raises — returns whether the scan ran *and* was recorded, so one bad
-    connection cannot sink the loop.
+    Never raises — returns whether the durable handoff was accepted and
+    recorded, so one bad connection cannot sink the loop.
     """
     from agent_bom.api.routes.cloud_connections import _now, queue_connection_scan_record
 

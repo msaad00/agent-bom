@@ -327,6 +327,29 @@ body {
   box-shadow: inset 2px 0 0 0 var(--accent);
 }
 
+/* Login submit variants live in CSS so the client route does not repeat long utility strings. */
+.login-submit {
+  @apply mt-5 w-full rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed;
+}
+.login-submit-sso {
+  @apply border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] disabled:border-[var(--border-subtle)] disabled:bg-[var(--background)] disabled:text-[var(--text-tertiary)];
+}
+.login-submit-key {
+  @apply bg-emerald-500 text-[var(--on-accent)] hover:bg-emerald-400 disabled:bg-[var(--surface-elevated)] disabled:text-[var(--text-tertiary)];
+}
+.login-sso-button {
+  @apply flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition;
+}
+.login-sso-browser {
+  @apply bg-emerald-500 text-[var(--on-accent)] hover:bg-emerald-400;
+}
+.login-sso-secondary {
+  @apply gap-2 border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)];
+}
+.login-sso-snowflake {
+  @apply gap-2 bg-[#29B5E8] text-white hover:bg-[#1a9fd0];
+}
+
 /* Stat card gradient backgrounds — driven by severity/status tokens */
 .stat-critical {
   background: linear-gradient(

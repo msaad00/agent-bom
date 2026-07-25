@@ -18,7 +18,8 @@ class PostgresTenantLifecycleStore:
     def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "managed_trial_tenants")
+            if ensure_postgres_schema_version(conn, "managed_trial_tenants"):
+                conn.commit()
 
     @staticmethod
     def _row(row: tuple[Any, ...]) -> TenantLifecycleRecord:

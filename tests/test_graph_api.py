@@ -35,6 +35,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
+from agent_bom.graph.container import apply_node_budget
 
 
 def _build_persisted_graph(db, scan_id="test-scan-001"):
@@ -1294,9 +1295,18 @@ class _RecordingGraphStore:
         self.calls.append(("prior_delta_digest", tenant_id, scan_id))
         return digest_from_graph(self.graph)
 
-    def load_graph(self, *, tenant_id: str = "", scan_id: str = "", entity_types=None, min_severity_rank: int = 0) -> UnifiedGraph:
+    def load_graph(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types=None,
+        min_severity_rank: int = 0,
+        relationship_types=None,
+        node_budget: int | None = None,
+    ) -> UnifiedGraph:
         self.calls.append(("load_graph", tenant_id, scan_id, entity_types, min_severity_rank))
-        return self.graph
+        return apply_node_budget(self.graph, node_budget)
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict:
         self.calls.append(("diff_snapshots", tenant_id, scan_id_old, scan_id_new))
@@ -1795,9 +1805,7 @@ class TestGraphStoreBackendSelection:
 
     def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
-        recording_graph_store.graph.add_node(
-            UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data")
-        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
         recording_graph_store.graph.add_node(UnifiedNode(id="cred:aws", entity_type=EntityType.CREDENTIAL, label="AWS_SECRET_ACCESS_KEY"))
         recording_graph_store.graph.add_node(UnifiedNode(id="tool:shell", entity_type=EntityType.TOOL, label="run_shell"))
         recording_graph_store.graph.add_node(
@@ -1868,9 +1876,7 @@ class TestGraphStoreBackendSelection:
                 },
             )
         )
-        recording_graph_store.graph.add_edge(
-            UnifiedEdge(source="cloud:entry", target="ds:crown", relationship=RelationshipType.STORES)
-        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="cloud:entry", target="ds:crown", relationship=RelationshipType.STORES))
         # Persist a jewel-terminating path (fusion does this at build time) but leave
         # attack_campaigns empty — matching store_backed.StoreBackedUnifiedGraph.
         recording_graph_store.graph.attack_paths.append(
@@ -1915,9 +1921,7 @@ class TestGraphStoreBackendSelection:
                 },
             )
         )
-        recording_graph_store.graph.add_edge(
-            UnifiedEdge(source="cloud:entry", target="ds:crown", relationship=RelationshipType.STORES)
-        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="cloud:entry", target="ds:crown", relationship=RelationshipType.STORES))
         recording_graph_store.graph.attack_paths.append(
             AttackPath(
                 source="cloud:entry",
@@ -2895,9 +2899,7 @@ class TestGraphStoreBackendSelection:
     def test_graph_node_neighbors_returns_bounded_metadata(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
-        recording_graph_store.graph.add_node(
-            UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a", severity="high")
-        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a", severity="high"))
         recording_graph_store.graph.add_node(UnifiedNode(id="pkg:p", entity_type=EntityType.PACKAGE, label="pkg@1.0"))
         recording_graph_store.graph.add_edge(
             UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
@@ -2931,9 +2933,7 @@ class TestGraphStoreBackendSelection:
         recording_graph_store.graph.add_node(UnifiedNode(id="server:hub", entity_type=EntityType.SERVER, label="hub"))
         for index in range(5):
             neighbor_id = f"pkg:p{index}"
-            recording_graph_store.graph.add_node(
-                UnifiedNode(id=neighbor_id, entity_type=EntityType.PACKAGE, label=f"pkg-{index}")
-            )
+            recording_graph_store.graph.add_node(UnifiedNode(id=neighbor_id, entity_type=EntityType.PACKAGE, label=f"pkg-{index}"))
             recording_graph_store.graph.add_edge(
                 UnifiedEdge(source="server:hub", target=neighbor_id, relationship=RelationshipType.DEPENDS_ON)
             )
@@ -2956,12 +2956,8 @@ class TestGraphStoreBackendSelection:
         recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         recording_graph_store.graph.add_node(UnifiedNode(id="pkg:p", entity_type=EntityType.PACKAGE, label="pkg@1.0"))
-        recording_graph_store.graph.add_edge(
-            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES)
-        )
-        recording_graph_store.graph.add_edge(
-            UnifiedEdge(source="server:s", target="pkg:p", relationship=RelationshipType.DEPENDS_ON)
-        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="server:s", target="pkg:p", relationship=RelationshipType.DEPENDS_ON))
         client = TestClient(app)
 
         out_only = client.get("/v1/graph/node/server:s/neighbors", params={"direction": "out"}).json()

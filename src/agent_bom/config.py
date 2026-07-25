@@ -351,6 +351,14 @@ ANALYTICS_MAX_EVENTS = _int("AGENT_BOM_ANALYTICS_MAX_EVENTS", 50_000)
 # SQLite and Postgres remain the supported graph backends.
 
 GRAPH_BACKEND = _str("AGENT_BOM_GRAPH_BACKEND", "")
+
+# Ceiling on nodes materialized for one investigation read. The relationship /
+# static / dynamic filters load a whole snapshot into memory; at 200k nodes that
+# measured ~783 MB and 8.3s per request, and the read path permits several
+# concurrently. Highest-risk nodes are kept and the response declares what was
+# omitted, so a bounded view is never mistaken for a complete one. 0 disables
+# the cap — only safe on a control plane whose snapshots are known to be small.
+GRAPH_INVESTIGATION_NODE_BUDGET = _int("AGENT_BOM_GRAPH_INVESTIGATION_NODE_BUDGET", 25_000)
 EXPERIMENTAL_NEPTUNE_GRAPH = _bool("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", False)
 NEPTUNE_ENDPOINT = _str("AGENT_BOM_NEPTUNE_ENDPOINT", "")
 NEPTUNE_TRAVERSAL_SOURCE = _str("AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE", "g")

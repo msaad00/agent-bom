@@ -231,6 +231,88 @@ class InteractionRisk:
         )
 
 
+def resolve_node_budget(budget: int | None) -> int | None:
+    """Normalize a node budget; non-positive means unbounded.
+
+    Callers that need a whole graph to be correct — snapshot diff, compare,
+    anything computing removals — must be able to opt out, because a truncated
+    graph would read as deletions that never happened.
+    """
+    if budget is None or budget <= 0:
+        return None
+    return budget
+
+
+def apply_node_budget(graph: "UnifiedGraph", budget: int | None) -> "UnifiedGraph":
+    """Trim *graph* in place to the highest-risk ``budget`` nodes.
+
+    For backends that cannot push a limit into their query, this keeps the
+    bounded-and-declared contract uniform: the same completeness descriptor is
+    populated whether the cap was applied in SQL or afterwards. Edges whose
+    endpoints were dropped go too, so no edge dangles.
+    """
+    resolved = resolve_node_budget(budget)
+    total = len(graph.nodes)
+    if resolved is None or total <= resolved:
+        graph.completeness = GraphCompleteness(node_budget=resolved, total_nodes=total, returned_nodes=total)
+        return graph
+
+    ranked = sorted(graph.nodes.values(), key=lambda n: (-(n.risk_score or 0.0), n.id))
+    keep = {node.id for node in ranked[:resolved]}
+    graph.nodes = {node_id: node for node_id, node in graph.nodes.items() if node_id in keep}
+
+    surviving = [edge for edge in graph.edges if edge.source in keep and edge.target in keep]
+    graph.edges = []
+    graph.adjacency = defaultdict(list)
+    graph.reverse_adjacency = defaultdict(list)
+    graph._edge_keys = set()
+    for edge in surviving:
+        graph.add_edge(edge)
+    graph.completeness = GraphCompleteness(
+        truncated=True,
+        node_budget=resolved,
+        total_nodes=total,
+        returned_nodes=len(graph.nodes),
+        reason="node_budget",
+    )
+    return graph
+
+
+@dataclass(slots=True)
+class GraphCompleteness:
+    """Whether a loaded graph is the whole snapshot, and what was left out.
+
+    A bounded load is fine; a *silent* one is not. Without this a caller cannot
+    tell an empty blast radius from a trimmed one, which is the difference
+    between "nothing reaches this" and "we stopped looking".
+    """
+
+    truncated: bool = False
+    node_budget: int | None = None
+    total_nodes: int = 0
+    returned_nodes: int = 0
+    reason: str = ""
+
+    @property
+    def omitted_nodes(self) -> int:
+        return max(0, self.total_nodes - self.returned_nodes)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize through the shared graph-completeness contract.
+
+        The API already has one shape for "is this response exhaustive"; this
+        must not become a second one that clients have to branch on.
+        """
+        from agent_bom.graph.completeness import graph_completeness
+
+        return graph_completeness(
+            returned=self.returned_nodes,
+            total=self.total_nodes,
+            truncated=self.truncated,
+            reason=self.reason,
+        )
+
+
 @dataclass
 class UnifiedGraph:
     """The canonical graph structure for agent-bom.
@@ -258,6 +340,7 @@ class UnifiedGraph:
     scan_id: str = ""
     tenant_id: str = ""
     created_at: str = ""
+    completeness: "GraphCompleteness" = field(default_factory=lambda: GraphCompleteness())
 
     def __post_init__(self) -> None:
         if not self.created_at:

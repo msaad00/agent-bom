@@ -35,6 +35,7 @@ from agent_bom.graph import (
     technique_mappings_from_json,
 )
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
+from agent_bom.graph.container import apply_node_budget
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
 # Only finding-like nodes (vulnerabilities, misconfigurations, drift) carry a
@@ -187,6 +188,7 @@ class GraphStoreProtocol(Protocol):
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
         relationship_types: frozenset[str] | None = None,
+        node_budget: int | None = None,
     ) -> UnifiedGraph: ...
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
@@ -1266,13 +1268,14 @@ class SQLiteGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
         relationship_types: frozenset[str] | None = None,
+        node_budget: int | None = None,
     ) -> UnifiedGraph:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
         try:
-            return sqlite_graph_store.load_graph(
+            graph = sqlite_graph_store.load_graph(
                 conn,
                 tenant_id=tenant_id,
                 scan_id=scan_id,
@@ -1280,6 +1283,10 @@ class SQLiteGraphStore:
                 min_severity_rank=min_severity_rank,
                 relationship_types=relationship_types,
             )
+            # This backend has no query-side limit, so the cap is applied after
+            # the load. Memory is not saved, but the declared contract stays
+            # identical across backends.
+            return apply_node_budget(graph, node_budget)
         finally:
             conn.close()
 

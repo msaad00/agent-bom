@@ -44,6 +44,7 @@ from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationErr
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET
 from agent_bom.graph import (
     SEVERITY_RANK,
     AttackPath,
@@ -1435,6 +1436,7 @@ async def _load_graph_for_investigation(
     )
     return _enrich_loaded_graph_runtime_evidence(graph, tenant_id)
 
+
 async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
     """Run CPU-heavy graph derivation and serialization off the event loop."""
     try:
@@ -1483,11 +1485,7 @@ def _ensure_attack_campaigns(graph: UnifiedGraph, paths: list[AttackPath] | None
         from agent_bom.graph.attack_path_fusion import _cluster_small_graph_campaigns, _is_crown_jewel
 
         candidate_paths = list(paths) if paths is not None else list(graph.attack_paths)
-        jewel_paths = [
-            path
-            for path in candidate_paths
-            if (node := graph.nodes.get(path.target)) is not None and _is_crown_jewel(node)
-        ]
+        jewel_paths = [path for path in candidate_paths if (node := graph.nodes.get(path.target)) is not None and _is_crown_jewel(node)]
         if jewel_paths:
             graph.attack_campaigns = _cluster_small_graph_campaigns(graph, jewel_paths)
             return
@@ -1527,11 +1525,15 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
         "interaction_risks": interaction_risks,
         "stats": stats,
         "pagination": pagination,
+        # Two independent reasons a response can be partial: the page limit,
+        # and a snapshot that was already bounded at load time. The load-time
+        # cap is reported first because it is the wider omission — the page is
+        # a window onto whatever survived it.
         "completeness": graph_completeness(
             returned=len(paged_nodes),
-            total=len(all_nodes),
-            truncated=pagination["has_more"],
-            reason="node_page_limit" if pagination["has_more"] else "",
+            total=graph.completeness.total_nodes if graph.completeness.truncated else len(all_nodes),
+            truncated=graph.completeness.truncated or pagination["has_more"],
+            reason=("node_budget" if graph.completeness.truncated else "node_page_limit" if pagination["has_more"] else ""),
         ),
         "attack_path_pagination": {
             "total": len(matching_paths),
@@ -1695,11 +1697,7 @@ def _governance_graph_payload(
     for node in graph.nodes.values():
         if node.entity_type in governance_types:
             counts[node.entity_type.value] = counts.get(node.entity_type.value, 0) + 1
-    governance_truncated = (
-        len(nodes) < len(keep_ids)
-        or len(edges) < len(candidate_edges)
-        or len(attack_paths) < len(matching_paths)
-    )
+    governance_truncated = len(nodes) < len(keep_ids) or len(edges) < len(candidate_edges) or len(attack_paths) < len(matching_paths)
     return {
         "scan_id": graph.scan_id,
         "tenant_id": tenant_id,
@@ -1950,12 +1948,17 @@ async def get_graph(
         min_rank = SEVERITY_RANK.get(min_severity.lower(), 0)
 
     if relationships or static_only or dynamic_only:
+        # This branch materializes the whole snapshot. Bound it: at 200k nodes
+        # an uncapped load measured ~783 MB and 8.3s, and several of these can
+        # run concurrently. The budget keeps the highest-risk nodes and the
+        # response declares what was left out.
         graph = await _load_graph_for_investigation(
             graph_store,
             scan_id=requested_scan_id,
             tenant_id=tenant,
             entity_types=et_set,
             min_severity_rank=min_rank,
+            node_budget=GRAPH_INVESTIGATION_NODE_BUDGET,
         )
         rel_set = _parse_relationship_filter(relationships)
         filters = GraphFilterOptions(

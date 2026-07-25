@@ -78,6 +78,9 @@ _PERMISSIONS: dict[str, set[Role]] = {
     "sla_write": {Role.ADMIN},
     "sla_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
     "config": {Role.ADMIN},
+    # Routes that spend the control plane's OWN cloud identity rather than a
+    # tenant's stored connection. Analyst-in-any-tenant is the wrong bar.
+    "cloud_ambient": {Role.ADMIN},
 }
 
 

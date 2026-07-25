@@ -224,7 +224,10 @@ def test_cloud_inventory_bad_region_400() -> None:
     assert resp.status_code == 400
 
 
-def test_cloud_cis_allows_admin_role() -> None:
+def test_cloud_cis_allows_admin_role(monkeypatch) -> None:
+    # Ambient-credential evaluation is operator opt-in; enable it so this test
+    # exercises the wired path rather than the disabled guard.
+    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
     client = TestClient(app)
     resp = client.get("/v1/cloud/aws/cis-benchmark", headers=_proxy_headers())
     # Authorized: 200 whether or not the cloud SDK is installed. With the SDK it
@@ -244,11 +247,12 @@ def test_cloud_cis_unknown_provider_404() -> None:
     assert resp.status_code == 404
 
 
-def test_cloud_cis_snowflake_is_wired_not_404() -> None:
+def test_cloud_cis_snowflake_is_wired_not_404(monkeypatch) -> None:
     # Snowflake CIS is a real benchmark (snowflake_cis_benchmark.run_benchmark);
     # it must not 404 like an unknown provider. Without the snowflake connector /
     # credentials in the test env it degrades to the shared "unavailable"
     # envelope (HTTP 200), exactly like the other providers — never 404, never 500.
+    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
     client = TestClient(app)
     resp = client.get("/v1/cloud/snowflake/cis-benchmark", headers=_proxy_headers())
     assert resp.status_code == 200

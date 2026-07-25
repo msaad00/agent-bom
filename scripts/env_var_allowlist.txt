@@ -60,6 +60,8 @@ AGENT_BOM_AWS_EVENT_QUEUE_URL
 # Opt-in (default OFF) gate for the estate-wide read-only Azure asset inventory scanner (token/credential auth only).
 AGENT_BOM_AWS_INVENTORY
 # Defensive cap on the number of member accounts a single AWS Organizations scan fans out over (default 200).
+# Operator-selected AWS profile for ambient-credential evaluation; read live and never caller-supplied, so a request cannot pick which host credential the control plane spends.
+AGENT_BOM_AWS_PROFILE
 AGENT_BOM_AWS_MAX_ACCOUNTS
 # Defensive cap on the number of regions a single multi-region AWS inventory scan fans out over.
 AGENT_BOM_AWS_MAX_REGIONS
@@ -94,6 +96,8 @@ AGENT_BOM_CLICKHOUSE_MAX_QUEUE
 AGENT_BOM_CLICKHOUSE_ACCESS_TOKEN
 AGENT_BOM_CLICKHOUSE_USER
 # Opt-in (default OFF) gate for the estate-wide read-only AWS asset inventory scanner.
+# Opt-in (default OFF, read live) gate allowing this control plane to run the CIS benchmark against its OWN ambient cloud identity rather than a tenant connection.
+AGENT_BOM_CLOUD_CIS_BENCHMARK
 AGENT_BOM_CLOUD_INVENTORY
 # Opt-in (default OFF) bounded S3 object byte-range sampling for DSPM content classification. Stores redacted classification counts, never raw object bytes.
 AGENT_BOM_DSPM_S3_SAMPLING

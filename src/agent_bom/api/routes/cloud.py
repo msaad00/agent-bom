@@ -37,6 +37,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from agent_bom.api.models import RuntimeEvidenceIngestRequest
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.cloud.ambient_credentials import (
+    PROFILE_REJECTED_NOTE,
+    ambient_cis_enabled,
+    configured_aws_profile,
+    disabled_payload,
+)
 from agent_bom.cloud.runtime_workload_evidence import (
     SourceAuthenticationError,
     get_runtime_source_registry,
@@ -52,6 +58,9 @@ _logger = logging.getLogger(__name__)
 # Reuse the same RBAC gate the sibling scan/identity routes use. Cloud scanning is
 # a scan-class action, so it maps to the "scan" permission ({admin, analyst}).
 _SCAN_DEP = require_authenticated_permission("scan")
+# Spending the control plane's own ambient cloud identity is an operator action,
+# not a tenant one, so it does not share the analyst-level scan dependency.
+_CIS_DEP = require_authenticated_permission("cloud_ambient")
 # The per-account drill summary is a read-only aggregation over already-ingested
 # evidence — it never triggers a provider scan — so it maps to the "read" gate
 # (all authenticated roles), like /v1/overview.
@@ -65,9 +74,7 @@ _ACCOUNT_SUMMARY_MAX_ROWS = 50_000
 
 # Asset-type buckets used to derive an honest identity/role count from the
 # account's finding assets (deeper IAM/grant enumeration is a follow-up).
-_IDENTITY_ASSET_TYPES = frozenset(
-    {"user", "service_account", "identity", "iam_user", "principal", "machine_identity", "nhi"}
-)
+_IDENTITY_ASSET_TYPES = frozenset({"user", "service_account", "identity", "iam_user", "principal", "machine_identity", "nhi"})
 _ROLE_ASSET_TYPES = frozenset({"role", "iam_role", "cloud_role"})
 
 # Provider -> the result keys (new + legacy) that carry a stored CIS benchmark
@@ -208,9 +215,7 @@ def _snowflake_inventory() -> tuple[dict[str, Any], dict[str, Any]]:
             "identity_count": 0,
             "node_summary": dict(node_summary),
             "warnings": (
-                [f"{warning_count} provider discovery warning(s) — run via CLI/MCP or see server logs for detail."]
-                if warning_count
-                else []
+                [f"{warning_count} provider discovery warning(s) — run via CLI/MCP or see server logs for detail."] if warning_count else []
             ),
         }
 
@@ -251,9 +256,7 @@ def _snowflake_inventory() -> tuple[dict[str, Any], dict[str, Any]]:
     return summary, raw_payload
 
 
-def _build_inventory_payload(
-    tenant_id: str, selected: list[str], scoped_region: str | None
-) -> dict[str, Any]:
+def _build_inventory_payload(tenant_id: str, selected: list[str], scoped_region: str | None) -> dict[str, Any]:
     """Synchronous estate inventory body — runs off the event loop in a worker thread.
 
     Calls the same ``discover_inventory`` functions the CLI/MCP use and reduces
@@ -344,9 +347,7 @@ async def cloud_inventory(
         # scan to a worker thread under backpressure so a live inventory can never
         # stall the event loop (a burst sheds with a 429 instead).
         async with adaptive_backpressure("cloud_inventory"):
-            return await anyio.to_thread.run_sync(
-                _build_inventory_payload, tenant_id, selected, scoped_region
-            )
+            return await anyio.to_thread.run_sync(_build_inventory_payload, tenant_id, selected, scoped_region)
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,
@@ -450,7 +451,7 @@ async def cloud_cis_benchmark(
     profile: str = Query("", description="Optional AWS profile name."),
     subscription_id: str = Query("", description="Optional Azure subscription id."),
     project_id: str = Query("", description="Optional GCP project id."),
-    _role: Any = _SCAN_DEP,
+    _role: Any = _CIS_DEP,
 ) -> dict[str, Any]:
     """Run the CIS Foundations benchmark for a cloud provider over REST.
 
@@ -468,7 +469,12 @@ async def cloud_cis_benchmark(
 
     check_list = [c.strip() for c in checks.split(",") if c.strip()] or None
     region_arg = region.strip() or None
-    profile_arg = profile.strip() or None
+    if profile.strip():
+        # Choosing which host credential to spend is operator configuration.
+        # Accepting it from the request would let any caller pivot across every
+        # profile mounted on the control plane.
+        raise HTTPException(status_code=400, detail=PROFILE_REJECTED_NOTE)
+    profile_arg = configured_aws_profile()
     if region_arg and not _REGION_RE.fullmatch(region_arg):
         raise HTTPException(status_code=400, detail=f"Invalid AWS region format: {region}")
     if profile_arg and not _PROFILE_RE.fullmatch(profile_arg):
@@ -476,6 +482,12 @@ async def cloud_cis_benchmark(
             status_code=400,
             detail="Invalid AWS profile name. Use alphanumeric, dot, dash, underscore (max 100 chars).",
         )
+
+    if not ambient_cis_enabled():
+        # Off by default: this evaluates with whatever credentials the
+        # control-plane process itself holds, so a stock install must never
+        # spend them on request.
+        return {**disabled_payload(requested), "tenant_id": tenant_id}
 
     try:
         # A full CIS benchmark runs synchronous provider SDK/network evaluation;
@@ -594,9 +606,7 @@ def _cis_counts(data: dict[str, Any]) -> tuple[int, int]:
     return p, f
 
 
-def _compliance_for_account(
-    jobs_newest_first: list[Any], provider: str, wanted_ref: str
-) -> dict[str, Any]:
+def _compliance_for_account(jobs_newest_first: list[Any], provider: str, wanted_ref: str) -> dict[str, Any]:
     """Aggregate stored CIS pass-rate for the account (newest run per provider).
 
     Only blocks whose normalized account matches ``wanted_ref`` are counted; a

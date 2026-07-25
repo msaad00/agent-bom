@@ -161,8 +161,22 @@ async def cis_benchmark_impl(
 
         if region and not _re.fullmatch(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}", region):
             return json.dumps({"error": f"Invalid AWS region format: {region}"})
-        if profile and not _re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", profile):
-            return json.dumps({"error": "Invalid AWS profile name. Use alphanumeric, dot, dash, underscore (max 100 chars)."})
+
+        # This benchmark spends the control plane's own cloud identity, so it
+        # carries the same operator opt-in as the REST surface. Gating one and
+        # not the other would leave this tool as a way around it.
+        from agent_bom.cloud.ambient_credentials import (
+            PROFILE_REJECTED_NOTE,
+            ambient_cis_enabled,
+            configured_aws_profile,
+            disabled_payload,
+        )
+
+        if profile:
+            return json.dumps({"error": PROFILE_REJECTED_NOTE})
+        profile = configured_aws_profile()
+        if not ambient_cis_enabled():
+            return json.dumps(disabled_payload(provider))
 
         cis_report: object
         if provider == "aws":

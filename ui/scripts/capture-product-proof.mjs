@@ -112,7 +112,7 @@ function buildGraph() {
     node("tool:exec", "tool", "execute_command", "critical", 9.5, { tool_class: "shell" }),
     node("tool:query", "tool", "run_sql", "high", 8.3, { tool_class: "data-query" }),
     node("tool:post", "tool", "post_incident_update", "medium", 4.8, { tool_class: "messaging" }),
-    node("cred:github", "credential", "GITHUB_FINE_GRAINED_TOKEN", "critical", 9.1, { safe_to_store: false }),
+    node("cred:github", "credential", "DEMO_GH_CRED_REF", "critical", 9.1, { safe_to_store: false }),
     node("cred:snowflake", "credential", "SNOWFLAKE_PROD_KEY", "critical", 9.3, { safe_to_store: false }),
     node("cred:aws", "credential", "AWS_ROLE_SESSION", "high", 8.1, { safe_to_store: false }),
     node("pkg:next", "package", "next@16.2.6", "critical", 9.2, { ecosystem: "npm", version: "16.2.6" }),
@@ -174,7 +174,7 @@ function buildGraph() {
       edges: edgeIdsFor(["user:contractor", "sa:jit-review", "role:prod-admin", "agent:developer-copilot", "server:github", "pkg:next", "cve:next"]),
       composite_risk: 9.8,
       summary: "JIT reviewer identity can reach a critical Next.js exposure through developer-copilot and GitHub MCP.",
-      credential_exposure: ["GITHUB_FINE_GRAINED_TOKEN"],
+      credential_exposure: ["DEMO_GH_CRED_REF"],
       tool_exposure: ["create_pull_request"],
       vuln_ids: ["DEMO-VULN-21441"],
     },
@@ -246,7 +246,7 @@ function contextGraph() {
     { id: "server:github", kind: "server", label: "github-enterprise MCP", metadata: { severity: "critical" } },
     { id: "server:filesystem", kind: "server", label: "filesystem MCP", metadata: { severity: "critical" } },
     { id: "server:snowflake", kind: "server", label: "snowflake-rag MCP", metadata: { severity: "high" } },
-    { id: "cred:github", kind: "credential", label: "GITHUB_FINE_GRAINED_TOKEN", metadata: { severity: "critical" } },
+    { id: "cred:github", kind: "credential", label: "DEMO_GH_CRED_REF", metadata: { severity: "critical" } },
     { id: "cred:snowflake", kind: "credential", label: "SNOWFLAKE_PROD_KEY", metadata: { severity: "critical" } },
     { id: "tool:repo-write", kind: "tool", label: "create_pull_request", metadata: { severity: "high" } },
     { id: "tool:exec", kind: "tool", label: "execute_command", metadata: { severity: "critical" } },
@@ -281,7 +281,7 @@ function contextGraph() {
         edges: [],
         composite_risk: 9.8,
         summary: "developer-copilot reaches GitHub MCP, a repo-write tool, a credential reference, and a critical CVE in one bounded path.",
-        credential_exposure: ["GITHUB_FINE_GRAINED_TOKEN"],
+        credential_exposure: ["DEMO_GH_CRED_REF"],
         tool_exposure: ["create_pull_request"],
         vuln_ids: ["DEMO-VULN-21441"],
       },
@@ -400,7 +400,7 @@ function buildBlastRadius() {
       ecosystem: "npm",
       affected_agents: ["developer-copilot"],
       affected_servers: ["github-enterprise MCP"],
-      exposed_credentials: ["GITHUB_FINE_GRAINED_TOKEN"],
+      exposed_credentials: ["DEMO_GH_CRED_REF"],
       reachable_tools: ["create_pull_request"],
       blast_score: 98,
       risk_score: 9.8,
@@ -543,7 +543,7 @@ function scanAgents() {
           transport: "sse",
           config_path: "/demo/workstation/.cursor/mcp.json",
           has_credentials: true,
-          credential_env_vars: ["GITHUB_FINE_GRAINED_TOKEN"],
+          credential_env_vars: ["DEMO_GH_CRED_REF"],
           tools: [{ name: "create_pull_request" }, { name: "read_repository" }],
           packages: [
             {
@@ -655,7 +655,7 @@ function scanJob() {
       vulnerabilities: ["DEMO-VULN-21441"],
       affected_agents: ["developer-copilot"],
       agents_pct: 33,
-      exposed_credentials: ["GITHUB_FINE_GRAINED_TOKEN"],
+      exposed_credentials: ["DEMO_GH_CRED_REF"],
       credentials_pct: 33,
       reachable_tools: ["create_pull_request"],
       tools_pct: 25,
@@ -721,7 +721,7 @@ function agentLifecycleFixture() {
     ["server", "filesystem MCP", 300, 340, {}],
     ["package", "next", 570, 80, { version: "16.2.6", ecosystem: "npm" }],
     ["tool", "create_pull_request", 570, 220, {}],
-    ["credential", "GITHUB_FINE_GRAINED_TOKEN", 570, 360, { description: "Credential name only; value never collected" }],
+    ["credential", "DEMO_GH_CRED_REF", 570, 360, { description: "Reference only; no value" }],
     ["cve", "DEMO-VULN-21441", 840, 80, { severity: "critical", fixed_version: "16.2.7" }],
   ].map(([nodeType, label, x, y, extra], index) => ({
     id: `lifecycle-${index + 1}`,
@@ -2131,6 +2131,7 @@ async function main() {
     await capture(page, "/agents?name=developer-copilot&view=lifecycle&capture=1", "agent-lifecycle-live.png", async (agentsPage) => {
       await agentsPage.getByText("Lifecycle Graph", { exact: true }).waitFor({ state: "visible", timeout: 20_000 });
       await fitReactFlow(agentsPage);
+      await scrollTo(agentsPage, 0);
     }, {
       expectedText: ["Lifecycle Graph", "developer-copilot", "github-enterprise MCP", "create_pull_request", "DEMO-VULN-21441"],
       rejectedText: [/Loading/i],
@@ -2202,7 +2203,7 @@ async function main() {
       await advancedControls.locator(":scope > summary").click();
       await fitReactFlow(lineagePage);
       await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
-      await scrollTo(lineagePage, 20);
+      await scrollTo(lineagePage, 380);
       await lineagePage.waitForTimeout(350);
     }, {
       expectedText: [
@@ -2255,7 +2256,7 @@ async function main() {
           "Context Map",
           "developer-copilot",
           "create_pull_request",
-          "GITHUB_FINE_GRAINED_TOKEN",
+          "DEMO_GH_CRED_REF",
         ],
         expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/context-graph`],
         minGraphNodes: 4,

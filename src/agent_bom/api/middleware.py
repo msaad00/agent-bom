@@ -1619,7 +1619,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure, token_is_jwt_shaped
 
         try:
-            _claims, oidc_role = oidc_cfg.verify(raw_key)
+            # ``verify`` can fetch JWKS over the network (``urlopen`` in
+            # api/oidc.py) on a cache miss or key rotation, so it must not run
+            # on the event loop — this path is reached before authentication.
+            _claims, oidc_role = await anyio.to_thread.run_sync(oidc_cfg.verify, raw_key)
             required = self._required_role(request.method, request.url.path)
             from agent_bom.api.auth import Role
 

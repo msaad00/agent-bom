@@ -18,11 +18,12 @@ import { AlertTriangle, Layers, Loader2, Radar, Route, ShieldAlert } from "lucid
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
-import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
+import { GraphEvidenceSummary } from "@/components/graph-evidence-summary";
 import { GraphAnalysisStatusBanner } from "@/components/graph-analysis-status";
 import {
   GraphEvidenceExportButton,
   FullscreenButton,
+  GraphInteractionToolbar,
 } from "@/components/graph-chrome";
 import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
@@ -43,9 +44,12 @@ import {
   ASSET_DRIFT_GRAPH_SCOPE_PARAM,
   DEFAULT_FILTERS,
   createAssetLifecycleDriftGraphFilters,
+  createCloudEstateGraphFilters,
+  createEnvironmentGraphFilters,
   createExpandedGraphFilters,
   createFocusedGraphFilters,
   createImmediateGraphFilters,
+  createRepositoryGraphFilters,
   graphScopeLabelForFilters,
   graphScopePresetForFilters,
   type FilterState,
@@ -101,7 +105,6 @@ import {
   summarizeReachability,
   type ReachabilitySummary,
 } from "@/lib/graph-reachability";
-import { evaluateGraphUx } from "@/lib/graph-ux-evaluation";
 import {
   api,
   ApiRateLimitError,
@@ -142,6 +145,8 @@ import {
   type EvidenceLensFilter,
 } from "@/lib/filter-algebra";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+import { useAuthState } from "@/components/auth-provider";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 
 // The whole current-scan graph loads in one request (no numbered pagination).
 // The bound matches the interactive render budget: past it, the overview
@@ -693,6 +698,7 @@ export default function GraphPageClient() {
 
 function GraphPageInner() {
   const reactFlow = useReactFlow();
+  const { session } = useAuthState();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -1761,8 +1767,8 @@ function GraphPageInner() {
             },
             labelStyle: {
               fill: "#f4f4f5",
-              fontSize: 11,
-              fontWeight: 600,
+              fontSize: 12,
+              fontWeight: 650,
             },
             animated: captureMode ? false : Boolean(inPath || edge.animated),
             style: {
@@ -1889,11 +1895,6 @@ function GraphPageInner() {
     });
   }, [baseDisplayEdges, driftLensEngaged, driftIndex]);
 
-  const graphEvaluation = useMemo(
-    () => evaluateGraphUx(graphData, displayNodes, displayEdges),
-    [displayEdges, displayNodes, graphData],
-  );
-
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
     [displayEdges, displayNodes],
@@ -1919,6 +1920,58 @@ function GraphPageInner() {
         mode: "lineage",
       }),
     [captureMode, displayEdges.length, displayNodes.length, selectedNode],
+  );
+  const presentationScope = useMemo(
+    () => ({
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: selectedScanId || "unselected",
+      lens: selectedAttackPath ? "investigation" : "lineage",
+      scope: JSON.stringify({
+        preset: graphScopePresetForFilters(filters),
+        agent: filters.agentName,
+        severity: filters.severity,
+        path: selectedAttackPathKey,
+        rollup: rollupStack.at(-1)?.id ?? null,
+      }),
+    }),
+    [filters, rollupStack, selectedAttackPath, selectedAttackPathKey, selectedScanId, session?.auth_method, session?.subject, session?.tenant_id],
+  );
+  const presentation = useGraphPresentation({
+    nodes: displayNodes,
+    scope: presentationScope,
+    layout: graphLayoutKind,
+    enabled: !captureMode,
+  });
+  const fitVisible = useCallback(() => {
+    void reactFlow.fitView({ ...viewportOptions, duration: 240 });
+  }, [reactFlow, viewportOptions]);
+  const fitSelection = useCallback(() => {
+    if (!selectedNodeId) return;
+    const node = reactFlow.getNode(selectedNodeId);
+    if (node) {
+      void reactFlow.fitView({
+        nodes: [node],
+        padding: 0.7,
+        duration: 240,
+        maxZoom: 1.4,
+      });
+    }
+  }, [reactFlow, selectedNodeId]);
+  const autoLayout = useCallback(() => {
+    presentation.autoLayout();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+  const resetLayout = useCallback(() => {
+    presentation.reset();
+    window.setTimeout(fitVisible, 0);
+  }, [fitVisible, presentation]);
+  const relationshipEvidenceCount = useMemo(
+    () =>
+      graphData?.edges.filter(
+        (edge) => Object.keys(edge.evidence ?? {}).length > 0,
+      ).length ?? null,
+    [graphData],
   );
 
   const hasContextualGraph = useMemo(
@@ -2376,6 +2429,15 @@ function GraphPageInner() {
               }
             />
             <FullscreenButton />
+            <GraphInteractionToolbar
+              editing={presentation.editing}
+              hasSelection={Boolean(selectedNodeId)}
+              onFitVisible={fitVisible}
+              onFitSelection={fitSelection}
+              onAutoLayout={autoLayout}
+              onReset={resetLayout}
+              onToggleEditing={presentation.toggleEditing}
+            />
           </div>
         </div>
 
@@ -2578,11 +2640,26 @@ function GraphPageInner() {
           )}
         </div>
 
-        {/* #3932: one collapsed-by-default "Advanced controls" shelf keeps the
-            canvas above the fold. It nests the three former full-width bands —
-            View controls, operator evaluation/diff lenses, and the ranked
-            attack-path queue — so the operator reaches them in one place
-            without any of them stacking on the default page load. */}
+        <div className="mt-2">
+          <GraphEvidenceSummary
+            capturedAt={activeSnapshot?.created_at ?? null}
+            returnedNodes={graphData?.completeness?.returned ?? graphData?.nodes.length ?? null}
+            totalNodes={graphData?.completeness?.total ?? graphData?.pagination.total ?? null}
+            evidencedEdges={relationshipEvidenceCount}
+            totalEdges={graphData?.edges.length ?? null}
+            completeness={
+              graphData?.completeness?.status ??
+              (graphData && graphData.nodes.length < graphData.pagination.total
+                ? "truncated"
+                : graphData
+                  ? "complete"
+                  : null)
+            }
+          />
+        </div>
+
+        {/* One collapsed drawer keeps secondary controls off the default path.
+            Its content uses flat sections rather than nested control drawers. */}
         <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 group">
           <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
             <div>
@@ -2590,8 +2667,7 @@ function GraphPageInner() {
                 Advanced controls
               </span>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                View controls, operator evaluation and diff lenses, and the
-                ranked attack-path queue.
+                Scope, evidence overlays, snapshot diff, and the ranked path queue.
               </p>
             </div>
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
@@ -2602,24 +2678,18 @@ function GraphPageInner() {
             </span>
           </summary>
           <div className="space-y-3 border-t border-[var(--border-subtle)]/80 p-3">
-          <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3 group">
-            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+          <section aria-labelledby="graph-view-controls" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                <h3 id="graph-view-controls" className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                   View controls
-                </span>
+                </h3>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   Change scope, layers, severity, traversal, and page size
                   without changing the persisted graph.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:hidden">
-                show
-              </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] group-open:inline">
-                hide
-              </span>
-            </summary>
+            </div>
             <div className="mt-3 space-y-3">
               <div className="flex flex-wrap gap-2 text-[11px]">
                 <button
@@ -2662,6 +2732,30 @@ function GraphPageInner() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setFilters(createCloudEstateGraphFilters())}
+                  className={scopeButtonClass(activeScopePreset === "cloudEstate")}
+                  title="Observed cloud accounts, identities, resources, and attached findings"
+                >
+                  Cloud estate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilters(createRepositoryGraphFilters())}
+                  className={scopeButtonClass(activeScopePreset === "repository")}
+                  title="Observed repository files, packages, and attached findings; no inferred import edges"
+                >
+                  Repository
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilters(createEnvironmentGraphFilters())}
+                  className={scopeButtonClass(activeScopePreset === "environment")}
+                  title="Observed environment, agent, service, resource, and finding relationships"
+                >
+                  Environment
+                </button>
+                <button
+                  type="button"
                   onClick={() =>
                     setFilters(
                       createAssetLifecycleDriftGraphFilters(
@@ -2696,23 +2790,13 @@ function GraphPageInner() {
                 variant="panel"
               />
             </div>
-          </details>
+          </section>
 
-        <details className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70">
-          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
-            Operator details · evaluation, diff, lenses
-          </summary>
+        <section aria-labelledby="graph-operator-tools" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70">
+          <h3 id="graph-operator-tools" className="px-3 py-2 text-xs font-medium text-[var(--text-secondary)]">
+            Evidence, drift, and operator tools
+          </h3>
           <div className="space-y-3 border-t border-[var(--border-subtle)]/80 px-3 py-3">
-            <div className="rounded-xl border border-[var(--border-subtle)]/80 bg-[var(--background)]/50 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                Graph evaluation
-              </p>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                Score {Math.round(graphEvaluation.score)} ({graphEvaluation.grade})
-              </p>
-              <GraphEvaluationSummary evaluation={graphEvaluation} />
-            </div>
-
         {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
             viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/
             Scope/Window) were removed — the inline summary above already
@@ -2902,7 +2986,7 @@ function GraphPageInner() {
           </ul>
         </details>
           </div>
-        </details>
+        </section>
 
         {attackPaths.length > 0 && (
           <details className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/60 p-3 group">
@@ -3116,17 +3200,25 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
-              key={captureMode ? "lineage-capture" : "lineage-interactive"}
-              nodes={displayNodes}
+              key={captureMode ? "lineage-capture" : presentation.storageKey}
+              nodes={presentation.nodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}
-              fitView
+              fitView={!presentation.hasSavedState}
               fitViewOptions={viewportOptions}
+              defaultViewport={presentation.viewport}
               minZoom={0.16}
               maxZoom={2.5}
-              zoomOnScroll={false}
+              zoomOnScroll={!captureMode}
+              zoomOnPinch={!captureMode}
               panOnScroll={false}
-              preventScrolling={false}
+              panOnDrag={!captureMode}
+              preventScrolling={!captureMode}
+              nodesDraggable={!captureMode && presentation.editing}
+              nodesConnectable={false}
+              nodesFocusable
+              edgesFocusable
+              elementsSelectable
               onlyRenderVisibleElements={shouldVirtualizeReactFlowNodes({
                 rollupActive: rollupNavigationActive,
               })}
@@ -3135,6 +3227,9 @@ function GraphPageInner() {
               onNodeClick={onNodeClick}
               onNodeMouseEnter={onNodeMouseEnter}
               onNodeMouseLeave={onNodeMouseLeave}
+              onNodesChange={presentation.onNodesChange}
+              onNodeDragStop={presentation.onNodeDragStop}
+              onMoveEnd={presentation.onMoveEnd}
               onPaneClick={() => {
                 setSelectedNode(null);
                 setSelectedNodeId(null);

@@ -410,8 +410,8 @@ export function relationshipEdgeLabelPresentation(options?: {
     },
     labelStyle: {
       fill: "#f4f4f5",
-      fontSize: 11,
-      fontWeight: 600,
+      fontSize: 12,
+      fontWeight: 650,
     },
   };
 }
@@ -561,9 +561,22 @@ export function readableGraphEdges(
         ? captureHighSignalOpacity
         : captureBaseOpacity;
     const width = numericStrokeWidth(edge);
+    const label =
+      edge.label ??
+      (relationship && (active || highSignal)
+        ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
+        : undefined);
+    const labelPresentation = label
+      ? relationshipEdgeLabelPresentation({ captureMode })
+      : {};
 
     return {
       ...edge,
+      label,
+      ariaLabel: relationship
+        ? `${relationshipEdgeLabelText(relationship)} relationship from ${edge.source} to ${edge.target}`
+        : `Relationship from ${edge.source} to ${edge.target}`,
+      ...labelPresentation,
       animated: captureMode
         ? false
         : quietAnimation

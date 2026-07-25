@@ -152,6 +152,16 @@ describe("RiskCampaignCommandCenter", () => {
     expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
   });
 
+  it("keeps the empty re-verification queue in a compact collapsed summary", async () => {
+    render(<RiskCampaignCommandCenter />);
+
+    await screen.findByText(response.campaigns[0]!.title);
+    const summary = screen.getByText(/Awaiting re-verification/i).closest("summary");
+    expect(summary).not.toBeNull();
+    expect(summary?.parentElement).not.toHaveAttribute("open");
+    expect(screen.getByText(/0 waiting/i)).toBeInTheDocument();
+  });
+
   it("pauses workflow and ticket actions for provisional membership", async () => {
     vi.mocked(api.listRiskCampaigns).mockResolvedValue({
       ...response,

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FullscreenButton, GraphEvidenceExportButton, GraphLegend, GraphLegendDock } from "@/components/graph-chrome";
+import { FullscreenButton, GraphEvidenceExportButton, GraphInteractionToolbar, GraphLegend, GraphLegendDock } from "@/components/graph-chrome";
 import { api } from "@/lib/api";
 
 afterEach(() => {
@@ -89,6 +89,31 @@ describe("FullscreenButton", () => {
     render(<FullscreenButton />);
 
     expect(screen.getByRole("button", { name: /enter fullscreen/i })).toBeInTheDocument();
+  });
+});
+
+describe("GraphInteractionToolbar", () => {
+  it("exposes compact fit, reset, auto-layout, and edit-lock controls", () => {
+    const actions = {
+      onFitVisible: vi.fn(),
+      onFitSelection: vi.fn(),
+      onReset: vi.fn(),
+      onAutoLayout: vi.fn(),
+      onToggleEditing: vi.fn(),
+    };
+    render(<GraphInteractionToolbar editing={false} hasSelection {...actions} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /fit visible/i }));
+    fireEvent.click(screen.getByRole("button", { name: /fit selection/i }));
+    fireEvent.click(screen.getByRole("button", { name: /auto-layout/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset layout/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit layout/i }));
+
+    expect(actions.onFitVisible).toHaveBeenCalledOnce();
+    expect(actions.onFitSelection).toHaveBeenCalledOnce();
+    expect(actions.onAutoLayout).toHaveBeenCalledOnce();
+    expect(actions.onReset).toHaveBeenCalledOnce();
+    expect(actions.onToggleEditing).toHaveBeenCalledOnce();
   });
 });
 

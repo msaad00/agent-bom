@@ -94,12 +94,18 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
 export type GraphScopePreset =
   | "immediate"
   | "relevant"
+  | "cloudEstate"
+  | "repository"
+  | "environment"
   | "expanded"
   | "assetDrift";
 
 export const GRAPH_SCOPE_LABELS: Record<GraphScopePreset, string> = {
   immediate: "Immediate",
   relevant: "Relevant paths",
+  cloudEstate: "Cloud estate",
+  repository: "Repository",
+  environment: "Environment",
   expanded: "Expanded",
   assetDrift: "Asset lifecycle drift",
 };
@@ -107,6 +113,9 @@ export const GRAPH_SCOPE_LABELS: Record<GraphScopePreset, string> = {
 export const GRAPH_SCOPE_DESCRIPTIONS: Record<GraphScopePreset, string> = {
   immediate: "One-hop triage around a selected agent.",
   relevant: "Default fix-first graph with bounded path context.",
+  cloudEstate: "Observed cloud, account, identity, resource, and finding relationships.",
+  repository: "Observed repository files, packages, and attached findings.",
+  environment: "Observed environment, agent, service, resource, and finding relationships.",
   expanded: "Broader topology review with lower-priority context included.",
   assetDrift:
     "Governance and exhibits_drift paths tying estate containers to drift incidents.",
@@ -157,6 +166,54 @@ export function createExpandedGraphFilters(
     maxDepth: 3,
     pageSize: 250,
   };
+}
+
+function selectObservedLayers(
+  enabled: LineageNodeType[],
+): Record<LineageNodeType, boolean> {
+  const layers = { ...EXPANDED_LAYER_DEFAULTS };
+  for (const key of Object.keys(layers) as LineageNodeType[]) layers[key] = false;
+  for (const key of enabled) layers[key] = true;
+  return layers;
+}
+
+function observedScopeFilters(layers: LineageNodeType[]): FilterState {
+  return {
+    layers: selectObservedLayers(layers),
+    severity: null,
+    agentName: null,
+    vulnOnly: false,
+    runtimeMode: "all",
+    relationshipScope: "all",
+    maxDepth: 3,
+    pageSize: 150,
+  };
+}
+
+export function createCloudEstateGraphFilters(): FilterState {
+  return observedScopeFilters([
+    "provider", "org", "account", "environment", "fleet", "cluster",
+    "cloudResource", "container", "dataStore", "user", "group", "role",
+    "policy", "serviceAccount", "servicePrincipal", "federatedIdentity",
+    "managedIdentity", "accessGrant", "accessPolicy", "vulnerability",
+    "misconfiguration", "driftIncident",
+  ]);
+}
+
+export function createRepositoryGraphFilters(): FilterState {
+  return observedScopeFilters([
+    "directory", "sourceFile", "configFile", "package", "framework",
+    "container", "vulnerability", "misconfiguration",
+  ]);
+}
+
+export function createEnvironmentGraphFilters(): FilterState {
+  return observedScopeFilters([
+    "environment", "fleet", "cluster", "agent", "server", "sharedServer",
+    "tool", "credential", "package", "model", "dataset", "container",
+    "cloudResource", "dataStore", "managedIdentity", "accessGrant",
+    "vulnerability", "misconfiguration",
+  ]);
 }
 
 /** Governance-scoped lens for asset lifecycle drift evidence on the lineage graph. */
@@ -215,12 +272,30 @@ export function matchesAssetLifecycleDriftFilters(filters: FilterState): boolean
   );
 }
 
+function matchesObservedScope(filters: FilterState, baseline: FilterState): boolean {
+  return (
+    filters.relationshipScope === baseline.relationshipScope &&
+    filters.vulnOnly === baseline.vulnOnly &&
+    filters.maxDepth === baseline.maxDepth &&
+    filters.pageSize === baseline.pageSize &&
+    filters.severity === baseline.severity &&
+    filters.runtimeMode === baseline.runtimeMode &&
+    filters.agentName === baseline.agentName &&
+    (Object.keys(baseline.layers) as LineageNodeType[]).every(
+      (key) => filters.layers[key] === baseline.layers[key],
+    )
+  );
+}
+
 export const DEFAULT_FILTERS: FilterState = createFocusedGraphFilters();
 
 export function graphScopePresetForFilters(
   filters: FilterState,
 ): GraphScopePreset {
   if (matchesAssetLifecycleDriftFilters(filters)) return "assetDrift";
+  if (matchesObservedScope(filters, createCloudEstateGraphFilters())) return "cloudEstate";
+  if (matchesObservedScope(filters, createRepositoryGraphFilters())) return "repository";
+  if (matchesObservedScope(filters, createEnvironmentGraphFilters())) return "environment";
   if (filters.maxDepth <= 1 && filters.pageSize <= 25 && filters.vulnOnly)
     return "immediate";
   if (

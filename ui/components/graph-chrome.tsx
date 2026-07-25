@@ -16,11 +16,16 @@ import {
   FolderTree,
   KeyRound,
   Loader2,
+  Focus,
+  Lock,
   Maximize2,
   Minimize2,
+  Move,
+  RotateCcw,
   Server,
   Shield,
   Wrench,
+  WandSparkles,
 } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import { api, type GraphExportFormat } from "@/lib/api";
@@ -365,6 +370,52 @@ export function FullscreenButton() {
     >
       {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" aria-hidden="true" /> : <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />}
     </button>
+  );
+}
+
+export function GraphInteractionToolbar({
+  editing,
+  hasSelection,
+  onFitVisible,
+  onFitSelection,
+  onReset,
+  onAutoLayout,
+  onToggleEditing,
+}: {
+  editing: boolean;
+  hasSelection: boolean;
+  onFitVisible: () => void;
+  onFitSelection: () => void;
+  onReset: () => void;
+  onAutoLayout: () => void;
+  onToggleEditing: () => void;
+}) {
+  const buttonClass = "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div aria-label="Graph layout controls" className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/90 p-1">
+      <button type="button" className={buttonClass} onClick={onFitVisible} aria-label="Fit visible graph">
+        <Focus className="h-3.5 w-3.5" aria-hidden="true" /> Fit
+      </button>
+      <button type="button" className={buttonClass} onClick={onFitSelection} disabled={!hasSelection} aria-label="Fit selection">
+        <Move className="h-3.5 w-3.5" aria-hidden="true" /> Selection
+      </button>
+      <button type="button" className={buttonClass} onClick={onAutoLayout} aria-label="Auto-layout graph">
+        <WandSparkles className="h-3.5 w-3.5" aria-hidden="true" /> Auto
+      </button>
+      <button type="button" className={buttonClass} onClick={onReset} aria-label="Reset layout">
+        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset
+      </button>
+      <button
+        type="button"
+        className={`${buttonClass} ${editing ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200" : ""}`}
+        onClick={onToggleEditing}
+        aria-label={editing ? "Lock layout" : "Edit layout"}
+        aria-pressed={editing}
+      >
+        {editing ? <Lock className="h-3.5 w-3.5" aria-hidden="true" /> : <Move className="h-3.5 w-3.5" aria-hidden="true" />}
+        {editing ? "Lock" : "Edit"}
+      </button>
+    </div>
   );
 }
 

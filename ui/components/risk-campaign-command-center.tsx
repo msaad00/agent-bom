@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock3,
   Network,
   RefreshCw,
   ShieldCheck,
@@ -236,53 +235,37 @@ function CampaignCard({
   >;
 
   return (
-    <article className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 shadow-sm md:p-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--status-danger)]">
-              {campaign.severity}
-            </span>
-            <span className="text-xs text-[color:var(--text-tertiary)]">
-              {campaign.finding_count} correlated finding{campaign.finding_count === 1 ? "" : "s"}
-            </span>
-            <span className="text-xs text-[color:var(--text-tertiary)]">Source: {campaign.source.replaceAll("_", " ")}</span>
+    <details className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] shadow-sm">
+      <summary className="grid cursor-pointer list-none gap-2 px-3 py-3 [&::-webkit-details-marker]:hidden md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--status-danger)]">{campaign.severity}</span>
+            <h3 className="truncate text-sm font-semibold text-[color:var(--foreground)]">{campaign.title}</h3>
           </div>
-          <h3 className="mt-2 text-base font-semibold leading-6 text-[color:var(--foreground)] md:text-lg">
-            {campaign.title}
-          </h3>
-          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[color:var(--text-secondary)]">
-            <span><strong className="text-[color:var(--foreground)]">Owner:</strong> {campaign.owner || "Unassigned"}</span>
-            <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{formatDate(campaign.sla_due_at)}</span>
-            <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{VERIFICATION_LABELS[campaign.verification_status]}</span>
-          </div>
+          <p className="mt-1 truncate text-[11px] text-[color:var(--text-tertiary)]">
+            {campaign.finding_count} finding{campaign.finding_count === 1 ? "" : "s"} · {campaign.owner || "Unassigned"} · {formatDate(campaign.sla_due_at)} · {VERIFICATION_LABELS[campaign.verification_status]}
+          </p>
         </div>
-
-        <div className="grid shrink-0 grid-cols-2 gap-2 sm:min-w-[19rem]">
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Priority</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-[color:var(--foreground)]">{campaign.priority_score}</div>
-            <button
-              type="button"
-              onClick={() => setExpanded((current) => !current)}
-              className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)]"
-              aria-expanded={expanded}
-            >
-              Why this priority {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            </button>
-          </div>
-          <div className="rounded-xl border border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] p-3">
-            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Expected reduction</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums text-[color:var(--status-success)]">
-              {campaign.expected_risk_reduction.modeled_window_percent}% modeled window risk
-            </div>
-            <div className="text-[10px] text-[color:var(--text-tertiary)]">{campaign.expected_risk_reduction.modeled_risk_points} modeled points</div>
-            {!campaign.expected_risk_reduction.portfolio_complete ? (
-              <div className="mt-1 text-[10px] text-[color:var(--status-warn)]">Bounded window; not full portfolio</div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+        <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-xs text-[color:var(--text-secondary)]">
+          Priority <strong className="ml-1 tabular-nums text-[color:var(--foreground)]">{campaign.priority_score}</strong>
+        </span>
+        <span className="rounded-lg border border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] px-2.5 py-1 text-xs font-medium text-[color:var(--status-success)]">
+          <span className="block">{campaign.expected_risk_reduction.modeled_window_percent}% modeled window risk</span>
+          {!campaign.expected_risk_reduction.portfolio_complete ? (
+            <span className="block text-[9px] font-normal text-[color:var(--status-warn)]">Bounded; not full portfolio</span>
+          ) : null}
+        </span>
+        <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)] transition group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="border-t border-[color:var(--border-subtle)] px-3 pb-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[color:var(--accent)]"
+          aria-expanded={expanded}
+        >
+          Why this priority {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
 
       {expanded ? (
         <div className="mt-4 grid gap-3 border-t border-[color:var(--border-subtle)] pt-4 lg:grid-cols-[1fr_1.3fr]">
@@ -396,7 +379,8 @@ function CampaignCard({
         <button type="button" onClick={onReload} className="mt-2 rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Reload campaigns</button>
       ) : null}
       {connections.length === 0 ? <p className="mt-3 text-xs text-[color:var(--text-tertiary)]"><Link href="/connections">Connect ticketing</Link> to create new campaign tickets. Existing ticket links can still be synced.</p> : null}
-    </article>
+      </div>
+    </details>
   );
 }
 
@@ -473,17 +457,22 @@ function VerificationQueue() {
   }, []);
 
   return (
-    <section aria-labelledby="verification-queue-title" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--status-warn)]">Durable workflow evidence</div>
-          <h3 id="verification-queue-title" className="mt-1 text-base font-semibold text-[color:var(--foreground)]">Awaiting re-verification</h3>
-          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Inactive campaigns remain here after a rescan until canonical evidence confirms the original findings are gone.</p>
+    <details
+      className="group rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]"
+      open={entries.length > 0 || Boolean(error)}
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--status-warn)]">Re-verification</span>
+          <h3 id="verification-queue-title" className="text-sm font-semibold text-[color:var(--foreground)]">Awaiting re-verification</h3>
+          <span className="rounded-full border border-[color:var(--border-subtle)] px-2 py-0.5 text-[10px] text-[color:var(--text-tertiary)]">{entries.length} waiting</span>
         </div>
         {error ? (
           <button type="button" onClick={() => void load(retryCursor)} className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-warn)]">Retry verification queue</button>
-        ) : null}
-      </div>
+        ) : <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] group-open:hidden">show</span>}
+      </summary>
+      <div className="border-t border-[color:var(--border-subtle)] px-3 pb-3">
+      <p className="mt-2 text-xs text-[color:var(--text-secondary)]">Inactive campaigns stay here until canonical evidence confirms the original findings are gone.</p>
       {loading ? <p role="status" className="mt-3 text-xs text-[color:var(--text-tertiary)]">Loading verification queue…</p> : null}
       {error ? <p role="alert" className="mt-3 text-xs text-[color:var(--status-danger)]">{error}</p> : null}
       {successMessage ? <p role="status" className="mt-3 text-xs text-[color:var(--status-success)]">{successMessage}</p> : null}
@@ -534,7 +523,8 @@ function VerificationQueue() {
           {loadingMore ? "Loading more…" : "Load more awaiting verification"}
         </button>
       ) : null}
-    </section>
+      </div>
+    </details>
   );
 }
 
@@ -609,7 +599,7 @@ export function RiskCampaignCommandCenter() {
       <VerificationQueue />
       {!loading && !error && campaigns.length > 0 ? (
         <>
-          <div className="grid gap-4 2xl:grid-cols-2">
+          <div className="grid gap-2">
             {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
           </div>
           <div className="flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]">

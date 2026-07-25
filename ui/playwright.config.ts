@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3001;
+const PORT = Number(process.env.PLAYWRIGHT_PORT ?? "3001");
 const baseURL = `http://127.0.0.1:${PORT}`;
 const serverCommand =
   `if test -f .next/standalone/server.js; ` +

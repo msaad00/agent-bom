@@ -101,6 +101,9 @@ describe("graph utility metadata", () => {
     expect(focused[0]!.style?.opacity).toBeLessThan(0.1);
     expect(focused[1]!.style?.opacity).toBeGreaterThan(0.9);
     expect(focused[1]!.style?.strokeWidth).toBeGreaterThanOrEqual(2.6);
+    expect(focused[1]!.label).toBe("Has CVE");
+    expect(focused[1]!.labelStyle).toMatchObject({ fontSize: 12 });
+    expect(focused[1]!.ariaLabel).toMatch(/relationship from b to c/i);
   });
 
   it("uses a stable non-animated edge profile for capture mode", () => {

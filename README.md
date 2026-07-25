@@ -8,15 +8,32 @@
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
   <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=PyPI&cacheSeconds=60" alt="PyPI"></a>
+  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/pyversions/agent-bom?style=flat&label=Python" alt="Python versions"></a>
+  <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker pulls"></a>
+  <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
+  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom"><img src="https://img.shields.io/badge/MCP-Glama-7c3aed?style=flat" alt="agent-bom on Glama"></a>
+  <a href="https://smithery.ai/servers/agent-bom/agent-bom"><img src="https://img.shields.io/badge/MCP-Smithery-1f6feb?style=flat" alt="agent-bom on Smithery"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
+  Scan a repo, image, or cloud account. Get findings, an SBOM, and a graph that
+  shows what each finding can actually reach — from one CLI, or a control plane
+  you run yourself.
+</p>
+
+<p align="center">
+  <b>15</b> package ecosystems · <b>16</b> compliance surfaces ·
+  <b>77</b> MCP tools · <b>Apache-2.0</b> · no account required
+</p>
+
+<p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
-  <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
-  <a href="https://demo.agent-bom.com">Live demo</a>
+  <a href="https://demo.agent-bom.com"><b>Live demo</b></a> ·
+  <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
 ## What it is
@@ -140,8 +157,8 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
 
-> Examples target `v0.99.0`; confirm release availability before copying an
-> exact pin. Otherwise, use the latest version shown on PyPI.
+> Pins target `v0.99.0`, the version this tree builds. Until that release is
+> published, use the version shown on the PyPI badge above.
 
 [Deployment overview](site-docs/deployment/overview.md) ·
 [Enterprise configuration](docs/ENTERPRISE.md) ·
@@ -156,12 +173,27 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | Cloud evidence | `agent-bom connect aws` | Stored connection reference; run scans from the control plane |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
 | Agent interface | `agent-bom mcp server` | 77 MCP tools, 6 resources, and 8 workflow prompts |
-| Agent distribution | [Smithery manifest](integrations/smithery.yaml) | Registry-specific installation metadata |
+| Agent distribution | [Smithery](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
 The CLI, Docker, API, Helm chart, MCP server, gateway, and SDK are distribution
 surfaces of the same product. EKS remains a deployment profile; Snowflake and
 Snowpark remain connector/runtime integrations rather than hosted-core
 dependencies.
+
+</details>
+
+<details>
+<summary><b>Every way to install it</b></summary>
+
+| Surface | Get it |
+|---|---|
+| Python package | `pip install agent-bom` — [PyPI](https://pypi.org/project/agent-bom/) |
+| Container | `docker pull agentbom/agent-bom` — [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom) |
+| Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom` |
+| GitHub Action | [`msaad00/agent-bom`](action.yml) |
+| MCP server | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` |
+| MCP registries | [Smithery](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) |
+| SDKs | [Python](sdks/python) · [TypeScript](sdks/typescript) · [Go](sdks/go) |
 
 </details>
 

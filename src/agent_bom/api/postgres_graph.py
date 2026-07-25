@@ -1029,7 +1029,17 @@ class PostgresGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
         relationship_types: frozenset[str] | None = None,
+        node_budget: int | None = None,
     ) -> UnifiedGraph:
+        """Materialize a snapshot.
+
+        ``node_budget`` caps how many nodes are read. It defaults to unbounded
+        because callers that compute differences (snapshot diff, compare) are
+        only correct on a whole graph — a trimmed one reads as deletions that
+        never happened. Read paths that only display a graph pass a budget and
+        surface ``graph.completeness`` so a trimmed view is never mistaken for
+        a small one. When a budget applies, the highest-risk nodes are kept.
+        """
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         from agent_bom.graph import (
@@ -1040,6 +1050,7 @@ class PostgresGraphStore:
             UnifiedEdge,
             UnifiedGraph,
         )
+        from agent_bom.graph.container import GraphCompleteness, resolve_node_budget
 
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
@@ -1064,7 +1075,24 @@ class PostgresGraphStore:
                 placeholders = ",".join(["%s"] * len(entity_types))
                 query += f" AND entity_type IN ({placeholders})"
                 params.extend(sorted(entity_types))
-            query += " ORDER BY id"
+
+            budget = resolve_node_budget(node_budget)
+            total_nodes = 0
+            if budget is not None:
+                count_query = query.replace(
+                    "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, severity_id, "
+                    "first_seen, last_seen, attributes, compliance_tags, data_sources, dimensions ",
+                    "SELECT COUNT(*) ",
+                    1,
+                )
+                count_row = conn.execute(count_query, params).fetchone()
+                total_nodes = int(count_row[0]) if count_row else 0
+                # Risk-ranked so a trimmed view keeps what matters, not an
+                # arbitrary slice; id breaks ties so paging stays deterministic.
+                query += " ORDER BY risk_score DESC NULLS LAST, id LIMIT %s"
+                params.append(budget)
+            else:
+                query += " ORDER BY id"
 
             node_ids: set[str] = set()
             for row in conn.execute(query, params).fetchall():
@@ -1073,6 +1101,17 @@ class PostgresGraphStore:
                     continue
                 graph.add_node(self._node_from_row(row))
                 node_ids.add(row[0])
+
+            returned_nodes = len(node_ids)
+            if budget is None:
+                total_nodes = returned_nodes
+            graph.completeness = GraphCompleteness(
+                truncated=budget is not None and total_nodes > returned_nodes,
+                node_budget=budget,
+                total_nodes=total_nodes,
+                returned_nodes=returned_nodes,
+                reason="node_budget" if budget is not None and total_nodes > returned_nodes else "",
+            )
 
             edge_query = """
                 SELECT source_id, target_id, relationship, direction, weight, traversable,

@@ -176,6 +176,7 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH` | `bool` | `False` | — |
 | `AGENT_BOM_GRAPH_BACKEND` | `str` | `''` | SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL. Neptune is experimental and requires explicit opt-in plus endpoint config. SQLite and Postgres remain the supported graph backends. |
+| `AGENT_BOM_GRAPH_INVESTIGATION_NODE_BUDGET` | `int` | `25000` | Ceiling on nodes materialized for one investigation read. The relationship / static / dynamic filters load a whole snapshot into memory; at 200k nodes that measured ~783 MB and 8.3s per request, and the read path permits several concurrentl |
 | `AGENT_BOM_NEPTUNE_ENDPOINT` | `str` | `''` | — |
 | `AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE` | `str` | `'g'` | — |
 

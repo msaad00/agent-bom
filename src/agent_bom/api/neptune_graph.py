@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol, ca
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
+from agent_bom.graph.container import apply_node_budget
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -338,6 +339,7 @@ class NeptuneGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
         relationship_types: frozenset[str] | None = None,
+        node_budget: int | None = None,
     ) -> UnifiedGraph:
         tenant = tenant_id or "default"
         scan = scan_id or self.latest_snapshot_id(tenant_id=tenant)
@@ -365,7 +367,9 @@ class NeptuneGraphStore:
             edge = self._edge_from_record(row)
             if edge.source in graph.nodes and edge.target in graph.nodes:
                 graph.add_edge(edge)
-        return graph
+        # No query-side limit on this backend; cap after the load so the
+        # declared completeness contract matches every other store.
+        return apply_node_budget(graph, node_budget)
 
     def active_edges_at(self, at: str, *, tenant_id: str = "") -> list[dict[str, Any]]:
         rows = self._submit(

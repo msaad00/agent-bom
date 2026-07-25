@@ -118,7 +118,10 @@ def match_component_cpe(
     if vendor:
         query += " AND vendor = ?"
         params.append(normalize_cpe_product(vendor))
-    query += " LIMIT ?"
+    # Deterministic order before the cap: without it SQLite returns rows in
+    # whatever order the scan produces, so a high-row product (linux_kernel)
+    # silently keeps an arbitrary subset and the rest of its CVEs disappear.
+    query += " ORDER BY cve_id, criteria LIMIT ?"
     params.append(limit)
     rows = conn.execute(query, params).fetchall()
 

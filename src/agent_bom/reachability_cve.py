@@ -60,7 +60,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agent_bom.package_utils import normalize_package_ecosystem, normalize_package_name
+from agent_bom.package_utils import (
+    import_names_for_distribution,
+    normalize_package_ecosystem,
+    normalize_package_name,
+)
 
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
@@ -146,6 +150,11 @@ class SymbolReachIndex:
         (``github.com/aws/aws-sdk-go``). We therefore also match any indexed
         import path that is a sub-package of the module, honouring the ``/``
         module boundary so ``…/aws-sdk-go`` never matches ``…/aws-sdk-goodies``.
+
+        PyPI has the mirror-image problem: the AST records the *import* name
+        (``yaml``) while the finding names the *distribution* (``PyYAML``), so
+        the known aliases are tried as well. Without that, a genuinely
+        reachable CVE is reported unreachable and loses priority.
         """
         eco = normalize_package_ecosystem(ecosystem or "pypi")
         exact = _pkg_index_key(package, eco)
@@ -153,6 +162,11 @@ class SymbolReachIndex:
         if eco == "go":
             prefix = f"{exact}/"
             keys.extend(key for key in self._symbols_by_key if key != exact and key.startswith(prefix))
+        elif eco == "pypi":
+            for alias in import_names_for_distribution(package):
+                alias_key = _pkg_index_key(alias, eco)
+                if alias_key != exact and alias_key in self._symbols_by_key and alias_key not in keys:
+                    keys.append(alias_key)
         return keys
 
     def is_package_reached(self, package: str, *, ecosystem: str = "pypi") -> bool:

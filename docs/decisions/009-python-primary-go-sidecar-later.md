@@ -85,11 +85,33 @@ experimental flag + Helm values stub. Revisit only with stronger evidence
 (pool tuning, multi-replica EKS soak, or a clear SLO miss that Python cannot
 close).
 
-### Next Go candidate
+### Retired (2026-07-25) — Go runtime tier removed
 
-**Event/log collector** (queue poll → normalize → control-plane ingest) is the
-next measured Go migration target. See
-[`docs/design/EVENT_COLLECTOR_CONTRACT.md`](../design/EVENT_COLLECTOR_CONTRACT.md).
-Gateway pure-relay remains a **deferred** experimental path (issue #4427); do
-not promote a Go gateway-relay sidecar until new evidence trips the gate.
+Both Go runtime workloads are deleted; `sdks/go` (a client SDK with no runtime
+role) is unaffected.
 
+**`runtime/gateway-relay` — removed.** The measured 8% p95 gain never came
+close to the promote gate above, and carrying the sidecar had a real cost: the
+Python gateway set `allow_private = True` whenever the Go backend was selected,
+so choosing it bypassed the pinned transport's metadata/link-local block while
+the Go forwarder ignored `private_network_approved` entirely and served
+`/v1/forward` with no inbound auth. An 8% p95 improvement does not buy a
+weaker egress boundary. Private-network egress is once again gated solely by
+the operator-authored `private_network_approved` bit.
+
+**`runtime/event-collector` — removed.** Its `sqs` mode was never wired (the
+binary logged that it was a stub and served the same forward endpoints), no
+image was ever published, and no CI job ran its Go tests, while
+`agent_bom.cloud.event_ingest` already performs bounded polling, account-bound
+validation, dispatch, and poison-message handling in Python.
+
+**What stays.** `gateway_relay_contract.py` keeps the dataclasses and the
+`GatewayRelayTransport` Protocol — that boundary is precisely what made this
+removal a one-line transport swap rather than a rewrite, and it remains the
+seam for any future out-of-process relay. The HTTP ingest contract
+`POST /v1/cloud/connections/events/ingest` also stays: it is
+implementation-agnostic, so any collector may post to it.
+
+**Standing guidance.** Python remains the default for all runtime workloads.
+A future Go component must clear the promote gate above *and* carry its own
+CI build/test job before it merges.

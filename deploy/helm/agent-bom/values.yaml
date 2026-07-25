@@ -273,28 +273,6 @@ monitor:
 gateway:
   enabled: false
   replicas: 2
-  # Pure-relay backend for JSON-RPC upstream forwards (ADR-009 Phase 3 spike).
-  # python (default): in-process PythonHttpRelayTransport — unchanged install.
-  # go: set AGENT_BOM_GATEWAY_RELAY_BACKEND=go and optionally run the
-  # runtime/gateway-relay sidecar (see gateway.relayGoSidecar).
-  relayBackend: python
-  relayGoUrl: "http://127.0.0.1:8091"
-  relayGoSidecar:
-    # Optional sidecar container when relayBackend=go. Default false so stock
-    # installs stay Python-only. Image must contain the gateway-relay binary.
-    enabled: false
-    port: 8091
-    image:
-      repository: ""  # e.g. agentbom/gateway-relay — empty skips rendering
-      tag: ""
-      pullPolicy: IfNotPresent
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
   autoscaling:
     enabled: false
     minReplicas: 2
@@ -860,29 +838,3 @@ pdb:
   enabled: false
   minAvailable: 1
   maxUnavailable: null
-
-# ─── Event / log collector (Go sidecar) ───────────────────────────────────────
-# Posts normalized CloudTrail batches to POST /v1/cloud/connections/events/ingest.
-# See docs/design/EVENT_COLLECTOR_CONTRACT.md.
-#
-# BRING YOUR OWN IMAGE. No event-collector image is published for this chart and
-# the repo ships no Dockerfile for it — only the Go source under
-# runtime/event-collector/. Build and host the image yourself, then set
-# image.repository below. Enabling the collector with an empty image.repository,
-# or without controlPlane.enabled, aborts `helm template`/`helm upgrade` with an
-# explanatory error rather than installing nothing.
-eventCollector:
-  enabled: false
-  image:
-    repository: ""   # required when enabled — your own registry/event-collector
-    tag: ""
-  listen: ":8092"
-  # stub | sqs. Both start the HTTP surface (/healthz, /v1/normalize/cloudtrail,
-  # /v1/forward/cloudtrail). "sqs" is accepted but the bounded SQS poll is NOT
-  # wired yet — the binary logs that and serves the same forward endpoints
-  # (runtime/event-collector/cmd/event-collector/main.go).
-  mode: stub
-  controlPlaneUrl: ""  # empty → in-cluster http://{{ name }}-api:8420
-  apiKeySecret:
-    name: ""
-    key: api-key

@@ -1,17 +1,19 @@
 # Design: gateway pure-relay contract
 
-**Status:** Phase 2 extract (Python reference) + Phase 3 optional Go sidecar
-spike under `runtime/gateway-relay` (feature-flagged; default off). See
-[ADR-009](../decisions/009-python-primary-go-sidecar-later.md) and
-[`docs/perf/results/gateway-relay-go-spike-2026-07-24.json`](../perf/results/gateway-relay-go-spike-2026-07-24.json).
+**Status:** Active, Python-only. The Go sidecar evaluated against this contract
+was retired on 2026-07-25 — see
+[ADR-009](../decisions/009-python-primary-go-sidecar-later.md). The contract
+itself stays: it is the seam that made removing an out-of-process relay a
+transport swap rather than a rewrite.
 
 **Code:** [`src/agent_bom/runtime/gateway_relay_contract.py`](../../src/agent_bom/runtime/gateway_relay_contract.py)
 
 ## Why this exists
 
 `gateway_server.py` mixes (a) auth / policy / firewall / budget / DLP and
-(b) the HTTP JSON-RPC forward to upstream MCP servers. A future Go sidecar may
-replace **only (b)** behind a stable contract owned by the Python control plane.
+(b) the HTTP JSON-RPC forward to upstream MCP servers. Any out-of-process relay
+may replace **only (b)** behind a stable contract owned by the Python control
+plane.
 Policy evaluation stays in Python for v1 (in-process today; HTTP callback is an
 allowed later shape).
 
@@ -105,6 +107,6 @@ behavioral checks (HTTP status, JSON-RPC result, oversize rejection).
 
 ## Non-goals
 
-- Go sidecar is optional and feature-flagged (`AGENT_BOM_GATEWAY_RELAY_BACKEND=go`).
+- No out-of-process relay ships today; the Python transport is the only implementation.
 - No rewrite of stdio `proxy.py` or cloud connectors.
 - No second product edition.

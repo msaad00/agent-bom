@@ -9,6 +9,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- The optional Go runtime tier (`runtime/gateway-relay`, `runtime/event-collector`)
+  is retired. Selecting the Go relay backend also unlocked private-network
+  egress, bypassing the pinned transport's metadata/link-local block for a
+  measured ~8% p95 gain that never met the promote gate; private egress is once
+  again governed solely by an upstream's operator-authored
+  `private_network_approved` bit. The collector's queue-poll mode was never
+  wired and Python already covers it. The relay contract and the
+  `POST /v1/cloud/connections/events/ingest` route are unchanged, so any
+  external collector keeps working. `sdks/go` is unaffected.
+
 ## [0.98.0] - 2026-07-24
 
 ### Added

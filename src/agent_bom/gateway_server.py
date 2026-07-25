@@ -798,11 +798,7 @@ class GatewayUpstreamRelay:
         circuit_key = _upstream_circuit_key(upstream)
         await self._breaker.before_call(circuit_key, upstream.name)
         try:
-            from agent_bom.runtime.gateway_relay_contract import gateway_relay_backend
-
-            # Go sidecar is typically loopback; the httpx client only reaches the
-            # sidecar, which then dials the upstream. Allow private for that hop.
-            allow_private = True if gateway_relay_backend() == "go" else upstream.private_network_approved
+            allow_private = upstream.private_network_approved
             response = await _post_upstream_jsonrpc(
                 upstream,
                 message,
@@ -1079,9 +1075,8 @@ async def _default_upstream_caller(
     import httpx
 
     from agent_bom.runtime.egress_transport import build_pinned_async_client
-    from agent_bom.runtime.gateway_relay_contract import gateway_relay_backend
 
-    allow_private = True if gateway_relay_backend() == "go" else upstream.private_network_approved
+    allow_private = upstream.private_network_approved
     async with build_pinned_async_client(
         allow_private_networks=allow_private,
         timeout=httpx.Timeout(30.0),
@@ -2268,12 +2263,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             # call must fail closed rather than forward unscoped even when the
             # token still resolves to an agent via a policy mapping. A non-managed
             # token legitimately has no identity scope and is unaffected.
-            if (
-                allowed
-                and scoped_identity is None
-                and managed_identity_lookup_unavailable
-                and (identity_token or "").startswith("abi_")
-            ):
+            if allowed and scoped_identity is None and managed_identity_lookup_unavailable and (identity_token or "").startswith("abi_"):
                 allowed, reason, policy_source = (
                     False,
                     "managed identity store unavailable; tool scope cannot be verified",

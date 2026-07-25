@@ -1,12 +1,15 @@
 # Design: event/log collector contract (posture change events)
 
-**Status:** Phase 2 — control-plane ingest route shipped; Go forward wired.
-The Helm Deployment is gated by both `eventCollector.enabled` and
-`eventCollector.image.repository`, and both are empty/false by default, so a
-stock install renders no collector objects.
+**Status:** Active. This is an **implementation-agnostic HTTP ingest contract**
+owned by the Python control plane — any collector that can POST the documented
+batch may use it.
 
-**Relates to:** [ADR-009](../decisions/009-python-primary-go-sidecar-later.md)
-(Python-primary; optional Go sidecar for proven hot paths).
+The Go reference collector was retired on 2026-07-25: its queue-poll mode was
+never wired, no image was published, and `agent_bom.cloud.event_ingest` already
+performs bounded polling, account-bound validation, dispatch, and
+poison-message handling in Python. See
+[ADR-009](../decisions/009-python-primary-go-sidecar-later.md). The route and
+its contract are unchanged by that removal.
 
 ## Lane
 
@@ -19,7 +22,7 @@ SQS / queue poll  →  normalize (CloudTrail / EventBridge)  →  POST batch to 
 
 | Lane | Path / owner | Purpose |
 |------|----------------|---------|
-| Posture change events (this contract) | Go collector → `POST /v1/cloud/connections/events/ingest` | Queue-driven resource-change signals for scoped CIS re-eval |
+| Posture change events (this contract) | any collector → `POST /v1/cloud/connections/events/ingest` | Queue-driven resource-change signals for scoped CIS re-eval |
 | Runtime evidence (separate) | `POST /v1/cloud/runtime-evidence/ingest` | CWPP / EDR workload signals (metadata only) |
 
 Do not merge these lanes. The collector never writes CIS findings itself.
@@ -28,10 +31,10 @@ Do not merge these lanes. The collector never writes CIS findings itself.
 
 | Concern | Owner |
 |---------|--------|
-| Bounded queue poll loop (SQS later; stub mode today) | **Go** `runtime/event-collector` |
-| Minimal CloudTrail / EventBridge → `CloudChangeEvent` normalize | **Go** (parity with `parse_cloudtrail_event`) |
-| Forward batch to control plane (`Authorization: Bearer …`) | **Go** |
-| Inbound auth on the collector's own HTTP surface | **Go** (see [Inbound auth](#inbound-auth)) |
+| Bounded queue poll loop | **Python** `agent_bom.cloud.event_ingest` (or your own collector) |
+| CloudTrail / EventBridge → `CloudChangeEvent` normalize | **Python** `parse_cloudtrail_event` |
+| Forward batch to control plane (`Authorization: Bearer …`) | collector |
+| Inbound auth on a collector's own HTTP surface, if it has one | collector |
 | `dispatch_change_event`, connection broker, CIS subset, persist | **Python** control plane |
 | Tenant, RBAC, account-bound fail-closed checks | **Python** (on ingest) |
 
@@ -64,7 +67,6 @@ fail-closed. Dispatch errors are sanitized in the response.
 
 ## Go binary surfaces
 
-- Module: `github.com/msaad00/agent-bom/runtime/event-collector`
 - Listen: `--listen 127.0.0.1:8092` (default) — loopback only; binding a
   routable address is an explicit operator decision
 - Flags: `--control-plane-url`, `--api-key-file`, `--inbound-token-file`,
@@ -125,40 +127,24 @@ the intended producer.
 
 ## Non-goals
 
-- No dual product (Python edition vs Go edition) — see ADR-009.
-- No cloud inventory rewrite into Go.
-- No Azure / GCP collectors in Phase 1.
-- No moving CIS evaluation into Go.
+- No dual product edition — see ADR-009.
+- No Azure / GCP collectors yet.
+- CIS evaluation stays in the control plane, never in a collector.
 
 ## Verification
 
-```bash
-make event-collector-go-test
-# equivalent: cd runtime/event-collector && go test ./...
-```
 
-Local run with the dev helpers enabled:
+Post a normalized batch straight at the control plane:
 
 ```bash
-umask 077 && openssl rand -hex 32 > /tmp/collector-inbound.token
-
-go run ./cmd/event-collector \
-  --control-plane-url=http://127.0.0.1:8420 \
-  --api-key-file=/tmp/agent-bom-api.key \
-  --inbound-token-file=/tmp/collector-inbound.token \
-  --enable-dev-endpoints
-
-curl -sS -X POST http://127.0.0.1:8092/v1/forward/cloudtrail \
-  -H "Authorization: Bearer $(cat /tmp/collector-inbound.token)" \
+curl -sS -X POST http://127.0.0.1:8420/v1/cloud/connections/events/ingest \
+  -H "Authorization: Bearer $(cat /tmp/agent-bom-api.key)" \
   -H 'Content-Type: application/json' \
-  --data @cloudtrail-event.json
-# → {"status":"forwarded","path":"/v1/cloud/connections/events/ingest"}
-# without the header → 401 with an empty body, and nothing is forwarded
+  --data @cloud-change-events.json
+# without the header → 401, and nothing is dispatched
 ```
 
 ## Code
 
-- Go: [`runtime/event-collector/`](../../runtime/event-collector/)
-- Helm: `eventCollector.*` in [`deploy/helm/agent-bom/values.yaml`](../../deploy/helm/agent-bom/values.yaml)
 - Python reference normalize / dispatch:
   [`src/agent_bom/cloud/event_ingest.py`](../../src/agent_bom/cloud/event_ingest.py)

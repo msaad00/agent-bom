@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 import types
 import uuid
 from collections.abc import Iterator
@@ -1399,14 +1400,177 @@ def _seed_connection(tenant: str = "tenant-alpha", *, provider: str = "aws") -> 
     return str(created["id"])
 
 
+def _wait_for_scan_job(client: TestClient, job_id: str, *, tenant: str = "tenant-alpha") -> dict[str, Any]:
+    """Poll the durable store until the queued test scan is terminal."""
+    from agent_bom.api.stores import _get_store
+
+    for _ in range(300):
+        job = _get_store().get(job_id, tenant_id=tenant)
+        if job is not None and job.status.value in {"done", "failed", "cancelled"}:
+            return job.model_dump(mode="json")
+        time.sleep(0.01)
+    pytest.fail(f"scan job {job_id} did not become terminal")
+
+
+def test_manual_connection_scan_enqueues_without_running_broker_inline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The request returns an accepted durable job before provider I/O runs."""
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.routes import cloud_connections as routes
+    from agent_bom.api.routes import scan as scan_routes
+
+    cid = _seed_connection("tenant-alpha")
+    captured: dict[str, Any] = {}
+
+    def _fake_enqueue(**kwargs: Any) -> ScanJob:
+        captured.update(kwargs)
+        return ScanJob(
+            job_id="job-accepted-1",
+            tenant_id=str(kwargs["tenant_id"]),
+            source_id=str(kwargs["source_id"]),
+            triggered_by=str(kwargs["triggered_by"]),
+            created_at="2026-07-24T00:00:00+00:00",
+            request=ScanRequest(),
+        )
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        pytest.fail("the HTTP request must not run the connection broker inline")
+
+    monkeypatch.setattr(scan_routes, "enqueue_scan_job", _fake_enqueue)
+    monkeypatch.setattr(routes, "_run_connection_scan", _must_not_run)
+
+    response = TestClient(_app()).post(
+        f"/v1/cloud/connections/{cid}/scan",
+        headers=_proxy_headers(tenant="tenant-alpha"),
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "schema_version": "cloud.connections.scan.accepted.v1",
+        "connection_id": cid,
+        "tenant_id": "tenant-alpha",
+        "provider": "aws",
+        "job_id": "job-accepted-1",
+        "status": "pending",
+    }
+    assert captured["tenant_id"] == "tenant-alpha"
+    assert captured["source_id"] == f"cloud-connection:{cid}"
+    assert captured["request_body"] == ScanRequest()
+
+
+def test_manual_connection_scan_idempotency_key_replays_accepted_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A network retry returns the first durable job instead of duplicating work."""
+    from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
+    from agent_bom.api.routes import scan as scan_routes
+    from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.api.stores import _get_store, set_idempotency_store, set_job_store
+
+    original_store = _get_store()
+    job_store = InMemoryJobStore()
+    set_job_store(job_store)
+    set_idempotency_store(InMemoryIdempotencyStore())
+    monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: None)
+    try:
+        cid = _seed_connection("tenant-alpha")
+        client = TestClient(_app())
+        headers = {**_proxy_headers(tenant="tenant-alpha"), "Idempotency-Key": "retry-1"}
+
+        first = client.post(f"/v1/cloud/connections/{cid}/scan", headers=headers)
+        second = client.post(f"/v1/cloud/connections/{cid}/scan", headers=headers)
+
+        assert first.status_code == second.status_code == 202
+        assert first.json()["job_id"] == second.json()["job_id"]
+        jobs = job_store.list_all("tenant-alpha")
+        assert len(jobs) == 1
+        assert jobs[0].source_id == f"cloud-connection:{cid}"
+        assert jobs[0].triggered_by == "proxy-header"
+    finally:
+        set_job_store(original_store)
+        set_idempotency_store(None)
+
+
+def test_manual_connection_scan_dispatch_failure_is_terminal_and_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed handoff never leaves an ambiguous pending job or leaks text."""
+    from agent_bom.api.routes import scan as scan_routes
+    from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.api.stores import _get_store, set_job_store
+
+    original_store = _get_store()
+    job_store = InMemoryJobStore()
+    set_job_store(job_store)
+
+    def _fail_dispatch(job: Any) -> None:
+        raise RuntimeError("dispatch credential super-secret-dispatch-token")
+
+    monkeypatch.setattr(scan_routes, "submit_scan_job", _fail_dispatch)
+    try:
+        cid = _seed_connection("tenant-alpha")
+        response = TestClient(_app()).post(
+            f"/v1/cloud/connections/{cid}/scan",
+            headers=_proxy_headers(tenant="tenant-alpha"),
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Cloud connection scan could not be queued."
+        jobs = job_store.list_all("tenant-alpha")
+        assert len(jobs) == 1
+        assert jobs[0].status.value == "failed"
+        assert jobs[0].error == "Scan dispatch failed before execution."
+        assert "super-secret-dispatch-token" not in str(response.json())
+        assert "super-secret-dispatch-token" not in str(jobs[0].model_dump())
+    finally:
+        set_job_store(original_store)
+
+
+def test_queued_connection_scan_replay_reuses_job_and_scan_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reclaimed delivery replaces the same evidence row instead of duplicating it."""
+    from agent_bom.api.connection_store import get_connection_store
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.pipeline import _run_scan_sync
+    from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.api.stores import _get_store, set_job_store
+
+    _install_scan_mocks(monkeypatch)
+    original_store = _get_store()
+    job_store = InMemoryJobStore()
+    set_job_store(job_store)
+    try:
+        cid = _seed_connection("tenant-alpha")
+        job = ScanJob(
+            job_id="queued-connection-replay-1",
+            tenant_id="tenant-alpha",
+            source_id=f"cloud-connection:{cid}",
+            triggered_by="synthetic-test-actor",
+            created_at="2026-07-24T00:00:00+00:00",
+            request=ScanRequest(),
+        )
+        job_store.put(job)
+
+        _run_scan_sync(job)
+        _run_scan_sync(job)
+
+        jobs = job_store.list_all("tenant-alpha")
+        assert [item.job_id for item in jobs] == [job.job_id]
+        assert jobs[0].status.value == "done"
+        assert jobs[0].result is not None
+        assert jobs[0].result["scan_id"] == job.job_id
+        fetched = get_connection_store().get("tenant-alpha", cid)
+        assert fetched is not None
+        assert fetched.last_scan_id == job.job_id
+    finally:
+        set_job_store(original_store)
+
+
 def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _install_scan_mocks(monkeypatch)
     client = TestClient(_app())
     cid = _seed_connection("tenant-alpha")
 
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    body = resp.json()
+    assert resp.status_code == 202
+    accepted = resp.json()
+    scan_id = accepted["job_id"]
+    body = _wait_for_scan_job(client, scan_id)
+    assert body["status"] == "done"
 
     # The broker was used and the brokered session (not the default chain) ran both scans.
     assert calls["broker_record_id"] == cid
@@ -1414,12 +1578,10 @@ def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.
     assert calls["cis_session"] is _BROKER_SESSION_SENTINEL
     assert calls["inventory_force"] is True
 
-    assert body["provider"] == "aws"
-    scan_id = body["scan_id"]
-    assert scan_id
-    assert body["connection"]["last_scan_id"] == scan_id
-    assert body["cis_benchmark"]["total"] == 2
-    assert body["inventory"]["status"] == "ok"
+    assert accepted["provider"] == "aws"
+    assert body["result"]["scan_id"] == scan_id
+    assert body["result"]["cis_benchmark"]["total"] == 2
+    assert body["result"]["cloud_inventory"]["status"] == "ok"
 
     # Results persisted through the existing scan store (no parallel path).
     from agent_bom.api.stores import _get_store
@@ -1440,6 +1602,7 @@ def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.
     listing = client.get("/v1/cloud/connections", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert listing["connections"][0]["last_scan_id"] == scan_id
     # No secret anywhere in the response surface.
+    assert "super-secret-external-id" not in str(accepted)
     assert "super-secret-external-id" not in str(body)
 
 
@@ -1463,8 +1626,9 @@ def test_scan_persists_inventory_counts_for_dashboard(monkeypatch: pytest.Monkey
     cid = _seed_connection("tenant-alpha")
 
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    scan_id = resp.json()["scan_id"]
+    assert resp.status_code == 202
+    scan_id = resp.json()["job_id"]
+    assert _wait_for_scan_job(client, scan_id)["status"] == "done"
 
     from agent_bom.api.stores import _get_store
 
@@ -1486,12 +1650,13 @@ def test_scan_failure_marks_error_without_secret(monkeypatch: pytest.MonkeyPatch
     cid = _seed_connection("tenant-alpha")
 
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 502
-    assert "super-secret-external-id" not in str(resp.json())
-    # The curated broker reason (why + how to fix) reaches the caller — not a
-    # "see server logs" dead end nor the fixed generic string.
-    assert "AssumeRole failed" in resp.json()["detail"]
-    assert "An internal error occurred" not in resp.json()["detail"]
+    assert resp.status_code == 202
+    job = _wait_for_scan_job(client, resp.json()["job_id"])
+    assert job["status"] == "failed"
+    assert "super-secret-external-id" not in str(job)
+    # The curated broker reason (why + how to fix) reaches the durable job — not
+    # raw provider text or a success response that masks the failed evidence run.
+    assert "AssumeRole failed" in job["error"]
 
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "error"
@@ -1654,18 +1819,20 @@ def test_scan_azure_brokers_runs_persists_and_marks_active(monkeypatch: pytest.M
     cid = _seed_connection("tenant-alpha", provider="azure")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["provider"] == "azure"
+    assert resp.status_code == 202
+    accepted = resp.json()
+    body = _wait_for_scan_job(client, accepted["job_id"])
+    assert body["status"] == "done"
+    assert accepted["provider"] == "azure"
     assert calls["inv_cred"] is _BROKER_SESSION_SENTINEL
     assert calls["cis_cred"] is _BROKER_SESSION_SENTINEL
     assert calls["inv_force"] is True
-    assert body["inventory"]["status"] == "ok"
-    assert body["cis_benchmark"]["total"] == 2
+    assert body["result"]["cloud_inventory"]["status"] == "ok"
+    assert body["result"]["azure_cis_benchmark"]["total"] == 2
 
     from agent_bom.api.stores import _get_store
 
-    job = _get_store().get(body["scan_id"], "tenant-alpha")
+    job = _get_store().get(accepted["job_id"], "tenant-alpha")
     assert job is not None
     assert job.result is not None
     assert job.result.get("scan_sources") == ["cloud_connection", "cloud:azure"]
@@ -1695,16 +1862,18 @@ def test_scan_gcp_brokers_runs_persists_and_marks_active(monkeypatch: pytest.Mon
     cid = _seed_connection("tenant-alpha", provider="gcp")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["provider"] == "gcp"
+    assert resp.status_code == 202
+    accepted = resp.json()
+    body = _wait_for_scan_job(client, accepted["job_id"])
+    assert body["status"] == "done"
+    assert accepted["provider"] == "gcp"
     assert calls["inv_creds"] is _BROKER_SESSION_SENTINEL
     assert calls["cis_creds"] is _BROKER_SESSION_SENTINEL
     assert calls["inv_force"] is True
-    assert body["cis_benchmark"]["total"] == 2
+    assert body["result"]["gcp_cis_benchmark"]["total"] == 2
     from agent_bom.api.stores import _get_store
 
-    job = _get_store().get(body["scan_id"], "tenant-alpha")
+    job = _get_store().get(accepted["job_id"], "tenant-alpha")
     assert job is not None
     assert job.result is not None
     assert job.result.get("scan_sources") == ["cloud_connection", "cloud:gcp"]
@@ -1734,19 +1903,21 @@ def test_scan_snowflake_brokers_runs_persists_and_marks_active(monkeypatch: pyte
     cid = _seed_connection("tenant-alpha", provider="snowflake")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["provider"] == "snowflake"
+    assert resp.status_code == 202
+    accepted = resp.json()
+    body = _wait_for_scan_job(client, accepted["job_id"])
+    assert body["status"] == "done"
+    assert accepted["provider"] == "snowflake"
     # The single brokered connection backs both discovery and CIS, and the route
     # closes it afterwards (discover/CIS do not close an injected connection).
     assert calls["disc_conn"] is conn
     assert calls["cis_conn"] is conn
     assert conn.closed is True
-    assert body["inventory"]["agent_count"] == 0
-    assert body["cis_benchmark"]["total"] == 2
+    assert body["result"]["cloud_inventory"]["agent_count"] == 0
+    assert body["result"]["snowflake_cis_benchmark"]["total"] == 2
     from agent_bom.api.stores import _get_store
 
-    job = _get_store().get(body["scan_id"], "tenant-alpha")
+    job = _get_store().get(accepted["job_id"], "tenant-alpha")
     assert job is not None
     assert job.result is not None
     assert job.result.get("scan_sources") == ["cloud_connection", "cloud:snowflake"]
@@ -1796,14 +1967,16 @@ def test_scan_snowflake_sweeps_estate_into_graph(monkeypatch: pytest.MonkeyPatch
     cid = _seed_connection("tenant-alpha", provider="snowflake")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    body = resp.json()
+    assert resp.status_code == 202
+    accepted = resp.json()
+    body = _wait_for_scan_job(client, accepted["job_id"])
+    assert body["status"] == "done"
     assert conn.closed is True
 
     # The estate discovery ran against the lent brokered connection (not env).
     assert lent["services_conn"] is not None
     # The scan summary now reports estate object counts, not just an agent count.
-    inv = body["inventory"]
+    inv = body["result"]["cloud_inventory"]
     assert inv["warehouse_count"] == 1
     assert inv["database_count"] == 1
     assert inv["role_count"] >= 1
@@ -1813,7 +1986,7 @@ def test_scan_snowflake_sweeps_estate_into_graph(monkeypatch: pytest.MonkeyPatch
     # the same builder path AWS/Azure/GCP connection scans use.
     from agent_bom.api.stores import _get_graph_store
 
-    stats = _get_graph_store().snapshot_stats(tenant_id="tenant-alpha", scan_id=body["scan_id"])
+    stats = _get_graph_store().snapshot_stats(tenant_id="tenant-alpha", scan_id=accepted["job_id"])
     node_types = stats["node_types"]
     assert node_types.get("account", 0) >= 1
     assert node_types.get("cloud_resource", 0) >= 1  # warehouse
@@ -1825,7 +1998,7 @@ def test_scan_snowflake_sweeps_estate_into_graph(monkeypatch: pytest.MonkeyPatch
     # (page_nodes over the same snapshot), scoped to the scan's tenant.
     _eff, _created, role_nodes, _total, _cursor = _get_graph_store().page_nodes(
         tenant_id="tenant-alpha",
-        scan_id=body["scan_id"],
+        scan_id=accepted["job_id"],
         entity_types={"role"},
     )
     assert any(n.entity_type.value == "role" for n in role_nodes)
@@ -1849,11 +2022,12 @@ def test_scan_snowflake_estate_sweep_failure_falls_back_to_discovery_and_cis(mon
     cid = _seed_connection("tenant-alpha", provider="snowflake")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 200
-    body = resp.json()
+    assert resp.status_code == 202
+    body = _wait_for_scan_job(client, resp.json()["job_id"])
+    assert body["status"] == "done"
     assert conn.closed is True
-    assert body["cis_benchmark"]["total"] == 2
-    assert body["inventory"]["agent_count"] == 0
+    assert body["result"]["snowflake_cis_benchmark"]["total"] == 2
+    assert body["result"]["cloud_inventory"]["agent_count"] == 0
 
 
 def test_scan_sdk_missing_returns_clean_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1869,8 +2043,10 @@ def test_scan_sdk_missing_returns_clean_error_without_secret(monkeypatch: pytest
     cid = _seed_connection("tenant-alpha", provider="azure")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 502
-    assert "super-secret-external-id" not in str(resp.json())
+    assert resp.status_code == 202
+    job = _wait_for_scan_job(client, resp.json()["job_id"])
+    assert job["status"] == "failed"
+    assert "super-secret-external-id" not in str(job)
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "error"
 

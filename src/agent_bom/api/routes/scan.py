@@ -1222,7 +1222,35 @@ def enqueue_scan_job(
         except Exception:  # noqa: BLE001
             pass
 
-    _dispatch(job)
+    try:
+        _dispatch(job)
+    except Exception as exc:  # noqa: BLE001 - local/shared dispatch boundary
+        # The job row already exists. Never leave it looking claimable when the
+        # handoff failed, because an HTTP retry could otherwise create a second
+        # job while this orphan remains permanently pending.
+        job.status = JobStatus.FAILED
+        job.completed_at = _now()
+        job.error = "Scan dispatch failed before execution."
+        job.progress.append("Dispatch failed before execution")
+        try:
+            store.put(job)
+        except Exception as persist_exc:  # noqa: BLE001
+            _logger.error(
+                "Failed to persist scan dispatch failure job=%s: %s",
+                job.job_id,
+                sanitize_error(persist_exc, generic=True),
+            )
+        _jobs_put(job.job_id, job, compact_terminal=True)
+        try:
+            reconcile_scan_jobs_active(store)
+        except Exception:  # noqa: BLE001
+            pass
+        _logger.error(
+            "Scan dispatch failed job=%s: %s",
+            job.job_id,
+            sanitize_error(exc, generic=True),
+        )
+        raise RuntimeError("Scan dispatch failed before execution.") from None
     return job
 
 

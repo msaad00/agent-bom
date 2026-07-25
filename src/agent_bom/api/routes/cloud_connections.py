@@ -40,7 +40,7 @@ import re
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
@@ -67,6 +67,9 @@ from agent_bom.cloud.event_ingest import CloudChangeEvent, dispatch_change_event
 from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
+
+if TYPE_CHECKING:
+    from agent_bom.api.models import ScanJob
 
 # Cap the status_detail we persist so a verbose backend error can't bloat the row.
 _MAX_STATUS_DETAIL = 300
@@ -136,6 +139,17 @@ class CloudConnectionUpdate(BaseModel):
     inventory_scope: str | None = None
     scan_mode: str | None = None
     auto_scan_on_create: bool | None = None
+
+
+class CloudConnectionScanAccepted(BaseModel):
+    """Stable handoff returned after a connection scan is durably queued."""
+
+    schema_version: Literal["cloud.connections.scan.accepted.v1"] = "cloud.connections.scan.accepted.v1"
+    connection_id: str
+    tenant_id: str
+    provider: str
+    job_id: str
+    status: str
 
 
 def _now() -> str:
@@ -712,7 +726,13 @@ def _annotate_inventory_counts(inventory: Any) -> None:
     inventory.setdefault("node_summary", summary["node_summary"])
 
 
-def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, report: Any) -> str:
+def _persist_connection_report(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    report: Any,
+    *,
+    queued_job: ScanJob | None = None,
+) -> str:
     """Persist a brokered-scan report through the existing scan/graph stores.
 
     Reuses the pipeline's persistence path (durable scan store + in-memory job
@@ -724,25 +744,34 @@ def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, re
     from agent_bom.api.stores import _get_store, _jobs_put
     from agent_bom.output import to_json
 
+    if queued_job is not None:
+        report.scan_id = queued_job.job_id
     report_json = to_json(report)
     _annotate_inventory_counts(report_json.get("cloud_inventory"))
     now = _now()
-    job = ScanJob(
-        job_id=report.scan_id,
-        tenant_id=tenant_id,
-        created_at=now,
-        started_at=now,
-        completed_at=now,
-        status=JobStatus.DONE,
-        request=ScanRequest(),
-        result=report_json,
-        triggered_by=f"cloud-connection/{record.id}",
-    )
-    store = _get_store()
-    store.put(job)
-    _jobs_put(job.job_id, job, compact_terminal=True)
-    _persist_graph_snapshot(job, report_json)
-    return str(report.scan_id)
+    if queued_job is None:
+        scan_job = ScanJob(
+            job_id=report.scan_id,
+            tenant_id=tenant_id,
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            status=JobStatus.DONE,
+            request=ScanRequest(),
+            result=report_json,
+            triggered_by=f"cloud-connection/{record.id}",
+        )
+        store = _get_store()
+        store.put(scan_job)
+        _jobs_put(scan_job.job_id, scan_job, compact_terminal=True)
+    else:
+        # The durable worker owns lifecycle persistence for queued scans. Reuse
+        # the accepted job id so retries/reclaims replace the same artifact
+        # instead of minting an orphan result row.
+        scan_job = queued_job
+        scan_job.result = report_json
+    _persist_graph_snapshot(scan_job, report_json)
+    return str(scan_job.job_id)
 
 
 def _mark_connection_report_sources(report: Any, provider: str) -> None:
@@ -785,7 +814,12 @@ def _reject_showcase_connection(record: CloudConnectionRecord) -> None:
         )
 
 
-def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+def _run_aws_connection_scan(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    *,
+    queued_job: ScanJob | None = None,
+) -> dict[str, Any]:
     """Broker the connection into a read-only session and run inventory + CIS.
 
     Calls the **same** ``aws_inventory.discover_inventory`` and AWS CIS
@@ -844,7 +878,12 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
 
     cis_dict = cis_report.to_dict()
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(
+        agents=[],
+        blast_radii=[],
+        findings=[],
+        scan_id=queued_job.job_id if queued_job is not None else str(_uuid.uuid4()),
+    )
     _mark_connection_report_sources(report, "aws")
     report.cloud_inventory_data = inventory_payload
     report.cis_benchmark_data = cis_dict
@@ -856,7 +895,7 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
             if aws_payloads:
                 org["account_scan"] = aws_organizations.summarize_account_scan(aws_payloads)
             report.aws_organization_data = org
-    scan_id = _persist_connection_report(record, tenant_id, report)
+    scan_id = _persist_connection_report(record, tenant_id, report, queued_job=queued_job)
 
     if isinstance(inventory_payload, list):
         inventory_summary: dict[str, Any] = {
@@ -889,7 +928,12 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     }
 
 
-def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+def _run_azure_connection_scan(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    *,
+    queued_job: ScanJob | None = None,
+) -> dict[str, Any]:
     """Broker an Azure read-only credential and run inventory + CIS.
 
     Uses the brokered ``ClientSecretCredential`` (Reader role) and the
@@ -927,11 +971,16 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
         account_ref=account_ref,
     )
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(
+        agents=[],
+        blast_radii=[],
+        findings=dspm_findings,
+        scan_id=queued_job.job_id if queued_job is not None else str(_uuid.uuid4()),
+    )
     _mark_connection_report_sources(report, "azure")
     report.cloud_inventory_data = inventory_payload
     report.azure_cis_benchmark_data = cis_dict
-    scan_id = _persist_connection_report(record, tenant_id, report)
+    scan_id = _persist_connection_report(record, tenant_id, report, queued_job=queued_job)
 
     if isinstance(inventory_payload, list):
         inventory_summary: dict[str, Any] = {
@@ -958,7 +1007,12 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     }
 
 
-def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+def _run_gcp_connection_scan(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    *,
+    queued_job: ScanJob | None = None,
+) -> dict[str, Any]:
     """Broker GCP read-only service-account credentials and run inventory + CIS.
 
     Uses the brokered ``service_account.Credentials`` (cloud-platform.read-only
@@ -984,11 +1038,16 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     cis_report = run_gcp_cis(project_id=project_id, credentials=credentials)
     cis_dict = cis_report.to_dict()
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(
+        agents=[],
+        blast_radii=[],
+        findings=[],
+        scan_id=queued_job.job_id if queued_job is not None else str(_uuid.uuid4()),
+    )
     _mark_connection_report_sources(report, "gcp")
     report.cloud_inventory_data = inventory_payload
     report.gcp_cis_benchmark_data = cis_dict
-    scan_id = _persist_connection_report(record, tenant_id, report)
+    scan_id = _persist_connection_report(record, tenant_id, report, queued_job=queued_job)
 
     if isinstance(inventory_payload, list):
         inventory_summary: dict[str, Any] = {
@@ -1060,7 +1119,12 @@ def _snowflake_estate_summary(report: Any, agent_count: int) -> dict[str, Any]:
     }
 
 
-def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+def _run_snowflake_connection_scan(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    *,
+    queued_job: ScanJob | None = None,
+) -> dict[str, Any]:
     """Broker a Snowflake read-only connection and run discovery + estate sweep + CIS.
 
     Opens one brokered key-pair connection and threads it into ``snowflake.discover``
@@ -1087,7 +1151,12 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
     try:
         agents, _warnings = snowflake_discovery.discover(conn=conn)
         cis_report = run_snowflake_cis(conn=conn)
-        report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+        report = AIBOMReport(
+            agents=agents,
+            blast_radii=[],
+            findings=[],
+            scan_id=queued_job.job_id if queued_job is not None else str(_uuid.uuid4()),
+        )
         _mark_connection_report_sources(report, "snowflake")
         # Sweep the estate into the report's snowflake_*_data blocks so the graph
         # builder materializes accounts/warehouses/databases/roles/users the same
@@ -1113,7 +1182,7 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
     inventory_summary = _snowflake_estate_summary(report, len(agents))
     report.cloud_inventory_data = inventory_summary
     report.snowflake_cis_benchmark_data = cis_dict
-    scan_id = _persist_connection_report(record, tenant_id, report)
+    scan_id = _persist_connection_report(record, tenant_id, report, queued_job=queued_job)
 
     return {
         "schema_version": "cloud.connections.scan.v1",
@@ -1139,7 +1208,12 @@ def _parse_scope_list(value: Any) -> list[str]:
     return []
 
 
-def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+def _run_database_connection_scan(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    *,
+    queued_job: ScanJob | None = None,
+) -> dict[str, Any]:
     """Broker a read-only database connection and run bounded DSPM content sampling.
 
     Opens one brokered read-only ``psycopg`` connection (connect-once — the stored
@@ -1218,10 +1292,15 @@ def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str)
     account_ref = f"database:{account}" if account else None
     dspm_findings = build_inventory_dspm_findings(inventory, provider="database", account_ref=account_ref)
 
-    report = AIBOMReport(agents=[], blast_radii=[], findings=dspm_findings, scan_id=str(_uuid.uuid4()))
+    report = AIBOMReport(
+        agents=[],
+        blast_radii=[],
+        findings=dspm_findings,
+        scan_id=queued_job.job_id if queued_job is not None else str(_uuid.uuid4()),
+    )
     _mark_connection_report_sources(report, "database")
     report.cloud_inventory_data = inventory
-    scan_id = _persist_connection_report(record, tenant_id, report)
+    scan_id = _persist_connection_report(record, tenant_id, report, queued_job=queued_job)
 
     dspm_summary: dict[str, Any] = {
         "sampling_enabled": sampling_enabled,
@@ -1254,7 +1333,7 @@ def _run_database_connection_scan(record: CloudConnectionRecord, tenant_id: str)
 
 # Per-provider brokered-scan dispatch. Every entry is broker-enabled and runs the
 # same read-only inventory/discovery + CIS the sibling cloud routes use.
-_SCAN_RUNNERS: dict[str, Callable[[CloudConnectionRecord, str], dict[str, Any]]] = {
+_SCAN_RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "aws": _run_aws_connection_scan,
     "azure": _run_azure_connection_scan,
     "gcp": _run_gcp_connection_scan,
@@ -1263,7 +1342,12 @@ _SCAN_RUNNERS: dict[str, Callable[[CloudConnectionRecord, str], dict[str, Any]]]
 }
 
 
-def _run_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+def _run_connection_scan(
+    record: CloudConnectionRecord,
+    tenant_id: str,
+    *,
+    queued_job: ScanJob | None = None,
+) -> dict[str, Any]:
     """Dispatch a brokered read-only scan by provider.
 
     Raises ``ValueError`` for an unknown provider (the route validates the
@@ -1272,7 +1356,97 @@ def _run_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[
     runner = _SCAN_RUNNERS.get((record.provider or "").strip().lower())
     if runner is None:
         raise ValueError(f"Unsupported provider '{record.provider}'.")
-    return runner(record, tenant_id)
+    if queued_job is None:
+        return runner(record, tenant_id)
+    return runner(record, tenant_id, queued_job=queued_job)
+
+
+_QUEUED_CONNECTION_SOURCE_PREFIX = "cloud-connection:"
+
+
+def is_queued_connection_scan(job: ScanJob) -> bool:
+    """Return whether a normal scan job carries connection-scan provenance."""
+    return str(job.source_id or "").startswith(_QUEUED_CONNECTION_SOURCE_PREFIX)
+
+
+def execute_queued_connection_scan(job: ScanJob) -> dict[str, Any]:
+    """Execute one durable cloud-connection job under the worker's tenant.
+
+    The job itself is the restart/retry identity. A reclaimed delivery therefore
+    writes the same scan row and graph snapshot instead of creating a second scan
+    artifact. Provider access remains read-only; only agent-bom evidence and the
+    connection's lifecycle metadata are updated.
+    """
+    from agent_bom.api.models import JobStatus
+
+    source_id = str(job.source_id or "")
+    if not source_id.startswith(_QUEUED_CONNECTION_SOURCE_PREFIX):
+        raise RuntimeError("Queued cloud connection scan is missing its connection reference.")
+    connection_id = source_id.removeprefix(_QUEUED_CONNECTION_SOURCE_PREFIX).strip()
+    tenant_id = str(job.tenant_id or "default")
+    record = get_connection_store().get(tenant_id, connection_id)
+    if record is None:
+        raise RuntimeError("Cloud connection is no longer available for this tenant.")
+    if record.auth_params.get("demo") is True:
+        raise RuntimeError("Showcase connections cannot run connection scans.")
+
+    actor = str(job.triggered_by or "system")
+    try:
+        summary = _run_connection_scan(record, tenant_id, queued_job=job)
+    except Exception as exc:  # noqa: BLE001 - durable worker failure boundary
+        detail = _safe_connection_detail(exc)
+        _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
+        _logger.error(
+            "Cloud connection scan job failed connection=%s job=%s: %s",
+            record.id,
+            job.job_id,
+            sanitize_error(exc, generic=True),
+        )
+        log_action(
+            "cloud_connection.scan",
+            actor=actor,
+            resource=f"cloud-connection/{record.id}",
+            tenant_id=tenant_id,
+            provider=record.provider,
+            outcome="failure",
+            job_id=job.job_id,
+        )
+        # The outer scan worker owns the terminal job transition. Raise only the
+        # curated/sanitized detail so provider SDK text and credentials never
+        # enter the durable job error or progress fields.
+        raise RuntimeError(detail) from None
+
+    _mark_connection(
+        record,
+        status=STATUS_ACTIVE,
+        status_detail="",
+        last_scan_at=_now(),
+        last_scan_id=job.job_id,
+    )
+    log_action(
+        "cloud_connection.scan",
+        actor=actor,
+        resource=f"cloud-connection/{record.id}",
+        tenant_id=tenant_id,
+        provider=record.provider,
+        outcome="success",
+        scan_id=job.job_id,
+        job_id=job.job_id,
+    )
+    job.progress.append(f"Cloud connection scan completed for provider {record.provider}")
+    job.status = JobStatus.DONE
+    return summary
+
+
+def _accepted_connection_scan(job: ScanJob, record: CloudConnectionRecord) -> CloudConnectionScanAccepted:
+    """Stable, non-secret response returned for a queued connection scan."""
+    return CloudConnectionScanAccepted(
+        connection_id=record.id,
+        tenant_id=record.tenant_id,
+        provider=record.provider,
+        job_id=job.job_id,
+        status=job.status.value,
+    )
 
 
 @router.post("/cloud/connections/{connection_id}/test")
@@ -1345,18 +1519,29 @@ async def test_connection(request: Request, connection_id: str, _role: Any = _SC
     }
 
 
-@router.post("/cloud/connections/{connection_id}/scan")
-async def scan_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
-    """Launch a read-only cloud scan for a stored connection via the broker.
+@router.post(
+    "/cloud/connections/{connection_id}/scan",
+    response_model=CloudConnectionScanAccepted,
+    status_code=202,
+)
+async def scan_connection(
+    request: Request,
+    connection_id: str,
+    _role: Any = _SCAN_DEP,
+) -> CloudConnectionScanAccepted:
+    """Queue a durable read-only scan for a stored cloud connection.
 
-    Resolves the tenant's connection (404 otherwise), uses the credential broker
-    to obtain a short-lived read-only session / credential / connection, and runs
-    the same inventory + CIS discovery the sibling cloud routes use. Results
-    persist through the existing scan/graph stores; the connection status moves to
-    ``active`` + ``last_scan_at`` on success or ``error`` + ``status_detail`` (no
-    secret) on failure. All four providers (AWS, Azure, GCP, Snowflake) are
-    broker-enabled.
+    Returns immediately with a stable job id. The existing scan worker resolves
+    the tenant-scoped connection, brokers short-lived read-only credentials, and
+    persists inventory/CIS findings through the normal scan and graph stores.
+    Poll ``GET /v1/scan/{job_id}`` for completion. ``Idempotency-Key`` makes an
+    HTTP retry return the original accepted job.
     """
+    from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
+    from agent_bom.api.models import ScanRequest
+    from agent_bom.api.routes import scan as scan_routes
+    from agent_bom.api.stores import _get_idempotency_store, _get_store
+
     record = _require_connection(request, connection_id)
     _reject_showcase_connection(record)
     tenant_id = record.tenant_id
@@ -1365,54 +1550,60 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     if (record.provider or "").strip().lower() not in _SCAN_RUNNERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider '{record.provider}'.")
 
-    try:
-        # The brokered scan runs synchronous provider inventory + CIS discovery
-        # (minutes of network I/O); run it in a worker thread under backpressure
-        # so a live scan can never stall the event loop (a burst sheds with a
-        # 429 instead).
-        async with adaptive_backpressure("cloud_connection_scan"):
-            summary = await anyio.to_thread.run_sync(_run_connection_scan, record, tenant_id)
-    except BackpressureRejectedError as exc:
-        # A shed request never started the scan — do not flip the connection to
-        # error, just ask the caller to retry.
-        raise HTTPException(
-            status_code=429,
-            detail=exc.to_dict(),
-            headers={"Retry-After": str(exc.retry_after_seconds)},
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
-        # Persist an actionable, secret-free detail (why + how to fix). Broker and
-        # discovery errors are curated safe strings; anything unexpected falls back
-        # to a fixed generic message. Full diagnostics go to the server log only.
-        detail = _safe_connection_detail(exc)
-        _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
-        _logger.exception("Cloud connection scan failed for connection %s", record.id)
-        log_action(
-            "cloud_connection.scan",
-            actor=actor,
-            resource=f"cloud-connection/{record.id}",
-            tenant_id=tenant_id,
-            provider=record.provider,
-            outcome="failure",
-        )
-        raise HTTPException(status_code=502, detail=detail) from exc
+    endpoint = f"/v1/cloud/connections/{record.id}/scan"
+    idempotency_key = str(request.headers.get("Idempotency-Key", "") or "").strip()
+    request_hash = idempotency_request_fingerprint({"connection_id": record.id})
+    idempotency_source = "cloud-connection-scan"
+    if idempotency_key:
+        try:
+            cached = _get_idempotency_store().get(
+                endpoint,
+                tenant_id,
+                idempotency_source,
+                idempotency_key,
+                request_hash=request_hash,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+        if cached is not None:
+            cached_job_id = str(cached.get("job_id") or "")
+            existing = _get_store().get(cached_job_id, tenant_id=tenant_id) if cached_job_id else None
+            if existing is not None:
+                return _accepted_connection_scan(existing, record)
 
-    scan_id = str(summary.get("scan_id") or "")
-    _mark_connection(
-        record,
-        status=STATUS_ACTIVE,
-        status_detail="",
-        last_scan_at=_now(),
-        last_scan_id=scan_id or None,
-    )
+    try:
+        job = scan_routes.enqueue_scan_job(
+            tenant_id=tenant_id,
+            triggered_by=actor,
+            request_body=ScanRequest(),
+            source_id=f"{_QUEUED_CONNECTION_SOURCE_PREFIX}{record.id}",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - dispatch boundary
+        _logger.error(
+            "Cloud connection scan enqueue failed connection=%s: %s",
+            record.id,
+            sanitize_error(exc, generic=True),
+        )
+        raise HTTPException(status_code=503, detail="Cloud connection scan could not be queued.") from None
+
+    if idempotency_key:
+        _get_idempotency_store().put(
+            endpoint,
+            tenant_id,
+            idempotency_source,
+            idempotency_key,
+            {"job_id": job.job_id},
+            request_hash=request_hash,
+        )
     log_action(
         "cloud_connection.scan",
         actor=actor,
         resource=f"cloud-connection/{record.id}",
         tenant_id=tenant_id,
         provider=record.provider,
-        outcome="success",
-        scan_id=scan_id,
+        outcome="accepted",
+        job_id=job.job_id,
     )
-    summary["connection"] = record.to_public_dict()
-    return summary
+    return _accepted_connection_scan(job, record)

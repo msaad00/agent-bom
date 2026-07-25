@@ -996,6 +996,37 @@ components:
       - external_id
       title: CloudConnectionCreate
       type: object
+    CloudConnectionScanAccepted:
+      description: Stable handoff returned after a connection scan is durably queued.
+      properties:
+        connection_id:
+          title: Connection Id
+          type: string
+        job_id:
+          title: Job Id
+          type: string
+        provider:
+          title: Provider
+          type: string
+        schema_version:
+          const: cloud.connections.scan.accepted.v1
+          default: cloud.connections.scan.accepted.v1
+          title: Schema Version
+          type: string
+        status:
+          title: Status
+          type: string
+        tenant_id:
+          title: Tenant Id
+          type: string
+      required:
+      - connection_id
+      - tenant_id
+      - provider
+      - job_id
+      - status
+      title: CloudConnectionScanAccepted
+      type: object
     CloudConnectionUpdate:
       additionalProperties: false
       description: 'Request body for updating a connection''s recurring scan schedule.
@@ -6565,25 +6596,18 @@ paths:
       - cloud-connections
   /v1/cloud/connections/{connection_id}/scan:
     post:
-      description: 'Launch a read-only cloud scan for a stored connection via the
-        broker.
+      description: 'Queue a durable read-only scan for a stored cloud connection.
 
 
-        Resolves the tenant''s connection (404 otherwise), uses the credential broker
+        Returns immediately with a stable job id. The existing scan worker resolves
 
-        to obtain a short-lived read-only session / credential / connection, and runs
+        the tenant-scoped connection, brokers short-lived read-only credentials, and
 
-        the same inventory + CIS discovery the sibling cloud routes use. Results
+        persists inventory/CIS findings through the normal scan and graph stores.
 
-        persist through the existing scan/graph stores; the connection status moves
-        to
+        Poll ``GET /v1/scan/{job_id}`` for completion. ``Idempotency-Key`` makes an
 
-        ``active`` + ``last_scan_at`` on success or ``error`` + ``status_detail``
-        (no
-
-        secret) on failure. All four providers (AWS, Azure, GCP, Snowflake) are
-
-        broker-enabled.'
+        HTTP retry return the original accepted job.'
       operationId: scan_connection_v1_cloud_connections__connection_id__scan_post
       parameters:
       - in: path
@@ -6617,14 +6641,11 @@ paths:
           - type: 'null'
           title: X-Agent-Bom-Proxy-Secret
       responses:
-        '200':
+        '202':
           content:
             application/json:
               schema:
-                additionalProperties: true
-                title: Response Scan Connection V1 Cloud Connections  Connection Id  Scan
-                  Post
-                type: object
+                $ref: '#/components/schemas/CloudConnectionScanAccepted'
           description: Successful Response
         '422':
           content:

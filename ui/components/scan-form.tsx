@@ -294,7 +294,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
     setError("");
     try {
       const result = await api.scanCloudConnection(selectedConnection.id);
-      router.push(`/scan?id=${result.scan_id}`);
+      router.push(`/scan?id=${result.job_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start cloud scan");
       setLoading(false);

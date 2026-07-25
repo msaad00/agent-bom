@@ -508,6 +508,13 @@ class KeyStore:
             return keys
         return [k for k in keys if k.tenant_id == tenant_id]
 
+    def delete_tenant(self, tenant_id: str) -> int:
+        """Permanently remove every key belonging to one confirmed tenant purge."""
+        with self._lock:
+            before = len(self._keys)
+            self._keys = [key for key in self._keys if key.tenant_id != tenant_id]
+            return before - len(self._keys)
+
     def verify(self, raw_key: str) -> ApiKey | None:
         # Hold the lock only long enough to snapshot the key list; the expensive
         # scrypt derivation in ``verify_api_key`` then runs lock-free so it
@@ -533,6 +540,7 @@ class KeyStoreProtocol(Protocol):
     def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool: ...
     def get(self, key_id: str) -> ApiKey | None: ...
     def list_keys(self, tenant_id: str | None = None) -> list[ApiKey]: ...
+    def delete_tenant(self, tenant_id: str) -> int: ...
     def verify(self, raw_key: str) -> ApiKey | None: ...
     def has_keys(self) -> bool: ...
 

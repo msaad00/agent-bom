@@ -30,15 +30,66 @@ signed release evidence.
 | Package build | `make build-ui && uv build --out-dir /tmp/agent-bom-build` | Wheel and sdist build from a clean tree. |
 | Packaged dashboard | `unzip -l /tmp/agent-bom-build/agent_bom-*.whl \| grep -c ui_dist` | Non-zero. Zero means the wheel ships no dashboard: `agent-bom serve` prints `Dashboard  Not bundled` and every UI route 404s. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
+| Registry surface freshness (post-publish) | `PYTHONPATH=src python scripts/check_surface_freshness.py --out /tmp/agent-bom-surface-freshness.json` | PyPI, Docker, GHCR, Glama, and configured Smithery surfaces report the expected version and a non-empty inventory. Async rebuild acceptance is not release completion. |
 | Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real report, graph, posture, and no coverage warnings. |
 | Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
 
 Do not publish a release as hosted-ready when any required line above is red.
+After publishing, do not mark the release complete while the surface-freshness
+report is stale or unmonitored. Registry rebuilds may finish asynchronously;
+rerun the check until Glama and every configured public surface reflect the
+released version and expected inventory.
+
+### Source-to-published storefront transition
+
+During the four-PR sequence, code freeze, and after publication, the committed
+README surfaces use lifecycle-neutral wording: examples target the forward
+version, and operators must verify registry availability before copying an
+exact pin. Branch and matching-tag checks require that neutral state, so the
+public repository remains accurate without a fifth post-release documentation
+change.
+
+The protected release workflow then renders a temporary published copy with
+`scripts/render_docker_storefront.py`, promotes exactly the matching version to
+`Current stable version (pinned)`, validates that rendered file with
+`AGENT_BOM_RELEASE_FINALIZE=1`, and sends only that rendered copy to Docker Hub.
+The renderer rejects missing, duplicate, or unresolved neutral rows, and a
+failed Docker Hub update blocks the publishing job. The checked-in neutral
+file is not mutated by CI. Release completion still requires the post-publish
+surface-freshness gate above; a successful tag alone is insufficient.
+
+## Browser behavioral lock-in
+
+The route-catalog smoke opens every packaged route and rejects framework errors,
+404s, and enabled buttons without accessible names. Page-local E2E tests cover
+representative actions; this matrix does not claim one browser test per control.
+
+| Workspace | Browser behavior proved |
+|---|---|
+| Global shell | Theme state, sidebar collapse/expand, focus command, and command-palette navigation |
+| Overview and Findings | Shared seeded counts, deep-link query state, finding-class/severity filtering, and pagination |
+| Jobs | Source-to-job evidence links, persisted observed stage timing, and explicit unavailable telemetry when progress is empty |
+| Investigation graphs | Dark/light/mobile rendering, fit, selection, auto-layout, reset/edit lock, drag persistence, zoom, and large-estate roll-up navigation |
+| Remediation | Compact campaign disclosure, priority explanation, package detail, re-verification mutation, and mobile containment |
+| Compliance | Detail/heatmap switching, status/search filtering, and evidence-pack download request |
+| Scan and export | Scan submission through completed result and graph JSON download |
+| Connections and gateway | Connector wizard progression and live-feed state changes |
+
+Run the focused browser set with:
+
+```bash
+cd ui
+npx playwright test e2e/route-catalog-smoke.spec.ts e2e/jobs-workflow.spec.ts \
+  e2e/lineage-graph-readability.spec.ts e2e/security-graph-cockpit.spec.ts \
+  e2e/workspace-actions.spec.ts e2e/overview-findings-reconciliation.spec.ts \
+  e2e/scan-export.spec.ts e2e/connections-screenshot.spec.ts \
+  e2e/gateway-live-feed-card.spec.ts
+```
 
 ## Download release assets
 
 ```bash
-TAG=v0.98.0
+TAG=v0.99.0
 VERSION="${TAG#v}"
 mkdir -p /tmp/agent-bom-release && cd /tmp/agent-bom-release
 gh release download "$TAG" --repo msaad00/agent-bom

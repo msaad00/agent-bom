@@ -727,7 +727,7 @@ export function Nav() {
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
           <BrandLogo
             markClassName="h-9 w-9"
-            wordmarkClassName="h-[26px] w-auto max-w-[11rem]"
+            wordmarkClassName="hidden h-[26px] w-auto max-w-[11rem] sm:block"
             className="transition-transform duration-200 group-hover:scale-[1.01]"
           />
         </Link>

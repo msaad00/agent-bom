@@ -70,7 +70,7 @@ vi.mock('@/lib/api', () => ({
       scan_sources: [],
       scan_count: 0,
     }),
-    health: vi.fn().mockResolvedValue({ status: 'ok', version: '0.98.0' }),
+    health: vi.fn().mockResolvedValue({ status: 'ok', version: '0.99.0' }),
   },
 }))
 
@@ -304,6 +304,7 @@ describe('Nav', () => {
     const wordmark = container.querySelector('img[alt="agent-bom"]')
     expect(wordmark).not.toBeNull()
     expect(wordmark!.getAttribute('src')).toMatch(/^\/brand\/wordmark-dark\.svg\?/)
+    expect(wordmark).toHaveClass('hidden', 'sm:block')
     expect(screen.getByAltText('agent-bom')).toBeInTheDocument()
   })
 

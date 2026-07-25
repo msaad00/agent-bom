@@ -1,273 +1,186 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-light.svg" alt="agent-bom" width="360" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/logo-light.svg" alt="agent-bom" width="320" />
   </picture>
 </p>
 
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
-  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=Latest%20version&cacheSeconds=60" alt="PyPI"></a>
-  <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
-  <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
-  <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
-  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom"><img src="https://img.shields.io/badge/MCP-Glama-7c3aed?style=flat" alt="agent-bom on Glama"></a>
-  <a href="https://smithery.ai/servers/agent-bom/agent-bom"><img src="https://img.shields.io/badge/MCP-Smithery-1f6feb?style=flat" alt="agent-bom on Smithery"></a>
+  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=PyPI&cacheSeconds=60" alt="PyPI"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
+
 <p align="center">
-  Scan from CLI, CI, Docker, or cloud connect on a control plane you run →
-  centralize evidence → enforce runtime MCP/tool calls.
-  One Finding + UnifiedGraph model across CLI, API, UI, and MCP.
-</p>
-<p align="center">
-  Brand lockup above is the product logo. The CLI prints the wordmark as text
-  (<code>agent-bom</code>); the UI and
-  <a href="https://demo.agent-bom.com">live demo</a> show the logo in app nav.
-</p>
-<p align="center">
-  <a href="https://demo.agent-bom.com"><b>Live demo</b></a> ·
-  <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="#quick-start"><b>Quick start</b></a> ·
-  <a href="#deploy--self-host"><b>Deploy</b></a> ·
-  <a href="docs/FIRST_RUN.md">First run</a> ·
-  <a href="https://github.com/marketplace/actions/agent-bom">GitHub Action</a> ·
-  <a href="https://hub.docker.com/r/agentbom/agent-bom">Docker</a> ·
-  <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
+  <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
+  <a href="https://demo.agent-bom.com">Live demo</a>
 </p>
+
+## What it is
+
+`agent-bom` discovers software, cloud, identity, AI-agent, and MCP evidence;
+turns it into findings and relationship graphs; and carries the same evidence
+into CI, a self-hosted control plane, and runtime policy enforcement.
+
+- **Scan** locally or in CI and export console, JSON, SARIF, SBOM, HTML, and graph artifacts.
+- **Centralize** findings, compliance evidence, jobs, inventory, and investigations in a control plane you run.
+- **Enforce** MCP and tool-call policy through the gateway, proxy, and Shield SDK surfaces.
+
+The product uses one Finding + UnifiedGraph model across CLI, API, UI, and MCP.
+It does not require a hosted account for local scanning.
 
 ## Quick start
 
-Three commands to see value locally (no cloud account required):
+Run against the repository in your current directory:
 
 ```bash
 pip install agent-bom
-agent-bom scan --demo --offline
-# optional control plane (loopback UI + API)
-pip install 'agent-bom[ui]' && agent-bom serve
+agent-bom scan .
 ```
 
-- Console report prints inventory, findings, and blast radius inline.
-- Optional file artifacts: `-f html -o agent-bom-report.html` (also `json`, `sarif`, SBOM).
-- Demo exit status `1` is expected — the sample includes blocking findings (same gate as CI).
+The console shows inventory, findings, and reachable impact. Save an artifact
+with `agent-bom scan . -f sarif -o findings.sarif`, or follow the
+[first-run guide](docs/FIRST_RUN.md) for exit codes, formats, and CI use.
 
-Full walkthrough: [docs/FIRST_RUN.md](docs/FIRST_RUN.md).
+<details>
+<summary><b>Try without a repository</b></summary>
 
-## Who it is for
+Use the curated, explicitly synthetic sample when you only want to inspect the
+output shape:
+
+```bash
+agent-bom scan --demo --offline
+```
+
+The sample intentionally contains blocking findings, so exit status `1` is
+expected.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas: Developers, AppSec, Platform / SRE, GRC / audit, and AI / MCP owners with matching outcomes" width="900" />
-  </picture>
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="Synthetic agent-bom console scan showing inventory, findings, and remediation" width="820" />
 </p>
 
-| Team | Start here | Outcome |
-|---|---|---|
-| Developers | `agent-bom scan .` | Inventory, findings, blast radius before changes ship |
-| AppSec | `agent-bom scan . -f sarif -o findings.sarif` | Reachability triage, graph paths, CI gates |
-| Platform / SRE | `pip install 'agent-bom[ui]' && agent-bom serve` or Helm | Customer-controlled API/UI, fleet evidence, runtime policy |
-| GRC / audit | `agent-bom scan . -f json -o scan.json && agent-bom report compliance-narrative scan.json` | Framework mappings, signed bundles, review context |
-| AI / MCP owners | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` or `gateway serve` | Tool inventory and allow/warn/block decisions |
+</details>
 
-Evidence helper, not a GRC system of record, IAM, SIEM, or certification program.
-Boundaries: [PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
+## How it works
 
-## How the tool works
-
-Three product lanes on one Finding + UnifiedGraph model:
-
-1. **Scan** — CLI / CI / Docker / cloud connect → inventory, findings, SARIF/SBOM/HTML, graph
-2. **Control plane** — `pip install 'agent-bom[ui]' && agent-bom serve` → tenant UI/API, attack paths, compliance, audit (self-host with Docker or Helm + Postgres). Loopback is the default; non-loopback hosts need real auth or an explicit `--allow-insecure-no-auth` (env vars alone are not enough).
-3. **Runtime** — `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` → allow/warn/block on live MCP/tool calls
-
-Discovery and static/cloud scanning are read-only. The control plane stores
-evidence; gateway/proxy modes make explicit policy decisions at a separate
-boundary.
+1. Read-only collectors inventory the selected repository, image, agent configuration, or connected cloud scope.
+2. Deterministic scanners normalize evidence into findings, packages, assets, identities, and relationships.
+3. Exports, the control plane, and runtime policy consume that same evidence model.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom three tool lanes: scan (CLI/CI/Docker/cloud connect), self-hosted control plane, and runtime gateway on one Finding + UnifiedGraph model" width="1100" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="Scan, centralize, and enforce on one Finding and UnifiedGraph evidence model" width="1000" />
   </picture>
 </p>
 
-One finding fans out to the MCP servers that load it, reachable tools,
-credential references, and agents that can reach it — not a CVE list in
-isolation.
+The browser experience keeps the evidence shared while presenting task-focused
+workspaces: fix-first findings, path-first investigation, control evidence, and
+posture summaries. Graph views preserve provenance where source evidence
+provides it: collected, inferred, static, and runtime relationships remain
+distinct, while unavailable provenance is not upgraded to observed. Interactive
+views expose fit, zoom, pan, layout, and personal positioning controls.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast radius: one package finding fans out to MCP servers, agents, secrets, and tools" width="900" />
-  </picture>
-</p>
+## Who it is for
 
-## See the product
+| Role | Start here | Primary outcome |
+|---|---|---|
+| Local developers | `agent-bom scan .` | Find and explain issues before code leaves the workstation |
+| AppSec | `agent-bom scan . -f sarif -o findings.sarif` | Triage reachable findings and enforce CI gates |
+| Security engineers | `pip install 'agent-bom[ui]' && agent-bom serve` | Investigate exposure paths, identities, and evidence provenance |
+| Platform / SRE | `agent-bom connect aws` | Centralize estate inventory, jobs, and runtime controls |
+| GRC / audit | `agent-bom report compliance-narrative scan.json` | Review control mappings and export evidence with explicit gaps |
+| Leadership / CISO | `pip install 'agent-bom[ui]' && agent-bom serve` | Review posture, coverage, material risk, and change over time |
+| AI / MCP owners | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | Inventory tools and apply allow, warn, or block decisions |
 
-Story order: **Scan → Connect → Posture → Investigate → Enforce**
-(findings + remediation together under Scan). Screenshots are the same UI as
-the [live demo](https://demo.agent-bom.com) (logo in app nav). Capture notes:
-[docs/CAPTURE.md](docs/CAPTURE.md).
-
-### Scan — findings and remediation
-
-| Findings queue | Remediation |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, reachable agents, fixes, and review actions" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Prioritized remediation with risk reduction, ownership, and verification" width="430" /> |
-
-### Connect — sources and new scan
-
-| Connections | New scan |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/cloud-accounts-live.png" alt="Connections hub across cloud, code, AI, and data sources" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/new-scan-live.png" alt="New Scan workspace with collector plan and read-only boundary" width="430" /> |
-
-### Posture — risk overview
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture grade, findings, and operations" width="820" />
-</p>
-
-### Investigate — lineage, mesh, context
-
-Three graph lenses tell different stories: package-level lineage, multi-agent
-mesh overlap, and lateral context — not three copies of the same CVE chain.
-
-| Lineage (package hop) | Agent mesh (shared MCP) |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Lineage graph focused on developer-copilot, GitHub MCP, next package version, and DEMO-VULN finding with labeled edges" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh showing developer-copilot and sre-runbook-agent converging on shared filesystem MCP with relationship labels" width="430" /> |
-| *Investigation drilldown: agent → MCP → `next@` → critical finding.* | *Two agents, one shared server — tools and credentials in the same frame.* |
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="Context map with path focus off: repo-write tool, GitHub credential, MCP servers, and agent lateral links" width="820" />
-</p>
-
-<p align="center"><em>Context map: neighborhood topology (tools, creds, servers) — not the same hero CVE strip as lineage.</em></p>
+AppSec and GRC remain separate workflows: findings and reachability are not
+presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
 <details>
-<summary><b>Attack path</b> — prioritized path with export/handoff chrome</summary>
+<summary><b>Product gallery</b></summary>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Prioritized attack path connecting identity, agent, MCP server, package, and critical finding" width="820" />
-</p>
+The gallery uses deterministic sample data, visibly labeled in the UI. It is
+product-state proof, not customer or advisory evidence.
 
-Path view is a single-row hop strip (scroll horizontally on long chains).
+| Overview | Findings |
+|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture, finding, coverage, and operations summaries" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, evidence, and next actions" width="430" /> |
+
+| Investigation | Remediation |
+|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with provenance-aware synthetic graph evidence" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Compact prioritized remediation workflow" width="430" /> |
+
+| Cloud and environment lineage | Agent mesh |
+|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Scoped environment lineage with interactive graph controls" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent and MCP server relationships with labeled edges" width="430" /> |
+
+[Capture protocol](docs/CAPTURE.md)
 
 </details>
 
-### Enforce — runtime gateway
+## Self-host
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway KPI rollup and tool-call feed" width="820" />
-</p>
-
-<details>
-<summary><b>CLI walkthrough</b> — 0.98.0 console demo</summary>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo showing inventory, findings, remediation, and package gate" width="820" />
-</p>
-
-In the terminal the brand is the text wordmark (`agent-bom`), not the SVG logo.
-Seeded `requests` typosquat produces an expected non-zero security-gate exit —
-a demonstrated finding, not a failed recording.
-
-</details>
-
-## Deploy & self-host
-
-You run the control plane in your own boundary (no managed public SaaS in this
-repo yet):
+Start the loopback control plane:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
-docker compose -f docker-compose.pilot.yml up -d
-# Dashboard -> http://localhost:3000
+pip install 'agent-bom[ui]'
+agent-bom serve
 ```
 
-Pilot compose binds `127.0.0.1` with loopback CORS. Before sharing a link, use
-`docker-compose.platform.yml` or [docs/HOSTED_POC.md](docs/HOSTED_POC.md).
+For a shared deployment, use the documented Docker or Helm path and configure
+real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 
 | Target | Start here |
 |---|---|
-| Docker Compose | [pilot compose](deploy/docker-compose.pilot.yml) |
-| Helm / Kubernetes | [chart](deploy/helm/agent-bom) — `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.98.0` |
+| Docker Compose | [Pilot compose](deploy/docker-compose.pilot.yml) |
+| Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.99.0` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
-| CloudFormation | [templates](deploy/cloudformation) |
-| Snowflake SPCS | [install guide](docs/snowflake-native-app/INSTALL.md) |
+| Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
 
-Guides: [Deploy anywhere](docs/DEPLOY_PLATFORM.md) ·
-[deployment overview](site-docs/deployment/overview.md) ·
-[HOSTED_POC](docs/HOSTED_POC.md).
+> Examples target `v0.99.0`; confirm release availability before copying an
+> exact pin. Otherwise, use the latest version shown on PyPI.
 
-<details>
-<summary><b>Surfaces and entry points</b></summary>
-
-| Need | First action | Artifact |
-|---|---|---|
-| Scan repo / image / agent config | `agent-bom scan .` or [GitHub Action](https://github.com/marketplace/actions/agent-bom) | JSON, SARIF, SBOM, HTML |
-| Cloud / data estate | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
-| Team posture UI | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
-| MCP tools for agents | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict MCP tool responses |
-| Skills playbooks | [docs/skills/](docs/skills/) · OpenClaw / Cortex wrappers under `integrations/` | first command → findings / SBOM |
-| Runtime tool governance | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | allow/warn/block audit |
-| Audit package | `agent-bom scan . -f sarif -o findings.sarif` | SARIF, CycloneDX, SPDX, bundles |
-
-Also: `agent-bom graph`, `agent-bom remediate -p .`, CI pin
-`uses: msaad00/agent-bom@v0.98.0`. Maps: [CLI](docs/CLI_MAP.md) ·
-[start here](docs/START_HERE.md) · [product map](docs/PRODUCT_MAP.md).
-
-</details>
+[Deployment overview](site-docs/deployment/overview.md) ·
+[Enterprise configuration](docs/ENTERPRISE.md) ·
+[Cloud connections](docs/CLOUD_CONNECT.md)
 
 <details>
-<summary><b>Auth, connectors, and architecture</b></summary>
+<summary><b>Advanced integrations and runtime entry points</b></summary>
 
-**Control plane:** connect once; later jobs use the stored connection reference.
-Humans: OAuth / OIDC / SAML (+ Snowflake OAuth PKCE) and SCIM. Agents/CI: scoped
-API keys. Secrets are write-only (encrypted at rest, never read back). Non-loopback
-deploys terminate TLS at the edge; API/UI stay on loopback or a private network.
-
-**Cloud connectors** (opt-in, default-off, no secret values read):
-
-| Cloud | Enable | Scan |
+| Need | First action | Artifact or next step |
 |---|---|---|
-| AWS | `AGENT_BOM_AWS_INVENTORY=1` | `agent-bom cloud aws` |
-| Azure | `AGENT_BOM_AZURE_INVENTORY=1` | `agent-bom cloud azure` |
-| GCP | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
-| Snowflake | SSO or key-pair | `pip install 'agent-bom[snowflake]'` then `agent-bom scan --snowflake` |
+| GitHub CI | `uses: msaad00/agent-bom@v0.99.0` | SARIF, PR summary, and a policy exit code |
+| Cloud evidence | `agent-bom connect aws` | Stored connection reference; run scans from the control plane |
+| Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
+| Agent interface | `agent-bom mcp server` | 77 MCP tools, 6 resources, and 8 workflow prompts |
+| Agent distribution | [Smithery manifest](integrations/smithery.yaml) | Registry-specific installation metadata |
 
-[CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md) · [DATA_SOURCES.md](docs/DATA_SOURCES.md) ·
-[ENTERPRISE.md](docs/ENTERPRISE.md).
-
-**Accuracy:** match tiers
-`distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`.
-End users do not need an NVD API key; `NVD_API_KEY` is an optional operator
-freshness knob. MCP server mode exposes 77 MCP tools, 6 resources, and 8 workflow prompts
-over strict arguments. Agent distribution includes a committed
-[Smithery manifest](integrations/smithery.yaml); external catalog liveness is
-verified separately. Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
-[vulnerability matching](docs/VULNERABILITY_MATCHING.md).
+The CLI, Docker, API, Helm chart, MCP server, gateway, and SDK are distribution
+surfaces of the same product. EKS remains a deployment profile; Snowflake and
+Snowpark remain connector/runtime integrations rather than hosted-core
+dependencies.
 
 </details>
 
 ## Trust
 
-- Read-only discovery by default; no mandatory telemetry
-- Credential values redacted; env names kept for explainable exposure paths
-- Exports: JSON, SARIF, CycloneDX, SPDX, Parquet, CSV, Markdown, HTML, PDF, compliance bundles
-- Tenant scope, auth boundaries, and audit evidence on API/runtime paths
+- Read-only discovery by default; runtime write decisions are separate and explicit.
+- Credentials are write-only where stored, encrypted at rest, and never returned by API responses.
+- API and control-plane routes are tenant scoped and auth protected outside explicit local mode.
+- Missing evidence is shown as unavailable or partial, never converted into a factual zero.
+- Public examples and screenshots use deterministic synthetic identifiers only.
 
-[Threat model](docs/THREAT_MODEL.md) · [Pentest readiness](docs/PENTEST_READINESS.md) ·
-[Python client](docs/PYTHON_API.md) · [Go client](sdks/go/README.md) ·
+[Threat model](docs/THREAT_MODEL.md) ·
 [Release verification](docs/RELEASE_VERIFICATION.md) ·
+[Security policy](SECURITY.md) ·
 [MCP security model](docs/MCP_SECURITY_MODEL.md)
 
 ## Contributing
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the
-[open issues](https://github.com/msaad00/agent-bom/issues). Community chat:
-[Discord](https://discord.gg/3YmYPqKZh5).
+[open issues](https://github.com/msaad00/agent-bom/issues).
 
-License: Apache-2.0.
+Apache-2.0 licensed.

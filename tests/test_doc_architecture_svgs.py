@@ -8,7 +8,6 @@ from pathlib import Path
 
 from scripts.generate_doc_architecture_svgs import (
     MCP_TOOL_COUNT,
-    PERSONA_LANES,
     REST_OPERATION_COUNT,
     _audit_github_safe,
     _audit_layout,
@@ -26,10 +25,17 @@ def _readme_persona_rows() -> list[list[str]]:
     """Return the ``## Who it is for`` table body rows as trimmed cell lists."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     section = readme.split("## Who it is for", 1)[1].split("\n## ", 1)[0]
+    table_lines: list[str] = []
+    in_table = False
+    for line in section.splitlines():
+        if line.strip().startswith("|"):
+            in_table = True
+            table_lines.append(line)
+        elif in_table:
+            break
     rows = [
         [cell.strip() for cell in line.strip().strip("|").split("|")]
-        for line in section.splitlines()
-        if line.strip().startswith("|")
+        for line in table_lines
     ]
     # Drop the header row and the |---|---|---| separator.
     return rows[2:]
@@ -69,24 +75,23 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert _audit_layout(svg) == []
 
 
-def test_persona_lanes_are_the_single_source_for_image_and_table() -> None:
-    """The band, the README table under it, and the alt text name the same five."""
-    titles = [lane.title for lane in PERSONA_LANES]
-    assert len(titles) == 5
-
-    assert [row[0] for row in _readme_persona_rows()] == titles
+def test_readme_uses_a_compact_role_table_instead_of_persona_artwork() -> None:
+    """Public onboarding covers core workflows without a large persona graphic."""
+    titles = [row[0] for row in _readme_persona_rows()]
+    for title in (
+        "Local developers",
+        "AppSec",
+        "Security engineers",
+        "Platform / SRE",
+        "GRC / audit",
+        "Leadership / CISO",
+        "AI / MCP owners",
+    ):
+        assert title in titles
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    alt = re.search(r'alt="(agent-bom personas[^"]*)"', readme)
-    assert alt is not None, "persona image is missing its alt text"
-    for title in titles:
-        assert title in alt.group(1), f"{title} missing from persona alt text"
-
-    for theme in ("light", "dark"):
-        svg = persona_value(theme)
-        for title in titles:
-            assert title in svg, f"{title} missing from the {theme} persona band"
-
+    assert "persona-value-dark.svg" not in readme
+    assert "persona-value-light.svg" not in readme
 
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:
     """Every persona row gives a literal first command, not a noun phrase."""

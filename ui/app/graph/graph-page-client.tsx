@@ -89,6 +89,7 @@ import {
   changeKindForNode,
   CHANGE_KIND_META,
   CONTROLS_CLASS,
+  countVisiblePathHops,
   graphNodeDisplayLabels,
   legendItemsForVisibleGraph,
   MINIMAP_BG,
@@ -1479,6 +1480,15 @@ function GraphPageInner() {
       ),
     },
   );
+  const selectedEvidenceHopCount = selectedAttackPath
+    ? Math.max(0, selectedAttackPath.hops.length - 1)
+    : 0;
+  const selectedVisibleHopCount = selectedAttackPath
+    ? countVisiblePathHops(
+        selectedAttackPath.hops,
+        layoutNodes.map((node) => node.id),
+      )
+    : 0;
 
   // Focus mode (#2257). The "active" focus is whichever the operator
   // pinned (click) — falling back to whatever is hovered. Pinning
@@ -3088,9 +3098,11 @@ function GraphPageInner() {
                 />
                 <PathStat
                   label="Hop count"
-                  value={String(
-                    Math.max(0, selectedAttackPath.hops.length - 1),
-                  )}
+                  value={
+                    selectedVisibleHopCount === selectedEvidenceHopCount
+                      ? `${selectedEvidenceHopCount} evidence`
+                      : `${selectedEvidenceHopCount} evidence · ${selectedVisibleHopCount} visible`
+                  }
                 />
                 <PathStat
                   label="Credential exposure"
@@ -3157,7 +3169,10 @@ function GraphPageInner() {
               <span>
                 Focused attack path · risk{" "}
                 {selectedAttackPath.composite_risk.toFixed(1)} ·{" "}
-                {Math.max(0, selectedAttackPath.hops.length - 1)} hops
+                {selectedEvidenceHopCount} evidence hops
+                {selectedVisibleHopCount === selectedEvidenceHopCount
+                  ? ""
+                  : ` · ${selectedVisibleHopCount} visible in scope`}
               </span>
               <div className="flex items-center gap-2">
                 <button

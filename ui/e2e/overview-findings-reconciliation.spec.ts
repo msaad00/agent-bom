@@ -221,6 +221,18 @@ test("overview and current-state findings remain readable without mobile overflo
 
   await page.getByRole("link", { name: /^High 26/i }).click();
   await expect(page.getByText("Current state · Last 90 days")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const overflow = await page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth;
+    return Array.from(document.querySelectorAll<HTMLElement>("body *"))
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        className: element.className,
+        left: Math.round(element.getBoundingClientRect().left),
+        right: Math.round(element.getBoundingClientRect().right),
+      }))
+      .filter(({ left, right }) => left < -1 || right > viewportWidth + 1)
+      .slice(0, 10);
+  });
+  expect(overflow, "findings mobile layout contains elements outside the viewport").toEqual([]);
   await capture(page, testInfo, "findings-current-state-mobile.png");
 });

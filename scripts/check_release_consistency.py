@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
@@ -100,11 +101,6 @@ MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
         ROOT / "docs" / "PUBLISHING.md",
         re.compile(r"(?:--version \"|git tag v|git push origin v)([0-9]+\.[0-9]+\.[0-9]+)"),
         "publishing example version",
-    ),
-    (
-        ROOT / "DOCKER_HUB_README.md",
-        re.compile(r"\| `([0-9]+\.[0-9]+\.[0-9]+)` \| Current stable version \(pinned\) \|"),
-        "Docker Hub stable tag",
     ),
     (
         ROOT / "site-docs" / "deployment" / "airgapped-image-bundle.md",
@@ -224,6 +220,31 @@ def _assert_canonical_tagline(description: str) -> None:
             _fail(f"{path.relative_to(ROOT)} is missing the canonical tagline: {CANONICAL_TAGLINE!r}")
 
 
+def _requires_published_storefront(_version: str, environment: dict[str, str] | None = None) -> bool:
+    """Return whether this run explicitly validates a finalized storefront file."""
+
+    env = os.environ if environment is None else environment
+    return env.get("AGENT_BOM_RELEASE_FINALIZE", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _is_matching_release_tag(version: str, environment: dict[str, str] | None = None) -> bool:
+    env = os.environ if environment is None else environment
+    return env.get("GITHUB_REF_TYPE") == "tag" and env.get("GITHUB_REF_NAME") == f"v{version}"
+
+
+def _assert_docker_storefront_state(version: str) -> None:
+    docker_readme = Path(os.environ.get("AGENT_BOM_DOCKER_README_PATH", str(DOCKER_README)))
+    text = docker_readme.read_text()
+    stable = f"| `{version}` | Current stable version (pinned) |"
+    neutral = f"| `{version}` | Version used by the examples below; verify registry availability before pinning |"
+    if _requires_published_storefront(version):
+        if stable not in text:
+            _fail(f"Docker storefront README must mark {version} as current stable in finalize context")
+        return
+    if neutral not in text:
+        _fail(f"DOCKER_HUB_README.md must describe {version} with lifecycle-neutral availability wording")
+
+
 def _assert_product_screenshots_current(expected_version: str) -> None:
     if not PRODUCT_SCREENSHOTS.exists():
         _fail("docs/images/product-screenshots.json is missing from release surface")
@@ -284,8 +305,6 @@ def main() -> int:
     required_github_markers = [
         "img.shields.io/github/actions/workflow/status",
         "img.shields.io/pypi/v/agent-bom",
-        "img.shields.io/docker/pulls/agentbom/agent-bom",
-        "img.shields.io/ossf-scorecard",
         "docs/images/demo-latest.gif",
     ]
     for marker in required_github_markers:
@@ -420,8 +439,7 @@ def main() -> int:
     glama_root = (ROOT / "glama.json").read_text()
     if '"dockerfile": "integrations/glama/Dockerfile"' not in glama_root:
         _fail("glama.json must point at integrations/glama/Dockerfile")
-    if f"`{version}` | Current stable version (pinned)" not in DOCKER_README.read_text():
-        _fail(f"DOCKER_HUB_README.md must mark {version} as the current stable version")
+    _assert_docker_storefront_state(version)
     if f"ARG VERSION={version}" not in TOP_DOCKERFILE.read_text():
         _fail(f"Dockerfile ARG VERSION must be {version}")
     for path, image_pattern in MANAGED_IMAGE_REFS:

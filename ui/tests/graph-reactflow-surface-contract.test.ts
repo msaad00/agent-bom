@@ -68,6 +68,12 @@ describe("interactive React Flow surface contract", () => {
     expect(content).toContain('localMode={session?.recommended_ui_mode === "no_auth"}');
   });
 
+  it("bounds the agent lifecycle canvas inside the application shell", () => {
+    const content = source("app/agents/page.tsx");
+    expect(content).toContain('className="h-[calc(100dvh-6rem)] w-full');
+    expect(content).not.toContain('className="h-screen w-screen');
+  });
+
   it.each([
     "app/graph/graph-page-client.tsx",
     "app/mesh/page.tsx",

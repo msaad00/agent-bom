@@ -34,6 +34,11 @@ describe("product proof capture contract", () => {
     expect(source).toContain('request.resourceType() !== "fetch"');
     expect(source).toContain('requestUrl.searchParams.has("_rsc")');
     expect(source).toContain("successfulApiPaths.has(expectedPath)");
+    expect(source).toContain("assertNoHorizontalOverflow");
+    expect(source).toContain('execFileAsync("git", ["status", "--porcelain"]');
+    expect(source).toContain("Release product proof requires a clean committed source tree");
+    expect(source).toContain("CAPTURE_BASE_URL is not allowed for release product proof");
+    expect(source).toContain("screenshotSha256");
     expect(source).not.toContain("actualPath.startsWith(expectedPath)");
     expect(source).toContain("await browser?.close()");
     expect(source).toContain("await stopServer(server)");
@@ -45,6 +50,15 @@ describe("product proof capture contract", () => {
     expect(graphPage).toContain("if (captureMode)");
     expect(graphPage).toContain('nextParams.set("capture", "1")');
     expect(graphPage).toContain('history.replaceState(history.state, "", url)');
+  });
+
+  it("captures persisted pipeline telemetry and the agent lifecycle surface", () => {
+    expect(source).toContain('path: "jobs-pipeline-live.png"');
+    expect(source).toContain('path: "agent-lifecycle-live.png"');
+    expect(source).toContain('step_id: "discovery"');
+    expect(source).toContain('step_id: "output"');
+    expect(source).toContain('page.route("**/v1/agents/developer-copilot/lifecycle"');
+    expect(source).toContain("/6\\/6 stages complete/i");
   });
 
   it("filters audit proof server-side and waits for identity lifecycle rows", () => {

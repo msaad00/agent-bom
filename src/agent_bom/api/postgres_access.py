@@ -20,6 +20,41 @@ from .postgres_common import (
     set_current_tenant,
 )
 
+_INSERT_API_KEY_SQL = """INSERT INTO api_keys
+    (
+      key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+      created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
+      scim_subject_id, owner, principal_id, revoked
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+"""
+
+_UPSERT_API_KEY_SQL = """INSERT INTO api_keys
+    (
+      key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+      created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
+      scim_subject_id, owner, principal_id, revoked
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+    ON CONFLICT (key_id) DO UPDATE SET
+      key_hash = EXCLUDED.key_hash,
+      key_salt = EXCLUDED.key_salt,
+      key_prefix = EXCLUDED.key_prefix,
+      name = EXCLUDED.name,
+      role = EXCLUDED.role,
+      team_id = EXCLUDED.team_id,
+      scopes = EXCLUDED.scopes,
+      created_at = EXCLUDED.created_at,
+      expires_at = EXCLUDED.expires_at,
+      revoked_at = EXCLUDED.revoked_at,
+      rotation_overlap_until = EXCLUDED.rotation_overlap_until,
+      replacement_key_id = EXCLUDED.replacement_key_id,
+      scim_subject_id = EXCLUDED.scim_subject_id,
+      owner = EXCLUDED.owner,
+      principal_id = EXCLUDED.principal_id,
+      revoked = FALSE
+"""
+
 
 class PostgresKeyStore:
     """PostgreSQL-backed API key storage with tenant RLS."""
@@ -145,33 +180,9 @@ class PostgresKeyStore:
 
     @staticmethod
     def _insert_key(conn: Connection, key: ApiKey, *, update_existing: bool) -> None:
-        conflict_clause = """
-                   ON CONFLICT (key_id) DO UPDATE SET
-                     key_hash = EXCLUDED.key_hash,
-                     key_salt = EXCLUDED.key_salt,
-                     key_prefix = EXCLUDED.key_prefix,
-                     name = EXCLUDED.name,
-                     role = EXCLUDED.role,
-                     team_id = EXCLUDED.team_id,
-                     scopes = EXCLUDED.scopes,
-                     created_at = EXCLUDED.created_at,
-                     expires_at = EXCLUDED.expires_at,
-                     revoked_at = EXCLUDED.revoked_at,
-                     rotation_overlap_until = EXCLUDED.rotation_overlap_until,
-                     replacement_key_id = EXCLUDED.replacement_key_id,
-                     scim_subject_id = EXCLUDED.scim_subject_id,
-                     owner = EXCLUDED.owner,
-                     principal_id = EXCLUDED.principal_id,
-                     revoked = FALSE""" if update_existing else ""
+        statement = _UPSERT_API_KEY_SQL if update_existing else _INSERT_API_KEY_SQL
         conn.execute(
-            """INSERT INTO api_keys
-                   (
-                     key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
-                     created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id,
-                     scim_subject_id, owner, principal_id, revoked
-                   )
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
-                   """ + conflict_clause,
+            statement,
             (
                 key.key_id,
                 key.key_hash,

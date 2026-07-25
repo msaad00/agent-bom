@@ -89,7 +89,7 @@ jobs:
           role-to-assume: ${{ secrets.DEMO_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
           mask-aws-account-id: true
-          role-duration-seconds: 900
+          role-duration-seconds: 3600
           unset-current-credentials: true
 
       - name: Redeploy over SSM Run Command

@@ -354,7 +354,7 @@ def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
     assert "Sending redeploy command to ${DEMO_INSTANCE_ID}" not in workflow
     assert "SSM CommandId: ${command_id}" not in workflow
     assert "mask-aws-account-id: true" in workflow
-    assert "role-duration-seconds: 900" in workflow
+    assert "role-duration-seconds: 3600" in workflow
     assert "unset-current-credentials: true" in workflow
     # Static preflight precedes build and in-place promotion.
     assert workflow.index("hosted_poc_preflight.py --write-secret") < workflow.index("compose build")

@@ -14,12 +14,15 @@ export type IssueSeverityMatrix = Record<IssueType, SeverityBucket> & {
   openTotal: number;
 };
 
-const MISCONFIG_PATTERN =
-  /\bcis(?:_| fail| fail)?\b|misconfig|cloud_cis|terraform|iac\b|sast\b|policy|compliance|container|sbom|skill_risk|prompt_security|injection|tool_drift|mcp_blocklist|license\b/i;
-const SECRET_PATTERN =
-  /\bsecret(?:_scan)?\b|credential_exposure|hardcoded|api[_-]?key|private[_-]?key|token leak|pii\b/i;
-const IDENTITY_PATTERN =
-  /\bidentity\b|\biam\b|nhi\b|service[_-]?account|jit[_-]?grant|non[_-]?human|role[_-]?binding/i;
+const VULNERABILITY_TYPES = new Set(["CVE", "MALICIOUS_PACKAGE"]);
+const MISCONFIGURATION_TYPES = new Set([
+  "CIS_FAIL",
+  "CIS_ERROR",
+  "CLOUD_BEST_PRACTICE_FAIL",
+  "CLOUD_BEST_PRACTICE_ERROR",
+]);
+const SECRET_TYPES = new Set(["CREDENTIAL_EXPOSURE"]);
+const IDENTITY_TYPES = new Set(["CIEM_OVER_PRIVILEGE"]);
 
 export type IssueTypeSignals = {
   id: string;
@@ -31,40 +34,33 @@ export type IssueTypeSignals = {
   exposed_credentials?: string[] | undefined;
 };
 
-function signalBlob(signals: IssueTypeSignals): string {
-  return [
-    signals.id,
-    signals.impact_category ?? "",
-    signals.finding_type ?? "",
-    ...(signals.sources ?? []),
-    ...(signals.advisory_sources ?? []),
-    ...(signals.framework_tags ?? []),
-  ]
-    .join(" ")
-    .toLowerCase();
-}
-
 /** Classify any finding-like signal into vuln / misconfig / secret / identity. */
-export function classifyIssueTypeFromSignals(signals: IssueTypeSignals): IssueType {
-  const blob = signalBlob(signals);
+export function classifyIssueTypeFromSignals(signals: IssueTypeSignals): IssueType | null {
+  const findingType = (signals.finding_type ?? "").trim().toUpperCase();
+  const sources = [...(signals.sources ?? []), ...(signals.advisory_sources ?? [])]
+    .map((source) => source.trim().toUpperCase());
   const creds = signals.exposed_credentials ?? [];
 
-  if (SECRET_PATTERN.test(blob) || creds.length > 0) {
+  if (SECRET_TYPES.has(findingType) || sources.includes("SECRET_SCAN") || creds.length > 0) {
     return "secret";
   }
-  if (IDENTITY_PATTERN.test(blob)) {
+  if (IDENTITY_TYPES.has(findingType)) {
     return "identity";
   }
-  if (MISCONFIG_PATTERN.test(blob)) {
+  if (
+    MISCONFIGURATION_TYPES.has(findingType) ||
+    sources.includes("CLOUD_CIS") ||
+    sources.includes("CLOUD_SECURITY")
+  ) {
     return "misconfiguration";
   }
-  if (/^cve-|^ghsa-|^malicious_package/i.test(signals.id.trim())) {
+  if (VULNERABILITY_TYPES.has(findingType) || /^(cve-|ghsa-)/i.test(signals.id.trim())) {
     return "vulnerability";
   }
-  return "vulnerability";
+  return null;
 }
 
-export function classifyFindingIssueType(vuln: EnrichedVuln): IssueType {
+export function classifyFindingIssueType(vuln: EnrichedVuln): IssueType | null {
   return classifyIssueTypeFromSignals({
     id: vuln.id,
     impact_category: vuln.impact_category,
@@ -138,6 +134,7 @@ export function buildIssueSeverityMatrix(
     const band = normalizeSeverityBand(item.severity);
     if (!band) continue;
     const issue = classifyIssueTypeFromSignals(item);
+    if (!issue) continue;
     matrix[issue][band] += 1;
     matrix.totals[band] += 1;
     matrix.byType[issue] += 1;

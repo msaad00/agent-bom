@@ -9706,7 +9706,7 @@ paths:
       - exports
   /v1/findings:
     get:
-      description: "List vulnerability findings aggregated from completed scan results.\n\
+      description: "List unified findings aggregated from completed scan results.\n\
         \nThe heavy work \u2014 dedup/sort of in-memory scan findings plus synchronous\n\
         store reads \u2014 runs in a worker thread so a single deep read cannot block\n\
         the event loop and freeze unrelated requests (e.g. ``/health``) under load.\n\
@@ -9836,6 +9836,19 @@ paths:
           maxLength: 16
           title: Status
           type: string
+      - in: query
+        name: finding_class
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - vulnerability
+            - misconfiguration
+            - secret
+            - identity
+            type: string
+          - type: 'null'
+          title: Finding Class
       responses:
         '200':
           content:

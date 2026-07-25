@@ -208,6 +208,19 @@ describe("FindingsPage", () => {
     expect(screen.getByTestId("findings-filters-toggle")).not.toHaveTextContent("(1)");
   });
 
+  it("sends the selected issue class to the paginated findings API", async () => {
+    render(<FindingsPage />);
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Misconfigurations" }));
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ findingClass: "misconfiguration" }),
+      ),
+    );
+  });
+
   it("defaults the time window to 90 days and can widen to all history (#4009)", async () => {
     apiMock.listFindings.mockResolvedValue({
       findings: [],

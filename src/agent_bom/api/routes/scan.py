@@ -79,6 +79,7 @@ from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retain
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.finding_scope import FindingClass
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -1662,6 +1663,7 @@ def _canonical_scope_filters(
     account: str | None,
     environment: str | None,
     domain: str | None,
+    finding_class: str | None = None,
 ) -> dict[str, str]:
     """Normalize the optional scope/domain filters into an active-filter map.
 
@@ -1684,6 +1686,8 @@ def _canonical_scope_filters(
 
         key = domain.strip().lower()
         filters["domain"] = _LEGACY_DOMAIN_ALIASES.get(key, key)
+    if finding_class:
+        filters["finding_class"] = finding_class
     return filters
 
 
@@ -1931,8 +1935,9 @@ async def list_findings(
     domain: Annotated[str | None, Query(max_length=32)] = None,
     window_days: Annotated[int | None, Query(ge=0, le=3650)] = None,
     status: Annotated[str, Query(max_length=16)] = _DEFAULT_FINDING_STATUS,
+    finding_class: FindingClass | None = None,
 ) -> dict:
-    """List vulnerability findings aggregated from completed scan results.
+    """List unified findings aggregated from completed scan results.
 
     The heavy work — dedup/sort of in-memory scan findings plus synchronous
     store reads — runs in a worker thread so a single deep read cannot block
@@ -1972,6 +1977,7 @@ async def list_findings(
                 domain,
                 window_days,
                 status,
+                finding_class,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -1996,6 +2002,7 @@ def _list_findings_impl(
     domain: str | None = None,
     window_days: int | None = None,
     status: str = _DEFAULT_FINDING_STATUS,
+    finding_class: str | None = None,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -2119,7 +2126,7 @@ def _list_findings_impl(
     # returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings
 
-    scope_filters = _canonical_scope_filters(provider, account, environment, domain)
+    scope_filters = _canonical_scope_filters(provider, account, environment, domain, finding_class)
 
     store = get_compliance_hub_store()
     bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
@@ -2344,6 +2351,7 @@ def _list_findings_impl(
     # Echo the applied read-window so clients label counts honestly as
     # "last Nd" rather than "all" (#4009).
     envelope["window"] = time_window.window_metadata(resolved_window)
+    envelope["filters"] = {"finding_class": finding_class} if finding_class else {}
     return envelope
 
 

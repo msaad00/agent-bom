@@ -19,7 +19,7 @@ and ingest converters can import them without a cycle:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.finding import FindingSource, FindingType
@@ -38,6 +38,24 @@ SECURITY_DOMAIN_LABELS: dict[str, str] = {
     "dspm": "DSPM",
     "aispm": "AISPM",
 }
+
+FindingClass = Literal["vulnerability", "misconfiguration", "secret", "identity"]
+FINDING_CLASSES: tuple[FindingClass, ...] = (
+    "vulnerability",
+    "misconfiguration",
+    "secret",
+    "identity",
+)
+
+_VULNERABILITY_TYPES = {"CVE", "MALICIOUS_PACKAGE"}
+_MISCONFIGURATION_TYPES = {
+    "CIS_FAIL",
+    "CIS_ERROR",
+    "CLOUD_BEST_PRACTICE_FAIL",
+    "CLOUD_BEST_PRACTICE_ERROR",
+}
+_SECRET_TYPES = {"CREDENTIAL_EXPOSURE"}
+_IDENTITY_TYPES = {"CIEM_OVER_PRIVILEGE"}
 
 # Back-compat: rows persisted under the pre-rename ``appsec_sca`` key still
 # resolve to the ``aspm`` lane so historical findings are never dropped.
@@ -316,6 +334,28 @@ def lenses_for_row(row: dict) -> frozenset[str]:
     return frozenset(lenses | security_lenses_for(source, ftype, evidence))
 
 
+def finding_class_for_row(row: Mapping[str, object]) -> Optional[FindingClass]:
+    """Return the user-facing issue class for a serialized finding.
+
+    Classification is deliberately conservative. Only explicit finding types,
+    sources, or vulnerability identifiers map to a class; an unknown finding
+    remains unclassified instead of silently appearing as a vulnerability.
+    """
+    finding_type = str(row.get("finding_type") or "").strip().upper()
+    source = str(row.get("source") or "").strip().upper()
+    identifier = str(row.get("cve_id") or row.get("vulnerability_id") or "").strip().upper()
+
+    if finding_type in _SECRET_TYPES or source == "SECRET_SCAN":
+        return "secret"
+    if finding_type in _IDENTITY_TYPES:
+        return "identity"
+    if finding_type in _MISCONFIGURATION_TYPES or source in {"CLOUD_CIS", "CLOUD_SECURITY"}:
+        return "misconfiguration"
+    if finding_type in _VULNERABILITY_TYPES or identifier.startswith(("CVE-", "GHSA-")):
+        return "vulnerability"
+    return None
+
+
 def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
     """Return True when a finding row matches every active scope filter.
 
@@ -339,4 +379,7 @@ def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
         lenses = lenses_for_row(row) or ({domain_for_row(row) or ""} if domain_for_row(row) else set())
         if wanted_domain not in lenses:
             return False
+    wanted_class = filters.get("finding_class")
+    if wanted_class is not None and finding_class_for_row(row) != wanted_class:
+        return False
     return True

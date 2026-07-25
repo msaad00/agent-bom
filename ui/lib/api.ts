@@ -1380,6 +1380,7 @@ export const api = {
     account?: string;
     environment?: string;
     domain?: string;
+    findingClass?: "vulnerability" | "misconfiguration" | "secret" | "identity";
     // Default read-window in days (#4009). Omit for the server default (~90d);
     // pass 0 to widen to all retained history.
     windowDays?: number;
@@ -1396,6 +1397,7 @@ export const api = {
     if (filters?.account) params.set("account", filters.account);
     if (filters?.environment) params.set("environment", filters.environment);
     if (filters?.domain) params.set("domain", filters.domain);
+    if (filters?.findingClass) params.set("finding_class", filters.findingClass);
     if (filters?.windowDays != null) params.set("window_days", String(filters.windowDays));
     const qs = params.toString();
     return get<FindingsResponse>(`/v1/findings${qs ? `?${qs}` : ""}`);

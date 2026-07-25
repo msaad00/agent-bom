@@ -176,6 +176,20 @@ describe('api.listJobs', () => {
   })
 })
 
+describe('api.listFindings', () => {
+  it('serializes the canonical finding class query', async () => {
+    const fetchMock = mockFetch({ findings: [], total: 0 })
+    global.fetch = fetchMock
+
+    await api.listFindings({ findingClass: 'misconfiguration', limit: 25 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/findings?limit=25&finding_class=misconfiguration',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+})
+
 describe('api.getGraphImpact', () => {
   it('requests the blast-radius endpoint with node, scan, and depth', async () => {
     const payload = {

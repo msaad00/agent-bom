@@ -127,6 +127,33 @@ def test_no_scope_filter_is_backward_compatible() -> None:
     assert len(resp.json()["findings"]) == 3
 
 
+def test_filter_by_finding_class_precedes_pagination_and_echoes_filter() -> None:
+    _seed_lens_findings()
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/findings?finding_class=vulnerability&limit=1",
+        headers=_AUTH,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["findings"]) == 1
+    assert payload["findings"][0]["finding_type"] == "CVE"
+    assert payload["filters"] == {"finding_class": "vulnerability"}
+    assert payload["total"] is None
+    assert payload["total_approximate"] is True
+
+
+def test_invalid_finding_class_is_rejected() -> None:
+    _seed_lens_findings()
+    response = TestClient(app).get(
+        "/v1/findings?finding_class=not-a-class",
+        headers=_AUTH,
+    )
+    assert response.status_code == 422
+
+
 def _seed_lens_findings() -> None:
     set_job_store(InMemoryJobStore())
     set_compliance_hub_store(InMemoryComplianceHubStore())

@@ -126,6 +126,28 @@ def test_provider_scope_cursor_pages_no_dup_no_drop() -> None:
     assert not any(i.startswith("bulk-gcp") for i in ids)
 
 
+def test_finding_class_cursor_pages_filter_before_pagination() -> None:
+    findings = _bulk_findings()
+    for index, finding in enumerate(findings):
+        finding["finding_type"] = "CVE" if index % 3 == 0 else "CIS_FAIL"
+        finding["source"] = "SBOM" if index % 3 == 0 else "CLOUD_CIS"
+        if index % 3 == 0:
+            finding["cve_id"] = f"CVE-2026-{index:04d}"
+    _seed_sqlite_bulk(findings)
+
+    ids, cursors = _drain(
+        TestClient(app),
+        "/v1/findings?finding_class=misconfiguration",
+        limit=19,
+    )
+
+    expected = {finding["id"] for index, finding in enumerate(findings) if index % 3 != 0}
+    assert len(ids) == len(set(ids))
+    assert set(ids) == expected
+    assert cursors[-1] is None
+    assert all(cursor is not None for cursor in cursors[:-1])
+
+
 def test_scope_cursor_order_matches_full_scan_reference() -> None:
     """(b) The paged filtered order equals an unfiltered full-scan reference
     restricted to the matching subset, and a single big page == the paged union.

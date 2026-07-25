@@ -62,6 +62,10 @@ describe("finding-issue-type", () => {
     expect(matchesIssueTypeFilter(vuln, "secret")).toBe(false);
   });
 
+  it("does not silently classify an unknown signal as a vulnerability", () => {
+    expect(classifyIssueTypeFromSignals({ id: "custom-finding", finding_type: "SAST" })).toBeNull();
+  });
+
   it("builds a severity × issue-type matrix", () => {
     const matrix = buildIssueSeverityMatrix([
       { id: "CVE-1", severity: "critical" },

@@ -128,7 +128,7 @@ test("gateway live feed card renders without overflow at both widths", async ({
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto("/activity");
   await expect(card).toBeVisible();
-  await expect(card.getByText("Gateway activity")).toBeVisible();
+  await expect(card.getByText("Gateway activity", { exact: true })).toBeVisible();
   await expect(card.getByText(/4,485 calls today/)).toBeVisible();
 
   // No row's content extends past the card's right edge.

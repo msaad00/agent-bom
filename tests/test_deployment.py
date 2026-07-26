@@ -610,6 +610,8 @@ def test_publish_registries_manual_repair_resolves_a_published_release():
     assert workflow.count("needs: release") == 3
     assert "GITHUB_REF_NAME" not in workflow
     assert "VERSION=$(grep '^version' pyproject.toml" not in workflow
+    assert "GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}" in workflow
+    assert "GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}" not in workflow
 
 
 def test_refresh_latest_container_keeps_release_code_but_applies_runtime_security_overlay():

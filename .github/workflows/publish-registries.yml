@@ -6,6 +6,7 @@ name: Publish to Registries
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 # Optional vars:
 #   SMITHERY_MCP_URL    — Explicit public, unauthenticated MCP endpoint for Smithery
+# Optional secret:
 #   GLAMA_WEBHOOK_URL   — Glama rebuild webhook (POST JSON: ref, commit, version, dockerfile)
 
 on:
@@ -253,7 +254,7 @@ jobs:
 
       - name: Trigger Glama rebuild
         env:
-          GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}
+          GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
           RELEASE_REF: ${{ needs.release.outputs.release_ref }}
           RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
           VERSION: ${{ needs.release.outputs.version }}

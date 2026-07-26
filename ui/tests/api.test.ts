@@ -32,6 +32,21 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('scan mutation idempotency', () => {
+  it('sends idempotency keys on direct and cloud scan admission', async () => {
+    const fetchMock = mockFetch({ job_id: 'job-1', status: 'pending' })
+    global.fetch = fetchMock
+
+    await api.startScan({ enrich: false })
+    await api.scanCloudConnection('conn-1')
+
+    const [, directOptions] = fetchMock.mock.calls[0]!
+    const [, cloudOptions] = fetchMock.mock.calls[1]!
+    expect(directOptions.headers['Idempotency-Key']).toMatch(/^ui-scan-/)
+    expect(cloudOptions.headers['Idempotency-Key']).toMatch(/^ui-cloud-scan-/)
+  })
+})
+
 describe('api.listJobs', () => {
   it('prefers a same-origin runtime API URL over the build-time env', async () => {
     const oldApiUrl = process.env.NEXT_PUBLIC_API_URL

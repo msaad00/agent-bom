@@ -8,6 +8,7 @@ import { api, type AuthMeResponse } from "@/lib/api";
 const authState = vi.hoisted(() => ({
   capabilities: ["inventory.read", "scan.run"],
   authMethod: "no_auth",
+  managedTrialMode: false,
   role: "analyst",
 }));
 
@@ -19,6 +20,7 @@ vi.mock("@/components/auth-provider", () => ({
       configured_modes: [],
       recommended_ui_mode: authState.authMethod,
       auth_method: authState.authMethod,
+      managed_trial_mode: authState.managedTrialMode,
       subject: null,
       tenant_id: "default",
       role: authState.role,
@@ -89,6 +91,7 @@ describe("ScanForm", () => {
     vi.clearAllMocks();
     authState.capabilities = ["inventory.read", "scan.run"];
     authState.authMethod = "no_auth";
+    authState.managedTrialMode = false;
     authState.role = "analyst";
     vi.spyOn(api, "listCloudConnections").mockResolvedValue({
       schema_version: "cloud.connections.v1",
@@ -234,6 +237,7 @@ describe("ScanForm", () => {
 
   it("intersects role capabilities with the managed-trial route envelope", async () => {
     authState.authMethod = "managed_trial_oidc";
+    authState.managedTrialMode = true;
     const user = userEvent.setup();
     const startScan = vi.spyOn(api, "startScan");
 
@@ -244,6 +248,20 @@ describe("ScanForm", () => {
     expect(screen.getByRole("button", { name: /Start scan/i })).toBeDisabled();
     expect(screen.getByText(/Managed trial scans run from a verified AWS connection/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Start scan/i }));
+    expect(startScan).not.toHaveBeenCalled();
+  });
+
+  it("applies the managed-trial route envelope to a non-OIDC principal", async () => {
+    authState.authMethod = "api_key";
+    authState.managedTrialMode = true;
+    const user = userEvent.setup();
+    const startScan = vi.spyOn(api, "startScan");
+
+    render(<ScanForm initialConnectionId="conn-aws-1" />);
+
+    expect(await screen.findByRole("button", { name: /Run cloud scan/i })).toBeEnabled();
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    expect(screen.getByRole("button", { name: /Start scan/i })).toBeDisabled();
     expect(startScan).not.toHaveBeenCalled();
   });
 

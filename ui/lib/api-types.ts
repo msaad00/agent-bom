@@ -1433,6 +1433,8 @@ export interface AuthMeResponse {
   /** Detected brand of the configured browser-OIDC issuer (okta/entra/google) or null. */
   sso_provider?: string | null | undefined;
   auth_method: string | null;
+  /** True when the server-wide managed-trial route allowlist is active. */
+  managed_trial_mode?: boolean | undefined;
   subject: string | null;
   tenant_id: string;
   role: string | null;

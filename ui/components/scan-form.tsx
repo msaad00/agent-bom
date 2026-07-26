@@ -220,7 +220,9 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
     [sources, selectedSourceId],
   );
   const roleCanRunScans = hasCapability("scan.run");
-  const managedTrialSession = session?.auth_method === "managed_trial_oidc";
+  const managedTrialSession = Boolean(
+    session?.managed_trial_mode || session?.auth_method === "managed_trial_oidc",
+  );
   const routeEnvelopeAllowsScan = !managedTrialSession || scanMode === "connected";
   const canRunCurrentScan = roleCanRunScans && routeEnvelopeAllowsScan;
 
@@ -366,7 +368,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
         <div
           role="tablist"
           aria-label="Scan source"
-          className="flex border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+          className="grid grid-cols-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1 sm:flex"
         >
           {(
             [

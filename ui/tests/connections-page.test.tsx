@@ -33,6 +33,7 @@ const { apiMock, navState, replaceMock, authState } = vi.hoisted(() => ({
   authState: {
     authRequired: true,
     authMethod: "api_key",
+    managedTrialMode: false,
     role: "analyst",
     capabilities: ["inventory.read", "scan.run", "sources.manage", "fleet.manage"],
   },
@@ -64,6 +65,7 @@ vi.mock("@/components/auth-provider", () => ({
       authenticated: true,
       auth_required: authState.authRequired,
       auth_method: authState.authMethod,
+      managed_trial_mode: authState.managedTrialMode,
       tenant_id: "tenant-acme",
       role: authState.role,
     },
@@ -146,6 +148,7 @@ beforeEach(() => {
   replaceMock.mockReset();
   authState.authRequired = true;
   authState.authMethod = "api_key";
+  authState.managedTrialMode = false;
   authState.role = "analyst";
   authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "fleet.manage"];
   apiMock.getPostureCounts.mockResolvedValue({
@@ -235,6 +238,17 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(apiMock.createCloudConnection).not.toHaveBeenCalled();
   });
 
+  it("renders failed inventory reads as unavailable rather than factual zero", async () => {
+    apiMock.listCloudConnections.mockRejectedValue(new Error("Forbidden"));
+    apiMock.listSources.mockRejectedValue(new Error("Forbidden"));
+    apiMock.listSchedules.mockRejectedValue(new Error("Forbidden"));
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(3);
+  });
+
   it("uses explicit capabilities for a self-hosted no-auth contributor", async () => {
     authState.authRequired = false;
     authState.authMethod = "anonymous";
@@ -250,8 +264,24 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(screen.getByRole("dialog", { name: "Add cloud account" })).toBeInTheDocument();
   });
 
+  it("traps wizard focus, closes on Escape, and restores the trigger", async () => {
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    const trigger = screen.getByRole("button", { name: "Add cloud account" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const wizard = screen.getByRole("dialog", { name: "Add cloud account" });
+    expect(wizard).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Add cloud account" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("limits managed-trial connect actions to the AWS account envelope", async () => {
     authState.authMethod = "managed_trial_oidc";
+    authState.managedTrialMode = true;
     authState.role = "analyst";
     authState.capabilities = ["inventory.read", "scan.run", "sources.manage"];
 
@@ -270,6 +300,20 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(within(wizard).getByTestId("wizard-auto-scan-on-create")).toBeDisabled();
     expect(within(wizard).getByTestId("wizard-scan-mode-continuous")).toBeDisabled();
     expect(within(wizard).getByTestId("wizard-all-regions")).toBeDisabled();
+  });
+
+  it("uses the server trial envelope even for an API-key principal", async () => {
+    authState.authMethod = "api_key";
+    authState.managedTrialMode = true;
+    authState.role = "admin";
+    authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "fleet.manage"];
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    expect(screen.getByRole("button", { name: "Connect Amazon Web Services" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Connect Microsoft Azure" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Register Repositories" })).toBeDisabled();
   });
 
   it("reconciles direct connection evidence with an older locked service registry", async () => {
@@ -615,6 +659,30 @@ describe("ConnectionsPage — Connect segment", () => {
     );
   });
 
+  it("hands off the scan-on-create job instead of queueing a duplicate first scan", async () => {
+    apiMock.createCloudConnection.mockResolvedValue({
+      ...CREATED_RECORD,
+      auto_scan_on_create: true,
+      last_scan_id: "auto-job-1",
+    });
+    apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+    const wizard = openAwsWizard();
+    fillAwsDetails(wizard);
+    fireEvent.click(within(wizard).getByTestId("wizard-auto-scan-on-create"));
+    fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() => expect(within(wizard).getByText(/First scan started/)).toBeInTheDocument());
+    expect(within(wizard).queryByRole("button", { name: /Run first scan/ })).not.toBeInTheDocument();
+    expect(within(wizard).getByRole("link", { name: "Track scan" })).toHaveAttribute(
+      "href",
+      "/scan?id=auto-job-1",
+    );
+    expect(apiMock.scanCloudConnection).not.toHaveBeenCalled();
+  });
+
   it("create payload includes scan_mode=continuous when Continuous is checked", async () => {
     apiMock.createCloudConnection.mockResolvedValue({
       ...CREATED_RECORD,
@@ -753,7 +821,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "tenant-acme",
-      connections: [CREATED_RECORD],
+      connections: [{ ...CREATED_RECORD, status: "active" }],
       count: 1,
     });
     apiMock.scanCloudConnection.mockResolvedValue({
@@ -788,7 +856,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     apiMock.listCloudConnections.mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "tenant-acme",
-      connections: [{ ...CREATED_RECORD, provider: "azure" }],
+      connections: [{ ...CREATED_RECORD, provider: "azure", status: "active" }],
       count: 1,
     });
     apiMock.scanCloudConnection.mockResolvedValue({
@@ -826,6 +894,41 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     const drawer = await screen.findByRole("dialog", { name: "Production account" });
     expect(within(drawer).queryByRole("link", { name: "New Scan" })).not.toBeInTheDocument();
     expect(within(drawer).getByRole("button", { name: "Run scan" })).toBeInTheDocument();
+  });
+
+  it("requires verification before a connection scan", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [CREATED_RECORD],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: "Run scan" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Production account" }));
+    expect(within(await screen.findByRole("dialog", { name: "Production account" })).getByRole("button", { name: "Run scan" })).toBeDisabled();
+  });
+
+  it("disables trial update and delete controls that are outside the route allowlist", async () => {
+    authState.managedTrialMode = true;
+    authState.authMethod = "api_key";
+    authState.role = "admin";
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [{ ...CREATED_RECORD, status: "active" }],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+
+    expect(screen.getByLabelText("Scan schedule")).toBeDisabled();
+    expect(screen.getByTestId("schedule-scan-mode-continuous")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Delete Production account/ })).toBeDisabled();
   });
 
   it("tests a brokered credential without launching a scan", async () => {
@@ -1074,6 +1177,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
   });
 
   it("deletes a connection through the API", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     apiMock.listCloudConnections
       .mockResolvedValueOnce({
         schema_version: "cloud.connections.v1",
@@ -1095,6 +1199,21 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Delete Production account/ }));
     await waitFor(() => expect(apiMock.deleteCloudConnection).toHaveBeenCalledWith("conn-1"));
     await waitFor(() => expect(screen.getByText("No sources connected yet")).toBeInTheDocument());
+  });
+
+  it("requires confirmation before deleting a connection", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [CREATED_RECORD],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Delete Production account/ }));
+    expect(apiMock.deleteCloudConnection).not.toHaveBeenCalled();
   });
 
   it("merges registered sources into the unified table and opens a source drawer with evidence", async () => {

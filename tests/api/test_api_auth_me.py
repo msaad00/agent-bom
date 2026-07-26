@@ -33,6 +33,32 @@ def test_auth_me_returns_effective_viewer_session_without_credentials(monkeypatc
             "active": True,
         }
     ]
+    assert body["managed_trial_mode"] is False
+
+
+def test_auth_me_exposes_managed_trial_deployment_envelope_for_every_principal(monkeypatch) -> None:
+    """The UI must not infer the route envelope from one authentication method."""
+    from agent_bom.api.routes.enterprise import auth_me
+
+    monkeypatch.setenv("AGENT_BOM_MANAGED_TRIAL_MODE", "1")
+
+    class _FakeState:
+        auth_method = "api_key"
+        api_key_name = "operator"
+        api_key_role = "admin"
+        tenant_id = "tenant-alpha"
+        request_id = "req-123"
+        trace_id = None
+        span_id = None
+        auth_issuer = None
+        api_key_id = "deadbeef01234567"
+
+    class _FakeRequest:
+        state = _FakeState()
+
+    body = asyncio.run(auth_me(_FakeRequest()))  # type: ignore[arg-type]
+    assert body["auth_method"] == "api_key"
+    assert body["managed_trial_mode"] is True
 
 
 def test_auth_me_reports_contributor_capabilities_for_analyst() -> None:

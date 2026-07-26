@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -812,10 +812,14 @@ function ConnectionsHub() {
   const { hasCapability, session } = useAuthState();
   const { counts } = useDeploymentContext();
   const { isDemoMode } = useDemoMode();
-  const managedTrialSession = session?.auth_method === "managed_trial_oidc";
+  const managedTrialSession = Boolean(
+    session?.managed_trial_mode || session?.auth_method === "managed_trial_oidc",
+  );
   const canManage = hasCapability("scan.run");
   const canManageSources = !managedTrialSession && hasCapability("sources.manage");
   const canRunScans = hasCapability("scan.run");
+  const canUpdateConnections = canManage && !managedTrialSession;
+  const canDeleteConnections = canManage && !managedTrialSession;
   const canRunSources = !managedTrialSession && canRunScans;
   const canDeleteSources = !managedTrialSession && session?.role === "admin";
   const canManageFleet = !managedTrialSession && hasCapability("fleet.manage");
@@ -840,8 +844,11 @@ function ConnectionsHub() {
   // Registered sources + control-plane source state.
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesUnavailable, setSourcesUnavailable] = useState(false);
   const [schedules, setSchedules] = useState<ScanSchedule[]>([]);
+  const [schedulesUnavailable, setSchedulesUnavailable] = useState(false);
   const [connectorHealth, setConnectorHealth] = useState<ConnectorHealthResponse[]>([]);
+  const [connectorHealthUnavailable, setConnectorHealthUnavailable] = useState(false);
   const [providerContracts, setProviderContracts] = useState<DiscoveryProvidersResponse | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [busySourceId, setBusySourceId] = useState<string | null>(null);
@@ -902,8 +909,10 @@ function ConnectionsHub() {
 
       if (sourcesResult.status === "fulfilled") {
         setSources(sourcesResult.value.sources ?? []);
+        setSourcesUnavailable(false);
       } else {
         setSources([]);
+        setSourcesUnavailable(true);
       }
 
       if (providerContractsResult.status === "fulfilled") {
@@ -919,8 +928,10 @@ function ConnectionsHub() {
           return leftTime - rightTime;
         });
         setSchedules(sorted);
+        setSchedulesUnavailable(false);
       } else {
         setSchedules([]);
+        setSchedulesUnavailable(true);
       }
 
       if (connectorsResult.status === "fulfilled") {
@@ -930,8 +941,10 @@ function ConnectionsHub() {
         setConnectorHealth(
           healthResults.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])),
         );
+        setConnectorHealthUnavailable(healthResults.some((result) => result.status === "rejected"));
       } else {
         setConnectorHealth([]);
+        setConnectorHealthUnavailable(true);
       }
     } finally {
       setSourcesLoading(false);
@@ -982,7 +995,7 @@ function ConnectionsHub() {
   );
 
   async function handleScan(connection: CloudConnectionRecord) {
-    if (!canRunScans) return;
+    if (!canRunScans || connection.status !== "active") return;
     setBusyId(connection.id);
     setMessage(null);
     setScanErrors((prev) => {
@@ -1028,11 +1041,13 @@ function ConnectionsHub() {
   }
 
   async function handleDelete(connection: CloudConnectionRecord) {
-    if (!canManage) return;
+    if (!canDeleteConnections) return;
+    if (!window.confirm(`Delete ${connection.display_name}? The encrypted connection credential will be removed.`)) return;
     setBusyId(connection.id);
     setMessage(null);
     try {
       await api.deleteCloudConnection(connection.id);
+      setDetailId(null);
       setScanResults((prev) => {
         const next = { ...prev };
         delete next[connection.id];
@@ -1048,7 +1063,7 @@ function ConnectionsHub() {
   }
 
   async function handleScheduleChange(connection: CloudConnectionRecord, value: string) {
-    if (!canManage || managedTrialSession) return;
+    if (!canUpdateConnections) return;
     const scanIntervalMinutes = value === "" ? null : Number(value);
     setScheduleErrors((prev) => {
       const next = { ...prev };
@@ -1068,7 +1083,7 @@ function ConnectionsHub() {
   }
 
   async function handleScanModeChange(connection: CloudConnectionRecord, continuous: boolean) {
-    if (!canManage || managedTrialSession) return;
+    if (!canUpdateConnections) return;
     setScheduleErrors((prev) => {
       const next = { ...prev };
       delete next[connection.id];
@@ -1153,6 +1168,11 @@ function ConnectionsHub() {
           ? canDeleteSources
           : canManageSources;
     if (!allowed) return;
+    if (action === "delete") {
+      const source = sourceById.get(sourceId);
+      const label = source?.display_name || "this source";
+      if (!window.confirm(`Delete ${label}? Its registration and schedule links will be removed.`)) return;
+    }
     setBusySourceId(sourceId);
     setFormMessage(null);
     try {
@@ -1396,9 +1416,9 @@ function ConnectionsHub() {
         }
         banner={
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label="Cloud accounts" value={loading ? "…" : connections.length} />
-            <StatCard label="Registered sources" value={sourcesLoading ? "…" : sources.length} accent="info" />
-            <StatCard label="Last scan" value={loading ? "…" : formatWhenShort(lastAccountScan)} />
+            <StatCard label="Cloud accounts" value={loading ? "…" : error ? "Unavailable" : connections.length} />
+            <StatCard label="Registered sources" value={sourcesLoading ? "…" : sourcesUnavailable ? "Unavailable" : sources.length} accent="info" />
+            <StatCard label="Last scan" value={loading ? "…" : error ? "Unavailable" : formatWhenShort(lastAccountScan)} />
           </div>
         }
       />
@@ -1459,12 +1479,14 @@ function ConnectionsHub() {
           filterQuery={filterQuery}
           onFilterQuery={setFilterQuery}
           loading={loading || sourcesLoading}
-          error={error}
+          error={error ?? (sourcesUnavailable ? "Registered sources are unavailable." : null)}
           onRetry={refreshAll}
           onRowOpen={openRow}
           connectionById={connectionById}
           busyId={busyId}
           canManage={canManage}
+          canUpdateConnections={canUpdateConnections}
+          canDeleteConnections={canDeleteConnections}
           onCloudTest={(c) => void handleTest(c)}
           onCloudScan={(c) => void handleScan(c)}
           onCloudDelete={(c) => void handleDelete(c)}
@@ -1479,11 +1501,13 @@ function ConnectionsHub() {
           canManageFleet={canManageFleet}
           onFleetSync={() => void handleFleetSync()}
           connectorHealth={connectorHealth}
+          connectorHealthUnavailable={connectorHealthUnavailable}
           connectorNames={connectorNames}
           healthyConnectors={healthyConnectors}
           providerContracts={providerContracts}
           providerSummary={providerSummary}
           schedulesCount={schedules.length}
+          schedulesUnavailable={schedulesUnavailable}
           nextSchedule={schedules[0]?.next_run ?? null}
           canManageSources={canManageSources}
           formState={formState}
@@ -1504,14 +1528,12 @@ function ConnectionsHub() {
         scheduleError={detailId ? scheduleErrors[detailId] : undefined}
         isBusy={busyId === detailId}
         canManage={canManage}
+        canDelete={canDeleteConnections}
         scannable={detailId ? SCANNABLE_PROVIDERS.has(connectionById.get(detailId)?.provider ?? "") : false}
         onClose={() => setDetailId(null)}
         onTest={(connection) => void handleTest(connection)}
         onScan={(connection) => void handleScan(connection)}
-        onDelete={(connection) => {
-          setDetailId(null);
-          void handleDelete(connection);
-        }}
+        onDelete={(connection) => void handleDelete(connection)}
       />
 
       <SourceDrawer
@@ -1628,7 +1650,8 @@ function ConnectSegment({
     (connection) => connection.status === "active",
   ).length;
   const scannedConnectionsCount = connections.filter(
-    (connection) => Boolean(connection.last_scan_at || connection.last_scan_id),
+    (connection) =>
+      connection.status === "active" && Boolean(connection.last_scan_at || connection.last_scan_id),
   ).length;
 
   return (
@@ -1707,6 +1730,8 @@ interface SourcesSegmentProps {
   connectionById: Map<string, CloudConnectionRecord>;
   busyId: string | null;
   canManage: boolean;
+  canUpdateConnections: boolean;
+  canDeleteConnections: boolean;
   onCloudTest: (connection: CloudConnectionRecord) => void;
   onCloudScan: (connection: CloudConnectionRecord) => void;
   onCloudDelete: (connection: CloudConnectionRecord) => void;
@@ -1721,11 +1746,13 @@ interface SourcesSegmentProps {
   canManageFleet: boolean;
   onFleetSync: () => void;
   connectorHealth: ConnectorHealthResponse[];
+  connectorHealthUnavailable: boolean;
   connectorNames: string[];
   healthyConnectors: number;
   providerContracts: DiscoveryProvidersResponse | null;
   providerSummary: ReturnType<typeof summarizeProviders>;
   schedulesCount: number;
+  schedulesUnavailable: boolean;
   nextSchedule: string | null;
   canManageSources: boolean;
   formState: FormState;
@@ -1756,6 +1783,8 @@ function SourcesSegment(props: SourcesSegmentProps) {
     connectionById,
     busyId,
     canManage,
+    canUpdateConnections,
+    canDeleteConnections,
     onCloudTest,
     onCloudScan,
     onCloudDelete,
@@ -1770,11 +1799,13 @@ function SourcesSegment(props: SourcesSegmentProps) {
     canManageFleet,
     onFleetSync,
     connectorHealth,
+    connectorHealthUnavailable,
     connectorNames,
     healthyConnectors,
     providerContracts,
     providerSummary,
     schedulesCount,
+    schedulesUnavailable,
     nextSchedule,
     canManageSources,
     formState,
@@ -1818,7 +1849,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
           { label: "Registered", value: loading ? "…" : totalRows },
           {
             label: "Connector health",
-            value: loading ? "…" : `${healthyConnectors}/${connectorHealth.length || 0}`,
+            value: loading ? "…" : connectorHealthUnavailable ? "Unavailable" : `${healthyConnectors}/${connectorHealth.length || 0}`,
             accent:
               connectorHealth.length > 0 && healthyConnectors === connectorHealth.length
                 ? "success"
@@ -1826,13 +1857,13 @@ function SourcesSegment(props: SourcesSegmentProps) {
           },
           {
             label: "Schedules",
-            value: loading ? "…" : schedulesCount,
-            hint: nextSchedule ? `Next ${formatWhen(nextSchedule)}` : "None yet",
+            value: loading ? "…" : schedulesUnavailable ? "Unavailable" : schedulesCount,
+            hint: schedulesUnavailable ? "Read not available" : nextSchedule ? `Next ${formatWhen(nextSchedule)}` : "None yet",
           },
           {
             label: "Providers",
-            value: loading ? "…" : providerSummary.total,
-            hint: `${providerSummary.readOnly} read-only`,
+            value: loading ? "…" : providerContracts ? providerSummary.total : "Unavailable",
+            hint: providerContracts ? `${providerSummary.readOnly} read-only` : "Read not available",
           },
         ]}
       />
@@ -1902,6 +1933,8 @@ function SourcesSegment(props: SourcesSegmentProps) {
                   connection={row.connectionId ? connectionById.get(row.connectionId) ?? null : null}
                   busyId={busyId}
                   canManage={canManage}
+                  canUpdate={canUpdateConnections}
+                  canDelete={canDeleteConnections}
                   onOpen={() => onRowOpen(row)}
                   onCloudTest={onCloudTest}
                   onCloudScan={onCloudScan}
@@ -2049,10 +2082,10 @@ function SourcesSegment(props: SourcesSegmentProps) {
           </p>
           <StatStrip
             items={[
-              { label: "Providers", value: loading ? "…" : providerSummary.total },
-              { label: "Read-only", value: loading ? "…" : `${providerSummary.readOnly}/${providerSummary.total}` },
-              { label: "Scope-zero modes", value: loading ? "…" : providerSummary.scopeZero },
-              { label: "Declared permissions", value: loading ? "…" : providerSummary.permissionCount },
+              { label: "Providers", value: loading ? "…" : providerContracts ? providerSummary.total : "Unavailable" },
+              { label: "Read-only", value: loading ? "…" : providerContracts ? `${providerSummary.readOnly}/${providerSummary.total}` : "Unavailable" },
+              { label: "Scope-zero modes", value: loading ? "…" : providerContracts ? providerSummary.scopeZero : "Unavailable" },
+              { label: "Declared permissions", value: loading ? "…" : providerContracts ? providerSummary.permissionCount : "Unavailable" },
             ]}
           />
           {providerContracts?.warnings?.length ? (
@@ -2200,6 +2233,8 @@ function UnifiedRow({
   connection,
   busyId,
   canManage,
+  canUpdate,
+  canDelete,
   onOpen,
   onCloudTest,
   onCloudScan,
@@ -2211,6 +2246,8 @@ function UnifiedRow({
   connection: CloudConnectionRecord | null;
   busyId: string | null;
   canManage: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
   onOpen: () => void;
   onCloudTest: (connection: CloudConnectionRecord) => void;
   onCloudScan: (connection: CloudConnectionRecord) => void;
@@ -2302,7 +2339,7 @@ function UnifiedRow({
               <select
                 id={`schedule-${connection!.id}`}
                 value={connection!.scan_interval_minutes?.toString() ?? ""}
-                disabled={!canManage}
+                disabled={!canUpdate}
                 onChange={(event) => onCloudScheduleChange(connection!, event.target.value)}
                 className="w-36 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -2316,7 +2353,7 @@ function UnifiedRow({
                 <input
                   type="checkbox"
                   checked={continuous}
-                  disabled={!canManage}
+                  disabled={!canUpdate}
                   onChange={(event) => onCloudScanModeChange(connection!, event.target.checked)}
                   className="h-3.5 w-3.5 shrink-0 accent-sky-500 disabled:cursor-not-allowed"
                   data-testid="schedule-scan-mode-continuous"
@@ -2358,8 +2395,14 @@ function UnifiedRow({
             </button>
             <button
               onClick={() => onCloudScan(connection!)}
-              disabled={isBusy || !canManage || !scannable}
-              title={scannable ? "Run a read-only inventory and CIS scan" : "Scanning for this provider is unavailable"}
+              disabled={isBusy || !canManage || !scannable || connection!.status !== "active"}
+              title={
+                !scannable
+                  ? "Scanning for this provider is unavailable"
+                  : connection!.status !== "active"
+                    ? "Verify this connection before running a scan"
+                    : "Run a read-only inventory and CIS scan"
+              }
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
@@ -2367,7 +2410,7 @@ function UnifiedRow({
             </button>
             <button
               onClick={() => onCloudDelete(connection!)}
-              disabled={isBusy || !canManage}
+              disabled={isBusy || !canDelete}
               aria-label={`Delete ${connection!.display_name}`}
               className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 transition hover:bg-red-500/10 dark:hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -2865,6 +2908,7 @@ function ConnectionDetailDrawer({
   scheduleError,
   isBusy,
   canManage,
+  canDelete,
   scannable,
   onClose,
   onTest,
@@ -2878,6 +2922,7 @@ function ConnectionDetailDrawer({
   scheduleError: string | undefined;
   isBusy: boolean;
   canManage: boolean;
+  canDelete: boolean;
   scannable: boolean;
   onClose: () => void;
   onTest: (connection: CloudConnectionRecord) => void;
@@ -2928,14 +2973,14 @@ function ConnectionDetailDrawer({
           </button>
           <button
             onClick={() => onScan(connection)}
-            disabled={isBusy || !canManage || !scannable}
+            disabled={isBusy || !canManage || !scannable || connection.status !== "active"}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ShieldCheck className="h-3.5 w-3.5" /> {isBusy ? "Working…" : "Run scan"}
           </button>
           <button
             onClick={() => onDelete(connection)}
-            disabled={isBusy || !canManage}
+            disabled={isBusy || !canDelete}
             className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-500/30 dark:border-red-900/60 bg-red-500/10 dark:bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 transition hover:bg-red-500/10 dark:hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -3424,6 +3469,7 @@ function AddConnectionWizard({
   onClose: () => void;
   onCreated: (created: CloudConnectionRecord) => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<WizardStep>(0);
   const [form, setForm] = useState<WizardForm>(() =>
     buildWizardForm(initialProvider && providerOption(initialProvider) ? initialProvider : "aws"),
@@ -3453,6 +3499,41 @@ function AddConnectionWizard({
   const [scanState, setScanState] = useState<VerifyState>("idle");
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusableSelector =
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]';
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    focusable()[0]?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
 
   const provider = useMemo(
     () => providerOption(form.provider) ?? PROVIDER_OPTIONS[0]!,
@@ -3634,6 +3715,10 @@ function AddConnectionWizard({
       // Drop the secret from client state the moment it is persisted.
       setForm((current) => ({ ...current, external_id: "" }));
       setCreatedRecord(created);
+      if (created.last_scan_id) {
+        setScanId(created.last_scan_id);
+        setScanState("ok");
+      }
       // Refresh the background list + toast, but keep the wizard open so the
       // operator sees the live Verify step before finishing.
       onCreated(created);
@@ -3647,6 +3732,7 @@ function AddConnectionWizard({
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
@@ -4105,10 +4191,17 @@ function AddConnectionWizard({
                       The connection is active. Run a first read-only scan now, or close and scan later from the table.
                     </p>
                     {scanState === "ok" ? (
-                      <p className="flex flex-wrap items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-200">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        First scan started{scanId ? ` — ${scanId}` : "."}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-700 dark:text-emerald-200">
+                        <span className="inline-flex items-center gap-1.5">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          First scan started{scanId ? ` — ${scanId}` : "."}
+                        </span>
+                        {scanId ? (
+                          <Link href={`/scan?id=${encodeURIComponent(scanId)}`} className="font-medium underline underline-offset-2">
+                            Track scan
+                          </Link>
+                        ) : null}
+                      </div>
                     ) : scanState === "error" ? (
                       <div className="space-y-2">
                         <p className="flex items-start gap-1.5 text-xs text-red-700 dark:text-red-300">

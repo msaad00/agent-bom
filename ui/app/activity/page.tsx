@@ -14,7 +14,7 @@ import { api, formatDate } from "@/lib/api";
 import type { ActivityTimeline } from "@/lib/api";
 import { useChartTheme } from "@/lib/theme-colors";
 import { IntegrationRequiredState } from "@/components/integration-required-state";
-import { GatewayLiveFeedCard } from "@/components/gateway-live-feed-card";
+import { ActivityEventStream } from "@/components/activity-event-stream";
 import {
   ResponsiveContainer,
   BarChart,
@@ -31,7 +31,6 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
-  const [tab, setTab] = useState<"queries" | "events">("queries");
   const [search, setSearch] = useState("");
 
   const load = () => {
@@ -54,7 +53,7 @@ export default function ActivityPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <GatewayLiveFeedCard />
+        <ActivityEventStream observabilityEvents={[]} />
         <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading activity timeline...
@@ -66,7 +65,7 @@ export default function ActivityPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <GatewayLiveFeedCard />
+        <ActivityEventStream observabilityEvents={[]} />
         <IntegrationRequiredState
         title="Activity timeline integration is not configured"
         summary="This page reconstructs agent and tool activity from query history and AI observability events. Core scanning and graph workflows work without it. The current cloud integration for this page uses Snowflake."
@@ -87,7 +86,7 @@ export default function ActivityPage() {
   if (!timeline)
     return (
       <div className="space-y-6">
-        <GatewayLiveFeedCard />
+        <ActivityEventStream observabilityEvents={[]} />
       </div>
     );
 
@@ -97,14 +96,6 @@ export default function ActivityPage() {
       q.query_text.toLowerCase().includes(search.toLowerCase()) ||
       q.agent_pattern.toLowerCase().includes(search.toLowerCase()) ||
       q.user_name.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const filteredEvents = timeline.observability_events.filter(
-    (e) =>
-      !search ||
-      e.agent_name.toLowerCase().includes(search.toLowerCase()) ||
-      e.tool_name.toLowerCase().includes(search.toLowerCase()) ||
-      e.event_type.toLowerCase().includes(search.toLowerCase())
   );
 
   // Aggregate query patterns
@@ -117,9 +108,6 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6">
-      {/* Gateway live feed (#54) */}
-      <GatewayLiveFeedCard />
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -142,6 +130,8 @@ export default function ActivityPage() {
           <option value={365}>Last 365 days</option>
         </select>
       </div>
+
+      <ActivityEventStream observabilityEvents={timeline.observability_events} />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -216,19 +206,15 @@ export default function ActivityPage() {
         </div>
       )}
 
-      {/* Search + Tabs */}
-      <div className="flex items-center gap-4">
-        <div className="flex gap-1">
-          <TabButton
-            label={`Queries (${timeline.query_history.length})`}
-            active={tab === "queries"}
-            onClick={() => setTab("queries")}
-          />
-          <TabButton
-            label={`AI Events (${timeline.observability_events.length})`}
-            active={tab === "events"}
-            onClick={() => setTab("events")}
-          />
+      {/* Query history remains a distinct evidence type. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--foreground)]">
+            Query history ({timeline.query_history.length})
+          </h2>
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+            Warehouse query evidence is kept separate from runtime decisions and AI telemetry.
+          </p>
         </div>
         <div className="relative flex-1 max-w-xs">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
@@ -242,9 +228,7 @@ export default function ActivityPage() {
         </div>
       </div>
 
-      {/* Query History Tab */}
-      {tab === "queries" && (
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 overflow-hidden">
+      <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -302,69 +286,6 @@ export default function ActivityPage() {
             )}
           </div>
         </div>
-      )}
-
-      {/* Observability Events Tab */}
-      {tab === "events" && (
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-subtle)] bg-[var(--surface)]">
-                  <th className="text-left py-2 px-3">Time</th>
-                  <th className="text-left py-2 px-3">Agent</th>
-                  <th className="text-left py-2 px-3">Event Type</th>
-                  <th className="text-left py-2 px-3">Tool</th>
-                  <th className="text-left py-2 px-3">Model</th>
-                  <th className="text-left py-2 px-3">Trace</th>
-                  <th className="text-right py-2 px-3">Tokens</th>
-                  <th className="text-right py-2 px-3">Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEvents.slice(0, 100).map((e) => (
-                  <tr
-                    key={e.event_id}
-                    className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--surface-elevated)]/30"
-                  >
-                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] whitespace-nowrap">
-                      {formatDate(e.timestamp)}
-                    </td>
-                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">
-                      {e.agent_name || "-"}
-                    </td>
-                    <td className="py-1.5 px-3">
-                      <EventTypeBadge type={e.event_type} />
-                    </td>
-                    <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">
-                      {e.tool_name || "-"}
-                    </td>
-                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] font-mono text-xs">
-                      {e.model_name || "-"}
-                    </td>
-                    <td className="py-1.5 px-3 text-[var(--text-tertiary)] font-mono truncate max-w-[100px]">
-                      {e.trace_id || "-"}
-                    </td>
-                    <td className="py-1.5 px-3 text-right text-[var(--text-tertiary)] font-mono">
-                      {(e.input_tokens + e.output_tokens).toLocaleString()}
-                    </td>
-                    <td className="py-1.5 px-3 text-right text-[var(--text-tertiary)] font-mono">
-                      {e.duration_ms.toLocaleString()}ms
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filteredEvents.length === 0 && (
-              <div className="text-center py-8 text-[var(--text-tertiary)] text-sm">
-                {timeline.observability_events.length === 0
-                  ? "No AI observability events available. Enable AI observability in Snowflake."
-                  : "No events match the search."}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -391,29 +312,6 @@ function StatCard({
   );
 }
 
-function TabButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-        active
-          ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
-          : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 function StatusBadge({ status }: { status: string }) {
   const color =
     status === "SUCCESS"
@@ -425,25 +323,6 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`px-2 py-0.5 rounded text-xs border ${color}`}>
       {status}
-    </span>
-  );
-}
-
-function EventTypeBadge({ type }: { type: string }) {
-  const colorMap: Record<string, string> = {
-    TOOL_CALL: "text-cyan-400 bg-cyan-950 border-cyan-800",
-    LLM_INFERENCE: "text-purple-400 bg-purple-950 border-purple-800",
-    AGENT_RUN: "text-emerald-400 bg-emerald-950 border-emerald-800",
-    USER_FEEDBACK: "text-amber-400 bg-amber-950 border-amber-800",
-  };
-
-  return (
-    <span
-      className={`px-2 py-0.5 rounded text-xs border ${
-        colorMap[type] || "text-[var(--text-secondary)] bg-[var(--surface-elevated)] border-[var(--border-subtle)]"
-      }`}
-    >
-      {type}
     </span>
   );
 }

@@ -1712,8 +1712,9 @@ def _list_jobs_impl(
     if callable(count_summary_by_status):
         # The activity feed polls this route continuously and the aggregate is
         # unbounded, so repeated polls are served from a short-lived cache. A
-        # job write drops the tenant's entries, so a finished job is never
-        # hidden behind a stale count.
+        # job write drops the tenant's entries. Across workers the guarantee is
+        # bounded staleness rather than immediate consistency; seconds is fine
+        # for a progress display and nothing gates on this number.
         status_counts = job_status_count_cache.get_counts(tenant_id, query)
         if status_counts is None:
             status_counts = count_summary_by_status(tenant_id=tenant_id, query=query)

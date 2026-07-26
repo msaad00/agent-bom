@@ -6,8 +6,16 @@ for it every few seconds for every open browser. The search variant is worse:
 its ``LOWER(CONCAT_WS(...)) LIKE`` predicate cannot use an index at all, so the
 cost grows with the table no matter how narrow the result is.
 
-Repeated polls are served from memory for a few seconds; a job write drops the
-tenant's entries immediately, so a finished job never sits behind a stale count.
+Repeated polls are served from memory for a few seconds. A job write drops the
+tenant's entries, so the writing process reflects a finished job immediately.
+
+The cache is per-process, so the honest guarantee across a multi-worker control
+plane is *bounded* staleness, not immediate consistency: a write handled by one
+worker leaves the others serving their own cached counts until the TTL expires.
+That is acceptable for a polled progress display and is why the window is
+seconds rather than minutes — but it is a display cache, not a source of truth,
+and nothing should gate a decision on it.
+
 Mirrors :mod:`agent_bom.api.findings_count_cache`, which solves the same problem
 for finding totals.
 """

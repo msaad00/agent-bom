@@ -171,6 +171,18 @@ def _reset_api_runtime_state() -> None:
     except Exception:
         pass
 
+    # Read-path count caches are process-global and TTL'd, so a count captured
+    # against one test's store would otherwise be served to the next test on the
+    # same worker — which swaps the store but not the cache.
+    try:
+        from agent_bom.api import job_status_count_cache
+        from agent_bom.api.findings_count_cache import reset_findings_count_cache
+
+        job_status_count_cache.reset()
+        reset_findings_count_cache()
+    except Exception:
+        pass
+
     # The API key store and the "env keys already seeded" flag are
     # process-global. A test that seeds API keys (or configures auth) would
     # otherwise leave them set, so a later test on the same xdist worker that

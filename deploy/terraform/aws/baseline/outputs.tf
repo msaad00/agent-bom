@@ -94,3 +94,13 @@ controlPlane:
       bucketRegion: ${data.aws_region.current.name}
   EOT
 }
+
+output "db_name" {
+  description = "Database name created on the control-plane instance."
+  value       = var.db_name
+}
+
+output "db_port" {
+  description = "Postgres port for the control plane."
+  value       = var.create_rds ? aws_db_instance.this[0].port : null
+}

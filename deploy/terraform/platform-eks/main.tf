@@ -204,16 +204,35 @@ locals {
           name = "aws-secrets-manager"
         }
         secrets = [
+          # Composed from the RDS-managed master secret rather than read from a
+          # pre-populated entry. RDS owns and rotates that password, so this
+          # keeps the credential out of Terraform state and removes the manual
+          # "populate the DB URL secret" step the documented apply never had.
           {
             nameSuffix = "control-plane-db"
             target     = { name = "${var.name}-control-plane-db" }
-            data = [{
-              secretKey = "AGENT_BOM_POSTGRES_URL"
-              remoteRef = {
-                key      = module.baseline.db_url_secret_name
-                property = "AGENT_BOM_POSTGRES_URL"
+            template = {
+              engineVersion = "v2"
+              data = {
+                AGENT_BOM_POSTGRES_URL = "postgresql://{{ .username }}:{{ .password }}@${module.baseline.db_endpoint}:${module.baseline.db_port}/${module.baseline.db_name}"
               }
-            }]
+            }
+            data = [
+              {
+                secretKey = "username"
+                remoteRef = {
+                  key      = module.baseline.db_secret_name
+                  property = "username"
+                }
+              },
+              {
+                secretKey = "password"
+                remoteRef = {
+                  key      = module.baseline.db_secret_name
+                  property = "password"
+                }
+              },
+            ]
           },
           {
             nameSuffix = "control-plane-auth"

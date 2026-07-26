@@ -8,26 +8,20 @@
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
   <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=PyPI&cacheSeconds=60" alt="PyPI"></a>
-  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/pyversions/agent-bom?style=flat&label=Python" alt="Python versions"></a>
-  <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker pulls"></a>
-  <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
-  <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
-  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom"><img src="https://img.shields.io/badge/MCP-Glama-7c3aed?style=flat" alt="agent-bom on Glama"></a>
-  <a href="https://smithery.ai/servers/agent-bom/agent-bom"><img src="https://img.shields.io/badge/MCP-Smithery-1f6feb?style=flat" alt="agent-bom on Smithery"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  Scan a repo, image, or cloud account. Get findings, an SBOM, and a graph that
-  shows what each finding can actually reach — from one CLI, or a control plane
-  you run yourself.
+  Scan a repository, image, or cloud account for findings, an SBOM, and a graph
+  of what each finding can reach — locally or in a control plane you run.
 </p>
 
 <p align="center">
-  <b>15</b> package ecosystems · <b>16</b> compliance surfaces ·
-  <b>77</b> MCP tools · <b>Apache-2.0</b> · no account required
+  Python 3.11–3.14 · Apache-2.0 · no account required<br />
+  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom">agent-bom on Glama</a> ·
+  <a href="https://smithery.ai/servers/agent-bom/agent-bom">agent-bom on Smithery</a>
 </p>
 
 <p align="center">
@@ -35,19 +29,6 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="https://demo.agent-bom.com">Live demo</a>
 </p>
-
-## What it is
-
-`agent-bom` discovers software, cloud, identity, AI-agent, and MCP evidence;
-turns it into findings and relationship graphs; and carries the same evidence
-into CI, a self-hosted control plane, and runtime policy enforcement.
-
-- **Scan** locally or in CI and export console, JSON, SARIF, SBOM, HTML, and graph artifacts.
-- **Centralize** findings, compliance evidence, jobs, inventory, and investigations in a control plane you run.
-- **Enforce** MCP and tool-call policy through the gateway, proxy, and Shield SDK surfaces.
-
-The product uses one Finding + UnifiedGraph model across CLI, API, UI, and MCP.
-It does not require a hosted account for local scanning.
 
 ## Quick start
 
@@ -83,9 +64,8 @@ expected.
 
 ## How it works
 
-1. Read-only collectors inventory the selected repository, image, agent configuration, or connected cloud scope.
-2. Deterministic scanners normalize evidence into findings, packages, assets, identities, and relationships.
-3. Exports, the control plane, and runtime policy consume that same evidence model.
+Read-only collection becomes normalized evidence that can be scanned locally,
+centralized in a self-hosted control plane, and used for runtime decisions.
 
 <p align="center">
   <picture>
@@ -94,12 +74,28 @@ expected.
   </picture>
 </p>
 
-The browser experience keeps the evidence shared while presenting task-focused
-workspaces: fix-first findings, path-first investigation, control evidence, and
-posture summaries. Graph views preserve provenance where source evidence
-provides it: collected, inferred, static, and runtime relationships remain
-distinct, while unavailable provenance is not upgraded to observed. Interactive
-views expose fit, zoom, pan, layout, and personal positioning controls.
+## What it is
+
+`agent-bom` is an open local scanner and self-hosted control plane for software,
+cloud, identity, AI-agent, and MCP evidence. One Finding + UnifiedGraph model
+powers CLI and CI artifacts, browser investigations, compliance evidence, and
+runtime policy without requiring a hosted account.
+
+Graph provenance remains explicit: collected, inferred, static, and runtime
+relationships stay distinct, and unavailable evidence is never upgraded to
+observed.
+
+<details>
+<summary><b>Control-plane architecture</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="Sources, evidence engine, control plane, API, MCP, and operator surfaces in the self-hosted agent-bom architecture" width="1000" />
+  </picture>
+</p>
+
+</details>
 
 ## Who it is for
 
@@ -115,6 +111,18 @@ views expose fit, zoom, pan, layout, and personal positioning controls.
 
 AppSec and GRC remain separate workflows: findings and reachability are not
 presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
+
+<details>
+<summary><b>Audience workflow map</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="Developer, AppSec, platform, GRC, and AI or MCP owner workflows on the shared evidence model" width="1000" />
+  </picture>
+</p>
+
+</details>
 
 <details>
 <summary><b>Product gallery</b></summary>

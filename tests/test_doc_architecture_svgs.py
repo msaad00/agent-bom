@@ -75,8 +75,8 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert _audit_layout(svg) == []
 
 
-def test_readme_uses_a_compact_role_table_instead_of_persona_artwork() -> None:
-    """Public onboarding covers core workflows without a large persona graphic."""
+def test_readme_uses_a_compact_role_table_with_collapsed_persona_artwork() -> None:
+    """Public onboarding stays accessible while retaining visual workflow proof."""
     titles = [row[0] for row in _readme_persona_rows()]
     for title in (
         "Local developers",
@@ -90,8 +90,10 @@ def test_readme_uses_a_compact_role_table_instead_of_persona_artwork() -> None:
         assert title in titles
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "persona-value-dark.svg" not in readme
-    assert "persona-value-light.svg" not in readme
+    assert "<summary><b>Audience workflow map</b></summary>" in readme
+    assert "persona-value-dark.svg" in readme
+    assert "persona-value-light.svg" in readme
+
 
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:
     """Every persona row gives a literal first command, not a noun phrase."""

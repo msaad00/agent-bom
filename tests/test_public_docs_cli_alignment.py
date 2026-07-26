@@ -128,9 +128,9 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     sections = [
-        "What it is",
         "Quick start",
         "How it works",
+        "What it is",
         "Who it is for",
         "Self-host",
         "Trust",
@@ -139,11 +139,14 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert positions == sorted(positions)
 
     hero = readme[: positions[0]]
-    # The storefront carries a single badge row of build/version/adoption/trust
-    # signals. It is capped so the row cannot grow into a wall, but not held to
-    # two: license, Docker pulls, and the OpenSSF score are the evidence a
-    # first-time reader uses to judge a security tool.
-    assert hero.count("img.shields.io/") <= 8
+    # Two badges keep the first screen focused on whether the build and current
+    # package are usable. Registry links and supported Python versions are text,
+    # not another wall of badges.
+    assert hero.count("img.shields.io/") <= 2
+    assert "img.shields.io/pypi/pyversions" not in hero
+    assert "Python 3.11–3.14" in hero
+    assert "agent-bom on Glama" in hero
+    assert "agent-bom on Smithery" in hero
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
     assert '<a href="https://demo.agent-bom.com">Live demo</a>' in hero
@@ -156,8 +159,8 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
     assert "<summary><b>Product gallery</b></summary>" in readme
-    assert "persona-value-dark.svg" not in readme
-    assert "persona-value-light.svg" not in readme
+    assert "persona-value-dark.svg" in readme
+    assert "persona-value-light.svg" in readme
 
     # Persona surfaces keep AppSec and GRC as separate lanes (never one card).
     assert "AppSec/GRC" not in readme
@@ -165,8 +168,12 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "| AppSec |" in readme
     assert "| GRC / audit |" in readme
 
-    # One architecture visual; product screenshots stay progressive-disclosure.
+    # The workflow is visible early. The architecture, persona proof, and
+    # product screenshots stay progressive-disclosure.
     assert readme.count("how-it-works-dark.svg") == 1
+    assert readme.count("architecture-dark.svg") == 1
+    assert "<summary><b>Audience workflow map</b></summary>" in readme
+    assert "<summary><b>Control-plane architecture</b></summary>" in readme
     assert "blast-radius-dark.svg" not in readme
 
 

@@ -486,6 +486,18 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "--resolve-only" in workflow
 
 
+def test_deployment_freshness_targets_the_latest_published_release():
+    """Unreleased source versions must not create production drift alerts."""
+    workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
+
+    assert "Get expected version from latest published release" in workflow
+    assert 'repos/$GITHUB_REPOSITORY/releases/latest' in workflow
+    assert "pyproject.toml" not in workflow
+    assert "Close drift alerts for superseded release targets" in workflow
+    assert 'issue.title.startsWith(prefix)' in workflow
+    assert "issue.title !== currentTitle" in workflow
+
+
 def test_docs_workflow_never_deploys_pages_from_release_tags():
     """Release tags may build docs, but Pages deploy is protected to main only."""
     workflow = (ROOT / ".github" / "workflows" / "docs.yml").read_text()

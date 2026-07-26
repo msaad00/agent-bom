@@ -23,17 +23,48 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Get expected version from repo
+      - name: Get expected version from latest published release
         id: expected
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(python3 -c "
-          import re, pathlib
-          text = pathlib.Path('pyproject.toml').read_text()
-          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
-          print(m.group(1))
-          ")
+          set -euo pipefail
+          TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          VERSION="${TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.+-]*)?$ ]]; then
+            echo "::error::Latest published release has an invalid version tag"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Expected version: $VERSION"
+          echo "Expected version from published release $TAG: $VERSION"
+
+      - name: Close drift alerts for superseded release targets
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const expected = process.env.EXPECTED_VERSION;
+            const prefix = "supply-chain-drift: deployment surfaces out of sync with ";
+            const currentTitle = `${prefix}${expected}`;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", labels: "supply-chain-drift", per_page: 100,
+            });
+            for (const issue of issues) {
+              if (issue.title.startsWith(prefix) && issue.title !== currentTitle) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body: `Superseded by the latest published release target (${expected}); closing this obsolete deployment-freshness alert.`,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: issue.number, state: "closed",
+                });
+              }
+            }
 
       - name: Check Railway deployment
         id: railway

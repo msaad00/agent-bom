@@ -96,7 +96,6 @@ import type {
   GatewayStatsResponse,
   GatewayFeedResponse,
   GatewayFeedKpis,
-  GatewayFeedHealth,
   FirewallRuntimeStats,
   EvaluateResult,
   PostureResponse,
@@ -331,7 +330,6 @@ export type {
   GatewayStatsResponse,
   GatewayFeedResponse,
   GatewayFeedKpis,
-  GatewayFeedHealth,
   GatewayFeedEvent,
   GatewayFeedActionType,
   GatewayPolicyRuntimeSummary,
@@ -441,6 +439,7 @@ export type {
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";
+export type { GatewayFeedHealth } from "./api-types";
 
 // ── Scan Pipeline Step Types ────────────────────────────────────────────────
 

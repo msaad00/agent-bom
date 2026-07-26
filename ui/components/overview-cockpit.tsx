@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Bug,
   ChevronRight,
-  CircleHelp,
   Fingerprint,
   Flame,
   KeyRound,
@@ -1010,7 +1009,7 @@ const ISSUE_TYPE_GLYPH: Record<IssueType, ElementType> = {
   misconfiguration: SlidersHorizontal,
   secret: KeyRound,
   identity: Fingerprint,
-  unclassified: CircleHelp,
+  unclassified: Bug,
 };
 
 // Neutral grayscale fills for the in-tile issue-type mini bar — segments stay

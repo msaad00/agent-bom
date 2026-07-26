@@ -9,7 +9,6 @@ import {
   formatDate,
 } from "@/lib/api";
 import { getSessionWebSocketToken } from "@/lib/auth";
-import { gatewayFeedDisplayState } from "@/lib/gateway-feed-health";
 import { getConfiguredApiUrl } from "@/lib/runtime-config";
 import {
   Activity,
@@ -20,8 +19,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 
 // ─── Action badge styling ─────────────────────────────────────────────────────
@@ -173,7 +170,11 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
   }, [onActivity]);
 
   const filtered = actionFilter ? events.filter((e) => e.action_type === actionFilter) : events;
-  const displayHealth = gatewayFeedDisplayState(health, wsConnected);
+  const isLive = health.state === "live" && health.live && wsConnected;
+  const healthLabel =
+    health.state === "live"
+      ? "Disconnected"
+      : health.state.charAt(0).toUpperCase() + health.state.slice(1);
 
   return (
     <div className="space-y-5">
@@ -190,15 +191,15 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs">
-              {displayHealth.live ? (
+              {isLive ? (
                 <>
-                  <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
                   <span className="text-emerald-400">Live</span>
                 </>
               ) : (
                 <>
-                  <WifiOff className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
-                  <span className="text-[var(--text-tertiary)]">{displayHealth.label}</span>
+                  <span className="h-2 w-2 rounded-full border border-[var(--text-tertiary)]" />
+                  <span className="text-[var(--text-tertiary)]">{healthLabel}</span>
                 </>
               )}
             </div>

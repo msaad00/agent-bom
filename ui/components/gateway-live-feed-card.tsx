@@ -11,12 +11,10 @@
  *   • a muted sub-label — the calling profile (tenant) or the decision note
  * with an aggregate footer summarising the day.
  *
- * Data source: the live gateway feed (`/v1/gateway/feed` + `/v1/gateway/feed/kpis`)
- * already exposed by `api.getGatewayFeed` / `api.getGatewayFeedKpis`. When the
- * API is unreachable or returns no events (e.g. a fresh install with no proxy
- * traffic), the card falls back to a clearly-labelled sample so the surface is
- * never blank; the fallback is marked "sample data" so it is never mistaken for
- * live fleet activity.
+ * Data source: the gateway feed (`/v1/gateway/feed` +
+ * `/v1/gateway/feed/kpis`) already exposed by `api.getGatewayFeed` /
+ * `api.getGatewayFeedKpis`. Empty and unreachable feeds stay empty; only the
+ * server may identify a response as synthetic sample data.
  */
 
 import { useEffect, useState } from "react";
@@ -27,48 +25,8 @@ import {
   type GatewayFeedHealth,
   type GatewayFeedKpis,
 } from "@/lib/api";
-import { gatewayFeedDisplayState } from "@/lib/gateway-feed-health";
-
-// ── Sample fallback (illustrative only — never live data) ────────────────────
-
-const SAMPLE_FEED_EVENTS: GatewayFeedEvent[] = [
-  {
-    ts: "2026-06-26T14:31:07Z",
-    agent: "payroll-agent",
-    action_type: "data_filter_applied",
-    target: "snowflake.query",
-    detail: "Resume data masked",
-    tenant: "eng-team",
-    shadow: false,
-    source: "proxy",
-  },
-  {
-    ts: "2026-06-26T14:30:52Z",
-    agent: "unknown-mcp-client",
-    action_type: "tool_call_blocked",
-    target: "github.create_pull_request",
-    detail: "Shadow AI detected",
-    tenant: "platform",
-    shadow: true,
-    source: "proxy",
-  },
-  {
-    ts: "2026-06-26T14:29:55Z",
-    agent: "data-analyst-agent",
-    action_type: "llm_call",
-    target: "anthropic/claude-opus-4",
-    detail: "$0.0142 · 3,210 tokens",
-    tenant: "analytics",
-    shadow: false,
-    source: "observability",
-  },
-];
 
 // ── Presentation helpers ─────────────────────────────────────────────────────
-
-function isBlocked(event: GatewayFeedEvent): boolean {
-  return event.action_type === "tool_call_blocked";
-}
 
 function decisionTitle(event: GatewayFeedEvent): string {
   if (event.shadow) return "Shadow AI detected";
@@ -77,10 +35,10 @@ function decisionTitle(event: GatewayFeedEvent): string {
       return "Tool call authorized";
     case "tool_call_blocked":
       return event.detail && event.detail !== "blocked by gateway policy"
-        ? capitalize(event.detail)
+        ? event.detail
         : "Tool call blocked";
     case "data_filter_applied":
-      return event.detail ? capitalize(event.detail) : "Sensitive data masked";
+      return event.detail || "Sensitive data masked";
     case "llm_call":
       return "LLM call routed";
     default:
@@ -96,19 +54,6 @@ function subLabel(event: GatewayFeedEvent): string {
   return event.detail?.trim() || "—";
 }
 
-function capitalize(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
 function eventTime(ts: string): string {
   if (!ts) return "—";
   try {
@@ -121,9 +66,6 @@ function eventTime(ts: string): string {
 function footerText(kpis: GatewayFeedKpis | null): string {
   if (!kpis) return "Awaiting gateway telemetry";
   const parts = [`${kpis.calls_today.toLocaleString()} calls today`];
-  if (kpis.uptime_seconds != null) {
-    parts.push(`${formatUptime(kpis.uptime_seconds)} uptime`);
-  }
   parts.push(`${kpis.shadow_ai_blocked.toLocaleString()} shadow AIs blocked`);
   return parts.join(" · ");
 }
@@ -142,7 +84,6 @@ export function GatewayLiveFeedCard({
   const [events, setEvents] = useState<GatewayFeedEvent[]>([]);
   const [kpis, setKpis] = useState<GatewayFeedKpis | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSample, setIsSample] = useState(false);
   const [health, setHealth] = useState<GatewayFeedHealth | null>(null);
 
   useEffect(() => {
@@ -159,28 +100,11 @@ export function GatewayLiveFeedCard({
         feedResult.status === "fulfilled" ? feedResult.value.events : [];
       const liveKpis = kpiResult.status === "fulfilled" ? kpiResult.value : null;
 
-      if (liveEvents.length > 0) {
-        setEvents(liveEvents);
-        setKpis(liveKpis);
-        const observedHealth =
-          feedResult.status === "fulfilled" ? feedResult.value.health : null;
-        setHealth(observedHealth);
-        setIsSample(observedHealth?.state === "sample");
-      } else {
-        // No live traffic (or API unreachable): show a labelled sample so the
-        // card always renders something meaningful.
-        setEvents(SAMPLE_FEED_EVENTS);
-        setKpis(liveKpis);
-        setIsSample(true);
-        setHealth({
-          state: "sample",
-          live: false,
-          heartbeat_at: null,
-          age_seconds: null,
-          stale_after_seconds: 120,
-          reason: "synthetic_sample",
-        });
-      }
+      setEvents(liveEvents);
+      setKpis(liveKpis);
+      setHealth(
+        feedResult.status === "fulfilled" ? feedResult.value.health : null,
+      );
       setLoading(false);
     };
 
@@ -194,7 +118,9 @@ export function GatewayLiveFeedCard({
   }, [maxItems]);
 
   const rows = events.slice(0, maxItems);
-  const displayHealth = gatewayFeedDisplayState(health);
+  const healthState = health?.state ?? "unavailable";
+  const isLive = healthState === "live" && health?.live === true;
+  const healthLabel = healthState.charAt(0).toUpperCase() + healthState.slice(1);
 
   return (
     <div
@@ -209,11 +135,11 @@ export function GatewayLiveFeedCard({
           <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
           <span className="truncate">Gateway activity</span>
         </h3>
-        {isSample ? (
+        {healthState === "sample" ? (
           <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
             sample data
           </span>
-        ) : displayHealth.live ? (
+        ) : isLive ? (
           <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium text-emerald-400">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -223,7 +149,7 @@ export function GatewayLiveFeedCard({
           </span>
         ) : (
           <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium capitalize text-[var(--text-secondary)]">
-            {displayHealth.label}
+            {healthLabel}
           </span>
         )}
       </div>
@@ -240,7 +166,7 @@ export function GatewayLiveFeedCard({
       ) : (
         <ul className="divide-y divide-[var(--border-subtle)]">
           {rows.map((event, i) => {
-            const blocked = isBlocked(event);
+            const blocked = event.action_type === "tool_call_blocked";
             return (
               <li
                 key={`${event.ts}-${event.agent}-${i}`}

@@ -48,6 +48,12 @@ export interface EnrichedVuln extends Vulnerability {
   resolved_at?: string | undefined;
   reopened_at?: string | undefined;
   scan_count?: number | undefined;
+  /** Version observed on the affected asset; distinct from fixed_version. */
+  current_version?: string | undefined;
+  /** Canonical CVSS severity emitted by the finding model. */
+  cvss_severity?: string | undefined;
+  /** Scan identifier that produced the evidence; not a scan-completion time. */
+  scan_id?: string | undefined;
 }
 
 export interface RemediationSummary {
@@ -127,6 +133,52 @@ export function hasLifecycleMetadata(rows: EnrichedVuln[]): boolean {
 
 export function uniqueStrings(items: Array<string | null | undefined>) {
   return [...new Set(items.filter((item): item is string => Boolean(item && item.trim())).map((item) => item.trim()))];
+}
+
+export interface OfficialAdvisoryLink {
+  label: "OSV" | "GitHub Advisory" | "NVD" | "CISA KEV";
+  href: string;
+}
+
+/**
+ * Keep rendered advisory links on a small HTTPS allowlist. Finding
+ * payloads may be imported from third-party tools, so rendering every supplied
+ * reference as a trusted link would turn evidence text into a phishing surface.
+ */
+export function officialAdvisoryLinks(references: string[]): OfficialAdvisoryLink[] {
+  const links: OfficialAdvisoryLink[] = [];
+  const seen = new Set<string>();
+  for (const value of uniqueStrings(references)) {
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:") continue;
+    let label: OfficialAdvisoryLink["label"] | null = null;
+    if (parsed.hostname === "osv.dev" && parsed.pathname.startsWith("/vulnerability/")) {
+      label = "OSV";
+    } else if (parsed.hostname === "github.com" && parsed.pathname.startsWith("/advisories/")) {
+      label = "GitHub Advisory";
+    } else if (parsed.hostname === "nvd.nist.gov" && parsed.pathname.startsWith("/vuln/detail/")) {
+      label = "NVD";
+    } else if (
+      (parsed.hostname === "www.cisa.gov" || parsed.hostname === "cisa.gov") &&
+      parsed.pathname.includes("known-exploited-vulnerabilities")
+    ) {
+      label = "CISA KEV";
+    }
+    if (!label || seen.has(parsed.href)) continue;
+    seen.add(parsed.href);
+    links.push({ label, href: parsed.href });
+  }
+  return links;
+}
+
+export function cvssVersion(vector: string | undefined | null): string | null {
+  const match = vector?.trim().match(/^CVSS:(\d+(?:\.\d+)?)\//i);
+  return match?.[1] ?? null;
 }
 
 /**

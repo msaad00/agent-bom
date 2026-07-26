@@ -16,7 +16,14 @@ import {
   findingsTriageTitle,
   type FindingsLens,
 } from "@/lib/findings-lens";
-import { type EnrichedVuln, uniqueStrings, formatFindingTimestamp, findingStatusClass, findingStatusLabel } from "@/lib/findings-view";
+import {
+  type EnrichedVuln,
+  uniqueStrings,
+  formatFindingTimestamp,
+  findingStatusLabel,
+  cvssVersion,
+  officialAdvisoryLinks,
+} from "@/lib/findings-view";
 
 type TabKey = "overview" | "path" | "evidence" | "triage";
 
@@ -52,7 +59,7 @@ export function FindingDrawer({
     <Drawer
       open
       onClose={onClose}
-      size="5xl"
+      size="4xl"
       ariaLabel={`Finding details for ${vuln.id}`}
       eyebrow={findingsDrawerEyebrow(lens)}
       title={<span className="break-all font-mono">{vuln.id}</span>}
@@ -88,7 +95,7 @@ export function FindingDrawer({
         })}
       </div>
 
-      {tab === "overview" ? <OverviewTab vuln={vuln} /> : null}
+      {tab === "overview" ? <OverviewTab vuln={vuln} triage={triage} /> : null}
       {tab === "path" ? <PathTab vuln={vuln} /> : null}
       {tab === "evidence" ? <EvidenceTab vuln={vuln} /> : null}
       {tab === "triage" ? (
@@ -106,29 +113,68 @@ export function FindingDrawer({
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
-function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
+function OverviewTab({ vuln, triage }: { vuln: EnrichedVuln; triage: FindingTriageItem | undefined }) {
   const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "No advisory summary available.";
   const cweMatches = [...new Set(summary.match(/CWE-\d+/gi) ?? [])];
   const whyItMatters = buildWhyItMatters(vuln);
   const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
-
-  // Severity is already the header badge — the stat row leads with exploit
-  // signal (CVSS / EPSS) plus one KEV-or-risk tile, never re-showing severity.
-  const stats: { label: string; value: string }[] = [
-    { label: "CVSS", value: typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published" },
-    { label: "EPSS", value: typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available" },
+  const version = cvssVersion(vuln.cvss_vector);
+  const cvssDetail = [version ? `v${version}` : "version unavailable", vuln.cvss_severity ?? "severity unavailable"].join(" · ");
+  const epssDetail = typeof vuln.epss_percentile === "number"
+    ? `${vuln.epss_percentile.toFixed(1)}th percentile`
+    : "Percentile unavailable";
+  const fixValue = vuln.current_version && vuln.fixed_version
+    ? `${vuln.current_version} → ${vuln.fixed_version}`
+    : vuln.fixed_version
+      ? `Upgrade to ${vuln.fixed_version}`
+      : "Unavailable";
+  const stats: { label: string; value: string; detail?: string }[] = [
+    {
+      label: "CVSS",
+      value: typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Unavailable",
+      detail: cvssDetail,
+    },
+    {
+      label: "EPSS",
+      value: typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Unavailable",
+      detail: epssDetail,
+    },
+    {
+      label: "CISA KEV",
+      value: vuln.is_kev ? "Known exploited" : "Not listed",
+      detail: vuln.kev_date_added ? `Added ${formatDateOnly(vuln.kev_date_added)}` : "Catalog date unavailable",
+    },
+    { label: "Affected → fixed", value: fixValue },
   ];
-  if (vuln.is_kev) stats.push({ label: "KEV", value: "Known-exploited" });
-  else if (typeof vuln.risk_score === "number") stats.push({ label: "Risk", value: vuln.risk_score.toFixed(1) });
 
   return (
     <div className="space-y-3">
-      <div className={`grid gap-2 ${stats.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <DetailStat key={stat.label} label={stat.label} value={stat.value} />
+          <DetailStat key={stat.label} label={stat.label} value={stat.value} detail={stat.detail} />
         ))}
       </div>
+
+      <Section title="Observation and workflow">
+        <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2 lg:grid-cols-3">
+          <KeyVal label="First seen" value={vuln.first_seen ? formatFindingTimestamp(vuln.first_seen) : "Unavailable"} />
+          <KeyVal label="Last observed" value={vuln.last_seen ? formatFindingTimestamp(vuln.last_seen) : "Unavailable"} />
+          <KeyVal label="Last scanned" value="Unavailable" />
+          <KeyVal label="Status" value={vuln.lifecycle_status ? findingStatusLabel(vuln.lifecycle_status) : triage?.queue_state ?? "Unavailable"} />
+          <KeyVal label="Owner" value={triage ? triage.assignee || "Unassigned" : "Unavailable"} />
+          <KeyVal label="SLA" value="unavailable" />
+        </div>
+      </Section>
+
+      <Section title="Security intelligence">
+        <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+          <KeyVal label="CVSS vector" value={vuln.cvss_vector ?? "Unavailable"} />
+          <KeyVal label="Severity source" value={vuln.severity_source ?? "Unavailable"} />
+          <KeyVal label="Published" value={published ? formatDateOnly(published) : "Unavailable"} />
+          <KeyVal label="Modified" value={vuln.modified_at ? formatDateOnly(vuln.modified_at) : "Unavailable"} />
+        </div>
+      </Section>
 
       <ReachBadges vuln={vuln} />
 
@@ -185,16 +231,9 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
         </Section>
       ) : null}
 
-      <Section title="Fix context">
-        <div className="grid gap-x-4 gap-y-1.5 text-sm text-[color:var(--text-secondary)] sm:grid-cols-2">
-          <KeyVal label="Fix" value={vuln.fixed_version ?? "No published fix"} />
-          {published ? <KeyVal label="Published" value={new Date(published).toLocaleDateString()} /> : null}
-          {vuln.modified_at ? <KeyVal label="Modified" value={new Date(vuln.modified_at).toLocaleDateString()} /> : null}
-          {typeof vuln.confidence === "number" ? <KeyVal label="Confidence" value={`${(vuln.confidence * 100).toFixed(0)}%`} /> : null}
-          {vuln.severity_source ? <KeyVal label="Severity source" value={vuln.severity_source} /> : null}
-        </div>
+      {fixCandidates.length > 0 || vuln.remediation_items[0]?.risk_narrative ? <Section title="Remediation detail">
         {fixCandidates.length > 0 ? (
-          <div className="mt-3 divide-y divide-[color:var(--border-subtle)] overflow-hidden rounded-lg border border-[color:var(--border-subtle)]">
+          <div className="divide-y divide-[color:var(--border-subtle)] overflow-hidden rounded-lg border border-[color:var(--border-subtle)]">
             {fixCandidates.slice(0, 2).map((item) => (
               <div key={`${item.package}:${item.current_version}`} className="p-2.5">
                 <div className="flex items-center justify-between gap-2">
@@ -213,7 +252,7 @@ function OverviewTab({ vuln }: { vuln: EnrichedVuln }) {
         {vuln.remediation_items[0]?.risk_narrative ? (
           <p className="mt-3 text-xs leading-5 text-[color:var(--text-tertiary)]">{vuln.remediation_items[0].risk_narrative}</p>
         ) : null}
-      </Section>
+      </Section> : null}
     </div>
   );
 }
@@ -397,15 +436,8 @@ function PathTab({ vuln }: { vuln: EnrichedVuln }) {
 // ── Evidence ──────────────────────────────────────────────────────────────────
 
 function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
-  const references = uniqueStrings(vuln.references).slice(0, 6);
+  const references = officialAdvisoryLinks(vuln.references).slice(0, 6);
   const investigationSources = uniqueStrings([...vuln.sources, ...vuln.advisory_sources]);
-  const hasLifecycle =
-    Boolean(vuln.lifecycle_status?.trim()) ||
-    Boolean(vuln.first_seen?.trim()) ||
-    Boolean(vuln.last_seen?.trim()) ||
-    Boolean(vuln.resolved_at?.trim()) ||
-    Boolean(vuln.reopened_at?.trim()) ||
-    typeof vuln.scan_count === "number";
 
   return (
     <div className="space-y-4">
@@ -419,20 +451,33 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
               <div className="flex flex-col gap-2">
                 {references.map((ref) => (
                   <a
-                    key={ref}
-                    href={ref}
+                    key={ref.href}
+                    href={ref.href}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
                     <FileSearch className="h-3.5 w-3.5 text-[color:var(--text-tertiary)]" />
-                    <span className="truncate">{ref}</span>
+                    <span className="font-medium text-[color:var(--foreground)]">{ref.label}</span>
+                    <span className="truncate text-[color:var(--text-tertiary)]">{ref.href}</span>
                     <ExternalLink className="ml-auto h-3 w-3 shrink-0" />
                   </a>
                 ))}
               </div>
             </div>
           ) : null}
+        </div>
+      </Panel>
+
+      <Panel title="Provenance">
+        <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+          <KeyVal label="Finding sources" value={investigationSources.join(", ") || "Unavailable"} />
+          <KeyVal label="Scan" value={vuln.scan_id ?? "Unavailable"} />
+          <KeyVal label="Match confidence" value={vuln.match_confidence_tier ?? "Unavailable"} />
+          <KeyVal
+            label="Data confidence"
+            value={typeof vuln.confidence === "number" ? `${(vuln.confidence * 100).toFixed(0)}%` : "Unavailable"}
+          />
         </div>
       </Panel>
 
@@ -446,22 +491,12 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
         </Panel>
       ) : null}
 
-      {hasLifecycle ? (
+      {vuln.resolved_at || vuln.reopened_at || typeof vuln.scan_count === "number" ? (
         <Panel title="Lifecycle">
           <div className="space-y-2 text-sm text-[color:var(--text-secondary)]">
-            {vuln.lifecycle_status ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[color:var(--text-tertiary)]">Status:</span>
-                <span className={`rounded border px-2 py-0.5 text-xs font-medium ${findingStatusClass(vuln.lifecycle_status)}`}>
-                  {findingStatusLabel(vuln.lifecycle_status)}
-                </span>
-              </div>
-            ) : null}
-            {vuln.first_seen ? <KeyVal label="First seen" value={formatFindingTimestamp(vuln.first_seen)} /> : null}
-            {vuln.last_seen ? <KeyVal label="Last seen" value={formatFindingTimestamp(vuln.last_seen)} /> : null}
             {vuln.resolved_at ? <KeyVal label="Resolved" value={formatFindingTimestamp(vuln.resolved_at)} /> : null}
             {vuln.reopened_at ? <KeyVal label="Reopened" value={formatFindingTimestamp(vuln.reopened_at)} /> : null}
-            {typeof vuln.scan_count === "number" ? <KeyVal label="Scan count" value={String(vuln.scan_count)} /> : null}
+            {typeof vuln.scan_count === "number" ? <KeyVal label="Observed in scans" value={String(vuln.scan_count)} /> : null}
           </div>
         </Panel>
       ) : null}
@@ -547,8 +582,13 @@ function TriageTab({
         <p className="text-xs leading-5 text-[color:var(--text-tertiary)]">{findingsTriageDetail(lens)}</p>
         {triage ? (
           <div className="mt-3 grid gap-2 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+            <KeyVal label="Queue state" value={triage.queue_state} />
             <KeyVal label="Decision" value={triage.decision} />
             <KeyVal label="Assignee" value={triage.assignee || "unassigned"} />
+            <KeyVal label="Created" value={formatFindingTimestamp(triage.created_at)} />
+            <KeyVal label="Reviewed" value={triage.reviewed_at ? formatFindingTimestamp(triage.reviewed_at) : "Unavailable"} />
+            <KeyVal label="Expires" value={triage.expires_at ? formatFindingTimestamp(triage.expires_at) : "Unavailable"} />
+            <KeyVal label="SLA" value="Unavailable" />
             {triage.justification ? (
               <div className="sm:col-span-2">
                 <KeyVal label="Justification" value={triage.justification} />
@@ -571,14 +611,6 @@ function TriageTab({
       </Panel>
 
       <div className="flex flex-wrap gap-2">
-        <a
-          href={`https://osv.dev/vulnerability/${vuln.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-        >
-          Open on OSV <ExternalLink className="h-3 w-3" />
-        </a>
         <Link
           href={`/findings?cve=${vuln.id}`}
           className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70"
@@ -636,7 +668,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 
 function KeyVal({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div aria-label={`${label}: ${value}`}>
       <span className="text-[color:var(--text-tertiary)]">{label}:</span> {value}
     </div>
   );
@@ -680,11 +712,22 @@ function TriageButton({
   );
 }
 
-function DetailStat({ label, value }: { label: string; value: string }) {
+function formatDateOnly(value: string): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return value;
+  return new Date(parsed).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function DetailStat({ label, value, detail }: { label: string; value: string; detail?: string | undefined }) {
   return (
     <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5">
       <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
       <div className="mt-1.5 text-sm font-semibold text-[color:var(--foreground)]">{value}</div>
+      {detail ? <div className="mt-1 truncate text-[10px] text-[color:var(--text-tertiary)]" title={detail}>{detail}</div> : null}
     </div>
   );
 }

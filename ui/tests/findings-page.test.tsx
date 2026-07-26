@@ -147,6 +147,100 @@ describe("FindingsPage", () => {
     });
   });
 
+  it("projects canonical vulnerability intelligence into the finding drawer without inventing missing facts", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      total: 1,
+      findings: [
+        {
+          id: "finding-intel-1",
+          severity: "high",
+          cvss_severity: "high",
+          cve_id: "CVE-2026-4242",
+          title: "PyYAML unsafe deserialization",
+          asset: { name: "pyyaml", asset_type: "package" },
+          source: "osv",
+          scan_id: "scan-intel-1",
+          cvss_score: 8.8,
+          cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+          epss_score: 0.42,
+          is_kev: true,
+          fixed_version: "6.0.2",
+          status: "open",
+          first_seen: "2026-07-01T12:00:00Z",
+          last_seen: "2026-07-21T15:30:00Z",
+          scan_count: 3,
+          advisory_sources: ["osv", "ghsa", "nvd", "cisa_kev"],
+          aliases: ["GHSA-aaaa-bbbb-cccc"],
+          references: [
+            "https://osv.dev/vulnerability/CVE-2026-4242",
+            "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-4242",
+            "https://evil.example/phishing",
+          ],
+          evidence: {
+            package_version: "5.3",
+            epss_percentile: 97.5,
+            kev_date_added: "2026-01-04",
+            severity_source: "nvd",
+            match_confidence_tier: "osv_range",
+          },
+        },
+      ],
+    });
+    apiMock.listFindingTriage.mockResolvedValue({
+      triage: [
+        {
+          id: "triage-1",
+          vulnerability_id: "CVE-2026-4242",
+          package: "pyyaml",
+          server_name: "",
+          queue_state: "assigned",
+          decision: "under_investigation",
+          decision_reason: "Validate runtime exposure.",
+          assignee: "security-platform",
+          created_by: "operator",
+          created_at: "2026-07-22T12:00:00Z",
+          reviewed_at: "",
+          expires_at: "2026-08-05T12:00:00Z",
+          tenant_id: "tenant-test",
+          vex_eligible: false,
+        },
+      ],
+    });
+
+    render(<FindingsPage />);
+    expect(await screen.findByText("CVE-2026-4242")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-4242" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-4242" });
+    expect(within(drawer).getByText("v3.1 · high")).toBeInTheDocument();
+    expect(within(drawer).getByText("97.5th percentile")).toBeInTheDocument();
+    expect(within(drawer).getByText("Known exploited")).toBeInTheDocument();
+    expect(within(drawer).getByText(/First seen/i)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Last observed/i)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Last scanned/i)).toBeInTheDocument();
+    expect(within(drawer).getByText("5.3 → 6.0.2")).toBeInTheDocument();
+    expect(within(drawer).getByText("security-platform")).toBeInTheDocument();
+    expect(within(drawer).getByLabelText(/SLA: unavailable/i)).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Evidence" }));
+    expect(within(drawer).getByRole("link", { name: /OSV/i })).toHaveAttribute(
+      "href",
+      "https://osv.dev/vulnerability/CVE-2026-4242",
+    );
+    expect(within(drawer).getByRole("link", { name: /GitHub Advisory/i })).toHaveAttribute(
+      "href",
+      "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+    );
+    expect(within(drawer).getByRole("link", { name: /NVD/i })).toHaveAttribute(
+      "href",
+      "https://nvd.nist.gov/vuln/detail/CVE-2026-4242",
+    );
+    expect(within(drawer).queryByRole("link", { name: /evil\.example/i })).not.toBeInTheDocument();
+    expect(within(drawer).getByText("osv_range")).toBeInTheDocument();
+    expect(within(drawer).getByText("scan-intel-1")).toBeInTheDocument();
+  });
+
   it("renders the same CVE across multiple assets as distinct rows with unique keys", async () => {
     // Regression: rows were keyed by the CVE label, so one CVE affecting N
     // assets collapsed to a single key — React warned and could drop rows.

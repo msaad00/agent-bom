@@ -119,6 +119,22 @@ function attrNumber(node: GraphNode, key: string): number | undefined {
   return undefined;
 }
 
+function recordString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function recordNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function recordStrings(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+}
+
 function normalizedSeverity(value: string | undefined): Vulnerability["severity"] {
   const normalized = (value ?? "").toLowerCase();
   return normalized === "critical" || normalized === "high" || normalized === "medium" || normalized === "low" || normalized === "none"
@@ -163,9 +179,14 @@ function collectGraphVulns(graph: UnifiedGraphResponse): EnrichedVuln[] {
       advisory_sources: [],
       aliases: [],
       cvss_score: attrNumber(node, "cvss_score") ?? attrNumber(node, "cvss"),
+      cvss_vector: attrString(node, "cvss_vector"),
+      cvss_severity: attrString(node, "cvss_severity"),
       epss_score: attrNumber(node, "epss_score") ?? attrNumber(node, "epss"),
+      epss_percentile: attrNumber(node, "epss_percentile"),
       is_kev: Boolean(node.attributes?.is_kev ?? node.attributes?.cisa_kev),
       cisa_kev: Boolean(node.attributes?.cisa_kev ?? node.attributes?.is_kev),
+      kev_date_added: attrString(node, "kev_date_added"),
+      kev_due_date: attrString(node, "kev_due_date"),
       fixed_version: attrString(node, "fixed_version"),
       packages: Array.from(packagesByFinding.get(node.id) ?? []),
       agents: Array.from(agentsByFinding.get(node.id) ?? []),
@@ -179,6 +200,7 @@ function collectGraphVulns(graph: UnifiedGraphResponse): EnrichedVuln[] {
       remediation_items: [],
       graph_reachable: null,
       graph_min_hop_distance: null,
+      scan_id: graph.scan_id,
     }));
 }
 
@@ -196,6 +218,15 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
     const assetName = finding.asset?.name?.trim() || finding.asset?.identifier || finding.asset?.stable_id || "asset";
     const findingLabel = finding.cve_id || finding.title || finding.id;
     const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
+    const evidence = finding.evidence ?? {};
+    const references = uniqueStrings([
+      ...(finding.references ?? []),
+      ...recordStrings(evidence, "references"),
+    ]);
+    const advisorySources = uniqueStrings([
+      ...(finding.advisory_sources ?? []),
+      ...recordStrings(evidence, "advisory_sources"),
+    ]);
     return {
       id: findingLabel,
       finding_id: finding.id,
@@ -206,14 +237,32 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       severity: normalizedSeverity(finding.effective_severity ?? finding.severity),
       summary: raw.attack_vector_summary ?? finding.title ?? finding.description,
       description: finding.description ?? finding.title,
-      references: [],
-      advisory_sources: sourceLabel,
-      aliases: [],
+      references,
+      advisory_sources: advisorySources,
+      aliases: uniqueStrings([
+        ...(finding.aliases ?? []),
+        ...(finding.advisory_aliases ?? []),
+        ...recordStrings(evidence, "advisory_aliases"),
+      ]),
       cvss_score: finding.cvss_score ?? undefined,
+      cvss_vector: finding.cvss_vector ?? recordString(evidence, "cvss_vector"),
+      cvss_severity: finding.cvss_severity ?? undefined,
       epss_score: finding.epss_score ?? undefined,
+      epss_percentile: finding.epss_percentile ?? recordNumber(evidence, "epss_percentile"),
       is_kev: Boolean(finding.is_kev),
       cisa_kev: Boolean(finding.is_kev),
+      kev_date_added: finding.kev_date_added ?? recordString(evidence, "kev_date_added"),
+      kev_due_date: finding.kev_due_date ?? recordString(evidence, "kev_due_date"),
       fixed_version: finding.fixed_version ?? undefined,
+      current_version:
+        finding.package_version ??
+        recordString(evidence, "package_version"),
+      published_at: finding.published_at ?? recordString(evidence, "published_at"),
+      modified_at: finding.modified_at ?? recordString(evidence, "modified_at"),
+      severity_source: finding.severity_source ?? recordString(evidence, "severity_source"),
+      confidence: finding.confidence ?? recordNumber(evidence, "confidence"),
+      match_confidence_tier:
+        finding.match_confidence_tier ?? recordString(evidence, "match_confidence_tier"),
       packages: [assetName],
       agents: finding.affected_agents ?? [],
       sources: sourceLabel.length > 0 ? sourceLabel : ["finding"],
@@ -254,6 +303,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       resolved_at: finding.resolved_at ?? undefined,
       reopened_at: finding.reopened_at ?? undefined,
       scan_count: finding.scan_count,
+      scan_id: finding.scan_id,
     };
   });
 }
@@ -548,6 +598,7 @@ function FindingsPage() {
                 existing.cvss_score = existing.cvss_score ?? blast?.cvss_score ?? vuln.cvss_score;
                 existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
                 existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
+                existing.current_version = existing.current_version ?? pkg.version;
                 // Graph-walk reachability: prefer "reachable=true" + smallest
                 // hop count when multiple blast rows touch the same vuln.
                 if (blast?.graph_reachable === true) existing.graph_reachable = true;
@@ -586,6 +637,7 @@ function FindingsPage() {
                   cvss_score: blast?.cvss_score ?? vuln.cvss_score,
                   epss_score: blast?.epss_score ?? vuln.epss_score,
                   fixed_version: blast?.fixed_version ?? vuln.fixed_version,
+                  current_version: pkg.version,
                   summary: blast?.attack_vector_summary ?? vuln.summary ?? vuln.description,
                   packages: [pkg.name],
                   agents: [agent.name],

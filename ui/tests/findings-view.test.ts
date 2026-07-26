@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   findingStatusClass,
   findingStatusLabel,
+  cvssVersion,
   formatFindingTimestamp,
   hasLifecycleMetadata,
+  officialAdvisoryLinks,
   vulnRowKey,
   type EnrichedVuln,
 } from "@/lib/findings-view";
@@ -42,6 +44,30 @@ describe("findings lifecycle helpers", () => {
   it("detects lifecycle metadata on enriched rows", () => {
     expect(hasLifecycleMetadata([sampleVuln()])).toBe(false);
     expect(hasLifecycleMetadata([sampleVuln({ lifecycle_status: "open", last_seen: "2026-07-01T00:00:00Z" })])).toBe(true);
+  });
+});
+
+describe("finding intelligence helpers", () => {
+  it("reads the CVSS version only from a canonical vector prefix", () => {
+    expect(cvssVersion("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H")).toBe("3.1");
+    expect(cvssVersion("AV:N/AC:L")).toBeNull();
+    expect(cvssVersion(undefined)).toBeNull();
+  });
+
+  it("allows official HTTPS advisory links and drops untrusted references", () => {
+    expect(
+      officialAdvisoryLinks([
+        "https://osv.dev/vulnerability/CVE-2026-0001",
+        "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+        "https://nvd.nist.gov/vuln/detail/CVE-2026-0001",
+        "http://osv.dev/vulnerability/CVE-2026-0001",
+        "https://evil.example/phishing",
+      ]),
+    ).toEqual([
+      { label: "OSV", href: "https://osv.dev/vulnerability/CVE-2026-0001" },
+      { label: "GitHub Advisory", href: "https://github.com/advisories/GHSA-aaaa-bbbb-cccc" },
+      { label: "NVD", href: "https://nvd.nist.gov/vuln/detail/CVE-2026-0001" },
+    ]);
   });
 });
 

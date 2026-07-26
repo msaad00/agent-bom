@@ -1004,10 +1004,14 @@ export interface Vulnerability {
   advisory_sources?: string[] | undefined;
   aliases?: string[] | undefined;
   cvss_score?: number | undefined;
+  cvss_vector?: string | undefined;
   epss_score?: number | undefined;
+  epss_percentile?: number | undefined;
   /** API v2 field — same as cisa_kev */
   is_kev?: boolean | undefined;
   cisa_kev?: boolean | undefined;
+  kev_date_added?: string | undefined;
+  kev_due_date?: string | undefined;
   fixed_version?: string | undefined;
   /** API v2 field — same as published */
   published_at?: string | undefined;
@@ -1017,6 +1021,7 @@ export interface Vulnerability {
   /** Phase 2 fields */
   severity_source?: string | undefined;
   confidence?: number | undefined;
+  match_confidence_tier?: string | undefined;
 }
 
 export interface UnifiedFinding {
@@ -1040,10 +1045,16 @@ export interface UnifiedFinding {
   } | undefined;
   severity: string;
   effective_severity?: string | undefined;
+  cvss_severity?: string | null | undefined;
+  vendor_severity?: string | null | undefined;
   title?: string | undefined;
   description?: string | undefined;
   cve_id?: string | null | undefined;
   cwe_ids?: string[] | undefined;
+  references?: string[] | undefined;
+  advisory_sources?: string[] | undefined;
+  advisory_aliases?: string[] | undefined;
+  aliases?: string[] | undefined;
   cvss_score?: number | null | undefined;
   cvss_version?: string | null | undefined;
   cvss_vector?: string | null | undefined;
@@ -1053,7 +1064,19 @@ export interface UnifiedFinding {
   user_interaction?: string | null | undefined;
   network_exploitable?: boolean | undefined;
   epss_score?: number | null | undefined;
+  epss_percentile?: number | null | undefined;
   is_kev?: boolean | null | undefined;
+  kev_date_added?: string | null | undefined;
+  kev_due_date?: string | null | undefined;
+  published_at?: string | null | undefined;
+  modified_at?: string | null | undefined;
+  severity_source?: string | null | undefined;
+  confidence?: number | null | undefined;
+  match_confidence_tier?: string | null | undefined;
+  package?: string | null | undefined;
+  package_name?: string | null | undefined;
+  package_version?: string | null | undefined;
+  ecosystem?: string | null | undefined;
   fixed_version?: string | null | undefined;
   remediation_guidance?: string | null | undefined;
   compliance_tags?: string[] | undefined;

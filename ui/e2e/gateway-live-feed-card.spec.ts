@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// Renders the gateway live-feed card (#54) against mocked live data — including
+// Renders the gateway activity card against mocked live data — including
 // a deliberately overlong agent/target path — and captures it at a narrow
 // (390px) and wide (1280px) viewport to prove text stays contained.
 
@@ -110,6 +110,14 @@ test("gateway live feed card renders without overflow at both widths", async ({
         generated_at: "2026-06-26T14:31:07Z",
         count: feedEvents.length,
         events: feedEvents,
+        health: {
+          state: "live",
+          live: true,
+          heartbeat_at: "2026-06-26T14:31:07Z",
+          age_seconds: 0,
+          stale_after_seconds: 120,
+          reason: "fresh_transport_heartbeat",
+        },
       }),
     }),
   );
@@ -120,7 +128,7 @@ test("gateway live feed card renders without overflow at both widths", async ({
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto("/activity");
   await expect(card).toBeVisible();
-  await expect(card.getByText("Gateway Live Feed")).toBeVisible();
+  await expect(card.getByText("Gateway activity")).toBeVisible();
   await expect(card.getByText(/4,485 calls today/)).toBeVisible();
 
   // No row's content extends past the card's right edge.

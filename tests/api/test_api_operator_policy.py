@@ -880,6 +880,8 @@ def test_sqlite_schema_version_helper_is_idempotent() -> None:
 def test_metrics_requires_authenticated_access(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
+    _server_mod.configure_api(api_key=None)
     client = TestClient(app)
     unauthenticated = client.get("/metrics")
     assert unauthenticated.status_code == 401

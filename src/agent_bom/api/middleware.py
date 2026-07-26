@@ -1457,6 +1457,24 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return True
         if request.headers.get("x-api-key", "").strip():
             return True
+        # Proxy identity headers are credential material only when the trusted
+        # proxy resolver validates its shared attestation.  If that resolver is
+        # disabled or misconfigured, their presence must still be terminal:
+        # silently downgrading a spoofed/wrong-secret proxy identity to the
+        # anonymous NO_AUTH_ROLE would hide a broken auth boundary (and can
+        # unexpectedly elevate it on a local no-auth admin deployment).
+        if any(
+            request.headers.get(name, "").strip()
+            for name in (
+                "x-agent-bom-role",
+                "x-agent-bom-tenant-id",
+                "x-agent-bom-subject",
+                "x-agent-bom-proxy-secret",
+                "x-forwarded-email",
+                "x-auth-request-email",
+            )
+        ):
+            return True
         return False
 
     async def _serve_anonymous(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:

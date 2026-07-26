@@ -844,8 +844,6 @@ def configure_api(
         allow_unauthenticated=allow_unauthenticated,
     )
     apply_auth_posture(posture)
-    auth_required = posture.auth_configured or not allow_unauthenticated
-
     # The control-plane auth-posture warning is emitted once at serving start
     # (see ``_log_control_plane_auth_posture`` in ``_lifespan``) rather than
     # here: ``configure_api`` runs at import via ``configure_api_from_env`` with
@@ -858,17 +856,14 @@ def configure_api(
     # (capping unauthenticated floods before auth), then body-size, then auth
     # before the tenant-scoped rate limiter, which needs tenant/auth state.
     _replace_middleware(RateLimitMiddleware, scan_rpm=_rate_limit_rpm, read_rpm=_rate_limit_rpm * 5)
-    # ``auth_required`` is ``auth_configured or not allow_unauthenticated`` so the
-    # middleware is still installed whenever any credential is configured — even
-    # with the unauthenticated opt-in on. In that combined mode it authenticates
-    # valid credentials to their role and lets credential-less callers fall
-    # through to NO_AUTH_ROLE (via ``allow_unauthenticated``); a present-but-
-    # invalid credential is still rejected. Only the pure no-auth mode (nothing
-    # configured + opt-in) removes the middleware entirely.
-    if auth_required:
-        _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
-    else:
-        app.user_middleware = [m for m in app.user_middleware if m.cls is not APIKeyMiddleware]
+    # Authentication can be optional; authorization cannot.  Keep the
+    # principal resolver installed in pure no-auth mode so credential-less
+    # callers receive the configured NO_AUTH_ROLE and traverse the same route
+    # role matrix as authenticated principals.  Removing the middleware here
+    # used to let a no-auth viewer mutate sources, schedules, and scan jobs
+    # directly.  The anonymous resolver preserves local self-hosted operation,
+    # while DEMO_ESTATE still clamps the effective role to viewer.
+    _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
     _replace_middleware(MaxBodySizeMiddleware)
     _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
     if app.middleware_stack is not None:

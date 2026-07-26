@@ -10,17 +10,29 @@ from starlette.testclient import TestClient
 from agent_bom.api.server import app
 
 
-def test_auth_me_returns_zero_state_without_auth() -> None:
+def test_auth_me_returns_effective_viewer_session_without_credentials(monkeypatch) -> None:  # noqa: ANN001
+    from agent_bom.api.server import configure_api
+
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "viewer")
+    configure_api(api_key=None, allow_unauthenticated=True)
     client = TestClient(app)
     resp = client.get("/v1/auth/me")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["authenticated"] is False
-    assert body["auth_method"] is None
-    assert body["role"] is None
+    assert body["authenticated"] is True
+    assert body["auth_method"] == "anonymous"
+    assert body["role"] == "viewer"
     assert body["tenant_id"] == "default"
-    assert body["role_summary"] is None
-    assert body["memberships"] == []
+    assert body["role_summary"]["capabilities"] == ["inventory.read"]
+    assert body["memberships"] == [
+        {
+            "tenant_id": "default",
+            "role": "viewer",
+            "ui_role": "viewer",
+            "display_name": "Viewer",
+            "active": True,
+        }
+    ]
 
 
 def test_auth_me_reports_contributor_capabilities_for_analyst() -> None:

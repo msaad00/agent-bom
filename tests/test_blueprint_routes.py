@@ -177,6 +177,13 @@ def test_blueprints_are_tenant_isolated(client, monkeypatch):
     # a request attributed to another tenant (trusted-proxy identity) cannot see it
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "x" * 40)
+    # Rebuild the live middleware after changing its credential sources.  Pure
+    # no-auth mode now retains the resolver so authorization remains active;
+    # changing auth env vars after the client was constructed is not itself a
+    # runtime reconfiguration mechanism.
+    from agent_bom.api.server import configure_api
+
+    configure_api(api_key=None)
     headers = {
         "X-Agent-Bom-Role": "admin",
         "X-Agent-Bom-Tenant-ID": "other-tenant",

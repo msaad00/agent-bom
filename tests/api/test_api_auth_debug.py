@@ -1,7 +1,7 @@
 """Tests for GET /v1/auth/debug — operator-facing auth introspection.
 
 Covers:
-- unauthenticated request returns a safe zero-state response
+- credential-less request returns its effective anonymous-role response
 - auth method + role + tenant reflect the middleware-resolved state
 - no raw key / token / hash ever appears in the response
 - request-scoped trace IDs are surfaced so operators can correlate logs
@@ -28,17 +28,20 @@ def _set_state(client: TestClient, **attrs) -> TestClient:
     raise NotImplementedError  # sentinel to clarify intent — see direct calls below
 
 
-def test_auth_debug_returns_zero_state_without_auth() -> None:
-    """No middleware has run → every auth attribute reports None."""
+def test_auth_debug_returns_effective_viewer_without_credentials(monkeypatch) -> None:  # noqa: ANN001
+    """Pure no-auth mode still resolves a role before route authorization."""
+    from agent_bom.api.server import configure_api
+
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "viewer")
+    configure_api(api_key=None, allow_unauthenticated=True)
     client = TestClient(app)
     resp = client.get("/v1/auth/debug")
-    # The endpoint itself is not auth-required; it reports the absence.
     assert resp.status_code == 200
     body = resp.json()
-    assert body["authenticated"] is False
-    assert body["auth_method"] is None
-    assert body["subject"] is None
-    assert body["role"] is None
+    assert body["authenticated"] is True
+    assert body["auth_method"] == "anonymous"
+    assert body["subject"] == "anonymous"
+    assert body["role"] == "viewer"
     # tenant_id defaults to "default" so clients can always display a value
     assert body["tenant_id"] == "default"
 

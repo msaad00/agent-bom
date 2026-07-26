@@ -52,6 +52,9 @@ def test_enterprise_read_routes_reject_spoofed_proxy_headers_without_attestation
 def test_attested_proxy_headers_are_accepted_when_explicitly_enabled(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    from agent_bom.api.server import configure_api
+
+    configure_api(api_key=None)
     client = TestClient(app)
 
     response = client.get(
@@ -69,6 +72,9 @@ def test_attested_proxy_headers_are_accepted_when_explicitly_enabled(monkeypatch
 def test_attested_proxy_headers_reject_wrong_secret(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    from agent_bom.api.server import configure_api
+
+    configure_api(api_key=None)
     client = TestClient(app)
 
     response = client.get(

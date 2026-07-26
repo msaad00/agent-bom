@@ -1245,7 +1245,7 @@ async def auth_debug(request: Request) -> dict:
 @router.get("/auth/me", tags=["enterprise"])
 async def auth_me(request: Request) -> dict:
     """Return the current UI-facing actor/session contract for the active tenant."""
-    from agent_bom.api.managed_trial import managed_trial_enabled
+    from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_envelope
 
     state = _auth_session_state(request)
     role_summary = state["role_summary"]
@@ -1269,6 +1269,7 @@ async def auth_me(request: Request) -> dict:
         "sso_provider": state["sso_provider"],
         "auth_method": state["auth_method"],
         "managed_trial_mode": managed_trial_enabled(),
+        "managed_trial_envelope": managed_trial_envelope(),
         "subject": state["subject"],
         "tenant_id": state["tenant_id"],
         "role": state["role"],

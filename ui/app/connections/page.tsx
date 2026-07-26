@@ -55,6 +55,7 @@ import {
   type SourceCreateRequest,
   type SourceKind,
   type SourceRecord,
+  type ManagedTrialEnvelope,
 } from "@/lib/api";
 import {
   buildUnifiedRows,
@@ -815,6 +816,7 @@ function ConnectionsHub() {
   const managedTrialSession = Boolean(
     session?.managed_trial_mode || session?.auth_method === "managed_trial_oidc",
   );
+  const managedTrialEnvelope = session?.managed_trial_envelope ?? null;
   const canManage = hasCapability("scan.run");
   const canManageSources = !managedTrialSession && hasCapability("sources.manage");
   const canRunScans = hasCapability("scan.run");
@@ -962,10 +964,15 @@ function ConnectionsHub() {
   }, [refresh, refreshSources]);
 
   const openWizard = useCallback((provider?: string) => {
-    if (!canManage || (managedTrialSession && provider != null && provider !== "aws")) return;
+    if (
+      !canManage ||
+      (managedTrialSession &&
+        provider != null &&
+        !managedTrialEnvelope?.providers.includes(provider))
+    ) return;
     setWizardProvider(provider);
     setWizardOpen(true);
-  }, [canManage, managedTrialSession]);
+  }, [canManage, managedTrialEnvelope, managedTrialSession]);
 
   const handleCreated = useCallback(
     (created: CloudConnectionRecord) => {
@@ -1378,6 +1385,7 @@ function ConnectionsHub() {
       canManage={canManage}
       canManageSources={canManageSources}
       managedTrial={managedTrialSession}
+      managedTrialProviders={managedTrialEnvelope?.providers ?? null}
       onConnectCloud={openWizard}
       onRegisterSource={handleRegisterSource}
       onConnectCodingAgent={() => setCodingAgentOpen(true)}
@@ -1560,6 +1568,10 @@ function ConnectionsHub() {
         <AddConnectionWizard
           initialProvider={wizardProvider}
           managedTrial={managedTrialSession}
+          managedTrialEnvelope={managedTrialEnvelope}
+          providerConnectionCount={
+            connectedByProvider[wizardProvider ?? "aws"] ?? 0
+          }
           onClose={handleWizardClose}
           onCreated={handleCreated}
         />
@@ -2604,6 +2616,7 @@ function ConnectorGallery({
   canManage,
   canManageSources,
   managedTrial,
+  managedTrialProviders,
   onConnectCloud,
   onRegisterSource,
   onConnectCodingAgent,
@@ -2616,6 +2629,7 @@ function ConnectorGallery({
   canManage: boolean;
   canManageSources: boolean;
   managedTrial: boolean;
+  managedTrialProviders: string[] | null;
   onConnectCloud: (provider: string) => void;
   onRegisterSource: (kind: SourceKind) => void;
   onConnectCodingAgent: () => void;
@@ -2686,6 +2700,7 @@ function ConnectorGallery({
               canManage={canManage}
               canManageSources={canManageSources}
               managedTrial={managedTrial}
+              managedTrialProviders={managedTrialProviders}
               onConnectCloud={onConnectCloud}
               onRegisterSource={onRegisterSource}
               onConnectCodingAgent={onConnectCodingAgent}
@@ -2703,6 +2718,7 @@ function ConnectorTile({
   canManage,
   canManageSources,
   managedTrial,
+  managedTrialProviders,
   onConnectCloud,
   onRegisterSource,
   onConnectCodingAgent,
@@ -2712,6 +2728,7 @@ function ConnectorTile({
   canManage: boolean;
   canManageSources: boolean;
   managedTrial: boolean;
+  managedTrialProviders: string[] | null;
   onConnectCloud: (provider: string) => void;
   onRegisterSource: (kind: SourceKind) => void;
   onConnectCodingAgent: () => void;
@@ -2722,7 +2739,9 @@ function ConnectorTile({
   const connected = connectedCount > 0;
   const cloudAllowed =
     canManage &&
-    (!managedTrial || (connector.action.type === "cloud" && connector.action.provider === "aws"));
+    (!managedTrial ||
+      (connector.action.type === "cloud" &&
+        Boolean(managedTrialProviders?.includes(connector.action.provider))));
 
   return (
     <Card className="flex h-full flex-col gap-3">
@@ -3461,11 +3480,15 @@ type VerifyState = "idle" | "running" | "ok" | "error";
 function AddConnectionWizard({
   initialProvider,
   managedTrial,
+  managedTrialEnvelope,
+  providerConnectionCount,
   onClose,
   onCreated,
 }: {
   initialProvider?: string | undefined;
   managedTrial: boolean;
+  managedTrialEnvelope: ManagedTrialEnvelope | null;
+  providerConnectionCount: number;
   onClose: () => void;
   onCreated: (created: CloudConnectionRecord) => void;
 }) {
@@ -3541,6 +3564,7 @@ function AddConnectionWizard({
   );
 
   const isAws = provider.value === "aws";
+  const managedTrialProviders = managedTrialEnvelope?.providers ?? [];
 
   useEffect(() => {
     if (!isAws) return;
@@ -3565,7 +3589,7 @@ function AddConnectionWizard({
   }
 
   function selectProvider(value: string) {
-    if (managedTrial && value !== "aws") return;
+    if (managedTrial && !managedTrialProviders.includes(value)) return;
     setForm((current) => {
       if (current.provider === value) return current;
       setGeneratedExternalId("");
@@ -3670,9 +3694,25 @@ function AddConnectionWizard({
             .map((region) => region.trim())
             .filter(Boolean);
 
-    if (managedTrial && (regions.length === 0 || regions.length > 5 || regions.includes("all"))) {
-      setFormError("Managed trial connections require one to five explicit AWS regions.");
-      return;
+    if (managedTrial) {
+      if (!managedTrialEnvelope) {
+        setFormError("Managed trial limits are unavailable. Refresh before creating a connection.");
+        return;
+      }
+      if (!managedTrialEnvelope.providers.includes(form.provider)) {
+        setFormError("This provider is unavailable in the managed trial.");
+        return;
+      }
+      if (
+        regions.length === 0 ||
+        regions.length > managedTrialEnvelope.max_regions ||
+        regions.includes("all")
+      ) {
+        setFormError(
+          `Managed trial connections require one to ${managedTrialEnvelope.max_regions} explicit AWS regions.`,
+        );
+        return;
+      }
     }
 
     if (!displayName) {
@@ -3771,8 +3811,31 @@ function AddConnectionWizard({
                 <legend className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                   Choose a provider
                 </legend>
+                {managedTrial ? (
+                  managedTrialEnvelope ? (
+                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-[11px] leading-5 text-[var(--text-secondary)]">
+                      <p className="font-medium text-[var(--foreground)]">
+                        {providerConnectionCount} of {managedTrialEnvelope.cloud_connections_per_provider} AWS connections
+                      </p>
+                      <p>
+                        {managedTrialEnvelope.scan_credits_24h} scans per rolling 24 hours ·{" "}
+                        {managedTrialEnvelope.active_scan_jobs === 1
+                          ? "one"
+                          : managedTrialEnvelope.active_scan_jobs} active scan
+                        {managedTrialEnvelope.active_scan_jobs === 1 ? "" : "s"} and{" "}
+                        {managedTrialEnvelope.retained_scan_jobs} retained jobs
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-700 dark:text-amber-200">
+                      Trial limits are unavailable. Refresh before creating a connection.
+                    </div>
+                  )
+                ) : null}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {PROVIDER_OPTIONS.filter((option) => !managedTrial || option.value === "aws").map((option) => {
+                  {PROVIDER_OPTIONS.filter(
+                    (option) => !managedTrial || managedTrialProviders.includes(option.value),
+                  ).map((option) => {
                     const selected = form.provider === option.value;
                     return (
                       <button
@@ -4142,7 +4205,9 @@ function AddConnectionWizard({
                         <span className="block text-sm font-medium text-[var(--foreground)]">All enabled regions</span>
                         <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
                           {managedTrial
-                            ? "Managed trials require one to five explicit regions."
+                            ? managedTrialEnvelope
+                              ? `Managed trials require one to ${managedTrialEnvelope.max_regions} explicit regions.`
+                              : "Managed trial region limits are unavailable. Refresh before continuing."
                             : "Fan the scan across every region enabled in the account. Leave off to scan specific regions."}
                         </span>
                       </span>

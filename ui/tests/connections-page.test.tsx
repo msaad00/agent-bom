@@ -34,10 +34,39 @@ const { apiMock, navState, replaceMock, authState } = vi.hoisted(() => ({
     authRequired: true,
     authMethod: "api_key",
     managedTrialMode: false,
+    managedTrialEnvelope: null as null | {
+      providers: string[];
+      inventory_scope: string;
+      max_regions: number;
+      cloud_connections: number;
+      cloud_connections_per_provider: number;
+      active_scan_jobs: number;
+      retained_scan_jobs: number;
+      scan_credits_24h: number;
+      auto_scan_on_create: boolean;
+      schedules: boolean;
+      continuous_scans: boolean;
+    },
     role: "analyst",
     capabilities: ["inventory.read", "scan.run", "sources.manage", "fleet.manage"],
   },
 }));
+
+function managedTrialEnvelope() {
+  return {
+    providers: ["aws"],
+    inventory_scope: "account",
+    max_regions: 5,
+    cloud_connections: 2,
+    cloud_connections_per_provider: 2,
+    active_scan_jobs: 1,
+    retained_scan_jobs: 20,
+    scan_credits_24h: 8,
+    auto_scan_on_create: false,
+    schedules: false,
+    continuous_scans: false,
+  };
+}
 
 vi.mock("next/link", () => ({
   default: ({
@@ -66,6 +95,7 @@ vi.mock("@/components/auth-provider", () => ({
       auth_required: authState.authRequired,
       auth_method: authState.authMethod,
       managed_trial_mode: authState.managedTrialMode,
+      managed_trial_envelope: authState.managedTrialEnvelope,
       tenant_id: "tenant-acme",
       role: authState.role,
     },
@@ -149,6 +179,7 @@ beforeEach(() => {
   authState.authRequired = true;
   authState.authMethod = "api_key";
   authState.managedTrialMode = false;
+  authState.managedTrialEnvelope = null;
   authState.role = "analyst";
   authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "fleet.manage"];
   apiMock.getPostureCounts.mockResolvedValue({
@@ -282,6 +313,7 @@ describe("ConnectionsPage — Connect segment", () => {
   it("limits managed-trial connect actions to the AWS account envelope", async () => {
     authState.authMethod = "managed_trial_oidc";
     authState.managedTrialMode = true;
+    authState.managedTrialEnvelope = managedTrialEnvelope();
     authState.role = "analyst";
     authState.capabilities = ["inventory.read", "scan.run", "sources.manage"];
 
@@ -293,6 +325,9 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(screen.getByRole("button", { name: "Register Repositories" })).toBeDisabled();
 
     const wizard = openAwsWizard();
+    expect(within(wizard).getByText(/0 of 2 AWS connections/i)).toBeInTheDocument();
+    expect(within(wizard).getByText(/8 scans per rolling 24 hours/i)).toBeInTheDocument();
+    expect(within(wizard).getByText(/one active scan and 20 retained jobs/i)).toBeInTheDocument();
     expect(within(wizard).queryByText("Whole organization")).not.toBeInTheDocument();
     fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
     fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
@@ -305,6 +340,7 @@ describe("ConnectionsPage — Connect segment", () => {
   it("uses the server trial envelope even for an API-key principal", async () => {
     authState.authMethod = "api_key";
     authState.managedTrialMode = true;
+    authState.managedTrialEnvelope = managedTrialEnvelope();
     authState.role = "admin";
     authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "fleet.manage"];
 

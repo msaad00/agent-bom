@@ -440,6 +440,7 @@ export type {
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";
 export type { GatewayFeedHealth } from "./api-types";
+export type { ManagedTrialEnvelope } from "./api-types";
 
 // ── Scan Pipeline Step Types ────────────────────────────────────────────────
 

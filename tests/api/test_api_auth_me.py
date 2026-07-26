@@ -34,6 +34,7 @@ def test_auth_me_returns_effective_viewer_session_without_credentials(monkeypatc
         }
     ]
     assert body["managed_trial_mode"] is False
+    assert body["managed_trial_envelope"] is None
 
 
 def test_auth_me_exposes_managed_trial_deployment_envelope_for_every_principal(monkeypatch) -> None:
@@ -59,6 +60,19 @@ def test_auth_me_exposes_managed_trial_deployment_envelope_for_every_principal(m
     body = asyncio.run(auth_me(_FakeRequest()))  # type: ignore[arg-type]
     assert body["auth_method"] == "api_key"
     assert body["managed_trial_mode"] is True
+    assert body["managed_trial_envelope"] == {
+        "providers": ["aws"],
+        "inventory_scope": "account",
+        "max_regions": 5,
+        "cloud_connections": 2,
+        "cloud_connections_per_provider": 2,
+        "active_scan_jobs": 1,
+        "retained_scan_jobs": 20,
+        "scan_credits_24h": 8,
+        "auto_scan_on_create": False,
+        "schedules": False,
+        "continuous_scans": False,
+    }
 
 
 def test_auth_me_reports_contributor_capabilities_for_analyst() -> None:

@@ -1425,6 +1425,20 @@ export interface AuthMembership {
   active: boolean;
 }
 
+export interface ManagedTrialEnvelope {
+  providers: string[];
+  inventory_scope: "account";
+  max_regions: number;
+  cloud_connections: number;
+  cloud_connections_per_provider: number;
+  active_scan_jobs: number;
+  retained_scan_jobs: number;
+  scan_credits_24h: number;
+  auto_scan_on_create: boolean;
+  schedules: boolean;
+  continuous_scans: boolean;
+}
+
 export interface AuthMeResponse {
   authenticated: boolean;
   auth_required: boolean;
@@ -1435,6 +1449,8 @@ export interface AuthMeResponse {
   auth_method: string | null;
   /** True when the server-wide managed-trial route allowlist is active. */
   managed_trial_mode?: boolean | undefined;
+  /** Server-authoritative limits for the active managed trial, otherwise null. */
+  managed_trial_envelope?: ManagedTrialEnvelope | null | undefined;
   subject: string | null;
   tenant_id: string;
   role: string | null;

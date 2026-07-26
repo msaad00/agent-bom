@@ -17,6 +17,7 @@ from agent_bom.api.connection_store import INVENTORY_SCOPE_ACCOUNT, SCAN_MODE_FU
 _TRUTHY: Final = frozenset({"1", "true", "yes", "on"})
 
 MANAGED_TRIAL_MAX_REGIONS: Final = 5
+MANAGED_TRIAL_PROVIDERS: Final[tuple[str, ...]] = ("aws",)
 MANAGED_TRIAL_QUOTA_CAPS: Final[dict[str, int]] = {
     "active_scan_jobs": 1,
     "retained_scan_jobs": 20,
@@ -64,6 +65,27 @@ def managed_trial_enabled() -> bool:
     """Return whether the operator explicitly enabled managed-trial policy."""
 
     return os.environ.get("AGENT_BOM_MANAGED_TRIAL_MODE", "").strip().lower() in _TRUTHY
+
+
+def managed_trial_envelope() -> dict[str, object] | None:
+    """Return the active managed-trial product boundary for UI clients.
+
+    The API is the source of truth for both route enforcement and presentation.
+    Returning ``None`` outside trial mode prevents self-hosted clients from
+    mistaking trial defaults for deployment-wide limits.
+    """
+
+    if not managed_trial_enabled():
+        return None
+    return {
+        "providers": list(MANAGED_TRIAL_PROVIDERS),
+        "inventory_scope": INVENTORY_SCOPE_ACCOUNT,
+        "max_regions": MANAGED_TRIAL_MAX_REGIONS,
+        **MANAGED_TRIAL_QUOTA_CAPS,
+        "auto_scan_on_create": False,
+        "schedules": False,
+        "continuous_scans": False,
+    }
 
 
 def managed_trial_route_allowed(method: str, path: str) -> bool:

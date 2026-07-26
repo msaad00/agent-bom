@@ -24,8 +24,10 @@ import {
   api,
   formatDate,
   type GatewayFeedEvent,
+  type GatewayFeedHealth,
   type GatewayFeedKpis,
 } from "@/lib/api";
+import { gatewayFeedDisplayState } from "@/lib/gateway-feed-health";
 
 // ── Sample fallback (illustrative only — never live data) ────────────────────
 
@@ -141,6 +143,7 @@ export function GatewayLiveFeedCard({
   const [kpis, setKpis] = useState<GatewayFeedKpis | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSample, setIsSample] = useState(false);
+  const [health, setHealth] = useState<GatewayFeedHealth | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,13 +162,24 @@ export function GatewayLiveFeedCard({
       if (liveEvents.length > 0) {
         setEvents(liveEvents);
         setKpis(liveKpis);
-        setIsSample(false);
+        const observedHealth =
+          feedResult.status === "fulfilled" ? feedResult.value.health : null;
+        setHealth(observedHealth);
+        setIsSample(observedHealth?.state === "sample");
       } else {
         // No live traffic (or API unreachable): show a labelled sample so the
         // card always renders something meaningful.
         setEvents(SAMPLE_FEED_EVENTS);
         setKpis(liveKpis);
         setIsSample(true);
+        setHealth({
+          state: "sample",
+          live: false,
+          heartbeat_at: null,
+          age_seconds: null,
+          stale_after_seconds: 120,
+          reason: "synthetic_sample",
+        });
       }
       setLoading(false);
     };
@@ -180,6 +194,7 @@ export function GatewayLiveFeedCard({
   }, [maxItems]);
 
   const rows = events.slice(0, maxItems);
+  const displayHealth = gatewayFeedDisplayState(health);
 
   return (
     <div
@@ -192,19 +207,23 @@ export function GatewayLiveFeedCard({
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
         <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
           <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
-          <span className="truncate">Gateway Live Feed</span>
+          <span className="truncate">Gateway activity</span>
         </h3>
         {isSample ? (
           <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
             sample data
           </span>
-        ) : (
+        ) : displayHealth.live ? (
           <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium text-emerald-400">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </span>
             live
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium capitalize text-[var(--text-secondary)]">
+            {displayHealth.label}
           </span>
         )}
       </div>

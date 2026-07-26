@@ -38,13 +38,32 @@ describe("GatewayPage", () => {
     });
     apiMock.listGatewayPolicies.mockResolvedValue({ policies: [], count: 0 });
     apiMock.listGatewayAudit.mockResolvedValue({ entries: [], count: 0 });
-    apiMock.getGatewayFeed.mockResolvedValue({ events: [], count: 0, limit: 200 });
+    apiMock.getGatewayFeed.mockResolvedValue({
+      events: [],
+      count: 0,
+      health: {
+        state: "unavailable",
+        live: false,
+        heartbeat_at: null,
+        age_seconds: null,
+        stale_after_seconds: 120,
+        reason: "transport_or_heartbeat_unavailable",
+      },
+    });
     apiMock.getGatewayFeedKpis.mockResolvedValue({
       calls_today: 0,
       blocked_today: 0,
       shadow_ai_blocked: 0,
       data_filters_applied: 0,
       uptime_seconds: 0,
+      health: {
+        state: "unavailable",
+        live: false,
+        heartbeat_at: null,
+        age_seconds: null,
+        stale_after_seconds: 120,
+        reason: "transport_or_heartbeat_unavailable",
+      },
       by_action_type: {},
       by_source: {},
     });

@@ -2517,12 +2517,24 @@ export interface GatewayFeedEvent {
   source: string;
 }
 
+export type GatewayFeedHealthState = "live" | "stale" | "unavailable" | "sample";
+
+export interface GatewayFeedHealth {
+  state: GatewayFeedHealthState;
+  live: boolean;
+  heartbeat_at: string | null;
+  age_seconds: number | null;
+  stale_after_seconds: number;
+  reason: string;
+}
+
 export interface GatewayFeedResponse {
   schema_version: string;
   tenant_id: string;
   generated_at: string;
   count: number;
   events: GatewayFeedEvent[];
+  health: GatewayFeedHealth;
 }
 
 export interface GatewayFeedKpis {
@@ -2536,6 +2548,7 @@ export interface GatewayFeedKpis {
   tool_calls_authorized: number;
   llm_calls: number;
   uptime_seconds?: number;
+  health: GatewayFeedHealth;
 }
 
 // ─── Inter-agent firewall (#982) ────────────────────────────────────────

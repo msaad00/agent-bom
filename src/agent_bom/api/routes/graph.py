@@ -57,6 +57,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.completeness import graph_completeness
+from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.security import sanitize_error
 
@@ -83,6 +84,41 @@ _GRAPH_QUERY_DEFAULT_BUDGET = {
 _FILTERED_GRAPH_ATTACK_PATH_LIMIT = 100
 _GOVERNANCE_EDGE_LIMIT = 5_000
 _GOVERNANCE_ATTACK_PATH_LIMIT = 100
+
+
+class GraphScopeDescriptor(BaseModel):
+    kind: GraphScopeKind
+    id: str | None
+    observed: bool
+    basis: Literal["persisted_graph_snapshot", "persisted_node_attributes", "persisted_graph_traversal"]
+
+
+class GraphCompletenessResponse(BaseModel):
+    status: Literal["complete", "sampled", "truncated"]
+    complete: bool
+    sampled: bool
+    truncated: bool
+    returned: int
+    total: int | None = None
+    reason: str | None = None
+
+
+class ScopedGraphCompleteness(BaseModel):
+    source: GraphCompletenessResponse
+    result: GraphCompletenessResponse
+    edges: GraphCompletenessResponse
+
+
+class ScopedGraphResponse(BaseModel):
+    scan_id: str
+    tenant_id: str
+    created_at: str
+    scope: GraphScopeDescriptor
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+    stats: dict[str, Any]
+    completeness: ScopedGraphCompleteness
+
 
 _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.USER.value: "User",
@@ -1909,6 +1945,116 @@ def _filtered_query_graph(
 # ═══════════════════════════════════════════════════════════════════════════
 # Endpoints
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def _scoped_graph_response(
+    graph: UnifiedGraph,
+    *,
+    scope: GraphScopeKind,
+    scope_id: str | None,
+    max_depth: int,
+    limit: int,
+) -> dict[str, Any]:
+    selected = select_observed_scope(
+        graph,
+        kind=scope,
+        scope_id=scope_id,
+        max_depth=max_depth,
+        max_nodes=limit,
+        max_edges=min(limit * 10, _GRAPH_QUERY_ABSOLUTE_LIMITS["max_edges"]),
+    )
+    scoped = selected.graph
+    result_truncated = selected.node_truncated or graph.completeness.truncated
+    node_reason = (
+        "source_node_budget"
+        if graph.completeness.truncated
+        else selected.reason
+        if selected.node_truncated
+        else ""
+    )
+    result_total = None if graph.completeness.truncated else selected.total_nodes
+    edge_total = None if graph.completeness.truncated else selected.total_edges
+    edge_truncated = graph.completeness.truncated or selected.edge_truncated
+    return {
+        "scan_id": scoped.scan_id,
+        "tenant_id": scoped.tenant_id,
+        "created_at": scoped.created_at,
+        "scope": {
+            "kind": scope,
+            "id": scope_id,
+            "observed": selected.observed,
+            "basis": selected.basis,
+        },
+        "nodes": [node.to_dict() for node in scoped.nodes.values()],
+        "edges": [edge.to_dict() for edge in scoped.edges],
+        "stats": scoped.stats(),
+        "completeness": {
+            "source": graph.completeness.to_dict(),
+            "result": graph_completeness(
+                returned=len(scoped.nodes),
+                total=result_total,
+                truncated=result_truncated,
+                reason=node_reason,
+            ),
+            "edges": graph_completeness(
+                returned=len(scoped.edges),
+                total=edge_total,
+                truncated=edge_truncated,
+                reason=(
+                    "source_node_budget"
+                    if graph.completeness.truncated
+                    else selected.reason
+                    if edge_truncated
+                    else ""
+                ),
+            ),
+        },
+    }
+
+
+@router.get(
+    "/graph/scoped",
+    tags=["graph"],
+    response_model=ScopedGraphResponse,
+)
+async def get_scoped_graph(
+    request: Request,
+    scope: GraphScopeKind = Query(..., description="Observed graph scope"),
+    scope_id: str | None = Query(
+        None,
+        max_length=512,
+        description="Observed account, repository, environment, or root-node identifier",
+    ),
+    scan_id: str | None = Query(None, description="Persisted graph snapshot ID"),
+    max_depth: int = Query(4, ge=1, le=10, description="Investigation traversal depth"),
+    limit: int = Query(500, ge=1, le=5000, description="Maximum nodes in the scoped working set"),
+) -> dict[str, Any]:
+    """Return a bounded graph scope backed only by persisted UnifiedGraph evidence."""
+    from agent_bom.api.managed_trial import managed_trial_enabled
+
+    if scope != "estate" and not scope_id:
+        raise HTTPException(status_code=422, detail="scope_id is required for this graph scope")
+    if managed_trial_enabled() and scope != "account":
+        raise HTTPException(status_code=403, detail="Managed trial graph scopes are account-scoped.")
+
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    if not scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+        raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
+    graph = await _load_graph_for_investigation(
+        graph_store,
+        scan_id=scan_id,
+        tenant_id=tenant,
+        node_budget=GRAPH_INVESTIGATION_NODE_BUDGET,
+    )
+    return await _graph_compute_call(
+        _scoped_graph_response,
+        graph,
+        scope=scope,
+        scope_id=scope_id,
+        max_depth=max_depth,
+        limit=limit,
+    )
 
 
 @router.get("/graph", tags=["graph"])

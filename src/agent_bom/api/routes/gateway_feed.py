@@ -32,9 +32,10 @@ records are already sanitized by ``push_proxy_alert`` /
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Query, Request
+from pydantic import BaseModel
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
@@ -47,6 +48,40 @@ from agent_bom.runtime.gateway_events import (
 router = APIRouter()
 
 _FEED_SCHEMA_VERSION = "gateway.feed.v1"
+_FEED_STALE_AFTER_SECONDS = 120
+
+
+class GatewayFeedHealthModel(BaseModel):
+    state: Literal["live", "stale", "unavailable", "sample"]
+    live: bool
+    heartbeat_at: str | None
+    age_seconds: int | None
+    stale_after_seconds: int
+    reason: str
+
+
+class GatewayFeedResponseModel(BaseModel):
+    schema_version: str
+    tenant_id: str
+    generated_at: str
+    count: int
+    events: list[dict[str, Any]]
+    health: GatewayFeedHealthModel
+
+
+class GatewayFeedKpisModel(BaseModel):
+    schema_version: str
+    tenant_id: str
+    generated_at: str
+    calls_today: int
+    blocked_today: int
+    shadow_ai_blocked: int
+    data_filters_applied: int
+    tool_calls_authorized: int
+    llm_calls: int
+    uptime_seconds: float | None = None
+    health: GatewayFeedHealthModel
+
 
 # Action classes for a fused gateway feed event. Kept in sync with the badge
 # vocabulary the UI renders.
@@ -75,6 +110,52 @@ def _dep(permission: str) -> Any:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def build_gateway_feed_health(
+    *,
+    transport_enabled: bool,
+    heartbeat_at: str | None,
+    now: datetime | None = None,
+    sample: bool = False,
+    stale_after_seconds: int = _FEED_STALE_AFTER_SECONDS,
+) -> dict[str, Any]:
+    """Describe transport freshness independently from retained event presence."""
+    checked_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    base: dict[str, Any] = {
+        "state": "sample" if sample else "unavailable",
+        "live": False,
+        "heartbeat_at": heartbeat_at,
+        "age_seconds": None,
+        "stale_after_seconds": stale_after_seconds,
+    }
+    if sample:
+        base["reason"] = "synthetic_sample"
+        return base
+    heartbeat = _parse_iso_timestamp(heartbeat_at)
+    if not transport_enabled or heartbeat is None:
+        base["reason"] = "transport_or_heartbeat_unavailable"
+        return base
+
+    age_seconds = max(0, int((checked_at - heartbeat).total_seconds()))
+    base["age_seconds"] = age_seconds
+    if age_seconds <= stale_after_seconds:
+        base.update({"state": "live", "live": True, "reason": "recent_transport_heartbeat"})
+    else:
+        base.update({"state": "stale", "reason": "transport_heartbeat_stale"})
+    return base
 
 
 def _alert_timestamp(alert: dict[str, Any]) -> str:
@@ -437,6 +518,30 @@ def _load_tenant_uptime(tenant_id: str) -> float | None:
     return None
 
 
+def _load_tenant_transport_metrics(tenant_id: str) -> dict[str, Any] | None:
+    """Return the tenant's latest transport metrics/heartbeat, when reported."""
+    from agent_bom.api.routes.proxy import _runtime_metrics_for_tenant
+
+    metrics = _runtime_metrics_for_tenant(tenant_id)
+    return metrics if isinstance(metrics, dict) else None
+
+
+def _feed_health_from_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
+    if not metrics:
+        return build_gateway_feed_health(transport_enabled=False, heartbeat_at=None)
+    source_id = str(metrics.get("source_id") or "")
+    session_id = str(metrics.get("session_id") or "")
+    sample = source_id.startswith("demo-estate") or session_id.startswith("demo-estate")
+    heartbeat = metrics.get("received_at") or metrics.get("timestamp") or metrics.get("ts")
+    if isinstance(heartbeat, int | float) and heartbeat > 0:
+        heartbeat = datetime.fromtimestamp(float(heartbeat), tz=timezone.utc).isoformat()
+    return build_gateway_feed_health(
+        transport_enabled=True,
+        heartbeat_at=str(heartbeat) if heartbeat else None,
+        sample=sample,
+    )
+
+
 def _load_tenant_llm_records(tenant_id: str, *, limit: int) -> list[Any]:
     """Read recent priced LLM cost records for the tenant (read-only)."""
     try:
@@ -447,7 +552,12 @@ def _load_tenant_llm_records(tenant_id: str, *, limit: int) -> list[Any]:
         return []
 
 
-@router.get("/gateway/feed", tags=["gateway"], dependencies=[_dep("read")])
+@router.get(
+    "/gateway/feed",
+    tags=["gateway"],
+    dependencies=[_dep("read")],
+    response_model=GatewayFeedResponseModel,
+)
 async def gateway_feed(
     request: Request,
     limit: int = Query(default=100, ge=1, le=500, description="Max fused events to return (1-500)"),
@@ -463,15 +573,22 @@ async def gateway_feed(
     tenant_id = require_request_tenant_id(request)
     alerts = _load_tenant_alerts(tenant_id)
     llm_records = _load_tenant_llm_records(tenant_id, limit=limit)
-    return build_gateway_feed(
+    payload = build_gateway_feed(
         tenant_id=tenant_id,
         alerts=alerts,
         llm_records=llm_records,
         limit=limit,
     )
+    payload["health"] = _feed_health_from_metrics(_load_tenant_transport_metrics(tenant_id))
+    return payload
 
 
-@router.get("/gateway/feed/kpis", tags=["gateway"], dependencies=[_dep("read")])
+@router.get(
+    "/gateway/feed/kpis",
+    tags=["gateway"],
+    dependencies=[_dep("read")],
+    response_model=GatewayFeedKpisModel,
+)
 async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
     """KPI header rollup for the gateway live feed.
 
@@ -483,9 +600,11 @@ async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
     alerts = _load_tenant_alerts(tenant_id)
     llm_records = _load_tenant_llm_records(tenant_id, limit=10000)
     uptime_seconds = _load_tenant_uptime(tenant_id)
-    return build_gateway_feed_kpis(
+    payload = build_gateway_feed_kpis(
         tenant_id=tenant_id,
         alerts=alerts,
         llm_records=llm_records,
         uptime_seconds=uptime_seconds,
     )
+    payload["health"] = _feed_health_from_metrics(_load_tenant_transport_metrics(tenant_id))
+    return payload

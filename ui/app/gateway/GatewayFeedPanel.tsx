@@ -5,9 +5,11 @@ import {
   api,
   type GatewayFeedActionType,
   type GatewayFeedEvent,
+  type GatewayFeedHealth,
   formatDate,
 } from "@/lib/api";
 import { getSessionWebSocketToken } from "@/lib/auth";
+import { gatewayFeedDisplayState } from "@/lib/gateway-feed-health";
 import { getConfiguredApiUrl } from "@/lib/runtime-config";
 import {
   Activity,
@@ -63,6 +65,15 @@ interface LiveMetrics {
   total_blocked: number;
 }
 
+const UNAVAILABLE_HEALTH: GatewayFeedHealth = {
+  state: "unavailable",
+  live: false,
+  heartbeat_at: null,
+  age_seconds: null,
+  stale_after_seconds: 120,
+  reason: "not_loaded",
+};
+
 function formatEventTime(ts: string): string {
   if (!ts) return "—";
   try {
@@ -80,6 +91,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState<GatewayFeedActionType | "">("");
   const [wsConnected, setWsConnected] = useState(false);
+  const [health, setHealth] = useState<GatewayFeedHealth>(UNAVAILABLE_HEALTH);
   const wsRef = useRef<WebSocket | null>(null);
 
   const load = () => {
@@ -90,6 +102,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
         const failures: string[] = [];
         if (feedResult.status === "fulfilled") {
           setEvents(feedResult.value.events);
+          setHealth(feedResult.value.health);
         } else {
           failures.push(`feed: ${feedResult.reason?.message ?? "request failed"}`);
         }
@@ -142,6 +155,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
             lastRefresh = now;
             void api.getGatewayFeed(200).then((feedResult) => {
               setEvents(feedResult.events);
+              setHealth(feedResult.health);
               onActivity?.();
             });
           }
@@ -159,6 +173,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
   }, [onActivity]);
 
   const filtered = actionFilter ? events.filter((e) => e.action_type === actionFilter) : events;
+  const displayHealth = gatewayFeedDisplayState(health, wsConnected);
 
   return (
     <div className="space-y-5">
@@ -167,7 +182,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
           <div>
             <h3 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
               <Activity className="h-4 w-4 text-emerald-400" />
-              Gateway live feed
+              Gateway activity
             </h3>
             <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
               Tool-call authorization, data filters, and blocks — per agent and target
@@ -175,7 +190,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs">
-              {wsConnected ? (
+              {displayHealth.live ? (
                 <>
                   <Wifi className="w-3.5 h-3.5 text-emerald-400" />
                   <span className="text-emerald-400">Live</span>
@@ -183,7 +198,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
               ) : (
                 <>
                   <WifiOff className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
-                  <span className="text-[var(--text-tertiary)]">Disconnected</span>
+                  <span className="text-[var(--text-tertiary)]">{displayHealth.label}</span>
                 </>
               )}
             </div>

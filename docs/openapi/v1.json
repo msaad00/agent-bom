@@ -3314,6 +3314,233 @@
         "title": "FleetAgentUpdate",
         "type": "object"
       },
+      "GatewayFeedHealthModel": {
+        "properties": {
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Seconds"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "live": {
+            "title": "Live",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "stale_after_seconds": {
+            "title": "Stale After Seconds",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "live",
+              "stale",
+              "unavailable",
+              "sample"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "live",
+          "heartbeat_at",
+          "age_seconds",
+          "stale_after_seconds",
+          "reason"
+        ],
+        "title": "GatewayFeedHealthModel",
+        "type": "object"
+      },
+      "GatewayFeedKpisModel": {
+        "properties": {
+          "blocked_today": {
+            "title": "Blocked Today",
+            "type": "integer"
+          },
+          "calls_today": {
+            "title": "Calls Today",
+            "type": "integer"
+          },
+          "data_filters_applied": {
+            "title": "Data Filters Applied",
+            "type": "integer"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/components/schemas/GatewayFeedHealthModel"
+          },
+          "llm_calls": {
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "shadow_ai_blocked": {
+            "title": "Shadow Ai Blocked",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tool_calls_authorized": {
+            "title": "Tool Calls Authorized",
+            "type": "integer"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          }
+        },
+        "required": [
+          "schema_version",
+          "tenant_id",
+          "generated_at",
+          "calls_today",
+          "blocked_today",
+          "shadow_ai_blocked",
+          "data_filters_applied",
+          "tool_calls_authorized",
+          "llm_calls",
+          "health"
+        ],
+        "title": "GatewayFeedKpisModel",
+        "type": "object"
+      },
+      "GatewayFeedResponseModel": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/components/schemas/GatewayFeedHealthModel"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "tenant_id",
+          "generated_at",
+          "count",
+          "events",
+          "health"
+        ],
+        "title": "GatewayFeedResponseModel",
+        "type": "object"
+      },
+      "GraphCompletenessResponse": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "returned": {
+            "title": "Returned",
+            "type": "integer"
+          },
+          "sampled": {
+            "title": "Sampled",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "sampled",
+              "truncated"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "complete",
+          "sampled",
+          "truncated",
+          "returned"
+        ],
+        "title": "GraphCompletenessResponse",
+        "type": "object"
+      },
       "GraphDeployDecisionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3509,6 +3736,53 @@
           "roots"
         ],
         "title": "GraphQueryRequest",
+        "type": "object"
+      },
+      "GraphScopeDescriptor": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "persisted_graph_snapshot",
+              "persisted_node_attributes",
+              "persisted_graph_traversal"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "enum": [
+              "estate",
+              "account",
+              "repository",
+              "environment",
+              "investigation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "observed",
+          "basis"
+        ],
+        "title": "GraphScopeDescriptor",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -5128,6 +5402,81 @@
           "cron_expression"
         ],
         "title": "ScheduleCreate",
+        "type": "object"
+      },
+      "ScopedGraphCompleteness": {
+        "properties": {
+          "edges": {
+            "$ref": "#/components/schemas/GraphCompletenessResponse"
+          },
+          "result": {
+            "$ref": "#/components/schemas/GraphCompletenessResponse"
+          },
+          "source": {
+            "$ref": "#/components/schemas/GraphCompletenessResponse"
+          }
+        },
+        "required": [
+          "source",
+          "result",
+          "edges"
+        ],
+        "title": "ScopedGraphCompleteness",
+        "type": "object"
+      },
+      "ScopedGraphResponse": {
+        "properties": {
+          "completeness": {
+            "$ref": "#/components/schemas/ScopedGraphCompleteness"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "scan_id": {
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/GraphScopeDescriptor"
+          },
+          "stats": {
+            "additionalProperties": true,
+            "title": "Stats",
+            "type": "object"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "tenant_id",
+          "created_at",
+          "scope",
+          "nodes",
+          "edges",
+          "stats",
+          "completeness"
+        ],
+        "title": "ScopedGraphResponse",
         "type": "object"
       },
       "SourceCreate": {
@@ -16925,9 +17274,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Gateway Feed V1 Gateway Feed Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/GatewayFeedResponseModel"
                 }
               }
             },
@@ -17009,9 +17356,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Gateway Feed Kpis V1 Gateway Feed Kpis Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/GatewayFeedKpisModel"
                 }
               }
             },
@@ -21019,6 +21364,123 @@
           }
         },
         "summary": "Get Graph Schema",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/scoped": {
+      "get": {
+        "description": "Return a bounded graph scope backed only by persisted UnifiedGraph evidence.",
+        "operationId": "get_scoped_graph_v1_graph_scoped_get",
+        "parameters": [
+          {
+            "description": "Observed graph scope",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "Observed graph scope",
+              "enum": [
+                "estate",
+                "account",
+                "repository",
+                "environment",
+                "investigation"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Observed account, repository, environment, or root-node identifier",
+            "in": "query",
+            "name": "scope_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Observed account, repository, environment, or root-node identifier",
+              "title": "Scope Id"
+            }
+          },
+          {
+            "description": "Persisted graph snapshot ID",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Persisted graph snapshot ID",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Investigation traversal depth",
+            "in": "query",
+            "name": "max_depth",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "description": "Investigation traversal depth",
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Max Depth",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Maximum nodes in the scoped working set",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "description": "Maximum nodes in the scoped working set",
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopedGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Scoped Graph",
         "tags": [
           "graph"
         ]

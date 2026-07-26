@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime, timezone
 
 import pytest
 from starlette.testclient import TestClient
@@ -12,6 +13,8 @@ from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.stores import set_graph_store
 from agent_bom.graph import EntityType, NodeDimensions, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.repo_structure_overlay import apply_repo_structure_overlay
+from agent_bom.graph.repo_trust_overlay import apply_repo_trust_overlay
 from agent_bom.graph.scope import select_observed_scope
 
 PROXY_SECRET = "synthetic-test-proxy-secret-with-32-bytes"
@@ -85,11 +88,11 @@ def scoped_graph_client(tmp_path) -> Iterator[TestClient]:
 
 
 @pytest.mark.parametrize(
-    ("scope", "scope_id", "expected"),
+    ("scope", "scope_id", "expected", "basis"),
     [
-        ("account", "111111111111", {"asset:account-a"}),
-        ("repository", "example/repository", {"application:repo-a"}),
-        ("environment", "production", {"agent:prod", "server:prod"}),
+        ("account", "111111111111", {"asset:account-a"}, "persisted_node_attributes"),
+        ("repository", "example/repository", {"application:repo-a"}, "persisted_graph_traversal"),
+        ("environment", "production", {"agent:prod", "server:prod"}, "persisted_node_attributes"),
     ],
 )
 def test_scoped_graph_uses_only_explicit_persisted_scope_values(
@@ -97,6 +100,7 @@ def test_scoped_graph_uses_only_explicit_persisted_scope_values(
     scope: str,
     scope_id: str,
     expected: set[str],
+    basis: str,
 ) -> None:
     response = scoped_graph_client.get(
         "/v1/graph/scoped",
@@ -110,7 +114,7 @@ def test_scoped_graph_uses_only_explicit_persisted_scope_values(
         "kind": scope,
         "id": scope_id,
         "observed": True,
-        "basis": "persisted_node_attributes",
+        "basis": basis,
     }
     assert body["completeness"]["source"]["status"] == "complete"
     assert body["completeness"]["result"]["complete"] is True
@@ -182,6 +186,147 @@ def test_attribute_scope_caps_dense_edges_deterministically() -> None:
     assert selected.truncated is True
     assert selected.reason == "scope_edge_limit"
     assert selected.total_edges == 6
+
+
+def test_repository_scope_traverses_observed_repo_overlays() -> None:
+    graph = UnifiedGraph(scan_id="repository-scope", tenant_id="default")
+    graph.add_node(
+        UnifiedNode(
+            id="server:repository-root",
+            entity_type=EntityType.SERVER,
+            label="",
+        )
+    )
+    graph.add_node(
+        UnifiedNode(
+            id="pkg:pypi:example@1.0.0",
+            entity_type=EntityType.PACKAGE,
+            label="example@1.0.0",
+            attributes={"is_direct": True},
+        )
+    )
+    graph.add_node(
+        UnifiedNode(
+            id="misconfig:repo-file",
+            entity_type=EntityType.MISCONFIGURATION,
+            label="synthetic repository finding",
+            attributes={"file_path": "src/app.py"},
+        )
+    )
+    graph.add_edge(
+        UnifiedEdge(
+            source="server:repository-root",
+            target="pkg:pypi:example@1.0.0",
+            relationship=RelationshipType.DEPENDS_ON,
+        )
+    )
+    report = {
+        "project_inventory": {
+            "directories": [
+                {
+                    "path": ".",
+                    "manifest_files": ["pyproject.toml"],
+                    "declaration_files": ["pyproject.toml"],
+                },
+                {"path": "src", "manifest_files": []},
+            ]
+        },
+        "repo_trust": {
+            "status": "ok",
+            "full_name": "acme/example",
+            "repo_url": "https://github.com/acme/example",
+        },
+    }
+    observed_at = datetime(2026, 7, 26, tzinfo=timezone.utc)
+    apply_repo_structure_overlay(graph, report, observed_at)
+    apply_repo_trust_overlay(graph, report, observed_at)
+
+    selected = select_observed_scope(
+        graph,
+        kind="repository",
+        scope_id="acme/example",
+        max_depth=4,
+        max_nodes=50,
+        max_edges=100,
+    )
+
+    assert selected.observed is True
+    assert selected.basis == "persisted_graph_traversal"
+    assert {
+        "application:repo:acme/example",
+        "directory:.",
+        "directory:src",
+        "config_file:pyproject.toml",
+        "source_file:src/app.py",
+        "pkg:pypi:example@1.0.0",
+        "misconfig:repo-file",
+    } <= set(selected.graph.nodes)
+    assert {
+        (edge.source, edge.target, edge.relationship)
+        for edge in selected.graph.edges
+    } >= {
+        ("directory:.", "directory:src", RelationshipType.CONTAINS),
+        ("directory:.", "config_file:pyproject.toml", RelationshipType.CONTAINS),
+        ("directory:src", "source_file:src/app.py", RelationshipType.CONTAINS),
+        ("config_file:pyproject.toml", "pkg:pypi:example@1.0.0", RelationshipType.DEPENDS_ON),
+        ("misconfig:repo-file", "source_file:src/app.py", RelationshipType.AFFECTS),
+    }
+
+
+def test_node_truncation_makes_edge_completeness_unknown() -> None:
+    graph = UnifiedGraph(scan_id="node-truncated", tenant_id="default")
+    for index in range(3):
+        graph.add_node(
+            UnifiedNode(
+                id=f"asset:{index}",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"synthetic asset {index}",
+            )
+        )
+    graph.add_edge(
+        UnifiedEdge(
+            source="asset:0",
+            target="asset:2",
+            relationship=RelationshipType.USES,
+        )
+    )
+
+    selected = select_observed_scope(
+        graph,
+        kind="estate",
+        scope_id=None,
+        max_depth=1,
+        max_nodes=2,
+        max_edges=10,
+    )
+
+    assert selected.node_truncated is True
+    assert selected.edge_truncated is True
+    assert selected.reason == "scope_node_limit"
+    assert selected.total_edges is None
+
+
+def test_scoped_graph_api_reports_unknown_edges_when_nodes_are_truncated(
+    scoped_graph_client: TestClient,
+) -> None:
+    response = scoped_graph_client.get(
+        "/v1/graph/scoped",
+        params={"scope": "estate", "limit": 1},
+    )
+
+    assert response.status_code == 200, response.text
+    completeness = response.json()["completeness"]
+    assert completeness["result"]["status"] == "truncated"
+    assert completeness["result"]["reason"] == "scope_node_limit"
+    assert completeness["edges"] == {
+        "status": "truncated",
+        "complete": False,
+        "sampled": False,
+        "truncated": True,
+        "returned": 0,
+        "total": None,
+        "reason": "scope_node_limit",
+    }
 
 
 def test_scoped_graph_does_not_infer_unobserved_organization_or_repository(

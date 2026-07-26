@@ -1,0 +1,14 @@
+{
+  "advisories": 127,
+  "evaluated": 127,
+  "skipped_no_ranges": 0,
+  "skipped_uncomparable": 0,
+  "multi_window_advisories": 22,
+  "true_positive": 10875,
+  "false_negative": 0,
+  "true_negative": 198,
+  "false_positive": 28,
+  "recall": 1.0,
+  "precision": 0.9974,
+  "f1": 0.9987
+}

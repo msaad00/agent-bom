@@ -942,7 +942,9 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         row.setdefault("framework_tags", compliance_tags_from_finding_row(row))
         # Scan completion is authoritative observation time for scan-spine rows.
         # Do not infer first-seen history from the currently retained job set.
-        row.setdefault("last_observed", job.completed_at or job.created_at)
+        observed_at = getattr(job, "completed_at", None) or getattr(job, "created_at", None)
+        if observed_at is not None:
+            row.setdefault("last_observed", observed_at)
         attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
         if workload_runtime_index is not None:
             attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)

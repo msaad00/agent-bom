@@ -179,7 +179,8 @@ def test_invalid_severity_is_rejected(client_with_scans) -> None:
     resp = client.get("/v1/findings?severity=BOGUS")
 
     assert resp.status_code == 422
-    assert "BOGUS" in resp.json()["detail"]
+    assert resp.json()["detail"].startswith("invalid severity; accepted values:")
+    assert "BOGUS" not in resp.json()["detail"]
 
 
 @pytest.mark.parametrize("sort", ["effective_reach", "cvss", "severity"])

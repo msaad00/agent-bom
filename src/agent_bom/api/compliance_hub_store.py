@@ -366,6 +366,10 @@ def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
         for key, value in safe_finding_response_payload(payload).items()
         if value is not None
     }
+    # Classification is derived deterministically from the stored finding on
+    # every read. Keeping it in each ledger row wastes space and can drift from
+    # the canonical classifier after an upgrade.
+    clean.pop("finding_class", None)
     # Preserve the established hub identity contract: client-supplied
     # canonical_id is not authoritative at ingest; resolve_canonical_id() uses
     # the vetted finding id/content key after redaction.

@@ -136,7 +136,7 @@ describe("FindingsPage", () => {
     const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-1234" });
     expect(within(drawer).getByText("Evidence drawer")).toBeInTheDocument();
     expect(within(drawer).getByText("Agent reaches vulnerable MCP package.")).toBeInTheDocument();
-    fireEvent.click(within(drawer).getByRole("button", { name: "Exposure path" }));
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Exposure path" }));
     expect(within(drawer).getAllByText("GITHUB_TOKEN")).toHaveLength(2);
 
     const closeButtons = within(drawer).getAllByRole("button", { name: "Close" });
@@ -223,7 +223,7 @@ describe("FindingsPage", () => {
     expect(within(drawer).getByText("security-platform")).toBeInTheDocument();
     expect(within(drawer).getByLabelText(/SLA: unavailable/i)).toBeInTheDocument();
 
-    fireEvent.click(within(drawer).getByRole("button", { name: "Evidence" }));
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));
     expect(within(drawer).getByRole("link", { name: /OSV/i })).toHaveAttribute(
       "href",
       "https://osv.dev/vulnerability/CVE-2026-4242",
@@ -313,6 +313,134 @@ describe("FindingsPage", () => {
         expect.objectContaining({ findingClass: "misconfiguration" }),
       ),
     );
+  });
+
+  it("uses server facets for whole-query facts while keeping Engineering page metrics explicit", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        {
+          id: "finding-engineering-1",
+          finding_class: "vulnerability",
+          severity: "high",
+          cve_id: "CVE-2026-2222",
+          title: "Reachable package issue",
+          asset: { name: "pkg-a", asset_type: "package" },
+          source: "osv",
+          last_observed: "2026-07-25T12:00:00Z",
+          owner: "platform-team",
+          sla_due_at: "2026-08-01T12:00:00Z",
+          fixed_version: "2.0.0",
+          epss_score: 0.42,
+        },
+      ],
+      total: 13,
+      total_approximate: false,
+      facets: {
+        finding_class: { vulnerability: 9, misconfiguration: 2, secret: 1, identity: 0, unclassified: 1 },
+        severity: { critical: 2, high: 7, medium: 3, low: 1, info: 0, unknown: 0 },
+        status: { open: 12, resolved: 1 },
+        domain: { cspm: 2, vuln: 9, aspm: 1, dspm: 0, aispm: 1 },
+        freshness: { last_24_hours: 2, last_7_days: 3, last_30_days: 4, older: 1, unavailable: 3 },
+      },
+      facets_approximate: false,
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("CVE-2026-2222")).toBeInTheDocument();
+    expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ includeFacets: true }));
+    const summary = screen.getByTestId("findings-workspace-summary");
+    expect(within(summary).getByText("5 observed ≤7d")).toBeInTheDocument();
+    expect(within(summary).getByText("Whole query")).toBeInTheDocument();
+    expect(within(summary).getAllByText("Current page")).toHaveLength(3);
+    expect(screen.getByRole("columnheader", { name: "Reach / exploit" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Owner / SLA" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
+  });
+
+  it("gives Compliance distinct columns, actions, and an evidence-first drawer", async () => {
+    navigationState.query = "lens=trust";
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        {
+          id: "finding-compliance-1",
+          finding_class: "misconfiguration",
+          severity: "high",
+          title: "Public storage policy",
+          asset: { name: "bucket-a", asset_type: "cloud_resource" },
+          source: "cloud_cis",
+          last_observed: "2026-07-25T12:00:00Z",
+          compliance_tags: ["CIS-2.1"],
+          controls: [{ control_id: "SOC2-CC6.6" }],
+        },
+      ],
+      total: 1,
+      facets: {
+        finding_class: { vulnerability: 0, misconfiguration: 1, secret: 0, identity: 0, unclassified: 0 },
+        severity: { critical: 0, high: 1, medium: 0, low: 0, info: 0, unknown: 0 },
+        status: { open: 1, resolved: 0 },
+        domain: { cspm: 1, vuln: 0, aspm: 0, dspm: 0, aispm: 0 },
+        freshness: { last_24_hours: 1, last_7_days: 0, last_30_days: 0, older: 0, unavailable: 0 },
+      },
+    });
+    apiMock.listFindingTriage.mockResolvedValue({
+      triage: [
+        {
+          id: "triage-compliance-1",
+          vulnerability_id: "Public storage policy",
+          package: "bucket-a",
+          server_name: "",
+          queue_state: "decided",
+          decision: "affected",
+          decision_reason: "Control owner confirmed impact.",
+          assignee: "grc-team",
+          created_by: "operator",
+          created_at: "2026-07-25T12:00:00Z",
+          reviewed_at: "2026-07-25T13:00:00Z",
+          expires_at: "",
+          tenant_id: "tenant-test",
+          vex_eligible: false,
+        },
+      ],
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("Disposition queue")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Control mapping" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Evidence freshness" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Disposition / attestation" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Affected scope" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Reach / exploit" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Review evidence" }));
+    const drawer = await screen.findByRole("dialog", { name: "Finding details for Public storage policy" });
+    expect(within(drawer).getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
+    expect(within(drawer).getByText("Compliance controls")).toBeInTheDocument();
+    expect(within(drawer).getByText("SOC2-CC6.6")).toBeInTheDocument();
+  });
+
+  it("does not replace an authoritative empty server query with unfiltered legacy findings", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [],
+      total: 0,
+      facets: {
+        finding_class: { vulnerability: 0, misconfiguration: 0, secret: 0, identity: 0, unclassified: 0 },
+        severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0, unknown: 0 },
+        status: { open: 0, resolved: 0 },
+        domain: { cspm: 0, vuln: 0, aspm: 0, dspm: 0, aispm: 0 },
+        freshness: { last_24_hours: 0, last_7_days: 0, last_30_days: 0, older: 0, unavailable: 0 },
+      },
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("No findings found")).toBeInTheDocument();
+    expect(screen.queryByText("CVE-2026-1234")).not.toBeInTheDocument();
+    expect(apiMock.getScan).not.toHaveBeenCalled();
   });
 
   it("defaults the time window to 90 days and can widen to all history (#4009)", async () => {
@@ -420,7 +548,7 @@ describe("FindingsPage", () => {
     expect(await screen.findByText("CVE-2026-9999")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-9999" }));
     const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-9999" });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Evidence" }));
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));
     expect(within(drawer).getByText("Workload runtime evidence")).toBeInTheDocument();
     expect(within(drawer).getByText("IOC observed")).toBeInTheDocument();
     expect(within(drawer).getByText(/not a clean-workload assertion/i)).toBeInTheDocument();

@@ -32,6 +32,7 @@ export interface EnrichedVuln extends Vulnerability {
   effective_reach_score?: number | undefined;
   effective_reach_band?: string | undefined;
   framework_tags?: string[] | undefined;
+  controls?: Array<Record<string, unknown>> | undefined;
   finding_type?: string | undefined;
   finding_class?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified" | undefined;
   phantom_tools?: string[] | undefined;
@@ -48,6 +49,13 @@ export interface EnrichedVuln extends Vulnerability {
   resolved_at?: string | undefined;
   reopened_at?: string | undefined;
   scan_count?: number | undefined;
+  /** Canonical timestamp of the most recent observation, when available. */
+  last_observed?: string | undefined;
+  occurrence_count?: number | undefined;
+  remediation_versions?: string[] | undefined;
+  provenance?: Record<string, unknown> | string | undefined;
+  owner?: string | undefined;
+  sla_due_at?: string | undefined;
   /** Version observed on the affected asset; distinct from fixed_version. */
   current_version?: string | undefined;
   /** Canonical CVSS severity emitted by the finding model. */

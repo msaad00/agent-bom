@@ -16,6 +16,7 @@ import {
   type ReadWindow,
   type UnifiedGraphResponse,
 } from "@/lib/api";
+import type { FindingFacets } from "@/lib/api-types";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { FindingDrawer } from "@/components/finding-drawer";
 import { FindingsQueueTable } from "@/components/findings-queue";
@@ -33,8 +34,6 @@ import {
   uniqueStrings,
   serverFindingsSort,
   formatFindingsTotal,
-  hasLifecycleMetadata,
-  computeFindingColumns,
   vulnRowKey,
 } from "@/lib/findings-view";
 import {
@@ -52,6 +51,11 @@ import { useFindingsLens } from "@/hooks/use-findings-lens";
 import { severityRank } from "@/lib/severity";
 import { Bug, ChevronDown, ChevronRight, Download, Layers, Loader2, Package, Server, ClipboardCheck, SlidersHorizontal, X } from "lucide-react";
 import { PageLaneHeader } from "@/components/page-lane";
+import {
+  buildComplianceMetrics,
+  buildEngineeringMetrics,
+  findingTriageKey,
+} from "@/lib/findings-workspace";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -95,7 +99,7 @@ function mergeRemediationItems(existing: RemediationSummary[], incoming: Remedia
 }
 
 function triageKey(vulnerabilityId: string, packageName: string) {
-  return `${vulnerabilityId}::${packageName || "*"}`;
+  return findingTriageKey(vulnerabilityId, packageName);
 }
 
 type GraphNode = UnifiedGraphResponse["nodes"][number];
@@ -249,8 +253,8 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       cvss_severity: finding.cvss_severity ?? undefined,
       epss_score: finding.epss_score ?? undefined,
       epss_percentile: finding.epss_percentile ?? recordNumber(evidence, "epss_percentile"),
-      is_kev: Boolean(finding.is_kev),
-      cisa_kev: Boolean(finding.is_kev),
+      is_kev: typeof finding.is_kev === "boolean" ? finding.is_kev : undefined,
+      cisa_kev: typeof finding.is_kev === "boolean" ? finding.is_kev : undefined,
       kev_date_added: finding.kev_date_added ?? recordString(evidence, "kev_date_added"),
       kev_due_date: finding.kev_due_date ?? recordString(evidence, "kev_due_date"),
       fixed_version: finding.fixed_version ?? undefined,
@@ -271,6 +275,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       reachable_tools: finding.exposed_tools ?? [],
       phantom_tools: raw.phantom_tools ?? [],
       framework_tags: raw.framework_tags ?? finding.compliance_tags ?? [],
+      controls: finding.controls ?? [],
       attack_vector_summary: raw.attack_vector_summary ?? (finding.network_exploitable ? "Network exploitable" : undefined),
       impact_category: finding.impact_category ?? finding.finding_type,
       finding_type: finding.finding_type,
@@ -303,6 +308,12 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       resolved_at: finding.resolved_at ?? undefined,
       reopened_at: finding.reopened_at ?? undefined,
       scan_count: finding.scan_count,
+      last_observed: finding.last_observed ?? finding.last_seen ?? undefined,
+      occurrence_count: finding.occurrence_count ?? finding.scan_count,
+      remediation_versions: finding.remediation_versions ?? undefined,
+      provenance: finding.provenance ?? undefined,
+      owner: finding.owner ?? undefined,
+      sla_due_at: finding.sla_due_at ?? undefined,
       scan_id: finding.scan_id,
     };
   });
@@ -420,12 +431,13 @@ function FindingsPage() {
   });
   const [findingsTotal, setFindingsTotal] = useState<number | null>(0);
   const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
+  const [findingFacets, setFindingFacets] = useState<FindingFacets | null>(null);
+  const [findingFacetsApproximate, setFindingFacetsApproximate] = useState(false);
   const [hasMoreFindings, setHasMoreFindings] = useState(false);
   const [nextFindingsCursor, setNextFindingsCursor] = useState("");
   const [pageCursors, setPageCursors] = useState<string[]>([""]);
   const PAGE_SIZE = 25;
   const useServerPaging = groupBy === "none" && !search.trim();
-  const showLifecycleColumns = useMemo(() => hasLifecycleMetadata(vulns), [vulns]);
   // Advanced-filter popover (scope / domain / cloud scope) — kept behind a
   // single "Filters (n)" control so the primary toolbar stays compact.
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -524,6 +536,10 @@ function FindingsPage() {
         : DEFAULT_FINDINGS_WINDOW_DAYS,
     );
   }, [paramWindow]);
+
+  useEffect(() => {
+    if (lens === "trust" && groupBy !== "none") setGroupBy("none");
+  }, [groupBy, lens]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -786,6 +802,8 @@ function FindingsPage() {
     async function loadLegacyFindings() {
       setHasMoreFindings(false);
       setNextFindingsCursor("");
+      setFindingFacets(null);
+      setFindingFacetsApproximate(false);
       if (paramScan) {
         try {
           const findings = await api.listFindings({ scanId: paramScan, limit: 1000 });
@@ -855,17 +873,25 @@ function FindingsPage() {
             ...(!currentCursor ? { offset: (page - 1) * PAGE_SIZE } : {}),
             ...(currentCursor ? { cursor: currentCursor } : {}),
             approximateTotal: true,
+            includeFacets: true,
             windowDays,
           });
           setAppliedWindow(response.window ?? null);
-          if ((response.total ?? 0) > 0 || response.findings.length > 0) {
-            setVulns(collectUnifiedFindings(response.findings));
-            setFindingsTotal(typeof response.total === "number" ? response.total : null);
-            setFindingsTotalApproximate(Boolean(response.total_approximate));
-            setHasMoreFindings(Boolean(response.has_more || response.next_cursor));
-            setNextFindingsCursor(response.next_cursor ?? "");
+          // A versioned envelope is authoritative even when the filtered query
+          // is empty. Only pre-envelope servers fall back to legacy scan data;
+          // otherwise an empty server filter must stay empty.
+          if (!response.schema_version && response.findings.length === 0 && (response.total ?? 0) === 0) {
+            await loadLegacyFindings();
             return;
           }
+          setVulns(collectUnifiedFindings(response.findings));
+          setFindingsTotal(typeof response.total === "number" ? response.total : null);
+          setFindingsTotalApproximate(Boolean(response.total_approximate));
+          setFindingFacets(response.facets ?? null);
+          setFindingFacetsApproximate(Boolean(response.facets_approximate));
+          setHasMoreFindings(Boolean(response.has_more || response.next_cursor));
+          setNextFindingsCursor(response.next_cursor ?? "");
+          return;
         }
 
         await loadLegacyFindings();
@@ -906,26 +932,33 @@ function FindingsPage() {
     }
   }
 
+  const triageByKey = useMemo(() => {
+    const rows = new Map<string, FindingTriageItem>();
+    for (const row of triageRows) {
+      rows.set(triageKey(row.vulnerability_id, row.package), row);
+    }
+    return rows;
+  }, [triageRows]);
+
   const displayed = useMemo(() => {
-    if (useServerPaging) {
-      return vulns;
-    }
     let list = vulns;
-    if (filter !== "all") {
-      list = list.filter((v) => v.severity.toLowerCase() === filter);
-    }
-    if (issueTypeFilter !== "all") {
-      list = list.filter((v) => matchesIssueTypeFilter(v, issueTypeFilter));
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (v) =>
-          v.id.toLowerCase().includes(q) ||
-          (v.summary ?? v.description)?.toLowerCase().includes(q) ||
-          v.packages.some((p) => p.toLowerCase().includes(q)) ||
-          v.agents.some((a) => a.toLowerCase().includes(q))
-      );
+    if (!useServerPaging) {
+      if (filter !== "all") {
+        list = list.filter((v) => v.severity.toLowerCase() === filter);
+      }
+      if (issueTypeFilter !== "all") {
+        list = list.filter((v) => matchesIssueTypeFilter(v, issueTypeFilter));
+      }
+      if (search) {
+        const q = search.toLowerCase();
+        list = list.filter(
+          (v) =>
+            v.id.toLowerCase().includes(q) ||
+            (v.summary ?? v.description)?.toLowerCase().includes(q) ||
+            v.packages.some((p) => p.toLowerCase().includes(q)) ||
+            v.agents.some((a) => a.toLowerCase().includes(q))
+        );
+      }
     }
     list = [...list].sort((a, b) => {
       let diff = 0;
@@ -941,7 +974,15 @@ function FindingsPage() {
       return sortDir === "desc" ? -diff : diff;
     });
     return list;
-  }, [vulns, filter, issueTypeFilter, search, sortKey, sortDir, useServerPaging]);
+  }, [
+    vulns,
+    filter,
+    issueTypeFilter,
+    search,
+    sortKey,
+    sortDir,
+    useServerPaging,
+  ]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -950,7 +991,21 @@ function FindingsPage() {
       existing.length === 1 && existing[0] === "" ? existing : [""],
     );
     setNextFindingsCursor("");
-  }, [filter, issueTypeFilter, search, sortKey, sortDir, groupBy, scope, paramScan, domainFilter, providerFilter, accountFilter, environmentFilter, windowDays]);
+  }, [
+    filter,
+    issueTypeFilter,
+    search,
+    sortKey,
+    sortDir,
+    groupBy,
+    scope,
+    paramScan,
+    domainFilter,
+    providerFilter,
+    accountFilter,
+    environmentFilter,
+    windowDays,
+  ]);
 
   const totalPages = useServerPaging
     ? findingsTotal == null
@@ -967,13 +1022,6 @@ function FindingsPage() {
       null,
     [displayed, selectedId, vulns],
   );
-  const triageByKey = useMemo(() => {
-    const rows = new Map<string, FindingTriageItem>();
-    for (const row of triageRows) {
-      rows.set(triageKey(row.vulnerability_id, row.package), row);
-    }
-    return rows;
-  }, [triageRows]);
   const vexEligibleCount = triageRows.filter((row) => row.vex_eligible).length;
 
   // Group displayed vulns
@@ -998,10 +1046,6 @@ function FindingsPage() {
     return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
   }, [displayed, groupBy]);
 
-  // Auto-hide columns that are entirely empty/N/A across the filtered set — for
-  // CIS/misconfiguration scans CVSS, EPSS, Packages and Fix are pure noise.
-  const visibleColumns = useMemo(() => computeFindingColumns(displayed), [displayed]);
-
   const counts = useMemo(() => {
     const c = { critical: 0, high: 0, medium: 0, low: 0 };
     for (const v of vulns) {
@@ -1010,6 +1054,13 @@ function FindingsPage() {
     }
     return c;
   }, [vulns]);
+  const workspaceMetrics = useMemo(
+    () =>
+      lens === "trust"
+        ? buildComplianceMetrics(vulns, triageByKey, findingFacets, findingFacetsApproximate)
+        : buildEngineeringMetrics(vulns, triageByKey, findingFacets, findingFacetsApproximate),
+    [findingFacets, findingFacetsApproximate, lens, triageByKey, vulns],
+  );
 
   const findingsTotalLabel = findingsTotal == null
     ? "Total unavailable"
@@ -1128,10 +1179,10 @@ function FindingsPage() {
                 <button
                   onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
-                  title="Export filtered findings as JSON"
+                  title="Export the findings currently loaded on this page as JSON"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Export JSON
+                  Export page JSON
                 </button>
               </>
             ) : null}
@@ -1185,6 +1236,32 @@ function FindingsPage() {
 
       {!error && vulns.length > 0 && (
         <>
+          <section
+            aria-label={`${lensLabel(lens)} findings summary`}
+            data-testid="findings-workspace-summary"
+            className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            {workspaceMetrics.map((metric) => (
+              <div
+                key={metric.label}
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                    {metric.label}
+                  </span>
+                  <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-[var(--text-tertiary)]">
+                    {metric.scope === "query" ? "Whole query" : "Current page"}
+                  </span>
+                </div>
+                <p className={`mt-1 text-sm font-semibold ${metric.unavailable ? "text-[var(--text-tertiary)]" : "text-[var(--foreground)]"}`}>
+                  {metric.value}
+                </p>
+                <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">{metric.detail}</p>
+              </div>
+            ))}
+          </section>
+
           {/* Controls — compact toolbar; advanced facets live behind a single
               "Filters (n)" popover with removable active-filter chips. */}
           <div className="flex flex-col gap-3">
@@ -1195,7 +1272,7 @@ function FindingsPage() {
                   {findingsQueueTitle(lens)}
                 </span>
                 <span aria-hidden="true">·</span>
-                <span>{displayed.length} filtered</span>
+                <span>{useServerPaging ? `${displayed.length} on this page` : `${displayed.length} filtered`}</span>
                 <span aria-hidden="true">·</span>
                 <span>{PAGE_SIZE} per page</span>
               </p>
@@ -1405,7 +1482,7 @@ function FindingsPage() {
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-1">
+                {lens === "ops" ? <div className="flex items-center gap-1">
                   <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Group by</span>
                   {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
                     <button
@@ -1421,7 +1498,7 @@ function FindingsPage() {
                       {label}
                     </button>
                   ))}
-                </div>
+                </div> : null}
               </div>
             </div>
 
@@ -1504,8 +1581,8 @@ function FindingsPage() {
                           onMarkFP={handleMarkFP}
                           selectedId={selectedId}
                           onSelect={setSelectedId}
-                          showLifecycle={showLifecycleColumns}
-                          columns={visibleColumns}
+                          lens={lens}
+                          triageByKey={triageByKey}
                         />
                         {groupOverflow > 0 && (
                           <p className="mt-2 text-xs text-[var(--text-tertiary)]">
@@ -1530,8 +1607,8 @@ function FindingsPage() {
               onMarkFP={handleMarkFP}
               selectedId={selectedId}
               onSelect={setSelectedId}
-              showLifecycle={showLifecycleColumns}
-              columns={visibleColumns}
+              lens={lens}
+              triageByKey={triageByKey}
             />
           )}
 

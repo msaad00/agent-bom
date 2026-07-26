@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight, ExternalLink, FileSearch, Loader2, Radar, ShieldAlert } from "lucide-react";
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
@@ -53,7 +53,11 @@ export function FindingDrawer({
   onClose: () => void;
   lens?: FindingsLens | undefined;
 }) {
-  const [tab, setTab] = useState<TabKey>("overview");
+  const [tab, setTab] = useState<TabKey>(lens === "trust" ? "evidence" : "overview");
+
+  useEffect(() => {
+    setTab(lens === "trust" ? "evidence" : "overview");
+  }, [lens, vuln.finding_id, vuln.id]);
 
   return (
     <Drawer
@@ -70,13 +74,15 @@ export function FindingDrawer({
         </span>
       }
     >
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-[color:var(--border-subtle)]">
+      <div className="mb-4 flex flex-wrap gap-1 border-b border-[color:var(--border-subtle)]" role="tablist">
         {TABS.map((entry) => {
           const active = tab === entry.key;
           return (
             <button
               key={entry.key}
               type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => setTab(entry.key)}
               className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                 active
@@ -142,7 +148,7 @@ function OverviewTab({ vuln, triage }: { vuln: EnrichedVuln; triage: FindingTria
     },
     {
       label: "CISA KEV",
-      value: vuln.is_kev ? "Known exploited" : "Not listed",
+      value: typeof vuln.is_kev === "boolean" ? (vuln.is_kev ? "Known exploited" : "Not listed") : "Unavailable",
       detail: vuln.kev_date_added ? `Added ${formatDateOnly(vuln.kev_date_added)}` : "Catalog date unavailable",
     },
     { label: "Affected → fixed", value: fixValue },
@@ -159,11 +165,12 @@ function OverviewTab({ vuln, triage }: { vuln: EnrichedVuln; triage: FindingTria
       <Section title="Observation and workflow">
         <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2 lg:grid-cols-3">
           <KeyVal label="First seen" value={vuln.first_seen ? formatFindingTimestamp(vuln.first_seen) : "Unavailable"} />
-          <KeyVal label="Last observed" value={vuln.last_seen ? formatFindingTimestamp(vuln.last_seen) : "Unavailable"} />
+          <KeyVal label="Last observed" value={vuln.last_observed || vuln.last_seen ? formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen) : "Unavailable"} />
           <KeyVal label="Last scanned" value="Unavailable" />
           <KeyVal label="Status" value={vuln.lifecycle_status ? findingStatusLabel(vuln.lifecycle_status) : triage?.queue_state ?? "Unavailable"} />
-          <KeyVal label="Owner" value={triage ? triage.assignee || "Unassigned" : "Unavailable"} />
-          <KeyVal label="SLA" value="unavailable" />
+          <KeyVal label="Occurrences" value={typeof vuln.occurrence_count === "number" ? String(vuln.occurrence_count) : "Unavailable"} />
+          <KeyVal label="Owner" value={vuln.owner || triage?.assignee || "Unavailable"} />
+          <KeyVal label="SLA" value={vuln.sla_due_at ? formatFindingTimestamp(vuln.sla_due_at) : "Unavailable"} />
         </div>
       </Section>
 
@@ -438,6 +445,10 @@ function PathTab({ vuln }: { vuln: EnrichedVuln }) {
 function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
   const references = officialAdvisoryLinks(vuln.references).slice(0, 6);
   const investigationSources = uniqueStrings([...vuln.sources, ...vuln.advisory_sources]);
+  const complianceControls = uniqueStrings([
+    ...(vuln.framework_tags ?? []),
+    ...(vuln.controls ?? []).map(controlLabel),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -473,6 +484,7 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
         <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
           <KeyVal label="Finding sources" value={investigationSources.join(", ") || "Unavailable"} />
           <KeyVal label="Scan" value={vuln.scan_id ?? "Unavailable"} />
+          <KeyVal label="Evidence provenance" value={formatProvenance(vuln.provenance)} />
           <KeyVal label="Match confidence" value={vuln.match_confidence_tier ?? "Unavailable"} />
           <KeyVal
             label="Data confidence"
@@ -481,22 +493,22 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
         </div>
       </Panel>
 
-      {vuln.framework_tags && vuln.framework_tags.length > 0 ? (
+      {complianceControls.length > 0 ? (
         <Panel title="Compliance controls">
           <div className="flex flex-wrap gap-1">
-            {vuln.framework_tags.slice(0, 24).map((tag) => (
+            {complianceControls.slice(0, 24).map((tag) => (
               <Chip key={tag} mono>{tag}</Chip>
             ))}
           </div>
         </Panel>
       ) : null}
 
-      {vuln.resolved_at || vuln.reopened_at || typeof vuln.scan_count === "number" ? (
+      {vuln.resolved_at || vuln.reopened_at || typeof vuln.occurrence_count === "number" || typeof vuln.scan_count === "number" ? (
         <Panel title="Lifecycle">
           <div className="space-y-2 text-sm text-[color:var(--text-secondary)]">
             {vuln.resolved_at ? <KeyVal label="Resolved" value={formatFindingTimestamp(vuln.resolved_at)} /> : null}
             {vuln.reopened_at ? <KeyVal label="Reopened" value={formatFindingTimestamp(vuln.reopened_at)} /> : null}
-            {typeof vuln.scan_count === "number" ? <KeyVal label="Observed in scans" value={String(vuln.scan_count)} /> : null}
+            {typeof (vuln.occurrence_count ?? vuln.scan_count) === "number" ? <KeyVal label="Observed occurrences" value={String(vuln.occurrence_count ?? vuln.scan_count)} /> : null}
           </div>
         </Panel>
       ) : null}
@@ -720,6 +732,25 @@ function formatDateOnly(value: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function controlLabel(control: Record<string, unknown>): string | undefined {
+  for (const key of ["control_id", "id", "name", "title"] as const) {
+    const value = control[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function formatProvenance(value: EnrichedVuln["provenance"]): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!value || typeof value !== "object") return "Unavailable";
+  const parts: string[] = [];
+  for (const key of ["source", "collector", "basis", "method"] as const) {
+    const field = value[key];
+    if (typeof field === "string" && field.trim()) parts.push(field.trim());
+  }
+  return uniqueStrings(parts).join(" · ") || "Available in raw evidence";
 }
 
 function DetailStat({ label, value, detail }: { label: string; value: string; detail?: string | undefined }) {

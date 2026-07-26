@@ -44,6 +44,7 @@ from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
+from agent_bom.api import job_status_count_cache
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
@@ -1708,7 +1709,17 @@ def _list_jobs_impl(
         total = len(summary)
         summary = summary[offset : offset + limit]
     count_summary_by_status = getattr(store, "count_summary_by_status", None)
-    status_counts = count_summary_by_status(tenant_id=tenant_id, query=query) if callable(count_summary_by_status) else {}
+    if callable(count_summary_by_status):
+        # The activity feed polls this route continuously and the aggregate is
+        # unbounded, so repeated polls are served from a short-lived cache. A
+        # job write drops the tenant's entries, so a finished job is never
+        # hidden behind a stale count.
+        status_counts = job_status_count_cache.get_counts(tenant_id, query)
+        if status_counts is None:
+            status_counts = count_summary_by_status(tenant_id=tenant_id, query=query)
+            job_status_count_cache.set_counts(tenant_id, query, status_counts)
+    else:
+        status_counts = {}
     enriched: list[dict[str, Any]] = []
     for item in summary:
         in_mem = _jobs_get(item["job_id"])

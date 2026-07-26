@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from agent_bom.api import job_status_count_cache
 from agent_bom.api.postgres_common import (
     _ensure_tenant_rls,
     _get_pool,
@@ -226,6 +227,7 @@ class PostgresJobStore:
             )
             self._replace_cis_checks(conn, job)
             conn.commit()
+        job_status_count_cache.invalidate_tenant(job.tenant_id)
 
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         from .server import ScanJob
@@ -255,6 +257,8 @@ class PostgresJobStore:
                     (job_id, tenant_id),
                 )
             conn.commit()
+            if tenant_id is not None:
+                job_status_count_cache.invalidate_tenant(tenant_id)
             return int(cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list:

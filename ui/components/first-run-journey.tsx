@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Circle, Plug, ScanSearch, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, Plug, ScanSearch, ShieldCheck } from "lucide-react";
 
 import type { AuthMeResponse } from "@/lib/api";
 import { PermissionDeniedNotice } from "@/components/role-access";
 
 type StepStatus = "done" | "current" | "todo";
+type JourneyStepId = "connect" | "verify" | "scan";
 
 interface JourneyStep {
-  id: "connect" | "scan" | "results";
+  id: JourneyStepId;
   title: string;
   detail: string;
   icon: typeof Plug;
@@ -22,89 +23,84 @@ function statusOf(done: boolean, isCurrent: boolean): StepStatus {
 }
 
 /**
- * Guided connect → scan → see-results path for a fresh instance. Honest: a step
- * is "done" only when the real estate says so (a connection exists, a scan has
- * run, findings landed). No fabricated progress. Renders nothing once the whole
- * journey is complete so it never clutters a populated instance.
+ * Compact cloud onboarding rail backed only by connection evidence: a stored
+ * connection, an API-verified active status, and a recorded connection scan.
+ * Global scans and findings may belong to another source, so they never advance
+ * this journey. The rail disappears once the selected path is complete.
  */
 export function FirstRunJourney({
   connectionsCount,
-  scanCount,
-  findingsCount,
+  verifiedConnectionsCount,
+  scannedConnectionsCount,
   canManage,
   session,
   onConnect,
 }: {
   connectionsCount: number;
-  scanCount: number;
-  findingsCount: number;
+  verifiedConnectionsCount: number;
+  scannedConnectionsCount: number;
   canManage: boolean;
   session: AuthMeResponse | null;
   onConnect: () => void;
 }) {
   const connected = connectionsCount > 0;
-  const scanned = scanCount > 0;
-  const hasResults = findingsCount > 0;
+  const verified = verifiedConnectionsCount > 0;
+  const scanned = scannedConnectionsCount > 0;
 
-  if (connected && scanned && hasResults) return null;
+  if (connected && verified && scanned) return null;
 
-  // The current step is the first incomplete one.
-  const currentId: JourneyStep["id"] = !connected
-    ? "connect"
-    : !scanned
-      ? "scan"
-      : "results";
-
+  const currentId: JourneyStepId = !connected ? "connect" : !verified ? "verify" : "scan";
   const steps: JourneyStep[] = [
     {
       id: "connect",
-      title: "Connect a source",
-      detail:
-        "Add a read-only cloud account, or register a repo, image, IaC, or MCP source. Secrets are encrypted at rest.",
+      title: "Connect",
+      detail: "Store one read-only cloud account.",
       icon: Plug,
       status: statusOf(connected, currentId === "connect"),
     },
     {
+      id: "verify",
+      title: "Verify",
+      detail: "Confirm the least-privilege credential works.",
+      icon: ShieldCheck,
+      status: statusOf(verified, currentId === "verify"),
+    },
+    {
       id: "scan",
-      title: "Run a scan",
-      detail:
-        "Launch a read-only inventory + CIS scan on the connection, or run a local scan for repo / image / IaC evidence.",
+      title: "Scan",
+      detail: "Queue read-only inventory and posture collection.",
       icon: ScanSearch,
       status: statusOf(scanned, currentId === "scan"),
     },
-    {
-      id: "results",
-      title: "See results",
-      detail:
-        "Findings, the security graph, and compliance populate from your first scan — each one links straight to its evidence.",
-      icon: Sparkles,
-      status: statusOf(hasResults, currentId === "results"),
-    },
   ];
-
-  const completed = steps.filter((s) => s.status === "done").length;
+  const completed = steps.filter((step) => step.status === "done").length;
+  const currentStep = steps.find((step) => step.status === "current") ?? steps[0]!;
 
   return (
     <section
       data-testid="first-run-journey"
-      className="rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(160deg,var(--surface-elevated),var(--surface))] p-5"
+      aria-labelledby="first-run-journey-title"
+      className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-4 py-3"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-[var(--foreground)]">
-            Get to your first findings
+          <h2 id="first-run-journey-title" className="text-sm font-semibold text-[var(--foreground)]">
+            Connect → verify → scan
           </h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            Three steps from an empty instance to correlated evidence. We only
-            check a step off once it has actually happened.
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+            Progress reflects this cloud connection path, not unrelated scans.
           </p>
         </div>
-        <span className="shrink-0 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
-          {completed} of {steps.length} done
+        <span
+          role="status"
+          aria-live="polite"
+          className="shrink-0 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]"
+        >
+          {completed} of {steps.length} complete
         </span>
       </div>
 
-      <ol className="mt-4 space-y-3">
+      <ol aria-label="Cloud connection setup progress" className="mt-3 grid gap-2 sm:grid-cols-3">
         {steps.map((step, index) => {
           const Icon = step.icon;
           const isCurrent = step.status === "current";
@@ -113,52 +109,41 @@ export function FirstRunJourney({
               key={step.id}
               data-testid={`journey-step-${step.id}`}
               data-status={step.status}
-              className={`rounded-xl border p-4 transition ${
+              aria-current={isCurrent ? "step" : undefined}
+              className={`flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2 ${
                 isCurrent
                   ? "border-emerald-500/50 bg-emerald-500/10"
-                  : "border-[color:var(--border-subtle)] bg-[color:var(--surface)]"
+                  : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]"
               }`}
             >
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 shrink-0">
-                  {step.status === "done" ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  ) : isCurrent ? (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-                      {index + 1}
-                    </span>
-                  ) : (
-                    <Circle className="h-5 w-5 text-[var(--text-tertiary)]" />
-                  )}
+              {step.status === "done" ? (
+                <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-400" />
+              ) : isCurrent ? (
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-emerald-500 text-[9px] font-semibold text-emerald-300">
+                  {index + 1}
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                    <Icon className="h-4 w-4 text-emerald-400" />
-                    {step.title}
-                    {step.status === "done" ? (
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200">
-                        Done
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="mt-1 text-[13px] leading-6 text-[var(--text-secondary)]">
-                    {step.detail}
-                  </p>
-
-                  {isCurrent ? (
-                    <JourneyAction
-                      step={step.id}
-                      canManage={canManage}
-                      session={session}
-                      onConnect={onConnect}
-                    />
-                  ) : null}
-                </div>
-              </div>
+              ) : (
+                <Circle aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
+              )}
+              <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+              <span className="truncate text-xs font-medium text-[var(--foreground)]">{step.title}</span>
+              <span className="ml-auto text-[10px] text-[var(--text-tertiary)]">
+                {step.status === "done" ? "Done" : isCurrent ? "Current" : "Next"}
+              </span>
             </li>
           );
         })}
       </ol>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] pt-3">
+        <p className="text-xs text-[var(--text-secondary)]">{currentStep.detail}</p>
+        <JourneyAction
+          step={currentStep.id}
+          canManage={canManage}
+          session={session}
+          onConnect={onConnect}
+        />
+      </div>
     </section>
   );
 }
@@ -169,80 +154,42 @@ function JourneyAction({
   session,
   onConnect,
 }: {
-  step: JourneyStep["id"];
+  step: JourneyStepId;
   canManage: boolean;
   session: AuthMeResponse | null;
   onConnect: () => void;
 }) {
-  // Connect and scan both require the analyst/contributor role. A viewer sees
-  // the concrete elevation path instead of a dead button.
-  if (!canManage && (step === "connect" || step === "scan")) {
+  if (!canManage) {
     return (
       <PermissionDeniedNotice
         session={session}
         needed="analyst"
-        action={step === "connect" ? "connect a source" : "run a scan"}
-        className="mt-3"
+        action={step === "connect" ? "connect a cloud account" : step === "verify" ? "verify a cloud connection" : "run a cloud scan"}
+        className="w-full sm:max-w-lg"
       />
     );
   }
 
   if (step === "connect") {
     return (
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onConnect}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
-        >
-          <Plug className="h-3.5 w-3.5" />
-          Connect cloud account
-        </button>
-        <Link
-          href="/sources"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-        >
-          Register a source
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
-    );
-  }
-
-  if (step === "scan") {
-    return (
-      <div className="mt-3 flex flex-wrap gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200">
-          <ScanSearch className="h-3.5 w-3.5" />
-          Use “Run scan” on your connection below
-        </span>
-        <Link
-          href="/scan"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-        >
-          New local scan
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
+      <button
+        type="button"
+        onClick={onConnect}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
+      >
+        <Plug className="h-3.5 w-3.5" />
+        Connect cloud account
+      </button>
     );
   }
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      <Link
-        href="/findings"
-        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
-      >
-        Open findings
-        <ArrowRight className="h-3.5 w-3.5" />
-      </Link>
-      <Link
-        href="/security-graph"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-      >
-        Open graph
-        <ArrowRight className="h-3.5 w-3.5" />
-      </Link>
-    </div>
+    <Link
+      href="/connections?tab=sources"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400"
+    >
+      {step === "verify" ? "Open connection to verify" : "Open connection to run scan"}
+      <ArrowRight className="h-3.5 w-3.5" />
+    </Link>
   );
 }

@@ -812,10 +812,13 @@ function ConnectionsHub() {
   const { hasCapability, session } = useAuthState();
   const { counts } = useDeploymentContext();
   const { isDemoMode } = useDemoMode();
-  const canManage = !session?.auth_required || hasCapability("scan.run");
-  const canManageSources = !session?.auth_required || hasCapability("sources.manage");
-  const canRunScans = !session?.auth_required || hasCapability("scan.run");
-  const canManageFleet = hasCapability("fleet.manage");
+  const managedTrialSession = session?.auth_method === "managed_trial_oidc";
+  const canManage = hasCapability("scan.run");
+  const canManageSources = !managedTrialSession && hasCapability("sources.manage");
+  const canRunScans = hasCapability("scan.run");
+  const canRunSources = !managedTrialSession && canRunScans;
+  const canDeleteSources = !managedTrialSession && session?.role === "admin";
+  const canManageFleet = !managedTrialSession && hasCapability("fleet.manage");
   const registryCloudService = serviceEntry(counts?.services, "cloud_accounts");
   const dataSourcesService = serviceEntry(counts?.services, "data_sources");
 
@@ -946,9 +949,10 @@ function ConnectionsHub() {
   }, [refresh, refreshSources]);
 
   const openWizard = useCallback((provider?: string) => {
+    if (!canManage || (managedTrialSession && provider != null && provider !== "aws")) return;
     setWizardProvider(provider);
     setWizardOpen(true);
-  }, []);
+  }, [canManage, managedTrialSession]);
 
   const handleCreated = useCallback(
     (created: CloudConnectionRecord) => {
@@ -969,14 +973,16 @@ function ConnectionsHub() {
 
   const handleRegisterSource = useCallback(
     (kind: SourceKind) => {
+      if (!canManageSources) return;
       setFormState((current) => ({ ...current, kind }));
       setCreateNonce((n) => n + 1);
       setTab("sources");
     },
-    [setTab],
+    [canManageSources, setTab],
   );
 
   async function handleScan(connection: CloudConnectionRecord) {
+    if (!canRunScans) return;
     setBusyId(connection.id);
     setMessage(null);
     setScanErrors((prev) => {
@@ -999,6 +1005,7 @@ function ConnectionsHub() {
   }
 
   async function handleTest(connection: CloudConnectionRecord) {
+    if (!canManage) return;
     setBusyId(connection.id);
     setMessage(null);
     setScanErrors((prev) => {
@@ -1021,6 +1028,7 @@ function ConnectionsHub() {
   }
 
   async function handleDelete(connection: CloudConnectionRecord) {
+    if (!canManage) return;
     setBusyId(connection.id);
     setMessage(null);
     try {
@@ -1040,6 +1048,7 @@ function ConnectionsHub() {
   }
 
   async function handleScheduleChange(connection: CloudConnectionRecord, value: string) {
+    if (!canManage || managedTrialSession) return;
     const scanIntervalMinutes = value === "" ? null : Number(value);
     setScheduleErrors((prev) => {
       const next = { ...prev };
@@ -1059,6 +1068,7 @@ function ConnectionsHub() {
   }
 
   async function handleScanModeChange(connection: CloudConnectionRecord, continuous: boolean) {
+    if (!canManage || managedTrialSession) return;
     setScheduleErrors((prev) => {
       const next = { ...prev };
       delete next[connection.id];
@@ -1077,6 +1087,7 @@ function ConnectionsHub() {
   }
 
   async function handleFleetSync() {
+    if (!canManageFleet) return;
     setSyncingFleet(true);
     setFleetSyncSummary(null);
     try {
@@ -1096,6 +1107,7 @@ function ConnectionsHub() {
 
   async function handleCreateSource(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canManageSources) return;
     setFormMessage(null);
     const selected = kindOption(formState.kind) ?? SOURCE_KIND_OPTIONS[0]!;
 
@@ -1134,6 +1146,13 @@ function ConnectionsHub() {
   }
 
   async function runSourceAction(sourceId: string, action: "test" | "run" | "delete") {
+    const allowed =
+      action === "run"
+        ? canRunSources
+        : action === "delete"
+          ? canDeleteSources
+          : canManageSources;
+    if (!allowed) return;
     setBusySourceId(sourceId);
     setFormMessage(null);
     try {
@@ -1158,6 +1177,7 @@ function ConnectionsHub() {
 
   async function handleCreateSchedule(event: React.FormEvent<HTMLFormElement>, source: SourceRecord) {
     event.preventDefault();
+    if (!canManageSources) return;
     setFormMessage(null);
     if (!scheduleCron.trim()) {
       setFormMessage("Cron expression is required.");
@@ -1183,6 +1203,7 @@ function ConnectionsHub() {
   }
 
   async function runScheduleAction(scheduleId: string, action: "toggle" | "delete") {
+    if (!canManageSources) return;
     setBusyScheduleId(scheduleId);
     setFormMessage(null);
     try {
@@ -1335,6 +1356,8 @@ function ConnectionsHub() {
       onSearchChange={setGallerySearch}
       connectedCountFor={connectorConnectedCount}
       canManage={canManage}
+      canManageSources={canManageSources}
+      managedTrial={managedTrialSession}
       onConnectCloud={openWizard}
       onRegisterSource={handleRegisterSource}
       onConnectCodingAgent={() => setCodingAgentOpen(true)}
@@ -1418,8 +1441,6 @@ function ConnectionsHub() {
           connections={connections}
           connectionsCount={connections.length}
           lastAccountScan={lastAccountScan}
-          scanCount={counts?.scan_count ?? 0}
-          findingsCount={counts?.total ?? 0}
           canManage={canManage}
           hasConnections={hasConnections}
           gallery={gallery}
@@ -1501,7 +1522,8 @@ function ConnectionsHub() {
         busySourceId={busySourceId}
         busyScheduleId={busyScheduleId}
         canManageSources={canManageSources}
-        canRunScans={canRunScans}
+        canRunScans={canRunSources}
+        canDeleteSources={canDeleteSources}
         onSourceAction={runSourceAction}
         onScheduleAction={runScheduleAction}
         onCreateSchedule={handleCreateSchedule}
@@ -1515,6 +1537,7 @@ function ConnectionsHub() {
       {wizardOpen ? (
         <AddConnectionWizard
           initialProvider={wizardProvider}
+          managedTrial={managedTrialSession}
           onClose={handleWizardClose}
           onCreated={handleCreated}
         />
@@ -1585,8 +1608,6 @@ function ConnectSegment({
   connections,
   connectionsCount,
   lastAccountScan,
-  scanCount,
-  findingsCount,
   canManage,
   hasConnections,
   gallery,
@@ -1598,19 +1619,24 @@ function ConnectSegment({
   connections: CloudConnectionRecord[];
   connectionsCount: number;
   lastAccountScan: string | null;
-  scanCount: number;
-  findingsCount: number;
   canManage: boolean;
   hasConnections: boolean;
   gallery: React.ReactNode;
   onConnect: () => void;
 }) {
+  const verifiedConnectionsCount = connections.filter(
+    (connection) => connection.status === "active",
+  ).length;
+  const scannedConnectionsCount = connections.filter(
+    (connection) => Boolean(connection.last_scan_at || connection.last_scan_id),
+  ).length;
+
   return (
     <div className="space-y-6">
       <FirstRunJourney
         connectionsCount={connectionsCount}
-        scanCount={scanCount}
-        findingsCount={findingsCount}
+        verifiedConnectionsCount={verifiedConnectionsCount}
+        scannedConnectionsCount={scannedConnectionsCount}
         canManage={canManage}
         session={session}
         onConnect={onConnect}
@@ -2533,6 +2559,8 @@ function ConnectorGallery({
   onSearchChange,
   connectedCountFor,
   canManage,
+  canManageSources,
+  managedTrial,
   onConnectCloud,
   onRegisterSource,
   onConnectCodingAgent,
@@ -2543,6 +2571,8 @@ function ConnectorGallery({
   onSearchChange: (value: string) => void;
   connectedCountFor: (connector: CatalogConnector) => number;
   canManage: boolean;
+  canManageSources: boolean;
+  managedTrial: boolean;
   onConnectCloud: (provider: string) => void;
   onRegisterSource: (kind: SourceKind) => void;
   onConnectCodingAgent: () => void;
@@ -2611,6 +2641,8 @@ function ConnectorGallery({
               connector={connector}
               connectedCount={connectedCountFor(connector)}
               canManage={canManage}
+              canManageSources={canManageSources}
+              managedTrial={managedTrial}
               onConnectCloud={onConnectCloud}
               onRegisterSource={onRegisterSource}
               onConnectCodingAgent={onConnectCodingAgent}
@@ -2626,6 +2658,8 @@ function ConnectorTile({
   connector,
   connectedCount,
   canManage,
+  canManageSources,
+  managedTrial,
   onConnectCloud,
   onRegisterSource,
   onConnectCodingAgent,
@@ -2633,6 +2667,8 @@ function ConnectorTile({
   connector: CatalogConnector;
   connectedCount: number;
   canManage: boolean;
+  canManageSources: boolean;
+  managedTrial: boolean;
   onConnectCloud: (provider: string) => void;
   onRegisterSource: (kind: SourceKind) => void;
   onConnectCodingAgent: () => void;
@@ -2641,6 +2677,9 @@ function ConnectorTile({
   const categoryLabel =
     CONNECTOR_CATEGORIES.find((c) => c.id === connector.category)?.label ?? connector.category;
   const connected = connectedCount > 0;
+  const cloudAllowed =
+    canManage &&
+    (!managedTrial || (connector.action.type === "cloud" && connector.action.provider === "aws"));
 
   return (
     <Card className="flex h-full flex-col gap-3">
@@ -2683,7 +2722,8 @@ function ConnectorTile({
           <button
             type="button"
             onClick={() => onConnectCloud(connector.action.type === "cloud" ? connector.action.provider : "")}
-            disabled={!canManage}
+            disabled={!cloudAllowed}
+            title={managedTrial && !cloudAllowed ? "Managed trial supports AWS account connections only." : undefined}
             aria-label={`Connect ${connector.label}`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -2704,7 +2744,7 @@ function ConnectorTile({
           <button
             type="button"
             onClick={() => onRegisterSource(connector.action.type === "source" ? connector.action.sourceKind : "scan.repo")}
-            disabled={!canManage}
+            disabled={!canManageSources}
             aria-label={`Register ${connector.label}`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-emerald-600 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -3010,6 +3050,7 @@ function SourceDrawer({
   busyScheduleId,
   canManageSources,
   canRunScans,
+  canDeleteSources,
   onSourceAction,
   onScheduleAction,
   onCreateSchedule,
@@ -3027,6 +3068,7 @@ function SourceDrawer({
   busyScheduleId: string | null;
   canManageSources: boolean;
   canRunScans: boolean;
+  canDeleteSources: boolean;
   onSourceAction: (sourceId: string, action: "test" | "run" | "delete") => void;
   onScheduleAction: (scheduleId: string, action: "toggle" | "delete") => void;
   onCreateSchedule: (event: React.FormEvent<HTMLFormElement>, source: SourceRecord) => void;
@@ -3079,7 +3121,8 @@ function SourceDrawer({
           </button>
           <button
             onClick={() => onSourceAction(source.source_id, "delete")}
-            disabled={isBusy || !canManageSources}
+            disabled={isBusy || !canDeleteSources}
+            title={!canDeleteSources ? "Deleting a source requires an Admin role." : undefined}
             className="rounded-lg border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-danger)] transition hover:border-[color:var(--status-danger)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Delete
@@ -3362,7 +3405,7 @@ function buildWizardForm(provider: string): WizardForm {
     external_id: "",
     regions: "",
     auth: {},
-    auto_scan_on_create: true,
+    auto_scan_on_create: false,
     scan_mode: "full",
   };
 }
@@ -3372,10 +3415,12 @@ type VerifyState = "idle" | "running" | "ok" | "error";
 
 function AddConnectionWizard({
   initialProvider,
+  managedTrial,
   onClose,
   onCreated,
 }: {
   initialProvider?: string | undefined;
+  managedTrial: boolean;
   onClose: () => void;
   onCreated: (created: CloudConnectionRecord) => void;
 }) {
@@ -3439,6 +3484,7 @@ function AddConnectionWizard({
   }
 
   function selectProvider(value: string) {
+    if (managedTrial && value !== "aws") return;
     setForm((current) => {
       if (current.provider === value) return current;
       setGeneratedExternalId("");
@@ -3543,6 +3589,11 @@ function AddConnectionWizard({
             .map((region) => region.trim())
             .filter(Boolean);
 
+    if (managedTrial && (regions.length === 0 || regions.length > 5 || regions.includes("all"))) {
+      setFormError("Managed trial connections require one to five explicit AWS regions.");
+      return;
+    }
+
     if (!displayName) {
       setFormError("A display name is required.");
       return;
@@ -3572,9 +3623,9 @@ function AddConnectionWizard({
       external_id: externalId,
       regions,
       auth_params: authParams,
-      inventory_scope: isAws && awsScope === "organization" ? "organization" : "account",
-      scan_mode: form.scan_mode,
-      auto_scan_on_create: form.auto_scan_on_create,
+      inventory_scope: managedTrial ? "account" : isAws && awsScope === "organization" ? "organization" : "account",
+      scan_mode: managedTrial ? "full" : form.scan_mode,
+      auto_scan_on_create: managedTrial ? false : form.auto_scan_on_create,
     };
 
     setSubmitting(true);
@@ -3635,7 +3686,7 @@ function AddConnectionWizard({
                   Choose a provider
                 </legend>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {PROVIDER_OPTIONS.map((option) => {
+                  {PROVIDER_OPTIONS.filter((option) => !managedTrial || option.value === "aws").map((option) => {
                     const selected = form.provider === option.value;
                     return (
                       <button
@@ -3680,7 +3731,7 @@ function AddConnectionWizard({
                       aria-label="AWS onboarding scope"
                       className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
                     >
-                      {(["account", "organization"] as const).map((scope) => {
+                      {(managedTrial ? (["account"] as const) : (["account", "organization"] as const)).map((scope) => {
                         const active = awsScope === scope;
                         return (
                           <button
@@ -3936,6 +3987,7 @@ function AddConnectionWizard({
                   <input
                     type="checkbox"
                     checked={form.auto_scan_on_create}
+                    disabled={managedTrial}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, auto_scan_on_create: event.target.checked }))
                     }
@@ -3947,7 +3999,9 @@ function AddConnectionWizard({
                       Run first scan after connect
                     </span>
                     <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
-                      Default on. Starts a read-only inventory + CIS scan once the connection is saved.
+                      {managedTrial
+                        ? "Managed trials require verification before an explicit first scan."
+                        : "Optional. Enable only when a scan should start before the explicit Verify step."}
                     </span>
                   </span>
                 </label>
@@ -3955,6 +4009,7 @@ function AddConnectionWizard({
                   <input
                     type="checkbox"
                     checked={form.scan_mode === "continuous"}
+                    disabled={managedTrial}
                     onChange={(event) =>
                       setForm((current) => ({
                         ...current,
@@ -3967,7 +4022,9 @@ function AddConnectionWizard({
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-[var(--foreground)]">Continuous</span>
                     <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
-                      Event-driven mid-interval refresh between full cadence scans.
+                      {managedTrial
+                        ? "Continuous scans are unavailable in managed trials."
+                        : "Event-driven mid-interval refresh between full cadence scans."}
                     </span>
                     {form.scan_mode === "continuous" ? (
                       <span
@@ -3990,6 +4047,7 @@ function AddConnectionWizard({
                       <input
                         type="checkbox"
                         checked={allRegions}
+                        disabled={managedTrial}
                         onChange={(event) => setAllRegions(event.target.checked)}
                         className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-500"
                         data-testid="wizard-all-regions"
@@ -3997,7 +4055,9 @@ function AddConnectionWizard({
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-[var(--foreground)]">All enabled regions</span>
                         <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
-                          Fan the scan across every region enabled in the account. Leave off to scan specific regions.
+                          {managedTrial
+                            ? "Managed trials require one to five explicit regions."
+                            : "Fan the scan across every region enabled in the account. Leave off to scan specific regions."}
                         </span>
                       </span>
                     </label>

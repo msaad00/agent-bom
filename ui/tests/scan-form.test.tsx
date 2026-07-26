@@ -3,7 +3,51 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { ScanForm } from "@/components/scan-form";
-import { api } from "@/lib/api";
+import { api, type AuthMeResponse } from "@/lib/api";
+
+const authState = vi.hoisted(() => ({
+  capabilities: ["inventory.read", "scan.run"],
+  authMethod: "no_auth",
+  role: "analyst",
+}));
+
+vi.mock("@/components/auth-provider", () => ({
+  useAuthState: () => {
+    const session: AuthMeResponse = {
+      authenticated: true,
+      auth_required: authState.authMethod !== "no_auth",
+      configured_modes: [],
+      recommended_ui_mode: authState.authMethod,
+      auth_method: authState.authMethod,
+      subject: null,
+      tenant_id: "default",
+      role: authState.role,
+      role_summary: {
+        role: authState.role,
+        ui_role: authState.role === "analyst" ? "contributor" : authState.role,
+        display_name: authState.role === "analyst" ? "Contributor" : "Viewer",
+        description: "Test role",
+        capabilities: authState.capabilities,
+        capability_matrix: [],
+        can_see: [],
+        can_do: [],
+        cannot_do: [],
+      },
+      memberships: [],
+      request_id: null,
+      trace_id: null,
+      span_id: null,
+    };
+    return {
+      session,
+      loading: false,
+      error: null,
+      reconnecting: false,
+      refresh: vi.fn(),
+      hasCapability: (capability: string) => authState.capabilities.includes(capability),
+    };
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -42,6 +86,10 @@ const mockConnection = {
 
 describe("ScanForm", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    authState.capabilities = ["inventory.read", "scan.run"];
+    authState.authMethod = "no_auth";
+    authState.role = "analyst";
     vi.spyOn(api, "listCloudConnections").mockResolvedValue({
       schema_version: "cloud.connections.v1",
       tenant_id: "default",
@@ -168,6 +216,47 @@ describe("ScanForm", () => {
     });
     await user.click(screen.getByRole("button", { name: /Run cloud scan/i }));
     expect(scanCloudConnection).toHaveBeenCalledWith("conn-aws-1");
+  });
+
+  it("keeps direct cloud-scan routes read-only without scan.run", async () => {
+    authState.capabilities = ["inventory.read"];
+    authState.role = "viewer";
+    const scanCloudConnection = vi.spyOn(api, "scanCloudConnection");
+
+    render(<ScanForm initialConnectionId="conn-aws-1" />);
+
+    const runButton = await screen.findByRole("button", { name: /Run cloud scan/i });
+    expect(runButton).toBeDisabled();
+    expect(screen.getByText(/need the Contributor role or higher/i)).toBeInTheDocument();
+    await userEvent.click(runButton);
+    expect(scanCloudConnection).not.toHaveBeenCalled();
+  });
+
+  it("intersects role capabilities with the managed-trial route envelope", async () => {
+    authState.authMethod = "managed_trial_oidc";
+    const user = userEvent.setup();
+    const startScan = vi.spyOn(api, "startScan");
+
+    render(<ScanForm initialConnectionId="conn-aws-1" />);
+
+    expect(await screen.findByRole("button", { name: /Run cloud scan/i })).toBeEnabled();
+    await user.click(screen.getByRole("tab", { name: "Ad-hoc" }));
+    expect(screen.getByRole("button", { name: /Start scan/i })).toBeDisabled();
+    expect(screen.getByText(/Managed trial scans run from a verified AWS connection/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Start scan/i }));
+    expect(startScan).not.toHaveBeenCalled();
+  });
+
+  it("keeps denied operational reads unavailable instead of reporting factual zero", async () => {
+    vi.spyOn(api, "listSources").mockRejectedValue(new Error("Forbidden"));
+    vi.spyOn(api, "listJobs").mockRejectedValue(new Error("Forbidden"));
+
+    render(<ScanForm initialConnectionId="conn-aws-1" />);
+
+    expect(await screen.findByText("Data sources unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Scan history unavailable.")).toBeInTheDocument();
+    expect(screen.queryByText("No data sources")).not.toBeInTheDocument();
+    expect(screen.queryByText("No scans recorded yet.")).not.toBeInTheDocument();
   });
 
   it("starts a public repository scan from a git URL", async () => {

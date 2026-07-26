@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 
 import { AiScanPanel } from "@/components/ai-scan-panel";
+import { useAuthState } from "@/components/auth-provider";
+import { PermissionDeniedNotice } from "@/components/role-access";
 
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import {
@@ -88,6 +90,7 @@ function isHttpRepoUrl(value: string): boolean {
 
 export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) {
   const router = useRouter();
+  const { session, loading: authLoading, hasCapability } = useAuthState();
   const { counts } = useDeploymentContext();
   const deploymentMode = counts?.deployment_mode ?? "local";
   const enterprisePreset = isEnterprisePreset(initialPreset);
@@ -107,8 +110,10 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   const [connectionsError, setConnectionsError] = useState("");
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesUnavailable, setSourcesUnavailable] = useState(false);
   const [recentJobs, setRecentJobs] = useState<JobListItem[]>([]);
   const [recentJobsLoading, setRecentJobsLoading] = useState(true);
+  const [recentJobsUnavailable, setRecentJobsUnavailable] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState(initialConnectionId ?? "");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [target, setTarget] = useState<AdhocScanTarget>(
@@ -170,11 +175,13 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
         if (!mounted) return;
         const nextSources = response.sources ?? [];
         setSources(nextSources);
+        setSourcesUnavailable(false);
         setSourcesLoading(false);
         setSelectedSourceId((current) => current || nextSources[0]?.source_id || "");
       })
       .catch(() => {
         if (!mounted) return;
+        setSourcesUnavailable(true);
         setSourcesLoading(false);
       });
     return () => {
@@ -189,10 +196,12 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
       .then((response) => {
         if (!mounted) return;
         setRecentJobs(response.jobs ?? []);
+        setRecentJobsUnavailable(false);
         setRecentJobsLoading(false);
       })
       .catch(() => {
         if (!mounted) return;
+        setRecentJobsUnavailable(true);
         setRecentJobsLoading(false);
       });
     return () => {
@@ -210,6 +219,10 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
     () => sources.find((source) => source.source_id === selectedSourceId) ?? null,
     [sources, selectedSourceId],
   );
+  const roleCanRunScans = hasCapability("scan.run");
+  const managedTrialSession = session?.auth_method === "managed_trial_oidc";
+  const routeEnvelopeAllowsScan = !managedTrialSession || scanMode === "connected";
+  const canRunCurrentScan = roleCanRunScans && routeEnvelopeAllowsScan;
 
   const scopeChips = useMemo((): ScanScopeChip[] => {
     if (scanMode === "connected" && selectedConnection) {
@@ -259,6 +272,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
 
   async function handleAdhocSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!roleCanRunScans || managedTrialSession) return;
     setLoading(true);
     setError("");
     try {
@@ -289,7 +303,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   }
 
   async function handleCloudScan() {
-    if (!selectedConnection) return;
+    if (!roleCanRunScans || !selectedConnection || selectedConnection.status !== "active") return;
     setLoading(true);
     setError("");
     try {
@@ -302,7 +316,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   }
 
   async function handleSourceRun() {
-    if (!selectedSource) return;
+    if (!roleCanRunScans || managedTrialSession || !selectedSource) return;
     setLoading(true);
     setError("");
     try {
@@ -315,11 +329,16 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   }
 
   const queuedImages = form.images ?? [];
-  const cloudScanReady = Boolean(selectedConnection && isScannableConnection(selectedConnection));
-  const sourceRunReady = Boolean(selectedSource?.enabled);
+  const cloudScanReady = Boolean(
+    roleCanRunScans &&
+      selectedConnection &&
+      selectedConnection.status === "active" &&
+      isScannableConnection(selectedConnection),
+  );
+  const sourceRunReady = Boolean(roleCanRunScans && !managedTrialSession && selectedSource?.enabled);
   const repoUrlValid = isHttpRepoUrl(repoUrlInput);
   const repoUrlInvalid = target === "repository" && repoUrlInput.trim().length > 0 && !repoUrlValid;
-  const repoScanReady = target !== "repository" || repoUrlValid;
+  const repoScanReady = roleCanRunScans && !managedTrialSession && (target !== "repository" || repoUrlValid);
 
   return (
     <div className="max-w-[1180px]" data-testid="scan-form">
@@ -381,7 +400,16 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
 
         {scanMode === "aiml" ? (
           <div className="p-6">
-            <AiScanPanel />
+            {canRunCurrentScan ? (
+              <AiScanPanel />
+            ) : (
+              <ScanAccessNotice
+                authLoading={authLoading}
+                managedTrialSession={managedTrialSession}
+                roleCanRunScans={roleCanRunScans}
+                session={session}
+              />
+            )}
           </div>
         ) : (
         <form
@@ -555,6 +583,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
               <ScheduledSourcePanel
                 sources={sources}
                 sourcesLoading={sourcesLoading}
+                sourcesUnavailable={sourcesUnavailable}
                 selectedSourceId={selectedSourceId}
                 onSelectSource={setSelectedSourceId}
               />
@@ -577,11 +606,19 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
             ) : null}
 
             <div className="border-t border-[color:var(--border-subtle)] pt-5">
+              {!canRunCurrentScan ? (
+                <ScanAccessNotice
+                  authLoading={authLoading}
+                  managedTrialSession={managedTrialSession}
+                  roleCanRunScans={roleCanRunScans}
+                  session={session}
+                />
+              ) : null}
               {scanMode === "connected" ? (
                 <button
                   type="button"
                   onClick={handleCloudScan}
-                  disabled={loading || !cloudScanReady}
+                  disabled={authLoading || loading || !cloudScanReady}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-48"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -591,7 +628,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                 <button
                   type="button"
                   onClick={handleSourceRun}
-                  disabled={loading || !sourceRunReady}
+                  disabled={authLoading || loading || !sourceRunReady}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-48"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -600,7 +637,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
               ) : (
                 <button
                   type="submit"
-                  disabled={loading || !repoScanReady}
+                  disabled={authLoading || loading || !repoScanReady}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-48"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -615,9 +652,12 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
 
             <ScanOperationalContext
               cloudConnectionCount={connections.length}
+              cloudConnectionsUnavailable={Boolean(connectionsError)}
               sourceCount={sources.length}
+              sourcesUnavailable={sourcesUnavailable}
               recentJobs={recentJobs}
               recentJobsLoading={recentJobsLoading}
+              recentJobsUnavailable={recentJobsUnavailable}
             />
           </div>
 
@@ -733,6 +773,47 @@ function jobStatusLabel(job: JobListItem): string {
   return "Queued";
 }
 
+function ScanAccessNotice({
+  authLoading,
+  managedTrialSession,
+  roleCanRunScans,
+  session,
+}: {
+  authLoading: boolean;
+  managedTrialSession: boolean;
+  roleCanRunScans: boolean;
+  session: ReturnType<typeof useAuthState>["session"];
+}) {
+  if (authLoading) {
+    return (
+      <p role="status" className="mb-3 text-xs text-[color:var(--text-tertiary)]">
+        Checking scan permissions…
+      </p>
+    );
+  }
+  if (!roleCanRunScans) {
+    return (
+      <PermissionDeniedNotice
+        session={session}
+        needed="analyst"
+        action="run a scan"
+        className="mb-3"
+      />
+    );
+  }
+  if (managedTrialSession) {
+    return (
+      <div
+        role="note"
+        className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100"
+      >
+        Managed trial scans run from a verified AWS connection. Ad-hoc, data-source, and AI / ML execution stay unavailable in this environment.
+      </div>
+    );
+  }
+  return null;
+}
+
 function ScanWorkspacePanel({
   chips,
   mode,
@@ -833,14 +914,20 @@ function ScanWorkspacePanel({
 
 function ScanOperationalContext({
   cloudConnectionCount,
+  cloudConnectionsUnavailable,
   sourceCount,
+  sourcesUnavailable,
   recentJobs,
   recentJobsLoading,
+  recentJobsUnavailable,
 }: {
   cloudConnectionCount: number;
+  cloudConnectionsUnavailable: boolean;
   sourceCount: number;
+  sourcesUnavailable: boolean;
   recentJobs: JobListItem[];
   recentJobsLoading: boolean;
+  recentJobsUnavailable: boolean;
 }) {
   return (
     <div className="grid gap-3 pt-1 sm:grid-cols-2">
@@ -851,15 +938,27 @@ function ScanOperationalContext({
         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
           <Link href="/connections" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5 transition hover:border-[color:var(--border-strong)]">
             <span className="block font-medium text-[color:var(--foreground)]">
-              {cloudConnectionCount > 0 ? `${cloudConnectionCount} cloud account${cloudConnectionCount === 1 ? "" : "s"}` : "No cloud accounts"}
+              {cloudConnectionsUnavailable
+                ? "Cloud accounts unavailable"
+                : cloudConnectionCount > 0
+                  ? `${cloudConnectionCount} cloud account${cloudConnectionCount === 1 ? "" : "s"}`
+                  : "No cloud accounts"}
             </span>
-            <span className="text-[color:var(--text-tertiary)]">{cloudConnectionCount > 0 ? "Ready to select" : "Connect one"}</span>
+            <span className="text-[color:var(--text-tertiary)]">
+              {cloudConnectionsUnavailable ? "Read not available" : cloudConnectionCount > 0 ? "Ready to select" : "Connect one"}
+            </span>
           </Link>
           <Link href="/sources" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5 transition hover:border-[color:var(--border-strong)]">
             <span className="block font-medium text-[color:var(--foreground)]">
-              {sourceCount > 0 ? `${sourceCount} data source${sourceCount === 1 ? "" : "s"}` : "No data sources"}
+              {sourcesUnavailable
+                ? "Data sources unavailable"
+                : sourceCount > 0
+                  ? `${sourceCount} data source${sourceCount === 1 ? "" : "s"}`
+                  : "No data sources"}
             </span>
-            <span className="text-[color:var(--text-tertiary)]">{sourceCount > 0 ? "Ready to run" : "Register one"}</span>
+            <span className="text-[color:var(--text-tertiary)]">
+              {sourcesUnavailable ? "Read not available" : sourceCount > 0 ? "Ready to run" : "Register one"}
+            </span>
           </Link>
         </div>
       </section>
@@ -874,6 +973,8 @@ function ScanOperationalContext({
         <div className="mt-3 space-y-1.5">
           {recentJobsLoading ? (
             <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">Loading scan history…</p>
+          ) : recentJobsUnavailable ? (
+            <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">Scan history unavailable.</p>
           ) : recentJobs.length === 0 ? (
             <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">No scans recorded yet.</p>
           ) : (
@@ -935,6 +1036,9 @@ function ConnectedAccountPanel({
       {selectedConnection && !isScannableConnection(selectedConnection) ? (
         <p className="text-xs text-amber-300">Provider not scannable yet.</p>
       ) : null}
+      {selectedConnection && isScannableConnection(selectedConnection) && selectedConnection.status !== "active" ? (
+        <p className="text-xs text-amber-300">Verify this connection before running its first scan.</p>
+      ) : null}
     </div>
   );
 }
@@ -942,15 +1046,20 @@ function ConnectedAccountPanel({
 function ScheduledSourcePanel({
   sources,
   sourcesLoading,
+  sourcesUnavailable,
   selectedSourceId,
   onSelectSource,
 }: {
   sources: SourceRecord[];
   sourcesLoading: boolean;
+  sourcesUnavailable: boolean;
   selectedSourceId: string;
   onSelectSource: (id: string) => void;
 }) {
   if (sourcesLoading) return <p className="text-sm text-[color:var(--text-secondary)]">Loading…</p>;
+  if (sourcesUnavailable) {
+    return <p className="text-sm text-[color:var(--text-secondary)]">Data sources are unavailable for this session.</p>;
+  }
   if (sources.length === 0) {
     return (
       <Link href="/sources" className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300">

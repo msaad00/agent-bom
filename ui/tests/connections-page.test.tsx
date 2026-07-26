@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConnectionsPage from "@/app/connections/page";
 
-const { apiMock, navState, replaceMock } = vi.hoisted(() => ({
+const { apiMock, navState, replaceMock, authState } = vi.hoisted(() => ({
   apiMock: {
     health: vi.fn(),
     listCloudConnections: vi.fn(),
@@ -30,6 +30,12 @@ const { apiMock, navState, replaceMock } = vi.hoisted(() => ({
   },
   navState: { search: "" },
   replaceMock: vi.fn(),
+  authState: {
+    authRequired: true,
+    authMethod: "api_key",
+    role: "analyst",
+    capabilities: ["inventory.read", "scan.run", "sources.manage", "fleet.manage"],
+  },
 }));
 
 vi.mock("next/link", () => ({
@@ -56,15 +62,15 @@ vi.mock("@/components/auth-provider", () => ({
   useAuthState: () => ({
     session: {
       authenticated: true,
-      auth_required: true,
+      auth_required: authState.authRequired,
+      auth_method: authState.authMethod,
       tenant_id: "tenant-acme",
-      role: "analyst",
+      role: authState.role,
     },
     loading: false,
     error: null,
     refresh: vi.fn(),
-    hasCapability: (capability: string) =>
-      ["inventory.read", "scan.run", "sources.manage", "fleet.manage"].includes(capability),
+    hasCapability: (capability: string) => authState.capabilities.includes(capability),
   }),
 }));
 
@@ -88,6 +94,29 @@ const CREATED_RECORD = {
   last_event_at: null,
   last_scan_id: null,
   scan_interval_minutes: null,
+};
+
+const SOURCE_RECORD = {
+  source_id: "src-1",
+  tenant_id: "tenant-acme",
+  display_name: "Payments monorepo",
+  kind: "scan.repo",
+  description: "SCA scan",
+  owner: "platform-security",
+  connector_name: "",
+  credential_mode: "none",
+  credential_ref: "",
+  enabled: true,
+  status: "configured",
+  config: {},
+  last_tested_at: null,
+  last_test_status: null,
+  last_test_message: null,
+  last_run_at: "2026-06-26T02:00:00Z",
+  last_run_status: "done",
+  last_job_id: "job-repo-1",
+  created_at: "2026-06-20T00:00:00Z",
+  updated_at: "2026-06-20T00:00:00Z",
 };
 
 function primeSourceApis() {
@@ -115,6 +144,10 @@ beforeEach(() => {
   Object.values(apiMock).forEach((fn) => fn.mockReset());
   navState.search = "";
   replaceMock.mockReset();
+  authState.authRequired = true;
+  authState.authMethod = "api_key";
+  authState.role = "analyst";
+  authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "fleet.manage"];
   apiMock.getPostureCounts.mockResolvedValue({
     critical: 0,
     high: 0,
@@ -182,6 +215,62 @@ describe("ConnectionsPage — Connect segment", () => {
     });
     return setupId;
   }
+
+  it("keeps an anonymous viewer read-only when authentication is optional", async () => {
+    authState.authRequired = false;
+    authState.authMethod = "anonymous";
+    authState.role = "viewer";
+    authState.capabilities = ["inventory.read"];
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const addAccount = screen.getByRole("button", { name: "Add cloud account" });
+    const connectAws = screen.getByRole("button", { name: "Connect Amazon Web Services" });
+    expect(addAccount).toBeDisabled();
+    expect(connectAws).toBeDisabled();
+    fireEvent.click(addAccount);
+    fireEvent.click(connectAws);
+    expect(screen.queryByRole("dialog", { name: "Add cloud account" })).not.toBeInTheDocument();
+    expect(apiMock.createCloudConnection).not.toHaveBeenCalled();
+  });
+
+  it("uses explicit capabilities for a self-hosted no-auth contributor", async () => {
+    authState.authRequired = false;
+    authState.authMethod = "anonymous";
+    authState.role = "analyst";
+    authState.capabilities = ["inventory.read", "scan.run", "sources.manage"];
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const addAccount = screen.getByRole("button", { name: "Add cloud account" });
+    expect(addAccount).toBeEnabled();
+    fireEvent.click(addAccount);
+    expect(screen.getByRole("dialog", { name: "Add cloud account" })).toBeInTheDocument();
+  });
+
+  it("limits managed-trial connect actions to the AWS account envelope", async () => {
+    authState.authMethod = "managed_trial_oidc";
+    authState.role = "analyst";
+    authState.capabilities = ["inventory.read", "scan.run", "sources.manage"];
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    expect(screen.getByRole("button", { name: "Connect Amazon Web Services" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Connect Microsoft Azure" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Register Repositories" })).toBeDisabled();
+
+    const wizard = openAwsWizard();
+    expect(within(wizard).queryByText("Whole organization")).not.toBeInTheDocument();
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
+    expect(within(wizard).getByTestId("wizard-auto-scan-on-create")).not.toBeChecked();
+    expect(within(wizard).getByTestId("wizard-auto-scan-on-create")).toBeDisabled();
+    expect(within(wizard).getByTestId("wizard-scan-mode-continuous")).toBeDisabled();
+    expect(within(wizard).getByTestId("wizard-all-regions")).toBeDisabled();
+  });
 
   it("reconciles direct connection evidence with an older locked service registry", async () => {
     apiMock.getPostureCounts.mockResolvedValue({
@@ -263,7 +352,7 @@ describe("ConnectionsPage — Connect segment", () => {
         auth_params: {},
         inventory_scope: "account",
         scan_mode: "full",
-        auto_scan_on_create: true,
+        auto_scan_on_create: false,
       }),
     );
 
@@ -430,7 +519,7 @@ describe("ConnectionsPage — Connect segment", () => {
           external_id: setupId,
           inventory_scope: "organization",
           scan_mode: "full",
-          auto_scan_on_create: true,
+          auto_scan_on_create: false,
         }),
       ),
     );
@@ -472,7 +561,7 @@ describe("ConnectionsPage — Connect segment", () => {
         auth_params: { project_id: "proj-123" },
         inventory_scope: "account",
         scan_mode: "full",
-        auto_scan_on_create: true,
+        auto_scan_on_create: false,
       }),
     );
 
@@ -503,7 +592,7 @@ describe("ConnectionsPage — Connect segment", () => {
     );
   });
 
-  it("defaults auto first scan on in the wizard create payload", async () => {
+  it("defaults auto first scan off so verify precedes the explicit scan", async () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
     apiMock.testCloudConnection.mockResolvedValue(TEST_OK);
 
@@ -511,13 +600,13 @@ describe("ConnectionsPage — Connect segment", () => {
     await waitForConnectTab();
     const wizard = openAwsWizard();
     const setupId = fillAwsDetails(wizard);
-    expect(within(wizard).getByTestId("wizard-auto-scan-on-create")).toBeChecked();
+    expect(within(wizard).getByTestId("wizard-auto-scan-on-create")).not.toBeChecked();
     fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
 
     await waitFor(() =>
       expect(apiMock.createCloudConnection).toHaveBeenCalledWith(
         expect.objectContaining({
-          auto_scan_on_create: true,
+          auto_scan_on_create: false,
           scan_mode: "full",
           display_name: "Production account",
           external_id: setupId,
@@ -1046,6 +1135,27 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     const detail = within(await screen.findByTestId("source-detail-src-1"));
     expect(detail.getByText("Evidence workflow")).toBeInTheDocument();
     expect(detail.getByRole("link", { name: "Findings" })).toHaveAttribute("href", "/findings?scan=job-repo-1");
+    expect(screen.getByRole("button", { name: "Run now" })).toBeEnabled();
+    const deleteButton = screen.getByRole("button", { name: "Delete" });
+    expect(deleteButton).toBeDisabled();
+    fireEvent.click(deleteButton);
+    expect(apiMock.deleteSource).not.toHaveBeenCalled();
+  });
+
+  it("enables source deletion only for an Admin", async () => {
+    authState.role = "admin";
+    authState.capabilities = ["inventory.read", "scan.run", "sources.manage", "keys.manage"];
+    apiMock.listSources.mockResolvedValue({
+      schema_version: "sources.v1",
+      tenant_id: "tenant-acme",
+      count: 1,
+      sources: [SOURCE_RECORD],
+    });
+
+    render(<ConnectionsPage />);
+    await waitFor(() => expect(screen.getByText("Payments monorepo")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Payments monorepo" }));
+    expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
   });
 
   it("dedupes a cloud account registered as both a connection and a cloud-kind source", async () => {

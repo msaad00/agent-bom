@@ -44,8 +44,8 @@ describe("FirstRunJourney", () => {
     render(
       <FirstRunJourney
         connectionsCount={0}
-        scanCount={0}
-        findingsCount={0}
+        verifiedConnectionsCount={0}
+        scannedConnectionsCount={0}
         canManage
         session={session()}
         onConnect={onConnect}
@@ -53,11 +53,13 @@ describe("FirstRunJourney", () => {
     );
 
     expect(screen.getByTestId("first-run-journey")).toBeInTheDocument();
-    expect(screen.getByText("0 of 3 done")).toBeInTheDocument();
+    expect(screen.getByText("0 of 3 complete")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Cloud connection setup progress" })).toBeInTheDocument();
     expect(screen.getByTestId("journey-step-connect")).toHaveAttribute(
       "data-status",
       "current",
     );
+    expect(screen.getByTestId("journey-step-connect")).toHaveAttribute("aria-current", "step");
 
     fireEvent.click(screen.getByRole("button", { name: /Connect cloud account/ }));
     expect(onConnect).toHaveBeenCalledTimes(1);
@@ -67,26 +69,51 @@ describe("FirstRunJourney", () => {
     render(
       <FirstRunJourney
         connectionsCount={2}
-        scanCount={0}
-        findingsCount={0}
+        verifiedConnectionsCount={0}
+        scannedConnectionsCount={0}
         canManage
         session={session()}
         onConnect={vi.fn()}
       />,
     );
-    // Connected is real → done; scan is the current step; results still todo.
-    expect(screen.getByText("1 of 3 done")).toBeInTheDocument();
+    // A stored connection alone is not a verified credential or a completed scan.
+    expect(screen.getByText("1 of 3 complete")).toBeInTheDocument();
     expect(screen.getByTestId("journey-step-connect")).toHaveAttribute("data-status", "done");
+    expect(screen.getByTestId("journey-step-verify")).toHaveAttribute("data-status", "current");
+    expect(screen.getByTestId("journey-step-scan")).toHaveAttribute("data-status", "todo");
+    expect(screen.getByRole("link", { name: /Open connection to verify/i })).toHaveAttribute(
+      "href",
+      "/connections?tab=sources",
+    );
+  });
+
+  it("moves to scan only after the API-backed connection status is active", () => {
+    render(
+      <FirstRunJourney
+        connectionsCount={1}
+        verifiedConnectionsCount={1}
+        scannedConnectionsCount={0}
+        canManage
+        session={session()}
+        onConnect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("2 of 3 complete")).toBeInTheDocument();
+    expect(screen.getByTestId("journey-step-verify")).toHaveAttribute("data-status", "done");
     expect(screen.getByTestId("journey-step-scan")).toHaveAttribute("data-status", "current");
-    expect(screen.getByTestId("journey-step-results")).toHaveAttribute("data-status", "todo");
+    expect(screen.getByRole("link", { name: /Open connection to run scan/i })).toHaveAttribute(
+      "href",
+      "/connections?tab=sources",
+    );
   });
 
   it("disappears once the whole journey is complete (no clutter on a live instance)", () => {
     const { container } = render(
       <FirstRunJourney
         connectionsCount={1}
-        scanCount={3}
-        findingsCount={12}
+        verifiedConnectionsCount={1}
+        scannedConnectionsCount={1}
         canManage
         session={session()}
         onConnect={vi.fn()}
@@ -99,8 +126,8 @@ describe("FirstRunJourney", () => {
     render(
       <FirstRunJourney
         connectionsCount={0}
-        scanCount={0}
-        findingsCount={0}
+        verifiedConnectionsCount={0}
+        scannedConnectionsCount={0}
         canManage={false}
         session={session({ role: "viewer", auth_required: false })}
         onConnect={vi.fn()}

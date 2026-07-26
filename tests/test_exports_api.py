@@ -52,6 +52,13 @@ def _env() -> Iterator[None]:
     connection_crypto.reset_key_cache()
     set_export_destination_store(InMemoryExportDestinationStore())
     set_export_schedule_store(InMemoryExportScheduleStore())
+    # The auth middleware stack is built from the environment, so it has to be
+    # rebuilt after this fixture changes it. Without this the app keeps whatever
+    # posture the previous test on this worker left behind, and trusted-proxy
+    # headers are rejected because the resolver was configured without them.
+    from agent_bom.api.server import configure_api_from_env
+
+    configure_api_from_env()
     try:
         yield
     finally:
@@ -63,6 +70,12 @@ def _env() -> Iterator[None]:
         connection_crypto.reset_key_cache()
         set_export_destination_store(None)
         set_export_schedule_store(None)
+        # Tests that flip the unauthenticated opt-in reconfigure the middleware
+        # stack. Rebuild it from the restored environment so the auth posture
+        # never leaks into the next test on this worker.
+        from agent_bom.api.server import configure_api_from_env
+
+        configure_api_from_env()
 
 
 def _app() -> Any:
@@ -71,11 +84,40 @@ def _app() -> Any:
     return app
 
 
-def test_requires_auth_and_rejects_viewer_mutation():
+def test_requires_auth_and_rejects_viewer_mutation(monkeypatch):
+    # The suite runs with the unauthenticated opt-in on (conftest), and the
+    # principal resolver now stays installed in that mode so credential-less
+    # callers get NO_AUTH_ROLE and traverse the same route role matrix. Turn the
+    # opt-in off here so this asserts the deployed posture -- auth required --
+    # rather than the harness default.
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "0")
+    from agent_bom.api.server import configure_api_from_env
+
+    configure_api_from_env()
+
     client = TestClient(_app())
     assert client.get("/v1/exports/destinations").status_code == 401
     body = {"kind": "clickhouse", "display_name": "Lake", "config": {"url": "http://ch:8123"}, "secret": "tok"}
     assert client.post("/v1/exports/destinations", json=body, headers=_headers(role="viewer")).status_code == 403
+
+
+def test_no_auth_mode_still_denies_mutation_to_a_read_only_role(monkeypatch):
+    """Authentication may be optional; authorization is not.
+
+    With the unauthenticated opt-in on, a credential-less caller resolves to
+    NO_AUTH_ROLE. A read is allowed, but a write must still be refused by the
+    route role matrix -- the boundary the always-installed resolver preserves.
+    """
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "viewer")
+    from agent_bom.api.server import configure_api_from_env
+
+    configure_api_from_env()
+
+    client = TestClient(_app())
+    assert client.get("/v1/exports/destinations").status_code == 200
+    body = {"kind": "clickhouse", "display_name": "Lake", "config": {"url": "http://ch:8123"}, "secret": "tok"}
+    assert client.post("/v1/exports/destinations", json=body).status_code == 403
 
 
 def test_create_destination_never_echoes_secret_and_is_tenant_scoped():

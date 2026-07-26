@@ -51,6 +51,9 @@ def test_cloud_inventory_offloads_provider_scan(monkeypatch):
 
 
 def test_cloud_cis_benchmark_offloads_evaluation(monkeypatch):
+    # Ambient evaluation is operator opt-in; enable it so this exercises the
+    # offload rather than the disabled guard.
+    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
     monkeypatch.setattr(cloud, "_tenant", lambda request: "t-cis")
     offloaded = _spy_run_sync(monkeypatch)
 
@@ -130,6 +133,7 @@ async def test_slow_inventory_scan_keeps_event_loop_responsive(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cloud_cis_timeout_returns_bounded_unavailable_envelope(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_CLOUD_CIS_BENCHMARK", "1")
     """Provider credential/metadata retries cannot hold an API request forever."""
     monkeypatch.setattr(cloud, "_tenant", lambda request: "t-timeout")
     monkeypatch.setattr(cloud, "_cloud_cis_timeout_seconds", lambda: 0.01)

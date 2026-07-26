@@ -38,6 +38,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Dashboard error boundaries render and report fixed safe messages instead of
   exposing raw exception text; valid server-generated digests remain available
   as bounded correlation references.
+- Manual registry repair resolves an explicit or latest published GitHub
+  release and checks out its exact tag commit instead of publishing unreleased
+  metadata from `main`.
 
 ### Removed
 - The optional Go runtime tier (`runtime/gateway-relay`, `runtime/event-collector`)

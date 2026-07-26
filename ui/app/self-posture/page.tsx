@@ -194,8 +194,8 @@ export default function SelfPosturePage() {
     return (
       <PageErrorState
         data-testid="self-posture-error"
-        title="Self-posture could not be evaluated"
-        detail={error ?? "No self-posture report was returned by the control plane."}
+        title="Control plane security could not be evaluated"
+        detail={error ?? "No control-plane security report was returned."}
         suggestions={[
           "Confirm you are signed in with read access to this control plane.",
           "The same posture is available headless for agents and CI.",
@@ -214,11 +214,11 @@ export default function SelfPosturePage() {
       <div className="min-w-0">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-[color:var(--foreground)]">
           <ShieldCheck className="h-6 w-6 text-[color:var(--accent)]" aria-hidden="true" />
-          Self-Audit
+          Control Plane Security
         </h1>
         <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-          agent-bom&apos;s honest posture of its OWN control plane — read-only, configuration only,
-          never a secret value.
+          Operator checks for this deployment&apos;s authentication, tenant isolation, audit integrity,
+          and secret handling. Configuration values are evaluated without exposing secrets.
         </p>
       </div>
 

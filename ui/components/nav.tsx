@@ -67,6 +67,8 @@ interface NavLink {
   capability?: string;
   /** One-line "what is this" descriptor, surfaced as a hover tooltip. */
   desc?: string;
+  /** Deployment-wide operator surfaces are hidden unless the effective session has the capability. */
+  operatorOnly?: boolean;
 }
 
 interface NavGroup {
@@ -153,7 +155,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/drift", label: "Drift", icon: Radar, desc: "Config drift from approved baselines" },
       { href: "/audit", label: "Audit Log", icon: FileText },
-      { href: "/self-posture", label: "Self-Audit", icon: ShieldCheck, desc: "This control plane's own security & governance hardening posture" },
     ],
     secondary: [
       { href: "/blueprints", label: "Blueprints", icon: Boxes },
@@ -188,6 +189,14 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
       { href: "/activity", label: "Activity", icon: Activity },
       { href: "/integrations", label: "Integrations", icon: Plug, desc: "Webhooks, SIEM, threat intel, and report exports" },
+      {
+        href: "/self-posture",
+        label: "Control Plane Security",
+        icon: ShieldCheck,
+        capability: "policy.manage",
+        operatorOnly: true,
+        desc: "Operator checks for this deployment's authentication, isolation, audit, and secret controls",
+      },
     ],
     secondary: [{ href: "/registry", label: "MCP Catalog", icon: Boxes }],
   },
@@ -383,6 +392,9 @@ export function Nav() {
 
   const roleAllowsLink = useCallback(
     (link: NavLink) => {
+      if (link.operatorOnly) {
+        return Boolean(session?.role_summary) && hasCapability(link.capability ?? "");
+      }
       if (!link.capability || !session?.auth_required) {
         return true;
       }
@@ -737,8 +749,9 @@ export function Nav() {
       <header className="fixed inset-x-0 top-0 z-[60] flex h-16 items-center gap-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 px-4 backdrop-blur-sm">
         <Link href="/" className="group flex min-w-0 items-center transition-opacity hover:opacity-90">
           <BrandLogo
+            showWordmark={!collapsed}
             markClassName="h-9 w-9"
-            wordmarkClassName="hidden h-[26px] w-auto max-w-[11rem] sm:block"
+            wordmarkClassName="hidden h-[26px] w-auto max-w-[11rem] lg:block"
             className="transition-transform duration-200 group-hover:scale-[1.01]"
           />
         </Link>

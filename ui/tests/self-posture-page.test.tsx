@@ -59,6 +59,7 @@ describe("SelfPosturePage", () => {
     apiMock.getSelfPosture.mockResolvedValue(report());
     render(<SelfPosturePage />);
     const headline = await screen.findByTestId("self-posture-headline");
+    expect(screen.getByRole("heading", { name: "Control Plane Security" })).toBeInTheDocument();
     expect(headline).toHaveAttribute("data-overall", "hardened");
     expect(headline).toHaveTextContent(/hardened/i);
     // A pass check reads as pass.
@@ -185,6 +186,7 @@ describe("SelfPosturePage", () => {
     apiMock.getSelfPosture.mockRejectedValue(new Error("boom"));
     render(<SelfPosturePage />);
     await waitFor(() => expect(screen.getByTestId("self-posture-error")).toBeInTheDocument());
-    expect(screen.getByTestId("self-posture-error")).toHaveTextContent(/self-audit/i);
+    expect(screen.getByTestId("self-posture-error")).toHaveTextContent(/control plane security/i);
+    expect(screen.getByTestId("self-posture-error")).toHaveTextContent(/agent-bom self-audit/i);
   });
 });

@@ -15,7 +15,7 @@ const authStateMock = vi.hoisted(() => ({
   loading: true,
   error: null as string | null,
   refresh: vi.fn(),
-  hasCapability: vi.fn(() => false),
+  hasCapability: vi.fn<(capability: string) => boolean>(() => false),
 }))
 
 // Mock next/link so it renders a plain anchor
@@ -129,6 +129,14 @@ describe('Nav', () => {
     expect(screen.getByText('Operations')).toBeInTheDocument()
   })
 
+  it('uses the full wordmark only while desktop navigation is expanded', () => {
+    const { container } = renderNav()
+    expect(container.querySelector('img[alt="agent-bom"]')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
+    expect(container.querySelector('img[alt="agent-bom"]')).toBeInTheDocument()
+  })
+
   it('contains link to Overview (/)', () => {
     renderExpandedNav()
     const links = screen.getAllByRole('link', { name: /overview/i })
@@ -178,6 +186,46 @@ describe('Nav', () => {
     fireEvent.click(screen.getByRole('button', { name: /operations/i }))
     const links = screen.getAllByRole('link', { name: /scan jobs/i })
     expect(links.some((l) => l.getAttribute('href') === '/jobs')).toBe(true)
+  })
+
+  it('keeps control-plane security in operator administration', () => {
+    authStateMock.session = {
+      authenticated: true,
+      auth_required: true,
+      tenant_id: 'default',
+      subject: 'operator@example.test',
+      role: 'admin',
+      role_summary: { display_name: 'Admin', capabilities: ['policy.manage'] },
+    }
+    authStateMock.loading = false
+    authStateMock.hasCapability.mockImplementation((capability: string) => capability === 'policy.manage')
+
+    renderExpandedNav()
+    fireEvent.click(screen.getByRole('button', { name: /operations/i }))
+
+    expect(screen.getByRole('link', { name: /control plane security/i })).toHaveAttribute(
+      'href',
+      '/self-posture',
+    )
+    expect(screen.queryByText('Self-Audit')).not.toBeInTheDocument()
+  })
+
+  it('does not expose control-plane administration to the effective viewer', () => {
+    authStateMock.session = {
+      authenticated: true,
+      auth_required: false,
+      tenant_id: 'default',
+      subject: 'anonymous',
+      role: 'viewer',
+      role_summary: { display_name: 'Viewer', capabilities: ['inventory.read'] },
+    }
+    authStateMock.loading = false
+    authStateMock.hasCapability.mockReturnValue(false)
+
+    renderExpandedNav()
+    fireEvent.click(screen.getByRole('button', { name: /operations/i }))
+
+    expect(screen.queryByRole('link', { name: /control plane security/i })).not.toBeInTheDocument()
   })
 
   it('contains link to Findings (/findings) under Posture', () => {
@@ -330,13 +378,11 @@ describe('Nav', () => {
     expect(within(palette).getByRole('link', { name: /context/i })).toHaveAttribute('href', '/context')
   })
 
-  it('renders the canonical agent-bom brand lockup in the top bar', () => {
+  it('renders the canonical agent-bom mark in the top bar', () => {
     const { container } = renderNav()
-    const wordmark = container.querySelector('img[alt="agent-bom"]')
-    expect(wordmark).not.toBeNull()
-    expect(wordmark!.getAttribute('src')).toMatch(/^\/brand\/wordmark-dark\.svg\?/)
-    expect(wordmark).toHaveClass('hidden', 'sm:block')
-    expect(screen.getByAltText('agent-bom')).toBeInTheDocument()
+    const mark = container.querySelector('img[aria-hidden="true"]')
+    expect(mark).not.toBeNull()
+    expect(mark!.getAttribute('src')).toMatch(/^\/brand\/mark-dark\.svg\?/)
   })
 
   it('compresses the primary navigation to six workflow groups', () => {

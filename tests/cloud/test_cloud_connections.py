@@ -50,6 +50,7 @@ def _proxy_headers(role: str = "admin", tenant: str = "tenant-alpha") -> dict[st
 def _connection_env() -> Iterator[None]:
     """Configure trusted-proxy auth + an encryption key, isolated per test."""
     prior = {
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": os.environ.get("AGENT_BOM_ALLOW_UNAUTHENTICATED_API"),
         "AGENT_BOM_TRUST_PROXY_AUTH": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH"),
         "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET"),
         connection_crypto.CONNECTIONS_KEY_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_ENV),
@@ -62,6 +63,7 @@ def _connection_env() -> Iterator[None]:
         f"{connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV}_FILE": os.environ.get(f"{connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV}_FILE"),
         f"{connection_crypto.CONNECTIONS_KEY_REF_ENV}_FILE": os.environ.get(f"{connection_crypto.CONNECTIONS_KEY_REF_ENV}_FILE"),
     }
+    os.environ.pop("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", None)
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = _TEST_KEY

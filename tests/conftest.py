@@ -163,11 +163,9 @@ def _sync_test_auth_config_from_env() -> None:
 
 def _reset_api_runtime_state() -> None:
     try:
-        from agent_bom.api import server as api_server
         from agent_bom.api.stores import set_scim_store
 
         set_scim_store(None)
-        api_server.configure_api(api_key=None)
     except Exception:
         pass
 
@@ -201,6 +199,19 @@ def _reset_api_runtime_state() -> None:
         pass
 
     _sync_test_auth_config_from_env()
+
+    # Rebuild the live middleware only after the key store, runtime key flags,
+    # and config constants have been reset.  APIKeyMiddleware is retained in
+    # pure no-auth mode so this ordering is now security-significant: building
+    # it against the previous test's key store or auth env makes the next test
+    # inherit a stale fail-open/fail-closed posture.
+    try:
+        from agent_bom.api import server as api_server
+
+        api_server.configure_api(api_key=None)
+        _mark_api_auth_runtime_synced()
+    except Exception:
+        _mark_api_auth_runtime_unsynced()
 
     # FastAPI dependency overrides are stored on the app object and persist
     # across tests; a leaked override changes auth/behaviour for unrelated
@@ -312,6 +323,7 @@ def _reset_durable_store_singletons() -> None:
 _AUTH_ENV_VARS = (
     "AGENT_BOM_API_KEY",
     "AGENT_BOM_API_KEYS",
+    "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
     "AGENT_BOM_TRUST_PROXY_AUTH",
     "AGENT_BOM_TRUST_PROXY_AUTH_SECRET",
     "AGENT_BOM_TRUST_PROXY_AUTH_ISSUER",
@@ -322,6 +334,54 @@ _AUTH_ENV_VARS = (
     "AGENT_BOM_NO_AUTH_ROLE",
     "AGENT_BOM_DEMO_ESTATE",
 )
+
+_api_auth_runtime_fingerprint: tuple[tuple[str, str | None], ...] | None = None
+
+
+def _auth_env_fingerprint() -> tuple[tuple[str, str | None], ...]:
+    return tuple((name, os.environ.get(name)) for name in _AUTH_ENV_VARS)
+
+
+def _mark_api_auth_runtime_synced() -> None:
+    global _api_auth_runtime_fingerprint
+    _api_auth_runtime_fingerprint = _auth_env_fingerprint()
+
+
+def _mark_api_auth_runtime_unsynced() -> None:
+    global _api_auth_runtime_fingerprint
+    _api_auth_runtime_fingerprint = None
+
+
+def _sync_api_auth_after_local_fixtures() -> None:
+    """Apply auth env declared by module/local fixtures before test dispatch.
+
+    The shared autouse fixture runs before autouse fixtures declared inside a
+    test module.  Those local fixtures commonly install trusted-proxy/OIDC test
+    credentials.  Reconfigure only when that final auth environment differs
+    from the middleware posture already built by the shared reset.
+    """
+    if _api_auth_runtime_fingerprint == _auth_env_fingerprint():
+        return
+    _sync_test_auth_config_from_env()
+    from agent_bom.api import server as api_server
+
+    api_server.configure_api(api_key=api_server._api_key)
+    _mark_api_auth_runtime_synced()
+
+
+@pytest.hookimpl(hookwrapper=True, trylast=True)
+def pytest_fixture_setup(fixturedef: pytest.FixtureDef[Any], request: pytest.FixtureRequest):
+    """Apply auth env mutations made while a fixture establishes its value."""
+    del fixturedef, request
+    yield
+    _sync_api_auth_after_local_fixtures()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_call(item: pytest.Item) -> None:
+    """Finalize cached API auth middleware after all test fixtures are ready."""
+    del item
+    _sync_api_auth_after_local_fixtures()
 
 _STORAGE_ENV_VARS = (
     "AGENT_BOM_POSTGRES_URL",

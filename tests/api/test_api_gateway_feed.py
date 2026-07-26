@@ -449,8 +449,9 @@ def test_feed_http_is_tenant_scoped() -> None:
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     try:
         from agent_bom.api.routes import proxy as proxy_routes
-        from agent_bom.api.server import app
+        from agent_bom.api.server import app, configure_api
 
+        configure_api(api_key=None)
         proxy_routes._proxy_alerts.clear()
         # Use the realistic post-redaction shape: tier-A whitelist strips
         # free-text action/reason, so classification must ride on event_type /
@@ -497,5 +498,7 @@ def test_feed_http_is_tenant_scoped() -> None:
         os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH", None)
         os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", None)
         from agent_bom.api.routes import proxy as proxy_routes
+        from agent_bom.api.server import configure_api
 
         proxy_routes._proxy_alerts.clear()
+        configure_api(api_key=None)

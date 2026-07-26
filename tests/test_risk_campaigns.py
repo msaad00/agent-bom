@@ -35,9 +35,11 @@ def _headers(role: str = "admin", tenant: str = "tenant-alpha") -> dict[str, str
 @pytest.fixture(autouse=True)
 def _stores() -> Iterator[None]:
     prior = {
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": os.environ.get("AGENT_BOM_ALLOW_UNAUTHENTICATED_API"),
         "AGENT_BOM_TRUST_PROXY_AUTH": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH"),
         "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET"),
     }
+    os.environ.pop("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", None)
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     set_campaign_store(InMemoryCampaignStore())

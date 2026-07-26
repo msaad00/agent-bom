@@ -9,7 +9,9 @@ from starlette.testclient import TestClient
 
 from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_SCAN_ID
 
-ADMIN = {"X-Agent-Bom-Role": "admin"}
+# The hosted-demo contract is anonymous viewer access.  Supplying an unattested
+# role header is credential spoofing and must be rejected by the auth resolver.
+VIEWER: dict[str, str] = {}
 
 
 @pytest.fixture()
@@ -53,28 +55,28 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
 def _demo_report(client: TestClient) -> dict:
     jobs = (
-        client.get("/v1/jobs", headers=ADMIN, params={"include_details": "true"}).json().get("jobs")
+        client.get("/v1/jobs", headers=VIEWER, params={"include_details": "true"}).json().get("jobs")
         or []
     )
     assert jobs, "expected at least one demo job after bootstrap"
-    detail = client.get(f"/v1/scan/{jobs[0]['job_id']}", headers=ADMIN).json()
+    detail = client.get(f"/v1/scan/{jobs[0]['job_id']}", headers=VIEWER).json()
     return detail.get("result") or {}
 
 
 def test_demo_estate_bootstrap_seeds_jobs_and_graph(demo_estate_client: TestClient) -> None:
     jobs_payload = demo_estate_client.get(
         "/v1/jobs",
-        headers={"X-Agent-Bom-Role": "admin"},
+        headers=VIEWER,
         params={"include_details": "true"},
     ).json()
     jobs = jobs_payload.get("jobs") or []
     assert jobs, "expected at least one demo job after bootstrap"
     job_id = jobs[0]["job_id"]
-    detail = demo_estate_client.get(f"/v1/scan/{job_id}", headers={"X-Agent-Bom-Role": "admin"}).json()
+    detail = demo_estate_client.get(f"/v1/scan/{job_id}", headers=VIEWER).json()
     sources = (detail.get("result") or {}).get("scan_sources", [])
     assert any("demo" in str(src).lower() for src in sources)
 
-    graph = demo_estate_client.get("/v1/graph", headers={"X-Agent-Bom-Role": "viewer"})
+    graph = demo_estate_client.get("/v1/graph", headers=VIEWER)
     assert graph.status_code == 200, graph.text
     payload = graph.json()
     node_count = len(payload.get("nodes") or [])
@@ -82,7 +84,7 @@ def test_demo_estate_bootstrap_seeds_jobs_and_graph(demo_estate_client: TestClie
 
 
 def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: TestClient) -> None:
-    payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
+    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
     nodes = payload.get("nodes") or []
     by_type = Counter(n.get("entity_type") for n in nodes)
 
@@ -111,7 +113,7 @@ def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: Test
 def test_demo_estate_headline_blast_radius_chain(demo_estate_client: TestClient) -> None:
     """agent -> MCP server -> vulnerable package -> critical CVE -> reachable
     credential + reachable run_shell tool -> potential RCE renders in the graph."""
-    payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
+    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
     node_ids = {n.get("id") for n in payload.get("nodes") or []}
     edges = payload.get("edges") or []
     edge_pairs = {(e.get("source"), e.get("target")) for e in edges}
@@ -221,7 +223,7 @@ def test_demo_estate_gateway_feed_kpis_populated(demo_estate_client: TestClient)
 
 
 def test_demo_estate_runtime_production_index_has_traffic(demo_estate_client: TestClient) -> None:
-    idx = demo_estate_client.get("/v1/runtime/production-index", headers=ADMIN).json()
+    idx = demo_estate_client.get("/v1/runtime/production-index", headers=VIEWER).json()
     assert idx.get("status") == "ok", idx
     traffic = idx.get("traffic") or {}
     assert traffic.get("total_tool_calls", 0) > 100, traffic
@@ -231,12 +233,10 @@ def test_demo_estate_runtime_production_index_has_traffic(demo_estate_client: Te
     assert trace, "expected recent authorization-trace events"
 
 
-def test_demo_estate_firewall_stats_populated(demo_estate_client: TestClient) -> None:
-    stats = demo_estate_client.get("/v1/firewall/stats").json()
-    assert stats.get("total_decisions", 0) >= 6, stats
-    assert stats.get("deny", 0) >= 2, stats
-    assert stats.get("allow", 0) >= 2, stats
-    assert stats.get("recent"), "expected recent firewall decisions"
+def test_demo_estate_firewall_stats_require_audit_permission(demo_estate_client: TestClient) -> None:
+    response = demo_estate_client.get("/v1/firewall/stats")
+    assert response.status_code == 403
+    assert "audit_read" in response.json()["detail"]
 
 
 def test_demo_estate_gateway_feed_is_idempotent(demo_estate_client: TestClient) -> None:
@@ -251,7 +251,7 @@ def test_demo_estate_gateway_feed_is_idempotent(demo_estate_client: TestClient) 
 
 def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: TestClient) -> None:
     """Baseline + current snapshots let the shipped drift lens diff against a prior estate."""
-    snapshots = demo_estate_client.get("/v1/graph/snapshots", headers=ADMIN).json()
+    snapshots = demo_estate_client.get("/v1/graph/snapshots", headers=VIEWER).json()
     scan_ids = {row.get("scan_id") for row in snapshots}
     assert SHOWCASE_BASELINE_SCAN_ID in scan_ids
     assert "showcase" in scan_ids
@@ -259,7 +259,7 @@ def test_demo_estate_graph_snapshots_support_drift_lens(demo_estate_client: Test
 
     diff = demo_estate_client.get(
         "/v1/graph/diff",
-        headers=ADMIN,
+        headers=VIEWER,
         params={"old": SHOWCASE_BASELINE_SCAN_ID, "new": "showcase"},
     )
     assert diff.status_code == 200, diff.text
@@ -320,7 +320,7 @@ def test_demo_estate_exec_severity_counts_reconcile_across_surfaces(
 
 def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: TestClient) -> None:
     """Showcase graph carries org→account containment and a bastion→PII exposure edge."""
-    payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
+    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
     node_ids = {node.get("id") for node in payload.get("nodes") or []}
     assert "org:corp" in node_ids
     assert "account:aws:123456789012" in node_ids
@@ -346,7 +346,7 @@ def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: T
 
 
 def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestClient) -> None:
-    payload = demo_estate_client.get("/v1/graph", headers=ADMIN).json()
+    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
     attrs_by_id = {
         node.get("id"): (node.get("attributes") or {}) for node in payload.get("nodes") or []
     }
@@ -468,12 +468,12 @@ def test_showcase_catalog_retry_heals_partial_seed(monkeypatch: pytest.MonkeyPat
 
 
 def test_demo_estate_bootstrap_is_idempotent(demo_estate_client: TestClient) -> None:
-    first = demo_estate_client.get("/v1/jobs", headers={"X-Agent-Bom-Role": "admin"}).json()
+    first = demo_estate_client.get("/v1/jobs", headers=VIEWER).json()
     from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
 
     second = maybe_bootstrap_demo_estate()
     assert second.get("reason") == "demo_jobs_present"
-    again = demo_estate_client.get("/v1/jobs", headers={"X-Agent-Bom-Role": "admin"}).json()
+    again = demo_estate_client.get("/v1/jobs", headers=VIEWER).json()
     assert again.get("total") == first.get("total")
 
 
@@ -506,14 +506,14 @@ def test_demo_estate_reseeds_when_marker_job_has_no_findings(
     empty.result = {"scan_sources": ["demo", "demo-estate"], "findings": [], "agents": []}
     store.put(empty)
 
-    before_total = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 1}).json()
+    before_total = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 1}).json()
     assert before_total.get("total", 0) == 0
 
     summary = maybe_bootstrap_demo_estate()
     assert summary.get("seeded") is True, summary
     assert (summary.get("findings") or 0) >= 1
 
-    after = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 1}).json()
+    after = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 1}).json()
     assert after.get("total", 0) > 0
 
 
@@ -548,7 +548,7 @@ def test_demo_estate_survives_job_ttl_cleanup(demo_estate_client: TestClient) ->
     for job in remaining:
         job.completed_at = now
         store.put(job)
-    findings = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 1}).json()
+    findings = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 1}).json()
     assert findings.get("total", 0) > 0
 
 
@@ -556,7 +556,7 @@ def test_demo_estate_exposure_paths_materialized(demo_estate_client: TestClient)
     """The materialized exposure-path queue (read by /v1/graph/exposure-paths) is
     non-empty and headlines the seeded hero chains."""
     payload = demo_estate_client.get(
-        "/v1/graph/exposure-paths", headers=ADMIN, params={"limit": 10}
+        "/v1/graph/exposure-paths", headers=VIEWER, params={"limit": 10}
     ).json()
     assert payload.get("count", 0) >= 3, payload
     assert payload.get("total", 0) >= 3, payload
@@ -573,7 +573,7 @@ def test_demo_estate_exposure_paths_materialized(demo_estate_client: TestClient)
 def test_demo_estate_nhi_governance_tells_a_story(demo_estate_client: TestClient) -> None:
     """NHI governance evaluates the seeded identities and surfaces at least one
     over-granted, one dormant/orphaned, and one clearly high/critical identity."""
-    posture = demo_estate_client.get("/v1/graph/nhi/governance", headers=ADMIN).json()
+    posture = demo_estate_client.get("/v1/graph/nhi/governance", headers=VIEWER).json()
     assert posture.get("evaluated", 0) >= 5, posture
     counts = posture.get("counts") or {}
     assert counts.get("over_granted", 0) >= 1, counts
@@ -611,12 +611,12 @@ def test_demo_estate_agents_fall_back_to_demo_inventory(
 
     _clear_agents_response_cache_for_tests()
 
-    agents = demo_estate_client.get("/v1/agents", headers=ADMIN).json()
+    agents = demo_estate_client.get("/v1/agents", headers=VIEWER).json()
     names = {a.get("name") for a in agents.get("agents", [])}
     assert agents.get("count", 0) >= 5, agents
     assert {"cursor", "langchain-service", "support-copilot"} <= names, names
 
-    mesh = demo_estate_client.get("/v1/agents/mesh", headers=ADMIN).json()
+    mesh = demo_estate_client.get("/v1/agents/mesh", headers=VIEWER).json()
     assert len(mesh.get("nodes") or []) >= 5, mesh
 
 
@@ -644,7 +644,7 @@ def test_demo_estate_scan_findings_restored_after_restart(
     )
     from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
 
-    before = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 3}).json()
+    before = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 3}).json()
     assert before.get("total", 0) > 0
 
     # Simulate a process restart: the in-memory job store is recreated empty
@@ -655,5 +655,5 @@ def test_demo_estate_scan_findings_restored_after_restart(
     summary = maybe_bootstrap_demo_estate()
     assert summary.get("seeded") is True, summary
 
-    after = demo_estate_client.get("/v1/findings", headers=ADMIN, params={"limit": 3}).json()
+    after = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 3}).json()
     assert after.get("total", 0) == before.get("total", 0), (before.get("total"), after.get("total"))

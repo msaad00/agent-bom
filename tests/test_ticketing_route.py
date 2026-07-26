@@ -39,6 +39,7 @@ def _env(monkeypatch) -> Iterator[None]:
     prior = {
         k: os.environ.get(k)
         for k in (
+            "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
             "AGENT_BOM_TRUST_PROXY_AUTH",
             "AGENT_BOM_TRUST_PROXY_AUTH_SECRET",
             connection_crypto.CONNECTIONS_KEY_ENV,
@@ -46,6 +47,7 @@ def _env(monkeypatch) -> Iterator[None]:
             connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV,
         )
     }
+    os.environ.pop("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", None)
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = _TEST_KEY

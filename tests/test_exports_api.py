@@ -38,12 +38,14 @@ def _headers(role: str = "admin", tenant: str = "tenant-alpha") -> dict[str, str
 @pytest.fixture(autouse=True)
 def _env() -> Iterator[None]:
     prior = {
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": os.environ.get("AGENT_BOM_ALLOW_UNAUTHENTICATED_API"),
         "AGENT_BOM_TRUST_PROXY_AUTH": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH"),
         "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET"),
         connection_crypto.CONNECTIONS_KEY_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_ENV),
         f"{connection_crypto.CONNECTIONS_KEY_ENV}_FILE": os.environ.get(f"{connection_crypto.CONNECTIONS_KEY_ENV}_FILE"),
         connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV),
     }
+    os.environ.pop("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", None)
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = _TEST_KEY

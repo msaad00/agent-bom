@@ -152,6 +152,10 @@ CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON scan_dispatch_queue(status,cr
 CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider TEXT NOT NULL,display_name TEXT NOT NULL,role_ref TEXT NOT NULL,external_id_encrypted TEXT NOT NULL DEFAULT '',regions TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'pending',status_detail TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_scan_at TEXT,last_scan_id TEXT,scan_interval_minutes INTEGER,auth_params TEXT NOT NULL DEFAULT '{}',last_event_at TEXT,inventory_scope TEXT NOT NULL DEFAULT 'account',scan_mode TEXT NOT NULL DEFAULT 'full',auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE);
 CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes,last_scan_at);
+CREATE TABLE IF NOT EXISTS ticketing_connections (id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider TEXT NOT NULL,transport TEXT NOT NULL,auth_method TEXT NOT NULL,display_name TEXT NOT NULL,endpoint TEXT NOT NULL DEFAULT '',secret_encrypted TEXT NOT NULL DEFAULT '',auth_params TEXT NOT NULL DEFAULT '{}',status TEXT NOT NULL DEFAULT 'pending',status_detail TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_ticketing_connections_tenant ON ticketing_connections(tenant_id,created_at);
+CREATE TABLE IF NOT EXISTS ticket_links (id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,connection_id TEXT NOT NULL,dedupe_key TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',external_id TEXT NOT NULL DEFAULT '',key TEXT NOT NULL DEFAULT '',url TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE (tenant_id,connection_id,dedupe_key));
+CREATE INDEX IF NOT EXISTS idx_ticket_links_tenant ON ticket_links(tenant_id,created_at);
 CREATE TABLE IF NOT EXISTS control_plane_sources (source_id TEXT PRIMARY KEY,enabled INTEGER DEFAULT 1,tenant_id TEXT NOT NULL DEFAULT 'default',updated_at TEXT NOT NULL,data JSONB NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_control_plane_sources_tenant_updated ON control_plane_sources(tenant_id,updated_at DESC);
 CREATE TABLE IF NOT EXISTS credential_refs (credential_ref_id TEXT PRIMARY KEY,enabled INTEGER DEFAULT 1,tenant_id TEXT NOT NULL DEFAULT 'default',updated_at TEXT NOT NULL,data JSONB NOT NULL);
@@ -196,7 +200,7 @@ BEGIN
     'access_review_campaigns','access_review_items','agent_identities','agent_identity_jit_grants','agent_conditional_access_policies',
     'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','runtime_workload_evidence','scim_users','scim_groups',
     'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides',
-    'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections',
+    'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections','ticketing_connections','ticket_links',
     'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_findings_current',
     'hub_findings_current_observations','hub_cve_intel','hub_framework_refs'
   ] LOOP
@@ -224,6 +228,7 @@ SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
  'agent_identities','runtime_events','runtime_workload_evidence','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
- 'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config'
+ 'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config',
+ 'ticketing_connections'
 ]) component
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;

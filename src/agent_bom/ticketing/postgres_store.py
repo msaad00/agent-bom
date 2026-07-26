@@ -41,7 +41,8 @@ class PostgresTicketingStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            ensure_postgres_schema_version(conn, "ticketing_connections")
+            if not ensure_postgres_schema_version(conn, "ticketing_connections"):
+                return
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS ticketing_connections (

@@ -6,7 +6,7 @@ import importlib
 import re
 from pathlib import Path
 
-from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.api.storage_schema import CONTROL_PLANE_SCHEMA_COMPONENTS, ensure_postgres_schema_version
 from agent_bom.storage.base import StorageSchema, TableSchema
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,6 +145,23 @@ class _Connection:
         return _Result()
 
 
+class _Pool:
+    def __init__(self, connection: _Connection) -> None:
+        self._connection = connection
+
+    def connection(self):
+        connection = self._connection
+
+        class _Context:
+            def __enter__(self):
+                return connection
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        return _Context()
+
+
 def test_configured_postgres_schema_check_is_read_only(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@postgres/agent_bom")
     connection = _Connection()
@@ -155,6 +172,28 @@ def test_configured_postgres_schema_check_is_read_only(monkeypatch) -> None:
     assert connection.statements == [
         "SELECT version FROM control_plane_schema_versions WHERE component = %s",
     ]
+
+
+def test_configured_ticketing_store_constructor_never_executes_ddl(monkeypatch) -> None:
+    from agent_bom.ticketing.postgres_store import PostgresTicketingStore
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@postgres/agent_bom")
+    connection = _Connection()
+
+    PostgresTicketingStore(pool=_Pool(connection))
+
+    assert connection.statements == [
+        "SELECT version FROM control_plane_schema_versions WHERE component = %s",
+    ]
+
+
+def test_ticketing_tables_are_registered_as_one_schema_component() -> None:
+    ticketing = [component for component in CONTROL_PLANE_SCHEMA_COMPONENTS if component.component == "ticketing_connections"]
+
+    assert len(ticketing) == 1
+    assert ticketing[0].backend == "sqlite/postgres"
+    assert ticketing[0].tables == ("ticketing_connections", "ticket_links")
+    assert ticketing[0].tenant_scoped is True
 
 
 def test_legacy_postgres_db_setting_uses_the_same_read_only_contract(monkeypatch) -> None:
@@ -185,6 +224,7 @@ def test_every_postgres_store_guards_runtime_schema_ddl() -> None:
         for name in ("idempotency_store.py", "middleware.py", "proxy_replay_store.py", "shared_auth_state.py")
     )
     runtime_schema_files.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
+    runtime_schema_files.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
     for path in sorted(runtime_schema_files):
         for line_number, line in enumerate(path.read_text().splitlines(), start=1):
             if "ensure_postgres_schema_version(" not in line or line.lstrip().startswith("def "):
@@ -231,6 +271,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
         )
     )
     runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
+    runtime_paths.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
     runtime_source = "\n".join(path.read_text() for path in runtime_paths)
     migration_sql = (ROOT / "deploy" / "supabase" / "postgres" / "runtime-schema.sql").read_text()
     baseline_sql = (ROOT / "deploy" / "supabase" / "postgres" / "init.sql").read_text()

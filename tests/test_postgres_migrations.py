@@ -19,6 +19,7 @@ GRAPH_SNAPSHOT_JSON_PARITY = VERSIONS_DIR / "20260717_03_graph_snapshot_json_par
 RUNTIME_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260718_01_runtime_schema_authority.py"
 CLOUD_CONNECTIONS_SCOPE_COLUMNS = VERSIONS_DIR / "20260724_02_cloud_connections_scope_columns.py"
 MANAGED_TRIAL_INVITATIONS = VERSIONS_DIR / "20260724_03_managed_trial_invitations.py"
+TICKETING_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260726_01_ticketing_schema_authority.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
@@ -78,6 +79,23 @@ def test_managed_trial_invitation_migration_is_chained_and_secret_minimal() -> N
     assert "FORCE ROW LEVEL SECURITY" in sql
     assert "managed_trial_invitations_tenant_isolation" in sql
     assert "managed_trial_tenants_tenant_isolation" in sql
+
+
+def test_ticketing_schema_authority_migration_is_chained_and_tenant_isolated() -> None:
+    sql = TICKETING_SCHEMA_AUTHORITY.read_text()
+    assert re.search(r'revision\s*=\s*"20260726_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260724_03"', sql)
+    assert "CREATE TABLE IF NOT EXISTS ticketing_connections" in sql
+    assert "CREATE TABLE IF NOT EXISTS ticket_links" in sql
+    assert "UNIQUE (tenant_id, connection_id, dedupe_key)" in sql
+    assert "idx_ticketing_connections_tenant" in sql
+    assert "idx_ticket_links_tenant" in sql
+    for table in ("ticketing_connections", "ticket_links"):
+        assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in sql
+        assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in sql
+        assert f"{table}_tenant_isolation" in sql
+        assert f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO agent_bom_app" in sql
+    assert "VALUES ('ticketing_connections', 1, now())" in sql
 
 
 def test_baseline_migration_points_at_bootstrap_sql():

@@ -75,6 +75,98 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert any(item.job_id == job_id for item in results)
 
 
+def test_postgres_ticketing_store_real_dml_role_roundtrip_and_tenant_filter():
+    from agent_bom.api.postgres_common import _get_pool, reset_current_tenant, set_current_tenant
+    from agent_bom.ticketing.connection_store import TicketLink
+    from agent_bom.ticketing.models import TicketingConnectionRecord
+    from agent_bom.ticketing.postgres_store import PostgresTicketingStore
+
+    pool = _get_pool()
+    with pool.connection() as conn:
+        role = conn.execute(
+            "SELECT current_user, has_schema_privilege(current_user, current_schema(), 'CREATE')"
+        ).fetchone()
+    if role is None or role[1]:
+        pytest.skip("Ticketing DML contract requires the migration-provisioned application role")
+
+    suffix = uuid4().hex
+    tenant_id = f"ticketing-{suffix}"
+    other_tenant_id = f"ticketing-other-{suffix}"
+    connection_id = f"ticketing-connection-{suffix}"
+    ticket_id = f"ticket-link-{suffix}"
+    store = PostgresTicketingStore(pool=pool)
+    record = TicketingConnectionRecord(
+        id=connection_id,
+        tenant_id=tenant_id,
+        provider="jira",
+        transport="rest",
+        auth_method="token",
+        display_name="Postgres contract",
+        endpoint="https://tickets.example.invalid",
+        secret_encrypted="ciphertext",
+        auth_params={"user": "contract@example.invalid"},
+        status="active",
+        created_at="2026-07-26T00:00:00Z",
+        updated_at="2026-07-26T00:00:00Z",
+    )
+    link = TicketLink(
+        id=ticket_id,
+        tenant_id=tenant_id,
+        connection_id=connection_id,
+        dedupe_key=f"finding-{suffix}",
+        provider="jira",
+        created_at="2026-07-26T00:00:00Z",
+        updated_at="2026-07-26T00:00:00Z",
+    )
+
+    tenant_token = set_current_tenant(tenant_id)
+    try:
+        store.put_connection(record)
+        won, claimed = store.claim_ticket_link(link)
+        replay_won, replayed = store.claim_ticket_link(
+            TicketLink(**{**link.to_public_dict(), "id": f"ticket-link-replay-{suffix}"})
+        )
+        same_tenant = store.get_connection(tenant_id, connection_id)
+    finally:
+        reset_current_tenant(tenant_token)
+
+    other_token = set_current_tenant(other_tenant_id)
+    try:
+        other_tenant = store.get_connection(tenant_id, connection_id)
+        other_tenant_link = store.get_ticket_link(tenant_id, ticket_id)
+    finally:
+        reset_current_tenant(other_token)
+
+    try:
+        assert won is True
+        assert claimed.id == ticket_id
+        assert replay_won is False
+        assert replayed.id == ticket_id
+        assert same_tenant is not None
+        assert same_tenant.auth_params == {"user": "contract@example.invalid"}
+        assert other_tenant is None
+        assert other_tenant_link is None
+        with pool.connection() as conn:
+            marker = conn.execute(
+                "SELECT version FROM control_plane_schema_versions WHERE component = %s",
+                ("ticketing_connections",),
+            ).fetchone()
+            rls = conn.execute(
+                "SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class "
+                "WHERE oid IN ('public.ticketing_connections'::regclass, 'public.ticket_links'::regclass) "
+                "ORDER BY relname"
+            ).fetchall()
+        assert marker == (1,)
+        assert rls == [("ticket_links", True, True), ("ticketing_connections", True, True)]
+    finally:
+        cleanup_token = set_current_tenant(tenant_id)
+        try:
+            store.delete_ticket_link(tenant_id, ticket_id)
+            store.delete_connection(tenant_id, connection_id)
+        finally:
+            reset_current_tenant(cleanup_token)
+
+
 def test_postgres_invitation_provisions_team_and_key_atomically_under_new_tenant_rls():
     """An operator admin may provision a distinct tenant without an RLS or FK failure."""
     import psycopg

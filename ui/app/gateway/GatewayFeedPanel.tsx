@@ -14,11 +14,9 @@ import {
   Activity,
   Ban,
   Clock,
-  EyeOff,
   Loader2,
   RefreshCw,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
 // ─── Action badge styling ─────────────────────────────────────────────────────
@@ -42,13 +40,13 @@ const ACTION_META: Record<
   data_filter_applied: {
     label: "data filter",
     badge: "bg-amber-950 text-amber-300 border-amber-800",
-    icon: EyeOff,
+    icon: Activity,
     tone: "text-amber-400",
   },
   llm_call: {
     label: "LLM call",
     badge: "bg-blue-950 text-blue-300 border-blue-800",
-    icon: Sparkles,
+    icon: Activity,
     tone: "text-blue-400",
   },
 };

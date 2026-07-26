@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ShieldX } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { errorBoundaryMessage, errorReference } from "@/lib/error-boundary-message";
 
 export default function GlobalError({
   error,
@@ -12,16 +13,19 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const message = errorBoundaryMessage(error);
+  const reference = errorReference(error.digest);
+
   useEffect(() => {
     void api
       .reportClientError({
-        message: error.message,
-        digest: error.digest,
+        message,
+        digest: reference ?? undefined,
         path: typeof window === "undefined" ? "/" : window.location.pathname,
         component: "root-global-error-boundary",
       })
       .catch(() => {});
-  }, [error]);
+  }, [message, reference]);
 
   return (
     <html lang="en">
@@ -29,7 +33,10 @@ export default function GlobalError({
         <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
           <ShieldX className="h-12 w-12 text-red-500" aria-hidden="true" />
           <h1 className="text-lg font-semibold">Something went wrong</h1>
-          <p className="max-w-md text-sm text-[var(--text-secondary)]">{error.message}</p>
+          <p className="max-w-md text-sm text-[var(--text-secondary)]">{message}</p>
+          {reference ? (
+            <p className="text-xs text-[var(--text-secondary)]">Reference: {reference}</p>
+          ) : null}
           <button
             type="button"
             onClick={reset}

@@ -35,6 +35,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Focused graph paths are filtered before layout, relationship labels remain
   readable at initial fit, and dragged nodes retain their positions without
   changing relationship endpoints.
+- Dashboard error boundaries render and report fixed safe messages instead of
+  exposing raw exception text; valid server-generated digests remain available
+  as bounded correlation references.
 
 ### Removed
 - The optional Go runtime tier (`runtime/gateway-relay`, `runtime/event-collector`)

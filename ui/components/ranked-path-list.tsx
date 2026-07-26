@@ -32,11 +32,14 @@ export function RankedPathList({
   selectedKey,
   onSelect,
   onKeyDown,
+  controlsId,
 }: {
   rows: RankedPathRow[];
   selectedKey: string | null;
   onSelect: (key: string) => void;
   onKeyDown?: ((event: React.KeyboardEvent<HTMLDivElement>) => void) | undefined;
+  /** Detail region updated by a row selection. */
+  controlsId?: string | undefined;
 }) {
   return (
     <div
@@ -52,6 +55,7 @@ export function RankedPathList({
             key={row.key}
             type="button"
             aria-pressed={active}
+            aria-controls={controlsId}
             onClick={() => onSelect(row.selectionKey)}
             className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border px-3 py-2.5 text-left transition sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-3 ${
               active

@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
-// Non-empty fixture with one critical agent->vulnerability exposure path so the
-// security graph page renders the exposure command center, metrics, and evidence panel.
+// Non-empty fixture with two observed paths so the security graph page can
+// prove that queue selection updates the in-place graph and evidence panel.
 const scanId = "scan-cockpit-fixture";
 const createdAt = "2026-05-27T16:00:00Z";
 
@@ -116,6 +116,20 @@ function buildCockpitGraph(nodeCount = 5) {
         tool_exposure: ["create_pull_request"],
         vuln_ids: ["CVE-2025-7783"],
       },
+      {
+        source: "agent:desktop",
+        target: "cred:gh-token",
+        hops: ["agent:desktop", "server:github", "cred:gh-token"],
+        edges: [
+          "agent:desktop->server:github:uses",
+          "server:github->cred:gh-token:exposes_cred",
+        ],
+        composite_risk: 7.5,
+        summary: "claude-desktop reaches an exposed credential through the github MCP server.",
+        credential_exposure: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        tool_exposure: [],
+        vuln_ids: [],
+      },
     ],
     interaction_risks: [],
     stats: {
@@ -124,7 +138,7 @@ function buildCockpitGraph(nodeCount = 5) {
       node_types: { agent: 1, server: 1, package: 1, vulnerability: 1, credential: 1 },
       severity_counts: { critical: 2, high: 1, medium: 0 },
       relationship_types: { uses: 1, depends_on: 1, vulnerable_to: 1, exposes_cred: 1 },
-      attack_path_count: 1,
+      attack_path_count: 2,
       interaction_risk_count: 0,
       max_attack_path_risk: 9.8,
       highest_interaction_risk: 0,
@@ -339,6 +353,48 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
   expect(overflows).toBe(false);
 
   await page.screenshot({ path: testInfo.outputPath("security-graph-cockpit-mobile.png"), fullPage: true });
+});
+
+test("ranked path selection focuses the in-place interactive graph and announces the change", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await routeCockpit(page);
+
+  await page.goto("/security-graph");
+  await page.waitForLoadState("networkidle");
+
+  const workspace = page.getByRole("region", { name: "Investigation workspace" });
+  const queue = workspace.getByLabel("Attack path queue");
+  const detail = workspace.getByRole("region", { name: "Selected path detail" });
+  const [queueBox, detailBox] = await Promise.all([queue.boundingBox(), detail.boundingBox()]);
+  expect(queueBox).not.toBeNull();
+  expect(detailBox).not.toBeNull();
+  expect(Math.abs(queueBox!.y - detailBox!.y)).toBeLessThan(180);
+
+  await queue.getByRole("button", { name: /#2/ }).click();
+  await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Focused path 2");
+  const [selectedRowBox, focusedDetailBox] = await Promise.all([
+    queue.getByRole("button", { name: /#2/ }).boundingBox(),
+    detail.boundingBox(),
+  ]);
+  expect(selectedRowBox).not.toBeNull();
+  expect(focusedDetailBox).not.toBeNull();
+  expect(selectedRowBox!.y).toBeLessThan(1000);
+  expect(focusedDetailBox!.y).toBeLessThan(1000);
+});
+
+test("mobile ranked path selection moves the selected graph into view", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeCockpit(page);
+
+  await page.goto("/security-graph");
+  await page.waitForLoadState("networkidle");
+
+  const queue = page.getByLabel("Attack path queue");
+  await queue.getByRole("button", { name: /#2/ }).click();
+  const detail = page.getByRole("region", { name: "Selected path detail" });
+  await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
+  await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
 });
 
 for (const theme of ["dark", "light"] as const) {

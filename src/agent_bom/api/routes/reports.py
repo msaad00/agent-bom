@@ -82,6 +82,14 @@ async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
         format=body.format,
         sort=body.sort,
         severity=body.severity,
+        scan_id=body.scan_id,
+        provider=body.provider,
+        account=body.account,
+        environment=body.environment,
+        domain=body.domain,
+        finding_class=body.finding_class,
+        finding_status=body.status,
+        window_days=body.window_days,
         created_at=_now(),
     )
     get_report_job_store().put(job)

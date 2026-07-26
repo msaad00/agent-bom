@@ -22,6 +22,18 @@
   },
   "description": "Async findings export job backed by streamed hub reads.",
   "properties": {
+    "account": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Account"
+    },
     "artifact_backend": {
       "anyOf": [
         {
@@ -78,6 +90,18 @@
       "title": "Created At",
       "type": "string"
     },
+    "domain": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Domain"
+    },
     "download_token": {
       "anyOf": [
         {
@@ -90,6 +114,18 @@
       "default": null,
       "title": "Download Token"
     },
+    "environment": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Environment"
+    },
     "error": {
       "anyOf": [
         {
@@ -101,6 +137,35 @@
       ],
       "default": null,
       "title": "Error"
+    },
+    "finding_class": {
+      "anyOf": [
+        {
+          "enum": [
+            "vulnerability",
+            "misconfiguration",
+            "secret",
+            "identity",
+            "unclassified"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finding Class"
+    },
+    "finding_status": {
+      "default": "open",
+      "enum": [
+        "open",
+        "resolved",
+        "all"
+      ],
+      "title": "Finding Status",
+      "type": "string"
     },
     "format": {
       "$ref": "#/$defs/ReportFormat",
@@ -122,6 +187,18 @@
       "default": null,
       "title": "Presigned Download Url"
     },
+    "provider": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider"
+    },
     "row_count": {
       "anyOf": [
         {
@@ -133,6 +210,18 @@
       ],
       "default": null,
       "title": "Row Count"
+    },
+    "scan_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scan Id"
     },
     "severity": {
       "anyOf": [
@@ -171,6 +260,18 @@
       "default": "default",
       "title": "Tenant Id",
       "type": "string"
+    },
+    "window_days": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Window Days"
     }
   },
   "required": [

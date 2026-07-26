@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bug,
   ChevronRight,
+  CircleHelp,
   Fingerprint,
   Flame,
   KeyRound,
@@ -1009,6 +1010,7 @@ const ISSUE_TYPE_GLYPH: Record<IssueType, ElementType> = {
   misconfiguration: SlidersHorizontal,
   secret: KeyRound,
   identity: Fingerprint,
+  unclassified: CircleHelp,
 };
 
 // Neutral grayscale fills for the in-tile issue-type mini bar — segments stay
@@ -1018,6 +1020,7 @@ const ISSUE_TYPE_BAR: Record<IssueType, string> = {
   misconfiguration: "bg-[color:var(--text-tertiary)]",
   secret: "bg-[color:var(--text-secondary)] opacity-60",
   identity: "bg-[color:var(--text-tertiary)] opacity-50",
+  unclassified: "bg-[color:var(--text-tertiary)] opacity-35",
 };
 
 /**
@@ -1104,7 +1107,7 @@ function SeverityIssueStrip({
     },
   ];
   const stackedTotal = bands.reduce((sum, band) => sum + band.value, 0);
-  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity"];
+  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity", "unclassified"];
 
   return (
     <div
@@ -1115,7 +1118,7 @@ function SeverityIssueStrip({
         bare
         title="Open issues"
         titleClassName={SECTION_TITLE_CLASS}
-        subtitle={scopeLabel ?? "By severity · CVE, misconfig, secret, identity"}
+        subtitle={scopeLabel ?? "By severity and issue class"}
         defaultOpen
         actions={
           <div className="flex flex-wrap items-center gap-1.5">

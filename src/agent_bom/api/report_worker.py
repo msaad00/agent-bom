@@ -10,7 +10,6 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 from agent_bom.api.models import JobStatus, ReportJob
 from agent_bom.api.pipeline import get_executor
 from agent_bom.api.report_artifact_store import publish_report_artifact
@@ -18,9 +17,6 @@ from agent_bom.api.report_job_store import get_report_job_store
 from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
-
-_PAGE_SIZE = 500
-
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -111,33 +107,37 @@ def _run_report_job_sync(job_id: str, tenant_id: str) -> None:
 
 
 def _write_findings_artifact(job: ReportJob) -> tuple[int, int, str, Path]:
-    hub = get_compliance_hub_store()
-    list_page = getattr(hub, "list_current_page", None)
-    if not callable(list_page):
-        raise RuntimeError("Compliance hub store does not support current-state finding exports")
+    from agent_bom.api import time_window
+    from agent_bom.api.routes.scan import _canonical_scope_filters
+    from agent_bom.export.runner import iter_current_findings
+
+    resolved_window = time_window.normalize_window_days(job.window_days)
+    since = time_window.window_since_iso(resolved_window)
+    scope = _canonical_scope_filters(
+        job.provider,
+        job.account,
+        job.environment,
+        job.domain,
+        job.finding_class,
+    )
 
     path = _artifact_path(job.tenant_id, job.job_id)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     row_count = 0
-    cursor: str | None = None
     with gzip.open(path, "wt", encoding="utf-8") as handle:
-        while True:
-            page, _total, next_cursor = list_page(
-                job.tenant_id,
-                limit=_PAGE_SIZE,
-                sort=job.sort,
-                severity=job.severity,
-                include_total=cursor is None,
-                cursor=cursor,
-            )
-            for row in page:
-                handle.write(json.dumps(row, separators=(",", ":"), ensure_ascii=True))
-                handle.write("\n")
-                row_count += 1
-            if not next_cursor:
-                break
-            cursor = next_cursor
+        for row in iter_current_findings(
+            job.tenant_id,
+            sort=job.sort,
+            severity=job.severity,
+            since=since,
+            scan_id=job.scan_id,
+            scope=scope,
+            status=job.finding_status,
+        ):
+            handle.write(json.dumps(row, separators=(",", ":"), ensure_ascii=True))
+            handle.write("\n")
+            row_count += 1
 
     byte_count = path.stat().st_size
     return row_count, byte_count, secrets.token_urlsafe(32), path

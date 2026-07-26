@@ -19,7 +19,7 @@ and ingest converters can import them without a cycle:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.finding import FindingSource, FindingType
@@ -39,15 +39,37 @@ SECURITY_DOMAIN_LABELS: dict[str, str] = {
     "aispm": "AISPM",
 }
 
-FindingClass = Literal["vulnerability", "misconfiguration", "secret", "identity"]
+FindingClass = Literal["vulnerability", "misconfiguration", "secret", "identity", "unclassified"]
 FINDING_CLASSES: tuple[FindingClass, ...] = (
     "vulnerability",
     "misconfiguration",
     "secret",
     "identity",
+    "unclassified",
 )
 
-_VULNERABILITY_TYPES = {"CVE", "MALICIOUS_PACKAGE"}
+FindingSeverityFilter = Literal[
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info",
+    "informational",
+    "none",
+    "unknown",
+]
+FINDING_SEVERITY_FILTERS: tuple[FindingSeverityFilter, ...] = (
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info",
+    "informational",
+    "none",
+    "unknown",
+)
+
+_VULNERABILITY_TYPES = {"CVE", "MALICIOUS_PACKAGE", "SAST"}
 _MISCONFIGURATION_TYPES = {
     "CIS_FAIL",
     "CIS_ERROR",
@@ -72,6 +94,25 @@ def canonical_domain(value: str | None) -> Optional[str]:
     key = (value or "").strip().lower()
     key = _LEGACY_DOMAIN_ALIASES.get(key, key)
     return key if key in SECURITY_DOMAINS else None
+
+
+def canonical_finding_severity_filter(value: object) -> str | None:
+    """Validate and canonicalize the shared findings/report severity filter.
+
+    ``informational`` is an accepted display alias for the persisted ``info``
+    bucket. Invalid and non-string values fail closed rather than looking like
+    a successful empty query.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("severity must be a string")
+    normalized = value.strip().lower()
+    if normalized not in FINDING_SEVERITY_FILTERS:
+        raise ValueError(
+            f"invalid severity '{value}'; accepted values: {', '.join(FINDING_SEVERITY_FILTERS)}"
+        )
+    return "info" if normalized == "informational" else normalized
 
 
 # ---------------------------------------------------------------------------
@@ -334,12 +375,13 @@ def lenses_for_row(row: dict) -> frozenset[str]:
     return frozenset(lenses | security_lenses_for(source, ftype, evidence))
 
 
-def finding_class_for_row(row: Mapping[str, object]) -> Optional[FindingClass]:
+def finding_class_for_row(row: Mapping[str, object]) -> FindingClass:
     """Return the user-facing issue class for a serialized finding.
 
     Classification is deliberately conservative. Only explicit finding types,
     sources, or vulnerability identifiers map to a class; an unknown finding
-    remains unclassified instead of silently appearing as a vulnerability.
+    is returned as the explicit ``unclassified`` bucket instead of disappearing
+    from the taxonomy or silently appearing as a vulnerability.
     """
     finding_type = str(row.get("finding_type") or "").strip().upper()
     source = str(row.get("source") or "").strip().upper()
@@ -351,9 +393,56 @@ def finding_class_for_row(row: Mapping[str, object]) -> Optional[FindingClass]:
         return "identity"
     if finding_type in _MISCONFIGURATION_TYPES or source in {"CLOUD_CIS", "CLOUD_SECURITY"}:
         return "misconfiguration"
-    if finding_type in _VULNERABILITY_TYPES or identifier.startswith(("CVE-", "GHSA-")):
+    if finding_type in _VULNERABILITY_TYPES or source == "SAST" or identifier.startswith(("CVE-", "GHSA-")):
         return "vulnerability"
-    return None
+    return "unclassified"
+
+
+_CANONICAL_NULLABLE_FINDING_FIELDS: tuple[str, ...] = (
+    "source",
+    "scan_id",
+    "first_seen",
+    "last_seen",
+    "last_observed",
+    "occurrence_count",
+    "status",
+    "cvss_score",
+    "cvss_version",
+    "cvss_vector",
+    "epss_score",
+    "is_kev",
+    "fixed_version",
+    "remediation_versions",
+    "remediation_guidance",
+    "provenance",
+    "owner",
+    "sla_due_at",
+)
+
+
+def canonical_finding_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a finding row with the additive, evidence-honest API contract.
+
+    Missing evidence stays explicit ``None``. Existing authoritative values are
+    never replaced, and aliases are derived only from semantically equivalent
+    persisted fields (``last_seen`` and ``scan_count``).
+    """
+    payload = dict(row)
+    payload["finding_class"] = finding_class_for_row(payload)
+    for key in _CANONICAL_NULLABLE_FINDING_FIELDS:
+        payload.setdefault(key, None)
+
+    if payload["last_observed"] is None and payload["last_seen"] is not None:
+        payload["last_observed"] = payload["last_seen"]
+    if payload["occurrence_count"] is None and payload.get("scan_count") is not None:
+        payload["occurrence_count"] = payload["scan_count"]
+    if payload["remediation_versions"] is None:
+        fixed_versions = payload.get("fixed_versions")
+        if isinstance(fixed_versions, list):
+            payload["remediation_versions"] = fixed_versions
+        elif isinstance(payload["fixed_version"], str) and payload["fixed_version"].strip():
+            payload["remediation_versions"] = [payload["fixed_version"]]
+    return payload
 
 
 def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:

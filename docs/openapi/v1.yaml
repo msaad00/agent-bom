@@ -2928,12 +2928,61 @@ components:
       additionalProperties: false
       description: Request body for ``POST /v1/reports``.
       properties:
+        account:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Account
+        domain:
+          anyOf:
+          - maxLength: 32
+            type: string
+          - type: 'null'
+          title: Domain
+        environment:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Environment
+        finding_class:
+          anyOf:
+          - enum:
+            - vulnerability
+            - misconfiguration
+            - secret
+            - identity
+            - unclassified
+            type: string
+          - type: 'null'
+          title: Finding Class
         format:
           $ref: '#/components/schemas/ReportFormat'
           default: ndjson
+        provider:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Provider
+        scan_id:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Scan Id
         severity:
           anyOf:
-          - maxLength: 32
+          - enum:
+            - critical
+            - high
+            - medium
+            - low
+            - info
+            - informational
+            - none
+            - unknown
             type: string
           - type: 'null'
           title: Severity
@@ -2946,6 +2995,21 @@ components:
           - ordinal
           title: Sort
           type: string
+        status:
+          default: open
+          enum:
+          - open
+          - resolved
+          - all
+          title: Status
+          type: string
+        window_days:
+          anyOf:
+          - maximum: 3650.0
+            minimum: 0.0
+            type: integer
+          - type: 'null'
+          title: Window Days
       title: ReportJobRequest
       type: object
     RotateKeyRequest:
@@ -10133,9 +10197,17 @@ paths:
             - misconfiguration
             - secret
             - identity
+            - unclassified
             type: string
           - type: 'null'
           title: Finding Class
+      - in: query
+        name: include_facets
+        required: false
+        schema:
+          default: false
+          title: Include Facets
+          type: boolean
       responses:
         '200':
           content:

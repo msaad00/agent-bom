@@ -1,6 +1,6 @@
 import type { EnrichedVuln } from "@/lib/findings-view";
 
-export type IssueTypeFilter = "all" | "vulnerability" | "misconfiguration" | "secret" | "identity";
+export type IssueTypeFilter = "all" | "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
 
 export type IssueType = Exclude<IssueTypeFilter, "all">;
 
@@ -28,6 +28,7 @@ export type IssueTypeSignals = {
   id: string;
   impact_category?: string | undefined;
   finding_type?: string | undefined;
+  finding_class?: IssueType | undefined;
   sources?: string[] | undefined;
   advisory_sources?: string[] | undefined;
   framework_tags?: string[] | undefined;
@@ -36,6 +37,7 @@ export type IssueTypeSignals = {
 
 /** Classify any finding-like signal into vuln / misconfig / secret / identity. */
 export function classifyIssueTypeFromSignals(signals: IssueTypeSignals): IssueType | null {
+  if (signals.finding_class) return signals.finding_class;
   const findingType = (signals.finding_type ?? "").trim().toUpperCase();
   const sources = [...(signals.sources ?? []), ...(signals.advisory_sources ?? [])]
     .map((source) => source.trim().toUpperCase());
@@ -57,7 +59,7 @@ export function classifyIssueTypeFromSignals(signals: IssueTypeSignals): IssueTy
   if (VULNERABILITY_TYPES.has(findingType) || /^(cve-|ghsa-)/i.test(signals.id.trim())) {
     return "vulnerability";
   }
-  return null;
+  return "unclassified";
 }
 
 export function classifyFindingIssueType(vuln: EnrichedVuln): IssueType | null {
@@ -65,6 +67,7 @@ export function classifyFindingIssueType(vuln: EnrichedVuln): IssueType | null {
     id: vuln.id,
     impact_category: vuln.impact_category,
     finding_type: vuln.finding_type,
+    finding_class: vuln.finding_class,
     sources: vuln.sources,
     advisory_sources: vuln.advisory_sources,
     framework_tags: vuln.framework_tags,
@@ -83,6 +86,7 @@ export const ISSUE_TYPE_FILTERS: { key: IssueTypeFilter; label: string; hint: st
   { key: "misconfiguration", label: "Misconfigurations", hint: "Cloud, IaC, policy" },
   { key: "secret", label: "Secrets", hint: "Exposed credentials" },
   { key: "identity", label: "Identity", hint: "IAM / NHI exposure" },
+  { key: "unclassified", label: "Unclassified", hint: "Needs taxonomy review" },
 ];
 
 export const ISSUE_TYPE_SHORT: Record<IssueType, string> = {
@@ -90,6 +94,7 @@ export const ISSUE_TYPE_SHORT: Record<IssueType, string> = {
   misconfiguration: "Misconfig",
   secret: "Secret",
   identity: "Identity",
+  unclassified: "Other",
 };
 
 export const SEVERITY_BANDS: SeverityBand[] = ["critical", "high", "medium", "low"];
@@ -104,8 +109,9 @@ export function emptyIssueSeverityMatrix(): IssueSeverityMatrix {
     misconfiguration: emptySeverityBucket(),
     secret: emptySeverityBucket(),
     identity: emptySeverityBucket(),
+    unclassified: emptySeverityBucket(),
     totals: emptySeverityBucket(),
-    byType: { vulnerability: 0, misconfiguration: 0, secret: 0, identity: 0 },
+    byType: { vulnerability: 0, misconfiguration: 0, secret: 0, identity: 0, unclassified: 0 },
     openTotal: 0,
   };
 }

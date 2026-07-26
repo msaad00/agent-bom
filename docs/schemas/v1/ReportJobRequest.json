@@ -12,14 +12,107 @@
   "additionalProperties": false,
   "description": "Request body for ``POST /v1/reports``.",
   "properties": {
+    "account": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Account"
+    },
+    "domain": {
+      "anyOf": [
+        {
+          "maxLength": 32,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Domain"
+    },
+    "environment": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Environment"
+    },
+    "finding_class": {
+      "anyOf": [
+        {
+          "enum": [
+            "vulnerability",
+            "misconfiguration",
+            "secret",
+            "identity",
+            "unclassified"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finding Class"
+    },
     "format": {
       "$ref": "#/$defs/ReportFormat",
       "default": "ndjson"
     },
+    "provider": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider"
+    },
+    "scan_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scan Id"
+    },
     "severity": {
       "anyOf": [
         {
-          "maxLength": 32,
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info",
+            "informational",
+            "none",
+            "unknown"
+          ],
           "type": "string"
         },
         {
@@ -39,6 +132,30 @@
       ],
       "title": "Sort",
       "type": "string"
+    },
+    "status": {
+      "default": "open",
+      "enum": [
+        "open",
+        "resolved",
+        "all"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "window_days": {
+      "anyOf": [
+        {
+          "maximum": 3650,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Window Days"
     }
   },
   "title": "ReportJobRequest",

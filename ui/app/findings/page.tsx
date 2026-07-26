@@ -225,6 +225,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       attack_vector_summary: raw.attack_vector_summary ?? (finding.network_exploitable ? "Network exploitable" : undefined),
       impact_category: finding.impact_category ?? finding.finding_type,
       finding_type: finding.finding_type,
+      finding_class: finding.finding_class,
       risk_score: finding.risk_score,
       effective_reach_band: raw.effective_reach_band,
       effective_reach_score: raw.effective_reach_score,

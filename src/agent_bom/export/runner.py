@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
 from agent_bom.export.destinations import ExportDestination, ExportPublicationIndeterminateError, ExportResult, build_destination
@@ -35,6 +35,9 @@ def iter_scan_spine_findings(
     *,
     severity: str | None = None,
     since: str | None = None,
+    scan_id: str | None = None,
+    scope: Mapping[str, str] | None = None,
+    status: str = "all",
 ) -> Iterator[dict[str, Any]]:
     """Yield the in-memory scan-spine findings ``/v1/findings`` shows.
 
@@ -47,7 +50,14 @@ def iter_scan_spine_findings(
     except Exception:  # noqa: BLE001 - scan spine is additive; hub export must still run
         logger.debug("scan-spine finding source unavailable; exporting hub only", exc_info=True)
         return
-    yield from iter_tenant_scan_spine_findings(tenant_id, since=since, severity=severity)
+    yield from iter_tenant_scan_spine_findings(
+        tenant_id,
+        since=since,
+        severity=severity,
+        scan_id=scan_id,
+        scope=scope,
+        status=status,
+    )
 
 
 def iter_current_findings(
@@ -56,6 +66,9 @@ def iter_current_findings(
     sort: str = "effective_reach",
     severity: str | None = None,
     since: str | None = None,
+    scan_id: str | None = None,
+    scope: Mapping[str, str] | None = None,
+    status: str = "all",
     page_size: int = _PAGE_SIZE,
     hub: Any | None = None,
     include_scan_spine: bool = True,
@@ -70,7 +83,14 @@ def iter_current_findings(
     ``tenant_id`` into every query (never a client-supplied filter).
     """
     if include_scan_spine:
-        yield from iter_scan_spine_findings(tenant_id, severity=severity, since=since)
+        yield from iter_scan_spine_findings(
+            tenant_id,
+            severity=severity,
+            since=since,
+            scan_id=scan_id,
+            scope=scope,
+            status=status,
+        )
 
     if hub is None:
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
@@ -86,16 +106,24 @@ def iter_current_findings(
     cursor: str | None = None
     first = True
     while True:
-        page, _total, next_cursor = list_page(
-            tenant_id,
-            limit=page_size,
-            sort=sort,
-            severity=severity,
-            since=since,
-            include_total=first,
-            cursor=cursor,
-        )
-        yield from page
+        page_kwargs: dict[str, Any] = {
+            "limit": page_size,
+            "sort": sort,
+            "severity": severity,
+            "since": since,
+            "include_total": first,
+            "cursor": cursor,
+        }
+        if scan_id is not None:
+            page_kwargs["scan_id"] = scan_id
+        if scope:
+            page_kwargs["scope"] = dict(scope)
+        if status != "all":
+            page_kwargs["status"] = status
+        page, _total, next_cursor = list_page(tenant_id, **page_kwargs)
+        from agent_bom.finding_scope import canonical_finding_payload
+
+        yield from (canonical_finding_payload(row) for row in page)
         if not next_cursor:
             break
         cursor = next_cursor
@@ -112,6 +140,9 @@ def run_findings_export(
     sort: str = "effective_reach",
     severity: str | None = None,
     since: str | None = None,
+    scan_id: str | None = None,
+    scope: Mapping[str, str] | None = None,
+    status: str = "all",
     run_id: str | None = None,
     actor: str = "scheduler",
     destination: ExportDestination | None = None,
@@ -131,7 +162,16 @@ def run_findings_export(
     if findings is not None:
         rows = findings
     else:
-        rows = iter_current_findings(tenant_id, sort=sort, severity=severity, since=since, hub=hub)
+        rows = iter_current_findings(
+            tenant_id,
+            sort=sort,
+            severity=severity,
+            since=since,
+            scan_id=scan_id,
+            scope=scope,
+            status=status,
+            hub=hub,
+        )
 
     try:
         result = dest.write_findings(rows, tenant_id=tenant_id, run_id=resolved_run_id)

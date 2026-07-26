@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
+from agent_bom.finding_scope import FindingClass, FindingSeverityFilter, canonical_finding_severity_filter
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
 
@@ -317,7 +318,20 @@ class ReportJobRequest(BaseModel):
 
     format: ReportFormat = ReportFormat.NDJSON
     sort: Literal["effective_reach", "cvss", "severity", "ordinal"] = "effective_reach"
-    severity: str | None = Field(default=None, max_length=32)
+    severity: FindingSeverityFilter | None = None
+    scan_id: str | None = Field(default=None, max_length=128)
+    provider: str | None = Field(default=None, max_length=64)
+    account: str | None = Field(default=None, max_length=256)
+    environment: str | None = Field(default=None, max_length=64)
+    domain: str | None = Field(default=None, max_length=32)
+    finding_class: FindingClass | None = None
+    status: Literal["open", "resolved", "all"] = "open"
+    window_days: int | None = Field(default=None, ge=0, le=3650)
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def _canonicalize_severity(cls, value: object) -> str | None:
+        return canonical_finding_severity_filter(value)
 
 
 class ReportJob(BaseModel):
@@ -329,6 +343,14 @@ class ReportJob(BaseModel):
     format: ReportFormat = ReportFormat.NDJSON
     sort: str = "effective_reach"
     severity: str | None = None
+    scan_id: str | None = None
+    provider: str | None = None
+    account: str | None = None
+    environment: str | None = None
+    domain: str | None = None
+    finding_class: FindingClass | None = None
+    finding_status: Literal["open", "resolved", "all"] = "open"
+    window_days: int | None = None
     created_at: str
     started_at: str | None = None
     completed_at: str | None = None

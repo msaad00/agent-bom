@@ -164,15 +164,21 @@ def test_lenses_for_row_unions_stored_domain_source_type_and_cve_id() -> None:
     assert lenses_for_row({"cve_id": "CVE-2025-2"}) == {"vuln"}
 
 
-def test_finding_class_for_row_uses_explicit_taxonomy_without_unknown_fallback() -> None:
+def test_finding_class_for_row_uses_explicit_unclassified_fallback() -> None:
     from agent_bom.finding_scope import finding_class_for_row
 
     assert finding_class_for_row({"finding_type": "CVE", "cve_id": "CVE-2026-1"}) == "vulnerability"
     assert finding_class_for_row({"finding_type": "CIS_FAIL", "source": "CLOUD_CIS"}) == "misconfiguration"
     assert finding_class_for_row({"finding_type": "CREDENTIAL_EXPOSURE", "source": "SECRET_SCAN"}) == "secret"
     assert finding_class_for_row({"finding_type": "CIEM_OVER_PRIVILEGE"}) == "identity"
-    assert finding_class_for_row({"finding_type": "SAST", "source": "SAST"}) is None
-    assert finding_class_for_row({"id": "untyped-finding"}) is None
+    assert finding_class_for_row({"finding_type": "SAST", "source": "SAST"}) == "vulnerability"
+    assert (
+        finding_class_for_row(
+            {"finding_type": "FUTURE_RUNTIME_SIGNAL", "source": "FUTURE_RUNTIME"}
+        )
+        == "unclassified"
+    )
+    assert finding_class_for_row({"id": "untyped-finding"}) == "unclassified"
 
 
 def test_row_scope_can_filter_by_finding_class() -> None:

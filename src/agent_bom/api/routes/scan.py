@@ -34,6 +34,7 @@ import os
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Any, NamedTuple, cast
@@ -81,7 +82,11 @@ from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retain
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
-from agent_bom.finding_scope import FindingClass
+from agent_bom.finding_scope import (
+    FINDING_SEVERITY_FILTERS,
+    FindingClass,
+    canonical_finding_severity_filter,
+)
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -319,6 +324,9 @@ def iter_tenant_scan_spine_findings(
     *,
     since: str | None = None,
     severity: str | None = None,
+    scan_id: str | None = None,
+    scope: Mapping[str, str] | None = None,
+    status: str = "all",
 ) -> list[dict[str, Any]]:
     """Current scan-spine findings for a tenant — the same source ``/v1/findings`` shows.
 
@@ -327,18 +335,23 @@ def iter_tenant_scan_spine_findings(
     stream so a scan-based estate is not silently exported as empty. Bounded by
     the scan-job results already resident in memory (no per-tenant DB scan).
     """
+    from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
+    from agent_bom.finding_scope import canonical_finding_payload
 
     rows = current_scan_findings(
         _completed_jobs_for_tenant(tenant_id),
         since=since,
-        scan_id=None,
+        scan_id=scan_id,
         iter_findings=_iter_scan_findings,
     )
     if severity:
         normalized = severity.lower()
         rows = [item for item in rows if str(item.get("severity", "")).lower() == normalized]
-    return rows
+    rows = [item for item in rows if status_matches(item, status)]
+    if scope:
+        rows = [item for item in rows if _row_matches_scope(item, dict(scope))]
+    return [canonical_finding_payload(row) for row in rows]
 
 
 class BulkFindingsRequest(BaseModel):
@@ -496,6 +509,8 @@ _LIFECYCLE_RESPONSE_KEYS = (
 
 
 def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from agent_bom.finding_scope import canonical_finding_payload
+
     redacted = redact_for_persistence(rows, EvidenceTier.SAFE_TO_STORE)
     if not isinstance(redacted, list):
         return []
@@ -506,7 +521,7 @@ def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for key in _LIFECYCLE_RESPONSE_KEYS:
             if key not in clean and key in raw:
                 clean[key] = raw[key]
-        page.append(clean)
+        page.append(canonical_finding_payload(clean))
     return page
 
 
@@ -950,6 +965,9 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             row.setdefault("effective_reach_score", composite)
             row.setdefault("effective_reach_band", band_from_composite(composite))
         row.setdefault("framework_tags", compliance_tags_from_finding_row(row))
+        # Scan completion is authoritative observation time for scan-spine rows.
+        # Do not infer first-seen history from the currently retained job set.
+        row.setdefault("last_observed", job.completed_at or job.created_at)
         attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
         if workload_runtime_index is not None:
             attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)
@@ -1760,16 +1778,123 @@ _ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
 # ``all`` applies no lifecycle predicate.
 _ALLOWED_FINDING_STATUSES = ("open", "resolved", "all")
 _DEFAULT_FINDING_STATUS = "open"
-_ALLOWED_FINDING_SEVERITIES = (
-    "critical",
-    "high",
-    "medium",
-    "low",
-    "info",
-    "informational",
-    "none",
-    "unknown",
-)
+_ALLOWED_FINDING_SEVERITIES = FINDING_SEVERITY_FILTERS
+
+_FRESHNESS_BUCKETS = ("last_24_hours", "last_7_days", "last_30_days", "older", "unavailable")
+
+
+def _freshness_bucket(row: Mapping[str, Any], *, now: datetime | None = None) -> str:
+    """Classify only an observed timestamp; missing/invalid evidence is unavailable."""
+    raw = row.get("last_observed") or row.get("last_seen")
+    if not isinstance(raw, str) or not raw.strip():
+        return "unavailable"
+    try:
+        observed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return "unavailable"
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    age_seconds = max(0.0, (current.astimezone(timezone.utc) - observed.astimezone(timezone.utc)).total_seconds())
+    if age_seconds <= 24 * 60 * 60:
+        return "last_24_hours"
+    if age_seconds <= 7 * 24 * 60 * 60:
+        return "last_7_days"
+    if age_seconds <= 30 * 24 * 60 * 60:
+        return "last_30_days"
+    return "older"
+
+
+def _finding_facets(
+    tenant_id: str,
+    *,
+    severity: str | None,
+    scan_id: str | None,
+    since: str | None,
+    scope: Mapping[str, str],
+    status: str,
+) -> tuple[dict[str, dict[str, int]], int]:
+    """Compute exact, self-excluding facets from the canonical finding stream.
+
+    This is intentionally opt-in at the route: each dimension needs its own
+    bounded keyset walk so selecting one value does not erase alternative values
+    in that dimension. The same iterator and predicates power async export.
+    """
+    from agent_bom.export.runner import iter_current_findings
+    from agent_bom.finding_scope import FINDING_CLASSES, SECURITY_DOMAINS, finding_class_for_row, lenses_for_row
+
+    class_counts: dict[str, int] = {key: 0 for key in FINDING_CLASSES}
+    severity_counts: dict[str, int] = {
+        key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")
+    }
+    status_counts: dict[str, int] = {key: 0 for key in ("open", "resolved")}
+    domain_counts: dict[str, int] = {key: 0 for key in SECURITY_DOMAINS}
+    freshness_counts: dict[str, int] = {key: 0 for key in _FRESHNESS_BUCKETS}
+
+    class_scope = dict(scope)
+    active_class = class_scope.pop("finding_class", None)
+    total = 0
+    for row in iter_current_findings(
+        tenant_id,
+        severity=severity,
+        since=since,
+        scan_id=scan_id,
+        scope=class_scope,
+        status=status,
+    ):
+        finding_class = finding_class_for_row(row)
+        class_counts[finding_class] += 1
+        if active_class is None or finding_class == active_class:
+            total += 1
+            freshness_counts[_freshness_bucket(row)] += 1
+
+    for row in iter_current_findings(
+        tenant_id,
+        severity=None,
+        since=since,
+        scan_id=scan_id,
+        scope=scope,
+        status=status,
+    ):
+        value = str(row.get("severity") or "unknown").strip().lower()
+        if value == "informational":
+            value = "info"
+        if value not in severity_counts:
+            value = "unknown"
+        severity_counts[value] += 1
+
+    for row in iter_current_findings(
+        tenant_id,
+        severity=severity,
+        since=since,
+        scan_id=scan_id,
+        scope=scope,
+        status="all",
+    ):
+        value = "resolved" if str(row.get("status") or "").strip().lower() == "resolved" else "open"
+        status_counts[value] += 1
+
+    domain_scope = dict(scope)
+    domain_scope.pop("domain", None)
+    for row in iter_current_findings(
+        tenant_id,
+        severity=severity,
+        since=since,
+        scan_id=scan_id,
+        scope=domain_scope,
+        status=status,
+    ):
+        for value in lenses_for_row(row):
+            if value in domain_counts:
+                domain_counts[value] += 1
+
+    return {
+        "finding_class": class_counts,
+        "severity": severity_counts,
+        "status": status_counts,
+        "domain": domain_counts,
+        "freshness": freshness_counts,
+    }, total
 
 
 def _canonical_scope_filters(
@@ -2050,6 +2175,7 @@ async def list_findings(
     window_days: Annotated[int | None, Query(ge=0, le=3650)] = None,
     status: Annotated[str, Query(max_length=16)] = _DEFAULT_FINDING_STATUS,
     finding_class: FindingClass | None = None,
+    include_facets: bool = False,
 ) -> dict:
     """List unified findings aggregated from completed scan results.
 
@@ -2092,6 +2218,7 @@ async def list_findings(
                 window_days,
                 status,
                 finding_class,
+                include_facets,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -2117,6 +2244,7 @@ def _list_findings_impl(
     window_days: int | None = None,
     status: str = _DEFAULT_FINDING_STATUS,
     finding_class: str | None = None,
+    include_facets: bool = False,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -2153,13 +2281,15 @@ def _list_findings_impl(
             status_code=422,
             detail=f"invalid sort '{sort}'; accepted values: {', '.join(_ALLOWED_FINDING_SORTS)}",
         )
-    if severity is not None and severity.strip().lower() not in _ALLOWED_FINDING_SEVERITIES:
+    try:
+        severity = canonical_finding_severity_filter(severity)
+    except ValueError:
         # A bogus severity previously returned an empty 200 that reads as
-        # "no findings" — a trap. Reject with the accepted set instead.
+        # "no findings" — reject using the same contract as report exports.
         raise HTTPException(
             status_code=422,
-            detail=f"invalid severity '{severity}'; accepted values: {', '.join(_ALLOWED_FINDING_SEVERITIES)}",
-        )
+            detail=f"invalid severity; accepted values: {', '.join(_ALLOWED_FINDING_SEVERITIES)}",
+        ) from None
     status_key = status.strip().lower() if isinstance(status, str) else _DEFAULT_FINDING_STATUS
     if status_key not in _ALLOWED_FINDING_STATUSES:
         # A bogus status previously returned an empty 200 that reads as "no
@@ -2449,6 +2579,18 @@ def _list_findings_impl(
         if end < len(combined):
             next_cursor = encode_merged_scan_cursor(sort=sort_key, scan_index=end, bulk_cursor="")
 
+    facets: dict[str, dict[str, int]] | None = None
+    if include_facets:
+        facets, total = _finding_facets(
+            tenant_id,
+            severity=severity,
+            scan_id=scan_id,
+            since=window_since,
+            scope=scope_filters,
+            status=status_key,
+        )
+        total_approximate = False
+
     page = _redact_finding_page(page_rows)
     envelope = finding_list_envelope(
         findings=page,
@@ -2466,6 +2608,16 @@ def _list_findings_impl(
     # Echo the applied read-window so clients label counts honestly as
     # "last Nd" rather than "all" (#4009).
     envelope["window"] = time_window.window_metadata(resolved_window)
+    if facets is not None:
+        envelope["facets"] = facets
+        envelope["facets_approximate"] = False
+        envelope["facet_metadata"] = {
+            "freshness": {
+                "basis": ["last_observed", "last_seen"],
+                "thresholds_hours": [24, 168, 720],
+                "missing_or_invalid": "unavailable",
+            }
+        }
     return envelope
 
 

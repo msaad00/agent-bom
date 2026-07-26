@@ -1021,6 +1021,7 @@ export interface Vulnerability {
 
 export interface UnifiedFinding {
   id: string;
+  finding_class: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
   canonical_id?: string | undefined;
   finding_type?: string | undefined;
   source?: string | undefined;
@@ -1044,6 +1045,7 @@ export interface UnifiedFinding {
   cve_id?: string | null | undefined;
   cwe_ids?: string[] | undefined;
   cvss_score?: number | null | undefined;
+  cvss_version?: string | null | undefined;
   cvss_vector?: string | null | undefined;
   attack_vector?: string | null | undefined;
   attack_complexity?: string | null | undefined;
@@ -1051,7 +1053,7 @@ export interface UnifiedFinding {
   user_interaction?: string | null | undefined;
   network_exploitable?: boolean | undefined;
   epss_score?: number | null | undefined;
-  is_kev?: boolean | undefined;
+  is_kev?: boolean | null | undefined;
   fixed_version?: string | null | undefined;
   remediation_guidance?: string | null | undefined;
   compliance_tags?: string[] | undefined;
@@ -1071,6 +1073,12 @@ export interface UnifiedFinding {
   resolved_at?: string | null | undefined;
   reopened_at?: string | null | undefined;
   scan_count?: number | undefined;
+  last_observed?: string | null | undefined;
+  occurrence_count?: number | null | undefined;
+  remediation_versions?: string[] | null | undefined;
+  provenance?: Record<string, unknown> | string | null | undefined;
+  owner?: string | null | undefined;
+  sla_due_at?: string | null | undefined;
   /** CWPP runtime/EDR workload evidence (additive; never a clean-workload claim). */
   workload_runtime_evidence?: WorkloadRuntimeEvidence | undefined;
 }
@@ -1100,7 +1108,27 @@ export interface FindingListEnvelope<T> {
   /** Applied default read-window (#4009); present on `/v1/findings`. */
   window?: ReadWindow | undefined;
   /** Canonical server-applied facets echoed for pagination/debugging. */
-  filters?: { finding_class?: "vulnerability" | "misconfiguration" | "secret" | "identity" } | undefined;
+  filters?: {
+    finding_class?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
+  } | undefined;
+  /** Exact only when `facets_approximate` is false. */
+  facets?: FindingFacets | undefined;
+  facets_approximate?: boolean | undefined;
+  facet_metadata?: {
+    freshness: {
+      basis: string[];
+      thresholds_hours: number[];
+      missing_or_invalid: "unavailable";
+    };
+  } | undefined;
+}
+
+export interface FindingFacets {
+  finding_class: Record<"vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified", number>;
+  severity: Record<"critical" | "high" | "medium" | "low" | "info" | "unknown", number>;
+  status: Record<"open" | "resolved", number>;
+  domain: Record<"cspm" | "vuln" | "aspm" | "dspm" | "aispm", number>;
+  freshness: Record<"last_24_hours" | "last_7_days" | "last_30_days" | "older" | "unavailable", number>;
 }
 
 /** Applied time-window echoed by windowed read surfaces (#4009). */

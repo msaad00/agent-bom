@@ -31,10 +31,10 @@ const PENDING = {
 
 async function routeConnections(page: Page) {
   await page.route("**/health", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok", version: "0.99.0" }) }),
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok", version: "0.98.1" }) }),
   );
   await page.route("**/version", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ version: "0.99.0" }) }),
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ version: "0.98.1" }) }),
   );
   await page.route("**/v1/auth/me", (route) =>
     route.fulfill({

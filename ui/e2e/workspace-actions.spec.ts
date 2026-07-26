@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 const CREATED_AT = "2026-07-17T12:00:00Z";
 
 async function routeShell(page: Page) {
-  await page.route("**/health", (route) => route.fulfill({ json: { status: "ok", version: "0.99.0" } }));
-  await page.route("**/version", (route) => route.fulfill({ json: { version: "0.99.0" } }));
+  await page.route("**/health", (route) => route.fulfill({ json: { status: "ok", version: "0.98.1" } }));
+  await page.route("**/version", (route) => route.fulfill({ json: { version: "0.98.1" } }));
   await page.route("**/v1/auth/me", (route) => route.fulfill({ json: {
     authenticated: true,
     auth_required: false,

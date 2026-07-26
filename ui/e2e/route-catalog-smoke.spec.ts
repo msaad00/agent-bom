@@ -56,10 +56,10 @@ async function routeBaseline(page: Page) {
     route.fulfill({ status: 503, json: { detail: "Unavailable in route smoke" } }),
   );
   await page.route("**/health", (route) =>
-    route.fulfill({ json: { status: "ok", version: "0.99.0" } }),
+    route.fulfill({ json: { status: "ok", version: "0.98.1" } }),
   );
   await page.route("**/version", (route) =>
-    route.fulfill({ json: { version: "0.99.0" } }),
+    route.fulfill({ json: { version: "0.98.1" } }),
   );
   await page.route("**/v1/auth/me", (route) =>
     route.fulfill({

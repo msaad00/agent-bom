@@ -9,7 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.99.0] - 2026-07-25
+## [0.98.1] - 2026-07-26
 
 ### Added
 - Managed-trial invitation, quota, durable execution, suspension, expiry, and
@@ -2666,8 +2666,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.99.0...HEAD
-[0.99.0]: https://github.com/msaad00/agent-bom/compare/v0.98.0...v0.99.0
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.1...HEAD
+[0.98.1]: https://github.com/msaad00/agent-bom/compare/v0.98.0...v0.98.1
 [0.98.0]: https://github.com/msaad00/agent-bom/compare/v0.97.5...v0.98.0
 [0.97.5]: https://github.com/msaad00/agent-bom/compare/v0.97.4...v0.97.5
 [0.97.4]: https://github.com/msaad00/agent-bom/compare/v0.97.3...v0.97.4

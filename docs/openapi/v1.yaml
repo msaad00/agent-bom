@@ -3156,6 +3156,12 @@ components:
             type: string
           - type: 'null'
           title: Provider
+        q:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Q
         scan_id:
           anyOf:
           - maxLength: 128
@@ -10322,6 +10328,15 @@ paths:
         \ shared\nwith ``/v1/compliance/hub/findings``."
       operationId: list_findings_v1_findings_get
       parameters:
+      - in: query
+        name: q
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Q
       - in: query
         name: severity
         required: false

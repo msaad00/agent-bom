@@ -278,7 +278,18 @@ def _actor(request: Request) -> str:
 def _load_findings(request: Request) -> dict[str, Any]:
     from agent_bom.api.routes.scan import _list_findings_impl
 
-    payload = _list_findings_impl(request, None, None, "effective_reach", 1000, 0, None, False, None, None, None, None, 90)
+    payload = _list_findings_impl(
+        request,
+        q=None,
+        severity=None,
+        scan_id=None,
+        sort="effective_reach",
+        limit=1000,
+        offset=0,
+        cursor=None,
+        approximate_total=False,
+        window_days=90,
+    )
     payload["findings"] = [row for row in payload.get("findings") or [] if isinstance(row, dict)]
     return payload
 

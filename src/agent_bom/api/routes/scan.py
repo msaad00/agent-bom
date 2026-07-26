@@ -337,7 +337,7 @@ def iter_tenant_scan_spine_findings(
     """
     from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
-    from agent_bom.finding_scope import canonical_finding_payload
+    from agent_bom.finding_scope import safe_finding_response_payload
 
     rows = current_scan_findings(
         _completed_jobs_for_tenant(tenant_id),
@@ -351,7 +351,7 @@ def iter_tenant_scan_spine_findings(
     rows = [item for item in rows if status_matches(item, status)]
     if scope:
         rows = [item for item in rows if _row_matches_scope(item, dict(scope))]
-    return [canonical_finding_payload(row) for row in rows]
+    return [safe_finding_response_payload(row) for row in rows]
 
 
 class BulkFindingsRequest(BaseModel):
@@ -494,35 +494,10 @@ def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str,
     return payload
 
 
-_LIFECYCLE_RESPONSE_KEYS = (
-    "origin",
-    "batch_id",
-    "bulk_ordinal",
-    "status",
-    "first_seen",
-    "last_seen",
-    "resolved_at",
-    "reopened_at",
-    "scan_count",
-    "canonical_id",
-)
-
-
 def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from agent_bom.finding_scope import canonical_finding_payload
+    from agent_bom.finding_scope import safe_finding_response_payload
 
-    redacted = redact_for_persistence(rows, EvidenceTier.SAFE_TO_STORE)
-    if not isinstance(redacted, list):
-        return []
-    page: list[dict[str, Any]] = []
-    for clean, raw in zip(redacted, rows):
-        if not isinstance(clean, dict):
-            continue
-        for key in _LIFECYCLE_RESPONSE_KEYS:
-            if key not in clean and key in raw:
-                clean[key] = raw[key]
-        page.append(canonical_finding_payload(clean))
-    return page
+    return [safe_finding_response_payload(row) for row in rows]
 
 
 def _scan_source_labels(job: ScanJob) -> list[str]:
@@ -1903,6 +1878,7 @@ def _canonical_scope_filters(
     environment: str | None,
     domain: str | None,
     finding_class: str | None = None,
+    q: str | None = None,
 ) -> dict[str, str]:
     """Normalize the optional scope/domain filters into an active-filter map.
 
@@ -1927,6 +1903,8 @@ def _canonical_scope_filters(
         filters["domain"] = _LEGACY_DOMAIN_ALIASES.get(key, key)
     if finding_class:
         filters["finding_class"] = finding_class
+    if q and q.strip():
+        filters["q"] = q.strip()
     return filters
 
 
@@ -2161,6 +2139,7 @@ def _merged_scan_bulk_page(
 @router.get("/findings", tags=["scan"])
 async def list_findings(
     request: Request,
+    q: Annotated[str | None, Query(max_length=256)] = None,
     severity: str | None = None,
     scan_id: Annotated[str | None, Query(max_length=128)] = None,
     sort: str = "effective_reach",
@@ -2204,6 +2183,7 @@ async def list_findings(
             return await anyio.to_thread.run_sync(
                 _list_findings_impl,
                 request,
+                q,
                 severity,
                 scan_id,
                 sort,
@@ -2230,6 +2210,7 @@ async def list_findings(
 
 def _list_findings_impl(
     request: Request,
+    q: str | None,
     severity: str | None,
     scan_id: str | None,
     sort: str,
@@ -2370,7 +2351,7 @@ def _list_findings_impl(
     # returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings
 
-    scope_filters = _canonical_scope_filters(provider, account, environment, domain, finding_class)
+    scope_filters = _canonical_scope_filters(provider, account, environment, domain, finding_class, q)
 
     store = get_compliance_hub_store()
     bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
@@ -2601,7 +2582,14 @@ def _list_findings_impl(
         scan_id=scan_id,
         cursor=cursor or "",
         next_cursor=next_cursor or "",
-        filters={"finding_class": finding_class} if finding_class else {},
+        filters={
+            key: value
+            for key, value in {
+                "finding_class": finding_class,
+                "q": q.strip() if q and q.strip() else None,
+            }.items()
+            if value is not None
+        },
         warnings=warnings,
         total_approximate=total_approximate,
     )

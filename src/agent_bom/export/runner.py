@@ -121,9 +121,9 @@ def iter_current_findings(
         if status != "all":
             page_kwargs["status"] = status
         page, _total, next_cursor = list_page(tenant_id, **page_kwargs)
-        from agent_bom.finding_scope import canonical_finding_payload
+        from agent_bom.finding_scope import safe_finding_response_payload
 
-        yield from (canonical_finding_payload(row) for row in page)
+        yield from (safe_finding_response_payload(row) for row in page)
         if not next_cursor:
             break
         cursor = next_cursor

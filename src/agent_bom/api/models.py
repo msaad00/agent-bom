@@ -319,6 +319,7 @@ class ReportJobRequest(BaseModel):
     format: ReportFormat = ReportFormat.NDJSON
     sort: Literal["effective_reach", "cvss", "severity", "ordinal"] = "effective_reach"
     severity: FindingSeverityFilter | None = None
+    q: str | None = Field(default=None, max_length=256)
     scan_id: str | None = Field(default=None, max_length=128)
     provider: str | None = Field(default=None, max_length=64)
     account: str | None = Field(default=None, max_length=256)
@@ -343,6 +344,7 @@ class ReportJob(BaseModel):
     format: ReportFormat = ReportFormat.NDJSON
     sort: str = "effective_reach"
     severity: str | None = None
+    q: str | None = None
     scan_id: str | None = None
     provider: str | None = None
     account: str | None = None

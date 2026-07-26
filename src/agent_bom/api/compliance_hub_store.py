@@ -48,7 +48,6 @@ from agent_bom.api.hub_reference_store import (
     normalize_finding_payload_for_store,
     persist_finding_references_sqlite,
 )
-from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.graph.severity import severity_policy_rank
 
 _logger = logging.getLogger(__name__)
@@ -360,8 +359,17 @@ def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str
 
 def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
     """Redact one hub finding payload for persistence."""
-    redacted = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
-    clean: dict[str, Any] = redacted if isinstance(redacted, dict) else {}
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    clean = {
+        key: value
+        for key, value in safe_finding_response_payload(payload).items()
+        if value is not None
+    }
+    # Preserve the established hub identity contract: client-supplied
+    # canonical_id is not authoritative at ingest; resolve_canonical_id() uses
+    # the vetted finding id/content key after redaction.
+    clean.pop("canonical_id", None)
     if "id" not in clean and "id" in payload:
         clean["id"] = str(payload["id"])
     if "source" not in clean and "source" in payload:

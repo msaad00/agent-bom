@@ -148,7 +148,7 @@ def test_unknown_findings_are_visible_and_filterable_as_unclassified() -> None:
     row = body["findings"][0]
     assert row["finding_class"] == "unclassified"
     assert row["first_seen"] is None
-    assert row["last_observed"] is None
+    assert datetime.fromisoformat(row["last_observed"].replace("Z", "+00:00")).tzinfo is not None
     assert row["occurrence_count"] is None
     assert row["cvss_version"] is None
     assert row["epss_score"] is None
@@ -232,6 +232,134 @@ def test_async_export_uses_the_same_finding_predicates(
 
     assert {row["id"] for row in exported} == listed_ids == {"repo-high"}
     assert all(row["finding_class"] == "vulnerability" for row in exported)
+
+
+def test_list_and_report_share_safe_observation_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tenant = "default"
+    monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.setattr("agent_bom.api.routes.reports.submit_report_job", _run_report_job_sync)
+    client = TestClient(app)
+    headers = _headers(tenant)
+    observed_at = "2026-07-25T12:00:00Z"
+
+    ingested = client.post(
+        "/v1/findings/bulk",
+        json={
+            "source": "external_scan",
+            "observed_at": observed_at,
+            "findings": [
+                {
+                    "id": "metadata-finding",
+                    "finding_type": "CVE",
+                    "source": "SBOM",
+                    "cve_id": "CVE-2026-4242",
+                    "package": "metadata-package",
+                    "severity": "high",
+                    "cvss_score": 8.8,
+                    "cvss_version": "3.1",
+                    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+                    "epss_score": 0.42,
+                    "is_kev": True,
+                    "fixed_version": "2.0.0",
+                    "remediation_versions": ["2.0.0", "2.0.1"],
+                    "provenance": {
+                        "source": "fixture",
+                        "collector": "unit-test",
+                        "observed_at": observed_at,
+                        "resource_id": "private-resource-id",
+                    },
+                    "owner": "alice@example.com",
+                    "sla_due_at": "2026-08-01T12:00:00Z",
+                    "description": "must-not-leave-tier-b",
+                }
+            ],
+        },
+        headers=headers,
+    )
+    assert ingested.status_code == 201, ingested.text
+
+    listed = client.get(
+        "/v1/findings?q=metadata-package&window_days=0",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    listed_row = listed.json()["findings"][0]
+    expected = {
+        "first_seen": observed_at,
+        "last_observed": observed_at,
+        "occurrence_count": 1,
+        "lifecycle_status": "open",
+        "source": "SBOM",
+        "cvss_version": "3.1",
+        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+        "epss_score": 0.42,
+        "is_kev": True,
+        "remediation_versions": ["2.0.0", "2.0.1"],
+        "owner": "a***@e***.com",
+        "sla_due_at": "2026-08-01T12:00:00Z",
+        "provenance": {
+            "source": "fixture",
+            "collector": "unit-test",
+            "observed_at": observed_at,
+        },
+    }
+    for key, value in expected.items():
+        assert listed_row[key] == value
+    assert "description" not in listed_row
+
+    created = client.post(
+        "/v1/reports",
+        json={"q": "metadata-package", "window_days": 0},
+        headers=headers,
+    )
+    assert created.status_code == 202, created.text
+    job = client.get(f"/v1/reports/{created.json()['job_id']}", headers=headers).json()
+    downloaded = client.get(
+        job["download_url"],
+        headers={**headers, "X-Agent-Bom-Download-Token": job["download_token"]},
+    )
+    exported = [json.loads(line) for line in gzip.decompress(downloaded.content).decode().splitlines()]
+    assert len(exported) == 1
+    for key, value in expected.items():
+        assert exported[0][key] == value
+    assert "description" not in exported[0]
+
+
+def test_server_search_uses_the_same_list_and_report_predicate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tenant = "default"
+    _seed_scan(tenant)
+    monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.setattr("agent_bom.api.routes.reports.submit_report_job", _run_report_job_sync)
+    client = TestClient(app)
+    headers = _headers(tenant)
+
+    listed = client.get(
+        "/v1/findings?q=CVE-2026-1002&include_facets=true&window_days=0",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    listed_body = listed.json()
+    assert {row["id"] for row in listed_body["findings"]} == {"container-high"}
+    assert listed_body["total"] == 1
+    assert listed_body["filters"]["q"] == "CVE-2026-1002"
+
+    created = client.post(
+        "/v1/reports",
+        json={"q": "CVE-2026-1002", "window_days": 0},
+        headers=headers,
+    )
+    assert created.status_code == 202, created.text
+    job = client.get(f"/v1/reports/{created.json()['job_id']}", headers=headers).json()
+    downloaded = client.get(
+        job["download_url"],
+        headers={**headers, "X-Agent-Bom-Download-Token": job["download_token"]},
+    )
+    exported = [json.loads(line) for line in gzip.decompress(downloaded.content).decode().splitlines()]
+    assert {row["id"] for row in exported} == {"container-high"}
 
 
 def test_findings_remain_tenant_scoped_when_facets_are_requested() -> None:

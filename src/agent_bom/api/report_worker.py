@@ -119,6 +119,7 @@ def _write_findings_artifact(job: ReportJob) -> tuple[int, int, str, Path]:
         job.environment,
         job.domain,
         job.finding_class,
+        job.q,
     )
 
     path = _artifact_path(job.tenant_id, job.job_id)

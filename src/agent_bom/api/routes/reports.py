@@ -82,6 +82,7 @@ async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
         format=body.format,
         sort=body.sort,
         severity=body.severity,
+        q=body.q.strip() if body.q and body.q.strip() else None,
         scan_id=body.scan_id,
         provider=body.provider,
         account=body.account,

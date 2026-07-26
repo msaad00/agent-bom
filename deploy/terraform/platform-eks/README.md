@@ -12,6 +12,13 @@ terraform apply
    └─ (optional) read-only connect role         ../connect-aws   (keyless scanner trust)
 ```
 
+The control-plane database URL is assembled in-cluster. RDS owns and rotates the
+master password, External Secrets reads that managed secret directly, and the
+chart composes `AGENT_BOM_POSTGRES_URL` from it — so the credential never passes
+through Terraform state and there is no secret to populate by hand before the
+first install.
+
+
 This is the **Kubernetes/EKS tier** of the [deploy-anywhere
 guide](../../../docs/DEPLOY_PLATFORM.md). For a laptop/VM run use the
 [full-stack compose](../../docker-compose.fullstack.yml); to install onto a

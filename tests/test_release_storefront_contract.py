@@ -16,13 +16,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_storefront_context_distinguishes_candidate_from_published_release() -> None:
-    version = "0.99.0"
+    version = "0.98.1"
     assert not check_release_consistency._requires_published_storefront(version, {})
     assert not check_release_consistency._is_matching_release_tag(
         version, {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": "v0.98.0"}
     )
     assert check_release_consistency._is_matching_release_tag(
-        version, {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": "v0.99.0"}
+        version, {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": "v0.98.1"}
     )
     assert check_release_consistency._requires_published_storefront(
         version, {"AGENT_BOM_RELEASE_FINALIZE": "true"}
@@ -32,22 +32,22 @@ def test_release_storefront_context_distinguishes_candidate_from_published_relea
 def test_release_workflow_promotes_candidate_only_in_external_storefront_render(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    neutral = "| `0.99.0` | Version used by the examples below; verify registry availability before pinning |\n"
-    rendered = render_published_readme(neutral, "0.99.0")
+    neutral = "| `0.98.1` | Version used by the examples below; verify registry availability before pinning |\n"
+    rendered = render_published_readme(neutral, "0.98.1")
     assert neutral not in rendered
-    assert "| `0.99.0` | Current stable version (pinned) |" in rendered
+    assert "| `0.98.1` | Current stable version (pinned) |" in rendered
 
     monkeypatch.setenv("GITHUB_REF_TYPE", "tag")
-    monkeypatch.setenv("GITHUB_REF_NAME", "v0.99.0")
-    check_release_consistency._assert_docker_storefront_state("0.99.0")
+    monkeypatch.setenv("GITHUB_REF_NAME", "v0.98.1")
+    check_release_consistency._assert_docker_storefront_state("0.98.1")
 
     monkeypatch.setenv("AGENT_BOM_RELEASE_FINALIZE", "1")
     with pytest.raises(SystemExit):
-        check_release_consistency._assert_docker_storefront_state("0.99.0")
+        check_release_consistency._assert_docker_storefront_state("0.98.1")
     published = tmp_path / "DOCKER_HUB_README.published.md"
     published.write_text(rendered)
     monkeypatch.setenv("AGENT_BOM_DOCKER_README_PATH", str(published))
-    check_release_consistency._assert_docker_storefront_state("0.99.0")
+    check_release_consistency._assert_docker_storefront_state("0.98.1")
 
     workflow = (ROOT / ".github/workflows/release.yml").read_text()
     assert "scripts/render_docker_storefront.py" in workflow

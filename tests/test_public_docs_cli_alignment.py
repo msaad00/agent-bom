@@ -98,7 +98,7 @@ def test_release_prep_does_not_call_unpublished_version_current() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
 
-    assert "0.99.0` | Current stable" not in docker_hub
+    assert "0.98.1` | Current stable" not in docker_hub
     assert "confirm release availability before copying an" in readme
     assert "verify registry availability before pinning" in docker_hub
 

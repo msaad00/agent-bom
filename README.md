@@ -175,6 +175,9 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | Agent interface | `agent-bom mcp server` | 77 MCP tools, 6 resources, and 8 workflow prompts |
 | Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
+MCP server mode exposes 77 MCP tools, 6 resources, and 8 workflow prompts, all
+read-first: discovery and analysis never mutate a scanned target.
+
 The CLI, Docker, API, Helm chart, MCP server, gateway, and SDK are distribution
 surfaces of the same product. EKS remains a deployment profile; Snowflake and
 Snowpark remain connector/runtime integrations rather than hosted-core

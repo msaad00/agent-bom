@@ -76,6 +76,17 @@ function factorValue(
   return String(value).replaceAll("_", " ");
 }
 
+function hasExpectedReductionBasis(campaign: RiskCampaign): boolean {
+  const reduction = campaign.expected_risk_reduction;
+  return (
+    Number.isFinite(reduction.modeled_window_percent) &&
+    Number.isFinite(reduction.modeled_risk_points) &&
+    reduction.assumption.trim().length > 0 &&
+    reduction.method.trim().length > 0 &&
+    reduction.scope.trim().length > 0
+  );
+}
+
 type TicketProgress = {
   mode: "create" | "sync";
   successful: number;
@@ -111,6 +122,7 @@ function CampaignCard({
   const [ticketProgress, setTicketProgress] = useState<TicketProgress | null>(null);
   const [verificationResult, setVerificationResult] = useState<RiskCampaignVerificationResult | null>(null);
   const workflowActionable = campaign.membership_complete && !campaign.membership_provisional;
+  const reductionAvailable = hasExpectedReductionBasis(campaign);
 
   useEffect(() => {
     if (!connectionId || !connections.some((connection) => connection.id === connectionId)) {
@@ -249,11 +261,23 @@ function CampaignCard({
         <span className="risk-campaign-priority">
           Priority <strong className="ml-1 tabular-nums text-[color:var(--foreground)]">{campaign.priority_score}</strong>
         </span>
-        <span className="risk-campaign-reduction">
-          <span className="block">{campaign.expected_risk_reduction.modeled_window_percent}% modeled window risk</span>
-          {!campaign.expected_risk_reduction.portfolio_complete ? (
-            <span className="block text-[9px] font-normal text-[color:var(--status-warn)]">Bounded; not full portfolio</span>
-          ) : null}
+        <span
+          className="risk-campaign-reduction"
+          data-testid={`campaign-reduction-${campaign.id}`}
+        >
+          {reductionAvailable ? (
+            <>
+              <span className="block">{campaign.expected_risk_reduction.modeled_window_percent}% modeled window risk</span>
+              {!campaign.expected_risk_reduction.portfolio_complete ? (
+                <span className="block text-[9px] font-normal text-[color:var(--status-warn)]">Bounded; not full portfolio</span>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <span className="block">Expected reduction </span>
+              <span className="block text-[9px] font-normal text-[color:var(--text-tertiary)]">Unavailable</span>
+            </>
+          )}
         </span>
         <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)] transition group-open:rotate-180" aria-hidden="true" />
       </summary>
@@ -295,9 +319,17 @@ function CampaignCard({
                 </div>
               ))}
             </div>
-            <p>{campaign.expected_risk_reduction.assumption}</p>
-            <p className="mt-1 text-[color:var(--text-tertiary)]">{campaign.expected_risk_reduction.method}</p>
-            <p className="mt-1 text-[color:var(--text-tertiary)]">Scope: {campaign.expected_risk_reduction.scope}</p>
+            {reductionAvailable ? (
+              <>
+                <p>{campaign.expected_risk_reduction.assumption}</p>
+                <p className="mt-1 text-[color:var(--text-tertiary)]">{campaign.expected_risk_reduction.method}</p>
+                <p className="mt-1 text-[color:var(--text-tertiary)]">Scope: {campaign.expected_risk_reduction.scope}</p>
+              </>
+            ) : (
+              <p className="text-[color:var(--text-tertiary)]">
+                Expected reduction unavailable because the server did not supply its assumption, method, and scope.
+              </p>
+            )}
             <p className="mt-1 text-[color:var(--text-tertiary)]">Priority method: {campaign.priority_score_method}</p>
           </div>
         </div>
@@ -603,7 +635,7 @@ export function RiskCampaignCommandCenter() {
             {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
           </div>
           <div className="risk-proof-note">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Priority and expected reduction are supplied by the server; ticket actions use stored connections.
+            <CheckCircle2 className="h-3.5 w-3.5" /> Priority is supplied by the server; modeled reduction appears only with its server-authored basis. Ticket actions use stored connections.
           </div>
         </>
       ) : null}

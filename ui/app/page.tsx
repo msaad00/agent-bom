@@ -330,8 +330,12 @@ export default function Dashboard() {
     api.updateScoreConfig({ display_format: format }).catch(() => {});
   };
   const latestScanShort =
-    summaryReady && effectiveRecentJobs[0]?.created_at
-      ? formatShortScanTime(effectiveRecentJobs[0].created_at)
+    summaryReady && effectiveRecentJobs[0]
+      ? formatShortScanTime(
+          effectiveRecentJobs[0].scan_timestamp ??
+            effectiveRecentJobs[0].generated_at ??
+            effectiveRecentJobs[0].created_at,
+        )
       : null;
 
   return (

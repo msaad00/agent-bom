@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RiskCampaignCommandCenter } from "@/components/risk-campaign-command-center";
@@ -135,6 +135,50 @@ describe("RiskCampaignCommandCenter", () => {
     expect(screen.getByText(/Unknown evidence is neutral/i)).toBeInTheDocument();
     expect(screen.getByText(/Server-side campaign model v1/i)).toBeInTheDocument();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+  });
+
+  it("renders generic finding campaigns without assuming a CVE workflow", async () => {
+    vi.mocked(api.listRiskCampaigns).mockResolvedValue({
+      ...response,
+      campaigns: [{
+        ...response.campaigns[0]!,
+        id: "campaign-misconfiguration",
+        title: "Remediate public object storage access",
+        finding_ids: ["finding-cloud-public-access"],
+        finding_count: 1,
+      }],
+    });
+
+    render(<RiskCampaignCommandCenter />);
+
+    const title = await screen.findByText("Remediate public object storage access");
+    expect(title).toBeInTheDocument();
+    expect(within(title.closest("summary")!).getByText(/1 finding/i)).toBeInTheDocument();
+    expect(screen.queryByText(/CVE/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Re-verify remediation/i })).toBeEnabled();
+  });
+
+  it("shows modeled reduction only when the server supplies its basis", async () => {
+    vi.mocked(api.listRiskCampaigns).mockResolvedValue({
+      ...response,
+      campaigns: [{
+        ...response.campaigns[0]!,
+        expected_risk_reduction: {
+          ...response.campaigns[0]!.expected_risk_reduction,
+          assumption: "",
+          method: "",
+          scope: "",
+        },
+      }],
+    });
+
+    render(<RiskCampaignCommandCenter />);
+
+    await screen.findByText(response.campaigns[0]!.title);
+    expect(screen.getByTestId("campaign-reduction-campaign-1")).toHaveTextContent(
+      "Expected reduction Unavailable",
+    );
+    expect(screen.queryByText(/18.5% modeled window risk/i)).not.toBeInTheDocument();
   });
 
   it("renders an honest empty state without a success claim", async () => {

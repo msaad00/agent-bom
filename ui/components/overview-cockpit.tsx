@@ -227,6 +227,8 @@ export function OverviewCockpit({
           subtitle="Posture and open issues across every lane — one exec read."
           defaultOpen
         >
+          <FreshnessStatus latestScan={latestScan} scans={scans} />
+
           {/* 1 — Posture headline + open issues by severity.
               Posture track is capped (minmax) so a long summary can't grow it
               unbounded and squeeze the open-issues severity tiles into an
@@ -241,7 +243,6 @@ export function OverviewCockpit({
               critical={critical}
               high={high}
               cves={cves}
-              latestScan={latestScan}
             />
             <SeverityIssueStrip
               summaryReady={summaryReady}
@@ -260,15 +261,10 @@ export function OverviewCockpit({
               so the grade is legible, not opaque (#3940). */}
           <ScoreExplainer breakdown={scoreBreakdown} grade={grade} />
 
-          {/* 2 — Security coverage: the five posture domains 1:1, each with a
-              reconciled severity strip (sum === count, unrated shown). This is
-              the lead coverage block — the exec security posture. */}
-          <SecurityCoverageLanes coverage={coverage} />
-
-          {/* 2b — Estate / operations: the genuinely-operational lanes
-              (runtime, cost, identity, ops) shown by activation. The security
-              lanes above already cover cloud posture, vuln mgmt, and application posture. */}
-          <EstateOpsStrip domains={domains} services={services} />
+          {/* 2 — Coverage and operations share one compact, collapsible
+              leadership section. Security disciplines and operational plumbing
+              are related context, but remain clearly labeled and non-additive. */}
+          <CoverageOperationsSection coverage={coverage} domains={domains} services={services} />
 
           {/* 3 — Compliance: one honest strip, coverage after first scan */}
           <ComplianceSnapshotPanel compliance={compliance} hasScanEvidence={hasScanEvidence} />
@@ -288,6 +284,94 @@ export function OverviewCockpit({
         />
       </section>
     </div>
+  );
+}
+
+function FreshnessStatus({
+  latestScan,
+  scans,
+}: {
+  latestScan: string | null;
+  scans: number | null;
+}) {
+  const label = latestScan
+    ? "Last successful scan"
+    : scans === 0
+      ? "No completed scan evidence"
+      : "Last successful scan unavailable";
+
+  return (
+    <div
+      data-testid="overview-freshness"
+      role="status"
+      className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2"
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-2 w-2 rounded-full ${latestScan ? "bg-emerald-500" : "bg-[color:var(--text-tertiary)]"}`}
+          aria-hidden="true"
+        />
+        <span className="text-xs font-semibold text-[color:var(--foreground)]">{label}</span>
+      </div>
+      {latestScan ? (
+        <time className="text-xs font-medium tabular-nums text-[color:var(--text-secondary)]">
+          {latestScan}
+        </time>
+      ) : (
+        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+          {scans === 0 ? "Run a scan to establish freshness." : "The current evidence has no observed scan timestamp."}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CoverageOperationsSection({
+  coverage,
+  domains,
+  services,
+}: {
+  coverage: OverviewCoverageLane[] | null | undefined;
+  domains: OverviewResponse["domains"] | null;
+  services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
+}) {
+  const operationalTiles = buildOperationalTiles(domains);
+  if ((!coverage || coverage.length === 0) && operationalTiles.length === 0) return null;
+
+  const active = operationalTiles.filter(opsLaneActive).length;
+  const dataSources = services?.data_sources;
+  const dataSourceCount =
+    dataSources && (dataSources.state === "live" || dataSources.state === "connected")
+      ? dataSources.count
+      : 0;
+
+  return (
+    <Collapsible
+      bare
+      className="mt-4 border-t border-[color:var(--border-subtle)] pt-1"
+      data-testid="overview-coverage-operations"
+      title="Coverage & operations"
+      titleClassName={SECTION_TITLE_CLASS}
+      subtitle={`${coverage?.length ?? 0} security disciplines · ${active} of ${operationalTiles.length} operational lanes active`}
+      count={(coverage?.length ?? 0) + operationalTiles.length}
+      defaultOpen={false}
+      actions={
+        <Link
+          href="/connections"
+          className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
+        >
+          {dataSourceCount > 0 ? (
+            <span className="text-[color:var(--text-tertiary)]">{dataSourceCount} connected · </span>
+          ) : null}
+          Connections <ArrowRight className="h-3 w-3" />
+        </Link>
+      }
+    >
+      <div className="space-y-4 pb-2">
+        <SecurityCoverageLanes coverage={coverage} />
+        <EstateOpsStrip tiles={operationalTiles} />
+      </div>
+    </Collapsible>
   );
 }
 
@@ -315,8 +399,8 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
   if (!coverage || coverage.length === 0) return null;
   return (
-    <div className="mt-4" data-testid="overview-security-coverage">
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">Security coverage</h3>
+    <div className="pt-1" data-testid="overview-security-coverage">
+      <h3 className="mb-1 text-xs font-semibold text-[color:var(--foreground)]">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-[color:var(--text-tertiary)]">
         Coverage by discipline — lenses can overlap, so a repo CVE counts under both Vuln mgmt and ASPM. Lanes are not additive.
       </p>
@@ -333,7 +417,9 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-xs font-semibold text-[color:var(--foreground)]">{lane.label}</span>
-                <span className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">{lane.count}</span>
+                <span className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
+                  {total > 0 ? lane.count : "—"}
+                </span>
               </div>
               {/* Stacked severity strip — widths reflect share of the lane count. */}
               <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
@@ -351,7 +437,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               </div>
               <div className="flex flex-wrap gap-1">
                 {total === 0 ? (
-                  <span className="text-[11px] text-[color:var(--text-tertiary)]">No findings</span>
+                  <span className="text-[11px] text-[color:var(--text-tertiary)]">No evidence</span>
                 ) : (
                   bands.map((band) => (
                     <span
@@ -394,6 +480,23 @@ type OpsTile = {
   hint?: string | undefined;
 };
 
+function buildOperationalTiles(domains: OverviewResponse["domains"] | null): OpsTile[] {
+  if (!domains) return [];
+  return OPERATIONAL_DOMAIN_KEYS.flatMap((key) => {
+    const domain = domains[key];
+    if (!domain) return [];
+    return [{
+      key,
+      label: domain.label,
+      metric: domain.metric,
+      metricLabel: domain.metric_label,
+      status: domain.status,
+      href: domain.graph_href ?? domain.href,
+      hint: LANE_HINTS[key],
+    }];
+  });
+}
+
 // Scope clarifiers keyed by the operational domain key, shown as tooltips only.
 const LANE_HINTS: Record<OperationalDomainKey, string> = {
   runtime: "Live runtime surfaces — gateway, proxy, traces, and agent mesh.",
@@ -417,69 +520,28 @@ function opsLaneActive(tile: OpsTile): boolean {
  * lighter-weight companion to the five security-coverage lanes above.
  */
 function EstateOpsStrip({
-  domains,
-  services,
+  tiles,
 }: {
-  domains: OverviewResponse["domains"] | null;
-  services: Partial<Record<ServiceId, ServiceEntry>> | null | undefined;
+  tiles: OpsTile[];
 }) {
-  if (!domains) return null;
-  const tiles: OpsTile[] = OPERATIONAL_DOMAIN_KEYS.flatMap((key) => {
-    const domain = domains[key];
-    if (!domain) return [];
-    return [
-      {
-        key,
-        label: domain.label,
-        metric: domain.metric,
-        metricLabel: domain.metric_label,
-        status: domain.status,
-        href: domain.graph_href ?? domain.href,
-        hint: LANE_HINTS[key],
-      },
-    ];
-  });
   if (tiles.length === 0) return null;
-
-  // Data sources / connections are operational plumbing — surfaced as a small
-  // connected count next to the Connections link, not as an equal-weight lane.
-  const dataSources = services?.data_sources;
-  const dataSourceCount =
-    dataSources &&
-    (dataSources.state === "live" || dataSources.state === "connected")
-      ? dataSources.count
-      : 0;
 
   const active = tiles.filter(opsLaneActive).length;
 
   return (
-    <Collapsible
-      bare
-      className="mt-5 border-t border-[color:var(--border-subtle)] pt-1"
-      data-testid="overview-estate-ops"
-      title="Estate / operations"
-      titleClassName={SECTION_TITLE_CLASS}
-      subtitle={`${active} of ${tiles.length} operational lanes active · runtime, cost, identity, ops`}
-      count={tiles.length}
-      defaultOpen
-      actions={
-        <Link
-          href="/connections"
-          className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400"
-        >
-          {dataSourceCount > 0 ? (
-            <span className="text-[color:var(--text-tertiary)]">{dataSourceCount} connected · </span>
-          ) : null}
-          Connections <ArrowRight className="h-3 w-3" />
-        </Link>
-      }
-    >
+    <div data-testid="overview-estate-ops">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-xs font-semibold text-[color:var(--foreground)]">Operational signals</h3>
+        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+          {active} of {tiles.length} active
+        </span>
+      </div>
       <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => (
           <OpsTileCard key={tile.key} tile={tile} />
         ))}
       </div>
-    </Collapsible>
+    </div>
   );
 }
 
@@ -928,7 +990,6 @@ function PostureHero({
   critical,
   high,
   cves,
-  latestScan,
 }: {
   grade: string;
   score?: number | undefined;
@@ -938,7 +999,6 @@ function PostureHero({
   critical: number;
   high: number;
   cves: number | null;
-  latestScan: string | null;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
   const badgeTone = ungraded
@@ -987,9 +1047,6 @@ function PostureHero({
           ) : (
             "Awaiting scan"
           )}
-        </p>
-        <p className="mt-0.5 text-[10px] text-[color:var(--text-tertiary)]">
-          {latestScan ? `Last scan · ${latestScan}` : graded ? "Scan complete" : "No completed scans"}
         </p>
         {graded ? (
           <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">

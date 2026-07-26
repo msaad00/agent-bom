@@ -120,11 +120,15 @@ def push_proxy_alert(alert: dict) -> None:
 
 
 def push_proxy_metrics(metrics: dict) -> None:
-    """Called by the proxy to record latest metrics summary."""
+    """Record latest metrics with a server-authoritative receipt timestamp."""
     global _proxy_metrics
     sanitized = sanitize_sensitive_payload(metrics)
     _proxy_metrics = sanitized if isinstance(sanitized, dict) else {}
-    _proxy_metrics.setdefault("received_at", datetime.now(timezone.utc).isoformat())
+    # ``metrics`` crosses a process/HTTP trust boundary. Preserve any client
+    # event timestamp for event provenance, but never let it establish runtime
+    # transport freshness. A caller-controlled future ``received_at`` would
+    # otherwise keep the Gateway Feed labeled live indefinitely.
+    _proxy_metrics["received_at"] = datetime.now(timezone.utc).isoformat()
     tenant_id = str(_proxy_metrics.get("tenant_id") or "default")
     _proxy_metrics_by_tenant[tenant_id] = dict(_proxy_metrics)
 

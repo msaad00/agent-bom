@@ -149,7 +149,11 @@ def build_gateway_feed_health(
         base["reason"] = "transport_or_heartbeat_unavailable"
         return base
 
-    age_seconds = max(0, int((checked_at - heartbeat).total_seconds()))
+    age_delta = (checked_at - heartbeat).total_seconds()
+    if age_delta < 0:
+        base["reason"] = "transport_heartbeat_in_future"
+        return base
+    age_seconds = int(age_delta)
     base["age_seconds"] = age_seconds
     if age_seconds <= stale_after_seconds:
         base.update({"state": "live", "live": True, "reason": "recent_transport_heartbeat"})
@@ -532,9 +536,9 @@ def _feed_health_from_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
     source_id = str(metrics.get("source_id") or "")
     session_id = str(metrics.get("session_id") or "")
     sample = source_id.startswith("demo-estate") or session_id.startswith("demo-estate")
-    heartbeat = metrics.get("received_at") or metrics.get("timestamp") or metrics.get("ts")
-    if isinstance(heartbeat, int | float) and heartbeat > 0:
-        heartbeat = datetime.fromtimestamp(float(heartbeat), tz=timezone.utc).isoformat()
+    # ``received_at`` is stamped by the server at ingestion. Client event
+    # timestamps remain useful provenance, but are not transport heartbeats.
+    heartbeat = metrics.get("received_at")
     return build_gateway_feed_health(
         transport_enabled=True,
         heartbeat_at=str(heartbeat) if heartbeat else None,

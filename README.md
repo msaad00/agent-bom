@@ -32,8 +32,8 @@
 
 <p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
-  <a href="https://demo.agent-bom.com"><b>Live demo</b></a> ·
-  <a href="https://msaad00.github.io/agent-bom/">Docs</a>
+  <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
+  <a href="https://demo.agent-bom.com">Live demo</a>
 </p>
 
 ## What it is
@@ -157,8 +157,8 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
 
-> Pins target `v0.99.0`, the version this tree builds. Until that release is
-> published, use the version shown on the PyPI badge above.
+> Examples target `v0.99.0`; confirm release availability before copying an
+> exact pin. Otherwise, use the latest version shown on PyPI.
 
 [Deployment overview](site-docs/deployment/overview.md) ·
 [Enterprise configuration](docs/ENTERPRISE.md) ·
@@ -173,7 +173,7 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | Cloud evidence | `agent-bom connect aws` | Stored connection reference; run scans from the control plane |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
 | Agent interface | `agent-bom mcp server` | 77 MCP tools, 6 resources, and 8 workflow prompts |
-| Agent distribution | [Smithery](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
+| Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
 The CLI, Docker, API, Helm chart, MCP server, gateway, and SDK are distribution
 surfaces of the same product. EKS remains a deployment profile; Snowflake and
@@ -192,7 +192,7 @@ dependencies.
 | Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom` |
 | GitHub Action | [`msaad00/agent-bom`](action.yml) |
 | MCP server | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` |
-| MCP registries | [Smithery](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) |
+| MCP registries | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) |
 | SDKs | [Python](sdks/python) · [TypeScript](sdks/typescript) · [Go](sdks/go) |
 
 </details>

@@ -139,7 +139,11 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert positions == sorted(positions)
 
     hero = readme[: positions[0]]
-    assert hero.count("img.shields.io/") <= 2
+    # The storefront carries a single badge row of build/version/adoption/trust
+    # signals. It is capped so the row cannot grow into a wall, but not held to
+    # two: license, Docker pulls, and the OpenSSF score are the evidence a
+    # first-time reader uses to judge a security tool.
+    assert hero.count("img.shields.io/") <= 8
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
     assert '<a href="https://demo.agent-bom.com">Live demo</a>' in hero

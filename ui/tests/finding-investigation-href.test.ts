@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
-import { defaultOperatorLanding, SECOPS_DEFAULT_LANDING } from "@/lib/operator-landing";
+import { defaultOperatorLanding, OVERVIEW_LANDING } from "@/lib/operator-landing";
 
 describe("buildFindingInvestigationHref", () => {
   it("prefers stamped graph FKs over free-floating CVE-only links", () => {
@@ -22,9 +22,12 @@ describe("buildFindingInvestigationHref", () => {
 });
 
 describe("defaultOperatorLanding", () => {
-  it("routes bare home to SecOps investigation", () => {
-    expect(defaultOperatorLanding(null)).toBe(SECOPS_DEFAULT_LANDING);
-    expect(defaultOperatorLanding("/")).toBe(SECOPS_DEFAULT_LANDING);
+  it("uses Overview for bare and root landings while preserving explicit destinations", () => {
+    expect(defaultOperatorLanding(null)).toBe(OVERVIEW_LANDING);
+    expect(defaultOperatorLanding("/")).toBe(OVERVIEW_LANDING);
     expect(defaultOperatorLanding("/findings")).toBe("/findings");
+    expect(defaultOperatorLanding("/security-graph?node=asset-1")).toBe(
+      "/security-graph?node=asset-1",
+    );
   });
 });

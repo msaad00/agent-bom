@@ -112,6 +112,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Gauge,
     desc: "Risk, findings, and fixes",
     links: [
+      { href: "/", label: "Overview", icon: LayoutDashboard, desc: "Cross-domain posture snapshot" },
       {
         href: "/security-graph",
         label: "Investigation",
@@ -120,7 +121,6 @@ const NAV_GROUPS: NavGroup[] = [
       },
       { href: "/findings", label: "Findings", icon: Bug, desc: "Queue of evidence; open a row to investigate the estate node" },
       { href: "/remediation", label: "Remediation", icon: Wrench },
-      { href: "/", label: "Overview", icon: LayoutDashboard, desc: "Cross-domain posture snapshot" },
     ],
     secondary: [
       { href: "/graph", label: "Lineage", icon: GitBranch },
@@ -521,6 +521,38 @@ export function Nav() {
           const hasActiveChild = [...group.visibleLinks, ...group.hiddenLinks, ...group.secondaryLinks].some(
             (link) => isNavLinkActive(link.href, path),
           );
+          const sectionLanding = group.visibleLinks[0] ?? group.hiddenLinks[0] ?? group.secondaryLinks[0];
+          const groupHeaderClassName = `w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors border-l-2 ${
+            isCollapsed ? "justify-center px-0 py-2" : ""
+          } ${
+            hasActiveChild
+              ? "border-[color:var(--border-strong)] text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
+              : "border-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
+          }`;
+          const groupHeaderContent = (
+            <>
+              <GroupIcon
+                className={`${isCollapsed ? "h-[18px] w-[18px]" : "h-4 w-4"} shrink-0 ${navGroupIconClass(group.label, hasActiveChild)}`}
+              />
+              {!isCollapsed && (
+                <>
+                  <div className="min-w-0 flex-1 text-left">
+                    <span className="block uppercase tracking-wider text-[10px] font-semibold">
+                      {group.label}
+                    </span>
+                  </div>
+                  <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[9px] font-mono text-[color:var(--text-tertiary)]">
+                    {group.visibleLinks.length}
+                  </span>
+                  {isExpanded ? (
+                    <ChevronDown className="w-3 h-3 text-[color:var(--text-tertiary)]" />
+                  ) : (
+                    <ChevronRight className="w-3 h-3 text-[color:var(--text-tertiary)]" />
+                  )}
+                </>
+              )}
+            </>
+          );
 
           return (
             <div
@@ -530,53 +562,32 @@ export function Nav() {
               }`}
             >
               {/* Group Header */}
-              <button
-                onClick={() => {
-                  if (captureMode) {
-                    return;
-                  }
-                  if (isCollapsed) {
-                    return;
-                  } else {
-                    toggleGroup(group.label);
-                  }
-                }}
-                onMouseEnter={isCollapsed ? (event) => openCollapsedFlyout(group.label, event.currentTarget) : undefined}
-                onMouseLeave={isCollapsed ? scheduleCollapsedFlyoutClose : undefined}
-                onFocus={isCollapsed ? (event) => openCollapsedFlyout(group.label, event.currentTarget) : undefined}
-                onBlur={isCollapsed ? scheduleCollapsedFlyoutClose : undefined}
-                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors border-l-2 ${
-                  isCollapsed ? "justify-center px-0 py-2" : ""
-                } ${
-                  hasActiveChild
-                    ? "border-[color:var(--border-strong)] text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
-                    : "border-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
-                }`}
-                aria-expanded={isCollapsed ? collapsedFlyoutGroup === group.label : isExpanded}
-                aria-label={isCollapsed ? group.label : undefined}
-                title={group.desc}
-              >
-                <GroupIcon
-                  className={`${isCollapsed ? "h-[18px] w-[18px]" : "h-4 w-4"} shrink-0 ${navGroupIconClass(group.label, hasActiveChild)}`}
-                />
-                {!isCollapsed && (
-                  <>
-                    <div className="min-w-0 flex-1 text-left">
-                      <span className="block uppercase tracking-wider text-[10px] font-semibold">
-                        {group.label}
-                      </span>
-                    </div>
-                    <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[9px] font-mono text-[color:var(--text-tertiary)]">
-                      {group.visibleLinks.length}
-                    </span>
-                    {isExpanded ? (
-                      <ChevronDown className="w-3 h-3 text-[color:var(--text-tertiary)]" />
-                    ) : (
-                      <ChevronRight className="w-3 h-3 text-[color:var(--text-tertiary)]" />
-                    )}
-                  </>
-                )}
-              </button>
+              {isCollapsed && sectionLanding ? (
+                <Link
+                  href={sectionLanding.href}
+                  onMouseEnter={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
+                  onMouseLeave={scheduleCollapsedFlyoutClose}
+                  onFocus={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
+                  onBlur={scheduleCollapsedFlyoutClose}
+                  onClick={() => setCollapsedFlyoutGroup(null)}
+                  className={groupHeaderClassName}
+                  aria-label={`${group.label}: open ${sectionLanding.label}`}
+                  title={`${group.label}: open ${sectionLanding.label}${group.desc ? ` — ${group.desc}` : ""}`}
+                >
+                  {groupHeaderContent}
+                </Link>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (!captureMode) toggleGroup(group.label);
+                  }}
+                  className={groupHeaderClassName}
+                  aria-expanded={isExpanded}
+                  title={group.desc}
+                >
+                  {groupHeaderContent}
+                </button>
+              )}
 
               {/* Group Links */}
               {isExpanded && !isCollapsed && (

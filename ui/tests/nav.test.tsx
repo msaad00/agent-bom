@@ -135,6 +135,28 @@ describe('Nav', () => {
     expect(links.length).toBeGreaterThan(0)
   })
 
+  it('orders Posture from its Overview landing into investigation, findings, and remediation', () => {
+    renderExpandedNav()
+    const postureHrefs = within(screen.getByRole('navigation'))
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+      .filter((href) => ['/', '/security-graph', '/findings', '/remediation'].includes(href ?? ''))
+
+    expect(postureHrefs).toEqual(['/', '/security-graph', '/findings', '/remediation'])
+    expect(screen.queryByRole('link', { name: /^home$/i })).not.toBeInTheDocument()
+  })
+
+  it('uses Overview as the collapsed Posture section trigger destination', () => {
+    renderNav()
+
+    const postureTrigger = screen.getByRole('link', { name: /posture.*overview/i })
+    expect(postureTrigger).toHaveAttribute('href', '/')
+    expect(postureTrigger).toHaveAttribute(
+      'title',
+      'Posture: open Overview — Risk, findings, and fixes',
+    )
+  })
+
   it('contains link to New Scan (/scan) under Connect', () => {
     renderExpandedNav()
     fireEvent.click(screen.getByRole('button', { name: /connect/i }))
@@ -235,6 +257,15 @@ describe('Nav', () => {
     renderExpandedNav()
 
     expect(screen.getByRole('link', { name: /^investigation$/i })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('keeps an explicit Investigation deep link stable instead of treating it as Overview', () => {
+    mockedPathname = '/security-graph'
+    window.history.replaceState({}, '', '/security-graph?node=asset-1')
+    renderExpandedNav()
+
+    expect(screen.getByRole('link', { name: /^investigation$/i })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /^overview$/i })).not.toHaveAttribute('aria-current')
   })
 
   it('drops the duplicate /overview home entry', () => {

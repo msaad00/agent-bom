@@ -1,7 +1,8 @@
 name: Surface Freshness
 
-# Cross-channel version-freshness monitor. Compares the repo version against
-# EVERY published distribution surface (PyPI, Docker/ghcr, Glama, Smithery) and
+# Cross-channel version-freshness monitor. Compares the latest published release
+# against EVERY published distribution surface (PyPI, Docker/ghcr, Glama,
+# Smithery) and
 # maintains ONE consolidated tracking issue so a stale surface can never sit
 # unnoticed for months. Closes the gap that let the Smithery listing drift for
 # three months without an alert.
@@ -34,17 +35,37 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Get expected version from latest published release
+        id: expected
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          VERSION="${TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.+-]*)?$ ]]; then
+            echo "::error::Latest published release has an invalid version tag"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Expected version from published release $TAG: $VERSION"
+
       - name: Probe every distribution surface
         id: probe
         env:
+          EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
           GLAMA_LISTING_URL: ${{ vars.GLAMA_LISTING_URL }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
         run: |
-          PYTHONPATH=src python3 scripts/check_surface_freshness.py --out surface-freshness.json
-          echo "report<<EOF" >> "$GITHUB_OUTPUT"
-          cat surface-freshness.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          PYTHONPATH=src python3 scripts/check_surface_freshness.py \
+            --expected "$EXPECTED_VERSION" \
+            --out surface-freshness.json
+          {
+            echo "report<<EOF"
+            cat surface-freshness.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Open, refresh, or close consolidated freshness issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

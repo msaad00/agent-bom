@@ -498,6 +498,17 @@ def test_deployment_freshness_targets_the_latest_published_release():
     assert "issue.title !== currentTitle" in workflow
 
 
+def test_surface_freshness_targets_the_latest_published_release():
+    """Unreleased source versions must not create distribution drift alerts."""
+    workflow = (ROOT / ".github" / "workflows" / "surface-freshness.yml").read_text()
+
+    assert "Get expected version from latest published release" in workflow
+    assert 'repos/$GITHUB_REPOSITORY/releases/latest' in workflow
+    assert "EXPECTED_VERSION: ${{ steps.expected.outputs.version }}" in workflow
+    assert '--expected "$EXPECTED_VERSION"' in workflow
+    assert "Expected version from published release" in workflow
+
+
 def test_docs_workflow_never_deploys_pages_from_release_tags():
     """Release tags may build docs, but Pages deploy is protected to main only."""
     workflow = (ROOT / ".github" / "workflows" / "docs.yml").read_text()

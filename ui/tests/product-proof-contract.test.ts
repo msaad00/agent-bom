@@ -86,7 +86,7 @@ describe("product proof capture contract", () => {
   });
 
   it("does not present fictional identifiers as OSV advisories", () => {
-    expect(findingsQueue).toContain("getOsvVulnerabilityUrl(v.id)");
+    expect(findingsQueue).toMatch(/getOsvVulnerabilityUrl\((?:v|vuln)\.id\)/);
     expect(findingsQueue).not.toContain("https://osv.dev/vulnerability/${v.id}");
   });
 });

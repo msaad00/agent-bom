@@ -63,7 +63,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom:agent_bom@localhost:5432/agent_bom
+      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:benchmark_app@localhost:5432/agent_bom
+      AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://agent_bom:agent_bom@localhost:5432/agent_bom
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,7 +83,16 @@ jobs:
       - name: Migrate ephemeral Postgres schema
         env:
           ALEMBIC_DATABASE_URL: postgresql+psycopg://agent_bom:agent_bom@localhost:5432/agent_bom
-        run: alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+        run: |
+          python - <<'PY'
+          import os
+
+          import psycopg
+
+          with psycopg.connect(os.environ["AGENT_BOM_POSTGRES_ADMIN_URL"], autocommit=True) as connection:
+              connection.execute("ALTER DATABASE agent_bom SET init.app_password = 'benchmark_app'")
+          PY
+          alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 
       - name: Smoke-test the harness
         run: scripts/run_postgres_scale_evidence.py --dry-run --output /tmp/dry.json

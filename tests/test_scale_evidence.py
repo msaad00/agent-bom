@@ -23,6 +23,8 @@ def test_postgres_scale_workflow_migrates_before_workload() -> None:
 
     assert "Migrate ephemeral Postgres schema" in workflow
     assert "alembic -c deploy/supabase/postgres/alembic.ini upgrade head" in workflow
+    assert "AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:" in workflow
+    assert "AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://agent_bom:" in workflow
     assert "AGENT_BOM_ALLOW_SUPERUSER_DB" not in workflow
 
 

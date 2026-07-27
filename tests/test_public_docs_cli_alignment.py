@@ -127,29 +127,59 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    sections = [
-        "Quick start",
-        "How it works",
-        "What it is",
-        "Who it is for",
-        "Self-host",
-        "Trust",
+    markers = [
+        "## What it is",
+        "<summary><b>Control-plane architecture</b></summary>",
+        "## Who it is for",
+        "## Quick start",
+        "## Self-host",
+        "## Trust",
     ]
-    positions = [readme.index(f"## {section}") for section in sections]
+    positions = [readme.index(marker) for marker in markers]
     assert positions == sorted(positions)
 
     hero = readme[: positions[0]]
-    # Two badges keep the first screen focused on whether the build and current
-    # package are usable. Registry links and supported Python versions are text,
-    # not another wall of badges.
-    assert hero.count("img.shields.io/") <= 2
-    assert "img.shields.io/pypi/pyversions" not in hero
-    assert "Python 3.11–3.14" in hero
-    assert "agent-bom on Glama" in hero
-    assert "agent-bom on Smithery" in hero
+    badges = [
+        "label=Build",
+        "pypi/v/agent-bom",
+        "pypi/pyversions/agent-bom",
+        "docker/pulls/agentbom/agent-bom",
+        "License-Apache%202.0",
+        "ossf-scorecard/github.com/msaad00/agent-bom",
+        "MCP-Glama",
+        "MCP-Smithery",
+    ]
+    assert hero.count("img.shields.io/") == len(badges)
+    for badge in badges:
+        assert hero.count(badge) == 1
+
+    assert hero.count(
+        '<p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>'
+    ) == 1
+    assert (
+        "Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — "
+        "locally or in a control plane you run."
+    ) in hero
+    assert "<b>15</b> package ecosystems" in hero
+    assert "<b>16</b> compliance surfaces" in hero
+    assert "<b>77</b> MCP tools" in hero
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
     assert '<a href="https://demo.agent-bom.com">Live demo</a>' in hero
+    assert hero.count("how-it-works-dark.svg") == 1
+    assert hero.count("how-it-works-light.svg") == 1
+    assert hero.index("how-it-works-dark.svg") > hero.index('href="https://demo.agent-bom.com"')
+    assert "## How it works" not in readme
+
+    current_what_it_is = """`agent-bom` is an open local scanner and self-hosted control plane for software,
+cloud, identity, AI-agent, and MCP evidence. One Finding + UnifiedGraph model
+powers CLI and CI artifacts, browser investigations, compliance evidence, and
+runtime policy without requiring a hosted account.
+
+Graph provenance remains explicit: collected, inferred, static, and runtime
+relationships stay distinct, and unavailable evidence is never upgraded to
+observed."""
+    assert current_what_it_is in readme
 
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
     primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
@@ -168,8 +198,8 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "| AppSec |" in readme
     assert "| GRC / audit |" in readme
 
-    # The workflow is visible early. The architecture, persona proof, and
-    # product screenshots stay progressive-disclosure.
+    # The workflow is a compact visual header. Architecture, persona proof,
+    # and product screenshots stay progressive-disclosure.
     assert readme.count("how-it-works-dark.svg") == 1
     assert readme.count("architecture-dark.svg") == 1
     assert "<summary><b>Audience workflow map</b></summary>" in readme

@@ -8,69 +8,32 @@
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
   <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=PyPI&cacheSeconds=60" alt="PyPI"></a>
+  <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/pyversions/agent-bom?style=flat&label=Python" alt="Python versions"></a>
+  <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker pulls"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="Apache-2.0 license"></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
+  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom"><img src="https://img.shields.io/badge/MCP-Glama-7c3aed?style=flat" alt="Glama MCP server"></a>
+  <a href="https://smithery.ai/servers/agent-bom/agent-bom"><img src="https://img.shields.io/badge/MCP-Smithery-1f6feb?style=flat" alt="Smithery MCP server"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  Scan a repository, image, or cloud account for findings, an SBOM, and a graph
-  of what each finding can reach — locally or in a control plane you run.
+  Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — locally or in a control plane you run.
 </p>
 
 <p align="center">
-  Python 3.11–3.14 · Apache-2.0 · no account required<br />
-  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom">agent-bom on Glama</a> ·
-  <a href="https://smithery.ai/servers/agent-bom/agent-bom">agent-bom on Smithery</a>
-</p>
-
-<p align="center">
+  <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>77</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
   <a href="https://demo.agent-bom.com">Live demo</a>
 </p>
 
-## Quick start
-
-Run against the repository in your current directory:
-
-```bash
-pip install agent-bom
-agent-bom scan .
-```
-
-The console shows inventory, findings, and reachable impact. Save an artifact
-with `agent-bom scan . -f sarif -o findings.sarif`, or follow the
-[first-run guide](docs/FIRST_RUN.md) for exit codes, formats, and CI use.
-
-<details>
-<summary><b>Try without a repository</b></summary>
-
-Use the curated, explicitly synthetic sample when you only want to inspect the
-output shape:
-
-```bash
-agent-bom scan --demo --offline
-```
-
-The sample intentionally contains blocking findings, so exit status `1` is
-expected.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="Synthetic agent-bom console scan showing inventory, findings, and remediation" width="820" />
-</p>
-
-</details>
-
-## How it works
-
-Read-only collection becomes normalized evidence that can be scanned locally,
-centralized in a self-hosted control plane, and used for runtime decisions.
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="Scan, centralize, and enforce on one Finding and UnifiedGraph evidence model" width="1000" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="Scan, centralize, and enforce on one Finding and UnifiedGraph evidence model" width="900" />
   </picture>
 </p>
 
@@ -143,6 +106,38 @@ product-state proof, not customer or advisory evidence.
 | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Scoped environment lineage with interactive graph controls" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent and MCP server relationships with labeled edges" width="430" /> |
 
 [Capture protocol](docs/CAPTURE.md)
+
+</details>
+
+## Quick start
+
+Run against the repository in your current directory:
+
+```bash
+pip install agent-bom
+agent-bom scan .
+```
+
+The console shows inventory, findings, and reachable impact. Save an artifact
+with `agent-bom scan . -f sarif -o findings.sarif`, or follow the
+[first-run guide](docs/FIRST_RUN.md) for exit codes, formats, and CI use.
+
+<details>
+<summary><b>Try without a repository</b></summary>
+
+Use the curated, explicitly synthetic sample when you only want to inspect the
+output shape:
+
+```bash
+agent-bom scan --demo --offline
+```
+
+The sample intentionally contains blocking findings, so exit status `1` is
+expected.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="Synthetic agent-bom console scan showing inventory, findings, and remediation" width="820" />
+</p>
 
 </details>
 

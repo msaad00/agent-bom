@@ -229,6 +229,29 @@ def test_redact_preserves_tier_a_fields():
     assert redacted["class_counts"] == {"2004": 1, "4001": 1}
 
 
+def test_tier_a_count_maps_are_deterministic_bounded_and_numeric_only():
+    """Aggregate maps stay useful without becoming unbounded content channels."""
+    expected_limit = 256
+    buckets: dict[str, object] = {
+        f"tool-{index:03d}-{'x' * 120}": index + 1
+        for index in range(expected_limit + 20)
+    }
+    buckets["reject-bool"] = True
+    buckets["reject-string"] = "7"
+
+    redacted = redact_for_persistence(
+        {"calls_by_tool": buckets},
+        EvidenceTier.SAFE_TO_STORE,
+    )["calls_by_tool"]
+
+    assert len(redacted) == expected_limit
+    assert all(len(key) <= 96 for key in redacted)
+    assert all(isinstance(value, int | float) and not isinstance(value, bool) for value in redacted.values())
+    assert "reject-bool" not in redacted
+    assert "reject-string" not in redacted
+    assert list(redacted) == sorted(redacted, key=lambda key: (-redacted[key], key))
+
+
 def test_redact_for_replay_only_keeps_everything():
     redacted = redact_for_persistence(SYNTHETIC_PAYLOAD, EvidenceTier.REPLAY_ONLY)
     assert set(redacted) == set(SYNTHETIC_PAYLOAD)

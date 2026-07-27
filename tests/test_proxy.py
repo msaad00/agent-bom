@@ -124,6 +124,100 @@ def test_write_audit_record_drops_nested_replay_only_fields_before_write():
     assert payload["event_relationships"]["resources"][0] == {"type": "file", "id": "resource-1"}
 
 
+def test_write_audit_record_preserves_proxy_summary_metrics():
+    """Durable proxy summaries must keep the non-content metrics operators consume."""
+    metrics = ProxyMetrics()
+    metrics.record_call("read_file")
+    metrics.record_blocked("policy")
+    metrics.record_latency(12.5)
+    metrics.total_messages_client_to_server = 3
+    metrics.total_messages_server_to_client = 2
+    buf = io.StringIO()
+
+    payload = write_audit_record(buf, metrics.summary())
+
+    assert payload["total_tool_calls"] == 1
+    assert payload["total_blocked"] == 1
+    assert payload["calls_by_tool"] == {"read_file": 1}
+    assert payload["blocked_by_reason"] == {"policy": 1}
+    assert payload["latency"] == {
+        "min_ms": 12.5,
+        "max_ms": 12.5,
+        "avg_ms": 12.5,
+        "p50_ms": 12.5,
+        "p95_ms": 12.5,
+        "count": 1,
+    }
+    assert payload["messages_client_to_server"] == 3
+    assert payload["messages_server_to_client"] == 2
+
+
+def test_write_audit_record_preserves_safe_execution_posture_only():
+    """Isolation proof survives while images, mounts, users, and free text do not."""
+    buf = io.StringIO()
+
+    payload = write_audit_record(
+        buf,
+        {
+            "type": "mcp_execution_posture",
+            "execution_posture": {
+                "mode": "container_isolated",
+                "sandbox_evidence": {
+                    "enabled": True,
+                    "runtime": "docker",
+                    "image": "registry.example/private/server@sha256:abc",
+                    "image_pinned": True,
+                    "image_pin_policy": "enforce",
+                    "image_pin_warning": "private registry warning",
+                    "network": "none",
+                    "egress_policy": "deny",
+                    "cpus": "1.0",
+                    "memory": "512m",
+                    "pids_limit": 128,
+                    "tmpfs_size": "64m",
+                    "timeout_seconds": 300,
+                    "read_only_rootfs": True,
+                    "drop_capabilities": True,
+                    "no_new_privileges": True,
+                    "user": "customer-runtime-user",
+                    "mounts": [
+                        {
+                            "source": "/Users/alice/private-workspace",
+                            "target": "/workspace",
+                            "readonly": True,
+                        }
+                    ],
+                },
+            },
+        },
+    )
+
+    assert payload["execution_posture"] == {
+        "mode": "container_isolated",
+        "sandbox_evidence": {
+            "enabled": True,
+            "runtime": "docker",
+            "image_pinned": True,
+            "image_pin_policy": "enforce",
+            "network": "none",
+            "egress_policy": "deny",
+            "cpus": "1.0",
+            "memory": "512m",
+            "pids_limit": 128,
+            "tmpfs_size": "64m",
+            "timeout_seconds": 300,
+            "read_only_rootfs": True,
+            "drop_capabilities": True,
+            "no_new_privileges": True,
+        },
+    }
+    encoded = json.dumps(payload)
+    assert "registry.example" not in encoded
+    assert "private registry warning" not in encoded
+    assert "customer-runtime-user" not in encoded
+    assert "/Users/alice" not in encoded
+
+
 @pytest.mark.asyncio
 async def test_read_bounded_line_discards_oversized_line_and_resyncs():
     reader = asyncio.StreamReader(limit=32)

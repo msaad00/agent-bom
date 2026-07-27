@@ -89,6 +89,7 @@ def test_hub_list_returns_hydrated_user_visible_fields(store_factory: str, tmp_p
         stored = json.loads(row[0])
         assert stored.get("intel_ref") == "CVE-2026-3513"
         assert "summary" not in stored
+        assert "graph_reachable_from_agents" not in stored
 
 
 def test_reference_normalization_reduces_ledger_bytes_at_scale(tmp_path) -> None:

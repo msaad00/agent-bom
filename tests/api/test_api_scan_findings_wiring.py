@@ -14,12 +14,17 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as api_stores
+from agent_bom.api.finding_reachability import (
+    MAX_FINDING_REACHABILITY_PATHS,
+    project_persisted_graph_reachability,
+)
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import JobStatus
 from agent_bom.api.pipeline import _now, _persist_graph_snapshot
 from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_graph_store
+from agent_bom.graph import AttackPath
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -35,6 +40,7 @@ from agent_bom.models import (
 from agent_bom.output import to_json
 
 KNOWN_CVE = "CVE-2026-9999"
+NON_OVERLAP_CVE = "CVE-2026-0000"
 
 
 def _report_with_known_vuln() -> dict:
@@ -74,7 +80,36 @@ def _report_with_known_vuln() -> dict:
         risk_score=9.0,
         owasp_tags=["LLM05"],
     )
-    return to_json(AIBOMReport(agents=[agent], blast_radii=[blast]))
+    report = to_json(AIBOMReport(agents=[agent], blast_radii=[blast]))
+    report["findings"].append(
+        {
+            "schema_version": "1",
+            "id": "finding-without-a-persisted-path",
+            "canonical_id": "finding-without-a-persisted-path",
+            "finding_type": "CVE",
+            "finding_category": "vulnerability",
+            "source": "MCP_SCAN",
+            "severity": "medium",
+            "effective_severity": "medium",
+            "title": f"{NON_OVERLAP_CVE}: standalone-lib@1.0.0",
+            "description": "Static finding without graph path evidence",
+            "cve_id": NON_OVERLAP_CVE,
+            "vulnerability_id": NON_OVERLAP_CVE,
+            "node_id": "pkg:pypi:standalone-lib@1.0.0",
+            "finding_node_id": f"vuln:{NON_OVERLAP_CVE}",
+            "asset": {
+                "name": "standalone-lib",
+                "asset_type": "package",
+                "stable_id": "standalone-lib",
+            },
+            "affected_agents": [],
+            "affected_servers": [],
+            "exposed_credentials": [],
+            "exposed_tools": [],
+            "evidence": {},
+        }
+    )
+    return report
 
 
 @pytest.fixture
@@ -92,7 +127,8 @@ def wired_client(tmp_path, monkeypatch):
     _jobs.clear()
 
     original_graph_store = api_stores._graph_store
-    set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    graph_store = SQLiteGraphStore(tmp_path / "graph.db")
+    set_graph_store(graph_store)
 
     report_json = _report_with_known_vuln()
 
@@ -102,6 +138,14 @@ def wired_client(tmp_path, monkeypatch):
         job.completed_at = _now()
         store.put(job)
         _persist_graph_snapshot(job, report_json)
+        # The production demo estate persists its ranked ExposurePaths. This
+        # fixture materializes the same evidence so /v1/findings can prove its
+        # read-side projection from the graph store rather than re-deriving it.
+        from agent_bom.api.routes.graph import _derived_attack_paths
+
+        graph = graph_store.load_graph(tenant_id="default")
+        graph.attack_paths = _derived_attack_paths(graph)
+        graph_store.save_graph(graph)
 
     monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", _complete_synchronously)
 
@@ -122,7 +166,8 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
 
     findings = wired_client.get("/v1/findings")
     assert findings.status_code == 200
-    finding_vulns = {row.get("vulnerability_id") for row in findings.json()["findings"]}
+    finding_rows = findings.json()["findings"]
+    finding_vulns = {row.get("vulnerability_id") for row in finding_rows}
     assert KNOWN_CVE in finding_vulns, f"known vuln missing from findings: {finding_vulns}"
 
     attack_paths = wired_client.get("/v1/graph/attack-paths")
@@ -131,6 +176,79 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
     assert paths, "expected at least one derived attack path for the known vuln"
     path_vuln_ids = {vid for path in paths for vid in (path.get("vuln_ids") or [])}
     assert KNOWN_CVE in path_vuln_ids, f"known vuln missing from attack paths: {path_vuln_ids}"
+
+    matching_paths = [path for path in paths if KNOWN_CVE in (path.get("vuln_ids") or [])]
+    expected_min_hops = min(len(path["hops"]) - 1 for path in matching_paths)
+    reachable = next(row for row in finding_rows if row.get("vulnerability_id") == KNOWN_CVE)
+    assert reachable["graph_reachable"] is True
+    assert reachable["graph_min_hop_distance"] == expected_min_hops
+    assert reachable["graph_reachable_from_agents"] == ["agent:demo-agent"]
+
+    unassessed = next(row for row in finding_rows if row.get("vulnerability_id") == NON_OVERLAP_CVE)
+    assert unassessed["graph_reachable"] is None
+    assert unassessed["graph_min_hop_distance"] is None
+    assert unassessed["graph_reachable_from_agents"] == []
+
+
+def test_findings_reachability_projection_is_tenant_scoped_and_bounded():
+    class RecordingGraphStore:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def attack_paths(self, **kwargs):
+            self.calls.append(kwargs)
+            path = AttackPath(
+                source="agent:reachable",
+                target=f"vuln:{KNOWN_CVE}",
+                hops=["agent:reachable", "server:demo", f"vuln:{KNOWN_CVE}"],
+                vuln_ids=[KNOWN_CVE],
+            )
+            return "scan-alpha", "2026-07-27T00:00:00Z", [path], MAX_FINDING_REACHABILITY_PATHS + 1
+
+    store = RecordingGraphStore()
+    result = project_persisted_graph_reachability(
+        [
+            {"id": "reachable", "cve_id": KNOWN_CVE, "finding_node_id": f"vuln:{KNOWN_CVE}"},
+            {"id": "unassessed", "cve_id": NON_OVERLAP_CVE},
+        ],
+        graph_store=store,  # type: ignore[arg-type]
+        tenant_id="tenant-alpha",
+        scan_id="scan-alpha",
+        path_limit=50_000,
+    )
+
+    assert store.calls == [
+        {
+            "tenant_id": "tenant-alpha",
+            "scan_id": "scan-alpha",
+            "offset": 0,
+            "limit": MAX_FINDING_REACHABILITY_PATHS,
+        }
+    ]
+    assert result.truncated is True
+    assert result.rows[0]["graph_reachable"] is True
+    assert result.rows[0]["graph_min_hop_distance"] == 2
+    assert result.rows[0]["graph_reachable_from_agents"] == ["agent:reachable"]
+    assert result.rows[1]["graph_reachable"] is None
+
+
+def test_findings_read_survives_unavailable_graph_backend(wired_client, monkeypatch):
+    class UnavailableGraphStore:
+        def attack_paths(self, **_kwargs):
+            raise NotImplementedError("graph backend unavailable at secret://internal-host")
+
+    monkeypatch.setattr("agent_bom.api.routes.scan._get_graph_store", lambda: UnavailableGraphStore())
+
+    create = wired_client.post("/v1/scan", json={})
+    assert create.status_code == 202
+    response = wired_client.get("/v1/findings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["findings"]
+    assert any("Graph reachability evidence is unavailable" in warning for warning in payload["warnings"])
+    assert "secret://internal-host" not in response.text
+    assert all(row["graph_reachable"] is None for row in payload["findings"])
 
 
 def test_findings_read_sheds_with_429_when_backpressure_opens(wired_client, monkeypatch):

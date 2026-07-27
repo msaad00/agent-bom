@@ -50,6 +50,7 @@ a9ab4c116af8bc5086aca63933d12a675573bb4b:src/agent_bom/cloud/side_scan_targets.p
 # current test assembles each non-functional detector input at runtime.
 9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-pat:209
 9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:curl-auth-header:331
+9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:github-pat:374
 9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-pat:379
 9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-deploy-token:381
 9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-runner-authentication-token:382

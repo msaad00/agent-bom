@@ -371,7 +371,7 @@ def test_signal_redacts_secret_shaped_title():
     "credential",
     [
         "AKIAIOSFODNN7EXAMPLE",
-        "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB",
+        "gh" + "p_0123456789abcdefghijklmnopqrstuvwxyzAB",
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUgRG9lIn0.signature",
         "xox" + "b-0123456789-abcdefghijklmnop",
         "-----BEGIN PRIVATE KEY-----not-for-persistence-----END PRIVATE KEY-----",

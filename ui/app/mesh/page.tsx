@@ -590,7 +590,7 @@ export default function MeshPage() {
   }
 
   return (
-    <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col bg-background text-foreground`}>
+    <div className={`${captureMode ? "h-[calc(100vh-4rem)]" : "h-[calc(100vh-3.5rem)]"} flex flex-col bg-background text-foreground`}>
       {/* Header */}
       {captureMode ? (
         <div className="border-b border-[var(--border-subtle)] px-5 py-2.5">

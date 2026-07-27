@@ -2212,7 +2212,7 @@ async function main() {
       await advancedControls.locator(":scope > summary").click();
       await fitReactFlow(lineagePage);
       await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
-      await scrollTo(lineagePage, 220);
+      await scrollTo(lineagePage, 140);
       await lineagePage.waitForTimeout(350);
     }, {
       expectedText: [

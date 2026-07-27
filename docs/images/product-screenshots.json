@@ -1,7 +1,7 @@
 {
   "release_version": "0.98.2",
-  "captured_at": "2026-07-27T06:18:33.369Z",
-  "source_commit": "4c626b8d90b5c3af529ec6622c5e9ae6f8a557f6",
+  "captured_at": "2026-07-27T06:22:35.509Z",
+  "source_commit": "68bc6657d161d92a2d7de52252961f091371c228",
   "source_tree": "clean",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
@@ -75,7 +75,7 @@
       "page": "/mesh?capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
       "visible_version": "0.98.2",
-      "sha256": "sha256:cd11dbe2ac69f9e0118f4a38a1dffc004b3ad2fb60ba17e1639022d964649dcd"
+      "sha256": "sha256:831431d829b62265380fa8ae5ac3fa6d01b3e306218fff5e8ae3de2e79d06f4c"
     },
     {
       "presentation": "dark desktop",
@@ -115,7 +115,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
       "scope": "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
       "visible_version": "0.98.2",
-      "sha256": "sha256:1d747f00efd1e6d9686fb4a116785b0dce3c3e1a673af83942ae2f74ac828cdf"
+      "sha256": "sha256:8dcdd7f268e99140cd7ab95558006d373bd3451a7585d4492a09136e13ed17c3"
     },
     {
       "presentation": "dark desktop",
@@ -139,7 +139,7 @@
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.98.2",
-      "sha256": "sha256:4877c75deb44638e3d9ed57008db7d2075da55dd267f85b965f1f0c112747f31"
+      "sha256": "sha256:7cb603fb8e458652cecf954192aaf01f7551d6f8d946bd6bacb37264419c3199"
     },
     {
       "presentation": "dark desktop",

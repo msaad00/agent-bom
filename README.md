@@ -160,7 +160,7 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
 
-> Examples target `v0.98.1`; confirm release availability before copying an
+> Examples target this release candidate; confirm release availability before copying an
 > exact pin. Otherwise, use the latest version shown on PyPI.
 
 [Deployment overview](site-docs/deployment/overview.md) ·

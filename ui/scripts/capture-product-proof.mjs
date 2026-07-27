@@ -1672,6 +1672,14 @@ async function installRoutes(page) {
     schema_version: "gateway.feed.v1",
     tenant_id: "tenant-alpha",
     generated_at: CREATED_AT,
+    health: {
+      state: "sample",
+      live: false,
+      heartbeat_at: CREATED_AT,
+      age_seconds: 0,
+      stale_after_seconds: 120,
+      reason: "deterministic_capture",
+    },
     count: 4,
     events: [
       { ts: CREATED_AT, agent: "developer-copilot", action_type: "tool_call_blocked", target: "github.repo-write", detail: "Repo-write blocked by default-deny prod policy", tenant: "tenant-alpha", shadow: false, source: "gateway" },
@@ -2273,10 +2281,10 @@ async function main() {
     });
     await capture(page, "/runtime?tab=gateway&capture=1", "gateway-policies-live.png", async (gatewayPage) => {
       await gatewayPage.getByText("Calls today").first().waitFor({ state: "visible", timeout: 8000 });
-      await gatewayPage.getByText("Gateway live feed").first().waitFor({ state: "visible", timeout: 8000 });
+      await gatewayPage.getByText("Gateway activity").first().waitFor({ state: "visible", timeout: 8000 });
       await scrollTo(gatewayPage, 0);
     }, {
-      expectedText: ["Calls today", "4,485", "Gateway live feed", "developer-copilot", "Repo-write blocked"],
+      expectedText: ["Calls today", "4,485", "Gateway activity", "developer-copilot", "Repo-write blocked"],
       expectedApiPaths: ["/v1/gateway/policies", "/v1/gateway/feed", "/v1/gateway/feed/kpis"],
     });
     await capture(page, "/audit?capture=1", "identity-audit-live.png", async (auditPage) => {

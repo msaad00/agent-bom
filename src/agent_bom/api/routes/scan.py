@@ -48,6 +48,7 @@ from werkzeug.security import safe_join
 from agent_bom.api import job_status_count_cache
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
+from agent_bom.api.finding_reachability import project_persisted_graph_reachability
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
@@ -69,6 +70,7 @@ from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
+    _get_graph_store,
     _get_idempotency_store,
     _get_store,
     _job_lock,
@@ -2573,6 +2575,23 @@ def _list_findings_impl(
             status=status_key,
         )
         total_approximate = False
+
+    try:
+        reachability = project_persisted_graph_reachability(
+            page_rows,
+            graph_store=_get_graph_store(),
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+        )
+        page_rows = reachability.rows
+        if reachability.truncated:
+            warnings.append(
+                "Graph reachability projection is bounded to the highest-risk 1000 persisted paths; "
+                "unmatched findings remain unassessed."
+            )
+    except Exception as exc:  # noqa: BLE001 — optional evidence must not fail the findings list
+        _logger.warning("Finding graph reachability projection skipped: %s", sanitize_error(exc))
+        warnings.append("Graph reachability evidence is unavailable for this page; unmatched findings remain unassessed.")
 
     page = _redact_finding_page(page_rows)
     envelope = finding_list_envelope(

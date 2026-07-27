@@ -1088,6 +1088,10 @@ export interface UnifiedFinding {
   affected_agents?: string[] | undefined;
   exposed_credentials?: string[] | undefined;
   exposed_tools?: string[] | undefined;
+  /** Persisted graph path evidence for this asset-specific finding. */
+  graph_reachable?: boolean | null | undefined;
+  graph_min_hop_distance?: number | null | undefined;
+  graph_reachable_from_agents?: string[] | undefined;
   scan_id?: string | undefined;
   scan_sources?: string[] | undefined;
   status?: string | undefined;

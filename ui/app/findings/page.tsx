@@ -183,8 +183,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
             },
           ]
         : [],
-      graph_reachable: null,
-      graph_min_hop_distance: null,
+      graph_reachable: finding.graph_reachable ?? null,
+      graph_min_hop_distance: finding.graph_min_hop_distance ?? null,
+      graph_reachable_from_agents: finding.graph_reachable_from_agents ?? [],
       lifecycle_status: finding.status ?? undefined,
       first_seen: finding.first_seen ?? undefined,
       last_seen: finding.last_seen ?? undefined,

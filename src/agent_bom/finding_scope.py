@@ -421,6 +421,8 @@ _CANONICAL_NULLABLE_FINDING_FIELDS: tuple[str, ...] = (
     "provenance",
     "owner",
     "sla_due_at",
+    "graph_reachable",
+    "graph_min_hop_distance",
 )
 
 _FINDING_RESPONSE_TIMESTAMPS = (
@@ -559,6 +561,21 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
             payload["epss_score"] = score
     if isinstance(row.get("is_kev"), bool):
         payload["is_kev"] = row["is_kev"]
+
+    graph_reachable = row.get("graph_reachable")
+    payload["graph_reachable"] = graph_reachable if isinstance(graph_reachable, bool) else None
+    graph_distance = row.get("graph_min_hop_distance")
+    payload["graph_min_hop_distance"] = (
+        graph_distance
+        if isinstance(graph_distance, int) and not isinstance(graph_distance, bool) and 0 <= graph_distance <= 10_000
+        else None
+    )
+    graph_agents = row.get("graph_reachable_from_agents")
+    payload["graph_reachable_from_agents"] = [
+        agent_id
+        for value in (graph_agents[:100] if isinstance(graph_agents, list) else [])
+        if (agent_id := _safe_optional_text(value, max_len=512)) is not None
+    ]
 
     remediation_versions = row.get("remediation_versions")
     if not isinstance(remediation_versions, list):

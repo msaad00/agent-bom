@@ -29,6 +29,7 @@ export interface EnrichedVuln extends Vulnerability {
   remediation_items: RemediationSummary[];
   graph_reachable?: boolean | null | undefined;
   graph_min_hop_distance?: number | null | undefined;
+  graph_reachable_from_agents?: string[] | undefined;
   effective_reach_score?: number | undefined;
   effective_reach_band?: string | undefined;
   framework_tags?: string[] | undefined;

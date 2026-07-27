@@ -336,6 +336,45 @@ describe("FindingsPage", () => {
     expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
   });
 
+  it("renders persisted graph reachability without inventing evidence for non-overlapping findings", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        {
+          ...canonicalFinding,
+          graph_reachable: true,
+          graph_min_hop_distance: 2,
+          graph_reachable_from_agents: ["agent:developer-copilot"],
+        },
+        {
+          ...canonicalFinding,
+          id: "finding-without-a-path",
+          cve_id: "CVE-2026-5678",
+          title: "Static finding without graph evidence",
+          graph_reachable: null,
+          graph_min_hop_distance: null,
+          graph_reachable_from_agents: [],
+        },
+      ],
+      total: 2,
+      facets: {
+        finding_class: { vulnerability: 2, misconfiguration: 0, secret: 0, identity: 0, unclassified: 0 },
+        severity: { critical: 2, high: 0, medium: 0, low: 0, info: 0, unknown: 0 },
+        status: { open: 2, resolved: 0 },
+        domain: { cspm: 0, vuln: 2, aspm: 0, dspm: 0, aispm: 0 },
+        freshness: { last_24_hours: 0, last_7_days: 0, last_30_days: 0, older: 0, unavailable: 2 },
+      },
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
+    const summary = screen.getByTestId("findings-workspace-summary");
+    expect(within(summary).getByText("1 reachable")).toBeInTheDocument();
+    expect(within(summary).getByText("1 assessed on this page")).toBeInTheDocument();
+    expect(screen.getByText("Reachable · 2 hops")).toBeInTheDocument();
+  });
+
   it("gives Compliance distinct columns, actions, and an evidence-first drawer", async () => {
     navigationState.query = "lens=trust";
     apiMock.listFindings.mockResolvedValue({

@@ -14,11 +14,6 @@ on:
     workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Published release tag to repair (for example, v0.98.0); leave blank for the latest published release"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -38,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -48,20 +44,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          REQUESTED_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if [ -n "${REQUESTED_TAG:-}" ]; then
-              if ! echo "$REQUESTED_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
-                echo "::error::release_tag must be a v-prefixed semantic version"
-                exit 1
-              fi
-              RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${REQUESTED_TAG}")
-            else
-              RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")
-            fi
+            # Manual repair always targets the latest published release. This
+            # workflow fans out to multiple registries, so accepting an older
+            # tag here could downgrade Smithery or ClawHub as a side effect.
+            RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")
             RELEASE_TAG=$(echo "$RELEASE_JSON" | jq -er '.tag_name')
             if [ "$(echo "$RELEASE_JSON" | jq -r '.draft != false')" = "true" ]; then
               echo "::error::Registry repair requires a published, non-draft GitHub release"
@@ -109,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release.outputs.release_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Check Smithery configuration
@@ -241,7 +231,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release.outputs.release_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Fetch release commit for manifest verification
@@ -256,17 +246,30 @@ jobs:
         id: glama_trigger
         env:
           GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
+          EVENT_NAME: ${{ github.event_name }}
           RELEASE_REF: ${{ needs.release.outputs.release_ref }}
           RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
           VERSION: ${{ needs.release.outputs.version }}
           GLAMA_DOCKERFILE: integrations/glama/Dockerfile
         run: |
-          if [ -z "$GLAMA_WEBHOOK_URL" ]; then
+          set -u
+
+          fail_or_warn() {
+            local message="$1"
             echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GLAMA_WEBHOOK_URL not configured. No Glama rebuild was triggered"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Manual Glama repair ${message}"
+              return 1
+            fi
+            echo "::warning::Automatic Glama rebuild ${message}; the freshness issue will remain open"
+            return 0
+          }
+
+          if [ -z "$GLAMA_WEBHOOK_URL" ]; then
             echo "Release pin for Glama: ${RELEASE_REF} (${RELEASE_SHA:0:7}) dockerfile=${GLAMA_DOCKERFILE}"
             echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL as a repository Actions secret"
-            exit 0
+            fail_or_warn "failed because GLAMA_WEBHOOK_URL is not configured. No Glama rebuild was triggered"
+            exit $?
           fi
           PAYLOAD=$(jq -n \
             --arg ref "$RELEASE_REF" \
@@ -275,17 +278,20 @@ jobs:
             --arg dockerfile "$GLAMA_DOCKERFILE" \
             '{ref: $ref, commit: $commit, version: $version, dockerfile: $dockerfile}')
           echo "Triggering Glama rebuild for ${RELEASE_REF} (${RELEASE_SHA:0:7}) using ${GLAMA_DOCKERFILE}"
-          HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
-            -o /dev/null -w "%{http_code}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            -X POST "$GLAMA_WEBHOOK_URL")
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+          if ! HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
+              -o /dev/null -w "%{http_code}" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              -X POST "$GLAMA_WEBHOOK_URL"); then
+            fail_or_warn "request failed before an HTTP response was received"
+            exit $?
+          fi
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
             echo "rebuild_triggered=true" >> "$GITHUB_OUTPUT"
             echo "Glama rebuild triggered successfully"
           else
-            echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Glama rebuild trigger returned HTTP ${HTTP_STATUS} — may need manual rebuild"
+            fail_or_warn "returned HTTP ${HTTP_STATUS}"
+            exit $?
           fi
 
       # Glama re-crawls listings on its own cadence (can be hours), so a tight
@@ -316,7 +322,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release.outputs.release_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Set up Node.js

@@ -30,6 +30,8 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
@@ -50,9 +52,15 @@ jobs:
           fi
           git fetch --force --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
           RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${TAG}")
-          TOOL_COUNT=$(git show "${RELEASE_SHA}:README.md" | sed -nE 's/.*MCP server mode (exposes|advertises) ([0-9]+) MCP tools.*/\2/p' | head -1)
+          METRICS_JSON=$(git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json")
+          METRICS_VERSION=$(echo "$METRICS_JSON" | jq -er '.version')
+          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er 'first(.metrics[] | select(.name == "MCP tools") | .value)')
+          if [ "$METRICS_VERSION" != "$VERSION" ]; then
+            echo "::error::Published release metrics version ${METRICS_VERSION} does not match ${VERSION}"
+            exit 1
+          fi
           if ! [[ "$TOOL_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Published release README does not declare a positive MCP tool count"
+            echo "::error::Published release metrics do not declare a positive MCP tool count"
             exit 1
           fi
           {

@@ -209,11 +209,15 @@ def main(argv: list[str] | None = None) -> int:
     last_error = ""
     listing_version = "unknown"
     actual_tool_count: int | None = None
+    last_probe_unreachable = False
     for attempt in range(1, max(1, args.retries) + 1):
+        actual_tool_count = None
+        last_probe_unreachable = False
         try:
             page = _fetch(args.url, args.timeout)
         except (urllib.error.URLError, TimeoutError) as exc:
             last_error = f"failed to fetch Glama listing: {exc}"
+            last_probe_unreachable = True
         else:
             listing_version = _extract_listing_version(page)
             failures = _check(page, version, tool_count)
@@ -232,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
                     failures.append(f"Glama public API exposes {actual_tool_count} tools; expected {tool_count}")
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
                 failures.append(f"failed to verify Glama public API tool inventory: {exc}")
+                last_probe_unreachable = True
             if not failures:
                 if args.json:
                     print(
@@ -261,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "surface": "Glama",
-                    "status": "stale" if listing_version != "unknown" else "unreachable",
+                    "status": "unreachable" if last_probe_unreachable else "stale",
                     "expected": version,
                     "listing_version": listing_version,
                     "tool_count": actual_tool_count,

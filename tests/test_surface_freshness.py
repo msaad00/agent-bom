@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import urllib.error
 from pathlib import Path
 from types import ModuleType
 
@@ -31,6 +32,11 @@ def test_glama_listing_json_contract_reports_stale_listing(monkeypatch, capsys):
 
     monkeypatch.setattr(script, "_load_readme_tool_count", lambda: "69")
     monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: stale_page)
+    monkeypatch.setattr(
+        script,
+        "_fetch_json",
+        lambda _url, _timeout: {"tools": [{"name": f"tool_{index}"} for index in range(69)]},
+    )
 
     assert script.main(["--expected", "0.89.2", "--json", "--retries", "1"]) == 1
     captured = capsys.readouterr()
@@ -75,6 +81,48 @@ def test_glama_listing_accepts_exact_public_api_tool_inventory(monkeypatch, caps
     assert payload["status"] == "fresh"
     assert payload["tool_count"] == 77
     assert payload["expected_tool_count"] == 77
+
+
+def test_glama_api_failure_is_unreachable_and_resets_previous_retry_count(monkeypatch, capsys):
+    """A later API outage must not retain an earlier attempt's observed count."""
+    script = _load_script("check_glama_listing.py")
+    current_page = "v0.98.2 MCP server mode exposes 77 MCP tools"
+    api_results = iter(
+        [
+            {"tools": [{"name": f"tool_{index}"} for index in range(76)]},
+            urllib.error.URLError("temporary outage"),
+        ]
+    )
+
+    def fetch_json(_url, _timeout):
+        result = next(api_results)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(script, "_fetch_json", fetch_json)
+
+    assert (
+        script.main(
+            [
+                "--expected",
+                "0.98.2",
+                "--expected-tool-count",
+                "77",
+                "--json",
+                "--retries",
+                "2",
+                "--delay-seconds",
+                "0",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "unreachable"
+    assert payload["tool_count"] is None
+    assert "failed to verify Glama public API tool inventory" in payload["error"]
 
 
 def test_glama_build_manifest_verify_passes():

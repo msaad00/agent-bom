@@ -1482,7 +1482,7 @@ function FindingsPage() {
                     </button>
                   ))}
                 </div>
-                {lens === "ops" ? <div className="flex items-center gap-1">
+                {lens === "ops" ? <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1 sm:w-auto">
                   <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Group by</span>
                   {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
                     <button

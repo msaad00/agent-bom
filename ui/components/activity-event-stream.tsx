@@ -168,7 +168,10 @@ export function ActivityEventStream({
   const liveGateway = gatewayHealth?.state === "live" && gatewayHealth.live === true;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
+    <section
+      data-testid="activity-event-stream"
+      className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]"
+    >
       <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

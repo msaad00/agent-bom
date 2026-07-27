@@ -48,14 +48,16 @@ def state_dir() -> Path:
     return Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
 
 
-def default_state_db_path() -> str:
+def default_state_db_path(*, create_parent: bool = True) -> str:
     """Return the durable SQLite path used when no backend is configured.
 
-    Creates the parent directory if needed so first-run boot does not fail on a
-    missing ``~/.agent-bom`` directory.
+    Creates the parent directory by default so first-run boot does not fail on
+    a missing ``~/.agent-bom`` directory. Read-only callers can pass
+    ``create_parent=False`` to resolve the path without mutating the filesystem.
     """
     directory = state_dir()
-    directory.mkdir(parents=True, exist_ok=True)
+    if create_parent:
+        directory.mkdir(parents=True, exist_ok=True)
     return str(directory / DEFAULT_STATE_DB_FILENAME)
 
 
@@ -84,7 +86,7 @@ def postgres_configured() -> bool:
     return bool(db) and _is_postgres_url(db)
 
 
-def sqlite_path() -> str:
+def sqlite_path(*, create_parent: bool = True) -> str:
     """Return the SQLite path for the durable default backend.
 
     Uses ``AGENT_BOM_DB`` when it points at a file path; otherwise the durable
@@ -93,7 +95,7 @@ def sqlite_path() -> str:
     db = os.environ.get("AGENT_BOM_DB", "")
     if db and not _is_postgres_url(db):
         return db
-    return default_state_db_path()
+    return default_state_db_path(create_parent=create_parent)
 
 
 def select_backend() -> str:

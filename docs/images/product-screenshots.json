@@ -1,7 +1,7 @@
 {
   "release_version": "0.98.2",
-  "captured_at": "2026-07-27T05:59:58.141Z",
-  "source_commit": "233aac5ccbdb26b8458a7924ed5fc8ca2e21daea",
+  "captured_at": "2026-07-27T06:18:33.369Z",
+  "source_commit": "4c626b8d90b5c3af529ec6622c5e9ae6f8a557f6",
   "source_tree": "clean",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
@@ -11,7 +11,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
       "visible_version": "0.98.2",
-      "sha256": "sha256:efe98d0131ca1421af03577e036e94337e990c3546137ad03a3d68c647b69d28"
+      "sha256": "sha256:d360498f9d7a3941a585ad756a2a6d47a58530ff1be61c59e4ad901094900073"
     },
     {
       "presentation": "light desktop",
@@ -19,7 +19,7 @@
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
       "visible_version": "0.98.2",
-      "sha256": "sha256:2ca3451625019081724b72c87256920016003afd7bcfd135a259769441948631"
+      "sha256": "sha256:270750612f6d3cb7625f03256e43a4dcc5222feed568a71cfca69896796ce042"
     },
     {
       "presentation": "dark mobile",
@@ -35,7 +35,7 @@
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
       "visible_version": "0.98.2",
-      "sha256": "sha256:a1bb1b272056921109e742d27eccc7e018cde67a89d4fc44b94b66acd9e50105"
+      "sha256": "sha256:3c3c06de2a2e7d64879f7e204b1d7e03910ca56758d2d2e2cef9fb5634950707"
     },
     {
       "presentation": "dark desktop",
@@ -43,7 +43,7 @@
       "page": "/connections?capture=1",
       "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
       "visible_version": "0.98.2",
-      "sha256": "sha256:7cfa68bf5dfc76dc966b8193f193746b3580f3696b2560a52565313218331d26"
+      "sha256": "sha256:8683928650672fc026a00d926d54d44ec63362835945cb6322dacf61e6298dbc"
     },
     {
       "presentation": "dark desktop",
@@ -75,7 +75,7 @@
       "page": "/mesh?capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
       "visible_version": "0.98.2",
-      "sha256": "sha256:a910b4c4bd2b86d3eb75de36ae87f3459504f31bb19553dcda44bce3e986c76d"
+      "sha256": "sha256:cd11dbe2ac69f9e0118f4a38a1dffc004b3ad2fb60ba17e1639022d964649dcd"
     },
     {
       "presentation": "dark desktop",
@@ -115,7 +115,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
       "scope": "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
       "visible_version": "0.98.2",
-      "sha256": "sha256:b8741e43e790d42d3eb2c3cad147332da66c3185009417b66065ae1194662c28"
+      "sha256": "sha256:1d747f00efd1e6d9686fb4a116785b0dce3c3e1a673af83942ae2f74ac828cdf"
     },
     {
       "presentation": "dark desktop",
@@ -139,7 +139,7 @@
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.98.2",
-      "sha256": "sha256:aaa895ef29b8eb7f227a02cf9e677addcb58492a3635680ea621034c34689cc1"
+      "sha256": "sha256:4877c75deb44638e3d9ed57008db7d2075da55dd267f85b965f1f0c112747f31"
     },
     {
       "presentation": "dark desktop",

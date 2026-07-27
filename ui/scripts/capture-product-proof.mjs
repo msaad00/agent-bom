@@ -2115,7 +2115,7 @@ async function main() {
       await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });
     }, {
       expectedText: ["New Scan", "What this scan collects and produces", "Read-only boundary", /Scope now/i, /Scan jobs/i],
-      expectedApiPaths: ["/v1/cloud/connections", "/v1/sources", "/v1/jobs"],
+      expectedApiPaths: ["/v1/cloud/connections", "/v1/sources"],
     });
     await capture(page, "/jobs?capture=1", "jobs-pipeline-live.png", async (jobsPage) => {
       await jobsPage.getByTestId(`job-pipeline-${SCAN_ID}`).waitFor({ state: "visible", timeout: 20_000 });

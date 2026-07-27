@@ -36,7 +36,7 @@
     "next": "^16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "recharts": "^3.10.0",
+    "recharts": "^3.10.1",
     "sigma": "^3.0.3"
   },
   "overrides": {

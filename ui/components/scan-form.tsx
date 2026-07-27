@@ -4,20 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity,
   ArrowRight,
   Bot,
   CalendarClock,
   ChevronDown,
   Cloud,
   Container,
-  FileCheck2,
-  History,
   Link2,
-  ListChecks,
   Loader2,
-  Network,
-  PackageSearch,
   Plus,
   Server,
   ShieldCheck,
@@ -27,13 +21,11 @@ import {
 
 import { AiScanPanel } from "@/components/ai-scan-panel";
 import { useAuthState } from "@/components/auth-provider";
-import { PermissionDeniedNotice } from "@/components/role-access";
 
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import {
   api,
   type CloudConnectionRecord,
-  type JobListItem,
   type ScanRequest,
   type SourceRecord,
 } from "@/lib/api";
@@ -111,9 +103,6 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [sourcesUnavailable, setSourcesUnavailable] = useState(false);
-  const [recentJobs, setRecentJobs] = useState<JobListItem[]>([]);
-  const [recentJobsLoading, setRecentJobsLoading] = useState(true);
-  const [recentJobsUnavailable, setRecentJobsUnavailable] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState(initialConnectionId ?? "");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [target, setTarget] = useState<AdhocScanTarget>(
@@ -183,26 +172,6 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
         if (!mounted) return;
         setSourcesUnavailable(true);
         setSourcesLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    api
-      .listJobs({ limit: 3 })
-      .then((response) => {
-        if (!mounted) return;
-        setRecentJobs(response.jobs ?? []);
-        setRecentJobsUnavailable(false);
-        setRecentJobsLoading(false);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setRecentJobsUnavailable(true);
-        setRecentJobsLoading(false);
       });
     return () => {
       mounted = false;
@@ -409,7 +378,6 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                 authLoading={authLoading}
                 managedTrialSession={managedTrialSession}
                 roleCanRunScans={roleCanRunScans}
-                session={session}
               />
             )}
           </div>
@@ -613,7 +581,6 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                   authLoading={authLoading}
                   managedTrialSession={managedTrialSession}
                   roleCanRunScans={roleCanRunScans}
-                  session={session}
                 />
               ) : null}
               {scanMode === "connected" ? (
@@ -652,15 +619,6 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
               </p>
             </div>
 
-            <ScanOperationalContext
-              cloudConnectionCount={connections.length}
-              cloudConnectionsUnavailable={Boolean(connectionsError)}
-              sourceCount={sources.length}
-              sourcesUnavailable={sourcesUnavailable}
-              recentJobs={recentJobs}
-              recentJobsLoading={recentJobsLoading}
-              recentJobsUnavailable={recentJobsUnavailable}
-            />
           </div>
 
           <aside className="border-t border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 sm:p-5 lg:border-t-0 lg:border-l">
@@ -684,59 +642,13 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   );
 }
 
-type EvidencePreviewItem = {
-  label: string;
-  detail: string;
-  icon: typeof FileCheck2;
-};
-
-function evidencePreview(mode: FormMode, target: AdhocScanTarget): EvidencePreviewItem[] {
-  if (mode === "connected") {
-    return [
-      { label: "Cloud inventory", detail: "Resources and identities", icon: PackageSearch },
-      { label: "Posture findings", detail: "Misconfigurations and CIS evidence", icon: ListChecks },
-      { label: "Exposure paths", detail: "Identity-to-resource reachability", icon: Network },
-      { label: "Compliance", detail: "Evidence-backed control coverage", icon: ShieldCheck },
-    ];
-  }
-  if (mode === "scheduled") {
-    return [
-      { label: "Normalized evidence", detail: "Source records in one model", icon: FileCheck2 },
-      { label: "Source health", detail: "Run status and warnings", icon: Activity },
-      { label: "Findings", detail: "Deduplicated security signals", icon: ListChecks },
-      { label: "Audit trail", detail: "Tenant-scoped run evidence", icon: ShieldCheck },
-    ];
-  }
-  if (target === "repository") {
-    return [
-      { label: "Agent + MCP inventory", detail: "Configs, tools, and credentials", icon: Network },
-      { label: "Code + dependency findings", detail: "SAST, IaC, secrets, and packages", icon: ListChecks },
-      { label: "SBOM evidence", detail: "CycloneDX and SPDX export paths", icon: PackageSearch },
-      { label: "Prioritized paths", detail: "Reachability and fix-first context", icon: ShieldCheck },
-    ];
-  }
-  if (target === "containers") {
-    return [
-      { label: "Image inventory", detail: "Packages and SBOM evidence", icon: PackageSearch },
-      { label: "Vulnerability findings", detail: "Severity and exploit context", icon: ListChecks },
-      { label: "Reachability", detail: "Links to agents and runtimes", icon: Network },
-      { label: "Remediation", detail: "Fix-first package guidance", icon: ShieldCheck },
-    ];
-  }
-  if (target === "kubernetes") {
-    return [
-      { label: "Workload inventory", detail: "Pods, images, and namespaces", icon: PackageSearch },
-      { label: "Kubernetes posture", detail: "Configuration and workload risk", icon: ListChecks },
-      { label: "Runtime context", detail: "Workload-to-agent relationships", icon: Network },
-      { label: "Prioritized fixes", detail: "Evidence-linked remediation", icon: ShieldCheck },
-    ];
-  }
-  return [
-    { label: "Agent + MCP inventory", detail: "Local configs and capabilities", icon: Network },
-    { label: "Security findings", detail: "Packages, secrets, and posture", icon: ListChecks },
-    { label: "Blast radius", detail: "Reachable tools and credentials", icon: ShieldCheck },
-    { label: "Fix-first plan", detail: "Prioritized remediation actions", icon: FileCheck2 },
-  ];
+function scanPlanCopy(mode: FormMode, target: AdhocScanTarget, enrich: boolean) {
+  if (mode === "connected") return "Provider inventory → CIS posture → identity context → findings, graph, and compliance evidence.";
+  if (mode === "scheduled") return "Connector health → source collection → normalized evidence → findings and audit trail.";
+  if (target === "repository") return `Agent and MCP discovery → dependencies, SBOM, secrets, IaC, and SAST → ${enrich ? "CVSS, EPSS, and KEV" : "local correlation"}.`;
+  if (target === "containers") return `Image manifest → package inventory → vulnerability matching → ${enrich ? "threat enrichment" : "local correlation"}.`;
+  if (target === "kubernetes") return "Workload discovery → Kubernetes posture → image evidence → graph correlation.";
+  return `Agent and MCP discovery → packages and secret indicators → ${enrich ? "threat enrichment" : "local correlation"} → prioritized findings.`;
 }
 
 function boundaryCopy(mode: FormMode, target: AdhocScanTarget): string {
@@ -747,44 +659,14 @@ function boundaryCopy(mode: FormMode, target: AdhocScanTarget): string {
   return "Discovery and scanning are read-only. Runtime policy enforcement is a separate operating mode.";
 }
 
-function collectorPlan(mode: FormMode, target: AdhocScanTarget, enrich: boolean): string[] {
-  if (mode === "connected") return ["Provider inventory", "CIS posture", "Identity context", "Graph correlation"];
-  if (mode === "scheduled") return ["Connector health", "Source collection", "Normalization", "Finding correlation"];
-  if (target === "repository") {
-    return ["Agent + MCP discovery", "Dependency + SBOM", "Secrets + IaC + SAST", enrich ? "CVSS + EPSS + KEV" : "Local correlation"];
-  }
-  if (target === "containers") return ["Image manifest", "Package inventory", "Vulnerability matching", enrich ? "Threat enrichment" : "Local correlation"];
-  if (target === "kubernetes") return ["Workload discovery", "Kubernetes posture", "Image evidence", "Graph correlation"];
-  return ["Agent + MCP discovery", "Package inventory", "Secret indicators", enrich ? "Threat enrichment" : "Local correlation"];
-}
-
-function jobLabel(job: JobListItem): string {
-  const request = job.request;
-  if (request?.repo_url) return request.repo_url.replace(/^https?:\/\//, "");
-  if (request?.images?.length) return `${request.images.length} container image${request.images.length === 1 ? "" : "s"}`;
-  if (request?.k8s) return request.k8s_namespace ? `Kubernetes · ${request.k8s_namespace}` : "Kubernetes · all namespaces";
-  if (job.source_id) return "Registered data source";
-  return "Agent and MCP discovery";
-}
-
-function jobStatusLabel(job: JobListItem): string {
-  if (job.scan_outcome === "partial") return "Partial — review warnings";
-  if (job.scan_outcome === "failed" || job.status === "failed") return "Failed";
-  if (job.scan_outcome === "complete" || job.status === "done") return "Complete";
-  if (job.status === "running") return "Running";
-  return "Queued";
-}
-
 function ScanAccessNotice({
   authLoading,
   managedTrialSession,
   roleCanRunScans,
-  session,
 }: {
   authLoading: boolean;
   managedTrialSession: boolean;
   roleCanRunScans: boolean;
-  session: ReturnType<typeof useAuthState>["session"];
 }) {
   if (authLoading) {
     return (
@@ -795,12 +677,12 @@ function ScanAccessNotice({
   }
   if (!roleCanRunScans) {
     return (
-      <PermissionDeniedNotice
-        session={session}
-        needed="analyst"
-        action="run a scan"
-        className="mb-3"
-      />
+      <div
+        role="note"
+        className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100"
+      >
+        Scans require the Contributor role or higher. Ask an administrator to grant scan access.
+      </div>
     );
   }
   if (managedTrialSession) {
@@ -827,32 +709,12 @@ function ScanWorkspacePanel({
   target: AdhocScanTarget;
   enrich: boolean;
 }) {
-  const preview = evidencePreview(mode, target);
-  const collectors = collectorPlan(mode, target, enrich);
+  const plan = scanPlanCopy(mode, target, enrich);
   const visibleChips = chips.slice(0, 4);
   const extraChips = chips.slice(4);
 
   return (
     <div className="space-y-5">
-      <section aria-labelledby="scan-output-heading">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-400">Evidence preview</p>
-        <h2 id="scan-output-heading" className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
-          What this scan produces
-        </h2>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {preview.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
-                <Icon className="h-4 w-4 text-emerald-400" />
-                <p className="mt-2 text-xs font-medium text-[color:var(--foreground)]">{item.label}</p>
-                <p className="mt-0.5 text-[10px] leading-4 text-[color:var(--text-tertiary)]">{item.detail}</p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
       <section className="rounded-xl border border-emerald-700/30 bg-emerald-500/[0.06] p-3" aria-label="Read-only boundary">
         <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--foreground)]">
           <ShieldCheck className="h-4 w-4 text-emerald-400" />
@@ -861,19 +723,12 @@ function ScanWorkspacePanel({
         <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--text-secondary)]">{boundaryCopy(mode, target)}</p>
       </section>
 
-      <section aria-labelledby="collector-plan-heading">
-        <h2 id="collector-plan-heading" className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-          Collector plan
-        </h2>
-        <ol className="mt-2 grid grid-cols-2 gap-1.5">
-          {collectors.map((collector, index) => (
-            <li key={collector} className="flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-2 text-[10px] text-[color:var(--foreground)]">
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 font-mono text-[9px] text-emerald-400">{index + 1}</span>
-              {collector}
-            </li>
-          ))}
-        </ol>
-      </section>
+      <details className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2.5">
+        <summary className="cursor-pointer text-xs font-semibold text-[color:var(--foreground)]">
+          What this scan collects and produces
+        </summary>
+        <p className="mt-2 text-[11px] leading-5 text-[color:var(--text-secondary)]">{plan}</p>
+      </details>
 
       <section aria-labelledby="scan-scope-heading">
         <div className="flex items-center justify-between gap-3">
@@ -910,85 +765,6 @@ function ScanWorkspacePanel({
         ) : null}
       </section>
 
-    </div>
-  );
-}
-
-function ScanOperationalContext({
-  cloudConnectionCount,
-  cloudConnectionsUnavailable,
-  sourceCount,
-  sourcesUnavailable,
-  recentJobs,
-  recentJobsLoading,
-  recentJobsUnavailable,
-}: {
-  cloudConnectionCount: number;
-  cloudConnectionsUnavailable: boolean;
-  sourceCount: number;
-  sourcesUnavailable: boolean;
-  recentJobs: JobListItem[];
-  recentJobsLoading: boolean;
-  recentJobsUnavailable: boolean;
-}) {
-  return (
-    <div className="grid gap-3 pt-1 sm:grid-cols-2">
-      <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4" aria-labelledby="available-sources-heading">
-        <h2 id="available-sources-heading" className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-          Available sources
-        </h2>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-          <Link href="/connections" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5 transition hover:border-[color:var(--border-strong)]">
-            <span className="block font-medium text-[color:var(--foreground)]">
-              {cloudConnectionsUnavailable
-                ? "Cloud accounts unavailable"
-                : cloudConnectionCount > 0
-                  ? `${cloudConnectionCount} cloud account${cloudConnectionCount === 1 ? "" : "s"}`
-                  : "No cloud accounts"}
-            </span>
-            <span className="text-[color:var(--text-tertiary)]">
-              {cloudConnectionsUnavailable ? "Read not available" : cloudConnectionCount > 0 ? "Ready to select" : "Connect one"}
-            </span>
-          </Link>
-          <Link href="/sources" className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2.5 transition hover:border-[color:var(--border-strong)]">
-            <span className="block font-medium text-[color:var(--foreground)]">
-              {sourcesUnavailable
-                ? "Data sources unavailable"
-                : sourceCount > 0
-                  ? `${sourceCount} data source${sourceCount === 1 ? "" : "s"}`
-                  : "No data sources"}
-            </span>
-            <span className="text-[color:var(--text-tertiary)]">
-              {sourcesUnavailable ? "Read not available" : sourceCount > 0 ? "Ready to run" : "Register one"}
-            </span>
-          </Link>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4" aria-labelledby="recent-scans-heading">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="recent-scans-heading" className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-            <History className="h-3.5 w-3.5" /> Recent scans
-          </h2>
-          <Link href="/jobs" className="text-[10px] text-emerald-400 hover:text-emerald-300">View all</Link>
-        </div>
-        <div className="mt-3 space-y-1.5">
-          {recentJobsLoading ? (
-            <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">Loading scan history…</p>
-          ) : recentJobsUnavailable ? (
-            <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">Scan history unavailable.</p>
-          ) : recentJobs.length === 0 ? (
-            <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">No scans recorded yet.</p>
-          ) : (
-            recentJobs.slice(0, 2).map((job) => (
-              <Link key={job.job_id} href={`/scan?id=${encodeURIComponent(job.job_id)}`} className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 transition hover:border-[color:var(--border-strong)]">
-                <span className="min-w-0 truncate text-[11px] text-[color:var(--foreground)]">{jobLabel(job)}</span>
-                <span className="shrink-0 text-[10px] text-[color:var(--text-tertiary)]">{jobStatusLabel(job)}</span>
-              </Link>
-            ))
-          )}
-        </div>
-      </section>
     </div>
   );
 }

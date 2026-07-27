@@ -103,21 +103,6 @@ describe("ScanForm", () => {
       sources: [],
       count: 0,
     });
-    vi.spyOn(api, "listJobs").mockResolvedValue({
-      jobs: [
-        {
-          job_id: "job-recent-1",
-          status: "done",
-          created_at: "2026-01-01T00:00:00Z",
-          request: {},
-          scan_outcome: "complete",
-        },
-      ],
-      count: 1,
-      total: 1,
-      limit: 3,
-      offset: 0,
-    });
   });
 
   it("renders where-am-i-scanning modes and scope summary", async () => {
@@ -129,13 +114,12 @@ describe("ScanForm", () => {
     expect(screen.getByRole("tab", { name: "Ad-hoc" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Data source" })).toBeInTheDocument();
     expect(screen.getByText("Scope now")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "What this scan produces" })).toBeInTheDocument();
+    expect(screen.getByText("What this scan collects and produces")).toBeInTheDocument();
     expect(screen.getByText("Read-only boundary")).toBeInTheDocument();
-    expect(screen.getByText("No cloud accounts")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText("Agent and MCP discovery")).toBeInTheDocument();
-      expect(screen.getByText("Complete")).toBeInTheDocument();
+      expect(screen.getByText(/Agent and MCP discovery/)).toBeInTheDocument();
     });
+    expect(screen.getByRole("link", { name: "Scan jobs" })).toHaveAttribute("href", "/jobs");
 
     await user.click(screen.getByRole("tab", { name: "Cloud account" }));
     await waitFor(() => {
@@ -230,7 +214,7 @@ describe("ScanForm", () => {
 
     const runButton = await screen.findByRole("button", { name: /Run cloud scan/i });
     expect(runButton).toBeDisabled();
-    expect(screen.getByText(/need the Contributor role or higher/i)).toBeInTheDocument();
+    expect(screen.getByText(/Scans require the Contributor role or higher/i)).toBeInTheDocument();
     await userEvent.click(runButton);
     expect(scanCloudConnection).not.toHaveBeenCalled();
   });
@@ -266,15 +250,13 @@ describe("ScanForm", () => {
   });
 
   it("keeps denied operational reads unavailable instead of reporting factual zero", async () => {
+    const user = userEvent.setup();
     vi.spyOn(api, "listSources").mockRejectedValue(new Error("Forbidden"));
-    vi.spyOn(api, "listJobs").mockRejectedValue(new Error("Forbidden"));
 
     render(<ScanForm initialConnectionId="conn-aws-1" />);
 
-    expect(await screen.findByText("Data sources unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Scan history unavailable.")).toBeInTheDocument();
-    expect(screen.queryByText("No data sources")).not.toBeInTheDocument();
-    expect(screen.queryByText("No scans recorded yet.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Data source" }));
+    expect(await screen.findByText("Data sources are unavailable for this session.")).toBeInTheDocument();
   });
 
   it("starts a public repository scan from a git URL", async () => {
@@ -297,7 +279,7 @@ describe("ScanForm", () => {
     expect(screen.getByText(/surfaces auto-detected/i)).toBeInTheDocument();
     expect(screen.getByText(/Secrets & credentials/i)).toBeInTheDocument();
     expect(screen.getByText(/not git URLs/i)).toBeInTheDocument();
-    expect(screen.getByText("SBOM evidence")).toBeInTheDocument();
+    expect(screen.getByText(/dependencies, SBOM, secrets/i)).toBeInTheDocument();
     expect(screen.getByText(/Repository code is not executed/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Scan repository/i }));
     expect(startScan).toHaveBeenCalledWith({

@@ -386,7 +386,8 @@ describe("ConnectionsPage — Connect segment", () => {
 
     expect(screen.queryByText(/Cloud accounts is not configured yet/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No completed scans yet/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Latest evidence/i)).toBeInTheDocument();
+    expect(screen.getByText("Last scan")).toBeInTheDocument();
+    expect(screen.getByText("Jun 26")).toBeInTheDocument();
   });
 
   it("carries one AWS ExternalId from setup through details into create + verify", async () => {

@@ -74,7 +74,6 @@ import { Card, Section } from "@/components/card";
 import { Collapsible } from "@/components/collapsible";
 import { PageLaneHeader } from "@/components/page-lane";
 import { Drawer } from "@/components/drawer";
-import { CoverageCockpit } from "@/components/coverage-cockpit";
 import { StatCard } from "@/components/stat-card";
 import { StatStrip } from "@/components/stat-strip";
 import { DemoConnectCard } from "@/components/demo-mode-cta";
@@ -98,11 +97,7 @@ import {
 import { serviceEntry } from "@/lib/service-registry";
 import { vendorLogo } from "@/lib/vendor-logos";
 import { FirstRunJourney } from "@/components/first-run-journey";
-import {
-  PermissionDeniedNotice,
-  RoleBadge,
-  RolePermissionsPanel,
-} from "@/components/role-access";
+import { PermissionDeniedNotice } from "@/components/role-access";
 
 // ── Hub tabs ────────────────────────────────────────────────────────────────
 // One Connections hub with two URL-synced segments: Connect (add any source —
@@ -1468,9 +1463,7 @@ function ConnectionsHub() {
           cloudService={cloudService}
           connections={connections}
           connectionsCount={connections.length}
-          lastAccountScan={lastAccountScan}
           canManage={canManage}
-          hasConnections={hasConnections}
           gallery={gallery}
           onConnect={() => openWizard("aws")}
         />
@@ -1641,9 +1634,7 @@ function ConnectSegment({
   cloudService,
   connections,
   connectionsCount,
-  lastAccountScan,
   canManage,
-  hasConnections,
   gallery,
   onConnect,
 }: {
@@ -1652,9 +1643,7 @@ function ConnectSegment({
   cloudService: ReturnType<typeof serviceEntry>;
   connections: CloudConnectionRecord[];
   connectionsCount: number;
-  lastAccountScan: string | null;
   canManage: boolean;
-  hasConnections: boolean;
   gallery: React.ReactNode;
   onConnect: () => void;
 }) {
@@ -1678,7 +1667,6 @@ function ConnectSegment({
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <RoleBadge session={session} />
         <ServiceStateChip
           serviceId="cloud_accounts"
           entry={cloudService}
@@ -1687,15 +1675,6 @@ function ConnectSegment({
         />
       </div>
 
-      <ServiceStateBanner serviceId="cloud_accounts" entry={cloudService} registry={counts?.services} />
-
-      <CoverageCockpit
-        counts={counts}
-        scanCount={counts?.scan_count ?? null}
-        latestScanLabel={lastAccountScan ? formatWhen(lastAccountScan) : null}
-        connections={connections}
-      />
-
       <Section
         label="Connect a source"
         description="Cloud accounts open a read-only wizard; code, AI, and data sources register in the control plane and appear under Sources."
@@ -1703,21 +1682,6 @@ function ConnectSegment({
         {gallery}
       </Section>
 
-      {!hasConnections ? (
-        <p className="text-sm text-[color:var(--text-secondary)]">
-          Once a source is connected, switch to <span className="font-medium text-[color:var(--foreground)]">Sources</span> to
-          see it in the unified table with scan handoff, schedules, and evidence links.
-        </p>
-      ) : null}
-
-      <Collapsible
-        title="Roles & permissions"
-        subtitle="Viewer reads · Contributor connects and scans · Admin manages keys, policy, and fleet."
-        defaultOpen={false}
-        data-testid="roles-permissions"
-      >
-        <RolePermissionsPanel session={session} bare />
-      </Collapsible>
     </div>
   );
 }

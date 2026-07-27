@@ -125,7 +125,7 @@ def _audit_append_iter(audit_log, n: int) -> list[float]:
 
 def _job_put_iter(job_store, n: int, tenant_prefix: str = "t") -> list[float]:
     """Insert n synthetic ScanJobs; return per-call ms."""
-    from agent_bom.models import ScanJob, ScanRequest
+    from agent_bom.api.models import ScanJob, ScanRequest
 
     timings: list[float] = []
     for i in range(n):
@@ -191,7 +191,7 @@ def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> 
     sampled_ids: list[tuple[str, str]] = []
     if "job_put" in kinds:
         # Insert and remember a few ids for the read pass.
-        from agent_bom.models import ScanJob, ScanRequest
+        from agent_bom.api.models import ScanJob, ScanRequest
 
         job_timings: list[float] = []
         for i in range(size):

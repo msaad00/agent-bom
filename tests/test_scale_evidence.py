@@ -56,3 +56,10 @@ def test_postgres_scale_audit_payload_matches_runtime_contract() -> None:
     entry = AuditEntry(**module._synth_audit_entry(7, tenant_id="tenant-7"))
 
     assert entry.details == {"tenant_id": "tenant-7", "source": "postgres-scale-evidence", "idx": 7}
+
+
+def test_postgres_scale_job_models_use_api_contract() -> None:
+    script = Path("scripts/run_postgres_scale_evidence.py").read_text()
+
+    assert "from agent_bom.api.models import ScanJob, ScanRequest" in script
+    assert "from agent_bom.models import ScanJob, ScanRequest" not in script

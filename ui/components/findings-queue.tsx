@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { severityColor, severityDot, type FindingTriageItem } from "@/lib/api";
 import type { FindingsLens } from "@/lib/findings-lens";
@@ -129,13 +130,34 @@ export function FindingsQueueTable({
   lens?: FindingsLens;
   triageByKey?: ReadonlyMap<string, FindingTriageItem>;
 }) {
+  const compactLayout = useCompactFindingsLayout();
   const emptyLabel =
     lens === "trust"
       ? "No findings match the selected compliance query."
       : "No findings match the selected engineering filters.";
 
   return (
-    <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden overflow-x-auto">
+    <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)]">
+      {compactLayout ? (
+      <div className="divide-y divide-[var(--border-subtle)] bg-[var(--background)]">
+        {vulns.map((vuln) => {
+          const rowKey = vulnRowKey(vuln);
+          return (
+            <MobileFindingCard
+              key={rowKey}
+              vuln={vuln}
+              lens={lens}
+              triage={triageForFinding(vuln, triageByKey)}
+              selected={selectedId === rowKey || selectedId === vuln.id}
+              suppressed={suppressed.has(vuln.id)}
+              onSelect={() => onSelect(rowKey)}
+              onMarkFP={() => onMarkFP(vuln.id, vuln.packages[0] ?? "")}
+            />
+          );
+        })}
+      </div>
+      ) : (
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
           {lens === "trust" ? (
@@ -201,12 +223,163 @@ export function FindingsQueueTable({
           })}
         </tbody>
       </table>
+      </div>
+      )}
 
       {vulns.length === 0 && (
         <div className="px-4 py-8 text-center text-[var(--text-tertiary)] text-sm">
           {emptyLabel}
         </div>
       )}
+    </div>
+  );
+}
+
+function useCompactFindingsLayout() {
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 767px)");
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  return compact;
+}
+
+function MobileFindingCard({
+  vuln,
+  lens,
+  triage,
+  selected,
+  suppressed,
+  onSelect,
+  onMarkFP,
+}: {
+  vuln: EnrichedVuln;
+  lens: FindingsLens;
+  triage: FindingTriageItem | undefined;
+  selected: boolean;
+  suppressed: boolean;
+  onSelect: () => void;
+  onMarkFP: () => void;
+}) {
+  const controls = controlLabels(vuln);
+  const evidenceSources = vuln.sources.filter((source) => source !== "finding");
+  const affectedScope = [...vuln.packages, ...vuln.agents, ...vuln.affected_servers];
+  const observed = vuln.last_observed ?? vuln.last_seen;
+  const disposition = triage?.decision?.replaceAll("_", " ") ?? "Not reviewed";
+  const exploit = vuln.is_kev ?? vuln.cisa_kev
+    ? "CISA KEV"
+    : typeof vuln.epss_score === "number"
+      ? `EPSS ${(vuln.epss_score * 100).toFixed(1)}%`
+      : typeof vuln.cvss_score === "number"
+        ? `CVSS ${vuln.cvss_score.toFixed(1)}`
+        : "Unavailable";
+
+  return (
+    <article
+      className={`p-3 ${selected ? "bg-[var(--surface)] ring-1 ring-inset ring-emerald-900/60" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex w-full min-w-0 items-start justify-between gap-3 text-left"
+        aria-label={`Open details for ${vuln.id}`}
+      >
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${severityDot(vuln.severity)}`} />
+            <span className="truncate font-mono text-xs text-[var(--foreground)]">{vuln.id}</span>
+          </span>
+          {findingSecondaryText(vuln) ? (
+            <span className="mt-1 block line-clamp-2 text-xs text-[var(--text-tertiary)]">
+              {findingSecondaryText(vuln)}
+            </span>
+          ) : null}
+        </span>
+        <span className={`shrink-0 rounded border px-2 py-0.5 text-[10px] font-medium uppercase ${severityColor(vuln.severity)}`}>
+          {vuln.severity}
+        </span>
+      </button>
+
+      {lens === "trust" ? (
+        <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-xs">
+          <MobileDetail label="Controls" value={controls.length > 0 ? controls.slice(0, 2).join(", ") : "Unavailable"} />
+          <MobileDetail
+            label="Evidence"
+            value={
+              observed
+                ? `${formatFindingTimestamp(observed)} · ${
+                    evidenceSources.length > 0
+                      ? `${evidenceSources.length} source${evidenceSources.length === 1 ? "" : "s"}`
+                      : "Source unavailable"
+                  }`
+                : "Unavailable"
+            }
+          />
+          <MobileDetail label="Disposition" value={disposition} />
+          <MobileDetail label="Affected scope" value={affectedScope.slice(0, 2).join(", ") || "Unavailable"} />
+        </dl>
+      ) : (
+        <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-xs">
+          <MobileDetail
+            label="Reach / exploit"
+            value={
+              vuln.graph_reachable === true
+                ? `Reachable · ${exploit}`
+                : vuln.graph_reachable === false
+                  ? `Unreachable · ${exploit}`
+                  : exploit
+            }
+          />
+          <MobileDetail label="Affected asset" value={affectedScope.slice(0, 2).join(", ") || "Unavailable"} />
+          <MobileDetail label="Fix" value={vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Unavailable"} />
+          <MobileDetail label="Owner / SLA" value={vuln.owner || triage?.assignee || "Unavailable"} />
+          <MobileDetail label="Last observed" value={observed ? formatFindingTimestamp(observed) : "Unavailable"} />
+        </dl>
+      )}
+
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
+        >
+          {lens === "trust" ? "Review evidence" : "Investigate"}
+        </button>
+        {lens === "ops" ? (
+          suppressed ? (
+            <span className="rounded border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 py-1 text-xs text-[var(--text-secondary)]">
+              Suppressed
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onMarkFP}
+              className="rounded-md border border-[var(--border-subtle)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)]"
+            >
+              Mark false positive
+            </button>
+          )
+        ) : triage?.vex_eligible ? (
+          <span className="text-xs text-emerald-600 dark:text-emerald-400">OpenVEX ready</span>
+        ) : (
+          <span className="text-xs text-[var(--text-tertiary)]">Attestation unavailable</span>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function MobileDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{label}</dt>
+      <dd className="mt-0.5 break-words text-[var(--text-secondary)]">{value}</dd>
     </div>
   );
 }

@@ -82,7 +82,7 @@ observed.
 AppSec and GRC remain separate workflows: findings and reachability are not
 presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
-<details>
+<details open>
 <summary><b>Product gallery</b></summary>
 
 The gallery uses deterministic sample data, visibly labeled in the UI. It is
@@ -153,6 +153,7 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | Docker Compose | [Pilot compose](deploy/docker-compose.pilot.yml) |
 | Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.98.2` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
+| Snowflake SPCS / Native App | `scripts/deploy/install.sh snowflake-native` · [install guide](docs/snowflake-native-app/INSTALL.md) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
 
 > Examples target this release candidate; confirm release availability before copying an
@@ -177,9 +178,10 @@ MCP server mode exposes 77 MCP tools, 6 resources, and 8 workflow prompts, all
 read-first: discovery and analysis never mutate a scanned target.
 
 The CLI, Docker, API, Helm chart, MCP server, gateway, and SDK are distribution
-surfaces of the same product. EKS remains a deployment profile; Snowflake and
-Snowpark remain connector/runtime integrations rather than hosted-core
-dependencies.
+surfaces of the same product. The Snowflake SPCS / Native App lane runs inside
+the customer's Snowflake account; it is a customer-owned deployment target,
+not an agent-bom-hosted service. Snowflake and Snowpark also remain connector
+and runtime integrations for the other deployment profiles.
 
 </details>
 

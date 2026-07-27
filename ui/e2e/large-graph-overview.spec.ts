@@ -199,6 +199,28 @@ async function routeLargeGraphPage(page: Page) {
       }),
     });
   });
+  await page.route("**/v1/graph/attack-paths?**", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
+  });
+  await page.route("**/v1/graph/rollup?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        scan_id: scanId,
+        tenant_id: "default",
+        created_at: createdAt,
+        mode: "rollup",
+        filters: {},
+        top_level: [],
+        summary: {
+          total_nodes: graph.nodes.length,
+          total_edges: graph.edges.length,
+          top_level_count: 0,
+          container_count: 0,
+        },
+      }),
+    });
+  });
   await page.route("**/v1/graph/query", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -291,6 +313,12 @@ async function expectSigmaCanvases(page: Page) {
 
 test("large graph overview renders above threshold", async ({ page }, testInfo: TestInfo) => {
   test.setTimeout(60_000);
+  const failedGraphResponses: string[] = [];
+  page.on("response", (response) => {
+    if (response.status() >= 500 && response.url().includes("/v1/graph/")) {
+      failedGraphResponses.push(response.url());
+    }
+  });
   await routeLargeGraphPage(page);
 
   await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
@@ -305,6 +333,7 @@ test("large graph overview renders above threshold", async ({ page }, testInfo: 
   await page.screenshot({ path: testInfo.outputPath("large-graph-overview.png"), fullPage: true });
 
   await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled({ timeout: 15_000 });
+  expect(failedGraphResponses).toEqual([]);
 });
 
 test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {

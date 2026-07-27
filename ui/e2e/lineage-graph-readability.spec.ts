@@ -222,15 +222,22 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
   await expect(page.getByTestId("graph-compression-summary")).toContainText(/compressed|rendered/);
 
   const largeOverview = page.getByTestId("large-graph-overview");
+  const application = page.getByRole("application");
+  const desktopNode = application.getByText("Desktop Agent", { exact: true });
+  // Graph mode is selected after the bounded graph finishes loading. Under a
+  // busy CI worker, branching on an immediate `isVisible()` can choose the
+  // React Flow path before either renderer has mounted. Wait for one truthful
+  // renderer signal, then assert against that renderer.
+  await expect.poll(async () =>
+    (await largeOverview.isVisible()) || (await desktopNode.isVisible()),
+  ).toBe(true);
   if (await largeOverview.isVisible()) {
     await expect(largeOverview).toBeVisible();
     await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
   } else {
-    const canvas = page.getByRole("application");
-    await expect(canvas.getByText("Desktop Agent").first()).toBeVisible();
-    await expect(canvas.getByText("CVE-2026-103").first()).toBeVisible();
+    await expect(desktopNode).toBeVisible();
+    await expect(application.getByText("CVE-2026-103", { exact: true })).toBeVisible();
     await expect(page.getByText("Legend").first()).toBeVisible();
-    const application = page.getByRole("application").first();
     // Topology with the legend collapsed — proves the nodes fill the canvas
     // and read clearly at default zoom.
     await application.screenshot({

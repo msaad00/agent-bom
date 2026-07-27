@@ -1,7 +1,8 @@
 name: Surface Freshness
 
-# Cross-channel version-freshness monitor. Compares the repo version against
-# EVERY published distribution surface (PyPI, Docker/ghcr, Glama, Smithery) and
+# Cross-channel version-freshness monitor. Compares the latest published release
+# against EVERY published distribution surface (PyPI, Docker/ghcr, Glama,
+# Smithery) and
 # maintains ONE consolidated tracking issue so a stale surface can never sit
 # unnoticed for months. Closes the gap that let the Smithery listing drift for
 # three months without an alert.
@@ -9,6 +10,7 @@ name: Surface Freshness
 # Optional repo variables (Settings -> Secrets and variables -> Actions -> Variables):
 #   SMITHERY_SERVER_QUALIFIED_NAME — override Smithery listing name; defaults to agent-bom/agent-bom
 #   GLAMA_LISTING_URL  — override Glama listing URL (default: glama.ai/.../msaad00/agent-bom)
+#   GLAMA_API_URL      — override Glama public inventory API URL
 #   DOCKER_IMAGE       — override default ghcr.io/msaad00/agent-bom
 
 on:
@@ -34,17 +36,50 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Get expected version from latest published release
+        id: expected
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          VERSION="${TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.+-]*)?$ ]]; then
+            echo "::error::Latest published release has an invalid version tag"
+            exit 1
+          fi
+          git fetch --force --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${TAG}")
+          TOOL_COUNT=$(git show "${RELEASE_SHA}:README.md" | sed -nE 's/.*MCP server mode (exposes|advertises) ([0-9]+) MCP tools.*/\2/p' | head -1)
+          if ! [[ "$TOOL_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Published release README does not declare a positive MCP tool count"
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "release_sha=$RELEASE_SHA"
+            echo "tool_count=$TOOL_COUNT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Expected version from published release $TAG at ${RELEASE_SHA:0:12}: $VERSION with $TOOL_COUNT MCP tools"
+
       - name: Probe every distribution surface
         id: probe
         env:
+          EXPECTED_VERSION: ${{ steps.expected.outputs.version }}
           SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
           GLAMA_LISTING_URL: ${{ vars.GLAMA_LISTING_URL }}
+          GLAMA_API_URL: ${{ vars.GLAMA_API_URL }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
         run: |
-          PYTHONPATH=src python3 scripts/check_surface_freshness.py --out surface-freshness.json
-          echo "report<<EOF" >> "$GITHUB_OUTPUT"
-          cat surface-freshness.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          PYTHONPATH=src python3 scripts/check_surface_freshness.py \
+            --expected "$EXPECTED_VERSION" \
+            --expected-glama-tool-count "${{ steps.expected.outputs.tool_count }}" \
+            --out surface-freshness.json
+          {
+            echo "report<<EOF"
+            cat surface-freshness.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Open, refresh, or close consolidated freshness issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -81,7 +116,7 @@ jobs:
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "",
-              "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agent-bom/agent-bom`).",
+              "Optional overrides (blank/unset repo vars fall back to defaults): `DOCKER_IMAGE` (`ghcr.io/msaad00/agent-bom`), `GLAMA_LISTING_URL`, `GLAMA_API_URL`, `SMITHERY_SERVER_QUALIFIED_NAME` (`agent-bom/agent-bom`).",
               "",
               "_Maintained automatically by the surface-freshness workflow. Self-closes when every surface is fresh and monitored._",
             ].join("\n");

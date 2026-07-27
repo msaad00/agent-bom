@@ -53,7 +53,6 @@ OK_STATUSES = {"fresh"}
 ALERT_STATUSES = {"stale", "not_configured", "unreachable"}
 
 
-
 def _env_or(name: str, default: str) -> str:
     """Return env var if non-blank; otherwise ``default``.
 
@@ -215,10 +214,13 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
         return _classify("Docker", None, expected, error=str(exc))
 
 
-def probe_glama(expected: str, **kw: Any) -> dict[str, Any]:
+def probe_glama(expected: str, *, expected_tool_count: int | None = None, **kw: Any) -> dict[str, Any]:
     """Delegate to check_glama_listing.py so the probe logic stays in one place."""
+    command = [sys.executable, str(GLAMA_SCRIPT), "--expected", expected, "--json"]
+    if expected_tool_count is not None:
+        command.extend(["--expected-tool-count", str(expected_tool_count)])
     proc = subprocess.run(
-        [sys.executable, str(GLAMA_SCRIPT), "--expected", expected, "--json"],
+        command,
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -237,6 +239,8 @@ def probe_glama(expected: str, **kw: Any) -> dict[str, Any]:
         "status": status,
         "version": payload.get("listing_version", "—"),
         "expected": expected,
+        "tool_count": payload.get("tool_count"),
+        "expected_tool_count": payload.get("expected_tool_count"),
         "error": payload.get("error"),
     }
 
@@ -278,6 +282,7 @@ def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, A
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected", default=None, help="Override expected version (defaults to pyproject.toml).")
+    parser.add_argument("--expected-glama-tool-count", type=int, default=None)
     parser.add_argument("--docker-image", default=_env_or("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
     parser.add_argument("--smithery-server", default=_env_or("SMITHERY_SERVER_QUALIFIED_NAME", DEFAULT_SMITHERY_SERVER))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
@@ -292,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
     surfaces = [
         probe_pypi(expected, **kw),
         probe_docker(expected, args.docker_image, **kw),
-        probe_glama(expected, **kw),
+        probe_glama(expected, expected_tool_count=args.expected_glama_tool_count, **kw),
         probe_smithery(expected, args.smithery_server, **kw),
     ]
 

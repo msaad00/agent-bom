@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 README = ROOT / "README.md"
 DEFAULT_URL = "https://glama.ai/mcp/servers/msaad00/agent-bom"
+DEFAULT_API_URL = "https://glama.ai/api/mcp/v1/servers/msaad00/agent-bom"
 
 
 def _env_or(name: str, default: str) -> str:
@@ -28,6 +29,7 @@ def _env_or(name: str, default: str) -> str:
     """
     value = (os.environ.get(name) or "").strip()
     return value or default
+
 
 GLAMA_DOCKERFILE = "integrations/glama/Dockerfile"
 GLAMA_MANIFESTS = (ROOT / "glama.json", ROOT / "integrations" / "glama" / "server.json")
@@ -115,7 +117,14 @@ def _fetch(url: str, timeout: int) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
-def _check(page: str, version: str, tool_count: str) -> list[str]:
+def _fetch_json(url: str, timeout: int) -> dict[str, object]:
+    payload = json.loads(_fetch(url, timeout))
+    if not isinstance(payload, dict):
+        raise ValueError("Glama public API returned a non-object payload")
+    return payload
+
+
+def _check(page: str, version: str, tool_count: int) -> list[str]:
     expected_tokens = [
         f"v{version}",
         # Accept either phrasing while Glama's rendered README catches up.
@@ -123,7 +132,7 @@ def _check(page: str, version: str, tool_count: str) -> list[str]:
     ]
     failures = [f"missing current Glama listing token: {token!r}" for token in expected_tokens if token not in page]
     tool_count_ok = bool(
-        re.search(rf"MCP server mode (?:exposes|advertises)\s+{re.escape(tool_count)}\s+MCP tools", page)
+        re.search(rf"MCP server mode (?:exposes|advertises)\s+{re.escape(str(tool_count))}\s+MCP tools", page)
         or f"MCP server mode exposes {tool_count} MCP tools" in page
         or f"MCP server mode advertises {tool_count} MCP tools" in page
     )
@@ -158,7 +167,14 @@ def _extract_listing_version(page: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=_env_or("GLAMA_LISTING_URL", DEFAULT_URL))
+    parser.add_argument("--api-url", default=_env_or("GLAMA_API_URL", DEFAULT_API_URL))
     parser.add_argument("--expected", default=None, help="Expected version; defaults to pyproject.toml.")
+    parser.add_argument(
+        "--expected-tool-count",
+        type=int,
+        default=None,
+        help="Expected public API tool count; defaults to the current README contract.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit a machine-readable freshness result.")
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=1)
@@ -187,9 +203,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     version = (args.expected or _load_version()).lstrip("v").strip()
-    tool_count = _load_readme_tool_count()
+    tool_count = args.expected_tool_count if args.expected_tool_count is not None else int(_load_readme_tool_count())
+    if tool_count < 1:
+        raise SystemExit("expected Glama tool count must be positive")
     last_error = ""
     listing_version = "unknown"
+    actual_tool_count: int | None = None
     for attempt in range(1, max(1, args.retries) + 1):
         try:
             page = _fetch(args.url, args.timeout)
@@ -198,6 +217,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             listing_version = _extract_listing_version(page)
             failures = _check(page, version, tool_count)
+            try:
+                api_payload = _fetch_json(args.api_url, args.timeout)
+                tools = api_payload.get("tools")
+                if not isinstance(tools, list):
+                    raise ValueError("Glama public API tools field is not a list")
+                actual_tool_count = len(tools)
+                tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
+                if len(tool_names) != actual_tool_count or any(not isinstance(name, str) or not name.strip() for name in tool_names):
+                    failures.append("Glama public API inventory contains a tool without a name")
+                elif len(set(tool_names)) != actual_tool_count:
+                    failures.append("Glama public API inventory contains duplicate tool names")
+                if actual_tool_count != tool_count:
+                    failures.append(f"Glama public API exposes {actual_tool_count} tools; expected {tool_count}")
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
+                failures.append(f"failed to verify Glama public API tool inventory: {exc}")
             if not failures:
                 if args.json:
                     print(
@@ -207,13 +241,14 @@ def main(argv: list[str] | None = None) -> int:
                                 "status": "fresh",
                                 "expected": version,
                                 "listing_version": listing_version,
-                                "tool_count": tool_count,
+                                "tool_count": actual_tool_count,
+                                "expected_tool_count": tool_count,
                             },
                             separators=(",", ":"),
                         )
                     )
                     return 0
-                print(f"Glama listing is fresh for agent-bom v{version} with {tool_count} MCP tools")
+                print(f"Glama listing is fresh for agent-bom v{version} with {actual_tool_count} MCP tools")
                 return 0
             last_error = "\n".join(failures)
 
@@ -229,7 +264,8 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "stale" if listing_version != "unknown" else "unreachable",
                     "expected": version,
                     "listing_version": listing_version,
-                    "tool_count": tool_count,
+                    "tool_count": actual_tool_count,
+                    "expected_tool_count": tool_count,
                     "error": last_error,
                 },
                 separators=(",", ":"),

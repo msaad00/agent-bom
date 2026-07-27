@@ -6,6 +6,7 @@ name: Publish to Registries
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 # Optional vars:
 #   SMITHERY_MCP_URL    — Explicit public, unauthenticated MCP endpoint for Smithery
+# Optional secret:
 #   GLAMA_WEBHOOK_URL   — Glama rebuild webhook (POST JSON: ref, commit, version, dockerfile)
 
 on:
@@ -13,13 +14,93 @@ on:
     workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Published release tag to repair (for example, v0.98.0); leave blank for the latest published release"
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  release:
+    name: Resolve published release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      release_ref: ${{ steps.release.outputs.release_ref }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -n "${REQUESTED_TAG:-}" ]; then
+              if ! echo "$REQUESTED_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+                echo "::error::release_tag must be a v-prefixed semantic version"
+                exit 1
+              fi
+              RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${REQUESTED_TAG}")
+            else
+              RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")
+            fi
+            RELEASE_TAG=$(echo "$RELEASE_JSON" | jq -er '.tag_name')
+            if [ "$(echo "$RELEASE_JSON" | jq -r '.draft != false')" = "true" ]; then
+              echo "::error::Registry repair requires a published, non-draft GitHub release"
+              exit 1
+            fi
+          else
+            RELEASE_TAG="${HEAD_BRANCH:-}"
+            if ! echo "$RELEASE_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+              echo "::error::Successful Release workflow did not report a release tag"
+              exit 1
+            fi
+            if [ -z "${HEAD_SHA:-}" ]; then
+              echo "::error::Successful Release workflow did not report a release commit"
+              exit 1
+            fi
+          fi
+
+          git fetch --force --no-tags origin \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$RELEASE_SHA" != "$HEAD_SHA" ]; then
+            echo "::error::Release tag and successful workflow commit do not match"
+            exit 1
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+            echo "::error::Resolved release tag is not semantic versioned"
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "release_ref=refs/tags/${RELEASE_TAG}"
+            echo "release_sha=$RELEASE_SHA"
+          } >> "$GITHUB_OUTPUT"
+
   smithery:
     name: Publish to Smithery
+    needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -27,28 +108,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Extract version
-        id: meta
-        env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            # workflow_dispatch may run from main or a tag — prefer tag, fall back to pyproject.toml
-            REF="${GITHUB_REF_NAME#v}"
-            if echo "$REF" | grep -qE '^[0-9]+\.[0-9]+'; then
-              VERSION="$REF"
-            else
-              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-            fi
-          else
-            VERSION="${HEAD_BRANCH#v}"
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-            fi
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+          persist-credentials: false
 
       - name: Check Smithery configuration
         id: smithery_config
@@ -118,7 +180,7 @@ jobs:
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
           QUALIFIED_NAME="agent-bom%2Fagent-bom"
           MCP_URL="${SMITHERY_MCP_URL}"
@@ -169,6 +231,7 @@ jobs:
 
   glama:
     name: Trigger Glama Rebuild
+    needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -177,59 +240,32 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Extract release metadata
-        id: meta
-        env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            REF="${GITHUB_REF_NAME#v}"
-            if echo "$REF" | grep -qE '^[0-9]+\.[0-9]+'; then
-              VERSION="$REF"
-            else
-              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-            fi
-            RELEASE_REF="refs/tags/v${VERSION}"
-            RELEASE_SHA=$(git rev-parse HEAD)
-          else
-            VERSION="${HEAD_BRANCH#v}"
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-            fi
-            if [ -n "${HEAD_BRANCH:-}" ]; then
-              RELEASE_REF="refs/tags/${HEAD_BRANCH}"
-            else
-              RELEASE_REF="refs/tags/v${VERSION}"
-            fi
-            RELEASE_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
-          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+          persist-credentials: false
 
       - name: Fetch release commit for manifest verification
         env:
-          RELEASE_SHA: ${{ steps.meta.outputs.release_sha }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
         run: git fetch --no-tags --depth=1 origin "$RELEASE_SHA"
 
       - name: Verify Glama build manifest
-        run: python scripts/check_glama_listing.py --verify-manifest --git-ref "${{ steps.meta.outputs.release_sha }}"
+        run: python scripts/check_glama_listing.py --verify-manifest --git-ref "${{ needs.release.outputs.release_sha }}"
 
       - name: Trigger Glama rebuild
+        id: glama_trigger
         env:
-          GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}
-          RELEASE_REF: ${{ steps.meta.outputs.release_ref }}
-          RELEASE_SHA: ${{ steps.meta.outputs.release_sha }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
+          RELEASE_REF: ${{ needs.release.outputs.release_ref }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+          VERSION: ${{ needs.release.outputs.version }}
           GLAMA_DOCKERFILE: integrations/glama/Dockerfile
         run: |
           if [ -z "$GLAMA_WEBHOOK_URL" ]; then
-            echo "::warning::GLAMA_WEBHOOK_URL not configured — skipping webhook trigger"
+            echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GLAMA_WEBHOOK_URL not configured. No Glama rebuild was triggered"
             echo "Release pin for Glama: ${RELEASE_REF} (${RELEASE_SHA:0:7}) dockerfile=${GLAMA_DOCKERFILE}"
-            echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL in repo variables"
+            echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL as a repository Actions secret"
             exit 0
           fi
           PAYLOAD=$(jq -n \
@@ -245,26 +281,33 @@ jobs:
             -d "$PAYLOAD" \
             -X POST "$GLAMA_WEBHOOK_URL")
           if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "rebuild_triggered=true" >> "$GITHUB_OUTPUT"
             echo "Glama rebuild triggered successfully"
           else
+            echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Glama rebuild trigger returned HTTP ${HTTP_STATUS} — may need manual rebuild"
           fi
 
       # Glama re-crawls listings on its own cadence (can be hours), so a tight
-      # post-trigger freshness window legitimately fails on release day even
-      # though the rebuild was triggered. Warn instead of red-failing the
-      # publish; the listing self-resolves once Glama re-crawls.
+      # post-trigger freshness window can legitimately fail on release day.
+      # Preserve the distinction between a successful trigger and no trigger.
       - name: Verify Glama listing freshness
         continue-on-error: true
         env:
-          EXPECTED_VERSION: ${{ steps.meta.outputs.version }}
+          EXPECTED_VERSION: ${{ needs.release.outputs.version }}
+          REBUILD_TRIGGERED: ${{ steps.glama_trigger.outputs.rebuild_triggered }}
         run: |
           if ! python scripts/check_glama_listing.py --expected "$EXPECTED_VERSION" --retries 6 --delay-seconds 30; then
-            echo "::warning::Glama listing not yet refreshed to the new version. Glama re-crawls asynchronously (can take hours); the rebuild was already triggered, so this self-resolves. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
+            if [ "$REBUILD_TRIGGERED" = "true" ]; then
+              echo "::warning::Glama listing has not refreshed yet after the rebuild trigger. Glama re-crawls asynchronously and may take hours. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
+            else
+              echo "::warning::Glama listing remains stale and no rebuild was triggered. Configure the repository Actions secret GLAMA_WEBHOOK_URL or rebuild the exact release manually. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
+            fi
           fi
 
   clawhub:
     name: Publish to ClawHub
+    needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -272,28 +315,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Extract version
-        id: meta
-        env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            # workflow_dispatch may run from main or a tag — prefer tag, fall back to pyproject.toml
-            REF="${GITHUB_REF_NAME#v}"
-            if echo "$REF" | grep -qE '^[0-9]+\.[0-9]+'; then
-              VERSION="$REF"
-            else
-              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-            fi
-          else
-            VERSION="${HEAD_BRANCH#v}"
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-            fi
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -326,7 +350,7 @@ jobs:
         if: steps.clawhub_config.outputs.enabled == 'true'
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
           echo "Publishing agent-bom v${VERSION} to ClawHub..."
           clawhub login --token "$CLAWHUB_TOKEN" --no-browser

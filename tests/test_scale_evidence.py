@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def test_scale_evidence_scaffold_is_complete() -> None:
@@ -63,3 +64,37 @@ def test_postgres_scale_job_models_use_api_contract() -> None:
 
     assert "from agent_bom.api.models import ScanJob, ScanRequest" in script
     assert "from agent_bom.models import ScanJob, ScanRequest" not in script
+
+
+def test_postgres_scale_job_operations_install_and_reset_tenant(monkeypatch) -> None:
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    events: list[tuple[str, object]] = []
+
+    class Store:
+        def put(self, job) -> None:
+            events.append(("put", job.tenant_id))
+
+        def get(self, job_id: str, tenant_id: str):
+            events.append(("get", (job_id, tenant_id)))
+            return object()
+
+    monkeypatch.setattr("agent_bom.api.postgres_common.set_current_tenant", lambda tenant: events.append(("set", tenant)) or "token")
+    monkeypatch.setattr("agent_bom.api.postgres_common.reset_current_tenant", lambda token: events.append(("reset", token)))
+
+    store = Store()
+    module._tenant_job_put(store, SimpleNamespace(tenant_id="tenant-a"))
+    assert module._tenant_job_get(store, "job-a", "tenant-a") is not None
+
+    assert events == [
+        ("set", "tenant-a"),
+        ("put", "tenant-a"),
+        ("reset", "token"),
+        ("set", "tenant-a"),
+        ("get", ("job-a", "tenant-a")),
+        ("reset", "token"),
+    ]

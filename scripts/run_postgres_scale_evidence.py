@@ -139,9 +139,31 @@ def _job_put_iter(job_store, n: int, tenant_prefix: str = "t") -> list[float]:
             status="done",
         )
         started = time.perf_counter()
-        job_store.put(job)
+        _tenant_job_put(job_store, job)
         timings.append((time.perf_counter() - started) * 1000)
     return timings
+
+
+def _tenant_job_put(job_store, job) -> None:
+    """Write a job under the same tenant context installed by API middleware."""
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+
+    token = set_current_tenant(job.tenant_id)
+    try:
+        job_store.put(job)
+    finally:
+        reset_current_tenant(token)
+
+
+def _tenant_job_get(job_store, job_id: str, tenant_id: str):
+    """Read a job under its RLS-bound tenant context."""
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+
+    token = set_current_tenant(tenant_id)
+    try:
+        return job_store.get(job_id, tenant_id=tenant_id)
+    finally:
+        reset_current_tenant(token)
 
 
 def _job_get_iter(job_store, sample_ids: list[tuple[str, str]]) -> list[float]:
@@ -149,7 +171,7 @@ def _job_get_iter(job_store, sample_ids: list[tuple[str, str]]) -> list[float]:
     timings: list[float] = []
     for job_id, tenant_id in sample_ids:
         started = time.perf_counter()
-        job_store.get(job_id, tenant_id=tenant_id)
+        _tenant_job_get(job_store, job_id, tenant_id)
         timings.append((time.perf_counter() - started) * 1000)
     return timings
 
@@ -206,7 +228,7 @@ def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> 
                 status="done",
             )
             started = time.perf_counter()
-            job_store.put(job)
+            _tenant_job_put(job_store, job)
             job_timings.append((time.perf_counter() - started) * 1000)
             if i % max(1, size // 100) == 0:
                 sampled_ids.append((job_id, tenant_id))

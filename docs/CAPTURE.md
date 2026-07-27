@@ -26,15 +26,16 @@ before replacing any published product image.
    cd ui
    npm ci
    npm run build
+   unset CAPTURE_BASE_URL
    npm run capture:product-proof
    ```
 
-   The harness starts `.next/standalone/server.js` unless `CAPTURE_BASE_URL`
-   points to an already-running packaged build. It never uses the Next.js
-   development server, so transient compilation state cannot enter published
-   assets.
+   `CAPTURE_BASE_URL` is not supported for release product proof. The harness
+   always starts the committed `.next/standalone/server.js` build locally. It
+   never uses the Next.js development server, so transient compilation state
+   cannot enter published assets.
 
-3. Inspect all 13 PNGs and the manifest at the final README display size. The
+3. Inspect all 21 PNGs and the manifest at the final README display size. The
    harness stages files and publishes them only after every page passes.
 
 Backend-connected release evidence is a separate end-to-end smoke. For that
@@ -43,12 +44,28 @@ bundled demo report offline, and push that exact payload so no workstation
 discovery enters the test:
 
 ```bash
-pip install -e ".[ui,api]"
-agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
-agent-bom scan --demo --offline -f json -o /tmp/agent-bom-demo-report.json
-curl -X POST -H 'content-type: application/json' \
-  --data-binary @/tmp/agent-bom-demo-report.json \
+uv sync --extra ui
+CAPTURE_DIR="$(mktemp -d /tmp/agent-bom-capture.XXXXXX)"
+CAPTURE_API_KEY="$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+CAPTURE_AUDIT_KEY="$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export CAPTURE_DIR CAPTURE_API_KEY CAPTURE_AUDIT_KEY
+AGENT_BOM_AUDIT_HMAC_KEY="$CAPTURE_AUDIT_KEY" \
+  uv run agent-bom serve --host 127.0.0.1 --port 8422 \
+  --persist "$CAPTURE_DIR/capture.db" --api-key "$CAPTURE_API_KEY" &
+CAPTURE_API_PID=$!
+trap 'kill "$CAPTURE_API_PID" 2>/dev/null || true' EXIT
+until curl -fsS -H "Authorization: Bearer $CAPTURE_API_KEY" \
+  http://127.0.0.1:8422/health >/dev/null; do sleep 1; done
+
+uv run agent-bom scan --demo --offline -f json \
+  -o "$CAPTURE_DIR/demo-report.json" || test "$?" -eq 1
+curl --fail-with-body -X POST -H 'content-type: application/json' \
+  -H "Authorization: Bearer $CAPTURE_API_KEY" \
+  --data-binary "@$CAPTURE_DIR/demo-report.json" \
   http://127.0.0.1:8422/v1/results/push
+kill "$CAPTURE_API_PID"
+wait "$CAPTURE_API_PID" 2>/dev/null || true
+trap - EXIT
 ```
 
 This backend smoke proves the API/storage path; it does not generate the
@@ -117,24 +134,23 @@ npm run capture:product-proof
 
 ### Security-graph investigation OS refresh
 
-After the graph investigation OS series and demo estate reseed land on the
-deployed control plane, recapture the live operator proof (not only the
-deterministic harness fixture):
+After graph or demo-estate UI changes land, recapture the operator proof from
+the same committed local standalone build used for the rest of the release
+set:
 
 ```bash
-# Prefer a seeded demo API with non-empty findings + attack paths.
-export CAPTURE_BASE_URL="${CAPTURE_BASE_URL:-https://demo.example}"
 cd ui
+npm run build
+unset CAPTURE_BASE_URL
 npm run capture:product-proof
 # Inspect docs/images/security-graph-live.png (and lineage/mesh if chrome changed).
 ```
 
-Do not commit a replacement `security-graph-live.png` until the demo estate
-findings smoke is green on that environment. Document the commands here even
-when the PNG itself is deferred.
+Do not commit a replacement `security-graph-live.png` until the separate
+backend demo-estate findings smoke is green. That smoke validates API/storage
+behavior; it is not an alternate screenshot source.
 
-
-Without `CAPTURE_BASE_URL`, the harness starts the current standalone
+The harness rejects `CAPTURE_BASE_URL` and starts the current local standalone
 production build. It routes deterministic scan, fleet, gateway, IAM,
 environment, runtime, and package responses into the shipped Next.js pages,
 fails on browser/network/API contract errors, and publishes the full set only
@@ -156,7 +172,7 @@ deterministic public screenshot workflow:
 AGENT_BOM_AUDIT_HMAC_KEY=readme-capture-audit-hmac-key-32-plus-bytes \
 AGENT_BOM_TRUST_PROXY_AUTH=1 \
 AGENT_BOM_TRUST_PROXY_AUTH_SECRET=test-proxy-secret-with-32-plus-bytes \
-  agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
+  agent-bom serve --persist /tmp/agent-bom-capture.db
 
 curl -H 'X-Agent-Bom-Role: admin' \
   -H 'X-Agent-Bom-Tenant-ID: default' \
@@ -180,7 +196,7 @@ restart `agent-bom serve` in local capture mode for the screenshot:
 ```bash
 AGENT_BOM_TRUST_PROXY_AUTH=1 \
 AGENT_BOM_TRUST_PROXY_AUTH_SECRET=test-proxy-secret-with-32-plus-bytes \
-  agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
+  agent-bom serve --persist /tmp/agent-bom-capture.db
 
 curl -X POST http://127.0.0.1:8422/v1/gateway/policies \
   -H 'content-type: application/json' \

@@ -93,3 +93,17 @@ def test_release_manifest_carries_reproducible_sanitized_provenance() -> None:
     paths = {entry["path"] for entry in manifest["screenshots"]}
     assert {"agent-lifecycle-live.png", "jobs-pipeline-live.png"} <= paths
     assert {"remediation-live.png", "remediation-light-live.png", "remediation-mobile-live.png"} <= paths
+
+
+def test_capture_runbook_matches_the_local_authenticated_release_workflow() -> None:
+    """The published runbook must stay executable as auth and capture contracts evolve."""
+    runbook = (ROOT / "docs/CAPTURE.md").read_text(encoding="utf-8")
+    manifest = json.loads((ROOT / "docs/images/product-screenshots.json").read_text(encoding="utf-8"))
+    backend_smoke = runbook.split("Backend-connected release evidence", 1)[1].split("## Per-screenshot scope", 1)[0]
+
+    assert f"Inspect all {len(manifest['screenshots'])} PNGs" in runbook
+    assert "`CAPTURE_BASE_URL` is not supported" in runbook
+    assert "export CAPTURE_BASE_URL" not in runbook
+    assert "--api-key \"$CAPTURE_API_KEY\"" in backend_smoke
+    assert "Authorization: Bearer $CAPTURE_API_KEY" in backend_smoke
+    assert "--allow-insecure-no-auth" not in runbook

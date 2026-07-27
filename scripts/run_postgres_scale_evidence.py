@@ -102,11 +102,10 @@ def _percentiles(values_ms: list[float]) -> dict[str, float]:
 
 def _synth_audit_entry(idx: int, tenant_id: str = "scale-evidence") -> dict[str, Any]:
     return {
-        "tenant_id": tenant_id,
         "actor": f"actor-{idx % 50}",
         "action": "scan.create" if idx % 3 else "scan.read",
         "resource": f"job-{idx}",
-        "metadata": {"source": "postgres-scale-evidence", "idx": idx},
+        "details": {"tenant_id": tenant_id, "source": "postgres-scale-evidence", "idx": idx},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -186,15 +185,15 @@ def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> 
     }
 
     if "audit" in kinds:
-        timings = _audit_append_iter(audit_log, size)
-        result["audit_append"] = _percentiles(timings)
+        audit_timings = _audit_append_iter(audit_log, size)
+        result["audit_append"] = _percentiles(audit_timings)
 
     sampled_ids: list[tuple[str, str]] = []
     if "job_put" in kinds:
         # Insert and remember a few ids for the read pass.
         from agent_bom.models import ScanJob, ScanRequest
 
-        timings: list[float] = []
+        job_timings: list[float] = []
         for i in range(size):
             tenant_id = f"r{replica_idx}-{i % 10}"
             job_id = str(uuid.uuid4())
@@ -208,10 +207,10 @@ def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> 
             )
             started = time.perf_counter()
             job_store.put(job)
-            timings.append((time.perf_counter() - started) * 1000)
+            job_timings.append((time.perf_counter() - started) * 1000)
             if i % max(1, size // 100) == 0:
                 sampled_ids.append((job_id, tenant_id))
-        result["job_put"] = _percentiles(timings)
+        result["job_put"] = _percentiles(job_timings)
 
     if "job_get" in kinds and sampled_ids:
         # Read 100 sampled jobs to measure RLS-bounded SELECT latency.

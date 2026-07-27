@@ -42,3 +42,17 @@ def test_postgres_scale_evidence_sets_current_postgres_url(monkeypatch) -> None:
 
     assert os.environ["AGENT_BOM_POSTGRES_URL"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
     assert os.environ["AGENT_BOM_POSTGRES_DSN"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
+
+
+def test_postgres_scale_audit_payload_matches_runtime_contract() -> None:
+    from agent_bom.api.audit_log import AuditEntry
+
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    entry = AuditEntry(**module._synth_audit_entry(7, tenant_id="tenant-7"))
+
+    assert entry.details == {"tenant_id": "tenant-7", "source": "postgres-scale-evidence", "idx": 7}

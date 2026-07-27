@@ -9,6 +9,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.98.2] - 2026-07-27
+
+### Changed
+- Operator dashboards use decision-focused findings, activity, remediation,
+  and graph workspaces, and README onboarding uses a compact product-first
+  layout.
+
+### Fixed
+- Demo scans keep stable agent identities and report their bundled offline
+  advisory evidence without depending on an ambient vulnerability database;
+  optional online transitives remain subject to normal advisory lookup.
+- Optional runtime enrichment remains read-only, signed runtime audit records
+  retain bounded activity and isolation evidence, and findings expose persisted
+  tenant- and scan-scoped graph reachability when assessed.
+- Operator views preserve gateway token and cost evidence and distinguish
+  loading, empty, and unavailable state; release builds reject wheels missing
+  the dashboard, schemas, or CSP assets.
+
 ## [0.98.1] - 2026-07-26
 
 ### Added
@@ -2669,7 +2687,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.2...HEAD
+[0.98.2]: https://github.com/msaad00/agent-bom/compare/v0.98.1...v0.98.2
 [0.98.1]: https://github.com/msaad00/agent-bom/compare/v0.98.0...v0.98.1
 [0.98.0]: https://github.com/msaad00/agent-bom/compare/v0.97.5...v0.98.0
 [0.97.5]: https://github.com/msaad00/agent-bom/compare/v0.97.4...v0.97.5

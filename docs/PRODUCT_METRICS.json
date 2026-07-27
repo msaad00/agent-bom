@@ -1,6 +1,6 @@
 {
-  "generated_on": "2026-07-25",
-  "version": "0.98.1",
+  "generated_on": "2026-07-27",
+  "version": "0.98.2",
   "metrics": [
     {
       "name": "MCP tools",
@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 1028,
+      "value": 1038,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 806,
+      "value": 810,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

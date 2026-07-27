@@ -70,19 +70,17 @@ export function graphFitViewOptions(input: GraphViewportInput): GraphFitViewOpti
   }
 
   if (input.captureMode) {
-    padding -= input.mode === "mesh" ? 0.1 : input.mode === "context" ? 0.04 : 0.02;
-    maxZoom += input.mode === "mesh" ? 0.92 : input.mode === "context" ? 0.22 : 0.1;
+    padding += input.mode === "mesh" ? 0.05 : input.mode === "context" ? -0.04 : -0.02;
+    maxZoom += input.mode === "mesh" ? 0.25 : input.mode === "context" ? 0.22 : 0.1;
   }
 
   const minPadding =
     input.mode === "context"
       ? 0.04
-      : input.captureMode && input.mode === "mesh"
-        ? 0.02
-        : 0.08;
+      : 0.08;
   const maxZoomCap =
     input.captureMode && input.mode === "mesh"
-      ? 3
+      ? 2.25
       : input.mode === "context"
         ? 2.6
         : 2.25;

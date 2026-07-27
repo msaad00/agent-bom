@@ -366,6 +366,12 @@ def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
         for key, value in safe_finding_response_payload(payload).items()
         if value is not None
     }
+    # The public finding contract uses an empty list for assessed-or-unknown
+    # agent reachability, but persisting that default in every ledger row adds
+    # no evidence and defeats reference-table compaction at scale. Non-empty
+    # observed agent ids remain durable.
+    if not clean.get("graph_reachable_from_agents"):
+        clean.pop("graph_reachable_from_agents", None)
     # Classification is derived deterministically from the stored finding on
     # every read. Keeping it in each ledger row wastes space and can drift from
     # the canonical classifier after an upgrade.

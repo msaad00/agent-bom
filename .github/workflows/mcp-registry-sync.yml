@@ -41,16 +41,21 @@ jobs:
 
           result = sync_from_official_registry_sync(max_pages=10, page_size=100)
           if result.total_fetched == 0:
-              result = sync_from_legacy_github_registry_sync()
-              if result.total_fetched == 0:
+              official_corrections = result.corrected
+              fallback_result = sync_from_legacy_github_registry_sync()
+              fallback_result.corrected += official_corrections
+              result = fallback_result
+              if fallback_result.total_fetched == 0:
                   print("Official MCP Registry unavailable and legacy fallback returned no entries — skipping new-server sync")
 
           print(
               f"MCP registry source={result.source} "
               f"source_url={result.source_url} fetched={result.total_fetched} "
-              f"added={result.added} skipped={result.skipped} fallback={result.fallback_used}"
+              f"added={result.added} corrected={result.corrected} "
+              f"skipped={result.skipped} fallback={result.fallback_used}"
           )
           Path("/tmp/new_count").write_text(str(result.added))
+          Path("/tmp/corrected_count").write_text(str(result.corrected))
           Path("/tmp/sync_source").write_text(result.source)
           Path("/tmp/sync_source_url").write_text(result.source_url)
           EOF
@@ -148,15 +153,18 @@ jobs:
       - name: Read counts
         id: count
         run: |
-          echo "new_count=$(cat /tmp/new_count)" >> "$GITHUB_OUTPUT"
-          echo "version_count=$(cat /tmp/version_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
-          echo "cve_count=$(cat /tmp/cve_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
-          echo "sync_source=$(cat /tmp/sync_source 2>/dev/null || echo unknown)" >> "$GITHUB_OUTPUT"
-          echo "sync_source_url=$(cat /tmp/sync_source_url 2>/dev/null || echo unknown)" >> "$GITHUB_OUTPUT"
+          {
+            echo "new_count=$(cat /tmp/new_count)"
+            echo "corrected_count=$(cat /tmp/corrected_count 2>/dev/null || echo 0)"
+            echo "version_count=$(cat /tmp/version_count 2>/dev/null || echo 0)"
+            echo "cve_count=$(cat /tmp/cve_count 2>/dev/null || echo 0)"
+            echo "sync_source=$(cat /tmp/sync_source 2>/dev/null || echo unknown)"
+            echo "sync_source_url=$(cat /tmp/sync_source_url 2>/dev/null || echo unknown)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Configure signed automation commits
         id: signing
-        if: steps.count.outputs.new_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
+        if: steps.count.outputs.new_count != '0' || steps.count.outputs.corrected_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
         env:
           AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
         run: |
@@ -184,10 +192,11 @@ jobs:
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Create PR if registry changed
-        if: (steps.count.outputs.new_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0') && steps.signing.outputs.configured == 'true'
+        if: (steps.count.outputs.new_count != '0' || steps.count.outputs.corrected_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0') && steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NEW_COUNT: ${{ steps.count.outputs.new_count }}
+          CORRECTED_COUNT: ${{ steps.count.outputs.corrected_count }}
           VERSION_COUNT: ${{ steps.count.outputs.version_count }}
           CVE_COUNT: ${{ steps.count.outputs.cve_count }}
           SOURCE: ${{ steps.count.outputs.sync_source }}
@@ -196,12 +205,13 @@ jobs:
           BRANCH="chore/mcp-registry-$(date +%Y%m%d)"
           git switch -C "$BRANCH" origin/main
           git add src/agent_bom/mcp_registry.json
-          git commit -S -m "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE metadata updates"
+          git commit -S -m "chore: sync MCP registry — ${NEW_COUNT} new, ${CORRECTED_COUNT} trust corrections, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE updates"
           git push --force-with-lease origin "$BRANCH"
           BODY="Automated weekly sync from the official MCP server registry.
 
           **New-server source:** ${SOURCE} (${SOURCE_URL})
           **New servers added:** ${NEW_COUNT}
+          **Trust metadata corrected:** ${CORRECTED_COUNT}
           **Versions refreshed:** ${VERSION_COUNT}
           **CVE metadata updates:** ${CVE_COUNT}
 
@@ -209,15 +219,15 @@ jobs:
           PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
             gh pr edit "$PR_NUMBER" \
-              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE metadata updates" \
+              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${CORRECTED_COUNT} trust corrections, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE updates" \
               --body "$BODY"
           else
             gh pr create \
-              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE metadata updates" \
+              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${CORRECTED_COUNT} trust corrections, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE updates" \
               --body "$BODY" \
               --base main
           fi
 
       - name: No changes
-        if: steps.count.outputs.new_count == '0' && steps.count.outputs.version_count == '0' && steps.count.outputs.cve_count == '0'
+        if: steps.count.outputs.new_count == '0' && steps.count.outputs.corrected_count == '0' && steps.count.outputs.version_count == '0' && steps.count.outputs.cve_count == '0'
         run: echo "MCP registry is up to date — no new servers, version changes, or CVE updates found."

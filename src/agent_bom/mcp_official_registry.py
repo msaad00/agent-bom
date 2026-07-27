@@ -57,6 +57,7 @@ class OfficialRegistrySyncResult:
     """Result of syncing Official MCP Registry data into local registry."""
 
     added: int = 0
+    corrected: int = 0
     skipped: int = 0
     total_fetched: int = 0
     source: str = "mcp-official"
@@ -238,6 +239,25 @@ def _raw_registry_entries(upstream: object) -> list[dict]:
     return []
 
 
+def _downgrade_unsupported_auto_enrichment(local_servers: dict) -> int:
+    """Remove trust claims that official-listing metadata cannot substantiate."""
+    changed = 0
+    for entry in local_servers.values():
+        if not isinstance(entry, dict) or entry.get("auto_enriched") is not True:
+            continue
+
+        entry_changed = False
+        if entry.get("verified") is not False:
+            entry["verified"] = False
+            entry_changed = True
+        if not entry.get("tools") and not entry.get("credential_env_vars") and entry.get("risk_level") != "unknown":
+            entry["risk_level"] = "unknown"
+            entry_changed = True
+        if entry_changed:
+            changed += 1
+    return changed
+
+
 async def sync_from_official_registry(
     max_pages: int = 10,
     page_size: int = 100,
@@ -246,15 +266,18 @@ async def sync_from_official_registry(
     """Bulk-import Official MCP Registry servers into the local registry.
 
     Fetches servers and adds entries that don't already exist in the local
-    mcp_registry.json. Does not overwrite existing entries.
+    mcp_registry.json. Existing curated metadata is preserved; unsupported
+    trust claims on auto-enriched entries are normalized fail-closed.
     """
     local_data = _load_local_registry()
 
     local_servers = local_data.get("servers", {})
+    trust_metadata_changed = _downgrade_unsupported_auto_enrichment(local_servers)
     local_names = {v.get("package", k).lower() for k, v in local_servers.items()}
     added_names: set[str] = set()
 
     result = OfficialRegistrySyncResult(source="mcp-official", source_url=_API_SERVERS_URL, fallback_used=False)
+    result.corrected = trust_metadata_changed
     cursor = None
     fetched_at = _utc_timestamp()
 
@@ -341,7 +364,7 @@ async def sync_from_official_registry(
             if not cursor:
                 break
 
-    if not dry_run and result.added > 0:
+    if not dry_run and (result.added > 0 or trust_metadata_changed > 0):
         local_data["servers"] = local_servers
         local_data["_total_servers"] = len(local_servers)
         local_data["_updated"] = _utc_date()
@@ -365,9 +388,11 @@ async def sync_from_legacy_github_registry(
     """
     local_data = _load_local_registry()
     local_servers = local_data.get("servers", {})
+    trust_metadata_changed = _downgrade_unsupported_auto_enrichment(local_servers)
     local_names = {v.get("package", k).lower() for k, v in local_servers.items()}
     fetched_at = _utc_timestamp()
     result = OfficialRegistrySyncResult(
+        corrected=trust_metadata_changed,
         source="mcp-official-github-fallback",
         source_url="",
         fallback_used=True,
@@ -407,7 +432,7 @@ async def sync_from_legacy_github_registry(
 
             break
 
-    if not dry_run and result.added > 0:
+    if not dry_run and (result.added > 0 or trust_metadata_changed > 0):
         local_data["servers"] = local_servers
         local_data["_total_servers"] = len(local_servers)
         local_data["_updated"] = _utc_date()

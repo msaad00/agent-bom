@@ -286,6 +286,69 @@ def test_sync_does_not_upgrade_listing_presence_to_security_evidence(mock_client
 
 @patch("agent_bom.mcp_official_registry.request_with_retry")
 @patch("agent_bom.mcp_official_registry.create_client")
+def test_sync_downgrades_unsupported_legacy_auto_enrichment(mock_client_factory, mock_request, tmp_path):
+    """A refresh removes security claims unsupported by bundled evidence."""
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client_factory.return_value = mock_client
+    mock_request.return_value = _make_response(_mock_search_response([], count=0))
+
+    reg_file = tmp_path / "mcp_registry.json"
+    reg_file.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "legacy/unsupported": {
+                        "package": "legacy/unsupported",
+                        "auto_enriched": True,
+                        "verified": True,
+                        "risk_level": "low",
+                        "tools": [],
+                        "credential_env_vars": [],
+                    },
+                    "curated/verified": {
+                        "package": "curated/verified",
+                        "verified": True,
+                        "risk_level": "low",
+                        "tools": [],
+                        "credential_env_vars": [],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("agent_bom.mcp_official_registry._REGISTRY_PATH", reg_file):
+        result = sync_from_official_registry_sync(max_pages=1, dry_run=False)
+
+    servers = json.loads(reg_file.read_text(encoding="utf-8"))["servers"]
+    assert result.corrected == 1
+    assert servers["legacy/unsupported"]["verified"] is False
+    assert servers["legacy/unsupported"]["risk_level"] == "unknown"
+    assert servers["curated/verified"]["verified"] is True
+    assert servers["curated/verified"]["risk_level"] == "low"
+
+
+def test_shipped_registry_has_no_unsupported_auto_enriched_trust_claims():
+    """The bundled catalog must obey the syncer's fail-closed trust invariant."""
+    from agent_bom.mcp_official_registry import _REGISTRY_PATH
+
+    servers = json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))["servers"]
+    unsupported = [
+        name
+        for name, entry in servers.items()
+        if entry.get("auto_enriched") is True
+        and not entry.get("tools")
+        and not entry.get("credential_env_vars")
+        and (entry.get("verified") is not False or entry.get("risk_level") != "unknown")
+    ]
+    assert unsupported == []
+
+
+@patch("agent_bom.mcp_official_registry.request_with_retry")
+@patch("agent_bom.mcp_official_registry.create_client")
 def test_sync_skips_existing(mock_client_factory, mock_request, tmp_path):
     """Sync skips servers already in local registry."""
     mock_client = AsyncMock()
@@ -335,12 +398,29 @@ def test_legacy_github_fallback_labels_provenance(mock_client_factory, mock_requ
     )
 
     reg_file = tmp_path / "mcp_registry.json"
-    reg_file.write_text(json.dumps({"servers": {}}), encoding="utf-8")
+    reg_file.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "legacy/unsupported": {
+                        "package": "legacy/unsupported",
+                        "auto_enriched": True,
+                        "verified": True,
+                        "risk_level": "low",
+                        "tools": [],
+                        "credential_env_vars": [],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     fallback_url = "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/servers.json"
 
     with patch("agent_bom.mcp_official_registry._REGISTRY_PATH", reg_file):
         result = sync_from_legacy_github_registry_sync(urls=(fallback_url,), dry_run=False)
         assert result.added == 1
+        assert result.corrected == 1
         assert result.source == "mcp-official-github-fallback"
         assert result.fallback_used is True
 
@@ -351,6 +431,8 @@ def test_legacy_github_fallback_labels_provenance(mock_client_factory, mock_requ
         assert entry["source_fetched_at"].endswith("Z")
         assert entry["version_source"] == "legacy-github-fallback"
         assert data["_mcp_registry_sync_source"] == "mcp-official-github-fallback"
+        assert data["servers"]["legacy/unsupported"]["verified"] is False
+        assert data["servers"]["legacy/unsupported"]["risk_level"] == "unknown"
 
 
 def test_mcp_registry_sync_workflow_prefers_official_api_and_labels_fallback():
@@ -363,6 +445,7 @@ def test_mcp_registry_sync_workflow_prefers_official_api_and_labels_fallback():
     assert "result.total_fetched == 0" in workflow
     assert "sync_source" in workflow
     assert "version_source" in workflow
+    assert "corrected_count" in workflow
 
 
 # ---------------------------------------------------------------------------

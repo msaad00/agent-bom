@@ -174,7 +174,7 @@ test("engineering and compliance findings expose different task workflows", asyn
   await routeFindings(page);
   await page.goto("/findings?scope=all");
 
-  await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Findings", exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Engineering findings summary" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Reach / exploit" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Fix & verify" })).toBeVisible();

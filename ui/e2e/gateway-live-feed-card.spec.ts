@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// Renders the gateway activity card against mocked live data — including
+// Renders the unified activity stream against mocked gateway data — including
 // a deliberately overlong agent/target path — and captures it at a narrow
 // (390px) and wide (1280px) viewport to prove text stays contained.
 
@@ -59,20 +59,7 @@ const feedEvents = [
   },
 ];
 
-const kpis = {
-  schema_version: "1.0",
-  tenant_id: "default",
-  generated_at: "2026-06-26T14:31:07Z",
-  calls_today: 4485,
-  blocked_today: 312,
-  shadow_ai_blocked: 247,
-  data_filters_applied: 1893,
-  tool_calls_authorized: 4173,
-  llm_calls: 1204,
-  uptime_seconds: 18732,
-};
-
-test("gateway live feed card renders without overflow at both widths", async ({
+test("unified activity stream renders without overflow at both widths", async ({
   page,
 }) => {
   await page.route("**/health", (route) =>
@@ -98,8 +85,24 @@ test("gateway live feed card renders without overflow at both widths", async ({
       }),
     }),
   );
-  await page.route("**/v1/gateway/feed/kpis", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(kpis) }),
+  await page.route("**/v1/activity**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        account: "synthetic-responsive-fixture",
+        discovered_at: "2026-06-26T14:31:07Z",
+        summary: {
+          total_queries: 0,
+          agent_queries: 0,
+          observability_events: 0,
+          unique_agents: 5,
+          tool_calls: 5,
+        },
+        query_history: [],
+        observability_events: [],
+        warnings: [],
+      }),
+    }),
   );
   await page.route("**/v1/gateway/feed*", (route) =>
     route.fulfill({
@@ -122,30 +125,31 @@ test("gateway live feed card renders without overflow at both widths", async ({
     }),
   );
 
-  const card = page.getByTestId("gateway-live-feed");
+  const stream = page.getByTestId("activity-event-stream");
 
   // Narrow (mobile) viewport.
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto("/activity");
-  await expect(card).toBeVisible();
-  await expect(card.getByText("Gateway activity", { exact: true })).toBeVisible();
-  await expect(card.getByText(/4,485 calls today/)).toBeVisible();
+  await expect(stream).toBeVisible();
+  await expect(stream.getByRole("heading", { name: "Event stream" })).toBeVisible();
+  await expect(stream.getByText("Live gateway")).toBeVisible();
+  await expect(stream.getByText(/extremely-long-undeclared-shadow/)).toBeVisible();
 
-  // No row's content extends past the card's right edge.
-  const cardBox = await card.boundingBox();
-  const codeEls = card.locator("code");
-  const codeCount = await codeEls.count();
-  expect(codeCount).toBeGreaterThan(0);
-  for (let i = 0; i < codeCount; i++) {
-    const box = await codeEls.nth(i).boundingBox();
-    if (box && cardBox) {
-      expect(box.x + box.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+  // No event row extends past the stream's right edge.
+  const streamBox = await stream.boundingBox();
+  const rows = stream.locator("li > button");
+  const rowCount = await rows.count();
+  expect(rowCount).toBeGreaterThan(0);
+  for (let i = 0; i < rowCount; i++) {
+    const box = await rows.nth(i).boundingBox();
+    if (box && streamBox) {
+      expect(box.x + box.width).toBeLessThanOrEqual(streamBox.x + streamBox.width + 1);
     }
   }
-  await card.screenshot({ path: `${SHOTS}/live-feed-card-390.png` });
+  await stream.screenshot({ path: `${SHOTS}/activity-event-stream-390.png` });
 
   // Wide (desktop) viewport.
   await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(card).toBeVisible();
-  await card.screenshot({ path: `${SHOTS}/live-feed-card-1280.png` });
+  await expect(stream).toBeVisible();
+  await stream.screenshot({ path: `${SHOTS}/activity-event-stream-1280.png` });
 });

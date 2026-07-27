@@ -31,7 +31,7 @@ signed release evidence.
 | Packaged dashboard | `uv run python scripts/verify_release_wheel.py dist` | Every wheel passes the same dashboard and CSP contract used by the manual publish targets. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
 | Registry surface freshness (post-publish) | `PYTHONPATH=src python scripts/check_surface_freshness.py --out /tmp/agent-bom-surface-freshness.json` | PyPI, Docker, GHCR, Glama, and configured Smithery surfaces report the expected version and a non-empty inventory. Async rebuild acceptance is not release completion. |
-| Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real report, graph, posture, and no coverage warnings. |
+| Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real inventory report, graph, and posture with no coverage warnings; package-CVE lookup is skipped because a fresh install has no local database. Run `agent-bom scan --demo --offline` separately for bundled CVE proof. |
 | Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
 
 Do not publish a release as hosted-ready when any required line above is red.

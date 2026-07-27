@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -80,6 +82,7 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert scan_args[1] == "agents"
     assert "--context-graph" in scan_args
     assert "--offline" in scan_args
+    assert "--no-scan" in scan_args
     assert "-o" in scan_args
     assert str(sample_dir / "agent-bom-report.json") in scan_args
     assert str(sample_dir / "inventory.json") in scan_args
@@ -95,6 +98,46 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     # cockpit handoff must pass a flag that actually lets /v1/overview load on loopback
     assert "agent-bom serve --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
     assert "--api-key <key>" in result.output
+
+
+def test_quickstart_run_offline_succeeds_with_empty_vulnerability_db(tmp_path, monkeypatch):
+    """The advertised offline first run must work before `agent-bom db update`."""
+    sample_dir = tmp_path / "stack"
+    graph_db = tmp_path / "graph.db"
+    wrapper = tmp_path / "agent-bom"
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        "from agent_bom.cli import main\n"
+        "main()\n"
+    )
+    wrapper.chmod(0o755)
+
+    monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: str(wrapper))
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(tmp_path / "no-profile.toml"))
+    monkeypatch.setenv("AGENT_BOM_DB", str(tmp_path / "control.db"))
+    monkeypatch.setenv("AGENT_BOM_DB_PATH", str(tmp_path / "empty-vulns.db"))
+    monkeypatch.setenv("AGENT_BOM_GRAPH_DB", str(graph_db))
+    monkeypatch.setenv("AGENT_BOM_LOCAL_ANALYTICS_DB", str(tmp_path / "analytics.db"))
+
+    result = CliRunner().invoke(
+        main,
+        ["quickstart", "--run", "--offline", "--force", "--sample-dir", str(sample_dir)],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads((sample_dir / "agent-bom-report.json").read_text())
+    assert report["scan_run"]["outcome"] == "complete"
+    assert report["scan_run"]["issues"] == []
+    assert report["scan_run"]["warning_count"] == 0
+    assert report["coverage_warnings"] == []
+    assert report["summary"]["total_agents"] > 0
+    assert report["summary"]["total_packages"] > 0
+    assert report["summary"]["total_vulnerabilities"] == 0
+    assert (sample_dir / "gateway-baseline-policy.json").is_file()
+
+    with sqlite3.connect(graph_db) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()[0] > 0
+        assert connection.execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0] > 0
 
 
 def test_quickstart_run_no_gateway_policy_skips_file(tmp_path, _fake_scan):

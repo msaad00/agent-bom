@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.2.11",
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.0",
     "@storybook/react-vite": "^10.5.3",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",

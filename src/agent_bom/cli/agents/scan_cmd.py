@@ -778,18 +778,21 @@ def scan(
     # attached to the report so the API/MCP can return it. Offline/airgapped
     # callers (``--offline`` or AGENT_BOM_VULN_DB_OFFLINE) never trigger a
     # network refresh — they use whatever cache exists.
-    from agent_bom.vuln_freshness import compute_freshness, should_refresh
+    from agent_bom.vuln_freshness import bundled_demo_freshness, compute_freshness, should_refresh
 
     _vuln_freshness = None
-    try:
-        _vuln_freshness = compute_freshness(offline=offline)
-    except Exception:
-        _vuln_freshness = None  # Never block a scan on a freshness probe failure
+    if demo:
+        _vuln_freshness = bundled_demo_freshness()
+    else:
+        try:
+            _vuln_freshness = compute_freshness(offline=offline)
+        except Exception:
+            _vuln_freshness = None  # Never block a scan on a freshness probe failure
 
     # Auto-refresh stale/missing DB if enabled (skip side-effect-light modes,
     # skip in offline mode). Never fail the scan on a refresh error — fall back
     # to live API or the existing cache.
-    if auto_update_db and not no_scan and not dry_run and not offline and _vuln_freshness is not None:
+    if auto_update_db and not demo and not no_scan and not dry_run and not offline and _vuln_freshness is not None:
         source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
         # Explicit --db-source always syncs; otherwise respect the age threshold
         # (idempotent: a fresh cache is not re-synced).

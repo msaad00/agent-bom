@@ -1228,6 +1228,11 @@ async def scan_packages(
         demo_count, demo_covered = _scan_packages_demo_advisories(scannable)
         local_count += demo_count
         db_covered.update(demo_covered)
+        # The curated demo inventory is a closed, versioned evidence set. Some
+        # entries are intentionally clean or malicious without a CVE, so a
+        # missing advisory row must not fall through to the user's ambient DB
+        # (or OSV) and turn deterministic demo coverage into a partial scan.
+        db_covered.update(_db_key(package) for package in scannable)
 
     # Query the local SQLite DB for packages not already covered by the
     # deterministic demo manifest. Packages covered by the DB skip OSV calls.

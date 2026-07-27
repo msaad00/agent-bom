@@ -12,8 +12,12 @@ doc language so the defect cannot silently return.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import yaml
 
@@ -21,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 DASHBOARD_ARTIFACT = "dashboard-ui-dist"
 DASHBOARD_PATH = "src/agent_bom/ui_dist"
+WHEEL_VERIFIER = ROOT / "scripts" / "verify_release_wheel.py"
 
 
 def _release_jobs() -> dict[str, Any]:
@@ -138,10 +143,12 @@ def test_dockerfile_copies_the_package_source_that_carries_the_dashboard():
 
 
 def test_release_verification_bundles_the_dashboard_before_building_the_wheel():
-    """`uv build` alone yields a dashboard-less wheel; the doc must say so in order."""
+    """The release runbook must route package builds through the guarded target."""
     body = (ROOT / "docs" / "RELEASE_VERIFICATION.md").read_text(encoding="utf-8")
     assert "make build-ui" in body, "RELEASE_VERIFICATION.md never tells the release engineer to bundle the dashboard"
-    assert body.index("make build-ui") < body.index("uv build"), "the dashboard bundle step must precede the package build"
+    assert "make release-build" in body, "the release runbook bypasses the guarded package-build target"
+    assert body.index("make build-ui") < body.index("make release-build"), "the dashboard bundle contract must precede the package build"
+    assert "scripts/verify_release_wheel.py dist" in body, "the release runbook omits wheel dashboard verification"
     assert "ui_dist" in body, "the doc must name the artifact the bundle step produces"
 
 
@@ -151,3 +158,67 @@ def test_enterprise_deployment_states_what_each_artifact_bundles():
     assert "false. Verified above." not in body, "the guide still asserts a blanket claim the reader cannot verify"
     assert "The wheel bundles the dashboard" in body
     assert "agentbom/agent-bom" in body
+
+
+def _make_test_wheel(tmp_path: Path, *, include_index: bool = True, script_hashes: list[str] | None = None) -> Path:
+    wheel = tmp_path / "agent_bom-0.0.0-py3-none-any.whl"
+    with ZipFile(wheel, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("agent_bom/data/inventory.schema.json", "{}")
+        archive.writestr("agent_bom/data/mcp-intelligence.schema.json", "{}")
+        if include_index:
+            archive.writestr("agent_bom/ui_dist/index.html", "<!doctype html><title>agent-bom</title>")
+        archive.writestr(
+            "agent_bom/ui_dist/csp-hashes.json",
+            json.dumps({"script_hashes": ["sha256-test"] if script_hashes is None else script_hashes}),
+        )
+    return wheel
+
+
+def _verify_wheels(dist_dir: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(WHEEL_VERIFIER), str(dist_dir)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_release_wheel_verifier_accepts_dashboard_and_nonempty_csp_manifest(tmp_path):
+    wheel = _make_test_wheel(tmp_path)
+
+    result = _verify_wheels(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert wheel.name in result.stdout
+
+
+def test_release_wheel_verifier_rejects_a_dashboardless_wheel(tmp_path):
+    _make_test_wheel(tmp_path, include_index=False)
+
+    result = _verify_wheels(tmp_path)
+
+    assert result.returncode == 1
+    assert "agent_bom/ui_dist/index.html" in result.stderr
+
+
+def test_release_wheel_verifier_rejects_an_empty_csp_manifest(tmp_path):
+    _make_test_wheel(tmp_path, script_hashes=[])
+
+    result = _verify_wheels(tmp_path)
+
+    assert result.returncode == 1
+    assert "script_hashes" in result.stderr
+
+
+def test_manual_publish_targets_build_and_verify_dashboard_wheels_first():
+    body = (ROOT / "Makefile").read_text(encoding="utf-8")
+    build_ui = (ROOT / "scripts" / "build-ui.sh").read_text(encoding="utf-8")
+
+    assert "release-build: build-ui" in body
+    assert "uv build" in body
+    assert "uv run python scripts/verify_release_wheel.py dist" in body
+    assert "publish-test: release-build" in body
+    assert "publish: release-build" in body
+    assert "publish-test:\n\tuv build" not in body
+    assert "publish:\n\tuv build" not in body
+    assert 'uv run python "$ROOT_DIR/scripts/generate_ui_csp_hashes.py"' in build_ui

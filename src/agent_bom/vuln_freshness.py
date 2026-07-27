@@ -85,7 +85,8 @@ class VulnDataFreshness:
     Attributes:
         mode: ``"local"`` when a local cache is used, ``"live"`` when scanning
             falls back to the OSV/GHSA/NVD APIs, ``"offline"`` when network is
-            disabled and only the existing cache is consulted.
+            disabled and only the existing cache is consulted, or
+            ``"bundled-demo"`` for the versioned demo advisory set.
         sources: Human labels of the feeds in play (e.g. ``["OSV", "GHSA"]``).
         last_updated: ISO-8601 UTC timestamp of the oldest synced source, or
             ``None`` when there is no cache.
@@ -134,6 +135,9 @@ class VulnDataFreshness:
         "No local vulnerability DB found" warning, and reusable by any other
         text surface. Markup-free so it is safe for logs and JSON notes.
         """
+        if self.mode == "bundled-demo":
+            noun = "advisory" if self.record_count == 1 else "advisories"
+            return f"Vuln data: bundled demo advisory DB ({self.record_count} curated {noun})"
         sources = "+".join(self.sources) if self.sources else "OSV"
         if self.mode == "live":
             return f"Vuln data: {sources} live (no local cache — run `agent-bom db update` for faster offline scans)"
@@ -147,6 +151,19 @@ class VulnDataFreshness:
         if self.stale:
             return f"{base} — run `agent-bom db update` for daily freshness"
         return base
+
+
+def bundled_demo_freshness() -> VulnDataFreshness:
+    """Return truthful freshness metadata for the versioned demo evidence."""
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+
+    return VulnDataFreshness(
+        mode="bundled-demo",
+        sources=["DEMO"],
+        record_count=len(DEMO_ADVISORIES),
+        stale=False,
+        danger=False,
+    )
 
 
 def _humanize_age(age_hours: int | None) -> str:
@@ -316,7 +333,7 @@ def should_refresh(
     """
     if offline or offline_env():
         return False
-    if freshness.mode == "offline":
+    if freshness.mode in {"offline", "bundled-demo"}:
         return False
     # Missing cache (live mode) or stale local cache → refresh.
     if freshness.mode == "live":
@@ -370,7 +387,7 @@ def db_staleness(
     threshold = threshold_days if threshold_days is not None else db_stale_days_threshold()
     age = freshness.age_days
     if age is None:
-        if freshness.mode == "live":
+        if freshness.mode in {"live", "bundled-demo"}:
             return False, None
         return True, None
     return age >= threshold, age

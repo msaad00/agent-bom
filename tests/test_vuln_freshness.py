@@ -12,7 +12,9 @@ from agent_bom.vuln_freshness import (
     DEFAULT_MAX_AGE_HOURS,
     STALE_DANGER_HOURS,
     VulnDataFreshness,
+    bundled_demo_freshness,
     compute_freshness,
+    db_staleness,
     max_age_hours,
     should_refresh,
 )
@@ -125,6 +127,24 @@ def test_to_dict_round_trip():
     assert d["age_hours"] == 49
     assert d["age_days"] == 2
     assert d["stale"] is True
+
+
+def test_bundled_demo_freshness_is_versioned_evidence_not_ambient_db_age():
+    """The deterministic demo reports its bundled source without inventing DB age."""
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+
+    fresh = bundled_demo_freshness()
+
+    assert fresh.mode == "bundled-demo"
+    assert fresh.sources == ["DEMO"]
+    assert fresh.record_count == len(DEMO_ADVISORIES)
+    assert fresh.last_updated is None
+    assert fresh.age_hours is None
+    assert fresh.stale is False
+    assert fresh.danger is False
+    assert fresh.summary_line() == f"Vuln data: bundled demo advisory DB ({len(DEMO_ADVISORIES)} curated advisories)"
+    assert should_refresh(fresh, offline=False) is False
+    assert db_staleness(fresh) == (False, None)
 
 
 # ── should_refresh ────────────────────────────────────────────────────────

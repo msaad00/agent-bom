@@ -27,8 +27,8 @@ signed release evidence.
 | Backend tests | `uv run pytest -q` | Python 3.11/3.13/3.14 CI must pass; local focused suites should cover changed areas. |
 | UI build | `cd ui && npm run typecheck && npm run lint && npm run build && npm run bundle:check && npm run test:run` | The dashboard builds, tests pass, and client JS stays under budget. |
 | Dashboard bundle | `make build-ui` | Runs the export build (`NEXT_EXPORT=1`) and copies it to `src/agent_bom/ui_dist` with CSP hashes. **Required before the package build** — the UI-build row above leaves nothing in `src/agent_bom/ui_dist`, and `ui_dist` is gitignored, so a `uv build` without this step produces a dashboard-less wheel and a dashboard-less image. |
-| Package build | `make build-ui && uv build --out-dir /tmp/agent-bom-build` | Wheel and sdist build from a clean tree. |
-| Packaged dashboard | `unzip -l /tmp/agent-bom-build/agent_bom-*.whl \| grep -c ui_dist` | Non-zero. Zero means the wheel ships no dashboard: `agent-bom serve` prints `Dashboard  Not bundled` and every UI route 404s. |
+| Package build | `make release-build` | Builds the dashboard, wheel, and sdist, then rejects any wheel missing the schemas, dashboard index, CSP manifest, or CSP script hashes. |
+| Packaged dashboard | `uv run python scripts/verify_release_wheel.py dist` | Every wheel passes the same dashboard and CSP contract used by the manual publish targets. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
 | Registry surface freshness (post-publish) | `PYTHONPATH=src python scripts/check_surface_freshness.py --out /tmp/agent-bom-surface-freshness.json` | PyPI, Docker, GHCR, Glama, and configured Smithery surfaces report the expected version and a non-empty inventory. Async rebuild acceptance is not release completion. |
 | Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real report, graph, posture, and no coverage warnings. |

@@ -1,4 +1,4 @@
-.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
+.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui release-build publish-test publish analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -91,6 +91,11 @@ fullstack-up: secrets  ## Bring up the dev full-stack (API + UI + Postgres); gen
 build-ui:  ## Build Next.js dashboard and bundle into package
 	bash scripts/build-ui.sh
 
+release-build: build-ui  ## Build and verify release artifacts with the bundled dashboard
+	rm -rf dist/
+	uv build
+	uv run python scripts/verify_release_wheel.py dist
+
 check-dupes:  ## Detect Finder-style duplicate files (incl. untracked) in the working tree
 	python3 scripts/check_duplicate_artifacts.py --working-tree
 
@@ -105,12 +110,10 @@ clean:  ## Clean build artifacts
 	find . -type f -name '*.pyc' -delete
 	rm -f report.json ai-bom*.json *.cdx.json
 
-publish-test:  ## Publish to TestPyPI
-	python -m build
+publish-test: release-build  ## Publish verified artifacts to TestPyPI
 	twine upload --repository testpypi dist/*
 
-publish:  ## Publish to PyPI
-	python -m build
+publish: release-build  ## Publish verified artifacts to PyPI
 	twine upload dist/*
 
 version:  ## Show agent-bom version

@@ -1096,6 +1096,50 @@ def test_demo_scan_preserves_curated_inventory_without_registry_fallback(monkeyp
     assert "PARTIAL COVERAGE" not in result.output
 
 
+def test_demo_offline_with_missing_ambient_db_keeps_complete_bundled_evidence(monkeypatch, tmp_path):
+    """The advertised demo must not inherit partial coverage from an absent user DB."""
+    from agent_bom.db import schema
+    from agent_bom.demo_advisories import DEMO_ADVISORIES
+
+    output = tmp_path / "demo.json"
+    monkeypatch.setattr(schema, "DB_PATH", tmp_path / "missing" / "vulns.db")
+
+    result = _run(
+        [
+            "scan",
+            "--demo",
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    # Findings intentionally fail the demo scan; execution evidence is complete.
+    assert result.exit_code == 1, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["scan_run"]["outcome"] == "complete"
+    assert payload["scan_run"]["issues"] == []
+    assert payload["warnings"] == []
+    assert payload["summary"]["coverage_warnings"] == []
+    assert payload["vuln_data_freshness"] == {
+        "mode": "bundled-demo",
+        "sources": ["DEMO"],
+        "last_updated": None,
+        "age_hours": None,
+        "age_days": None,
+        "record_count": len(DEMO_ADVISORIES),
+        "stale": False,
+        "danger": False,
+        "max_age_hours": 24,
+    }
+    assert "local vulnerability DB not found" not in result.output
+    assert "Offline coverage gap" not in result.output
+    assert "Vulnerability DB is stale" not in result.output
+
+
 def test_scan_format_sarif(tmp_path):
     """--format sarif should produce a SARIF file."""
     out = tmp_path / "results.sarif"

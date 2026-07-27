@@ -379,6 +379,7 @@ def test_scan_packages_demo_offline_uses_curated_advisories_without_local_db():
     vulnerable_npm = _make_pkg("express", "4.17.1", "npm")
     vulnerable_pypi = _make_pkg("pillow", "9.0.0", "pypi")
     intentionally_clean = _make_pkg("semver", "7.5.2", "npm")
+    intentional_typosquat = _make_pkg("reqeusts", "2.99.0", "pypi")
 
     with (
         patch("agent_bom.scanners._scan_packages_local_db") as mock_local_db,
@@ -387,7 +388,7 @@ def test_scan_packages_demo_offline_uses_curated_advisories_without_local_db():
     ):
         count = asyncio.run(
             scan_packages(
-                [vulnerable_npm, vulnerable_pypi, intentionally_clean],
+                [vulnerable_npm, vulnerable_pypi, intentionally_clean, intentional_typosquat],
                 options=ScanOptions(offline=True, demo_advisories=True),
             )
         )
@@ -396,6 +397,7 @@ def test_scan_packages_demo_offline_uses_curated_advisories_without_local_db():
     assert vulnerable_npm.vulnerabilities
     assert vulnerable_pypi.vulnerabilities
     assert intentionally_clean.vulnerabilities == []
+    assert intentional_typosquat.vulnerabilities == []
     mock_local_db.assert_not_called()
     mock_osv.assert_not_called()
 

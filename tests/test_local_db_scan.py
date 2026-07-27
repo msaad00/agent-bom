@@ -402,6 +402,36 @@ def test_scan_packages_demo_offline_uses_curated_advisories_without_local_db():
     mock_osv.assert_not_called()
 
 
+def test_scan_packages_demo_transitive_outside_curated_inventory_reaches_advisory_lookup():
+    """Demo closure must not silently cover packages discovered online."""
+    from agent_bom.scanners import ScanOptions, scan_packages
+
+    curated_direct = _make_pkg("semver", "7.5.2", "npm")
+    discovered_transitive = _make_pkg("left-pad", "1.3.0", "npm")
+
+    with (
+        patch(
+            "agent_bom.transitive.resolve_transitive_dependencies",
+            return_value=[discovered_transitive],
+        ),
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())) as mock_local_db,
+        patch("agent_bom.scanners.query_osv_batch", return_value={}) as mock_osv,
+    ):
+        asyncio.run(
+            scan_packages(
+                [curated_direct],
+                options=ScanOptions(resolve_transitive=True, demo_advisories=True),
+            )
+        )
+
+    local_targets = mock_local_db.call_args[0][0]
+    assert curated_direct not in local_targets
+    assert discovered_transitive in local_targets
+    osv_targets = mock_osv.call_args[0][0]
+    assert curated_direct not in osv_targets
+    assert discovered_transitive in osv_targets
+
+
 def test_scan_packages_offline_clean_pkg_in_covered_ecosystem_does_not_raise(monkeypatch):
     """A package with no DB rows whose ecosystem the DB covers is CLEAN, not a gap.
 

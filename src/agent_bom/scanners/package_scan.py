@@ -1084,6 +1084,9 @@ async def scan_packages(
     except Exception:  # noqa: BLE001
         pass
 
+    def _db_key(p: Package) -> str:
+        return f"{p.ecosystem.lower()}:{normalize_package_name(p.name, p.ecosystem)}@{p.version}"
+
     # ── Local version resolution (installed packages) ──────────────────────
     # Try resolving versions from locally installed packages FIRST.
     # This is more accurate than registry fallback because it reflects
@@ -1172,6 +1175,11 @@ async def scan_packages(
     elif still_unresolved and scan_offline:
         _logger.info("Offline mode: skipping registry version resolution for %d package(s)", len(still_unresolved))
 
+    # Capture the version-resolved direct demo inventory before optional online
+    # transitive expansion. Only this curated set is closed evidence; packages
+    # discovered outside it still require a real advisory lookup.
+    demo_inventory_keys = {_db_key(package) for package in packages} if scan_options.demo_advisories else set()
+
     # ── Transitive dependency resolution (npm / PyPI / Go) ───────────────────
     if scan_resolve_transitive and not scan_offline:
         transitive_ecosystems = {"npm", "pypi", "go"}
@@ -1216,9 +1224,6 @@ async def scan_packages(
     if not scannable:
         return 0
 
-    def _db_key(p: Package) -> str:
-        return f"{p.ecosystem.lower()}:{normalize_package_name(p.name, p.ecosystem)}@{p.version}"
-
     # ── Local DB lookup (fast, offline-capable) ───────────────────────────────
     # Demo mode uses bundled advisory rows first so published first-run evidence
     # is deterministic and does not depend on a user's ambient ~/.agent-bom DB.
@@ -1232,7 +1237,7 @@ async def scan_packages(
         # entries are intentionally clean or malicious without a CVE, so a
         # missing advisory row must not fall through to the user's ambient DB
         # (or OSV) and turn deterministic demo coverage into a partial scan.
-        db_covered.update(_db_key(package) for package in scannable)
+        db_covered.update(demo_inventory_keys)
 
     # Query the local SQLite DB for packages not already covered by the
     # deterministic demo manifest. Packages covered by the DB skip OSV calls.

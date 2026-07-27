@@ -366,7 +366,7 @@ def test_runtime_workload_evidence_shared_pool_roundtrip_and_rls():
         rls = connection.execute(
             "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = 'public.runtime_workload_evidence'::regclass"
         ).fetchone()
-    assert marker == (1,)
+    assert marker == (2,)
     assert rls == (True, True)
 
 

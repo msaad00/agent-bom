@@ -2168,8 +2168,6 @@ async function main() {
         await meshPage.waitForTimeout(800);
       }
       await fitReactFlow(meshPage);
-      await meshPage.locator(".react-flow__controls-zoomout").first().click({ force: true });
-      await meshPage.locator(".react-flow__controls-zoomout").first().click({ force: true });
       await meshPage.waitForTimeout(500);
     }, {
       expectedText: [

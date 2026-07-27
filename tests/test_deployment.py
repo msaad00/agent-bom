@@ -591,8 +591,8 @@ def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_
     assert '_publish_skill "integrations/openclaw" "agent-bom"' not in workflow
     assert 'git fetch --no-tags --depth=1 origin "$RELEASE_SHA"' in workflow
     assert 'check_glama_listing.py --verify-manifest --git-ref "${{ needs.release.outputs.release_sha }}"' in workflow
-    assert "ref: ${{ needs.release.outputs.release_sha }}" not in workflow
-    assert workflow.count("ref: ${{ github.event.repository.default_branch }}") == 4
+    assert workflow.count("ref: ${{ needs.release.outputs.release_sha }}") == 1
+    assert workflow.count("ref: ${{ github.event.repository.default_branch }}") == 3
     assert workflow.count("persist-credentials: false") == 4
     assert "workflow_run.head_sha || github.ref" not in workflow
     assert "actions: read" in workflow
@@ -613,6 +613,19 @@ def test_publish_registries_manual_repair_resolves_latest_release_only():
     assert "releases/tags/${REQUESTED_TAG}" not in workflow
     assert "GITHUB_REF_NAME" not in workflow
     assert "VERSION=$(grep '^version' pyproject.toml" not in workflow
+
+
+def test_publish_registries_uses_release_metrics_for_glama_and_clawhub_assets():
+    """Current checker code must evaluate exact release evidence and assets."""
+    workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
+
+    assert "tool_count: ${{ steps.release.outputs.tool_count }}" in workflow
+    assert 'git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json"' in workflow
+    assert 'METRICS_VERSION" != "$VERSION"' in workflow
+    assert 'select(.name == "MCP tools")' in workflow
+    assert "EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}" in workflow
+    assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in workflow
+    assert workflow.count("ref: ${{ needs.release.outputs.release_sha }}") == 1
 
 
 def test_glama_rebuild_webhook_is_secret_and_missing_secret_is_honest():

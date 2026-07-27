@@ -30,6 +30,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       release_ref: ${{ steps.release.outputs.release_ref }}
       release_sha: ${{ steps.release.outputs.release_sha }}
+      tool_count: ${{ steps.release.outputs.tool_count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,10 +83,22 @@ jobs:
             echo "::error::Resolved release tag is not semantic versioned"
             exit 1
           fi
+          METRICS_JSON=$(git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json")
+          METRICS_VERSION=$(echo "$METRICS_JSON" | jq -er '.version')
+          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er 'first(.metrics[] | select(.name == "MCP tools") | .value)')
+          if [ "$METRICS_VERSION" != "$VERSION" ]; then
+            echo "::error::Published release metrics version ${METRICS_VERSION} does not match ${VERSION}"
+            exit 1
+          fi
+          if ! echo "$TOOL_COUNT" | grep -qE '^[1-9][0-9]*$'; then
+            echo "::error::Published release metrics do not declare a positive MCP tool count"
+            exit 1
+          fi
           {
             echo "version=$VERSION"
             echo "release_ref=refs/tags/${RELEASE_TAG}"
             echo "release_sha=$RELEASE_SHA"
+            echo "tool_count=$TOOL_COUNT"
           } >> "$GITHUB_OUTPUT"
 
   smithery:
@@ -301,9 +314,14 @@ jobs:
         continue-on-error: true
         env:
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
+          EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
           REBUILD_TRIGGERED: ${{ steps.glama_trigger.outputs.rebuild_triggered }}
         run: |
-          if ! python scripts/check_glama_listing.py --expected "$EXPECTED_VERSION" --retries 6 --delay-seconds 30; then
+          if ! python scripts/check_glama_listing.py \
+              --expected "$EXPECTED_VERSION" \
+              --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+              --retries 6 \
+              --delay-seconds 30; then
             if [ "$REBUILD_TRIGGERED" = "true" ]; then
               echo "::warning::Glama listing has not refreshed yet after the rebuild trigger. Glama re-crawls asynchronously and may take hours. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
             else
@@ -322,7 +340,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          # ClawHub publishes the checked-out integrations/openclaw assets, so
+          # they must come from the exact release commit rather than current main.
+          ref: ${{ needs.release.outputs.release_sha }}
           persist-credentials: false
 
       - name: Set up Node.js

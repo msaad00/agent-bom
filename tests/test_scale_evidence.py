@@ -17,6 +17,14 @@ def test_scale_evidence_scaffold_is_complete() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_postgres_scale_workflow_acknowledges_disposable_superuser() -> None:
+    """The ephemeral CI database must opt in without weakening production defaults."""
+    workflow = Path(".github/workflows/postgres-scale-evidence.yml").read_text()
+
+    assert 'AGENT_BOM_ALLOW_SUPERUSER_DB: "1"' in workflow
+    assert "disposable service-container owner" in workflow
+
+
 def test_postgres_scale_evidence_sets_current_postgres_url(monkeypatch) -> None:
     script = Path("scripts/run_postgres_scale_evidence.py")
     spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)

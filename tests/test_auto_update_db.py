@@ -29,7 +29,7 @@ def _freshness(*, mode="local", stale=False, danger=False):
     )
 
 
-def test_auto_update_db_flag_triggers_sync_when_aging():
+def test_auto_update_db_flag_triggers_sync_when_aging(tmp_path):
     """When DB freshness misses the daily target, sync_db() must be called."""
     with (
         patch("agent_bom.vuln_freshness.compute_freshness", return_value=_freshness(stale=True)),
@@ -37,15 +37,28 @@ def test_auto_update_db_flag_triggers_sync_when_aging():
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
-        result = _invoke("--auto-update-db", "--demo")
+        result = _invoke("--auto-update-db", str(tmp_path))
         assert mock_sync.call_count >= 1
         assert result.exit_code == 0
 
 
-def test_auto_update_db_skips_when_fresh():
+def test_auto_update_db_skips_when_fresh(tmp_path):
     """When DB freshness is inside the daily target, sync_db() must NOT be called."""
     with (
         patch("agent_bom.vuln_freshness.compute_freshness", return_value=_freshness(stale=False)),
+        patch("agent_bom.db.sync.sync_db") as mock_sync,
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
+    ):
+        result = _invoke("--auto-update-db", str(tmp_path))
+        mock_sync.assert_not_called()
+        assert result.exit_code == 0
+
+
+def test_demo_skips_db_refresh_when_ambient_cache_is_stale():
+    """The versioned demo evidence must not depend on an ambient DB refresh."""
+    with (
+        patch("agent_bom.vuln_freshness.compute_freshness", return_value=_freshness(stale=True)),
         patch("agent_bom.db.sync.sync_db") as mock_sync,
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
@@ -68,7 +81,7 @@ def test_auto_update_db_opt_out():
         assert result.exit_code == 0
 
 
-def test_auto_update_db_on_by_default():
+def test_auto_update_db_on_by_default(tmp_path):
     """Default behavior: auto-update-db is ON, sync_db() called when stale (not with --no-scan)."""
     with (
         patch("agent_bom.vuln_freshness.compute_freshness", return_value=_freshness(stale=True)),
@@ -76,7 +89,7 @@ def test_auto_update_db_on_by_default():
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
-        result = _invoke("--demo")
+        result = _invoke(str(tmp_path))
         assert mock_sync.call_count >= 1
         assert result.exit_code == 0
 
@@ -118,7 +131,7 @@ def test_dry_run_skips_db_refresh():
         assert result.exit_code == 0
 
 
-def test_auto_update_db_handles_sync_failure():
+def test_auto_update_db_handles_sync_failure(tmp_path):
     """When sync_db() raises, the scan should continue without crashing."""
     with (
         patch("agent_bom.vuln_freshness.compute_freshness", return_value=_freshness(mode="live", stale=False)),
@@ -126,6 +139,6 @@ def test_auto_update_db_handles_sync_failure():
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
     ):
-        result = _invoke("--auto-update-db", "--demo")
+        result = _invoke("--auto-update-db", str(tmp_path))
         # Scan must not crash — exit code 0 (no findings)
         assert result.exit_code == 0

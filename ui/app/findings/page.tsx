@@ -252,6 +252,7 @@ function FindingsPage() {
   const paramIssueType = searchParams.get("issue");
   const paramLens = searchParams.get("lens");
   const paramWindow = searchParams.get("window");
+  const paramScope = searchParams.get("scope");
   // First-class scope + taxonomy facets (issue #3946), URL-synced.
   const paramDomain = searchParams.get("domain");
   const paramProvider = searchParams.get("provider");
@@ -395,6 +396,10 @@ function FindingsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams();
+    // `scope=all` is an explicit cross-scan contract used by Overview and
+    // other posture deep links. Preserve it while synchronizing page-local
+    // controls so navigation does not silently narrow or rewrite that scope.
+    if (paramScope === "all") params.set("scope", "all");
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
     if (lens !== "ops") params.set("lens", lens);
@@ -419,6 +424,7 @@ function FindingsPage() {
     environmentFilter,
     windowDays,
     page,
+    paramScope,
     paramScan,
     pathname,
     router,

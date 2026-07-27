@@ -65,6 +65,8 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
     if cfg.demo:
         from agent_bom.demo import DEMO_INVENTORY
 
+        for agent_data in DEMO_INVENTORY.get("agents", []):
+            agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
         _demo_fd, _demo_path = tempfile.mkstemp(suffix=".json", prefix="agent-bom-demo-")
         with os.fdopen(_demo_fd, "w") as _df:
             json.dump(DEMO_INVENTORY, _df)
@@ -73,8 +75,6 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
         compliance = True
         if not project:
             project = tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
-        for agent_data in DEMO_INVENTORY.get("agents", []):
-            agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
         iac_paths = (project,)
         if not cfg.quiet:
             con.print("\n[bold yellow]Demo mode[/bold yellow] — curated agent + MCP sample with known-vulnerable packages.\n")

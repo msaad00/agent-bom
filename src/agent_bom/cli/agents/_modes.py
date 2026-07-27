@@ -46,6 +46,8 @@ def apply_demo_mode(
 
     from agent_bom.demo import DEMO_INVENTORY
 
+    for agent_data in DEMO_INVENTORY.get("agents", []):
+        agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
     fd, path = tempfile.mkstemp(suffix=".json", prefix="agent-bom-demo-")
     with os.fdopen(fd, "w") as out:
         json.dump(DEMO_INVENTORY, out)
@@ -55,8 +57,6 @@ def apply_demo_mode(
     compliance = True
     if not project:
         project = tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
-    for agent_data in DEMO_INVENTORY.get("agents", []):
-        agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
 
     # Disable IaC auto-detection: point iac_paths at the empty demo project so
     # the later "if not iac_paths" detection branch does not run.

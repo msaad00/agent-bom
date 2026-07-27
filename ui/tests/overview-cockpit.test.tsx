@@ -258,6 +258,25 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Connect a surface or run a scan to grade posture/i)).toBeInTheDocument();
   });
 
+  it("labels posture and freshness as loading before the overview hydrates", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        grade="—"
+        score={undefined}
+        scans={null}
+        latestScan={null}
+        summaryReady={false}
+        loading
+      />,
+    );
+
+    expect(screen.getByTestId("overview-freshness")).toHaveTextContent("Loading scan evidence");
+    expect(screen.getByText("Loading posture…")).toBeInTheDocument();
+    expect(screen.queryByText("Awaiting scan")).not.toBeInTheDocument();
+    expect(screen.queryByText("Last successful scan unavailable")).not.toBeInTheDocument();
+  });
+
   it("never asserts 'no vulnerabilities' while open CVEs are present", () => {
     // Backend posture summary is derived from only the latest single scan, so it
     // can read "No vulnerabilities found" even when the estate rollup shows open

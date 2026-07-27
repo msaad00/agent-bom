@@ -2556,6 +2556,9 @@ export interface GatewayFeedEvent {
   tenant: string;
   shadow: boolean;
   source: string;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cost_usd?: number | null;
 }
 
 export type GatewayFeedHealthState = "live" | "stale" | "unavailable" | "sample";

@@ -21,6 +21,17 @@ export interface RankedPathRow {
   environmentTags?: string[] | undefined;
 }
 
+function displayPathTitle(row: RankedPathRow): string {
+  const title = row.title.trim();
+  const cve = row.cve?.trim();
+  if (!cve) return title;
+
+  const startsWithCve =
+    title.slice(0, cve.length).toLowerCase() === cve.toLowerCase() &&
+    (title.length === cve.length || !/[a-z0-9]/i.test(title.charAt(cve.length)));
+  return startsWithCve ? title : `${cve} · ${title}`;
+}
+
 /**
  * Compact, scannable list of ranked exposure paths. One row per path — the
  * DAG for the active row renders once in the command-center panel above, not
@@ -50,6 +61,7 @@ export function RankedPathList({
     >
       {rows.map((row) => {
         const active = row.selectionKey === selectedKey;
+        const displayTitle = displayPathTitle(row);
         return (
           <button
             key={row.key}
@@ -73,9 +85,11 @@ export function RankedPathList({
               {row.rank === 1 ? "#1 fix first" : `#${row.rank}`}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block break-words text-sm font-medium leading-snug text-[color:var(--foreground)]">
-                {row.cve ? `${row.cve} · ` : ""}
-                {row.title}
+              <span
+                className="line-clamp-2 break-normal text-sm font-medium leading-snug text-[color:var(--foreground)]"
+                title={displayTitle}
+              >
+                {displayTitle}
               </span>
               <span className="mt-0.5 block text-[11px] text-[color:var(--text-tertiary)]">
                 {pathSpanLabel(row.nodeCount)} · {row.agents} agent{row.agents === 1 ? "" : "s"}

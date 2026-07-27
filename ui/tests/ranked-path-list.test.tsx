@@ -69,12 +69,34 @@ describe("RankedPathList", () => {
     expect(within(active[0]!).getByText("#2")).toBeInTheDocument();
   });
 
-  it("uses a stacked mobile hierarchy without truncating the path title", () => {
+  it("bounds long path titles while preserving their full value in a tooltip", () => {
     render(<RankedPathList rows={rows} selectedKey="k1" onSelect={vi.fn()} />);
 
     const title = screen.getByText(/CVE-2026-0002/);
-    expect(title).toHaveClass("break-words");
-    expect(title).not.toHaveClass("truncate");
+    expect(title).toHaveClass("line-clamp-2", "break-normal");
+    expect(title).not.toHaveClass("break-words");
+    expect(title).toHaveAttribute("title", "CVE-2026-0002 · Agent → Database → werkzeug");
     expect(title.closest("button")).toHaveClass("grid");
+  });
+
+  it("does not repeat a CVE prefix already present in the path title", () => {
+    render(
+      <RankedPathList
+        rows={[
+          {
+            ...rows[0]!,
+            title: "CVE-2026-0002 via Agent → Database → werkzeug",
+          },
+        ]}
+        selectedKey="k1"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const title = screen.getByText("CVE-2026-0002 via Agent → Database → werkzeug");
+    expect(title).toHaveAttribute(
+      "title",
+      "CVE-2026-0002 via Agent → Database → werkzeug",
+    );
   });
 });

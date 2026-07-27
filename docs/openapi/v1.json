@@ -3314,6 +3314,128 @@
         "title": "FleetAgentUpdate",
         "type": "object"
       },
+      "GatewayFeedEventModel": {
+        "properties": {
+          "action_type": {
+            "enum": [
+              "tool_call_authorized",
+              "tool_call_blocked",
+              "data_filter_applied",
+              "llm_call"
+            ],
+            "title": "Action Type",
+            "type": "string"
+          },
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "data_action": {
+            "title": "Data Action",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "policy_source": {
+            "title": "Policy Source",
+            "type": "string"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "shadow": {
+            "title": "Shadow",
+            "type": "boolean"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          },
+          "upstream": {
+            "title": "Upstream",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "ts",
+          "agent",
+          "profile_id",
+          "action_type",
+          "target",
+          "upstream",
+          "decision",
+          "data_action",
+          "policy_source",
+          "trace_id",
+          "detail",
+          "tenant",
+          "shadow",
+          "source"
+        ],
+        "title": "GatewayFeedEventModel",
+        "type": "object"
+      },
       "GatewayFeedHealthModel": {
         "properties": {
           "age_seconds": {
@@ -3448,8 +3570,7 @@
           },
           "events": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/GatewayFeedEventModel"
             },
             "title": "Events",
             "type": "array"

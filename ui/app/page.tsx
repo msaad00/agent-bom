@@ -63,6 +63,7 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
+  const [postureOverviewLoading, setPostureOverviewLoading] = useState(true);
   // Local display-format override; falls back to the persisted per-tenant
   // config carried on the overview posture. Toggling persists via the API (#3940).
   const [scoreFormatOverride, setScoreFormatOverride] = useState<PostureScoreFormat | null>(null);
@@ -72,9 +73,24 @@ export default function Dashboard() {
 
   // Fetch posture grade + cross-domain overview (folded into the header scorecard)
   useEffect(() => {
-    api.getPosture().then(setPosture).catch(() => {});
-    api.getOverview().then(setOverview).catch(() => {});
-    api.getCompliance().then(setCompliance).catch(() => {});
+    let cancelled = false;
+    void Promise.allSettled([api.getPosture(), api.getOverview()]).then(
+      ([postureResult, overviewResult]) => {
+        if (cancelled) return;
+        if (postureResult.status === "fulfilled") setPosture(postureResult.value);
+        if (overviewResult.status === "fulfilled") setOverview(overviewResult.value);
+        setPostureOverviewLoading(false);
+      },
+    );
+    void api.getCompliance().then(
+      (value) => {
+        if (!cancelled) setCompliance(value);
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -385,6 +401,7 @@ export default function Dashboard() {
       />
 
       <OverviewCockpit
+        loading={postureOverviewLoading}
         grade={postureGrade}
         score={postureScore}
         scoreFormat={scoreFormat}

@@ -201,3 +201,8 @@ def test_gateway_feed_openapi_declares_health_contract() -> None:
         "reason",
     ]
     assert health["properties"]["state"]["enum"] == ["live", "stale", "unavailable", "sample"]
+
+    response = schema["components"]["schemas"]["GatewayFeedResponseModel"]
+    assert response["properties"]["events"]["items"]["$ref"].endswith("/GatewayFeedEventModel")
+    event = schema["components"]["schemas"]["GatewayFeedEventModel"]
+    assert {"input_tokens", "output_tokens", "cost_usd"} <= event["properties"].keys()

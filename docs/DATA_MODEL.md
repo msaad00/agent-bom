@@ -54,7 +54,7 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
 | `docs/openapi/v1.json` | paths | 321 |
-| `docs/openapi/v1.json` | component schemas | 118 |
+| `docs/openapi/v1.json` | component schemas | 119 |
 
 <!-- DATA_MODEL_ATLAS:END -->
 

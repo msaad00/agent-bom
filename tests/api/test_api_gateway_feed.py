@@ -112,6 +112,11 @@ def test_feed_fuses_all_three_sources_and_orders_newest_first() -> None:
     assert timestamps == sorted(timestamps, reverse=True)
     assert feed["events"][0]["action_type"] == ACTION_LLM_CALL
 
+    llm_event = feed["events"][0]
+    assert llm_event["input_tokens"] == 10
+    assert llm_event["output_tokens"] == 5
+    assert llm_event["cost_usd"] == 0.0012
+
 
 def test_feed_per_agent_attribution_present_on_every_event() -> None:
     alerts = [_authorized_alert(agent="alpha"), _blocked_alert(agent="beta"), _dlp_alert(agent="gamma")]

@@ -43,8 +43,9 @@ function gatewayDecision(event: GatewayFeedEvent): string | null {
 }
 
 function normalizeGatewayEvent(event: GatewayFeedEvent, index: number): ActivityEvent {
+  const costUsd = finiteMeasurement(event.cost_usd);
   return {
-    id: event.event_id ?? `${event.ts}-${event.agent}-${event.target}-${index}`,
+    id: event.event_id?.trim() || `${event.ts}-${event.agent}-${event.target}-${index}`,
     source: "Gateway",
     timestamp: event.ts,
     actor: event.agent || "Unavailable",
@@ -53,9 +54,9 @@ function normalizeGatewayEvent(event: GatewayFeedEvent, index: number): Activity
     decision: gatewayDecision(event),
     policy: event.policy_source?.trim() || null,
     latencyMs: null,
-    inputTokens: null,
-    outputTokens: null,
-    cost: null,
+    inputTokens: finiteMeasurement(event.input_tokens),
+    outputTokens: finiteMeasurement(event.output_tokens),
+    cost: costUsd === null ? null : `$${costUsd.toFixed(4)}`,
     traceId: event.trace_id?.trim() || null,
     provenance: event.source?.trim() || null,
     detail: event.detail?.trim() || null,
@@ -63,8 +64,8 @@ function normalizeGatewayEvent(event: GatewayFeedEvent, index: number): Activity
   };
 }
 
-function finiteMeasurement(value: number): number | null {
-  return Number.isFinite(value) && value >= 0 ? value : null;
+function finiteMeasurement(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function normalizeObservabilityEvent(event: ObservabilityEvent): ActivityEvent {

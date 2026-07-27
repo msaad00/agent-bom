@@ -60,12 +60,38 @@ class GatewayFeedHealthModel(BaseModel):
     reason: str
 
 
+class GatewayFeedEventModel(BaseModel):
+    event_id: str
+    ts: str
+    agent: str
+    profile_id: str
+    action_type: Literal[
+        "tool_call_authorized",
+        "tool_call_blocked",
+        "data_filter_applied",
+        "llm_call",
+    ]
+    target: str
+    upstream: str
+    decision: str
+    data_action: str
+    policy_source: str
+    trace_id: str
+    detail: str
+    tenant: str
+    shadow: bool
+    source: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+
+
 class GatewayFeedResponseModel(BaseModel):
     schema_version: str
     tenant_id: str
     generated_at: str
     count: int
-    events: list[dict[str, Any]]
+    events: list[GatewayFeedEventModel]
     health: GatewayFeedHealthModel
 
 
@@ -400,6 +426,9 @@ def _normalize_llm_event(record: Any, tenant_id: str) -> dict[str, Any]:
         "tenant": tenant_id,
         "shadow": False,
         "source": "observability",
+        "input_tokens": int(input_tokens),
+        "output_tokens": int(output_tokens),
+        "cost_usd": float(cost) if priced and isinstance(cost, int | float) else None,
     }
 
 

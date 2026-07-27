@@ -145,6 +145,8 @@ function derivePostureBlurb({
 }
 
 export interface OverviewCockpitProps {
+  /** True until the posture and cross-domain overview requests settle. */
+  loading?: boolean | undefined;
   grade: string;
   score?: number | undefined;
   /** Display-only score presentation. Defaults to a percentage. */
@@ -186,6 +188,7 @@ export interface OverviewCockpitProps {
 }
 
 export function OverviewCockpit({
+  loading = false,
   grade,
   score,
   scoreFormat = "percent",
@@ -227,7 +230,7 @@ export function OverviewCockpit({
           subtitle="Posture and open issues across every lane — one exec read."
           defaultOpen
         >
-          <FreshnessStatus latestScan={latestScan} scans={scans} />
+          <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
 
           {/* 1 — Posture headline + open issues by severity.
               Posture track is capped (minmax) so a long summary can't grow it
@@ -235,6 +238,7 @@ export function OverviewCockpit({
               unreadable sliver. */}
           <div className="mt-1 grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
             <PostureHero
+              loading={loading}
               grade={grade}
               score={score}
               scoreFormat={scoreFormat}
@@ -290,11 +294,15 @@ export function OverviewCockpit({
 function FreshnessStatus({
   latestScan,
   scans,
+  loading,
 }: {
   latestScan: string | null;
   scans: number | null;
+  loading: boolean;
 }) {
-  const label = latestScan
+  const label = loading
+    ? "Loading scan evidence"
+    : latestScan
     ? "Last successful scan"
     : scans === 0
       ? "No completed scan evidence"
@@ -313,7 +321,11 @@ function FreshnessStatus({
         />
         <span className="text-xs font-semibold text-[color:var(--foreground)]">{label}</span>
       </div>
-      {latestScan ? (
+      {loading ? (
+        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+          Refreshing current evidence.
+        </span>
+      ) : latestScan ? (
         <time className="text-xs font-medium tabular-nums text-[color:var(--text-secondary)]">
           {latestScan}
         </time>
@@ -982,6 +994,7 @@ function ScoreFormatToggle({
 }
 
 function PostureHero({
+  loading,
   grade,
   score,
   scoreFormat = "percent",
@@ -991,6 +1004,7 @@ function PostureHero({
   high,
   cves,
 }: {
+  loading: boolean;
   grade: string;
   score?: number | undefined;
   scoreFormat?: PostureScoreFormat | undefined;
@@ -1010,13 +1024,21 @@ function PostureHero({
         : "border-red-500/40 bg-red-500/10 text-red-400";
   const graded = typeof score === "number" && !ungraded;
   const scoreDisplay = graded ? formatPostureScore(score, grade, scoreFormat) : null;
-  const blurb = derivePostureBlurb({ summary, critical, high, cves, graded });
+  const blurb = loading
+    ? "Refreshing the current posture and evidence summary."
+    : derivePostureBlurb({ summary, critical, high, cves, graded });
 
   return (
     <div className="flex items-center gap-4">
       <div
         className={`flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border ${badgeTone}`}
-        title={graded ? `Grade ${grade}${scoreDisplay ? ` · ${scoreDisplay}` : ""}` : "Awaiting scan"}
+        title={
+          loading
+            ? "Loading posture"
+            : graded
+              ? `Grade ${grade}${scoreDisplay ? ` · ${scoreDisplay}` : ""}`
+              : "Awaiting scan"
+        }
       >
         <span className="text-3xl font-bold leading-none">{grade}</span>
         {graded && scoreFormat !== "grade" && scoreDisplay ? (
@@ -1033,7 +1055,9 @@ function PostureHero({
           ) : null}
         </div>
         <p className="mt-1 flex items-baseline gap-2 text-lg font-semibold text-[color:var(--foreground)]">
-          {graded ? (
+          {loading ? (
+            "Loading posture…"
+          ) : graded ? (
             <>
               {/* Always show BOTH the letter grade and the %/points, whatever the
                   chosen primary format, so the number is never ambiguous. */}

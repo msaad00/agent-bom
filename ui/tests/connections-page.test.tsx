@@ -374,7 +374,9 @@ describe("ConnectionsPage — Connect segment", () => {
         {
           ...CREATED_RECORD,
           status: "active",
-          last_scan_at: "2026-06-27T01:00:00Z",
+          // Noon UTC keeps the calendar date stable across every supported
+          // runner timezone while still exercising the localized formatter.
+          last_scan_at: "2026-06-27T12:00:00Z",
           last_scan_id: "scan-3",
         },
       ],
@@ -387,7 +389,7 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(screen.queryByText(/Cloud accounts is not configured yet/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No completed scans yet/i)).not.toBeInTheDocument();
     expect(screen.getByText("Last scan")).toBeInTheDocument();
-    expect(screen.getByText("Jun 26")).toBeInTheDocument();
+    expect(screen.getByText("Jun 27")).toBeInTheDocument();
   });
 
   it("carries one AWS ExternalId from setup through details into create + verify", async () => {

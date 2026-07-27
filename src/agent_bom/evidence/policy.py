@@ -14,6 +14,7 @@ The acceptance contract from issue #2261:
 
 from __future__ import annotations
 
+import math
 import os
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -274,6 +275,58 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "fleet_id",
         "exception_id",
         "alert_id",
+        # Runtime proxy summary metrics. These are bounded, non-content
+        # counters and posture values consumed by audit replay and operator
+        # status surfaces. Aggregate maps are additionally constrained by
+        # TIER_A_COUNT_MAP_FIELDS and _redact_count_map below.
+        "uptime_seconds",
+        "total_tool_calls",
+        "total_blocked",
+        "calls_by_tool",
+        "blocked_by_reason",
+        "latency",
+        "min_ms",
+        "max_ms",
+        "avg_ms",
+        "p50_ms",
+        "p95_ms",
+        "messages_client_to_server",
+        "messages_server_to_client",
+        "replay_rejections",
+        "relay_errors",
+        "last_decision",
+        "audit_buffer_bytes",
+        "audit_spillover_bytes",
+        "audit_dlq_bytes",
+        "policy_fetch_failures",
+        "audit_push_failures",
+        "audit_push_backoff_seconds",
+        "audit_circuit_open",
+        "runtime_alerts",
+        "runtime_alerts_by_severity",
+        "runtime_alerts_by_detector",
+        "blocked_runtime_alerts",
+        "latest_runtime_alert_at",
+        # Safe runtime isolation posture. Image references, warning text,
+        # mount paths, users, and other free-text fields intentionally remain
+        # replay-only and are dropped from these retained containers.
+        "execution_posture",
+        "sandbox_evidence",
+        "mode",
+        "enabled",
+        "runtime",
+        "image_pinned",
+        "image_pin_policy",
+        "network",
+        "egress_policy",
+        "cpus",
+        "memory",
+        "pids_limit",
+        "tmpfs_size",
+        "timeout_seconds",
+        "read_only_rootfs",
+        "drop_capabilities",
+        "no_new_privileges",
     }
 )
 
@@ -282,8 +335,15 @@ TIER_A_COUNT_MAP_FIELDS: frozenset[str] = frozenset(
         "class_counts",
         "severity_counts",
         "signal_types",
+        "calls_by_tool",
+        "blocked_by_reason",
+        "runtime_alerts_by_severity",
+        "runtime_alerts_by_detector",
     }
 )
+
+_TIER_A_COUNT_MAP_MAX_ENTRIES = 256
+_TIER_A_COUNT_MAP_MAX_KEY_CHARS = 96
 
 # Explicit replay-only set — present so the redactor can short-circuit and
 # so static auditors can see the list. Anything *not* in TIER_A_FIELDS is
@@ -383,12 +443,21 @@ def _redact_count_map(value: Any) -> dict[str, int | float]:
     """Preserve non-content aggregate count maps with arbitrary bucket keys."""
     if not isinstance(value, dict):
         return {}
-    out: dict[str, int | float] = {}
+    aggregated: dict[str, int | float] = {}
     for key, count in value.items():
         if isinstance(count, bool) or not isinstance(count, (int, float)):
             continue
-        out[str(key)[:96]] = count
-    return out
+        if not math.isfinite(float(count)):
+            continue
+        bounded_key = mask_email(str(key)).replace("\r", "").replace("\n", "")[:_TIER_A_COUNT_MAP_MAX_KEY_CHARS]
+        if not bounded_key:
+            continue
+        aggregated[bounded_key] = aggregated.get(bounded_key, 0) + count
+
+    # Stable ordering makes truncation deterministic across processes and
+    # retains the highest-volume buckets when cardinality is unexpectedly high.
+    ordered = sorted(aggregated.items(), key=lambda item: (-float(item[1]), item[0]))
+    return dict(ordered[:_TIER_A_COUNT_MAP_MAX_ENTRIES])
 
 
 # ─── Replay-only TTL helpers ────────────────────────────────────────────────

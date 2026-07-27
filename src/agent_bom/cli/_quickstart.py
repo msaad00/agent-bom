@@ -18,7 +18,11 @@ QUICKSTART_SCAN_TIMEOUT_SECONDS = 300
 
 @click.command("quickstart")
 @click.option("--dry-run", is_flag=True, help="Print the onboarding plan without writing files or starting services.")
-@click.option("--offline", is_flag=True, help="Show commands that avoid network enrichment and remote advisory calls.")
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="Avoid network calls; with --run, inventory and graph the sample without package-CVE lookup.",
+)
 @click.option(
     "--sample-dir",
     type=click.Path(file_okay=False, path_type=Path),
@@ -156,7 +160,18 @@ def _run_quickstart(
         "-o",
         str(report_path),
     ]
-    scan_args.append("--offline" if offline else "--enrich")
+    if offline:
+        # A fresh install has no local vulnerability database. Keep the
+        # one-command onboarding deterministic and honest: inventory packages,
+        # analyze/persist the graph, and leave package-CVE proof to the bundled
+        # `scan --demo --offline` lane printed by the quickstart.
+        scan_args.extend(["--offline", "--no-scan"])
+        click.echo(
+            "[2/3] Offline first-run skips package-CVE lookup; "
+            "run `agent-bom scan --demo --offline` for bundled CVE proof."
+        )
+    else:
+        scan_args.append("--enrich")
     click.echo(f"[2/3] Scanning sample stack: {' '.join(scan_args[1:])}")
     result = subprocess.run(  # noqa: S603 - args built from validated inputs
         scan_args,

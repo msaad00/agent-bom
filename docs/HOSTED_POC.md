@@ -116,8 +116,16 @@ docker compose \
 ```
 
 The compose profile persists `/root/.agent-bom` in a named volume so the seeded
-demo graph survives container replacement. Replace it with real connected
-cloud scans as soon as the first account is connected.
+demo graph survives container replacement. Offline quickstart inventories and
+graphs the sample without package-CVE lookup; use the separate bundled demo
+scan for offline CVE proof:
+
+```bash
+agent-bom scan --demo --offline
+```
+
+Replace the sample with real connected cloud scans as soon as the first account
+is connected.
 
 Before opening the VM to testers, confirm the composed stack does not expose
 API/UI ports on all interfaces and does not mount the placeholder Postgres

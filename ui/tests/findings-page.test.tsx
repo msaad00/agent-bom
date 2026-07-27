@@ -6,8 +6,6 @@ import FindingsPage from "@/app/findings/page";
 
 const { apiMock, navigationState } = vi.hoisted(() => ({
   apiMock: {
-    listJobs: vi.fn(),
-    getScan: vi.fn(),
     listFindings: vi.fn(),
     listFindingTriage: vi.fn(),
     createException: vi.fn(),
@@ -35,83 +33,44 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-function scanJob() {
-  return {
-    job_id: "scan-1",
-    status: "done",
-    created_at: "2026-07-01T00:00:00Z",
-    request: {},
-    result: {
-      agents: [
-        {
-          name: "developer-copilot",
-          mcp_servers: [
-            {
-              name: "github-mcp",
-              packages: [
-                {
-                  name: "better-sqlite3",
-                  vulnerabilities: [
-                    {
-                      id: "CVE-2026-1234",
-                      severity: "critical",
-                      summary: "Remote command execution in package binding",
-                      description: "Remote command execution in package binding",
-                      cvss_score: 9.8,
-                      epss_score: 0.71,
-                      fixed_version: "11.7.0",
-                      references: ["https://osv.dev/vulnerability/CVE-2026-1234"],
-                      advisory_sources: ["OSV"],
-                      aliases: [],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      blast_radius: [
-        {
-          vulnerability_id: "CVE-2026-1234",
-          cvss_score: 9.8,
-          epss_score: 0.71,
-          fixed_version: "11.7.0",
-          affected_servers: ["github-mcp"],
-          exposed_credentials: ["GITHUB_TOKEN"],
-          reachable_tools: ["repo_write"],
-          graph_reachable: true,
-          graph_min_hop_distance: 2,
-          attack_vector_summary: "Agent reaches vulnerable MCP package.",
-        },
-      ],
-      remediation_plan: [],
-    },
-  };
-}
+const canonicalFinding = {
+  id: "finding-1",
+  finding_class: "vulnerability",
+  severity: "critical",
+  cve_id: "CVE-2026-1234",
+  title: "Remote command execution in package binding",
+  description: "Remote command execution in package binding",
+  asset: { name: "better-sqlite3", asset_type: "package" },
+  source: "osv",
+  scan_id: "scan-1",
+  cvss_score: 9.8,
+  epss_score: 0.71,
+  fixed_version: "11.7.0",
+  references: ["https://osv.dev/vulnerability/CVE-2026-1234"],
+  advisory_sources: ["OSV"],
+  affected_agents: ["developer-copilot"],
+  affected_servers: ["github-mcp"],
+  exposed_credentials: ["GITHUB_TOKEN"],
+  exposed_tools: ["repo_write"],
+  attack_vector_summary: "Agent reaches vulnerable MCP package.",
+};
 
 describe("FindingsPage", () => {
   beforeEach(() => {
     navigationState.query = "";
-    apiMock.listJobs.mockReset();
-    apiMock.getScan.mockReset();
     apiMock.listFindings.mockReset();
     apiMock.listFindingTriage.mockReset();
     apiMock.createException.mockReset();
     apiMock.exportFindingTriageVex.mockReset();
     apiMock.getPostureCounts.mockReset();
 
-    apiMock.listJobs.mockResolvedValue({
-      jobs: [
-        {
-          job_id: "scan-1",
-          status: "done",
-          created_at: "2026-07-01T00:00:00Z",
-        },
-      ],
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [canonicalFinding],
+      total: 1,
+      has_more: false,
+      next_cursor: "",
     });
-    apiMock.getScan.mockResolvedValue(scanJob());
-    apiMock.listFindings.mockResolvedValue({ findings: [], total: 0 });
     apiMock.listFindingTriage.mockResolvedValue({ triage: [] });
     apiMock.getPostureCounts.mockResolvedValue({
       critical: 0,
@@ -136,8 +95,11 @@ describe("FindingsPage", () => {
     const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-1234" });
     expect(within(drawer).getByText("Evidence drawer")).toBeInTheDocument();
     expect(within(drawer).getByText("Agent reaches vulnerable MCP package.")).toBeInTheDocument();
-    fireEvent.click(within(drawer).getByRole("tab", { name: "Exposure path" }));
-    expect(within(drawer).getAllByText("GITHUB_TOKEN")).toHaveLength(2);
+    expect(within(drawer).getByRole("link", { name: /Open in investigation/ })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/security-graph"),
+    );
+    expect(within(drawer).queryByRole("tab", { name: "Exposure path" })).not.toBeInTheDocument();
 
     const closeButtons = within(drawer).getAllByRole("button", { name: "Close" });
     fireEvent.click(closeButtons.at(-1)!);
@@ -315,6 +277,21 @@ describe("FindingsPage", () => {
     );
   });
 
+  it("sends free-text search to the canonical findings API", async () => {
+    render(<FindingsPage />);
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Search CVE, package, agent…"), {
+      target: { value: "pyyaml" },
+    });
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "pyyaml" }),
+      ),
+    );
+  });
+
   it("uses server facets for whole-query facts while keeping Engineering page metrics explicit", async () => {
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",
@@ -440,13 +417,13 @@ describe("FindingsPage", () => {
 
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
     expect(screen.queryByText("CVE-2026-1234")).not.toBeInTheDocument();
-    expect(apiMock.getScan).not.toHaveBeenCalled();
+    expect(apiMock.listFindings).toHaveBeenCalledTimes(1);
   });
 
   it("defaults the time window to 90 days and can widen to all history (#4009)", async () => {
     apiMock.listFindings.mockResolvedValue({
-      findings: [],
-      total: 0,
+      findings: [canonicalFinding],
+      total: 1,
       window: { days: 90, since: "2026-04-01T00:00:00Z", applied: true, label: "Last 90 days" },
     });
 

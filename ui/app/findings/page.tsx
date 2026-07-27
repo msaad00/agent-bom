@@ -1,20 +1,15 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useMemo, useRef, type ElementType } from "react";
+import { Suspense, useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
   Vulnerability,
-  ScanJob,
-  ScanResult,
-  JobListItem,
-  RemediationItem,
   UnifiedFinding,
   type FindingTriageDecision,
   type FindingTriageItem,
   type FindingTriageJustification,
   type ReadWindow,
-  type UnifiedGraphResponse,
 } from "@/lib/api";
 import type { FindingFacets } from "@/lib/api-types";
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -26,9 +21,6 @@ import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
 import {
   type EnrichedVuln,
-  type GroupKey,
-  type RemediationSummary,
-  type ScanScope,
   type SeverityFilter,
   type SortKey,
   uniqueStrings,
@@ -38,7 +30,6 @@ import {
 } from "@/lib/findings-view";
 import {
   ISSUE_TYPE_FILTERS,
-  matchesIssueTypeFilter,
   type IssueTypeFilter,
 } from "@/lib/finding-issue-type";
 import {
@@ -48,8 +39,7 @@ import {
   findingsSearchPlaceholder,
 } from "@/lib/findings-lens";
 import { useFindingsLens } from "@/hooks/use-findings-lens";
-import { severityRank } from "@/lib/severity";
-import { Bug, ChevronDown, ChevronRight, Download, Layers, Loader2, Package, Server, ClipboardCheck, SlidersHorizontal, X } from "lucide-react";
+import { Bug, Loader2, ClipboardCheck, SlidersHorizontal, X } from "lucide-react";
 import { PageLaneHeader } from "@/components/page-lane";
 import {
   buildComplianceMetrics,
@@ -73,54 +63,8 @@ function downloadJson(data: unknown, filename: string) {
 
 
 
-function toRemediationSummary(item: RemediationItem): RemediationSummary {
-  return {
-    package: item.package,
-    ecosystem: item.ecosystem,
-    current_version: item.current_version,
-    fixed_version: item.fixed_version,
-    action: item.action,
-    command: item.command,
-    verify_command: item.verify_command,
-    references: item.references ?? [],
-    risk_narrative: item.risk_narrative,
-  };
-}
-
-function mergeRemediationItems(existing: RemediationSummary[], incoming: RemediationSummary[]) {
-  const merged = new Map(existing.map((item) => [`${item.package}:${item.current_version}:${item.fixed_version ?? "none"}`, item]));
-  for (const item of incoming) {
-    const key = `${item.package}:${item.current_version}:${item.fixed_version ?? "none"}`;
-    if (!merged.has(key)) {
-      merged.set(key, item);
-    }
-  }
-  return Array.from(merged.values());
-}
-
 function triageKey(vulnerabilityId: string, packageName: string) {
   return findingTriageKey(vulnerabilityId, packageName);
-}
-
-type GraphNode = UnifiedGraphResponse["nodes"][number];
-
-function graphNodeKind(node: GraphNode): string {
-  return String(node.entity_type).toLowerCase();
-}
-
-function attrString(node: GraphNode, key: string): string | undefined {
-  const value = node.attributes?.[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function attrNumber(node: GraphNode, key: string): number | undefined {
-  const value = node.attributes?.[key];
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }
 
 function recordString(record: Record<string, unknown>, key: string): string | undefined {
@@ -146,67 +90,6 @@ function normalizedSeverity(value: string | undefined): Vulnerability["severity"
     : "none";
 }
 
-function collectGraphVulns(graph: UnifiedGraphResponse): EnrichedVuln[] {
-  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const packagesByFinding = new Map<string, Set<string>>();
-  const agentsByFinding = new Map<string, Set<string>>();
-
-  for (const edge of graph.edges) {
-    const source = nodeById.get(edge.source);
-    const target = nodeById.get(edge.target);
-    if (!source || !target) continue;
-    const sourceKind = graphNodeKind(source);
-    const targetKind = graphNodeKind(target);
-    const finding = sourceKind === "vulnerability" ? source : targetKind === "vulnerability" ? target : null;
-    const other = finding?.id === source.id ? target : source;
-    if (!finding || !other) continue;
-    const otherKind = graphNodeKind(other);
-    if (otherKind === "package") {
-      const values = packagesByFinding.get(finding.id) ?? new Set<string>();
-      values.add(other.label);
-      packagesByFinding.set(finding.id, values);
-    } else if (otherKind === "agent") {
-      const values = agentsByFinding.get(finding.id) ?? new Set<string>();
-      values.add(other.label);
-      agentsByFinding.set(finding.id, values);
-    }
-  }
-
-  return graph.nodes
-    .filter((node) => graphNodeKind(node) === "vulnerability")
-    .map((node): EnrichedVuln => ({
-      id: node.label,
-      severity: normalizedSeverity(node.severity),
-      summary: attrString(node, "summary") ?? attrString(node, "description"),
-      description: attrString(node, "description") ?? attrString(node, "summary"),
-      references: [],
-      advisory_sources: [],
-      aliases: [],
-      cvss_score: attrNumber(node, "cvss_score") ?? attrNumber(node, "cvss"),
-      cvss_vector: attrString(node, "cvss_vector"),
-      cvss_severity: attrString(node, "cvss_severity"),
-      epss_score: attrNumber(node, "epss_score") ?? attrNumber(node, "epss"),
-      epss_percentile: attrNumber(node, "epss_percentile"),
-      is_kev: Boolean(node.attributes?.is_kev ?? node.attributes?.cisa_kev),
-      cisa_kev: Boolean(node.attributes?.cisa_kev ?? node.attributes?.is_kev),
-      kev_date_added: attrString(node, "kev_date_added"),
-      kev_due_date: attrString(node, "kev_due_date"),
-      fixed_version: attrString(node, "fixed_version"),
-      packages: Array.from(packagesByFinding.get(node.id) ?? []),
-      agents: Array.from(agentsByFinding.get(node.id) ?? []),
-      sources: node.data_sources.length > 0 ? node.data_sources : [`graph:${graph.scan_id.slice(0, 8)}`],
-      affected_servers: [],
-      exposed_credentials: [],
-      reachable_tools: [],
-      attack_vector_summary: attrString(node, "attack_vector_summary"),
-      impact_category: attrString(node, "impact_category"),
-      risk_score: node.risk_score,
-      remediation_items: [],
-      graph_reachable: null,
-      graph_min_hop_distance: null,
-      scan_id: graph.scan_id,
-    }));
-}
 
 function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
   return findings.map((finding): EnrichedVuln => {
@@ -364,8 +247,6 @@ function FindingsPage() {
   const paramCve = searchParams.get("cve");
   const paramAgent = searchParams.get("agent");
   const paramQuery = searchParams.get("q");
-  const paramScope = searchParams.get("scope");
-  const paramGroup = searchParams.get("group");
   const paramPage = searchParams.get("page");
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
   const paramIssueType = searchParams.get("issue");
@@ -378,7 +259,6 @@ function FindingsPage() {
   const paramEnvironment = searchParams.get("environment");
   const { lens, selectLens, lenses, label: lensLabel, hint: lensHint } = useFindingsLens(paramLens);
 
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -386,7 +266,6 @@ function FindingsPage() {
   // Per #2199 splash-kind sweep: track auth/forbidden/network so the splash
   // matches the actual cause instead of always reading as a connect failure.
   const [errorKind, setErrorKind] = useState<"network" | "auth" | "forbidden">("network");
-  const [scope, setScope] = useState<ScanScope>(paramScope === "all" ? "all" : "latest");
   const [filter, setFilter] = useState<SeverityFilter>(
     paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
       ? (paramSeverity as SeverityFilter)
@@ -416,9 +295,6 @@ function FindingsPage() {
   });
   const [appliedWindow, setAppliedWindow] = useState<ReadWindow | null>(null);
   const [search, setSearch] = useState(paramQuery ?? paramCve ?? paramAgent ?? "");
-  const [groupBy, setGroupBy] = useState<GroupKey>(
-    paramGroup === "package" || paramGroup === "agent" || paramGroup === "severity" ? paramGroup : "none",
-  );
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
   const [triageRows, setTriageRows] = useState<FindingTriageItem[]>([]);
   const [triageError, setTriageError] = useState("");
@@ -437,7 +313,6 @@ function FindingsPage() {
   const [nextFindingsCursor, setNextFindingsCursor] = useState("");
   const [pageCursors, setPageCursors] = useState<string[]>([""]);
   const PAGE_SIZE = 25;
-  const useServerPaging = groupBy === "none" && !search.trim();
   // Advanced-filter popover (scope / domain / cloud scope) — kept behind a
   // single "Filters (n)" control so the primary toolbar stays compact.
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -459,15 +334,6 @@ function FindingsPage() {
       document.removeEventListener("mousedown", onPointer);
     };
   }, [filtersOpen]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const toggleGroup = useCallback((groupLabel: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupLabel)) next.delete(groupLabel);
-      else next.add(groupLabel);
-      return next;
-    });
-  }, []);
 
   // URL-as-source-of-truth: when the query string changes (link, back/forward),
   // re-sync the derived filter state so the view matches the address bar instead
@@ -484,16 +350,6 @@ function FindingsPage() {
   useEffect(() => {
     setSearch(paramQuery ?? paramCve ?? paramAgent ?? "");
   }, [paramQuery, paramCve, paramAgent]);
-
-  useEffect(() => {
-    setScope(paramScope === "all" ? "all" : "latest");
-  }, [paramScope]);
-
-  useEffect(() => {
-    setGroupBy(
-      paramGroup === "package" || paramGroup === "agent" || paramGroup === "severity" ? paramGroup : "none",
-    );
-  }, [paramGroup]);
 
   useEffect(() => {
     const parsed = Number(paramPage ?? "1");
@@ -538,17 +394,11 @@ function FindingsPage() {
   }, [paramWindow]);
 
   useEffect(() => {
-    if (lens === "trust" && groupBy !== "none") setGroupBy("none");
-  }, [groupBy, lens]);
-
-  useEffect(() => {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
     if (lens !== "ops") params.set("lens", lens);
     if (search.trim()) params.set("q", search.trim());
-    if (scope !== "latest") params.set("scope", scope);
-    if (groupBy !== "none") params.set("group", groupBy);
     if (domainFilter !== "all") params.set("domain", domainFilter);
     if (providerFilter.trim()) params.set("provider", providerFilter.trim());
     if (accountFilter.trim()) params.set("account", accountFilter.trim());
@@ -563,8 +413,6 @@ function FindingsPage() {
     issueTypeFilter,
     lens,
     search,
-    scope,
-    groupBy,
     domainFilter,
     providerFilter,
     accountFilter,
@@ -575,116 +423,6 @@ function FindingsPage() {
     pathname,
     router,
   ]);
-
-  const collectVulns = useCallback((fullJobs: ScanJob[]) => {
-    const vulnMap = new Map<string, EnrichedVuln>();
-    for (const job of fullJobs) {
-      if (!job.result) continue;
-      const result = job.result as ScanResult;
-      const blastById = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
-      const remediationByVulnId = new Map<string, RemediationSummary[]>();
-      for (const item of result.remediation_plan ?? []) {
-        const summary = toRemediationSummary(item);
-        for (const vulnId of item.vulnerabilities ?? []) {
-          const existing = remediationByVulnId.get(vulnId) ?? [];
-          existing.push(summary);
-          remediationByVulnId.set(vulnId, existing);
-        }
-      }
-
-      const scanSources: string[] = [];
-      if (job.request.images?.length) scanSources.push(...job.request.images);
-      if (job.request.k8s) scanSources.push("kubernetes");
-      if (job.request.sbom) scanSources.push("sbom-import");
-      if (scanSources.length === 0) scanSources.push("local-agents");
-
-      for (const agent of result.agents) {
-        for (const srv of agent.mcp_servers) {
-          for (const pkg of srv.packages) {
-            for (const vuln of pkg.vulnerabilities ?? []) {
-              const blast = blastById.get(vuln.id);
-              const remediationItems = remediationByVulnId.get(vuln.id) ?? [];
-              const existing = vulnMap.get(vuln.id);
-              if (existing) {
-                if (!existing.packages.includes(pkg.name)) existing.packages.push(pkg.name);
-                if (!existing.agents.includes(agent.name)) existing.agents.push(agent.name);
-                for (const src of scanSources) {
-                  if (!existing.sources.includes(src)) existing.sources.push(src);
-                }
-                existing.cvss_score = existing.cvss_score ?? blast?.cvss_score ?? vuln.cvss_score;
-                existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
-                existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
-                existing.current_version = existing.current_version ?? pkg.version;
-                // Graph-walk reachability: prefer "reachable=true" + smallest
-                // hop count when multiple blast rows touch the same vuln.
-                if (blast?.graph_reachable === true) existing.graph_reachable = true;
-                else if (existing.graph_reachable !== true && blast?.graph_reachable === false) existing.graph_reachable = false;
-                if (typeof blast?.graph_min_hop_distance === "number") {
-                  existing.graph_min_hop_distance =
-                    typeof existing.graph_min_hop_distance === "number"
-                      ? Math.min(existing.graph_min_hop_distance, blast.graph_min_hop_distance)
-                      : blast.graph_min_hop_distance;
-                }
-                existing.summary = existing.summary ?? blast?.attack_vector_summary ?? vuln.summary ?? vuln.description;
-                existing.attack_vector_summary = existing.attack_vector_summary ?? blast?.attack_vector_summary;
-                existing.impact_category = existing.impact_category ?? blast?.impact_category;
-                existing.risk_score = existing.risk_score ?? blast?.risk_score ?? blast?.blast_score;
-                existing.affected_servers = uniqueStrings([...existing.affected_servers, ...(blast?.affected_servers ?? [])]);
-                existing.exposed_credentials = uniqueStrings([...existing.exposed_credentials, ...(blast?.exposed_credentials ?? [])]);
-                existing.reachable_tools = uniqueStrings([
-                  ...existing.reachable_tools,
-                  ...(blast?.exposed_tools ?? []),
-                  ...(blast?.reachable_tools ?? []),
-                ]);
-                existing.phantom_tools = uniqueStrings([...(existing.phantom_tools ?? []), ...(blast?.phantom_tools ?? [])]);
-                existing.framework_tags = uniqueStrings([...(existing.framework_tags ?? []), ...(blast?.framework_tags ?? [])]);
-                existing.effective_reach_band = existing.effective_reach_band ?? blast?.effective_reach_band;
-                existing.effective_reach_score = existing.effective_reach_score ?? blast?.effective_reach_score;
-                existing.runtime_evidence = existing.runtime_evidence ?? blast?.runtime_evidence;
-                existing.workload_runtime_evidence =
-                  existing.workload_runtime_evidence ?? blast?.workload_runtime_evidence;
-                existing.references = uniqueStrings([...existing.references, ...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]);
-                existing.advisory_sources = uniqueStrings([...existing.advisory_sources, ...(vuln.advisory_sources ?? [])]);
-                existing.aliases = uniqueStrings([...(existing.aliases ?? []), ...(vuln.aliases ?? [])]);
-                existing.remediation_items = mergeRemediationItems(existing.remediation_items, remediationItems);
-              } else {
-                vulnMap.set(vuln.id, {
-                  ...vuln,
-                  cvss_score: blast?.cvss_score ?? vuln.cvss_score,
-                  epss_score: blast?.epss_score ?? vuln.epss_score,
-                  fixed_version: blast?.fixed_version ?? vuln.fixed_version,
-                  current_version: pkg.version,
-                  summary: blast?.attack_vector_summary ?? vuln.summary ?? vuln.description,
-                  packages: [pkg.name],
-                  agents: [agent.name],
-                  sources: [...scanSources],
-                  affected_servers: blast?.affected_servers ?? [],
-                  exposed_credentials: blast?.exposed_credentials ?? [],
-                  reachable_tools: uniqueStrings([...(blast?.exposed_tools ?? []), ...(blast?.reachable_tools ?? [])]),
-                  phantom_tools: blast?.phantom_tools ?? [],
-                  framework_tags: blast?.framework_tags ?? [],
-                  effective_reach_band: blast?.effective_reach_band,
-                  effective_reach_score: blast?.effective_reach_score,
-                  runtime_evidence: blast?.runtime_evidence,
-                  workload_runtime_evidence: blast?.workload_runtime_evidence,
-                  references: uniqueStrings([...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]),
-                  advisory_sources: vuln.advisory_sources ?? [],
-                  aliases: vuln.aliases ?? [],
-                  attack_vector_summary: blast?.attack_vector_summary,
-                  impact_category: blast?.impact_category,
-                  risk_score: blast?.risk_score ?? blast?.blast_score,
-                  remediation_items: remediationItems,
-                  graph_reachable: blast?.graph_reachable ?? null,
-                  graph_min_hop_distance: blast?.graph_min_hop_distance ?? null,
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-    return Array.from(vulnMap.values());
-  }, []);
 
   const handleMarkFP = useCallback(async (vulnId: string, packageName: string) => {
     try {
@@ -777,140 +515,53 @@ function FindingsPage() {
   }, []);
 
   useEffect(() => {
-    async function loadSummaries() {
+    void refreshTriage();
+  }, [refreshTriage]);
+
+  useEffect(() => {
+    async function loadFindings() {
+      setDetailLoading(true);
+      setError("");
       try {
-        const jobsResp = await api.listJobs();
-        const doneJobs = jobsResp.jobs
-          .filter((j) => j.status === "done")
-          .sort((a, b) => b.created_at.localeCompare(a.created_at));
-        setJobs(doneJobs);
+        const currentCursor = pageCursors[page - 1] || undefined;
+        const response = await api.listFindings({
+          ...(paramScan ? { scanId: paramScan } : {}),
+          ...(search.trim() ? { query: search.trim() } : {}),
+          ...(filter !== "all" ? { severity: filter } : {}),
+          ...(domainFilter !== "all" ? { domain: domainFilter } : {}),
+          ...(providerFilter.trim() ? { provider: providerFilter.trim() } : {}),
+          ...(accountFilter.trim() ? { account: accountFilter.trim() } : {}),
+          ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
+          ...(issueTypeFilter !== "all" ? { findingClass: issueTypeFilter } : {}),
+          sort: serverFindingsSort(sortKey),
+          limit: PAGE_SIZE,
+          ...(!currentCursor ? { offset: (page - 1) * PAGE_SIZE } : {}),
+          ...(currentCursor ? { cursor: currentCursor } : {}),
+          approximateTotal: true,
+          includeFacets: true,
+          windowDays,
+        });
+        setAppliedWindow(response.window ?? null);
+        setVulns(collectUnifiedFindings(response.findings));
+        setFindingsTotal(typeof response.total === "number" ? response.total : null);
+        setFindingsTotalApproximate(Boolean(response.total_approximate));
+        setFindingFacets(response.facets ?? null);
+        setFindingFacetsApproximate(Boolean(response.facets_approximate));
+        setHasMoreFindings(Boolean(response.has_more || response.next_cursor));
+        setNextFindingsCursor(response.next_cursor ?? "");
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load");
         setErrorKind(_classifyApiErrorKind(e));
       } finally {
         setLoading(false);
-      }
-    }
-    void loadSummaries();
-  }, []);
-
-  useEffect(() => {
-    void refreshTriage();
-  }, [refreshTriage]);
-
-  useEffect(() => {
-    async function loadLegacyFindings() {
-      setHasMoreFindings(false);
-      setNextFindingsCursor("");
-      setFindingFacets(null);
-      setFindingFacetsApproximate(false);
-      if (paramScan) {
-        try {
-          const findings = await api.listFindings({ scanId: paramScan, limit: 1000 });
-          if (findings.findings.length > 0) {
-            setVulns(collectUnifiedFindings(findings.findings));
-            setFindingsTotal(findings.total);
-            setFindingsTotalApproximate(false);
-            return;
-          }
-          const graph = await api.getGraph({ scanId: paramScan, limit: 2500 });
-          setVulns(collectGraphVulns(graph));
-          setFindingsTotal(graph.nodes.filter((node) => graphNodeKind(node) === "vulnerability").length);
-          setFindingsTotalApproximate(false);
-          return;
-        } catch {
-          const selectedJob = await api.getScan(paramScan);
-          setVulns(collectVulns([selectedJob]));
-          setFindingsTotal(collectVulns([selectedJob]).length);
-          setFindingsTotalApproximate(false);
-          return;
-        }
-      }
-
-      if (jobs.length === 0) {
-        setVulns([]);
-        setFindingsTotal(0);
-        setFindingsTotalApproximate(false);
-        return;
-      }
-
-      if (scope === "latest") {
-        const latestJob = await api.getScan(jobs[0]!.job_id);
-        const collected = collectVulns([latestJob]);
-        setVulns(collected);
-        setFindingsTotal(collected.length);
-        setFindingsTotalApproximate(false);
-        return;
-      }
-
-      const fullJobs = await Promise.all(jobs.map((job) => api.getScan(job.job_id).catch(() => null)));
-      const collected = collectVulns(fullJobs.filter((job): job is ScanJob => Boolean(job)));
-      setVulns(collected);
-      setFindingsTotal(collected.length);
-      setFindingsTotalApproximate(false);
-    }
-
-    async function loadDetails() {
-      if (loading) return;
-
-      setDetailLoading(true);
-      setError("");
-      try {
-        if (useServerPaging) {
-          const scanId =
-            paramScan ?? (scope === "latest" && jobs[0] ? jobs[0].job_id : undefined);
-          const currentCursor = pageCursors[page - 1] || undefined;
-          const response = await api.listFindings({
-            ...(scanId ? { scanId } : {}),
-            ...(filter !== "all" ? { severity: filter } : {}),
-            ...(domainFilter !== "all" ? { domain: domainFilter } : {}),
-            ...(providerFilter.trim() ? { provider: providerFilter.trim() } : {}),
-            ...(accountFilter.trim() ? { account: accountFilter.trim() } : {}),
-            ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
-            ...(issueTypeFilter !== "all" ? { findingClass: issueTypeFilter } : {}),
-            sort: serverFindingsSort(sortKey),
-            limit: PAGE_SIZE,
-            ...(!currentCursor ? { offset: (page - 1) * PAGE_SIZE } : {}),
-            ...(currentCursor ? { cursor: currentCursor } : {}),
-            approximateTotal: true,
-            includeFacets: true,
-            windowDays,
-          });
-          setAppliedWindow(response.window ?? null);
-          // A versioned envelope is authoritative even when the filtered query
-          // is empty. Only pre-envelope servers fall back to legacy scan data;
-          // otherwise an empty server filter must stay empty.
-          if (!response.schema_version && response.findings.length === 0 && (response.total ?? 0) === 0) {
-            await loadLegacyFindings();
-            return;
-          }
-          setVulns(collectUnifiedFindings(response.findings));
-          setFindingsTotal(typeof response.total === "number" ? response.total : null);
-          setFindingsTotalApproximate(Boolean(response.total_approximate));
-          setFindingFacets(response.facets ?? null);
-          setFindingFacetsApproximate(Boolean(response.facets_approximate));
-          setHasMoreFindings(Boolean(response.has_more || response.next_cursor));
-          setNextFindingsCursor(response.next_cursor ?? "");
-          return;
-        }
-
-        await loadLegacyFindings();
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to load");
-        setErrorKind(_classifyApiErrorKind(e));
-      } finally {
         setDetailLoading(false);
       }
     }
 
-    void loadDetails();
+    void loadFindings();
   }, [
-    jobs,
-    scope,
-    loading,
-    collectVulns,
     paramScan,
-    useServerPaging,
+    search,
     page,
     filter,
     domainFilter,
@@ -924,12 +575,8 @@ function FindingsPage() {
   ]);
 
   function handleSort(field: SortKey) {
-    if (sortKey === field) {
-      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-    } else {
-      setSortKey(field);
-      setSortDir("desc");
-    }
+    setSortKey(field);
+    setSortDir("desc");
   }
 
   const triageByKey = useMemo(() => {
@@ -940,49 +587,7 @@ function FindingsPage() {
     return rows;
   }, [triageRows]);
 
-  const displayed = useMemo(() => {
-    let list = vulns;
-    if (!useServerPaging) {
-      if (filter !== "all") {
-        list = list.filter((v) => v.severity.toLowerCase() === filter);
-      }
-      if (issueTypeFilter !== "all") {
-        list = list.filter((v) => matchesIssueTypeFilter(v, issueTypeFilter));
-      }
-      if (search) {
-        const q = search.toLowerCase();
-        list = list.filter(
-          (v) =>
-            v.id.toLowerCase().includes(q) ||
-            (v.summary ?? v.description)?.toLowerCase().includes(q) ||
-            v.packages.some((p) => p.toLowerCase().includes(q)) ||
-            v.agents.some((a) => a.toLowerCase().includes(q))
-        );
-      }
-    }
-    list = [...list].sort((a, b) => {
-      let diff = 0;
-      if (sortKey === "severity") {
-        diff = severityRank(a.severity) - severityRank(b.severity);
-      } else if (sortKey === "cvss") {
-        diff = (a.cvss_score ?? 0) - (b.cvss_score ?? 0);
-      } else if (sortKey === "epss") {
-        diff = (a.epss_score ?? 0) - (b.epss_score ?? 0);
-      } else {
-        diff = a.id.localeCompare(b.id);
-      }
-      return sortDir === "desc" ? -diff : diff;
-    });
-    return list;
-  }, [
-    vulns,
-    filter,
-    issueTypeFilter,
-    search,
-    sortKey,
-    sortDir,
-    useServerPaging,
-  ]);
+  const displayed = vulns;
 
   // Reset page when filters change
   useEffect(() => {
@@ -997,8 +602,6 @@ function FindingsPage() {
     search,
     sortKey,
     sortDir,
-    groupBy,
-    scope,
     paramScan,
     domainFilter,
     providerFilter,
@@ -1007,14 +610,9 @@ function FindingsPage() {
     windowDays,
   ]);
 
-  const totalPages = useServerPaging
-    ? findingsTotal == null
-      ? null
-      : Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE))
-    : Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
-  const paged = useServerPaging
-    ? displayed
-    : displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = findingsTotal == null
+    ? null
+    : Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE));
   const selectedVuln = useMemo(
     () =>
       displayed.find((vuln) => vulnRowKey(vuln) === selectedId || vuln.id === selectedId) ??
@@ -1024,36 +622,6 @@ function FindingsPage() {
   );
   const vexEligibleCount = triageRows.filter((row) => row.vex_eligible).length;
 
-  // Group displayed vulns
-  const grouped = useMemo(() => {
-    if (groupBy === "none") return null;
-
-    const groups = new Map<string, EnrichedVuln[]>();
-    for (const v of displayed) {
-      let keys: string[] = [];
-      if (groupBy === "package") keys = v.packages;
-      else if (groupBy === "agent") keys = v.agents;
-      else if (groupBy === "severity") keys = [v.severity];
-
-      for (const key of keys) {
-        const existing = groups.get(key) ?? [];
-        existing.push(v);
-        groups.set(key, existing);
-      }
-    }
-
-    // Sort groups: by count descending
-    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
-  }, [displayed, groupBy]);
-
-  const counts = useMemo(() => {
-    const c = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const v of vulns) {
-      const s = v.severity.toLowerCase() as keyof typeof c;
-      if (s in c) c[s]++;
-    }
-    return c;
-  }, [vulns]);
   const workspaceMetrics = useMemo(
     () =>
       lens === "trust"
@@ -1064,7 +632,7 @@ function FindingsPage() {
 
   const findingsTotalLabel = findingsTotal == null
     ? "Total unavailable"
-    : formatFindingsTotal(findingsTotal, useServerPaging && findingsTotalApproximate);
+    : formatFindingsTotal(findingsTotal, findingsTotalApproximate);
   const findingsFilterTotalLabel = findingsTotal == null ? "unknown total" : findingsTotalLabel;
   const findingsWindowLabel = appliedWindow?.label ??
     WINDOW_OPTIONS.find((option) => option.value === windowDays)?.label ??
@@ -1076,9 +644,6 @@ function FindingsPage() {
   // filter to its default, which the URL-sync effect drops from the query string.
   const domainFilterLabel = DOMAIN_FILTERS.find((d) => d.key === domainFilter)?.label ?? domainFilter;
   const activeFilterChips: { key: string; label: string; onClear: () => void }[] = [
-    scope !== "latest"
-      ? { key: "scope", label: "Scope: All scans", onClear: () => setScope("latest") }
-      : null,
     domainFilter !== "all"
       ? { key: "domain", label: `Domain: ${domainFilterLabel}`, onClear: () => setDomainFilter("all") }
       : null,
@@ -1094,7 +659,6 @@ function FindingsPage() {
   ].filter((chip): chip is { key: string; label: string; onClear: () => void } => chip !== null);
   const activeFilterCount = activeFilterChips.length;
   const clearAdvancedFilters = () => {
-    setScope("latest");
     setDomainFilter("all");
     setProviderFilter("");
     setAccountFilter("");
@@ -1104,20 +668,13 @@ function FindingsPage() {
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
     {
       key: "all",
-      label: `All (${useServerPaging ? findingsFilterTotalLabel : vulns.length})`,
+      label: `All (${findingsFilterTotalLabel})`,
       color: "text-[var(--text-secondary)]",
     },
-    { key: "critical", label: `Critical${useServerPaging ? "" : ` (${counts.critical})`}`, color: "text-red-400" },
-    { key: "high",     label: `High${useServerPaging ? "" : ` (${counts.high})`}`,         color: "text-orange-400" },
-    { key: "medium",   label: `Medium${useServerPaging ? "" : ` (${counts.medium})`}`,     color: "text-yellow-400" },
-    { key: "low",      label: `Low${useServerPaging ? "" : ` (${counts.low})`}`,           color: "text-blue-400" },
-  ];
-
-  const GROUP_OPTIONS: { key: GroupKey; label: string; icon: ElementType }[] = [
-    { key: "none", label: "Flat", icon: Layers },
-    { key: "severity", label: "Severity", icon: Bug },
-    { key: "package", label: "Package", icon: Package },
-    { key: "agent", label: "Agent", icon: Server },
+    { key: "critical", label: `Critical${findingFacets ? ` (${findingFacets.severity.critical})` : ""}`, color: "text-red-400" },
+    { key: "high", label: `High${findingFacets ? ` (${findingFacets.severity.high})` : ""}`, color: "text-orange-400" },
+    { key: "medium", label: `Medium${findingFacets ? ` (${findingFacets.severity.medium})` : ""}`, color: "text-yellow-400" },
+    { key: "low", label: `Low${findingFacets ? ` (${findingFacets.severity.low})` : ""}`, color: "text-blue-400" },
   ];
 
   return (
@@ -1127,16 +684,14 @@ function FindingsPage() {
         title="Findings"
         subtitle={findingsPageSubtitle(
           lens,
-          `${useServerPaging ? findingsTotalLabel : vulns.length}${findingsTotal == null ? "" : " findings"}`,
-          scope === "latest"
-            ? paramScan
-              ? `from scan ${paramScan.slice(0, 8)}.`
-              : "from the latest completed scan."
+          `${findingsTotalLabel}${findingsTotal == null ? "" : " findings"}`,
+          paramScan
+            ? `from scan ${paramScan.slice(0, 8)}.`
             : `current state across completed scans · ${findingsWindowLabel}.`,
         )}
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-200">
-            {scope === "all" ? `Current state · ${findingsWindowLabel}` : "Latest scan"}
+            {paramScan ? `Scan ${paramScan.slice(0, 8)}` : `Current state · ${findingsWindowLabel}`}
           </span>
         }
         actions={
@@ -1176,14 +731,6 @@ function FindingsPage() {
                   {vexExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
                   Export OpenVEX
                 </button>
-                <button
-                  onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
-                  title="Export the findings currently loaded on this page as JSON"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Export page JSON
-                </button>
               </>
             ) : null}
           </div>
@@ -1199,15 +746,15 @@ function FindingsPage() {
 
       {loading && (
         <PageLoadingState
-          title="Loading scan summaries"
-          detail="Fetching completed scan jobs before loading vulnerability and graph-backed finding evidence."
+          title="Loading findings"
+          detail="Fetching the canonical finding queue, facets, and observation evidence."
           data-testid="findings-loading-state"
         />
       )}
       {!loading && detailLoading && vulns.length === 0 && (
         <PageLoadingState
-          title={scope === "latest" ? "Loading latest scan" : "Aggregating completed scans"}
-          detail="Resolving vulnerability records, affected packages, agents, reachability, and remediation links."
+          title="Refreshing findings"
+          detail="Applying server-backed filters and loading the next evidence page."
         />
       )}
       {!loading && error && (
@@ -1226,7 +773,7 @@ function FindingsPage() {
           suggestions={[
             "Start with the offline demo if you want predictable sample data.",
             "Run a project scan with graph output to connect findings to packages and agents.",
-            "Use all completed scans when you need aggregate evidence across jobs.",
+            "Use the current-state queue or open a specific scan from Jobs.",
           ]}
           command="agent-bom agents --demo --offline"
           actions={FIRST_SCAN_ACTIONS}
@@ -1272,7 +819,7 @@ function FindingsPage() {
                   {findingsQueueTitle(lens)}
                 </span>
                 <span aria-hidden="true">·</span>
-                <span>{useServerPaging ? `${displayed.length} on this page` : `${displayed.length} filtered`}</span>
+                <span>{displayed.length} on this page</span>
                 <span aria-hidden="true">·</span>
                 <span>{PAGE_SIZE} per page</span>
               </p>
@@ -1298,7 +845,7 @@ function FindingsPage() {
               </div>
             </div>
 
-            {/* Primary toolbar: search + issue type + severity + group by, with
+            {/* Primary toolbar: search + issue type + severity, with
                 advanced filters tucked into the "Filters (n)" popover. */}
             <div className="flex flex-col gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
@@ -1344,17 +891,6 @@ function FindingsPage() {
                       data-testid="findings-filters-popover"
                       className="absolute right-0 z-40 mt-2 flex w-[min(22rem,90vw)] flex-col gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-xl"
                     >
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Scope</span>
-                        <select
-                          value={scope}
-                          onChange={(e) => setScope(e.target.value as ScanScope)}
-                          className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] focus:border-[var(--border-strong)] focus:outline-none"
-                        >
-                          <option value="latest">Latest completed scan</option>
-                          <option value="all">All completed scans</option>
-                        </select>
-                      </div>
                       <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Time window</span>
                         <select
@@ -1465,7 +1001,7 @@ function FindingsPage() {
                 ))}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1">
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Severity</span>
                   {FILTERS?.map(({ key, label, color }) => (
@@ -1482,23 +1018,6 @@ function FindingsPage() {
                     </button>
                   ))}
                 </div>
-                {lens === "ops" ? <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1 sm:w-auto">
-                  <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Group by</span>
-                  {GROUP_OPTIONS?.map(({ key, label, icon: Icon }) => (
-                    <button
-                      key={key}
-                      onClick={() => setGroupBy(key)}
-                      className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                        groupBy === key
-                          ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
-                          : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
-                      }`}
-                    >
-                      <Icon className="h-3 w-3" />
-                      {label}
-                    </button>
-                  ))}
-                </div> : null}
               </div>
             </div>
 
@@ -1533,111 +1052,42 @@ function FindingsPage() {
             {detailLoading && vulns.length > 0 && (
               <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {scope === "latest" ? "Refreshing latest scan..." : "Refreshing historical aggregation..."}
+                Refreshing the server-backed queue…
               </div>
             )}
           </div>
 
-          {/* Grouped view */}
-          {grouped ? (
-            <div className="space-y-6">
-              {grouped?.map(([groupLabel, groupVulns]) => {
-                // Per-group windowing for the grouped view (#1955 vulns
-                // half). The flat path was already paginated via
-                // `paged`; the grouped path used to render every vuln in
-                // every group flat, which collapsed UX on group-by-package
-                // for tenants with hundreds of CVEs per package. Cap each
-                // group at PAGE_SIZE and surface a remaining-count line
-                // so users know they're seeing a slice.
-                const visibleGroupVulns = groupVulns.slice(0, PAGE_SIZE);
-                const groupOverflow = groupVulns.length - visibleGroupVulns.length;
-                const collapsed = collapsedGroups.has(groupLabel);
-                return (
-                  <div key={groupLabel}>
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(groupLabel)}
-                      aria-expanded={!collapsed}
-                      className="flex w-full items-center gap-2 mb-2 text-left transition-colors group"
-                    >
-                      {collapsed ? (
-                        <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]" />
-                      )}
-                      <h3 className="text-sm font-semibold text-[var(--text-secondary)]">{groupLabel}</h3>
-                      <span className="text-xs font-mono text-[var(--text-tertiary)] bg-[var(--surface-elevated)] rounded px-1.5 py-0.5">
-                        {groupVulns.length}
-                      </span>
-                    </button>
-                    {!collapsed && (
-                      <>
-                        <FindingsQueueTable
-                          vulns={visibleGroupVulns}
-                          sortKey={sortKey}
-                          sortDir={sortDir}
-                          handleSort={handleSort}
-                          suppressed={suppressed}
-                          onMarkFP={handleMarkFP}
-                          selectedId={selectedId}
-                          onSelect={setSelectedId}
-                          lens={lens}
-                          triageByKey={triageByKey}
-                        />
-                        {groupOverflow > 0 && (
-                          <p className="mt-2 text-xs text-[var(--text-tertiary)]">
-                            Showing first {PAGE_SIZE} of {groupVulns.length} —
-                            narrow with the search box or switch to the flat
-                            view (Group: none) for full pagination.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <FindingsQueueTable
-              vulns={paged}
-              sortKey={sortKey}
-              sortDir={sortDir}
-              handleSort={handleSort}
-              suppressed={suppressed}
-              onMarkFP={handleMarkFP}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              lens={lens}
-              triageByKey={triageByKey}
-            />
-          )}
+          <FindingsQueueTable
+            vulns={displayed}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            handleSort={handleSort}
+            suppressed={suppressed}
+            onMarkFP={handleMarkFP}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            lens={lens}
+            triageByKey={triageByKey}
+          />
 
-          {!grouped && (
-            <PaginationBar
-              page={page}
-              totalPages={totalPages}
-              totalItems={useServerPaging ? findingsTotal : displayed.length}
-              hasMore={hasMoreFindings}
-              itemLabel={useServerPaging && findingsTotalApproximate ? "findings (approx.)" : "findings"}
-              onPrevious={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => {
-                if (nextFindingsCursor) {
-                  setPageCursors((existing) => {
-                    const next = [...existing];
-                    next[page] = nextFindingsCursor;
-                    return next;
-                  });
-                }
-                setPage((current) => totalPages == null ? current + 1 : Math.min(totalPages, current + 1));
-              }}
-            />
-          )}
-
-          {grouped && (
-            <p className="text-xs text-[var(--text-tertiary)] text-right">
-              Showing {displayed.length} of {vulns.length} findings
-            </p>
-          )}
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            totalItems={findingsTotal}
+            hasMore={hasMoreFindings}
+            itemLabel={findingsTotalApproximate ? "findings (approx.)" : "findings"}
+            onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => {
+              if (nextFindingsCursor) {
+                setPageCursors((existing) => {
+                  const next = [...existing];
+                  next[page] = nextFindingsCursor;
+                  return next;
+                });
+              }
+              setPage((current) => totalPages == null ? current + 1 : Math.min(totalPages, current + 1));
+            }}
+          />
 
           {selectedVuln && (
             <FindingDrawer

@@ -1413,6 +1413,7 @@ export const api = {
   // ── Unified findings ──
   listFindings: (filters?: {
     scanId?: string;
+    query?: string;
     severity?: string;
     sort?: string;
     limit?: number;
@@ -1434,6 +1435,7 @@ export const api = {
   }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.query) params.set("q", filters.query);
     if (filters?.severity) params.set("severity", filters.severity);
     if (filters?.sort) params.set("sort", filters.sort);
     if (filters?.limit != null) params.set("limit", String(filters.limit));

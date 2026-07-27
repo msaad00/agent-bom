@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronRight, ExternalLink, FileSearch, Loader2, Radar, ShieldAlert } from "lucide-react";
+import { ExternalLink, FileSearch, Loader2 } from "lucide-react";
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
-import { securityGraphHref } from "@/lib/page-links";
 import { Drawer } from "@/components/drawer";
 import {
   findingsDrawerEyebrow,
@@ -25,11 +24,10 @@ import {
   officialAdvisoryLinks,
 } from "@/lib/findings-view";
 
-type TabKey = "overview" | "path" | "evidence" | "triage";
+type TabKey = "overview" | "evidence" | "triage";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "path", label: "Exposure path" },
   { key: "evidence", label: "Evidence" },
   { key: "triage", label: "Triage" },
 ];
@@ -102,7 +100,6 @@ export function FindingDrawer({
       </div>
 
       {tab === "overview" ? <OverviewTab vuln={vuln} triage={triage} /> : null}
-      {tab === "path" ? <PathTab vuln={vuln} /> : null}
       {tab === "evidence" ? <EvidenceTab vuln={vuln} /> : null}
       {tab === "triage" ? (
         <TriageTab
@@ -319,124 +316,6 @@ function EstateNodeSection({ vuln }: { vuln: EnrichedVuln }) {
         </Link>
       </div>
     </Section>
-  );
-}
-
-// ── Exposure path (the visual) ────────────────────────────────────────────────
-
-const PATH_META: Record<string, { dot: string; ring: string }> = {
-  cve: { dot: "bg-red-500", ring: "border-red-500/40" },
-  package: { dot: "bg-violet-500", ring: "border-violet-500/40" },
-  server: { dot: "bg-sky-500", ring: "border-sky-500/40" },
-  agent: { dot: "bg-emerald-500", ring: "border-emerald-500/40" },
-  credential: { dot: "bg-amber-500", ring: "border-amber-500/40" },
-};
-
-function PathTab({ vuln }: { vuln: EnrichedVuln }) {
-  const stages = [
-    { type: "cve", label: "CVE", items: [vuln.id] },
-    { type: "package", label: "Package", items: vuln.packages },
-    { type: "server", label: "MCP / runtime", items: vuln.affected_servers },
-    { type: "agent", label: "Agent", items: vuln.agents },
-    {
-      type: "credential",
-      label: "Credential / tool",
-      items: uniqueStrings([...vuln.exposed_credentials, ...vuln.reachable_tools]),
-    },
-  ].filter((stage) => stage.items.length > 0);
-
-  return (
-    <div className="space-y-4">
-      <ReachBadges vuln={vuln} />
-
-      <Panel title="Correlated exposure path">
-        {stages.length > 1 ? (
-          <div className="flex flex-wrap items-stretch gap-2">
-            {stages.map((stage, index) => (
-              <div key={stage.type} className="flex items-stretch gap-2">
-                {index > 0 ? (
-                  <div className="flex items-center text-[color:var(--text-tertiary)]">
-                    <ChevronRight className="h-4 w-4" />
-                  </div>
-                ) : null}
-                <div className={`min-w-[8.5rem] max-w-[13rem] rounded-xl border ${PATH_META[stage.type]?.ring ?? "border-[color:var(--border-subtle)]"} bg-[color:var(--surface-muted)] p-2.5`}>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`h-1.5 w-1.5 rounded-full ${PATH_META[stage.type]?.dot ?? "bg-[color:var(--text-tertiary)]"}`} />
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]">
-                      {stage.label}
-                    </span>
-                    {stage.items.length > 1 ? (
-                      <span className="ml-auto text-[10px] text-[color:var(--text-tertiary)]">{stage.items.length}</span>
-                    ) : null}
-                  </div>
-                  <div className="mt-1.5 space-y-1">
-                    {stage.items.slice(0, 4).map((item) => (
-                      <p key={item} className="truncate font-mono text-[11px] text-[color:var(--text-secondary)]" title={item}>
-                        {item}
-                      </p>
-                    ))}
-                    {stage.items.length > 4 ? (
-                      <p className="text-[10px] text-[color:var(--text-tertiary)]">+{stage.items.length - 4} more</p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-[color:var(--text-secondary)]">
-            No correlated blast-radius path recorded for this finding yet.
-          </p>
-        )}
-        <Link
-          href={securityGraphHref({ cve: vuln.id })}
-          className="mt-3 inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
-        >
-          Open in security graph <ChevronRight className="h-3 w-3" />
-        </Link>
-      </Panel>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <ContextCard
-          icon={Radar}
-          title="Asset and reach context"
-          items={[
-            `${vuln.packages.length} package${vuln.packages.length === 1 ? "" : "s"}`,
-            `${vuln.agents.length} agent${vuln.agents.length === 1 ? "" : "s"}`,
-            `${vuln.affected_servers.length} server${vuln.affected_servers.length === 1 ? "" : "s"}`,
-            vuln.risk_score ? `Risk score ${vuln.risk_score.toFixed(1)}` : null,
-            vuln.impact_category ? `Impact ${vuln.impact_category}` : null,
-          ]}
-          detail={
-            <>
-              <TagList label="Packages" values={vuln.packages} mono />
-              <TagList label="Agents" values={vuln.agents} />
-              <TagList label="Servers" values={vuln.affected_servers} />
-            </>
-          }
-        />
-        <ContextCard
-          icon={ShieldAlert}
-          title="Exposure at risk"
-          items={[
-            `${vuln.exposed_credentials.length} credential${vuln.exposed_credentials.length === 1 ? "" : "s"} exposed`,
-            `${vuln.reachable_tools.length} confirmed tool${vuln.reachable_tools.length === 1 ? "" : "s"}`,
-            vuln.phantom_tools?.length
-              ? `${vuln.phantom_tools.length} registry-only tool${vuln.phantom_tools.length === 1 ? "" : "s"} (excluded from score)`
-              : null,
-          ]}
-          detail={
-            <>
-              <TagList label="Credentials" values={vuln.exposed_credentials} mono />
-              <TagList label="Confirmed tools" values={vuln.reachable_tools} mono />
-              {vuln.phantom_tools && vuln.phantom_tools.length > 0 ? (
-                <TagList label="Registry-only tools" values={vuln.phantom_tools} mono />
-              ) : null}
-            </>
-          }
-        />
-      </div>
-    </div>
   );
 }
 
@@ -759,36 +638,6 @@ function DetailStat({ label, value, detail }: { label: string; value: string; de
       <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">{label}</div>
       <div className="mt-1.5 text-sm font-semibold text-[color:var(--foreground)]">{value}</div>
       {detail ? <div className="mt-1 truncate text-[10px] text-[color:var(--text-tertiary)]" title={detail}>{detail}</div> : null}
-    </div>
-  );
-}
-
-function ContextCard({
-  icon: Icon,
-  title,
-  items,
-  detail,
-}: {
-  icon: typeof Radar;
-  title: string;
-  items: Array<string | null | undefined>;
-  detail: ReactNode;
-}) {
-  const visibleItems = items.filter(Boolean) as string[];
-  return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
-      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">
-        <Icon className="h-3.5 w-3.5" />
-        {title}
-      </div>
-      {visibleItems.length > 0 ? (
-        <ul className="mt-3 space-y-1 text-xs text-[color:var(--text-secondary)]">
-          {visibleItems.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      ) : null}
-      <div className="mt-3 space-y-2">{detail}</div>
     </div>
   );
 }

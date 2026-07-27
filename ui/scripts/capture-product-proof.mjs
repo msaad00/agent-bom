@@ -2312,9 +2312,9 @@ async function main() {
       });
       await scrollTo(findingsPage, 0);
     }, {
-      expectedText: ["Findings queue", "15 filtered", "DEMO-VULN-21441", "DEMO-VULN-77881"],
+      expectedText: ["Findings queue", "15 findings", "DEMO-VULN-21441", "DEMO-VULN-77881"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
-      rejectedText: ["17 filtered"],
+      rejectedText: ["17 findings"],
     });
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
       expectedText: ["Risk campaigns", "Package remediation plan", "Upgrade openssl to 3.0.14", "DEMO-VULN-21441"],

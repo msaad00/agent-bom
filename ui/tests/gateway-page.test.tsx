@@ -114,4 +114,23 @@ describe("GatewayPage", () => {
     expect(postureCard).toHaveClass("bg-[var(--surface)]");
     expect(postureCard?.className).not.toContain("rgba(24,24,27");
   });
+
+  it("degrades a malformed feed response without crashing the runtime page", async () => {
+    apiMock.getGatewayFeed.mockResolvedValue({
+      events: undefined,
+      count: 0,
+      health: undefined,
+    });
+
+    render(<GatewayPage />);
+
+    await waitFor(() => expect(apiMock.getGatewayFeed).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(
+        screen.getByText("No gateway activity yet. Events appear as agents call tools through the gateway/proxy."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Calls today")).toBeInTheDocument();
+  });
 });

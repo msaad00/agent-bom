@@ -96,8 +96,8 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
       .then(([feedResult]) => {
         const failures: string[] = [];
         if (feedResult.status === "fulfilled") {
-          setEvents(feedResult.value.events);
-          setHealth(feedResult.value.health);
+          setEvents(Array.isArray(feedResult.value.events) ? feedResult.value.events : []);
+          setHealth(feedResult.value.health ?? UNAVAILABLE_HEALTH);
         } else {
           failures.push(`feed: ${feedResult.reason?.message ?? "request failed"}`);
         }
@@ -149,8 +149,8 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
             lastSeen = total;
             lastRefresh = now;
             void api.getGatewayFeed(200).then((feedResult) => {
-              setEvents(feedResult.events);
-              setHealth(feedResult.health);
+              setEvents(Array.isArray(feedResult.events) ? feedResult.events : []);
+              setHealth(feedResult.health ?? UNAVAILABLE_HEALTH);
               onActivity?.();
             });
           }

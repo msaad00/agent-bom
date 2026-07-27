@@ -1946,7 +1946,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "new-scan-live.png",
       page: "/scan?capture=1",
-      scope: "New Scan workspace with collector plan, read-only boundary, expected evidence, connected sources, and recent job context",
+      scope: "New Scan workspace with scope summary, read-only boundary, expected evidence, connected sources, and job navigation",
     },
     {
       path: "jobs-pipeline-live.png",
@@ -2114,7 +2114,7 @@ async function main() {
     await capture(page, "/scan?capture=1", "new-scan-live.png", async (scanPage) => {
       await scanPage.getByRole("heading", { name: /New Scan|Run scan/i }).first().waitFor({ state: "visible", timeout: 10_000 });
     }, {
-      expectedText: ["New Scan", "What this scan collects and produces", "Read-only boundary", /Collector plan/i, /Recent scans/i],
+      expectedText: ["New Scan", "What this scan collects and produces", "Read-only boundary", /Scope now/i, /Scan jobs/i],
       expectedApiPaths: ["/v1/cloud/connections", "/v1/sources", "/v1/jobs"],
     });
     await capture(page, "/jobs?capture=1", "jobs-pipeline-live.png", async (jobsPage) => {

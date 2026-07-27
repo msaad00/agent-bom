@@ -63,6 +63,9 @@ describe("product proof capture contract", () => {
 
   it("tracks the current scan workspace proof copy", () => {
     expect(source).toContain('expectedText: ["New Scan", "What this scan collects and produces"');
+    expect(source).toContain('"Read-only boundary", /Scope now/i, /Scan jobs/i');
+    expect(source).not.toContain("/Collector plan/i");
+    expect(source).not.toContain("/Recent scans/i");
   });
 
   it("filters audit proof server-side and waits for identity lifecycle rows", () => {

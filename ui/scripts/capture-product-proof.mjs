@@ -2169,6 +2169,7 @@ async function main() {
       }
       await fitReactFlow(meshPage);
       await meshPage.waitForTimeout(500);
+      await scrollTo(meshPage, 0);
     }, {
       expectedText: [
         "Agent Mesh",
@@ -2211,7 +2212,7 @@ async function main() {
       await advancedControls.locator(":scope > summary").click();
       await fitReactFlow(lineagePage);
       await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
-      await scrollTo(lineagePage, 300);
+      await scrollTo(lineagePage, 220);
       await lineagePage.waitForTimeout(350);
     }, {
       expectedText: [
@@ -2297,8 +2298,7 @@ async function main() {
       await filteredResponse;
       const issuedEvent = auditPage.getByText("agent_identity.issued");
       await issuedEvent.waitFor({ state: "visible", timeout: 8_000 });
-      await issuedEvent.scrollIntoViewIfNeeded();
-      await auditPage.evaluate(() => window.scrollBy(0, -180));
+      await issuedEvent.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
       await auditPage.waitForTimeout(350);
     }, {
       expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],

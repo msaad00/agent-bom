@@ -857,9 +857,10 @@ async def cloud_runtime_evidence_ingest(
     The authenticated, tenant-scoped door for the runtime workload-evidence store.
     Without this route the store had no caller in a deployed product and could
     never be populated. Read-only posture: agent-bom never writes to a customer
-    target and persists redacted metadata only (raw bytes / secret values are
-    dropped at construction). Each source is pre-registered with a hashed shared
-    secret (no per-action credentials); ``provider``/``account`` bind to the
+    target and persists allowlisted metadata only (raw content and known
+    credential-shaped values are dropped at construction). Each source is
+    pre-registered with a hashed shared secret (no per-action credentials);
+    ``provider``/``account`` bind to the
     authenticated source, never the payload (confused-deputy guard).
 
     Fail-closed: an unknown source id, a bad secret, or a source owned by a

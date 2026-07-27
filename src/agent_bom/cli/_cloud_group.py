@@ -39,6 +39,7 @@ def _auto_update_db_default() -> bool:
         return True
     return raw.strip().lower() not in ("0", "false", "no", "off")
 
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from rich.console import Console
 
@@ -713,6 +714,7 @@ def _project_authorization_posture(report: dict) -> dict:
     record_authorization_evidence(provider=provider, status=summary.status.value, reason_codes=reason_codes)
     return projected
 
+
 # Report keys that are lists but NOT asset collections — excluded from the count
 # so the summary auto-includes every resource type a provider adds without drift.
 _INVENTORY_NON_ASSET_KEYS = frozenset({"warnings", "discovery_envelope", "permissions_used", "discovery_scope", "errors"})
@@ -808,10 +810,7 @@ def side_scan_cmd(
     capability = capabilities.get(provider_key)
     if capability is None or not capability.cli_available:
         executor = capability.executor if capability is not None else "contract_only"
-        con.print(
-            f"\n  [yellow]side-scan executor unavailable for {provider_key}:[/yellow] "
-            f"executor={executor}, cli_available=false"
-        )
+        con.print(f"\n  [yellow]side-scan executor unavailable for {provider_key}:[/yellow] executor={executor}, cli_available=false")
         con.print(
             "  [dim]Azure/GCP expose target discovery + lifecycle contract only — "
             "no CLI executor is claimed. See `agent-bom cloud side-scan-capabilities` "
@@ -955,7 +954,7 @@ cloud_group.add_command(side_scan_capabilities_cmd, "side-scan-capabilities")
     "signals_file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     required=True,
-    help="JSON file: a list of signals, or {\"signals\": [...]}.",
+    help='JSON file: a list of signals, or {"signals": [...]}.',
 )
 @click.option("--no-persist", is_flag=True, help="Authenticate + validate only; do not write the durable store.")
 def runtime_evidence_ingest_cmd(source_id: str, secret: str, signals_file: str, no_persist: bool) -> None:
@@ -1011,6 +1010,8 @@ def runtime_evidence_ingest_cmd(source_id: str, secret: str, signals_file: str, 
         f"incomplete={summary['rejected_incomplete']}"
     )
     con.print()
+    if summary["accepted"] == 0 and (summary["rejected_stale"] or summary["rejected_incomplete"]):
+        raise SystemExit(2)
 
 
 cloud_group.add_command(runtime_evidence_ingest_cmd, "runtime-evidence-ingest")

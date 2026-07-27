@@ -8,6 +8,7 @@ security-critical properties (issue #4158).
 
 from __future__ import annotations
 
+import json
 import multiprocessing as mp
 import os
 import sqlite3
@@ -15,6 +16,7 @@ import uuid
 
 import pytest
 
+from agent_bom.cloud import runtime_workload_evidence_store as store_module
 from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal
 from agent_bom.cloud.runtime_workload_evidence_store import (
     InMemoryRuntimeWorkloadEvidenceStore,
@@ -81,7 +83,7 @@ def test_sqlite_persists_across_reopen(tmp_path):
             "SELECT version FROM control_plane_schema_versions WHERE component = ?",
             ("runtime_workload_evidence",),
         ).fetchone()
-    assert marker == (1,)
+    assert marker == (2,)
 
 
 def test_sqlite_cross_tenant_same_dedup_key_both_persist_no_leak(tmp_path):
@@ -101,6 +103,174 @@ def test_sqlite_dedup_within_tenant(tmp_path):
     path = str(tmp_path / "rwe.sqlite")
     store = SQLiteRuntimeWorkloadEvidenceStore(path)
     assert store.put_batch([_signal(dedup="a"), _signal(dedup="a"), _signal(dedup="b")]) == 2
+
+
+def test_sqlite_orders_fractional_utc_timestamps_chronologically(tmp_path):
+    path = str(tmp_path / "rwe.sqlite")
+    store = SQLiteRuntimeWorkloadEvidenceStore(path)
+    store.put_batch(
+        [
+            _signal(dedup="zero-fraction", observed="2026-07-18T12:00:00Z"),
+            _signal(dedup="later-fraction", observed="2026-07-18T12:00:00.100000Z"),
+        ]
+    )
+
+    rows = store.list_for_tenant("tenant-a")
+    assert [row.dedup_key for row in rows] == ["later-fraction", "zero-fraction"]
+    assert [row.observed_at for row in rows] == [
+        "2026-07-18T12:00:00.100000Z",
+        "2026-07-18T12:00:00.000000Z",
+    ]
+
+
+def test_sqlite_upgrade_normalizes_legacy_timestamps_and_scrubs_payload(tmp_path):
+    path = str(tmp_path / "rwe.sqlite")
+    store = SQLiteRuntimeWorkloadEvidenceStore(path)
+    store.put_batch(
+        [
+            _signal(dedup="zero-fraction", observed="2026-07-18T12:00:00Z"),
+            _signal(dedup="later-fraction", observed="2026-07-18T12:00:00.100000Z"),
+        ]
+    )
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute("SELECT dedup_key, payload_json FROM runtime_workload_evidence").fetchall()
+        payloads = {dedup: json.loads(payload) for dedup, payload in rows}
+        payloads["zero-fraction"]["observed_at"] = "2026-07-18T12:00:00Z"
+        payloads["zero-fraction"]["title"] = "Authorization: Bearer legacy-title-secret"
+        payloads["zero-fraction"]["evidence"] = {
+            "ioc_type": "domain",
+            "password": "legacy-password-secret",
+        }
+        payloads["later-fraction"]["observed_at"] = "2026-07-18T12:00:00.100000Z"
+        connection.execute(
+            "UPDATE runtime_workload_evidence SET observed_at = ?, payload_json = ? WHERE dedup_key = ?",
+            ("2026-07-18T12:00:00Z", json.dumps(payloads["zero-fraction"]), "zero-fraction"),
+        )
+        connection.execute(
+            "UPDATE runtime_workload_evidence SET observed_at = ?, payload_json = ? WHERE dedup_key = ?",
+            ("2026-07-18T12:00:00.100000Z", json.dumps(payloads["later-fraction"]), "later-fraction"),
+        )
+        connection.execute(
+            "UPDATE control_plane_schema_versions SET version = 1 WHERE component = ?",
+            ("runtime_workload_evidence",),
+        )
+
+    reopened = SQLiteRuntimeWorkloadEvidenceStore(path)
+    rows = reopened.list_for_tenant("tenant-a")
+    assert [row.dedup_key for row in rows] == ["later-fraction", "zero-fraction"]
+    assert rows[1].title == "<redacted>"
+    assert rows[1].evidence == {"ioc_type": "domain"}
+    with sqlite3.connect(path) as connection:
+        stored = connection.execute(
+            "SELECT observed_at, payload_json FROM runtime_workload_evidence WHERE dedup_key = ?",
+            ("zero-fraction",),
+        ).fetchone()
+        marker = connection.execute(
+            "SELECT version FROM control_plane_schema_versions WHERE component = ?",
+            ("runtime_workload_evidence",),
+        ).fetchone()
+    assert stored is not None
+    assert stored[0] == "2026-07-18T12:00:00.000000Z"
+    assert "legacy-password-secret" not in stored[1]
+    assert "legacy-title-secret" not in stored[1]
+    assert marker == (2,)
+
+
+def test_sqlite_upgrade_pages_without_skipping_rows(tmp_path, monkeypatch):
+    path = str(tmp_path / "rwe.sqlite")
+    store = SQLiteRuntimeWorkloadEvidenceStore(path)
+    store.put_batch([_signal(dedup=f"event-{index}") for index in range(5)])
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE control_plane_schema_versions SET version = 1 WHERE component = ?",
+            ("runtime_workload_evidence",),
+        )
+        rows = connection.execute("SELECT rowid, payload_json FROM runtime_workload_evidence").fetchall()
+        for rowid, raw_payload in rows:
+            payload = json.loads(raw_payload)
+            payload["observed_at"] = "2026-07-18T12:00:00Z"
+            payload["title"] = f"legacy-{rowid}"
+            payload["evidence"] = {"ioc_type": "domain"}
+            connection.execute(
+                "UPDATE runtime_workload_evidence SET observed_at = ?, payload_json = ? WHERE rowid = ?",
+                ("2026-07-18T12:00:00Z", json.dumps(payload), rowid),
+            )
+
+    monkeypatch.setattr(store_module, "_SQLITE_MIGRATION_PAGE_SIZE", 2)
+    migrated = SQLiteRuntimeWorkloadEvidenceStore(path).list_for_tenant("tenant-a")
+
+    assert len(migrated) == 5
+    assert all(signal.observed_at == "2026-07-18T12:00:00.000000Z" for signal in migrated)
+    assert all(signal.title.startswith("legacy-") for signal in migrated)
+    assert all(signal.evidence == {"ioc_type": "domain"} for signal in migrated)
+
+
+def test_sqlite_upgrade_uses_table_identity_and_drops_unknown_payload_fields(tmp_path):
+    path = str(tmp_path / "rwe.sqlite")
+    SQLiteRuntimeWorkloadEvidenceStore(path).put_batch([_signal(dedup="column-dedup")])
+    with sqlite3.connect(path) as connection:
+        raw_payload = connection.execute("SELECT payload_json FROM runtime_workload_evidence").fetchone()[0]
+        payload = json.loads(raw_payload)
+        payload.update(
+            {
+                "tenant_id": "poison-tenant",
+                "provider": "gcp",
+                "account_id": "poison-account",
+                "workload_ref": "poison-workload",
+                "workload_id": "poison-workload-id",
+                "signal_type": "process_exec",
+                "severity": "low",
+                "source_id": "poison-source",
+                "source_kind": "poison-kind",
+                "dedup_key": "poison-dedup",
+                "unknown_top_level": "must-not-survive",
+            }
+        )
+        connection.execute("UPDATE runtime_workload_evidence SET payload_json = ?", (json.dumps(payload),))
+        connection.execute(
+            "UPDATE control_plane_schema_versions SET version = 1 WHERE component = ?",
+            ("runtime_workload_evidence",),
+        )
+
+    migrated = SQLiteRuntimeWorkloadEvidenceStore(path).list_for_tenant("tenant-a")
+
+    assert len(migrated) == 1
+    assert migrated[0].tenant_id == "tenant-a"
+    assert migrated[0].provider == "aws"
+    assert migrated[0].account_id == "123456789012"
+    assert migrated[0].workload_ref == "i-0abc"
+    assert migrated[0].signal_type.value == "ioc_detection"
+    assert migrated[0].severity == "high"
+    assert migrated[0].source_id == "edr-1"
+    assert migrated[0].source_kind == "edr"
+    assert migrated[0].dedup_key == "column-dedup"
+    with sqlite3.connect(path) as connection:
+        stored_workload_id, stored_payload = connection.execute(
+            "SELECT workload_id, payload_json FROM runtime_workload_evidence"
+        ).fetchone()
+    assert stored_workload_id == migrated[0].workload_id
+    assert json.loads(stored_payload) == migrated[0].to_dict()
+    assert "unknown_top_level" not in stored_payload
+
+
+def test_sqlite_rejects_newer_schema_without_downgrading_marker(tmp_path):
+    path = str(tmp_path / "rwe.sqlite")
+    SQLiteRuntimeWorkloadEvidenceStore(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE control_plane_schema_versions SET version = 3 WHERE component = ?",
+            ("runtime_workload_evidence",),
+        )
+
+    with pytest.raises(RuntimeError, match="newer than this agent-bom binary"):
+        SQLiteRuntimeWorkloadEvidenceStore(path)
+
+    with sqlite3.connect(path) as connection:
+        marker = connection.execute(
+            "SELECT version FROM control_plane_schema_versions WHERE component = ?",
+            ("runtime_workload_evidence",),
+        ).fetchone()
+    assert marker == (3,)
 
 
 def _writer(path: str, tenant: str, dedup_keys: list[str]) -> None:

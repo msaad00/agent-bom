@@ -866,7 +866,9 @@ def test_storage_schema_manifest_has_unique_components() -> None:
     names = [component["component"] for component in components]
     assert len(names) == len(set(names))
     assert manifest["schema_table"] == "control_plane_schema_versions"
-    assert all(component["version"] == CONTROL_PLANE_SCHEMA_VERSION for component in components)
+    assert all(component["version"] >= CONTROL_PLANE_SCHEMA_VERSION for component in components)
+    runtime_evidence = next(component for component in components if component["component"] == "runtime_workload_evidence")
+    assert runtime_evidence["version"] == 2
 
 
 def test_sqlite_schema_version_helper_is_idempotent() -> None:

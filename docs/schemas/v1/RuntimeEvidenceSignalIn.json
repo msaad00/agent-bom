@@ -24,16 +24,9 @@
       "type": "object"
     },
     "observed_at": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Observed At"
+      "description": "Source observation time in ISO-8601 form; required and normalized to fixed-width UTC on ingest.",
+      "title": "Observed At",
+      "type": "string"
     },
     "provider": {
       "anyOf": [
@@ -69,7 +62,8 @@
   "required": [
     "workload_ref",
     "signal_type",
-    "dedup_key"
+    "dedup_key",
+    "observed_at"
   ],
   "title": "RuntimeEvidenceSignalIn",
   "type": "object"

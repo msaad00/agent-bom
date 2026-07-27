@@ -32,7 +32,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Protocol
 
-from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal
+from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal, normalize_runtime_observed_at
 
 if TYPE_CHECKING:
     from psycopg import Connection
@@ -51,6 +51,27 @@ _COLUMNS = (
     "source_id",
     "source_kind",
     "payload_json",
+)
+_RUNTIME_WORKLOAD_EVIDENCE_SCHEMA_VERSION = 2
+_SQLITE_MIGRATION_PAGE_SIZE = 500
+_KNOWN_CREDENTIAL_SQL_REGEX = (
+    r"(sk|pk|rk)[-_](live|test|prod)[-_][[:alnum:]_]{10,}|"
+    r"(AKIA|ASIA)[A-Z0-9]{16}|"
+    r"(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}|"
+    r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}|"
+    r"xox[bpsar]-[A-Za-z0-9-]{10,}|"
+    r"-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----|"
+    r"[A-Za-z0-9_]+://[^[:space:]:]+:[^[:space:]@]+@|"
+    r"(glpat|glcbt|gldt|glrt|glptt|glagent)-[A-Za-z0-9_-]{20,}|"
+    r"ya29\.[A-Za-z0-9._-]{20,}|"
+    r"sk-(proj-)?[A-Za-z0-9_-]{20,}|"
+    r"(authorization[[:space:]]*:[[:space:]]*)?Bearer[[:space:]]+[^[:space:]]{8,}"
+    r"|(api[_-]?key|credential|password|secret|token)[[:space:]]*[:=][[:space:]]*[^[:space:]]{4,}"
+)
+_SENSITIVE_METADATA_SQL_REGEX = (
+    _KNOWN_CREDENTIAL_SQL_REGEX
+    + r"|[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}"
+    + r"|https?://[^[:space:]]+[?#][^[:space:]]*|[[:cntrl:]]"
 )
 
 
@@ -74,6 +95,67 @@ def _row_values(signal: RuntimeWorkloadSignal) -> tuple[Any, ...]:
 def _signal_from_json(raw: str) -> RuntimeWorkloadSignal:
     payload = json.loads(raw)
     return RuntimeWorkloadSignal.from_dict(payload)
+
+
+def _sqlite_component_version(connection: sqlite3.Connection) -> int:
+    table = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_plane_schema_versions'").fetchone()
+    if table is None:
+        return 0
+    row = connection.execute(
+        "SELECT version FROM control_plane_schema_versions WHERE component = ?",
+        ("runtime_workload_evidence",),
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def _upgrade_sqlite_runtime_evidence_v2(connection: sqlite3.Connection) -> None:
+    """Normalize legacy timestamps and rewrite payloads through current redaction."""
+    last_rowid = 0
+    while True:
+        rows = connection.execute(
+            "SELECT rowid, tenant_id, provider, account_id, workload_ref, dedup_key, "
+            "signal_type, severity, observed_at, source_id, source_kind, payload_json "
+            "FROM runtime_workload_evidence WHERE rowid > ? ORDER BY rowid LIMIT ?",
+            (last_rowid, _SQLITE_MIGRATION_PAGE_SIZE),
+        ).fetchall()
+        if not rows:
+            return
+        updates: list[tuple[str, str, str, int]] = []
+        for row in rows:
+            normalized = normalize_runtime_observed_at(str(row["observed_at"]))
+            if normalized is None:
+                raise RuntimeError("runtime workload evidence contains an invalid legacy observation timestamp")
+            try:
+                payload = json.loads(str(row["payload_json"]))
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("runtime workload evidence contains an invalid legacy payload") from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError("runtime workload evidence contains a non-object legacy payload")
+            payload.update(
+                {
+                    "tenant_id": str(row["tenant_id"]),
+                    "provider": str(row["provider"]),
+                    "account_id": str(row["account_id"]),
+                    "workload_ref": str(row["workload_ref"]),
+                    "dedup_key": str(row["dedup_key"]),
+                    "signal_type": str(row["signal_type"]),
+                    "severity": str(row["severity"]),
+                    "observed_at": normalized,
+                    "source_id": str(row["source_id"]),
+                    "source_kind": str(row["source_kind"]),
+                }
+            )
+            try:
+                signal = RuntimeWorkloadSignal.from_dict(payload)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("runtime workload evidence legacy payload cannot be normalized safely") from exc
+            safe_payload = json.dumps(signal.to_dict(), sort_keys=True, separators=(",", ":"))
+            updates.append((signal.workload_id, signal.observed_at, safe_payload, int(row["rowid"])))
+        connection.executemany(
+            "UPDATE runtime_workload_evidence SET workload_id = ?, observed_at = ?, payload_json = ? WHERE rowid = ?",
+            updates,
+        )
+        last_rowid = int(rows[-1]["rowid"])
 
 
 class RuntimeWorkloadEvidenceStore(Protocol):
@@ -178,6 +260,11 @@ class SQLiteRuntimeWorkloadEvidenceStore:
                 )
                 """
             )
+            component_version = _sqlite_component_version(connection)
+            if component_version > _RUNTIME_WORKLOAD_EVIDENCE_SCHEMA_VERSION:
+                raise RuntimeError("runtime workload evidence schema is newer than this agent-bom binary")
+            if component_version < _RUNTIME_WORKLOAD_EVIDENCE_SCHEMA_VERSION:
+                _upgrade_sqlite_runtime_evidence_v2(connection)
             # Match the ``list_for_tenant`` query: WHERE tenant_id = ?
             # ORDER BY observed_at DESC, dedup_key DESC. The leading tenant
             # predicate plus the two ORDER BY columns (same direction) lets the
@@ -189,7 +276,11 @@ class SQLiteRuntimeWorkloadEvidenceStore:
             # Drop the stale index that ordered by (tenant_id, workload_id,
             # observed_at) — unusable for the tenant read's ORDER BY.
             connection.execute("DROP INDEX IF EXISTS idx_rwe_tenant_workload_time")
-            ensure_sqlite_schema_version(connection, "runtime_workload_evidence")
+            ensure_sqlite_schema_version(
+                connection,
+                "runtime_workload_evidence",
+                version=_RUNTIME_WORKLOAD_EVIDENCE_SCHEMA_VERSION,
+            )
 
     def put_batch(self, signals: list[RuntimeWorkloadSignal]) -> int:
         if not signals:
@@ -209,10 +300,18 @@ class SQLiteRuntimeWorkloadEvidenceStore:
                 ).fetchone()
                 if table_exists is None:
                     return []
-            rows = connection.execute(
-                "SELECT payload_json FROM runtime_workload_evidence WHERE tenant_id = ? ORDER BY observed_at DESC, dedup_key DESC LIMIT ?",
-                (tenant_id, limit),
-            ).fetchall()
+            if self._read_only:
+                rows = connection.execute(
+                    "SELECT payload_json FROM runtime_workload_evidence WHERE tenant_id = ? "
+                    "ORDER BY julianday(observed_at) DESC, dedup_key DESC LIMIT ?",
+                    (tenant_id, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT payload_json FROM runtime_workload_evidence WHERE tenant_id = ? "
+                    "ORDER BY observed_at DESC, dedup_key DESC LIMIT ?",
+                    (tenant_id, limit),
+                ).fetchall()
         return [_signal_from_json(str(row["payload_json"])) for row in rows]
 
 
@@ -286,17 +385,136 @@ class PostgresRuntimeWorkloadEvidenceStore:
                 workload_id TEXT NOT NULL,
                 signal_type TEXT NOT NULL,
                 severity TEXT NOT NULL,
-                observed_at TEXT NOT NULL,
+                observed_at TIMESTAMPTZ NOT NULL,
                 source_id TEXT NOT NULL,
                 source_kind TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 PRIMARY KEY (tenant_id, provider, account_id, workload_ref, dedup_key)
             )
-            """  # noqa: S608
+            """  # noqa: S608  # nosec B608 -- table is validated in __init__; no values are interpolated
         )
         conn.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{self.table}_tenant_observed_dedup "  # noqa: S608
             f"ON {self.table} (tenant_id, observed_at DESC, dedup_key DESC)"
+        )
+        conn.execute("SET LOCAL TIME ZONE 'UTC'")
+        conn.execute(
+            f"""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = '{self.table}'
+                      AND column_name = 'observed_at'
+                      AND data_type <> 'timestamp with time zone'
+                ) THEN
+                    ALTER TABLE {self.table}
+                        ALTER COLUMN observed_at TYPE TIMESTAMPTZ
+                        USING observed_at::timestamptz;
+                END IF;
+            END
+            $$
+            """  # noqa: S608  # nosec B608 -- table is validated in __init__; no values are interpolated
+        )
+        unsafe_identity = conn.execute(
+            f"SELECT 1 FROM {self.table} "  # noqa: S608  # nosec B608 -- table is validated; values are parameterized
+            "WHERE btrim(tenant_id) = '' OR btrim(provider) = '' OR btrim(account_id) = '' "
+            "OR btrim(workload_ref) = '' OR btrim(workload_id) = '' OR btrim(source_id) = '' OR btrim(source_kind) = '' "
+            "OR btrim(dedup_key) = '' OR length(tenant_id) > 256 OR length(account_id) > 512 "
+            "OR length(workload_ref) > 2048 OR length(workload_id) > 4096 "
+            "OR length(source_id) > 256 OR length(source_kind) > 128 "
+            "OR length(dedup_key) > 512 OR provider NOT IN ('aws', 'azure', 'gcp') "
+            "OR signal_type NOT IN ('process_exec', 'ioc_detection', 'network_connection', "
+            "'file_integrity', 'behavioral_alert') "
+            "OR workload_ref ~* %s OR workload_id ~* %s OR dedup_key ~* %s LIMIT 1",
+            (_KNOWN_CREDENTIAL_SQL_REGEX, _KNOWN_CREDENTIAL_SQL_REGEX, _KNOWN_CREDENTIAL_SQL_REGEX),
+        ).fetchone()
+        if unsafe_identity is not None:
+            raise RuntimeError("runtime workload evidence contains unsafe legacy identity rows")
+        conn.execute(
+            f"""
+            WITH normalized AS (
+                SELECT
+                    ctid,
+                    tenant_id,
+                    provider,
+                    account_id,
+                    workload_ref,
+                    workload_id,
+                    signal_type,
+                    CASE
+                        WHEN lower(severity) IN ('critical', 'high', 'medium', 'low', 'info', 'unknown')
+                        THEN lower(severity)
+                        ELSE 'unknown'
+                    END AS severity,
+                    observed_at,
+                    source_id,
+                    source_kind,
+                    dedup_key,
+                    payload_json::jsonb AS legacy_payload
+                FROM {self.table}
+            ),
+            safe_metadata AS (
+                SELECT
+                    normalized.*,
+                    CASE
+                        WHEN COALESCE(legacy_payload->>'title', '') ~* %s THEN '<redacted>'
+                        ELSE left(COALESCE(legacy_payload->>'title', ''), 256)
+                    END AS safe_title,
+                    COALESCE(
+                        (
+                            SELECT jsonb_object_agg(entry.key, to_jsonb(left(entry.value #>> '{{}}', 256)))
+                            FROM jsonb_each(
+                                CASE
+                                    WHEN jsonb_typeof(legacy_payload->'evidence') = 'object'
+                                    THEN legacy_payload->'evidence'
+                                    ELSE '{{}}'::jsonb
+                                END
+                            ) AS entry(key, value)
+                            WHERE entry.key IN (
+                                'action', 'alert_id', 'alert_ref', 'category', 'count',
+                                'destination_ref', 'event_type', 'file_ref', 'hash_ref', 'hash_type',
+                                'indicator_ref', 'ioc_type', 'network_ref', 'outcome', 'process_ref',
+                                'rule_id', 'rule_ref', 'source_ref', 'tactic_id', 'technique_id'
+                            )
+                              AND jsonb_typeof(entry.value) IN ('string', 'number', 'boolean')
+                              AND NOT (entry.value #>> '{{}}') ~* %s
+                        ),
+                        '{{}}'::jsonb
+                    ) AS safe_evidence
+                FROM normalized
+            ),
+            scrubbed AS (
+                SELECT
+                    ctid,
+                    jsonb_build_object(
+                        'schema_version', 'agent-bom.cwpp.runtime_workload.evidence.v1',
+                        'tenant_id', tenant_id,
+                        'provider', provider,
+                        'account_id', account_id,
+                        'workload_ref', workload_ref,
+                        'workload_id', workload_id,
+                        'signal_type', signal_type,
+                        'severity', severity,
+                        'observed_at', to_char(
+                            observed_at AT TIME ZONE 'UTC',
+                            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+                        ),
+                        'source_id', source_id,
+                        'source_kind', source_kind,
+                        'dedup_key', dedup_key,
+                        'title', safe_title,
+                        'evidence', safe_evidence
+                    ) AS payload
+                FROM safe_metadata
+            )
+            UPDATE {self.table} AS target
+            SET payload_json = scrubbed.payload::text
+            FROM scrubbed
+            WHERE target.ctid = scrubbed.ctid
+            """,  # noqa: S608  # nosec B608 -- table is validated; values are parameterized
+            (_SENSITIVE_METADATA_SQL_REGEX, _SENSITIVE_METADATA_SQL_REGEX),
         )
         conn.execute(f"DROP INDEX IF EXISTS idx_{self.table}_tenant_time")  # noqa: S608
         conn.commit()
@@ -306,7 +524,7 @@ class PostgresRuntimeWorkloadEvidenceStore:
             from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
             with self._pool.connection() as conn:
-                if not ensure_postgres_schema_version(conn, "runtime_workload_evidence"):
+                if not ensure_postgres_schema_version(conn, "runtime_workload_evidence", version=_RUNTIME_WORKLOAD_EVIDENCE_SCHEMA_VERSION):
                     return
                 self._create_schema(conn)
             return
@@ -389,7 +607,7 @@ def get_runtime_workload_evidence_store() -> RuntimeWorkloadEvidenceStore:
         if selection.backend is BackendKind.POSTGRES:
             import os
 
-            dsn = selection.dsn or os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_DB", "")
+            dsn = str(selection.dsn or os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_DB") or "")
             if not dsn.strip():
                 raise RuntimeError("Postgres workload-evidence store selected but no Postgres URL is configured")
             # The production store resolves the configured URL, mounted secret

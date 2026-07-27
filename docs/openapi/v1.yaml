@@ -3355,10 +3355,10 @@ components:
           title: Evidence
           type: object
         observed_at:
-          anyOf:
-          - type: string
-          - type: 'null'
+          description: Source observation time in ISO-8601 form; required and normalized
+            to fixed-width UTC on ingest.
           title: Observed At
+          type: string
         provider:
           anyOf:
           - type: string
@@ -3382,6 +3382,7 @@ components:
       - workload_ref
       - signal_type
       - dedup_key
+      - observed_at
       title: RuntimeEvidenceSignalIn
       type: object
     SAMLLoginRequest:
@@ -7389,11 +7390,13 @@ paths:
 
         never be populated. Read-only posture: agent-bom never writes to a customer
 
-        target and persists redacted metadata only (raw bytes / secret values are
+        target and persists allowlisted metadata only (raw content and known
 
-        dropped at construction). Each source is pre-registered with a hashed shared
+        credential-shaped values are dropped at construction). Each source is
 
-        secret (no per-action credentials); ``provider``/``account`` bind to the
+        pre-registered with a hashed shared secret (no per-action credentials);
+
+        ``provider``/``account`` bind to the
 
         authenticated source, never the payload (confused-deputy guard).
 

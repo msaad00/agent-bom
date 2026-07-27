@@ -628,17 +628,20 @@ Ingest is hardened and fails closed (`runtime_workload_evidence.py`):
   a batch is accepted only after a constant-time secret check. Tenant, provider,
   and account are taken from the authenticated source — a payload that claims a
   different provider/account is rejected (confused-deputy guard).
-- **Freshness + provenance.** Every signal records `observed_at`, `source_id`,
-  and `source_kind`; a signal older than the freshness window is rejected, as is
-  one with no workload reference or an unparseable timestamp.
+- **Freshness + provenance.** Every accepted signal must provide `observed_at`;
+  agent-bom records it with `source_id` and `source_kind` in fixed-width UTC.
+  Missing, unparseable, future-dated, or stale observations are rejected, as is
+  a signal with no workload reference.
 - **Deduplicated + isolated.** Signals dedup on
   `(tenant, provider, account, workload, dedup_key)`; that key leads every store
   query and is part of the dedup identity, so two tenants can carry the same
   logical signal without one dropping or leaking. Durable persistence has
   in-memory, SQLite (restart- and cross-process-safe), and Postgres backends
   (`runtime_workload_evidence_store.py`).
-- **Metadata only.** Raw block bytes, file contents, and secret values are
-  redacted at construction; only bounded metadata references are retained.
+- **Metadata only.** Producers must submit redacted metadata references. The
+  ingest contract keeps a bounded key allowlist and drops nested, raw-content,
+  oversized, and known credential-shaped values; it is not a general-purpose
+  secret vault or payload store.
 
 **Honesty — additive, never a cleanliness claim.** Every evidence summary carries
 `clean_workload_assertion: false`. A workload with no matching runtime signal is

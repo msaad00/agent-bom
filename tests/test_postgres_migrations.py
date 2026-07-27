@@ -20,6 +20,7 @@ RUNTIME_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260718_01_runtime_schema_authority.
 CLOUD_CONNECTIONS_SCOPE_COLUMNS = VERSIONS_DIR / "20260724_02_cloud_connections_scope_columns.py"
 MANAGED_TRIAL_INVITATIONS = VERSIONS_DIR / "20260724_03_managed_trial_invitations.py"
 TICKETING_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260726_01_ticketing_schema_authority.py"
+RUNTIME_EVIDENCE_TIMESTAMP_AUTHORITY = VERSIONS_DIR / "20260727_01_runtime_evidence_timestamp_authority.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
@@ -96,6 +97,51 @@ def test_ticketing_schema_authority_migration_is_chained_and_tenant_isolated() -
         assert f"{table}_tenant_isolation" in sql
         assert f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO agent_bom_app" in sql
     assert "VALUES ('ticketing_connections', 1, now())" in sql
+
+
+def test_runtime_evidence_timestamp_migration_is_chained_and_typed() -> None:
+    sql = RUNTIME_EVIDENCE_TIMESTAMP_AUTHORITY.read_text()
+    assert re.search(r'revision\s*=\s*"20260727_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260726_01"', sql)
+    assert "ALTER COLUMN observed_at TYPE TIMESTAMPTZ" in sql
+    assert "USING observed_at::timestamptz" in sql
+    assert "SET LOCAL TIME ZONE 'UTC'" in sql
+    assert sql.index("set_config('app.bypass_rls', '1', true)") < sql.index("UPDATE runtime_workload_evidence AS target")
+    assert "payload_json::jsonb" in sql
+    assert "jsonb_build_object" in sql
+    assert "'title', safe_title" in sql
+    assert "'evidence', safe_evidence" in sql
+    assert "'{}'::jsonb" in sql
+    for credential_shape in (
+        "AKIA",
+        "ghp",
+        "eyJ",
+        "xox",
+        "PRIVATE KEY",
+        "://",
+        "glpat",
+        "ya29",
+        "sk-(proj-)?",
+        "Bearer",
+        "password",
+    ):
+        assert credential_shape in sql
+    for length_guard in (
+        "length(tenant_id) > 256",
+        "length(account_id) > 512",
+        "length(workload_ref) > 2048",
+        "length(workload_id) > 4096",
+        "length(source_id) > 256",
+        "length(source_kind) > 128",
+        "length(dedup_key) > 512",
+    ):
+        assert length_guard in sql
+    assert "'workload_id', workload_id" in sql
+    assert sql.index("RAISE EXCEPTION") < sql.index("UPDATE runtime_workload_evidence AS target")
+    assert "VALUES ('runtime_workload_evidence', 2, now())" in sql
+    runtime_schema = RUNTIME_SCHEMA_SQL.read_text()
+    assert "observed_at TIMESTAMPTZ NOT NULL" in runtime_schema
+    assert "VALUES ('runtime_workload_evidence',2,now())" in runtime_schema
 
 
 def test_baseline_migration_points_at_bootstrap_sql():

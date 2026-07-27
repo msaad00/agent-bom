@@ -875,7 +875,10 @@ class RuntimeEvidenceSignalIn(BaseModel):
     signal_type: str
     dedup_key: str
     severity: str = "unknown"
-    observed_at: str | None = None
+    observed_at: str = Field(
+        ...,
+        description="Source observation time in ISO-8601 form; required and normalized to fixed-width UTC on ingest.",
+    )
     title: str = ""
     evidence: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None

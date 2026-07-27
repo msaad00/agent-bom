@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS runtime_workload_evidence (
   workload_id TEXT NOT NULL,
   signal_type TEXT NOT NULL,
   severity TEXT NOT NULL,
-  observed_at TEXT NOT NULL,
+  observed_at TIMESTAMPTZ NOT NULL,
   source_id TEXT NOT NULL,
   source_kind TEXT NOT NULL,
   payload_json TEXT NOT NULL,
@@ -227,8 +227,11 @@ INSERT INTO control_plane_schema_versions(component,version,updated_at)
 SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
- 'agent_identities','runtime_events','runtime_workload_evidence','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
+ 'agent_identities','runtime_events','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
  'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config',
  'ticketing_connections'
 ]) component
+ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
+INSERT INTO control_plane_schema_versions(component,version,updated_at)
+VALUES ('runtime_workload_evidence',2,now())
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;

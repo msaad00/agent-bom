@@ -66,7 +66,12 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     ),
     # Runtime session/observation timeline is durable by default (same tiering).
     StorageSchemaComponent("runtime_events", "sqlite/postgres", ("runtime_observations", "runtime_sessions")),
-    StorageSchemaComponent("runtime_workload_evidence", "sqlite/postgres", ("runtime_workload_evidence",)),
+    StorageSchemaComponent(
+        "runtime_workload_evidence",
+        "sqlite/postgres",
+        ("runtime_workload_evidence",),
+        version=2,
+    ),
     StorageSchemaComponent("tenant_quotas", "sqlite/postgres", ("tenant_quota_overrides",)),
     StorageSchemaComponent("tenant_graph_retention", "sqlite/postgres", ("tenant_graph_retention_overrides",)),
     StorageSchemaComponent("sources", "sqlite/postgres", ("sources", "control_plane_sources")),
@@ -138,14 +143,10 @@ def ensure_postgres_schema_version(conn: Any, component: str, version: int = CON
             (component,),
         ).fetchone()
         if row is None:
-            raise RuntimeError(
-                f"Postgres schema component {component!r} is not migrated; run Alembic before starting agent-bom."
-            )
+            raise RuntimeError(f"Postgres schema component {component!r} is not migrated; run Alembic before starting agent-bom.")
         current = int(row[0])
         if current < int(version):
-            raise RuntimeError(
-                f"Postgres schema component {component!r} is version {current}; version {int(version)} is required."
-            )
+            raise RuntimeError(f"Postgres schema component {component!r} is version {current}; version {int(version)} is required.")
         return False
 
     conn.execute(

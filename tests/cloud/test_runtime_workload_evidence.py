@@ -100,6 +100,23 @@ def test_source_authenticate_is_constant_time_hash_not_plaintext():
     assert len(src.secret_hash) == 64
 
 
+def test_source_registry_rejects_conflicting_source_id_rebinding():
+    registry, original, _secret = _source()
+    conflicting = RuntimeEvidenceSource.register(
+        source_id=original.source_id,
+        tenant_id="tenant-b",
+        provider="gcp",
+        account_id="project-b",
+        kind="edr",
+        secret="different-secret-value",
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        registry.add(conflicting)
+
+    assert registry.get(original.source_id) == original
+
+
 # ── identity binding: fail closed ────────────────────────────────────────────
 
 
@@ -161,6 +178,79 @@ def test_ingest_rejects_unparseable_timestamp_as_incomplete():
     assert result.rejected_incomplete == 1
 
 
+def test_ingest_rejects_missing_observation_timestamp_as_incomplete():
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(observed_at="")],
+        now=_T0,
+    )
+    assert result.accepted == []
+    assert result.rejected_incomplete == 1
+
+
+def test_ingest_rejects_future_observation_timestamp():
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(observed_at="2026-07-18T12:00:01Z")],
+        now=_T0,
+    )
+    assert result.accepted == []
+    assert result.rejected_stale == 1
+
+
+def test_ingest_rejects_secret_shaped_or_unbounded_identity_values():
+    registry, _src, secret = _source()
+    credential = "glpat-abcdefghijklmnopqrst"
+    secret_result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(dedup_key=credential)],
+        now=_T0,
+    )
+    oversized_result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(dedup_key="e" * 513)],
+        now=_T0,
+    )
+
+    assert secret_result.accepted == []
+    assert secret_result.rejected_incomplete == 1
+    assert credential not in str(secret_result.to_dict())
+    assert oversized_result.accepted == []
+    assert oversized_result.rejected_incomplete == 1
+
+
+def test_ingest_normalizes_observation_timestamps_to_utc_before_ordering():
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[
+            _raw(observed_at="2026-07-18T12:30:00+01:00", dedup_key="older-offset"),
+            _raw(observed_at="2026-07-18T12:00:00Z", dedup_key="newer-zulu"),
+        ],
+        now=_T0,
+    )
+
+    assert [signal.observed_at for signal in result.accepted] == [
+        "2026-07-18T11:30:00.000000Z",
+        "2026-07-18T12:00:00.000000Z",
+    ]
+    index = RuntimeWorkloadEvidenceIndex.from_signals("tenant-a", result.accepted)
+    summary = index.summary_for("aws", "123456789012", "i-0abc")
+    assert summary["latest_observed_at"] == "2026-07-18T12:00:00.000000Z"
+
+
 # ── dedup + provenance/freshness recorded ────────────────────────────────────
 
 
@@ -181,7 +271,7 @@ def test_signal_records_provenance_and_freshness():
     sig = result.accepted[0]
     assert sig.source_id == "edr-1"
     assert sig.source_kind == "edr"
-    assert sig.observed_at == _T0
+    assert sig.observed_at == "2026-07-18T12:00:00.000000Z"
     assert sig.tenant_id == "tenant-a"
     assert sig.provider == "aws"
     assert sig.account_id == "123456789012"
@@ -218,6 +308,149 @@ def test_signal_redacts_oversized_and_forbidden_evidence():
     assert "raw_bytes" not in sig.evidence
     assert "file_contents" not in sig.evidence
     assert sig.evidence.get("ioc_type") == "hash"
+
+
+def test_signal_persists_only_allowlisted_non_secret_metadata():
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[
+            _raw(
+                evidence={
+                    "ioc_type": "domain",
+                    "indicator_ref": "redacted:domain#7f3a",
+                    "rule_id": "edr-rule-7",
+                    "process_ref": "process#123",
+                    "source_ref": "Authorization: Bearer credential-in-allowed-key",
+                    "alert_ref": {"credential": "nested-secret"},
+                    "password": "correct-horse-battery-staple",
+                    "api_token": "token-that-must-not-persist",
+                    "secretValue": "camel-case-secret",
+                    "command_line": "curl -H 'Authorization: Bearer credential-value'",
+                    "unknown_metadata": "not-contracted",
+                }
+            )
+        ],
+        now=_T0,
+    )
+
+    signal = result.accepted[0]
+    assert signal.evidence == {
+        "indicator_ref": "redacted:domain#7f3a",
+        "ioc_type": "domain",
+        "process_ref": "process#123",
+        "rule_id": "edr-rule-7",
+    }
+    dumped = str(signal.to_dict())
+    assert "correct-horse-battery-staple" not in dumped
+    assert "token-that-must-not-persist" not in dumped
+    assert "camel-case-secret" not in dumped
+    assert "credential-value" not in dumped
+    assert "credential-in-allowed-key" not in dumped
+    assert "nested-secret" not in dumped
+
+
+def test_signal_redacts_secret_shaped_title():
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(title="Authorization: Bearer credential-in-title")],
+        now=_T0,
+    )
+
+    signal = result.accepted[0]
+    assert signal.title == "<redacted>"
+    assert "credential-in-title" not in str(signal.to_dict())
+
+
+@pytest.mark.parametrize(
+    "credential",
+    [
+        "AKIAIOSFODNN7EXAMPLE",
+        "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUgRG9lIn0.signature",
+        "xox" + "b-0123456789-abcdefghijklmnop",
+        "-----BEGIN PRIVATE KEY-----not-for-persistence-----END PRIVATE KEY-----",
+        "postgresql://runtime-user:runtime-password@example.invalid/evidence",
+        "glpat-abcdefghijklmnopqrst",
+        "glcbt-abcdefghijklmnopqrstuv",
+        "gldt-abcdefghijklmnopqrstuvwx",
+        "glrt-abcdefghijklmnopqrstuvwx",
+        "glptt-abcdefghijklmnopqrstuvwx",
+        "glagent-abcdefghijklmnopqrstuv",
+        "ya29.a0AfH6SMBabcdefghijklmnopqrstuv",
+    ],
+)
+def test_signal_drops_known_credential_shapes_from_allowlisted_values(credential: str):
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(evidence={"indicator_ref": credential})],
+        now=_T0,
+    )
+
+    signal = result.accepted[0]
+    assert "indicator_ref" not in signal.evidence
+    assert credential not in str(signal.to_dict())
+
+
+def test_signal_scans_full_oversized_value_before_bounding():
+    credential = "A" * 220 + "postgresql://runtime-user:supersecretpassword@example.invalid/db"
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[_raw(evidence={"indicator_ref": credential})],
+        now=_T0,
+    )
+
+    signal = result.accepted[0]
+    assert "indicator_ref" not in signal.evidence
+    dumped = str(signal.to_dict())
+    assert "runtime-user" not in dumped
+    assert "supersecret" not in dumped
+
+
+def test_signal_preserves_non_secret_security_taxonomy_labels():
+    registry, _src, secret = _source()
+    result = ingest_runtime_signals(
+        registry=registry,
+        source_id="edr-1",
+        secret=secret,
+        raw_signals=[
+            _raw(
+                evidence={
+                    "category": "credential_access",
+                    "event_type": "token_theft",
+                    "action": "rotate_password",
+                    "indicator_ref": "redacted:token#abcd",
+                    "alert_ref": "arn:aws:guardduty:us-east-1:123456789012:detector/abc/finding/def",
+                    "hash_ref": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+                    "count": 0,
+                    "outcome": False,
+                }
+            )
+        ],
+        now=_T0,
+    )
+
+    assert result.accepted[0].evidence == {
+        "action": "rotate_password",
+        "alert_ref": "arn:aws:guardduty:us-east-1:123456789012:detector/abc/finding/def",
+        "category": "credential_access",
+        "count": "0",
+        "event_type": "token_theft",
+        "hash_ref": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        "indicator_ref": "redacted:token#abcd",
+        "outcome": "False",
+    }
 
 
 # ── honesty: absence of signal is NOT clean ──────────────────────────────────

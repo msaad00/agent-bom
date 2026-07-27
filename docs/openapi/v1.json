@@ -4886,15 +4886,9 @@
             "type": "object"
           },
           "observed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observed At"
+            "description": "Source observation time in ISO-8601 form; required and normalized to fixed-width UTC on ingest.",
+            "title": "Observed At",
+            "type": "string"
           },
           "provider": {
             "anyOf": [
@@ -4929,7 +4923,8 @@
         "required": [
           "workload_ref",
           "signal_type",
-          "dedup_key"
+          "dedup_key",
+          "observed_at"
         ],
         "title": "RuntimeEvidenceSignalIn",
         "type": "object"
@@ -11028,7 +11023,7 @@
     },
     "/v1/cloud/runtime-evidence/ingest": {
       "post": {
-        "description": "Ingest a batch of CWPP runtime/EDR workload signals (#4158 stage 3).\n\nThe authenticated, tenant-scoped door for the runtime workload-evidence store.\nWithout this route the store had no caller in a deployed product and could\nnever be populated. Read-only posture: agent-bom never writes to a customer\ntarget and persists redacted metadata only (raw bytes / secret values are\ndropped at construction). Each source is pre-registered with a hashed shared\nsecret (no per-action credentials); ``provider``/``account`` bind to the\nauthenticated source, never the payload (confused-deputy guard).\n\nFail-closed: an unknown source id, a bad secret, or a source owned by a\ndifferent tenant all return the same generic ``401`` so a caller cannot\nenumerate valid source ids or tenants. The ingest runs off the event loop in a\nworker thread under backpressure so a batch can never stall ``/health``.",
+        "description": "Ingest a batch of CWPP runtime/EDR workload signals (#4158 stage 3).\n\nThe authenticated, tenant-scoped door for the runtime workload-evidence store.\nWithout this route the store had no caller in a deployed product and could\nnever be populated. Read-only posture: agent-bom never writes to a customer\ntarget and persists allowlisted metadata only (raw content and known\ncredential-shaped values are dropped at construction). Each source is\npre-registered with a hashed shared secret (no per-action credentials);\n``provider``/``account`` bind to the\nauthenticated source, never the payload (confused-deputy guard).\n\nFail-closed: an unknown source id, a bad secret, or a source owned by a\ndifferent tenant all return the same generic ``401`` so a caller cannot\nenumerate valid source ids or tenants. The ingest runs off the event loop in a\nworker thread under backpressure so a batch can never stall ``/health``.",
         "operationId": "cloud_runtime_evidence_ingest_v1_cloud_runtime_evidence_ingest_post",
         "parameters": [
           {

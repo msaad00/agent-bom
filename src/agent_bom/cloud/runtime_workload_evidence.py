@@ -18,15 +18,16 @@ Non-negotiable properties (issue #4158, honesty constraints):
   from the authenticated source, never from the client payload — a spoofed
   provider/account on a raw signal is rejected (confused-deputy guard). A signal
   with no workload reference or an unparseable timestamp is rejected.
-* **Fail closed on stale.** A signal older than the freshness window is rejected,
-  not silently accepted.
+* **Fail closed on provenance gaps.** Missing, unparseable, future-dated, or
+  stale observation timestamps are rejected, not upgraded to ingest time.
 * **Deduplicated.** A `(tenant, provider, account, workload, dedup_key)` scope is
   ingested once; retries and cross-batch duplicates are dropped.
 * **Additive, never a cleanliness claim.** Evidence enriches; the *absence* of a
   runtime signal is explicitly ``no_runtime_signal`` and every summary carries
   ``clean_workload_assertion = False``. Enrichment never fabricates reachability.
-* **Metadata only.** Raw block bytes, file contents, and secret values are never
-  persisted; evidence is redacted to bounded metadata at construction.
+* **Metadata only.** Only a bounded allowlist of correlation metadata is
+  persisted; raw content, arbitrary keys, nested values, and secret-shaped
+  values are dropped at construction.
 * **Tenant isolated.** The enrichment index only ever holds one tenant's signals;
   graph joins refuse to cross the tenant boundary.
 
@@ -41,6 +42,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -69,30 +71,69 @@ _ADDITIVE_NOTE = "Runtime evidence is additive: the absence of a runtime signal 
 _VALID_PROVIDERS = frozenset({"aws", "azure", "gcp"})
 _VALID_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info", "unknown"})
 
-# Evidence keys that could carry data-plane bytes / secret values are dropped at
-# construction. Metadata references (``*_ref``, types, counts) are kept, bounded.
-_FORBIDDEN_EVIDENCE_KEYS = frozenset(
+# Runtime evidence is an untrusted ingest surface. Persist only the metadata
+# contract needed to correlate a signal; arbitrary keys can hide credentials,
+# command lines, or data-plane content even when their names look harmless.
+_ALLOWED_EVIDENCE_KEYS = frozenset(
     {
-        "raw_bytes",
-        "bytes",
-        "file_contents",
-        "contents",
-        "content",
-        "secret_value",
-        "secret",
-        "value",
-        "values",
-        "data",
-        "payload",
-        "blob",
-        "raw",
-        "body",
-        "snippet",
-        "sample",
+        "action",
+        "alert_id",
+        "alert_ref",
+        "category",
+        "count",
+        "destination_ref",
+        "event_type",
+        "file_ref",
+        "hash_ref",
+        "hash_type",
+        "indicator_ref",
+        "ioc_type",
+        "network_ref",
+        "outcome",
+        "process_ref",
+        "rule_id",
+        "rule_ref",
+        "source_ref",
+        "tactic_id",
+        "technique_id",
     }
 )
 _MAX_EVIDENCE_KEYS = 20
 _MAX_EVIDENCE_VALUE_LEN = 256
+_MAX_IDENTITY_LENGTHS = {
+    "tenant_id": 256,
+    "account_id": 512,
+    "workload_ref": 2048,
+    "source_id": 256,
+    "source_kind": 128,
+    "dedup_key": 512,
+}
+_RUNTIME_CREDENTIAL_PATTERNS = (
+    re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}"),
+    re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}"),
+    re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}"),
+    re.compile(r"xox[bpsar]-[A-Za-z0-9-]{10,}"),
+    re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(r"\w+://[^\s:]+:[^\s@]+@"),
+    re.compile(r"\bgl(?:agent|cbt|dt|pat|ptt|rt)-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\bya29\.[A-Za-z0-9._-]{20,}\b"),
+    re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\b(?:authorization\s*:\s*)?bearer\s+\S{8,}", re.IGNORECASE),
+    re.compile(r"\b(?:api[_-]?key|credential|password|secret|token)\s*[:=]\s*\S{4,}", re.IGNORECASE),
+)
+
+
+def _contains_runtime_credential(value: Any) -> bool:
+    text = "" if value is None else str(value)
+    return any(pattern.search(text) for pattern in _RUNTIME_CREDENTIAL_PATTERNS)
+
+
+def _sanitize_runtime_text(value: Any, *, redacted_value: str = "") -> str:
+    """Bound free text and fail closed when it resembles credential material."""
+    value_text = "" if value is None else str(value)
+    if _contains_runtime_credential(value_text):
+        return redacted_value
+    return sanitize_text(value_text, max_len=_MAX_EVIDENCE_VALUE_LEN)
 
 
 class SourceAuthenticationError(RuntimeError):
@@ -144,8 +185,16 @@ def _parse_ts(value: str) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
+def normalize_runtime_observed_at(value: str) -> str | None:
+    """Return one fixed-width UTC timestamp suitable for lexical persistence."""
+    parsed = _parse_ts(value)
+    if parsed is None:
+        return None
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 def _redact_evidence(evidence: Mapping[str, Any] | None) -> dict[str, str]:
-    """Return bounded metadata only; drop any key that could carry data-plane bytes."""
+    """Return bounded allowlisted metadata with credential-shaped values removed."""
     if not isinstance(evidence, Mapping):
         return {}
     redacted: dict[str, str] = {}
@@ -153,13 +202,16 @@ def _redact_evidence(evidence: Mapping[str, Any] | None) -> dict[str, str]:
         if len(redacted) >= _MAX_EVIDENCE_KEYS:
             break
         key_text = str(key).strip().lower()
-        if not key_text or key_text in _FORBIDDEN_EVIDENCE_KEYS:
+        if key_text not in _ALLOWED_EVIDENCE_KEYS:
             continue
         if isinstance(value, (dict, list, tuple, set, bytes, bytearray)):
-            # Nested structures may hide raw content; keep only a type marker.
-            redacted[key_text] = f"<{type(value).__name__}>"
+            # Nested structures can hide raw content and are not part of the
+            # metadata-only contract.
             continue
-        redacted[key_text] = str(value)[:_MAX_EVIDENCE_VALUE_LEN]
+        sanitized = _sanitize_runtime_text(value)
+        if not sanitized:
+            continue
+        redacted[key_text] = sanitized
     return redacted
 
 
@@ -225,6 +277,11 @@ class RuntimeSourceRegistry:
         self._sources: dict[str, RuntimeEvidenceSource] = {}
 
     def add(self, source: RuntimeEvidenceSource) -> None:
+        existing = self._sources.get(source.source_id)
+        if existing is not None:
+            if existing == source:
+                return
+            raise ValueError(f"runtime evidence source_id {source.source_id!r} is already registered")
         self._sources[source.source_id] = source
 
     def get(self, source_id: str) -> RuntimeEvidenceSource | None:
@@ -271,14 +328,21 @@ class RuntimeWorkloadSignal:
         )
         if not all(str(part).strip() for part in required):
             raise IncompleteIdentityBindingError("runtime signal is missing required identity fields")
+        for field_name, max_len in _MAX_IDENTITY_LENGTHS.items():
+            if len(str(getattr(self, field_name))) > max_len:
+                raise IncompleteIdentityBindingError(f"runtime signal {field_name} exceeds the maximum length")
+        if _contains_runtime_credential(self.workload_ref) or _contains_runtime_credential(self.dedup_key):
+            raise IncompleteIdentityBindingError("runtime signal identity contains credential-shaped material")
         if self.provider not in _VALID_PROVIDERS:
             raise IncompleteIdentityBindingError(f"unsupported runtime signal provider: {self.provider}")
         if not isinstance(self.signal_type, RuntimeSignalType):
             object.__setattr__(self, "signal_type", RuntimeSignalType(str(self.signal_type)))
-        if _parse_ts(self.observed_at) is None:
+        normalized_observed_at = normalize_runtime_observed_at(self.observed_at)
+        if normalized_observed_at is None:
             raise IncompleteIdentityBindingError("runtime signal observed_at is not an ISO-8601 timestamp")
+        object.__setattr__(self, "observed_at", normalized_observed_at)
         object.__setattr__(self, "severity", _normalize_severity(self.severity))
-        object.__setattr__(self, "title", str(self.title)[:_MAX_EVIDENCE_VALUE_LEN])
+        object.__setattr__(self, "title", _sanitize_runtime_text(self.title, redacted_value="<redacted>"))
         object.__setattr__(self, "evidence", _redact_evidence(self.evidence))
 
     @property
@@ -299,12 +363,13 @@ class RuntimeWorkloadSignal:
         )
 
     def is_stale(self, now: str, max_age_seconds: int) -> bool:
-        """True when the signal is older than the freshness window (fail closed)."""
+        """True when the signal falls outside the accepted observation window."""
         observed = _parse_ts(self.observed_at)
         reference = _parse_ts(now) or datetime.now(timezone.utc)
         if observed is None:
             return True
-        return (reference - observed).total_seconds() > max_age_seconds
+        age_seconds = (reference - observed).total_seconds()
+        return age_seconds < 0 or age_seconds > max_age_seconds
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -334,7 +399,10 @@ class RuntimeWorkloadSignal:
             "source_kind": self.source_kind,
             "clean_workload_assertion": False,
             "data_boundary": "customer_account_metadata_only",
-            "redaction": "raw block bytes, file contents, and secret values are not persisted",
+            "redaction": (
+                "only allowlisted metadata is persisted; known credential-shaped values are dropped, "
+                "and producers must submit metadata-only redacted references"
+            ),
         }
 
     @classmethod
@@ -362,8 +430,9 @@ def build_runtime_signal(source: RuntimeEvidenceSource, raw: Mapping[str, Any], 
 
     Tenant, provider, and account come from ``source`` — never from the payload.
     A payload that claims a different provider/account is a confused-deputy attempt
-    and is rejected. Missing workload reference or unparseable timestamp is
-    rejected. Raises :class:`IncompleteIdentityBindingError` on any of these.
+    and is rejected. Missing workload reference or observation timestamp, or an
+    unparseable timestamp, is rejected. Raises
+    :class:`IncompleteIdentityBindingError` on any of these.
     """
     workload_ref = str(raw.get("workload_ref") or raw.get("resource_id") or raw.get("target_id") or "").strip()
     if not workload_ref:
@@ -382,7 +451,9 @@ def build_runtime_signal(source: RuntimeEvidenceSource, raw: Mapping[str, Any], 
     except ValueError as exc:
         raise IncompleteIdentityBindingError(f"unsupported runtime signal_type: {signal_type_raw or 'missing'}") from exc
 
-    observed_at = str(raw.get("observed_at") or "").strip() or (now or _now_iso())
+    observed_at = str(raw.get("observed_at") or "").strip()
+    if not observed_at:
+        raise IncompleteIdentityBindingError("runtime signal is missing observed_at")
     dedup_key = str(raw.get("dedup_key") or raw.get("event_id") or "").strip()
     if not dedup_key:
         raise IncompleteIdentityBindingError("runtime signal is missing a dedup_key")
@@ -854,7 +925,10 @@ def _load_registry_from_env() -> RuntimeSourceRegistry:
             continue
         source = _source_from_entry(entry)
         if source is not None:
-            registry.add(source)
+            try:
+                registry.add(source)
+            except ValueError:
+                logger.warning("skipping duplicate runtime evidence source_id")
     return registry
 
 
@@ -906,6 +980,7 @@ __all__ = [
     "ingest_runtime_signals",
     "ingest_runtime_signals_payload",
     "no_runtime_signal_summary",
+    "normalize_runtime_observed_at",
     "optional_runtime_workload_evidence_index",
     "set_runtime_source_registry",
     "workload_runtime_summary",

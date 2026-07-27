@@ -87,6 +87,31 @@ def test_cli_runtime_evidence_ingest_persists(tmp_path: Path) -> None:
     assert "persisted=1" in result.output
 
 
+def test_cli_runtime_evidence_ingest_exits_nonzero_when_every_signal_is_rejected(tmp_path: Path) -> None:
+    signal = _signal(dedup_key="missing-observed-at")
+    signal.pop("observed_at")
+    path = tmp_path / "signals.json"
+    path.write_text(json.dumps([signal]), encoding="utf-8")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cloud_group,
+        [
+            "runtime-evidence-ingest",
+            "--source-id",
+            "edr-1",
+            "--secret",
+            SOURCE_SECRET,
+            "--file",
+            str(path),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "accepted=0" in result.output
+    assert "incomplete=1" in result.output
+
+
 def test_cli_runtime_evidence_ingest_auth_fail_closed(tmp_path: Path) -> None:
     path = tmp_path / "signals.json"
     path.write_text(json.dumps([_signal(dedup_key="cli-2")]), encoding="utf-8")

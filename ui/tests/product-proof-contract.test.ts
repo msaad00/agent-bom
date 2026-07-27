@@ -61,6 +61,10 @@ describe("product proof capture contract", () => {
     expect(source).toContain("/6\\/6 stages complete/i");
   });
 
+  it("tracks the current scan workspace proof copy", () => {
+    expect(source).toContain('expectedText: ["New Scan", "What this scan collects and produces"');
+  });
+
   it("filters audit proof server-side and waits for identity lifecycle rows", () => {
     expect(source).toContain('url.searchParams.get("resource")');
     expect(source).toContain('"agent_identity.issued"');

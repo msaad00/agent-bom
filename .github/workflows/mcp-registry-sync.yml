@@ -132,6 +132,19 @@ jobs:
           asyncio.run(main())
           EOF
 
+      - name: Canonicalize registry serialization
+        run: |
+          uv run python - <<'EOF'
+          import json
+          from pathlib import Path
+
+          from agent_bom.mcp_registry_text import dumps_registry_json
+
+          registry_path = Path("src/agent_bom/mcp_registry.json")
+          registry = json.loads(registry_path.read_text(encoding="utf-8"))
+          registry_path.write_text(dumps_registry_json(registry), encoding="utf-8")
+          EOF
+
       - name: Read counts
         id: count
         run: |

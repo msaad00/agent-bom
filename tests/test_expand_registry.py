@@ -61,7 +61,8 @@ class TestSyncAutoClassification:
         written = json.loads(mock_path.write_text.call_args[0][0])
         entry = written["servers"]["test/new-server"]
         assert entry["auto_enriched"] is True
-        assert entry["verified"] is True
+        assert entry["verified"] is False
+        assert entry["risk_level"] == "unknown"
 
     @patch("agent_bom.mcp_official_registry.request_with_retry")
     @patch("agent_bom.mcp_official_registry.create_client")

@@ -506,6 +506,14 @@ def test_release_registry_gate_is_deterministic_without_live_sync():
     assert "agent-bom registry sync-all" not in workflow
 
 
+def test_mcp_registry_sync_canonicalizes_generated_json():
+    """Scheduled registry updates must satisfy the release serialization gate."""
+    workflow = (ROOT / ".github" / "workflows" / "mcp-registry-sync.yml").read_text()
+    assert "Canonicalize registry serialization" in workflow
+    assert "from agent_bom.mcp_registry_text import dumps_registry_json" in workflow
+    assert "registry_path.write_text(dumps_registry_json(registry)" in workflow
+
+
 def test_release_consistency_checks_generated_data_model_atlas():
     """The fast release gate should catch stale DATA_MODEL atlas counts before matrix tests."""
     release_check = (ROOT / "scripts" / "check_release_consistency.py").read_text()

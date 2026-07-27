@@ -142,7 +142,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     badges = [
         "label=Build",
         "pypi/v/agent-bom",
-        "pypi/pyversions/agent-bom",
+        "badge/Python-3.11%E2%80%933.14-blue",
         "docker/pulls/agentbom/agent-bom",
         "License-Apache%202.0",
         "ossf-scorecard/github.com/msaad00/agent-bom",
@@ -152,10 +152,14 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert hero.count("img.shields.io/") == len(badges)
     for badge in badges:
         assert hero.count(badge) == 1
+    assert "pypi/pyversions/agent-bom" not in hero
 
-    assert hero.count(
-        '<p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>'
-    ) == 1
+    assert (
+        hero.count(
+            '<p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>'
+        )
+        == 1
+    )
     assert (
         "Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — "
         "locally or in a control plane you run."
@@ -198,12 +202,13 @@ observed."""
     assert "| AppSec |" in readme
     assert "| GRC / audit |" in readme
 
-    # The workflow is a compact visual header. Architecture, persona proof,
-    # and product screenshots stay progressive-disclosure.
+    # The workflow and persona proof stay directly visible. Architecture and
+    # product screenshots remain collapsible, with the gallery open by default.
     assert readme.count("how-it-works-dark.svg") == 1
     assert readme.count("architecture-dark.svg") == 1
-    assert "<summary><b>Audience workflow map</b></summary>" in readme
+    assert "<summary><b>Audience workflow map</b></summary>" not in readme
     assert "<summary><b>Control-plane architecture</b></summary>" in readme
+    assert "<details open>\n<summary><b>Product gallery</b></summary>" in readme
     assert "blast-radius-dark.svg" not in readme
 
 

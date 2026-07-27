@@ -235,6 +235,57 @@ def test_sync_adds_new(mock_client_factory, mock_request, tmp_path):
 
 @patch("agent_bom.mcp_official_registry.request_with_retry")
 @patch("agent_bom.mcp_official_registry.create_client")
+def test_sync_counts_duplicate_versions_once(mock_client_factory, mock_request, tmp_path):
+    """Multiple upstream versions of one server are one registry addition."""
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client_factory.return_value = mock_client
+
+    servers = [
+        _mock_server("new/server", version="2.0.0"),
+        _mock_server("new/server", version="1.0.0"),
+    ]
+    mock_request.return_value = _make_response(_mock_search_response(servers, count=2))
+
+    reg_file = tmp_path / "mcp_registry.json"
+    reg_file.write_text(json.dumps({"servers": {}}), encoding="utf-8")
+
+    with patch("agent_bom.mcp_official_registry._REGISTRY_PATH", reg_file):
+        result = sync_from_official_registry_sync(max_pages=1, dry_run=False)
+
+    data = json.loads(reg_file.read_text(encoding="utf-8"))
+    assert result.total_fetched == 2
+    assert result.added == 1
+    assert result.skipped == 1
+    assert list(data["servers"]) == ["new/server"]
+    assert data["servers"]["new/server"]["latest_version"] == "2.0.0"
+
+
+@patch("agent_bom.mcp_official_registry.request_with_retry")
+@patch("agent_bom.mcp_official_registry.create_client")
+def test_sync_does_not_upgrade_listing_presence_to_security_evidence(mock_client_factory, mock_request, tmp_path):
+    """Official listing provenance is not verification or low-risk evidence."""
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client_factory.return_value = mock_client
+
+    mock_request.return_value = _make_response(_mock_search_response([_mock_server("new/server")], count=1))
+    reg_file = tmp_path / "mcp_registry.json"
+    reg_file.write_text(json.dumps({"servers": {}}), encoding="utf-8")
+
+    with patch("agent_bom.mcp_official_registry._REGISTRY_PATH", reg_file):
+        sync_from_official_registry_sync(max_pages=1, dry_run=False)
+
+    entry = json.loads(reg_file.read_text(encoding="utf-8"))["servers"]["new/server"]
+    assert entry["source"] == "mcp-official"
+    assert entry["verified"] is False
+    assert entry["risk_level"] == "unknown"
+
+
+@patch("agent_bom.mcp_official_registry.request_with_retry")
+@patch("agent_bom.mcp_official_registry.create_client")
 def test_sync_skips_existing(mock_client_factory, mock_request, tmp_path):
     """Sync skips servers already in local registry."""
     mock_client = AsyncMock()

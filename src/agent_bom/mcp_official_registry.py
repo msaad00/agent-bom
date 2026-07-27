@@ -252,6 +252,7 @@ async def sync_from_official_registry(
 
     local_servers = local_data.get("servers", {})
     local_names = {v.get("package", k).lower() for k, v in local_servers.items()}
+    added_names: set[str] = set()
 
     result = OfficialRegistrySyncResult(source="mcp-official", source_url=_API_SERVERS_URL, fallback_used=False)
     cursor = None
@@ -286,7 +287,8 @@ async def sync_from_official_registry(
                 if not qn:
                     continue
 
-                if qn.lower() in local_names:
+                normalized_name = qn.lower()
+                if normalized_name in local_names or normalized_name in added_names:
                     result.skipped += 1
                     continue
 
@@ -298,7 +300,7 @@ async def sync_from_official_registry(
                 # Auto-classify risk level based on tool capabilities
                 from agent_bom.permissions import _infer_category, classify_risk_level
 
-                risk = classify_risk_level(tool_names, cred_vars)
+                risk = classify_risk_level(tool_names, cred_vars) if tool_names or cred_vars else "unknown"
                 category = _infer_category(qn, (s.get("description", "") or ""))
 
                 reg_entry = {
@@ -309,7 +311,7 @@ async def sync_from_official_registry(
                     "name": qn,
                     "category": category,
                     "risk_level": risk,
-                    "verified": True,
+                    "verified": False,
                     "tools": tool_names,
                     "credential_env_vars": cred_vars,
                     "command_patterns": _build_command_patterns(qn),
@@ -324,6 +326,7 @@ async def sync_from_official_registry(
                 if not dry_run:
                     local_servers[qn] = reg_entry
 
+                added_names.add(normalized_name)
                 result.added += 1
                 result.details.append(
                     {

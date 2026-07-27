@@ -33,10 +33,7 @@ def _readme_persona_rows() -> list[list[str]]:
             table_lines.append(line)
         elif in_table:
             break
-    rows = [
-        [cell.strip() for cell in line.strip().strip("|").split("|")]
-        for line in table_lines
-    ]
+    rows = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in table_lines]
     # Drop the header row and the |---|---|---| separator.
     return rows[2:]
 
@@ -75,7 +72,7 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert _audit_layout(svg) == []
 
 
-def test_readme_uses_a_compact_role_table_with_collapsed_persona_artwork() -> None:
+def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
     """Public onboarding stays accessible while retaining visual workflow proof."""
     titles = [row[0] for row in _readme_persona_rows()]
     for title in (
@@ -90,9 +87,12 @@ def test_readme_uses_a_compact_role_table_with_collapsed_persona_artwork() -> No
         assert title in titles
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "<summary><b>Audience workflow map</b></summary>" in readme
-    assert "persona-value-dark.svg" in readme
-    assert "persona-value-light.svg" in readme
+    who_it_is_for = readme.index("## Who it is for")
+    persona_artwork = readme.index("persona-value-dark.svg", who_it_is_for)
+    role_table = readme.index("| Role | Start here | Primary outcome |", who_it_is_for)
+    assert who_it_is_for < persona_artwork < role_table
+    assert "persona-value-light.svg" in readme[who_it_is_for:role_table]
+    assert "<summary><b>Audience workflow map</b></summary>" not in readme
 
 
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:

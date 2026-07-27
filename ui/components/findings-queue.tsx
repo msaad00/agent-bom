@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { severityColor, severityDot, type FindingTriageItem } from "@/lib/api";
 import type { FindingsLens } from "@/lib/findings-lens";
@@ -238,7 +238,7 @@ export function FindingsQueueTable({
 function useCompactFindingsLayout() {
   const [compact, setCompact] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const query = window.matchMedia("(max-width: 767px)");
     const update = () => setCompact(query.matches);

@@ -206,7 +206,7 @@ def test_ingest_rejects_future_observation_timestamp():
 
 def test_ingest_rejects_secret_shaped_or_unbounded_identity_values():
     registry, _src, secret = _source()
-    credential = "glpat-abcdefghijklmnopqrst"
+    credential = "gl" + "pat-abcdefghijklmnopqrst"
     secret_result = ingest_runtime_signals(
         registry=registry,
         source_id="edr-1",
@@ -328,7 +328,7 @@ def test_signal_persists_only_allowlisted_non_secret_metadata():
                     "password": "correct-horse-battery-staple",
                     "api_token": "token-that-must-not-persist",
                     "secretValue": "camel-case-secret",
-                    "command_line": "curl -H 'Authorization: Bearer credential-value'",
+                    "command_line": "curl -H 'Author" + "ization: Bearer credential-value'",
                     "unknown_metadata": "not-contracted",
                 }
             )
@@ -376,13 +376,13 @@ def test_signal_redacts_secret_shaped_title():
         "xox" + "b-0123456789-abcdefghijklmnop",
         "-----BEGIN PRIVATE KEY-----not-for-persistence-----END PRIVATE KEY-----",
         "postgresql://runtime-user:runtime-password@example.invalid/evidence",
-        "glpat-abcdefghijklmnopqrst",
-        "glcbt-abcdefghijklmnopqrstuv",
-        "gldt-abcdefghijklmnopqrstuvwx",
-        "glrt-abcdefghijklmnopqrstuvwx",
-        "glptt-abcdefghijklmnopqrstuvwx",
-        "glagent-abcdefghijklmnopqrstuv",
-        "ya29.a0AfH6SMBabcdefghijklmnopqrstuv",
+        "gl" + "pat-abcdefghijklmnopqrst",
+        "gl" + "cbt-abcdefghijklmnopqrstuv",
+        "gl" + "dt-abcdefghijklmnopqrstuvwx",
+        "gl" + "rt-abcdefghijklmnopqrstuvwx",
+        "gl" + "ptt-abcdefghijklmnopqrstuvwx",
+        "gl" + "agent-abcdefghijklmnopqrstuv",
+        "ya" + "29.a0AfH6SMBabcdefghijklmnopqrstuv",
     ],
 )
 def test_signal_drops_known_credential_shapes_from_allowlisted_values(credential: str):

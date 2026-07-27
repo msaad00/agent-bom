@@ -45,3 +45,11 @@ e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360
 # One-off prose false positive: a docstring sentence about credential wiring
 # in the side-scan runner matched generic-api-key.
 a9ab4c116af8bc5086aca63933d12a675573bb4b:src/agent_bom/cloud/side_scan_targets.py:generic-api-key:199
+
+# History-only false positives from runtime-evidence redaction fixtures. The
+# current test assembles each non-functional detector input at runtime.
+9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-pat:209
+9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:curl-auth-header:331
+9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-pat:379
+9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-deploy-token:381
+9ab04a6e7577f0117410e3baeeddc87ac7ac97a2:tests/cloud/test_runtime_workload_evidence.py:gitlab-runner-authentication-token:382

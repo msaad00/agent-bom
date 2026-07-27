@@ -2147,6 +2147,7 @@ async function main() {
       minGraphNodes: 7,
       minGraphEdges: 6,
     });
+    await page.setViewportSize({ width: 1440, height: 1120 });
     await capture(page, "/mesh?capture=1", "mesh-live.png", async (meshPage) => {
       // ReactFlow can preserve a hidden, pre-measurement node tree across an
       // App Router transition. A hard reload gives the capture a fresh canvas
@@ -2182,6 +2183,7 @@ async function main() {
       minGraphNodes: 4,
       minGraphEdges: 3,
     });
+    await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/security-graph?capture=1", "security-graph-live.png", async (securityGraphPage) => {
       await securityGraphPage
         .getByRole("img", { name: /Selected exposure path graph for/i })
@@ -2288,6 +2290,7 @@ async function main() {
       expectedText: ["Calls today", "4,485", "Gateway activity", "developer-copilot", "Repo-write blocked"],
       expectedApiPaths: ["/v1/gateway/policies", "/v1/gateway/feed", "/v1/gateway/feed/kpis"],
     });
+    await page.setViewportSize({ width: 1440, height: 1120 });
     await capture(page, "/audit?capture=1", "identity-audit-live.png", async (auditPage) => {
       const filteredResponse = auditPage.waitForResponse((response) => {
         const url = new URL(response.url());
@@ -2305,6 +2308,7 @@ async function main() {
       rejectedText: ["scan.completed", "gateway.policy.denied", "compliance.bundle.signed"],
       expectedApiPaths: ["/v1/audit", "/v1/audit/integrity"],
     });
+    await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/findings?capture=1", "dependency-map-live.png", async (findingsPage) => {
       await findingsPage.getByRole("heading", { name: /Findings|Issues|Vulnerabilit/i }).first().waitFor({
         state: "visible",

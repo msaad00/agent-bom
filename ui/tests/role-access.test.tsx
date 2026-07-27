@@ -101,4 +101,12 @@ describe("PermissionDeniedNotice", () => {
     expect(screen.getByText(/AGENT_BOM_NO_AUTH_ROLE=analyst/)).toBeInTheDocument();
     expect(screen.getByText(/AGENT_BOM_DEMO_ESTATE/)).toBeInTheDocument();
   });
+
+  it("attributes denial to environment policy when the current role is already sufficient", () => {
+    render(<PermissionDeniedNotice session={session({ role: "admin", auth_required: false })} />);
+
+    expect(screen.getByText(/This environment is read-only for this action/i)).toBeInTheDocument();
+    expect(screen.getByText(/current role already meets the Contributor requirement/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Your Admin role is read-only/i)).not.toBeInTheDocument();
+  });
 });

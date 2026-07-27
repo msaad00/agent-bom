@@ -339,6 +339,23 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Empty estates do not show pass tiles/i)).toBeInTheDocument();
   });
 
+  it("does not tell operators to run a scan when completed scans lack mapped compliance evidence", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        compliance={{
+          overallScore: 0,
+          overallStatus: "warning",
+          frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 0, warn: 0, fail: 0, total: 10 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/No evaluated framework coverage is available for completed scans/i)).toBeInTheDocument();
+    expect(screen.getByText(/Completed scans have not produced mapped framework evidence/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Run a scan to light up/i)).not.toBeInTheDocument();
+  });
+
   it("shows evaluated compliance when every control fails and the score is zero", () => {
     render(
       <OverviewCockpit

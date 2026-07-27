@@ -8,6 +8,7 @@ import {
   type RoleId,
   normalizeRoleId,
   roleElevationGuidance,
+  roleRank,
 } from "@/lib/roles";
 
 const ROLE_ICON: Record<RoleId, typeof Eye> = {
@@ -53,8 +54,17 @@ export function PermissionDeniedNotice({
   const roleId = activeRoleId(session);
   const current = ROLE_LADDER.find((r) => r.id === roleId);
   const authRequired = Boolean(session?.auth_required);
-  const guidance = roleElevationGuidance({ authRequired, needed });
   const neededLabel = ROLE_LADDER.find((r) => r.id === needed)?.label ?? "Contributor";
+  const roleAlreadySufficient = roleRank(roleId) >= roleRank(needed);
+  const guidance = roleAlreadySufficient
+    ? {
+        title: "Review this environment's write policy",
+        steps: [
+          `The current role already meets the ${neededLabel} requirement; an environment policy is denying writes.`,
+          "Public demo estates remain read-only. On a self-hosted instance, review the demo clamp and deployment policy before enabling writes.",
+        ],
+      }
+    : roleElevationGuidance({ authRequired, needed });
 
   return (
     <div
@@ -63,12 +73,16 @@ export function PermissionDeniedNotice({
     >
       <p className="inline-flex items-center gap-2 font-medium">
         <TriangleAlert className="h-4 w-4 shrink-0" />
-        {current
+        {current && !roleAlreadySufficient
           ? `Your ${current.label} role is read-only for this action.`
-          : "This action needs a higher role."}
+          : roleAlreadySufficient
+            ? "This environment is read-only for this action."
+            : "This action needs a higher role."}
       </p>
       <p className="mt-1.5 text-[13px] leading-6 text-amber-100/90">
-        To {action} you need the {neededLabel} role or higher.
+        {roleAlreadySufficient
+          ? `Your ${current?.label ?? "current"} role meets the ${neededLabel} requirement, but writes are disabled here.`
+          : `To ${action} you need the ${neededLabel} role or higher.`}
       </p>
       <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-200/90">
         {guidance.title}

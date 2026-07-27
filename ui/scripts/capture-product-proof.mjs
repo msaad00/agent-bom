@@ -2165,10 +2165,12 @@ async function main() {
       const showAll = meshPage.getByRole("button", { name: "Show all", exact: true });
       if (await showAll.count()) {
         await showAll.click();
-        await meshPage.waitForTimeout(400);
+        await meshPage.waitForTimeout(800);
       }
       await fitReactFlow(meshPage);
-      await scrollTo(meshPage, 0);
+      await meshPage.locator(".react-flow__controls-zoomout").first().click({ force: true });
+      await meshPage.locator(".react-flow__controls-zoomout").first().click({ force: true });
+      await meshPage.waitForTimeout(500);
     }, {
       expectedText: [
         "Agent Mesh",
@@ -2211,7 +2213,7 @@ async function main() {
       await advancedControls.locator(":scope > summary").click();
       await fitReactFlow(lineagePage);
       await lineagePage.locator(".react-flow__controls-zoomout").first().click({ force: true });
-      await scrollTo(lineagePage, 380);
+      await scrollTo(lineagePage, 300);
       await lineagePage.waitForTimeout(350);
     }, {
       expectedText: [
@@ -2295,8 +2297,10 @@ async function main() {
       const resourceFilter = auditPage.getByPlaceholder("Filter by resource…");
       await resourceFilter.fill("identity");
       await filteredResponse;
-      await auditPage.getByText("agent_identity.issued").waitFor({ state: "visible", timeout: 8_000 });
-      await scrollTo(auditPage, 0);
+      const issuedEvent = auditPage.getByText("agent_identity.issued");
+      await issuedEvent.waitFor({ state: "visible", timeout: 8_000 });
+      await issuedEvent.scrollIntoViewIfNeeded();
+      await auditPage.evaluate(() => window.scrollBy(0, -180));
       await auditPage.waitForTimeout(350);
     }, {
       expectedText: ["agent_identity.issued", "agent_identity.rotated", "agent_identity.revoked", "identity/id_89c1a6f406bd7189"],

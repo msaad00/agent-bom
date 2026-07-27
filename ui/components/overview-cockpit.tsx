@@ -629,7 +629,9 @@ function ComplianceSnapshotPanel({
       subtitle={
         evidenceReady
           ? `${Math.round(compliance.overallScore)}% overall · ${failing} framework${failing === 1 ? "" : "s"} need attention`
-          : "Framework coverage appears after the first completed scan"
+          : hasScanEvidence
+            ? "No evaluated framework coverage is available for completed scans"
+            : "Framework coverage appears after the first completed scan"
       }
       count={evidenceReady && frameworks.length > 0 ? frameworks.length : undefined}
       scrollMaxHeight="16rem"
@@ -697,7 +699,9 @@ function ComplianceSnapshotPanel({
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-5 text-center text-xs text-[color:var(--text-tertiary)]">
-          Run a scan to light up OWASP, NIST, CIS, and related framework coverage. Empty estates do not show pass tiles.
+          {hasScanEvidence
+            ? "Completed scans have not produced mapped framework evidence. Review scan scope before drawing a compliance conclusion."
+            : "Run a scan to light up OWASP, NIST, CIS, and related framework coverage. Empty estates do not show pass tiles."}
         </div>
       )}
     </Collapsible>

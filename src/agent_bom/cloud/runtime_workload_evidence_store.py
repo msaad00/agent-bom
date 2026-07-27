@@ -130,14 +130,28 @@ class InMemoryRuntimeWorkloadEvidenceStore:
 class SQLiteRuntimeWorkloadEvidenceStore:
     """Node-local, restart-safe, cross-process-safe SQLite backend."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self._path = str(path)
-        self.init_schema()
+        self._read_only = read_only
+        if read_only:
+            # Validate access without running migrations or creating SQLite
+            # sidecar files. Optional export enrichment must be a pure read.
+            with self._connect():
+                pass
+        else:
+            self.init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._path, timeout=30)
+        if self._read_only:
+            uri = f"{Path(self._path).resolve().as_uri()}?mode=ro"
+            connection = sqlite3.connect(uri, timeout=30, uri=True)
+        else:
+            connection = sqlite3.connect(self._path, timeout=30)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA journal_mode=WAL")
+        if self._read_only:
+            connection.execute("PRAGMA query_only=ON")
+        else:
+            connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA busy_timeout=30000")
         return connection
 
@@ -189,6 +203,12 @@ class SQLiteRuntimeWorkloadEvidenceStore:
 
     def list_for_tenant(self, tenant_id: str, *, limit: int = 5000) -> list[RuntimeWorkloadSignal]:
         with self._connect() as connection:
+            if self._read_only:
+                table_exists = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runtime_workload_evidence'"
+                ).fetchone()
+                if table_exists is None:
+                    return []
             rows = connection.execute(
                 "SELECT payload_json FROM runtime_workload_evidence WHERE tenant_id = ? ORDER BY observed_at DESC, dedup_key DESC LIMIT ?",
                 (tenant_id, limit),
@@ -383,6 +403,37 @@ def get_runtime_workload_evidence_store() -> RuntimeWorkloadEvidenceStore:
         return _default_store
 
 
+def get_optional_runtime_workload_evidence_store() -> RuntimeWorkloadEvidenceStore | None:
+    """Return a non-mutating store for optional export enrichment.
+
+    An explicitly initialized or injected store is reused. For the default
+    SQLite tier, a missing or unreadable database means there is no optional
+    evidence: do not create the state directory, database, schema, WAL, or SHM
+    files merely to render a scan report. Durable ingest continues to use
+    :func:`get_runtime_workload_evidence_store` and remains fail-closed.
+    """
+    with _default_lock:
+        if _default_store is not None:
+            return _default_store
+
+    from agent_bom.api import durable_store
+
+    backend = durable_store.select_backend()
+    if backend != "sqlite":
+        return get_runtime_workload_evidence_store()
+
+    path = durable_store.sqlite_path(create_parent=False)
+    if path == ":memory:" or not Path(path).is_file():
+        return None
+    try:
+        return SQLiteRuntimeWorkloadEvidenceStore(path, read_only=True)
+    except (OSError, sqlite3.Error):
+        # Optional enrichment treats an inaccessible local evidence database as
+        # absent. Corrupt/query failures still surface from list_for_tenant and
+        # are sanitized by the caller's existing warning path.
+        return None
+
+
 def set_runtime_workload_evidence_store(store: RuntimeWorkloadEvidenceStore | None) -> None:
     global _default_store
     with _default_lock:
@@ -398,6 +449,7 @@ __all__ = [
     "PostgresRuntimeWorkloadEvidenceStore",
     "RuntimeWorkloadEvidenceStore",
     "SQLiteRuntimeWorkloadEvidenceStore",
+    "get_optional_runtime_workload_evidence_store",
     "get_runtime_workload_evidence_store",
     "reset_runtime_workload_evidence_store",
     "set_runtime_workload_evidence_store",

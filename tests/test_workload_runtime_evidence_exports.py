@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from datetime import datetime, timezone
 
 from agent_bom.cloud.runtime_workload_evidence import (
     STATE_HAS_IOC,
     STATE_NO_SIGNAL,
     RuntimeEvidenceSource,
+    RuntimeSignalType,
     RuntimeSourceRegistry,
     RuntimeWorkloadEvidenceIndex,
+    RuntimeWorkloadSignal,
     attach_workload_runtime_evidence_to_finding_model,
     ingest_runtime_signals,
     no_runtime_signal_summary,
 )
 from agent_bom.cloud.runtime_workload_evidence_store import (
     InMemoryRuntimeWorkloadEvidenceStore,
+    SQLiteRuntimeWorkloadEvidenceStore,
     set_runtime_workload_evidence_store,
 )
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
@@ -53,6 +57,50 @@ def _workload_finding(*, with_ioc_summary: bool = False) -> Finding:
             "note": "Runtime evidence is additive and never a clean-workload claim.",
         }
     return finding
+
+
+def _configure_default_store(monkeypatch, state_dir, *, tenant_id: str | None = None, ephemeral: bool = False) -> None:
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(state_dir))
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    if tenant_id is None:
+        monkeypatch.delenv("AGENT_BOM_TENANT_ID", raising=False)
+    else:
+        monkeypatch.setenv("AGENT_BOM_TENANT_ID", tenant_id)
+    if ephemeral:
+        monkeypatch.setenv("AGENT_BOM_EPHEMERAL_STORE", "1")
+    else:
+        monkeypatch.delenv("AGENT_BOM_EPHEMERAL_STORE", raising=False)
+    set_runtime_workload_evidence_store(None)
+
+
+def _seed_ioc(db_path, *, tenant_id: str, dedup_key: str) -> None:
+    writer = SQLiteRuntimeWorkloadEvidenceStore(db_path)
+    assert (
+        writer.put_batch(
+            [
+                RuntimeWorkloadSignal(
+                    tenant_id=tenant_id,
+                    provider="aws",
+                    account_id="123456789012",
+                    workload_ref="i-0abc",
+                    signal_type=RuntimeSignalType.IOC_DETECTION,
+                    severity="high",
+                    observed_at="2026-07-26T12:00:00Z",
+                    source_id="edr-1",
+                    source_kind="edr",
+                    dedup_key=dedup_key,
+                    title="known IOC",
+                )
+            ]
+        )
+        == 1
+    )
+
+
+def _export(finding: Finding) -> dict:
+    report = AIBOMReport(generated_at=datetime.now(timezone.utc), tool_version="0.0.0", findings=[finding])
+    return to_json(report)
 
 
 def test_json_sarif_html_carry_preattached_workload_runtime_evidence() -> None:
@@ -149,6 +197,94 @@ def test_optional_enrichment_failure_does_not_suppress_core_findings(caplog) -> 
         assert "secret-value" not in caplog.text
     finally:
         evidence_logger.propagate = prev_propagate
+        set_runtime_workload_evidence_store(None)
+
+
+def test_optional_enrichment_does_not_create_missing_default_sqlite(monkeypatch, tmp_path, caplog) -> None:
+    state_dir = tmp_path / "missing-state"
+    _configure_default_store(monkeypatch, state_dir)
+
+    evidence_logger = logging.getLogger("agent_bom.cloud.runtime_workload_evidence")
+    previous_propagate = evidence_logger.propagate
+    evidence_logger.propagate = True
+    caplog.set_level(logging.WARNING, logger="agent_bom.cloud.runtime_workload_evidence")
+    try:
+        finding = _workload_finding()
+        payload = _export(finding)
+
+        assert any(row["id"] == finding.id for row in payload["findings"])
+        assert not state_dir.exists()
+        assert "optional runtime workload evidence enrichment unavailable" not in caplog.text
+    finally:
+        evidence_logger.propagate = previous_propagate
+        set_runtime_workload_evidence_store(None)
+
+
+def test_optional_enrichment_reads_existing_read_only_sqlite(monkeypatch, tmp_path, caplog) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    db_path = state_dir / "control-plane.db"
+    _seed_ioc(db_path, tenant_id="tenant-read-only", dedup_key="evt-read-only")
+    _configure_default_store(monkeypatch, state_dir, tenant_id="tenant-read-only")
+
+    db_path.chmod(0o444)
+    state_dir.chmod(0o555)
+    try:
+        finding = _workload_finding()
+        payload = _export(finding)
+
+        exported = next(row for row in payload["findings"] if row["id"] == finding.id)
+        assert exported["workload_runtime_evidence"]["state"] == STATE_HAS_IOC
+        assert "optional runtime workload evidence enrichment unavailable" not in caplog.text
+    finally:
+        state_dir.chmod(0o755)
+        db_path.chmod(0o644)
+        set_runtime_workload_evidence_store(None)
+
+
+def test_optional_enrichment_skips_unreadable_default_sqlite_quietly(monkeypatch, tmp_path, caplog) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    db_path = state_dir / "control-plane.db"
+    SQLiteRuntimeWorkloadEvidenceStore(db_path)
+    _configure_default_store(monkeypatch, state_dir)
+
+    original_connect = SQLiteRuntimeWorkloadEvidenceStore._connect
+
+    def deny_read_only_open(store):
+        if store._read_only:  # noqa: SLF001 - targeted failure injection
+            raise sqlite3.OperationalError("unable to open database file")
+        return original_connect(store)
+
+    monkeypatch.setattr(SQLiteRuntimeWorkloadEvidenceStore, "_connect", deny_read_only_open)
+    evidence_logger = logging.getLogger("agent_bom.cloud.runtime_workload_evidence")
+    previous_propagate = evidence_logger.propagate
+    evidence_logger.propagate = True
+    caplog.set_level(logging.WARNING, logger="agent_bom.cloud.runtime_workload_evidence")
+    try:
+        finding = _workload_finding()
+        payload = _export(finding)
+
+        assert any(row["id"] == finding.id for row in payload["findings"])
+        assert "optional runtime workload evidence enrichment unavailable" not in caplog.text
+    finally:
+        evidence_logger.propagate = previous_propagate
+        set_runtime_workload_evidence_store(None)
+
+
+def test_optional_enrichment_ephemeral_opt_out_ignores_stale_default_sqlite(monkeypatch, tmp_path) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    db_path = state_dir / "control-plane.db"
+    _seed_ioc(db_path, tenant_id="tenant-ephemeral", dedup_key="evt-stale")
+    _configure_default_store(monkeypatch, state_dir, tenant_id="tenant-ephemeral", ephemeral=True)
+    try:
+        finding = _workload_finding()
+        payload = _export(finding)
+
+        exported = next(row for row in payload["findings"] if row["id"] == finding.id)
+        assert "workload_runtime_evidence" not in exported
+    finally:
         set_runtime_workload_evidence_store(None)
 
 

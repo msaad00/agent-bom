@@ -708,9 +708,11 @@ def optional_runtime_workload_evidence_index(
     try:
         active_store = store
         if active_store is None:
-            from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
+            from agent_bom.cloud.runtime_workload_evidence_store import get_optional_runtime_workload_evidence_store
 
-            active_store = get_runtime_workload_evidence_store()
+            active_store = get_optional_runtime_workload_evidence_store()
+        if active_store is None:
+            return None
         index = RuntimeWorkloadEvidenceIndex.from_store(active_store, active_tenant)
         return None if index.is_empty() else index
     except Exception as exc:  # noqa: BLE001 - enrichment is explicitly optional

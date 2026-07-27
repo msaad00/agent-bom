@@ -14,12 +14,19 @@ vulnerable ones (e.g. to show that not everything is on fire).
 
 from __future__ import annotations
 
+import copy
+import io
+import json
+from pathlib import Path
+
 import pytest
+from rich.console import Console
 
 from agent_bom.db.lookup import lookup_package
 from agent_bom.db.schema import init_db
 from agent_bom.demo import DEMO_INVENTORY
 from agent_bom.demo_advisories import seed_demo_advisories
+from agent_bom.scan_contract import ScanConfig
 
 # Packages that the demo intentionally ships at a known-clean version. Add
 # entries here only after manually confirming that the version genuinely
@@ -88,6 +95,75 @@ def test_demo_agents_keep_unique_identity_across_all_inventory_exports() -> None
     history_snapshot = _get_inventory_snapshot(report_json)
     assert len(history_snapshot["agents"]) == 5
     assert len({agent["id"] for agent in history_snapshot["agents"]}) == 5
+
+
+def _materialized_demo_agent_ids(inventory_path: str) -> list[str]:
+    from agent_bom.cli._common import _build_agents_from_inventory
+
+    payload = json.loads(Path(inventory_path).read_text())
+    return [agent.stable_id for agent in _build_agents_from_inventory(payload, inventory_path)]
+
+
+def test_scan_demo_agent_ids_are_stable_across_materializations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Random temporary inventory paths must not change demo agent identity."""
+    import agent_bom.demo as demo
+    from agent_bom.cli.agents._modes import apply_demo_mode
+
+    demo_inventory = copy.deepcopy(DEMO_INVENTORY)
+    monkeypatch.setattr(demo, "DEMO_INVENTORY", demo_inventory)
+
+    observed_ids: list[list[str]] = []
+    for _ in range(2):
+        _, inventory_path, _, _, _ = apply_demo_mode(
+            demo=True,
+            project=str(tmp_path),
+            inventory=None,
+            enrich=False,
+            compliance=False,
+            iac_paths=(),
+        )
+        assert inventory_path is not None
+        observed_ids.append(_materialized_demo_agent_ids(inventory_path))
+        Path(inventory_path).unlink()
+
+    assert observed_ids[0] == observed_ids[1]
+
+
+def test_default_scan_demo_agent_ids_are_stable_across_materializations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The shared SDK/remediation scan path must keep the same demo IDs."""
+    import agent_bom.demo as demo
+    from agent_bom.cli._scan_runner import run_default_scan
+
+    class CapturedDemoInventoryError(Exception):
+        pass
+
+    demo_inventory = copy.deepcopy(DEMO_INVENTORY)
+    monkeypatch.setattr(demo, "DEMO_INVENTORY", demo_inventory)
+
+    observed_ids: list[list[str]] = []
+
+    def capture_inventory(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        inventory_path = kwargs["inventory"]
+        observed_ids.append(_materialized_demo_agent_ids(inventory_path))
+        Path(inventory_path).unlink()
+        raise CapturedDemoInventoryError
+
+    monkeypatch.setattr("agent_bom.cli.agents._discovery.run_local_discovery", capture_inventory)
+
+    for _ in range(2):
+        with pytest.raises(CapturedDemoInventoryError):
+            run_default_scan(
+                ScanConfig(project=str(tmp_path), demo=True, quiet=True),
+                Console(file=io.StringIO()),
+            )
+
+    assert observed_ids[0] == observed_ids[1]
 
 
 @pytest.fixture(scope="module")

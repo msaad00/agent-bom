@@ -1043,7 +1043,7 @@ jobs:
             uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 
       - name: Run real Postgres storage contract
-        run: uv run pytest tests/test_postgres_integration.py -q --tb=short
+        run: uv run pytest tests/test_postgres_integration.py tests/test_postgres_gateway_activity.py -q --tb=short
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

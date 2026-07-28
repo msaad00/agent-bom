@@ -64,8 +64,21 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
         "sqlite/postgres",
         ("agent_identities", "agent_identity_jit_grants", "agent_conditional_access_policies"),
     ),
-    # Runtime session/observation timeline is durable by default (same tiering).
-    StorageSchemaComponent("runtime_events", "sqlite/postgres", ("runtime_observations", "runtime_sessions")),
+    # Runtime session/observation timeline and typed gateway ledger are durable
+    # by default (same tiering). Gateway activity adds server-owned ordinals and
+    # tombstones in v2 without changing the legacy observation contract.
+    StorageSchemaComponent(
+        "runtime_events",
+        "sqlite/postgres",
+        (
+            "runtime_observations",
+            "runtime_sessions",
+            "gateway_activity_events",
+            "gateway_activity_sequences",
+            "gateway_activity_tombstones",
+        ),
+        version=2,
+    ),
     StorageSchemaComponent(
         "runtime_workload_evidence",
         "sqlite/postgres",
@@ -119,7 +132,7 @@ def ensure_sqlite_schema_version(conn: Any, component: str, version: int = CONTR
         INSERT INTO control_plane_schema_versions (component, version, updated_at)
         VALUES (?, ?, ?)
         ON CONFLICT(component) DO UPDATE SET
-            version = excluded.version,
+            version = MAX(control_plane_schema_versions.version, excluded.version),
             updated_at = excluded.updated_at
         """,
         (component, int(version), _now_iso()),
@@ -163,7 +176,7 @@ def ensure_postgres_schema_version(conn: Any, component: str, version: int = CON
         INSERT INTO control_plane_schema_versions (component, version, updated_at)
         VALUES (%s, %s, now())
         ON CONFLICT (component) DO UPDATE SET
-            version = EXCLUDED.version,
+            version = GREATEST(control_plane_schema_versions.version, EXCLUDED.version),
             updated_at = EXCLUDED.updated_at
         """,
         (component, int(version)),

@@ -22,6 +22,7 @@ MANAGED_TRIAL_INVITATIONS = VERSIONS_DIR / "20260724_03_managed_trial_invitation
 TICKETING_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260726_01_ticketing_schema_authority.py"
 RUNTIME_EVIDENCE_TIMESTAMP_AUTHORITY = VERSIONS_DIR / "20260727_01_runtime_evidence_timestamp_authority.py"
 MCP_PROFILE_BINDING_AUTHORITY = VERSIONS_DIR / "20260728_01_mcp_profile_binding_authority.py"
+GATEWAY_ACTIVITY_LEDGER = VERSIONS_DIR / "20260728_02_gateway_activity_ledger.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -349,6 +350,26 @@ def test_cloud_connections_scope_columns_migration_is_idempotent_and_chained() -
         assert f"ALTER TABLE IF EXISTS cloud_connections {column_ddl}" in sql
     assert "VALUES ('cloud_connections', 1, now())" in sql
     assert "ON CONFLICT(component) DO UPDATE SET" in sql
+
+
+def test_gateway_activity_ledger_migration_is_chained_durable_and_tenant_isolated() -> None:
+    sql = GATEWAY_ACTIVITY_LEDGER.read_text()
+    assert re.search(r'revision\s*=\s*"20260728_02"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260728_01"', sql)
+    for table in (
+        "gateway_activity_events",
+        "gateway_activity_sequences",
+        "gateway_activity_tombstones",
+    ):
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in sql
+        assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in sql
+        assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in sql
+    assert "policyname = '{table}_tenant_isolation'" in sql
+    assert "CREATE POLICY {table}_tenant_isolation ON {table}" in sql
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal" in sql
+    assert "CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal" in sql
+    assert "VALUES ('runtime_events', 2, now())" in sql
+    assert "DROP TABLE" not in sql
 
 
 def test_hub_partition_migration_uses_the_psycopg_driver_connection(monkeypatch):

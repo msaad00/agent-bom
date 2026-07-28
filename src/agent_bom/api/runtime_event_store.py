@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.analytics_retention import prune_runtime_observations_for_tenant
-from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.api.gateway_activity_store import ensure_sqlite_gateway_activity_schema
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 RAW_RUNTIME_FIELDS = {
@@ -255,7 +255,6 @@ class SQLiteRuntimeEventStore:
         self._init_db()
 
     def _init_db(self) -> None:
-        ensure_sqlite_schema_version(self._conn, "runtime_events")
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS runtime_observations (
@@ -286,6 +285,7 @@ class SQLiteRuntimeEventStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_runtime_sessions_tenant_last_seen ON runtime_sessions(tenant_id, last_seen DESC)"
         )
+        ensure_sqlite_gateway_activity_schema(self._conn)
         self._conn.commit()
 
     def put_observation(self, record: RuntimeObservationRecord) -> None:

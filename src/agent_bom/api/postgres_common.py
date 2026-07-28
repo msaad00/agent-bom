@@ -432,17 +432,17 @@ def _get_maintenance_pool() -> ConnectionPool:
     """Lazy-create the separately bounded, fail-closed maintenance pool."""
     global _maintenance_pool
     if _maintenance_pool is None:
-        try:
-            import psycopg_pool
-        except ImportError as exc:
-            raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
-
         _app_parsed, app_username = _parse_and_validate_postgres_url()
         _maintenance_parsed, maintenance_username = _parse_and_validate_postgres_maintenance_url()
         if app_username.casefold() == maintenance_username.casefold():
             raise MaintenanceRoleConfigurationError(
                 "AGENT_BOM_POSTGRES_URL and AGENT_BOM_POSTGRES_MAINTENANCE_URL must use distinct login identities."
             )
+
+        try:
+            import psycopg_pool
+        except ImportError as exc:
+            raise ImportError("PostgreSQL support requires psycopg. Install with: pip install 'agent-bom[postgres]'") from exc
 
         kwargs: dict[str, object] = {}
         if POSTGRES_CONNECT_TIMEOUT_SECONDS > 0:

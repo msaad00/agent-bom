@@ -569,6 +569,24 @@ def test_security_scan_npm_installs_use_network_retries():
     assert "preceding SDK audit step installed this exact lockfile" in workflow
 
 
+def test_postgres_ci_upgrade_checks_preserved_queue_through_scoped_maintenance_role():
+    """FORCE RLS must not make the migration-preservation assertion self-contradictory."""
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert (
+        "export AGENT_BOM_POSTGRES_MAINTENANCE_URL="
+        "'postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_migration'"
+    ) in workflow
+    assert (
+        "PGPASSWORD=maintenancepass PGOPTIONS='-c app.bypass_rls=1' psql "
+        "-h 127.0.0.1 -U agent_bom_maintenance -d agentbom_migration"
+    ) in workflow
+    assert (
+        "PGPASSWORD=migrationpass psql -h 127.0.0.1 "
+        "-U agentbom_migration_owner -d agentbom_migration -Atc "
+        '"SELECT count(*) FROM scan_dispatch_queue'
+    ) not in workflow
+
+
 def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_clawhub_set():
     """Smithery publishing must never use Smithery's proxy as its upstream."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()

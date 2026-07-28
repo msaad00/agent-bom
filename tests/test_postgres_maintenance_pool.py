@@ -137,6 +137,9 @@ def test_maintenance_password_file_stays_out_of_conninfo(monkeypatch, tmp_path):
 
 def test_maintenance_pool_rejects_same_login_as_app(monkeypatch, tmp_path):
     _configure_urls(monkeypatch, tmp_path, maintenance_user="agent_bom_app")
+    # Configuration separation is a security invariant, not a driver-dependent
+    # check. Keep it deterministic in minimal installs without the Postgres extra.
+    monkeypatch.setitem(sys.modules, "psycopg_pool", None)
 
     with pytest.raises(postgres_common.MaintenanceRoleConfigurationError, match="distinct"):
         postgres_common._get_maintenance_pool()

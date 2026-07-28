@@ -1023,6 +1023,8 @@ jobs:
           ALTER DATABASE agentbom_migration SET init.maintenance_password = 'maintenancepass';
           SQL
           export ALEMBIC_DATABASE_URL='postgresql+psycopg://agentbom_migration_owner:migrationpass@127.0.0.1:5432/agentbom_migration'
+          export AGENT_BOM_POSTGRES_URL='postgresql://agent_bom_app@127.0.0.1:5432/agentbom_migration'
+          export AGENT_BOM_POSTGRES_MAINTENANCE_URL='postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_migration'
           uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade 20260728_02
           PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration <<'SQL'
           SELECT set_config('app.tenant_id', 'migration-queue-tenant', false);
@@ -1041,7 +1043,7 @@ jobs:
           expected_head="$(uv run alembic -c deploy/supabase/postgres/alembic.ini heads | awk 'NR == 1 {print $1}')"
           actual_head="$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc 'SELECT version_num FROM alembic_version')"
           test "$actual_head" = "$expected_head"
-          test "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT count(*) FROM scan_dispatch_queue WHERE job_id = 'migration-queue-job'")" = "1"
+          test "$(PGPASSWORD=maintenancepass PGOPTIONS='-c app.bypass_rls=1' psql -h 127.0.0.1 -U agent_bom_maintenance -d agentbom_migration -Atc "SELECT count(*) FROM scan_dispatch_queue WHERE job_id = 'migration-queue-job'")" = "1"
           test -z "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT current_setting('init.app_password', true)")"
           test "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")" = "f"
 

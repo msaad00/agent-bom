@@ -20,6 +20,10 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
+  Scan repositories, images, and cloud accounts; centralize evidence across environments; and enforce AI and MCP runtime policy in infrastructure you control.
+</p>
+
+<p align="center">
   <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>77</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -35,18 +39,17 @@
 
 ## What it is
 
-`agent-bom` is an open local scanner and self-hosted control plane for software,
+`agent-bom` is an open scanner and self-hosted control plane for software,
 cloud, identity, AI-agent, and MCP evidence. One Finding + UnifiedGraph model
-powers CLI and CI artifacts, browser investigations, compliance evidence, and
-runtime policy without requiring a hosted account.
+powers CLI and CI artifacts, fleet and browser investigations, compliance
+evidence, and runtime policy.
+
+Use the scanner without an account, or deploy the shared control plane inside
+your own cloud, VPC, Kubernetes cluster, database, identity, and audit boundary.
 
 Graph provenance remains explicit: collected, inferred, static, and runtime
 relationships stay distinct, and unavailable evidence is never upgraded to
 observed.
-
-<p align="center">
-  Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — locally or in a control plane you run.
-</p>
 
 <details>
 <summary><b>Control-plane architecture</b></summary>
@@ -71,7 +74,7 @@ observed.
 
 | Role | Start here | Primary outcome |
 |---|---|---|
-| Local developers | `agent-bom scan .` | Find and explain issues before code leaves the workstation |
+| Developers | `agent-bom scan .` | Find and explain issues before code leaves the workstation |
 | AppSec | `agent-bom scan . -f sarif -o findings.sarif` | Triage reachable findings and enforce CI gates |
 | Security engineers | `pip install 'agent-bom[ui]' && agent-bom serve` | Investigate exposure paths, identities, and evidence provenance |
 | Platform / SRE | `agent-bom connect aws` | Centralize estate inventory, jobs, and runtime controls |

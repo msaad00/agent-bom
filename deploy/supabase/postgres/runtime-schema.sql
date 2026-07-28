@@ -97,6 +97,11 @@ CREATE TABLE IF NOT EXISTS runtime_observations (tenant_id TEXT NOT NULL, observ
 CREATE TABLE IF NOT EXISTS runtime_sessions (tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, last_seen TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(tenant_id,session_id));
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_tenant_session_time ON runtime_observations(tenant_id,session_id,observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runtime_sessions_tenant_last_seen ON runtime_sessions(tenant_id,last_seen DESC);
+CREATE TABLE IF NOT EXISTS gateway_activity_events (tenant_id TEXT NOT NULL,event_id TEXT NOT NULL,ingest_ordinal BIGINT NOT NULL,event_timestamp TIMESTAMPTZ NOT NULL,ingested_at TIMESTAMPTZ NOT NULL,event_digest TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(tenant_id,event_id));
+CREATE TABLE IF NOT EXISTS gateway_activity_sequences (tenant_id TEXT PRIMARY KEY,next_ordinal BIGINT NOT NULL CHECK(next_ordinal >= 1));
+CREATE TABLE IF NOT EXISTS gateway_activity_tombstones (tenant_id TEXT NOT NULL,event_id TEXT NOT NULL,event_digest TEXT NOT NULL,pruned_ordinal BIGINT NOT NULL,PRIMARY KEY(tenant_id,event_id));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal ON gateway_activity_events(tenant_id,ingest_ordinal);
+CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal ON gateway_activity_tombstones(tenant_id,pruned_ordinal);
 CREATE TABLE IF NOT EXISTS runtime_workload_evidence (
   tenant_id TEXT NOT NULL,
   provider TEXT NOT NULL,
@@ -200,7 +205,8 @@ DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'access_review_campaigns','access_review_items','agent_identities','agent_identity_jit_grants','agent_conditional_access_policies',
-    'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','runtime_workload_evidence','scim_users','scim_groups',
+    'ai_system_blueprints','ai_system_blueprint_versions','runtime_observations','runtime_sessions','gateway_activity_events','gateway_activity_sequences',
+    'gateway_activity_tombstones','runtime_workload_evidence','scim_users','scim_groups',
     'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides',
     'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections','ticketing_connections','ticket_links',
     'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_findings_current',
@@ -229,13 +235,16 @@ INSERT INTO control_plane_schema_versions(component,version,updated_at)
 SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
- 'agent_identities','runtime_events','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
+ 'agent_identities','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
  'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','model_provider_keys','tenant_score_config',
  'ticketing_connections'
 ]) component
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('runtime_workload_evidence',2,now())
+ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
+INSERT INTO control_plane_schema_versions(component,version,updated_at)
+VALUES ('runtime_events',2,now())
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('mcp_client_configs',2,now())

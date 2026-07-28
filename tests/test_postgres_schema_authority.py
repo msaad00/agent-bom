@@ -174,6 +174,15 @@ def test_configured_postgres_schema_check_is_read_only(monkeypatch) -> None:
     ]
 
 
+def test_development_postgres_schema_marker_updates_are_monotonic(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
+    connection = _Connection()
+
+    assert ensure_postgres_schema_version(connection, "runtime_events", version=2) is True
+    assert any("GREATEST(control_plane_schema_versions.version, EXCLUDED.version)" in sql for sql in connection.statements)
+
+
 def test_configured_ticketing_store_constructor_never_executes_ddl(monkeypatch) -> None:
     from agent_bom.ticketing.postgres_store import PostgresTicketingStore
 
@@ -310,8 +319,23 @@ def test_migration_schema_uses_the_runtime_rls_contract_and_exact_dml_columns() 
         "model_provider_keys (provider_key_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL",
         "model_virtual_keys (virtual_key_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider_key_id TEXT NOT NULL",
         "scan_dispatch_queue (job_id TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,tenant_id TEXT NOT NULL",
+        "gateway_activity_events (tenant_id TEXT NOT NULL,event_id TEXT NOT NULL,ingest_ordinal BIGINT NOT NULL",
+        "gateway_activity_sequences (tenant_id TEXT PRIMARY KEY,next_ordinal BIGINT NOT NULL",
+        "gateway_activity_tombstones (tenant_id TEXT NOT NULL,event_id TEXT NOT NULL,event_digest TEXT NOT NULL",
     ):
         assert required_fragment in sql
+
+
+def test_runtime_events_manifest_is_v2_and_includes_gateway_activity_tables() -> None:
+    component = next(item for item in CONTROL_PLANE_SCHEMA_COMPONENTS if item.component == "runtime_events")
+    assert component.version == 2
+    assert set(component.tables) == {
+        "runtime_observations",
+        "runtime_sessions",
+        "gateway_activity_events",
+        "gateway_activity_sequences",
+        "gateway_activity_tombstones",
+    }
 
 
 def test_declared_postgres_ddl_realises_every_logical_column() -> None:

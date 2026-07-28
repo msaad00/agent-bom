@@ -17,7 +17,9 @@ from __future__ import annotations
 import json
 
 from agent_bom.analytics_retention import prune_runtime_observations_for_tenant
+from agent_bom.api.gateway_activity_store import GATEWAY_ACTIVITY_STORAGE_VERSION
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_gateway_activity import bootstrap_postgres_gateway_activity_schema
 from agent_bom.api.runtime_event_store import (
     _BATCH_LOOKUP_CHUNK,
     RuntimeObservationRecord,
@@ -44,7 +46,7 @@ class PostgresRuntimeEventStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "runtime_events"):
+            if not ensure_postgres_schema_version(conn, "runtime_events", version=GATEWAY_ACTIVITY_STORAGE_VERSION):
                 return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS runtime_observations (
@@ -72,6 +74,7 @@ class PostgresRuntimeEventStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_runtime_sessions_tenant_last_seen ON runtime_sessions(tenant_id, last_seen DESC)")
             _ensure_tenant_rls(conn, "runtime_observations", "tenant_id")
             _ensure_tenant_rls(conn, "runtime_sessions", "tenant_id")
+            bootstrap_postgres_gateway_activity_schema(conn)
             conn.commit()
 
     def put_observation(self, record: RuntimeObservationRecord) -> None:

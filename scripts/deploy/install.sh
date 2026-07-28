@@ -256,8 +256,6 @@ install_eks() {
 }
 
 install_eks_terraform() {
-  need_cmd terraform
-  log "EKS platform module — staged secret sync, migration, and workloads"
   local tfvars="deploy/terraform/platform-eks/terraform.tfvars"
   [ -f "$tfvars" ] || die "copy deploy/terraform/platform-eks/terraform.tfvars.example to $tfvars and configure it first"
   if ! grep -Eq '^[[:space:]]*external_secrets_prerequisites_ready[[:space:]]*=[[:space:]]*true([[:space:]]*(#.*)?)?$' "$tfvars"; then
@@ -278,6 +276,8 @@ Then set external_secrets_prerequisites_ready=true in terraform.tfvars and rerun
 EOF
     return 2
   fi
+  need_cmd terraform
+  log "EKS platform module — staged secret sync, migration, and workloads"
   run terraform -chdir=deploy/terraform/platform-eks init
   run terraform -chdir=deploy/terraform/platform-eks apply
   print_onboarding_card "https://<your-ingress-host>" "https://<your-ingress-host>"

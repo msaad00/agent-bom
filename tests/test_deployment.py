@@ -591,9 +591,21 @@ def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_
     assert '_publish_skill "integrations/openclaw" "agent-bom"' not in workflow
     assert 'git fetch --no-tags --depth=1 origin "$RELEASE_SHA"' in workflow
     assert 'check_glama_listing.py --verify-manifest --git-ref "${{ needs.release.outputs.release_sha }}"' in workflow
-    assert workflow.count("ref: ${{ needs.release.outputs.release_sha }}") == 1
-    assert workflow.count("ref: ${{ github.event.repository.default_branch }}") == 3
+    # Privileged workflow_run jobs may never check out a data-derived ref. The
+    # ClawHub job stages regular-file assets from the verified release object
+    # without executing or checking out that tree.
+    assert "ref: ${{ needs.release.outputs.release_sha }}" not in workflow
+    assert workflow.count("ref: ${{ github.event.repository.default_branch }}") == 4
     assert workflow.count("persist-credentials: false") == 4
+    assert "Stage exact release ClawHub assets" in workflow
+    assert 'git ls-tree -r "$RELEASE_SHA" -- integrations/openclaw' in workflow
+    assert 'git archive --format=tar "$RELEASE_SHA" -- integrations/openclaw' in workflow
+    assert "Only regular, non-executable release assets may be published to ClawHub" in workflow
+    assert "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/scan" in workflow
+    assert "RUN_EVENT: ${{ github.event.workflow_run.event }}" in workflow
+    assert "RUN_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}" in workflow
+    assert 'git merge-base --is-ancestor "$RELEASE_SHA" "origin/$DEFAULT_BRANCH"' in workflow
+    assert "Release workflow must be a same-repository tag push" in workflow
     assert "workflow_run.head_sha || github.ref" not in workflow
     assert "actions: read" in workflow
     assert "jq -n" in workflow
@@ -625,7 +637,8 @@ def test_publish_registries_uses_release_metrics_for_glama_and_clawhub_assets():
     assert 'select(.name == "MCP tools")' in workflow
     assert "EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}" in workflow
     assert '--expected-tool-count "$EXPECTED_TOOL_COUNT"' in workflow
-    assert workflow.count("ref: ${{ needs.release.outputs.release_sha }}") == 1
+    assert "ref: ${{ needs.release.outputs.release_sha }}" not in workflow
+    assert 'git archive --format=tar "$RELEASE_SHA" -- integrations/openclaw' in workflow
 
 
 def test_glama_rebuild_webhook_is_secret_and_missing_secret_is_honest():

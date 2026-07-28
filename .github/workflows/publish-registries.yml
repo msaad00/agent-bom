@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Resolve published release
@@ -45,6 +45,9 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}
         run: |
           set -euo pipefail
 
@@ -59,6 +62,10 @@ jobs:
               exit 1
             fi
           else
+            if [ "$RUN_EVENT" != "push" ] || [ "$RUN_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+              echo "::error::Release workflow must be a same-repository tag push"
+              exit 1
+            fi
             RELEASE_TAG="${HEAD_BRANCH:-}"
             if ! echo "$RELEASE_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
               echo "::error::Successful Release workflow did not report a release tag"
@@ -75,6 +82,12 @@ jobs:
           RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")
           if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$RELEASE_SHA" != "$HEAD_SHA" ]; then
             echo "::error::Release tag and successful workflow commit do not match"
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Published release commit is not reachable from the trusted default branch"
             exit 1
           fi
 
@@ -340,9 +353,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # ClawHub publishes the checked-out integrations/openclaw assets, so
-          # they must come from the exact release commit rather than current main.
-          ref: ${{ needs.release.outputs.release_sha }}
+          # Keep privileged workflow code on the trusted default branch. Exact
+          # release assets are exported as inert regular files below; the
+          # workflow never checks out or executes the release tree.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -362,6 +376,34 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
+      - name: Stage exact release ClawHub assets
+        if: steps.clawhub_config.outputs.enabled == 'true'
+        env:
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+          CLAWHUB_RELEASE_ROOT: ${{ runner.temp }}/clawhub-release
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$RELEASE_SHA"
+
+          # A privileged workflow must not check out or execute a data-derived
+          # release tree. Export only the curated OpenClaw subtree, and reject
+          # symlinks, submodules, and executable files before extraction.
+          INVALID_ENTRIES=$(git ls-tree -r "$RELEASE_SHA" -- integrations/openclaw |
+            awk '$1 != "100644" { print }')
+          if [ -n "$INVALID_ENTRIES" ]; then
+            echo "::error::Only regular, non-executable release assets may be published to ClawHub"
+            printf '%s\n' "$INVALID_ENTRIES"
+            exit 1
+          fi
+
+          mkdir -p "$CLAWHUB_RELEASE_ROOT"
+          git archive --format=tar "$RELEASE_SHA" -- integrations/openclaw |
+            tar -xf - --directory "$CLAWHUB_RELEASE_ROOT" --no-same-owner --no-same-permissions
+          if find "$CLAWHUB_RELEASE_ROOT" -type l -print -quit | grep -q .; then
+            echo "::error::ClawHub release staging produced a symbolic link"
+            exit 1
+          fi
+
       - name: Install ClawHub CLI
         if: steps.clawhub_config.outputs.enabled == 'true'
         run: |
@@ -377,6 +419,7 @@ jobs:
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           VERSION: ${{ needs.release.outputs.version }}
+          CLAWHUB_RELEASE_ROOT: ${{ runner.temp }}/clawhub-release
         run: |
           echo "Publishing agent-bom v${VERSION} to ClawHub..."
           clawhub login --token "$CLAWHUB_TOKEN" --no-browser
@@ -433,13 +476,13 @@ jobs:
 
           # Curated, focused skills only. Do not publish the oversized omnibus root
           # skill to ClawHub — keep the marketplace surface small and guardrailed.
-          _publish_skill "integrations/openclaw/scan"       "agent-bom-scan"       true  "agent-bom scan"
-          _publish_skill "integrations/openclaw/compliance" "agent-bom-compliance" false "agent-bom compliance"
-          _publish_skill "integrations/openclaw/registry"   "agent-bom-registry"   false "agent-bom registry"
-          _publish_skill "integrations/openclaw/runtime"    "agent-bom-runtime"    false "agent-bom runtime"
-          _publish_skill "integrations/openclaw/discover-aws" "agent-bom-discover-aws" false "agent-bom discover aws"
-          _publish_skill "integrations/openclaw/discover-azure" "agent-bom-discover-azure" false "agent-bom discover azure"
-          _publish_skill "integrations/openclaw/discover-gcp" "agent-bom-discover-gcp" false "agent-bom discover gcp"
-          _publish_skill "integrations/openclaw/discover-snowflake" "agent-bom-discover-snowflake" false "agent-bom discover snowflake"
-          _publish_skill "integrations/openclaw/ingest" "agent-bom-ingest" false "agent-bom ingest"
-          _publish_skill "integrations/openclaw/vulnerability-intel" "agent-bom-vulnerability-intel" false "agent-bom vulnerability intel"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/scan"       "agent-bom-scan"       true  "agent-bom scan"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/compliance" "agent-bom-compliance" false "agent-bom compliance"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/registry"   "agent-bom-registry"   false "agent-bom registry"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/runtime"    "agent-bom-runtime"    false "agent-bom runtime"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/discover-aws" "agent-bom-discover-aws" false "agent-bom discover aws"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/discover-azure" "agent-bom-discover-azure" false "agent-bom discover azure"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/discover-gcp" "agent-bom-discover-gcp" false "agent-bom discover gcp"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/discover-snowflake" "agent-bom-discover-snowflake" false "agent-bom discover snowflake"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/ingest" "agent-bom-ingest" false "agent-bom ingest"
+          _publish_skill "${CLAWHUB_RELEASE_ROOT}/integrations/openclaw/vulnerability-intel" "agent-bom-vulnerability-intel" false "agent-bom vulnerability intel"

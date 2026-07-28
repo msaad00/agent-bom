@@ -79,7 +79,9 @@ if (nextInstalled !== eslintConfigNextInstalled) {
 
 const nextMajor = majorOf(nextInstalled);
 const eslintMajor = majorOf(eslintInstalled);
-const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "", 10);
+const [nodeMajor, nodeMinor, nodePatch] = process.versions.node
+  .split(".")
+  .map((part) => Number.parseInt(part, 10));
 
 // Next.js 16.2.x is currently validated in this repo with ESLint 9.x and 10.x.
 // Keep the allowlist explicit so future major jumps fail closed until the UI
@@ -90,7 +92,17 @@ if (nextMajor === 16 && ![9, 10].includes(eslintMajor)) {
   );
 }
 
-if (!Number.isInteger(nodeMajor) || nodeMajor < 22 || nodeMajor > 24) {
+const nodeAtLeast = ([minimumMajor, minimumMinor, minimumPatch]) =>
+  [nodeMajor, nodeMinor, nodePatch].every(Number.isInteger) &&
+  (nodeMajor > minimumMajor ||
+    (nodeMajor === minimumMajor &&
+      (nodeMinor > minimumMinor ||
+        (nodeMinor === minimumMinor && nodePatch >= minimumPatch))));
+const supportedNode =
+  (nodeMajor === 22 && nodeAtLeast([22, 22, 2])) ||
+  (nodeMajor === 24 && nodeAtLeast([24, 15, 0]));
+
+if (!supportedNode) {
   fail(`UI runtime must stay within the declared Node range ${nodeEngines}; found Node ${process.versions.node}.`);
 }
 

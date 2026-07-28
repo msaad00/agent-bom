@@ -46,7 +46,8 @@ describe("Collapsible", () => {
     );
     const button = screen.getByRole("button", { name: /Scrollable/ });
     const panel = document.getElementById(button.getAttribute("aria-controls")!);
-    expect(panel).toHaveStyle({ maxHeight: "12rem", overflowY: "auto" });
+    expect(panel?.style.maxHeight).toBe("12rem");
+    expect(panel?.style.overflowY).toBe("auto");
   });
 
   it("renders bare nested mode without a bordered card shell", () => {

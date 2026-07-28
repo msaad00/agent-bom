@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "npm@10.9.7",
   "engines": {
-    "node": ">=22 <25"
+    "node": "^22.22.2 || >=24.15.0 <25"
   },
   "scripts": {
     "dev": "next dev",
@@ -47,12 +47,12 @@
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.2.12",
     "@playwright/test": "^1.62.0",
-    "@storybook/react-vite": "^10.5.3",
+    "@storybook/react-vite": "^10.5.5",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/dagre": "^0.7.54",
-    "@types/node": "26.1.1",
+    "@types/node": "26.1.2",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
@@ -60,9 +60,9 @@
     "eslint-config-next": "^16.2.12",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "jsdom": "^29.1.0",
+    "jsdom": "^30.0.0",
     "lightningcss": "1.33.0",
-    "storybook": "^10.5.4",
+    "storybook": "^10.5.5",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.65.0",

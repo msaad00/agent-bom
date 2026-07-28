@@ -161,8 +161,8 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
         == 1
     )
     assert (
-        "Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — "
-        "locally or in a control plane you run."
+        "Scan repositories, images, and cloud accounts; centralize evidence across environments; "
+        "and enforce AI and MCP runtime policy in infrastructure you control."
     ) in hero
     assert "<b>15</b> package ecosystems" in hero
     assert "<b>16</b> compliance surfaces" in hero
@@ -175,10 +175,13 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert hero.index("how-it-works-dark.svg") > hero.index('href="https://demo.agent-bom.com"')
     assert "## How it works" not in readme
 
-    current_what_it_is = """`agent-bom` is an open local scanner and self-hosted control plane for software,
+    current_what_it_is = """`agent-bom` is an open scanner and self-hosted control plane for software,
 cloud, identity, AI-agent, and MCP evidence. One Finding + UnifiedGraph model
-powers CLI and CI artifacts, browser investigations, compliance evidence, and
-runtime policy without requiring a hosted account.
+powers CLI and CI artifacts, fleet and browser investigations, compliance
+evidence, and runtime policy.
+
+Use the scanner without an account, or deploy the shared control plane inside
+your own cloud, VPC, Kubernetes cluster, database, identity, and audit boundary.
 
 Graph provenance remains explicit: collected, inferred, static, and runtime
 relationships stay distinct, and unavailable evidence is never upgraded to

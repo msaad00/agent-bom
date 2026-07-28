@@ -23,6 +23,7 @@ TICKETING_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260726_01_ticketing_schema_author
 RUNTIME_EVIDENCE_TIMESTAMP_AUTHORITY = VERSIONS_DIR / "20260727_01_runtime_evidence_timestamp_authority.py"
 MCP_PROFILE_BINDING_AUTHORITY = VERSIONS_DIR / "20260728_01_mcp_profile_binding_authority.py"
 GATEWAY_ACTIVITY_LEDGER = VERSIONS_DIR / "20260728_02_gateway_activity_ledger.py"
+TRUSTED_MAINTENANCE_RLS = VERSIONS_DIR / "20260728_03_trusted_maintenance_rls.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -206,10 +207,12 @@ def test_baseline_migration_rewrites_database_specific_grants():
     module = _load_module(BOOTSTRAP, "abom_alembic_bootstrap")
     sql = """
 GRANT CONNECT ON DATABASE agent_bom TO agent_bom_app;
+GRANT CONNECT ON DATABASE agent_bom TO agent_bom_maintenance;
 GRANT CONNECT ON DATABASE agent_bom TO agent_bom_readonly;
 """
     rewritten = module.rewrite_bootstrap_sql(sql, "pilot_customer")
     assert "GRANT CONNECT ON DATABASE pilot_customer TO agent_bom_app;" in rewritten
+    assert "GRANT CONNECT ON DATABASE pilot_customer TO agent_bom_maintenance;" in rewritten
     assert "GRANT CONNECT ON DATABASE pilot_customer TO agent_bom_readonly;" in rewritten
     assert "GRANT CONNECT ON DATABASE agent_bom TO agent_bom_app;" not in rewritten
 
@@ -370,6 +373,61 @@ def test_gateway_activity_ledger_migration_is_chained_durable_and_tenant_isolate
     assert "CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal" in sql
     assert "VALUES ('runtime_events', 2, now())" in sql
     assert "DROP TABLE" not in sql
+
+
+def test_trusted_maintenance_migration_is_forward_only_and_preserves_queue_rows() -> None:
+    sql = TRUSTED_MAINTENANCE_RLS.read_text()
+    assert re.search(r'revision\s*=\s*"20260728_03"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260728_02"', sql)
+    assert "agent_bom_rls_maintenance NOLOGIN" in sql
+    assert "agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS" in sql
+    assert "agent_bom_app must never inherit agent_bom_rls_maintenance" in sql
+    assert "GRANT agent_bom_rls_maintenance TO agent_bom_app" not in sql
+    assert "GRANT agent_bom_rls_maintenance TO agent_bom_maintenance" in sql
+    assert "pg_has_role(session_user, 'agent_bom_rls_maintenance', 'MEMBER')" in sql
+    assert "CREATE TABLE IF NOT EXISTS scan_dispatch_queue" in sql
+    assert "CREATE INDEX IF NOT EXISTS idx_dispatch_pending" in sql
+    assert "ALTER TABLE scan_dispatch_queue ENABLE ROW LEVEL SECURITY" in sql
+    assert "ALTER TABLE scan_dispatch_queue FORCE ROW LEVEL SECURITY" in sql
+    assert "scan_dispatch_queue_tenant_isolation" in sql
+    assert "scan_dispatch_queue_maintenance" in sql
+    assert "tenant_id = public.abom_current_tenant()" in sql
+    assert "TO agent_bom_rls_maintenance" in sql
+    assert "GRANT USAGE ON SCHEMA public TO agent_bom_rls_maintenance" in sql
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public" in sql
+    assert "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public" in sql
+    assert "raise NotImplementedError" in sql
+    for destructive in (
+        "DROP TABLE scan_dispatch_queue",
+        "TRUNCATE scan_dispatch_queue",
+        "DELETE FROM scan_dispatch_queue",
+    ):
+        assert destructive not in sql
+
+
+def test_trusted_maintenance_migration_preserves_explicit_superuser_acknowledgement(monkeypatch) -> None:
+    """The dev escape hatch must not grant the app maintenance-marker membership."""
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
+    migration = _load_module(TRUSTED_MAINTENANCE_RLS, "trusted_maintenance_rls_ack_test")
+
+    monkeypatch.delenv("AGENT_BOM_ALLOW_SUPERUSER_DB", raising=False)
+    assert migration._allow_superuser_db() is False
+    captured: list[str] = []
+    migration.op = SimpleNamespace(execute=captured.append)
+    migration._configure_runtime_passwords = lambda: None
+    migration.upgrade()
+    assert "AND NOT FALSE" in captured[0]
+
+    monkeypatch.setenv("AGENT_BOM_ALLOW_SUPERUSER_DB", "1")
+    assert migration._allow_superuser_db() is True
+    captured.clear()
+    migration.upgrade()
+    assert "AND NOT TRUE" in captured[0]
+
+    sql = TRUSTED_MAINTENANCE_RLS.read_text()
+    assert "_allow_superuser_db()" in sql
+    assert "GRANT agent_bom_rls_maintenance TO agent_bom_app" not in sql
+    assert "agent_bom_app must never inherit agent_bom_rls_maintenance" in sql
 
 
 def test_hub_partition_migration_uses_the_psycopg_driver_connection(monkeypatch):

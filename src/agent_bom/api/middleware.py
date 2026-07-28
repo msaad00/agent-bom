@@ -1844,7 +1844,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if auth_method == "managed_trial_oidc":
             from agent_bom.api.tenant_lifecycle import tenant_access_active
 
-            if not tenant_access_active(tenant_id):
+            if not await anyio.to_thread.run_sync(tenant_access_active, tenant_id):
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized — managed trial is inactive"})
         effective_role = session_role
         if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):

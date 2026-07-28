@@ -73,7 +73,10 @@ module and the chart stay aligned instead of relying on tribal glue.
 
 1. Apply the AWS baseline module.
 2. Create or configure your `ClusterSecretStore` for AWS Secrets Manager.
-3. Populate the chart-facing DB URL secret with `AGENT_BOM_POSTGRES_URL`.
+3. Populate separate chart-facing app, maintenance, migration/admin, and auth
+   Secrets before installing the workload chart. Until the AWS baseline module
+   exposes all four existing-secret inputs, this is an explicit platform-team
+   prerequisite rather than a module-generated credential contract.
 4. Copy the `helm_values_hint` output into your values file or map it into your
    Helm pipeline.
 5. Install the chart:

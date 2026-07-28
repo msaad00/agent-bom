@@ -72,7 +72,7 @@ cp .env.example .env    # ports / non-secret URL only
 make fullstack-up       # == docker compose -f deploy/docker-compose.fullstack.yml up --build -d
 ```
 
-Prefer to write the secret files by hand? Generate all six with `openssl` /
+Prefer to write the secret files by hand? Generate all seven with `openssl` /
 Fernet as documented in [`deploy/secrets/README.md`](../deploy/secrets/README.md),
 `chmod 0644` them (world-readable — compose bind-mounts preserve host perms and
 the non-root postgres/API container users must read `/run/secrets/*`; the host
@@ -88,23 +88,24 @@ compose command above.
 > varies), then `make secrets` and bring the stack up again.
 
 Postgres and control-plane secrets are Docker secret files only — never `.env`
-or compose env. The API connects as `agent_bom_app` (DML-only), not the image
-bootstrap role.
+or compose env. The API uses separate `agent_bom_app` (tenant-bound DML) and
+`agent_bom_maintenance` (scoped cross-tenant work) connections; it never uses
+the image bootstrap/admin role.
 
 Then open:
 
 - Dashboard → <http://localhost:3000>
 - API docs → <http://localhost:8422/docs>
 
-To point at a managed Postgres instead of the bundled one, set a password-free
-`AGENT_BOM_POSTGRES_URL` (app role only) plus
-`AGENT_BOM_POSTGRES_PASSWORD_FILE`, and remove the `postgres` service:
-
-```bash
-AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@db.example.com:5432/agent_bom \
-AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password \
-  docker compose -f deploy/docker-compose.fullstack.yml up api ui
-```
+The packaged Compose stacks intentionally own their bundled Postgres service;
+they do not advertise an untested "remove the database service" shortcut. For
+an operator-managed Postgres/RDS deployment, use the Helm
+[`byo-postgres-values.yaml`](../deploy/helm/agent-bom/examples/byo-postgres-values.yaml)
+overlay and its separately provisioned app, maintenance, and migration/admin
+Secrets. A custom Compose override is outside the packaged deployment contract
+until it replaces the API URLs, secret mounts, migration service, and Postgres
+dependency together and passes `docker compose config` plus a live startup
+smoke.
 
 For a production-shaped single host (Docker secrets, internal-only Postgres,
 split networks) use `deploy/docker-compose.platform.yml`.

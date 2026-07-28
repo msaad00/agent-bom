@@ -22,6 +22,7 @@ from agent_bom.api.postgres_common import (
     ConnectionPool,
     _ensure_tenant_rls,
     _get_pool,
+    _maintenance_connection,
     _tenant_connection,
     bypass_tenant_rls,
 )
@@ -31,8 +32,17 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 class PostgresConnectionStore:
     """Shared cloud-connection store backed by Postgres with tenant RLS."""
 
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        # An explicitly injected pool is retained for hermetic store tests. In
+        # production ``pool`` is omitted, so maintenance always resolves the
+        # separately validated global maintenance pool and never falls back to
+        # the application pool.
+        self._maintenance_pool = maintenance_pool
         self._init_tables()
 
     def init_schema(self) -> None:
@@ -173,7 +183,7 @@ class PostgresConnectionStore:
         trusted internal task that must see every tenant's schedulable
         connections; tenant identity is preserved on each returned record.
         """
-        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(), _maintenance_connection(self._maintenance_pool) as conn:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
@@ -188,7 +198,7 @@ class PostgresConnectionStore:
 
         RLS-bypassed like :meth:`list_schedulable` — trusted scheduler task.
         """
-        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(), _maintenance_connection(self._maintenance_pool) as conn:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
                 "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, "
@@ -209,7 +219,7 @@ class PostgresConnectionStore:
         loses the claim. Runs RLS-bypassed (trusted scheduler) with the explicit
         tenant id retained in the predicate.
         """
-        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(), _maintenance_connection(self._maintenance_pool) as conn:
             if record.last_scan_at is None:
                 cursor = conn.execute(
                     "UPDATE cloud_connections SET last_scan_at = %s, updated_at = %s "

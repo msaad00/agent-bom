@@ -29,6 +29,7 @@ from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.graph import RelationshipType, UnifiedEdge, build_workspace
 from agent_bom.graph.build_workspace import (
     GraphBuildWorkspace,
+    _PostgresWorkspaceBackend,
     _SQLiteWorkspaceBackend,
     open_graph_build_workspace,
 )
@@ -67,6 +68,55 @@ def test_postgres_workspace_resolves_mounted_password_file(monkeypatch: pytest.M
         "workspace_id": "secret-file",
         "password": "app-secret",
     }
+
+
+def test_postgres_workspace_cleanup_stays_tenant_bound() -> None:
+    """Closing an app-backed workspace never attempts maintenance bypass."""
+
+    class _FakeConnection:
+        def __init__(self) -> None:
+            self.executed: list[tuple[str, object]] = []
+            self.closed = False
+
+        def transaction(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def execute(self, sql, params=None):
+            self.executed.append((" ".join(sql.split()), params))
+            return self
+
+        def close(self) -> None:
+            self.closed = True
+
+    conn = _FakeConnection()
+    backend = object.__new__(_PostgresWorkspaceBackend)
+    backend._conn = conn
+    backend._workspace_id = "workspace-1"
+    backend._tenant_ids = {"tenant-beta", "tenant-alpha"}
+
+    backend.close()
+
+    assert conn.closed is True
+    assert not any("app.bypass_rls" in sql and params == ("1",) for sql, params in conn.executed)
+    assert [
+        params
+        for sql, params in conn.executed
+        if sql.startswith("DELETE FROM graph_build_workspace_nodes")
+    ] == [
+        ("workspace-1", "tenant-alpha"),
+        ("workspace-1", "tenant-beta"),
+    ]
+    assert all(
+        "tenant_id = %s" in sql
+        for sql, _params in conn.executed
+        if sql.startswith("DELETE FROM graph_build_workspace_")
+    )
 
 
 def _synthetic_graph(scan: str, n: int, tenant: str = "t1") -> UnifiedGraph:

@@ -61,6 +61,8 @@ controlPlane:
       - secretRef:
           name: agent-bom-control-plane-db
       - secretRef:
+          name: agent-bom-control-plane-maintenance
+      - secretRef:
           name: agent-bom-control-plane-auth
   ui:
     replicas: 2
@@ -107,6 +109,14 @@ controlPlane:
           - path: /
             pathType: Prefix
     tls: []
+  migrations:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-admin
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
   backup:
     enabled: true
     schedule: "0 3 * * *"
@@ -123,7 +133,7 @@ controlPlane:
         kmsKeyId: alias/agent-bom-backups
     envFrom:
       - secretRef:
-          name: agent-bom-control-plane-db
+          name: agent-bom-control-plane-maintenance
 
 scanner:
   enabled: true

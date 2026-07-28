@@ -16,7 +16,7 @@ Choose the right profile first:
 
 - EKS cluster with AWS Load Balancer Controller installed
 - ACM certificate ARN for the control-plane hostname
-- RDS/Postgres URL for `AGENT_BOM_POSTGRES_URL`
+- distinct RDS/Postgres credentials for app, maintenance, and migration/admin roles
 - IRSA role ARN for scanner/API AWS read access and backup access
 - Helm 3
 
@@ -28,15 +28,19 @@ kubectl create namespace agent-bom
 
 ## 2. Create Secret Env Files
 
-Create `agent-bom-db.env` locally:
+Create three database env files locally:
 
 ```bash
-AGENT_BOM_POSTGRES_URL=postgresql://agent_bom:REPLACE_ME@REPLACE_ME_RDS_ENDPOINT:5432/agent_bom
+echo 'AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app:REPLACE_ME@REPLACE_ME_RDS_ENDPOINT:5432/agent_bom' > agent-bom-db.env
+echo 'AGENT_BOM_POSTGRES_MAINTENANCE_URL=postgresql://agent_bom_maintenance:REPLACE_ME@REPLACE_ME_RDS_ENDPOINT:5432/agent_bom' > agent-bom-maintenance.env
+echo 'ALEMBIC_DATABASE_URL=postgresql://REPLACE_ME_MIGRATION_ADMIN:REPLACE_ME@REPLACE_ME_RDS_ENDPOINT:5432/agent_bom' > agent-bom-admin.env
 ```
 
 Create `agent-bom-auth.env` locally:
 
 ```bash
+AGENT_BOM_API_KEYS=REPLACE_ME_OPENSSL_RAND_HEX_24:admin
+AGENT_BOM_CONNECTIONS_KEY=REPLACE_ME_FERNET_KEY
 AGENT_BOM_AUDIT_HMAC_KEY=REPLACE_ME_32_BYTES_OR_LONGER
 AGENT_BOM_AUDIT_HMAC_KEY_LAST_ROTATED=2026-04-26T00:00:00+00:00
 AGENT_BOM_BROWSER_SESSION_SIGNING_KEY=REPLACE_ME_32_BYTES_OR_LONGER
@@ -47,8 +51,16 @@ AGENT_BOM_TRUST_PROXY_AUTH_SECRET=REPLACE_ME_32_BYTES_OR_LONGER
 AGENT_BOM_TRUST_PROXY_AUTH_ISSUER=aws-alb
 ```
 
-Add OIDC, SAML, or SCIM values to the same auth env file when those features
-are enabled. Keep the env files in your secret-management workflow, not in Git.
+Generate the API-key value with `openssl rand -hex 24` and append `:admin`.
+Generate `AGENT_BOM_CONNECTIONS_KEY` with
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`;
+an arbitrary hex value is not a valid Fernet key. Replace the remaining
+placeholders with independently generated secret material.
+
+Replace `AGENT_BOM_API_KEYS` with a complete OIDC, SAML, or trusted-proxy auth
+configuration when that backend is enabled. SCIM provisioning does not replace
+an interactive login backend. Keep the env files in your secret-management
+workflow, not in Git.
 
 Apply the Kubernetes Secrets:
 
@@ -56,6 +68,14 @@ Apply the Kubernetes Secrets:
 kubectl create secret generic agent-bom-control-plane-db \
   --namespace agent-bom \
   --from-env-file=agent-bom-db.env
+
+kubectl create secret generic agent-bom-control-plane-maintenance \
+  --namespace agent-bom \
+  --from-env-file=agent-bom-maintenance.env
+
+kubectl create secret generic agent-bom-control-plane-admin \
+  --namespace agent-bom \
+  --from-env-file=agent-bom-admin.env
 
 kubectl create secret generic agent-bom-control-plane-auth \
   --namespace agent-bom \

@@ -115,6 +115,7 @@ class _FakeJobPool:
 def _make_store(state):
     store = object.__new__(PostgresJobStore)  # skip _init_tables (DDL)
     store._pool = _FakeJobPool(state)
+    store._maintenance_pool = _FakeJobPool(state)
     return store
 
 

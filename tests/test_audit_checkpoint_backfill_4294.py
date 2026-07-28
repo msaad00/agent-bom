@@ -154,9 +154,9 @@ def _pg_build_chain(store, tenant: str, n: int) -> None:
 
 
 def _pg_exec(sql: str, params: tuple) -> None:
-    from agent_bom.api.postgres_common import _get_pool, _tenant_connection, bypass_tenant_rls
+    from agent_bom.api.postgres_common import _maintenance_connection, bypass_tenant_rls
 
-    with bypass_tenant_rls(audit=False), _tenant_connection(_get_pool()) as conn:
+    with bypass_tenant_rls(audit=False), _maintenance_connection() as conn:
         conn.execute(sql, params)
         conn.commit()
 

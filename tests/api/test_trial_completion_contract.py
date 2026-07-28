@@ -220,7 +220,10 @@ def test_postgres_cleanup_discovers_all_tenant_tables_but_retains_audit_tombston
 
     monkeypatch.setattr("agent_bom.api.routes.privacy._delete_records", lambda tenant_id: {})
     monkeypatch.setattr("agent_bom.api.storage_schema.postgres_deployment_configured", lambda: True)
-    monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", lambda: _Pool())
+    # Managed-trial cleanup is intentionally cross-tenant maintenance work.
+    # Keep this unit test on the explicit maintenance boundary rather than
+    # teaching production code to fall back to the ordinary application pool.
+    monkeypatch.setattr("agent_bom.api.postgres_common._get_maintenance_pool", lambda: _Pool())
     monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(sql=fake_sql))
 
     result = delete_tenant_records("trial-synthetic-001")

@@ -14,6 +14,7 @@ from .postgres_common import (
     ConnectionPool,
     _ensure_tenant_rls,
     _get_pool,
+    _maintenance_connection,
     _tenant_connection,
     bypass_tenant_rls,
     reset_current_tenant,
@@ -59,8 +60,13 @@ _UPSERT_API_KEY_SQL = """INSERT INTO api_keys
 class PostgresKeyStore:
     """PostgreSQL-backed API key storage with tenant RLS."""
 
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         self._init_tables()
 
     def _init_tables(self) -> None:
@@ -320,8 +326,12 @@ class PostgresKeyStore:
 
     def verify(self, raw_key: str) -> ApiKey | None:
         prefix = raw_key[:12]
-        with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+        # Verification is on the hot path for every API-key-authenticated
+        # request. The auth middleware records the request outcome separately;
+        # avoid a stack walk, warning, and signed maintenance-scope audit record
+        # for every prefix lookup while retaining the role-gated DB boundary.
+        with bypass_tenant_rls(audit=False, warn=False):
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 rows = conn.execute(
                     """SELECT
                            key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
@@ -335,7 +345,7 @@ class PostgresKeyStore:
 
     def has_keys(self) -> bool:
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 row = conn.execute("SELECT COUNT(*) FROM api_keys WHERE revoked = FALSE").fetchone()
                 return bool(row and row[0] > 0)
 

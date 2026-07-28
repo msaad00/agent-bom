@@ -13,7 +13,7 @@ from __future__ import annotations
 import click
 import pytest
 
-from agent_bom.api.postgres_common import RlsRolePrivilegeError
+from agent_bom.api.postgres_common import MaintenanceRoleConfigurationError, RlsRolePrivilegeError
 from agent_bom.cli._server import _enforce_database_role_posture
 
 
@@ -75,15 +75,48 @@ def test_preflight_passes_for_non_superuser_role(monkeypatch: pytest.MonkeyPatch
     assert ran is True
 
 
-def test_preflight_connectivity_error_does_not_block_bind(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A transient connect/probe failure defers to the request-time guard rather
-    than aborting the bind — only an RLS-bypass verdict is fatal here."""
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("AGENT_BOM_POSTGRES_MAINTENANCE_URL is required"),
+        MaintenanceRoleConfigurationError("maintenance role must be distinct"),
+    ],
+)
+def test_preflight_rejects_invalid_maintenance_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    """Missing or unsafe maintenance credentials abort before the server binds."""
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgres://agent_bom_app@localhost/x")
     monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
 
-    def _connect_error() -> None:
-        raise OSError("connection refused")
+    def _raise() -> None:
+        raise error
 
-    monkeypatch.setattr("agent_bom.api.postgres_common.preflight_rls_capable_role", _connect_error)
-    # Must not raise ClickException — a DB blip should not abort the bind.
-    _enforce_database_role_posture("serve")
+    monkeypatch.setattr("agent_bom.api.postgres_common.preflight_rls_capable_role", _raise)
+    with pytest.raises(click.ClickException, match="(?i)maintenance"):
+        _enforce_database_role_posture("serve")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("connection refused"),
+        RuntimeError("password authentication failed for user agent_bom_maintenance"),
+    ],
+)
+def test_preflight_probe_or_credential_failure_blocks_bind_without_leaking_driver_text(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    """An unvalidated maintenance boundary must never accept requests."""
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgres://agent_bom_app@localhost/x")
+    monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
+
+    def _probe_error() -> None:
+        raise error
+
+    monkeypatch.setattr("agent_bom.api.postgres_common.preflight_rls_capable_role", _probe_error)
+    with pytest.raises(click.ClickException, match="Postgres role preflight failed") as denied:
+        _enforce_database_role_posture("serve")
+    assert str(error) not in str(denied.value)

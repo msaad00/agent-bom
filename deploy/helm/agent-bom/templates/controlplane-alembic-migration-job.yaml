@@ -1,11 +1,11 @@
 {{- if and .Values.controlPlane.enabled .Values.controlPlane.migrations.enabled .Values.controlPlane.migrations.postgres.enabled }}
 {{- $migrations := .Values.controlPlane.migrations }}
-{{- $envFrom := $migrations.envFrom }}
-{{- if not $envFrom }}
-{{- $envFrom = .Values.controlPlane.api.envFrom }}
+{{- if .Values.controlPlane.externalSecrets.enabled }}
+{{- fail "a Postgres migration cannot consume ExternalSecrets reconciled by the same release; create and wait for the target Secrets in a separate secret-sync release, then install with controlPlane.externalSecrets.enabled=false" }}
 {{- end }}
+{{- $envFrom := $migrations.envFrom }}
 {{- if and (not $envFrom) (not $migrations.env) }}
-{{- fail "controlPlane.migrations requires controlPlane.api.envFrom or controlPlane.migrations.env with AGENT_BOM_POSTGRES_URL" }}
+{{- fail "controlPlane.migrations requires controlPlane.migrations.envFrom or controlPlane.migrations.env with a migration/admin ALEMBIC_DATABASE_URL" }}
 {{- end }}
 apiVersion: batch/v1
 kind: Job

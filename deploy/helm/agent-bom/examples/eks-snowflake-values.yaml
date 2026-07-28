@@ -20,6 +20,9 @@
 
 controlPlane:
   enabled: true
+  migrations:
+    postgres:
+      enabled: false
   observability:
     grafanaDashboard:
       enabled: true

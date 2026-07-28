@@ -186,7 +186,7 @@ def test_postgres_random_access_reads_are_tenant_scoped() -> None:
         b_edges = [json.loads(p) for p in backend.iter_edge_payloads_by_target("beta", "b2", 8)]
         assert [e["source"] for e in b_edges] == ["shared:1"]
     finally:
-        backend.close()  # DELETE by workspace_id clears both tenants' rows
+        backend.close()  # Tenant-bound cleanup clears both tenants touched by this backend.
 
 
 def test_postgres_workspace_tenant_isolation() -> None:
@@ -205,7 +205,8 @@ def test_postgres_workspace_tenant_isolation() -> None:
         assert beta_nodes["shared:1"] == "beta-agent"
         assert "a-only" in alpha_nodes and "a-only" not in beta_nodes
     finally:
-        alpha.close()  # DELETE by workspace_id clears both tenants' rows
+        alpha.close()
+        beta.close()
 
 
 _CHILD_WRITER = """

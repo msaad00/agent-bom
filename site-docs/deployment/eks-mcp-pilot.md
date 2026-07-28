@@ -146,7 +146,10 @@ before install.
 At minimum, put these in a Kubernetes Secret referenced by the API Deployment:
 
 - `AGENT_BOM_POSTGRES_URL`
-- `AGENT_BOM_API_KEY` or OIDC settings
+- `AGENT_BOM_POSTGRES_MAINTENANCE_URL` from a distinct maintenance Secret
+- `AGENT_BOM_API_KEYS` with a tenant-capable admin key, or OIDC settings
+- `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` shared by every API replica
+- `AGENT_BOM_CONNECTIONS_KEY` as a valid Fernet key
 - `AGENT_BOM_AUDIT_HMAC_KEY` (required for pilot sign-off; do not rely on the ephemeral fallback)
 
 For enterprise pilots, prefer:
@@ -182,14 +185,25 @@ kubectl create namespace agent-bom --dry-run=client -o yaml | kubectl apply -f -
 
 export API_KEY="$(openssl rand -hex 32)"
 export AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
-export AGENT_BOM_POSTGRES_URL="postgresql://agent_bom:REPLACE_ME@postgres.example:5432/agent_bom?sslmode=require"
+export BROWSER_SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
+export CONNECTIONS_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+export AGENT_BOM_POSTGRES_URL="postgresql://agent_bom_app:REPLACE_ME@postgres.example:5432/agent_bom?sslmode=require"
+export AGENT_BOM_POSTGRES_MAINTENANCE_URL="postgresql://agent_bom_maintenance:REPLACE_ME@postgres.example:5432/agent_bom?sslmode=require"
+export ALEMBIC_DATABASE_URL="postgresql://REPLACE_ME_MIGRATION_ADMIN:REPLACE_ME@postgres.example:5432/agent_bom?sslmode=require"
 
 # 2. Generate the Ed25519 key pair for compliance evidence signing
 openssl genpkey -algorithm ed25519 -out /tmp/evidence-priv.pem
-kubectl -n agent-bom create secret generic agent-bom-control-plane \
-  --from-literal=AGENT_BOM_POSTGRES_URL="$AGENT_BOM_POSTGRES_URL" \
-  --from-literal=AGENT_BOM_API_KEY="$API_KEY" \
+kubectl -n agent-bom create secret generic agent-bom-control-plane-db \
+  --from-literal=AGENT_BOM_POSTGRES_URL="$AGENT_BOM_POSTGRES_URL"
+kubectl -n agent-bom create secret generic agent-bom-control-plane-maintenance \
+  --from-literal=AGENT_BOM_POSTGRES_MAINTENANCE_URL="$AGENT_BOM_POSTGRES_MAINTENANCE_URL"
+kubectl -n agent-bom create secret generic agent-bom-control-plane-admin \
+  --from-literal=ALEMBIC_DATABASE_URL="$ALEMBIC_DATABASE_URL"
+kubectl -n agent-bom create secret generic agent-bom-control-plane-auth \
+  --from-literal=AGENT_BOM_API_KEYS="${API_KEY}:admin" \
   --from-literal=AGENT_BOM_AUDIT_HMAC_KEY="$AUDIT_HMAC_KEY" \
+  --from-literal=AGENT_BOM_BROWSER_SESSION_SIGNING_KEY="$BROWSER_SESSION_SIGNING_KEY" \
+  --from-literal=AGENT_BOM_CONNECTIONS_KEY="$CONNECTIONS_KEY" \
   --from-literal=AGENT_BOM_REQUIRE_AUDIT_HMAC="1"
 kubectl -n agent-bom create secret generic agent-bom-evidence-signing \
   --from-file=private.pem=/tmp/evidence-priv.pem
@@ -202,9 +216,11 @@ helm install agent-bom deploy/helm/agent-bom \
 ```
 
 If your platform requires AWS Secrets Manager, enable
-`controlPlane.externalSecrets` and map those remote keys into the same
-`agent-bom-control-plane` Kubernetes Secret. The pilot values file does not
-enable ExternalSecrets by default.
+`controlPlane.externalSecrets` and map those remote keys into the four distinct
+chart-facing Secrets: `agent-bom-control-plane-db`,
+`agent-bom-control-plane-maintenance`, `agent-bom-control-plane-admin`, and
+`agent-bom-control-plane-auth`. The pilot values file does not enable
+ExternalSecrets by default.
 
 ### Stage 2 — Smoke test (2 min)
 

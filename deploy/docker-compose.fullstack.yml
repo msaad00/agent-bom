@@ -10,6 +10,7 @@
 # Postgres + control-plane secrets are file-mounted Docker secrets only:
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+#   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_maintenance_password
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/api_key
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/audit_hmac_key
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/browser_session_signing_key
@@ -49,6 +50,8 @@ services:
       # — never from env / .env / compose interpolation.
       AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
       AGENT_BOM_POSTGRES_PASSWORD_FILE: /run/secrets/postgres_app_password
+      AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance@postgres:5432/${POSTGRES_DB:-agent_bom}
+      AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE: /run/secrets/postgres_maintenance_password
       # Optional enrichment API keys
       NVD_API_KEY: ${NVD_API_KEY:-}
       # Optional cloud scanning
@@ -69,6 +72,7 @@ services:
       AGENT_BOM_API_LOCAL_PATH_SCANS: ${AGENT_BOM_API_LOCAL_PATH_SCANS:-disabled}
     secrets:
       - postgres_app_password
+      - postgres_maintenance_password
       - api_key
       - audit_hmac_key
       - browser_session_signing_key
@@ -133,10 +137,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+      POSTGRES_MAINTENANCE_PASSWORD_FILE: /run/secrets/postgres_maintenance_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     secrets:
       - postgres_password
       - postgres_app_password
+      - postgres_maintenance_password
     ports:
       # Only expose locally — remove in production
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
@@ -171,6 +177,8 @@ secrets:
     file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
   postgres_app_password:
     file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres_app_password}
+  postgres_maintenance_password:
+    file: ${POSTGRES_MAINTENANCE_PASSWORD_FILE:-./secrets/postgres_maintenance_password}
   api_key:
     file: ${API_KEY_FILE:-./secrets/api_key}
   audit_hmac_key:

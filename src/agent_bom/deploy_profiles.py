@@ -112,6 +112,14 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             ),
         ),
         HelmValidationProfile(
+            name="production-secret-sync",
+            description="ExternalSecrets-only bootstrap stage for the production EKS profile.",
+            values_files=(
+                examples / "eks-production-values.yaml",
+                examples / "eks-production-secret-sync-values.yaml",
+            ),
+        ),
+        HelmValidationProfile(
             name="production",
             description="Postgres-backed production EKS defaults with autoscaling and backups.",
             values_files=(examples / "eks-production-values.yaml",),
@@ -175,6 +183,15 @@ def build_helm_profile_command(
     except KeyError as exc:
         available = ", ".join(sorted(profiles))
         raise KeyError(f"unknown Helm profile '{profile_name}' (available: {available})") from exc
+
+    # The production secret bootstrap must remain a separate Helm release from
+    # the workloads. Reusing the normal ``agent-bom`` release would make the
+    # subsequent production upgrade delete the ExternalSecret objects (and,
+    # with creationPolicy=Owner, their generated target Secrets). Keep the
+    # common CLI/wrapper default safe while still allowing an explicitly named
+    # separate secret release for multi-install environments.
+    if profile_name == "production-secret-sync" and release_name == "agent-bom":
+        release_name = "agent-bom-secrets"
 
     cmd = [
         "helm",

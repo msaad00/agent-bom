@@ -941,6 +941,8 @@ jobs:
       # mounted file through the shared Postgres connection factory.
       AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app@127.0.0.1:5432/agentbom_test
       AGENT_BOM_POSTGRES_PASSWORD_FILE: /tmp/agent-bom-postgres-app-password
+      AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_test
+      AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE: /tmp/agent-bom-postgres-maintenance-password
       # Migrator/admin DSN for DDL-only integration checks (CREATE SCHEMA).
       AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://postgres:testpass@127.0.0.1:5432/agentbom_test
       AGENT_BOM_POSTGRES_POOL_MIN_SIZE: "1"
@@ -957,10 +959,12 @@ jobs:
       - name: Install Postgres test dependencies
         run: uv sync --frozen --extra dev --extra api --extra postgres
 
-      - name: Write app-role password file
+      - name: Write runtime-role password files
         run: |
           install -m 0600 /dev/null "${AGENT_BOM_POSTGRES_PASSWORD_FILE}"
           printf '%s' 'apppass' > "${AGENT_BOM_POSTGRES_PASSWORD_FILE}"
+          install -m 0600 /dev/null "${AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE}"
+          printf '%s' 'maintenancepass' > "${AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE}"
 
       - name: Install Postgres client
         run: |
@@ -973,6 +977,40 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Exact legacy upgrade contract: model a 0.98.2 database at the prior
+          # revision with an app login, a queued row, and no maintenance roles.
+          # The privileged migration identity must create/credential the new
+          # role, preserve the row, and grant the full maintenance surface.
+          psql -h 127.0.0.1 -U postgres -d postgres <<'SQL'
+          CREATE ROLE agent_bom_app LOGIN PASSWORD 'legacyapppass' NOSUPERUSER NOBYPASSRLS;
+          CREATE DATABASE agentbom_legacy;
+          SQL
+          psql -h 127.0.0.1 -U postgres -d agentbom_legacy <<'SQL'
+          CREATE TABLE scan_jobs (job_id TEXT PRIMARY KEY);
+          INSERT INTO scan_jobs(job_id) VALUES ('legacy-queued-job');
+          CREATE TABLE scan_dispatch_queue (
+            job_id TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+            tenant_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            claimed_by TEXT,
+            lease_expires_at TEXT
+          );
+          INSERT INTO scan_dispatch_queue(job_id, tenant_id, created_at)
+          VALUES ('legacy-queued-job', 'legacy-tenant', '2026-07-28T00:00:00Z');
+          CREATE FUNCTION public.abom_current_tenant() RETURNS TEXT
+            LANGUAGE SQL STABLE AS $$ SELECT COALESCE(NULLIF(current_setting('app.tenant_id', true), ''), 'default') $$;
+          CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY);
+          INSERT INTO alembic_version(version_num) VALUES ('20260728_02');
+          SQL
+          export ALEMBIC_DATABASE_URL='postgresql+psycopg://postgres:testpass@127.0.0.1:5432/agentbom_legacy'
+          export AGENT_BOM_POSTGRES_URL='postgresql://agent_bom_app@127.0.0.1:5432/agentbom_legacy'
+          export AGENT_BOM_POSTGRES_MAINTENANCE_URL='postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_legacy'
+          uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+          test "$(PGPASSWORD=apppass psql -h 127.0.0.1 -U agent_bom_app -d agentbom_legacy -Atc 'SELECT session_user')" = "agent_bom_app"
+          test "$(PGPASSWORD=maintenancepass psql -h 127.0.0.1 -U agent_bom_maintenance -d agentbom_legacy -Atc "SELECT session_user, has_table_privilege(session_user, 'scan_dispatch_queue', 'SELECT')")" = "agent_bom_maintenance|t"
+          test "$(PGPASSWORD=maintenancepass PGOPTIONS='-c app.bypass_rls=1' psql -h 127.0.0.1 -U agent_bom_maintenance -d agentbom_legacy -Atc "SELECT count(*) FROM scan_dispatch_queue WHERE job_id = 'legacy-queued-job'")" = "1"
+
           # Fresh Alembic-only deployment. The dedicated bootstrap owner mirrors
           # the shipped compose model: it starts privileged enough to provision
           # roles, then init.sql strips SUPERUSER/BYPASSRLS before the connection
@@ -982,8 +1020,20 @@ jobs:
           CREATE ROLE agentbom_migration_owner LOGIN PASSWORD 'migrationpass' SUPERUSER;
           CREATE DATABASE agentbom_migration OWNER agentbom_migration_owner;
           ALTER DATABASE agentbom_migration SET init.app_password = 'apppass';
+          ALTER DATABASE agentbom_migration SET init.maintenance_password = 'maintenancepass';
           SQL
           export ALEMBIC_DATABASE_URL='postgresql+psycopg://agentbom_migration_owner:migrationpass@127.0.0.1:5432/agentbom_migration'
+          uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade 20260728_02
+          PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration <<'SQL'
+          SELECT set_config('app.tenant_id', 'migration-queue-tenant', false);
+          SELECT set_config('app.bypass_rls', '1', false);
+          INSERT INTO teams (team_id, name, slug)
+          VALUES ('migration-queue-tenant', 'Migration queue tenant', 'migration-queue-tenant');
+          INSERT INTO scan_jobs (job_id, status, created_at, team_id, data)
+          VALUES ('migration-queue-job', 'pending', '2026-07-28T00:00:00Z', 'migration-queue-tenant', '{}');
+          INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
+          VALUES ('migration-queue-job', 'migration-queue-tenant', '2026-07-28T00:00:00Z', 'pending');
+          SQL
           uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
           # A second invocation is the supported idempotent rerun contract.
           uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
@@ -991,6 +1041,7 @@ jobs:
           expected_head="$(uv run alembic -c deploy/supabase/postgres/alembic.ini heads | awk 'NR == 1 {print $1}')"
           actual_head="$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc 'SELECT version_num FROM alembic_version')"
           test "$actual_head" = "$expected_head"
+          test "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT count(*) FROM scan_dispatch_queue WHERE job_id = 'migration-queue-job'")" = "1"
           test -z "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT current_setting('init.app_password', true)")"
           test "$(PGPASSWORD=migrationpass psql -h 127.0.0.1 -U agentbom_migration_owner -d agentbom_migration -Atc "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")" = "f"
 
@@ -1001,6 +1052,7 @@ jobs:
           CREATE ROLE agentbom_psql_owner LOGIN PASSWORD 'psqlpass' SUPERUSER;
           CREATE DATABASE agent_bom OWNER agentbom_psql_owner;
           ALTER DATABASE agent_bom SET init.app_password = 'apppass';
+          ALTER DATABASE agent_bom SET init.maintenance_password = 'maintenancepass';
           SQL
           PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom \
             -v ON_ERROR_STOP=1 -f deploy/supabase/postgres/init.sql

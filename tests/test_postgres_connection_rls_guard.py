@@ -29,7 +29,12 @@ import re
 import pytest
 
 from agent_bom.api.connection_store import CloudConnectionRecord
-from agent_bom.api.postgres_common import bypass_tenant_rls, reset_current_tenant, set_current_tenant
+from agent_bom.api.postgres_common import (
+    MaintenanceRoleConfigurationError,
+    bypass_tenant_rls,
+    reset_current_tenant,
+    set_current_tenant,
+)
 from agent_bom.api.postgres_connection import PostgresConnectionStore
 
 _SET_CONFIG = re.compile(r"^select set_config\('(?P<name>[^']+)'")
@@ -237,15 +242,12 @@ def test_a_bound_tenant_cannot_read_another_tenants_connection(store):
         reset_current_tenant(other)
 
 
-def test_trusted_rls_bypass_accepts_a_write_for_any_tenant(store):
-    """The scheduler's cross-tenant read/claim path must stay usable.
-
-    ``audit=False`` keeps the bypass from emitting a signed audit entry through
-    whichever store happens to be configured for the test session.
-    """
+def test_app_store_cannot_activate_trusted_rls_bypass(store):
+    """An app-pool store cannot turn a scoped flag into cross-tenant access."""
     record = _record("conn-bypassed", "acme")
 
     with bypass_tenant_rls(audit=False):
-        store.put(record)
+        with pytest.raises(MaintenanceRoleConfigurationError, match="maintenance"):
+            store.put(record)
 
-    assert record.id in store._pool.rows["cloud_connections"]
+    assert record.id not in store._pool.rows.get("cloud_connections", {})

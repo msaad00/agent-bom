@@ -420,14 +420,14 @@ def run_partition_retention(
         return {}
     results: dict[str, tuple[int, int]] = {}
     try:
-        from agent_bom.api.postgres_common import _get_pool, _tenant_connection, bypass_tenant_rls
+        from agent_bom.api.postgres_common import _maintenance_connection, bypass_tenant_rls
     except Exception:  # noqa: BLE001 — no Postgres driver available
         logger.debug("partition retention skipped: postgres_common unavailable", exc_info=True)
         return {}
 
     for spec in active:
         try:
-            with bypass_tenant_rls(audit=False), _tenant_connection(_get_pool()) as conn:
+            with bypass_tenant_rls(audit=False), _maintenance_connection() as conn:
                 created, dropped = maintain_partitions(conn, spec, now=now)
                 conn.commit()
                 if created or dropped:

@@ -22,6 +22,7 @@ from .postgres_common import (
     _current_tenant,
     _ensure_tenant_rls,
     _get_pool,
+    _maintenance_connection,
     _tenant_connection,
     bypass_tenant_rls,
 )
@@ -72,8 +73,13 @@ def _is_chain_fork_conflict(exc: Exception) -> bool:
 class PostgresAuditLog:
     """PostgreSQL-backed append-only audit log."""
 
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         self._last_sig_by_tenant: dict[str, str] = {}
         self._init_tables()
         self._hydrate_last_signatures()
@@ -159,7 +165,7 @@ class PostgresAuditLog:
         # cross-tenant read and the per-tenant checkpoint upsert. Both audit_log
         # and audit_chain_checkpoint now enforce tenant RLS, so the bypass is
         # required for this maintenance write to every tenant's checkpoint row.
-        with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(audit=False), _maintenance_connection(self._maintenance_pool) as conn:
             row = conn.execute("SELECT COUNT(*) FROM audit_chain_checkpoint").fetchone()
             if row and int(row[0]) > 0:
                 return
@@ -264,7 +270,7 @@ class PostgresAuditLog:
         it spans every tenant (same trusted context as ``_hydrate_checkpoints``).
         Returns the number of tenant checkpoints reconciled.
         """
-        with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(audit=False), _maintenance_connection(self._maintenance_pool) as conn:
             result = conn.execute(
                 """
                 INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
@@ -355,7 +361,7 @@ class PostgresAuditLog:
     def _hydrate_last_signatures(self) -> None:
         # Cross-tenant enumeration hidden by FORCE ROW LEVEL SECURITY; run under a
         # trusted RLS-bypass session so the per-tenant cache covers every tenant.
-        with bypass_tenant_rls(audit=False), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(audit=False), _maintenance_connection(self._maintenance_pool) as conn:
             rows = conn.execute(
                 """
                 SELECT DISTINCT ON (team_id) team_id, hmac_signature

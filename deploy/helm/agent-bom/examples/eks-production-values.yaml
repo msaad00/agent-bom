@@ -53,6 +53,8 @@ controlPlane:
       - secretRef:
           name: agent-bom-control-plane-db
       - secretRef:
+          name: agent-bom-control-plane-maintenance
+      - secretRef:
           name: agent-bom-control-plane-auth
   ui:
     replicas: 2
@@ -97,7 +99,12 @@ controlPlane:
           - agent-bom.internal.example.com
         secretName: agent-bom-control-plane-tls
   externalSecrets:
-    enabled: true
+    # The workload release consumes pre-created target Secrets. Synchronize
+    # them first with this file plus eks-production-secret-sync-values.yaml;
+    # keeping ExternalSecrets out of this release prevents its pre-install
+    # migration Job from racing normal resources.
+    enabled: false
+    syncOnly: false
     secretStoreRef:
       kind: ClusterSecretStore
       name: aws-secrets-manager
@@ -111,6 +118,24 @@ controlPlane:
             remoteRef:
               key: REPLACE_ME_DB_SECRET_PATH
               property: REPLACE_ME_POSTGRES_URL_PROPERTY
+      - nameSuffix: control-plane-maintenance
+        refreshInterval: 1h
+        target:
+          name: agent-bom-control-plane-maintenance
+        data:
+          - secretKey: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+            remoteRef:
+              key: REPLACE_ME_MAINTENANCE_SECRET_PATH
+              property: REPLACE_ME_POSTGRES_MAINTENANCE_URL_PROPERTY
+      - nameSuffix: control-plane-admin
+        refreshInterval: 1h
+        target:
+          name: agent-bom-control-plane-admin
+        data:
+          - secretKey: ALEMBIC_DATABASE_URL
+            remoteRef:
+              key: REPLACE_ME_ADMIN_SECRET_PATH
+              property: REPLACE_ME_ALEMBIC_DATABASE_URL_PROPERTY
       - nameSuffix: control-plane-auth
         refreshInterval: 5m
         target:
@@ -188,6 +213,14 @@ controlPlane:
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH
               property: REPLACE_ME_REQUIRE_AUDIT_HMAC_PROPERTY
+  migrations:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-admin
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
   backup:
     enabled: true
     schedule: "0 3 * * *"
@@ -204,7 +237,7 @@ controlPlane:
         kmsKeyId: alias/agent-bom-backups
     envFrom:
       - secretRef:
-          name: agent-bom-control-plane-db
+          name: agent-bom-control-plane-maintenance
 
 scanner:
   enabled: true

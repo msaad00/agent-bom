@@ -75,6 +75,94 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
     assert any(item.job_id == job_id for item in results)
 
 
+def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_tenant_safe():
+    """The app GUC alone cannot cross tenants; the dedicated worker can."""
+    import psycopg
+
+    from agent_bom.api.postgres_common import (
+        _get_maintenance_pool,
+        _get_pool,
+        _maintenance_connection,
+        bypass_tenant_rls,
+        reset_current_tenant,
+        set_current_tenant,
+    )
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    suffix = uuid4().hex
+    tenant_id = f"dispatch-{suffix}"
+    other_tenant = f"dispatch-other-{suffix}"
+    queued = ScanJob(
+        job_id=f"dispatch-queued-{suffix}",
+        tenant_id=tenant_id,
+        status=JobStatus.PENDING,
+        created_at="1900-01-01T00:00:00Z",
+        request=ScanRequest(format="json"),
+    )
+    cross_write = queued.model_copy(update={"job_id": f"dispatch-cross-{suffix}"})
+    store = PostgresJobStore()
+
+    tenant_token = set_current_tenant(tenant_id)
+    try:
+        store.put(queued)
+        store.put(cross_write)
+        store.enqueue_for_dispatch(queued)
+    finally:
+        reset_current_tenant(tenant_token)
+
+    try:
+        with _get_pool().connection() as conn:
+            conn.execute("SELECT set_config('app.tenant_id', %s, false)", (other_tenant,))
+            conn.execute("SELECT set_config('app.bypass_rls', '1', false)")
+            assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (False,)
+            assert conn.execute(
+                "SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)
+            ).fetchone() is None
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute(
+                    "INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status) "
+                    "VALUES (%s, %s, %s, 'pending')",
+                    (cross_write.job_id, tenant_id, cross_write.created_at),
+                )
+            conn.rollback()
+
+        with _get_maintenance_pool().connection() as conn:
+            conn.execute("SELECT set_config('app.tenant_id', %s, false)", (other_tenant,))
+            conn.execute("SELECT set_config('app.bypass_rls', '0', false)")
+            assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (False,)
+            assert conn.execute(
+                "SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)
+            ).fetchone() is None
+
+        with bypass_tenant_rls(audit=False):
+            with _maintenance_connection() as conn:
+                assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (True,)
+                assert conn.execute(
+                    "SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)
+                ).fetchone() == (queued.job_id,)
+
+        other_token = set_current_tenant(other_tenant)
+        try:
+            global_job_ids = {job.job_id for job in store.list_all(all_tenants=True)}
+        finally:
+            reset_current_tenant(other_token)
+        assert {queued.job_id, cross_write.job_id}.issubset(global_job_ids)
+
+        claimed = store.claim_next(f"worker-{suffix}", lease_seconds=30)
+        assert claimed is not None
+        assert claimed.job_id == queued.job_id
+        assert claimed.tenant_id == tenant_id
+        store.complete_dispatch(queued.job_id)
+    finally:
+        cleanup_token = set_current_tenant(tenant_id)
+        try:
+            store.delete(queued.job_id, tenant_id=tenant_id)
+            store.delete(cross_write.job_id, tenant_id=tenant_id)
+        finally:
+            reset_current_tenant(cleanup_token)
+
+
 def test_postgres_ticketing_store_real_dml_role_roundtrip_and_tenant_filter():
     from agent_bom.api.postgres_common import _get_pool, reset_current_tenant, set_current_tenant
     from agent_bom.ticketing.connection_store import TicketLink

@@ -12,10 +12,11 @@
 #     python scripts/install_helm_profile.py focused-pilot
 #
 # A bare `--set controlPlane.enabled=true` is NOT enough on its own: the
-# control plane needs `AGENT_BOM_POSTGRES_URL` and the control-plane auth Secret
-# (browser-session / audit / connections keys + a login backend) supplied via
-# `controlPlane.api.envFrom`, or template validation fails before Helm creates a
-# partial control plane. See `examples/postgres-secret.example.yaml` +
+# control plane needs distinct app and maintenance Postgres credentials plus
+# the control-plane auth Secret supplied via `controlPlane.api.envFrom`. The
+# migration hook separately requires an admin credential through
+# `controlPlane.migrations.envFrom`; it never inherits the runtime credentials.
+# See `examples/postgres-secret.example.yaml` +
 # `examples/control-plane-auth-secret.example.yaml` and the chart README.
 #
 # Without that flag a `helm install` succeeds quietly and only the scanner
@@ -688,6 +689,12 @@ controlPlane:
     tls: []
   externalSecrets:
     enabled: false
+    # Render only the ExternalSecret resources for a separate bootstrap
+    # release. Keep controlPlane.enabled=false in that release, wait for every
+    # target Secret to become ready, then install/upgrade the workload release
+    # with externalSecrets.enabled=false. A pre-install migration hook is never
+    # allowed to depend on ExternalSecrets from its own release.
+    syncOnly: false
     refreshInterval: 1h
     secretStoreRef:
       kind: ClusterSecretStore
@@ -709,7 +716,9 @@ controlPlane:
     alembicConfig: deploy/supabase/postgres/alembic.ini
     workingDir: /opt/agent-bom
     env: []
-    # When empty, the hook inherits controlPlane.api.envFrom (Postgres URL secret).
+    # Required for Postgres profiles. Keep the migration/admin credential
+    # distinct from the API app and maintenance credentials; there is no
+    # fallback to controlPlane.api.envFrom.
     envFrom: []
     resources:
       requests:

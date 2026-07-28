@@ -26,9 +26,10 @@ Design notes:
   (``ConnectionStore.claim_due_scan``): the first replica to advance the stored
   timestamp wins, every racing replica's conditional UPDATE then no-ops. Exactly
   one replica runs a given due scan. Bounded concurrency caps brokered scans.
-* **Tenant-bound.** Store *reads* run under ``bypass_tenant_rls()`` because the
-  loop polls every tenant's connections, but each per-connection unit of work
-  binds ``set_current_tenant(record.tenant_id)`` before touching a write path.
+* **Tenant-bound.** Global store *reads* use the dedicated maintenance pool
+  inside ``bypass_tenant_rls()`` because the loop polls every tenant's
+  connections, but each per-connection unit of work binds
+  ``set_current_tenant(record.tenant_id)`` before touching an app write path.
   On Postgres the ``WITH CHECK`` half of each tenant-isolation policy compares
   the written row against ``app.tenant_id``, so an unbound tenant makes every
   scheduled write for a non-``default`` tenant fail closed.

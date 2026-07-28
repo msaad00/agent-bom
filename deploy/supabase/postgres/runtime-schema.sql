@@ -6,6 +6,17 @@ CREATE TABLE IF NOT EXISTS control_plane_schema_versions (
   component TEXT PRIMARY KEY, version INTEGER NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Cross-tenant access is authorized by both a scoped session flag and a
+-- database role that the runtime app principal must never inherit.
+CREATE OR REPLACE FUNCTION public.abom_rls_bypass()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+AS $$
+  SELECT COALESCE(NULLIF(current_setting('app.bypass_rls', true), ''), '0') = '1'
+     AND pg_has_role(session_user, 'agent_bom_rls_maintenance', 'MEMBER')
+$$;
+
 -- Complete the migration-owned shape of tables that already exist in the
 -- historical baseline but previously relied on API bootstrap for newer
 -- columns and indexes.
@@ -154,6 +165,25 @@ CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant ON governance_audit_log(t
 CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action ON governance_audit_log(tenant_id,action_id);
 CREATE TABLE IF NOT EXISTS scan_dispatch_queue (job_id TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,tenant_id TEXT NOT NULL,created_at TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',claimed_by TEXT,lease_expires_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON scan_dispatch_queue(status,created_at);
+ALTER TABLE scan_dispatch_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_dispatch_queue FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS scan_dispatch_queue_tenant_isolation ON scan_dispatch_queue;
+DROP POLICY IF EXISTS scan_dispatch_queue_maintenance ON scan_dispatch_queue;
+DO $queue_rls$
+BEGIN
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_bom_app') THEN
+   CREATE POLICY scan_dispatch_queue_tenant_isolation ON scan_dispatch_queue
+     FOR ALL TO agent_bom_app
+     USING (tenant_id = public.abom_current_tenant())
+     WITH CHECK (tenant_id = public.abom_current_tenant());
+ END IF;
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_bom_rls_maintenance') THEN
+   CREATE POLICY scan_dispatch_queue_maintenance ON scan_dispatch_queue
+     FOR ALL TO agent_bom_rls_maintenance
+     USING (public.abom_rls_bypass())
+     WITH CHECK (public.abom_rls_bypass());
+ END IF;
+END $queue_rls$;
 
 -- Current application schemas for connection/source/credential records.
 CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider TEXT NOT NULL,display_name TEXT NOT NULL,role_ref TEXT NOT NULL,external_id_encrypted TEXT NOT NULL DEFAULT '',regions TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'pending',status_detail TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_scan_at TEXT,last_scan_id TEXT,scan_interval_minutes INTEGER,auth_params TEXT NOT NULL DEFAULT '{}',last_event_at TEXT,inventory_scope TEXT NOT NULL DEFAULT 'account',scan_mode TEXT NOT NULL DEFAULT 'full',auto_scan_on_create BOOLEAN NOT NULL DEFAULT TRUE);
@@ -227,6 +257,11 @@ BEGIN
  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_bom_app') THEN
    GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO agent_bom_app;
    GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO agent_bom_app;
+ END IF;
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_bom_rls_maintenance') THEN
+   GRANT USAGE ON SCHEMA public TO agent_bom_rls_maintenance;
+   GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO agent_bom_rls_maintenance;
+   GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO agent_bom_rls_maintenance;
  END IF;
 END $grant$;
 

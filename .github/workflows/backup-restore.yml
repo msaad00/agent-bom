@@ -44,6 +44,7 @@ jobs:
       PGPORT: '5432'
       PGUSER: postgres
       PGDATABASE: agentbom_test
+      AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_test
       BUCKET: agent-bom-backups
       BACKUP_KEY: ci/agent-bom-test.dump
       # pg_dump and pg_restore must run from the same major version against
@@ -111,6 +112,24 @@ jobs:
         run: |
           set -euo pipefail
           psql <<'SQL'
+            CREATE ROLE agent_bom_rls_maintenance NOLOGIN;
+            CREATE ROLE agent_bom_maintenance LOGIN PASSWORD 'maintenancepass'
+              NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+            GRANT agent_bom_rls_maintenance TO agent_bom_maintenance;
+
+            CREATE OR REPLACE FUNCTION public.abom_rls_bypass()
+            RETURNS boolean
+            LANGUAGE sql
+            STABLE
+            SECURITY DEFINER
+            SET search_path = pg_catalog, public
+            AS $$
+              SELECT COALESCE(NULLIF(current_setting('app.bypass_rls', true), ''), '0') = '1'
+                AND pg_has_role(session_user, 'agent_bom_rls_maintenance', 'MEMBER')
+            $$;
+            REVOKE ALL ON FUNCTION public.abom_rls_bypass() FROM PUBLIC;
+            GRANT EXECUTE ON FUNCTION public.abom_rls_bypass() TO agent_bom_rls_maintenance;
+
             CREATE TABLE scan_jobs (
               job_id UUID PRIMARY KEY,
               tenant_id TEXT NOT NULL,
@@ -149,6 +168,27 @@ jobs:
             INSERT INTO audit_log (action, actor, tenant_id)
             SELECT 'scan.started', 'ci-actor', 'tenant-' || (i % 3)
             FROM generate_series(1, 60) i;
+
+            ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY;
+            ALTER TABLE findings ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE findings FORCE ROW LEVEL SECURITY;
+            ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
+
+            CREATE POLICY scan_jobs_maintenance_backup ON scan_jobs
+              FOR SELECT TO agent_bom_rls_maintenance
+              USING (public.abom_rls_bypass());
+            CREATE POLICY findings_maintenance_backup ON findings
+              FOR SELECT TO agent_bom_rls_maintenance
+              USING (public.abom_rls_bypass());
+            CREATE POLICY audit_log_maintenance_backup ON audit_log
+              FOR SELECT TO agent_bom_rls_maintenance
+              USING (public.abom_rls_bypass());
+
+            GRANT USAGE ON SCHEMA public TO agent_bom_rls_maintenance;
+            GRANT SELECT ON ALL TABLES IN SCHEMA public TO agent_bom_rls_maintenance;
+            GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO agent_bom_rls_maintenance;
           SQL
 
       - name: Record expected row counts
@@ -158,21 +198,38 @@ jobs:
           jobs_n="$(psql -At -c 'SELECT count(*) FROM scan_jobs')"
           findings_n="$(psql -At -c 'SELECT count(*) FROM findings')"
           audit_n="$(psql -At -c 'SELECT count(*) FROM audit_log')"
-          echo "jobs=${jobs_n}" >> "$GITHUB_OUTPUT"
-          echo "findings=${findings_n}" >> "$GITHUB_OUTPUT"
-          echo "audit=${audit_n}" >> "$GITHUB_OUTPUT"
+          {
+            echo "jobs=${jobs_n}"
+            echo "findings=${findings_n}"
+            echo "audit=${audit_n}"
+          } >> "$GITHUB_OUTPUT"
           echo "Seeded rows — jobs=${jobs_n} findings=${findings_n} audit=${audit_n}"
           # Guardrail: require non-empty populations so a broken seed does
           # not silently pass the restore check.
           [ "$jobs_n" -ge 25 ] && [ "$findings_n" -ge 100 ] && [ "$audit_n" -ge 60 ]
 
+      - name: Verify scoped maintenance RLS boundary
+        env:
+          PGPASSWORD: maintenancepass
+        run: |
+          set -euo pipefail
+          role_flags="$(psql "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" -Atc \
+            "SELECT rolsuper::text || ':' || rolbypassrls::text FROM pg_roles WHERE rolname = current_user")"
+          [ "$role_flags" = "false:false" ]
+          [ "$(psql "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" -Atc 'SELECT count(*) FROM scan_jobs')" = "0" ]
+          [ "$(PGOPTIONS='-c app.bypass_rls=1' psql "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" \
+            -Atc 'SELECT count(*) FROM scan_jobs')" = "${{ steps.counts.outputs.jobs }}" ]
+
       - name: Dump via the same command the CronJob runs
+        env:
+          PGPASSWORD: maintenancepass
+          PGOPTIONS: -c app.bypass_rls=1
         run: |
           set -euo pipefail
           ts="$(date -u +%Y%m%dT%H%M%SZ)"
           out="/tmp/agent-bom-${ts}.dump"
-          pg_dump "postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}" \
-            --format=custom --file "$out"
+          pg_dump "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" \
+            --enable-row-security --format=custom --file "$out"
           ls -la "$out"
           aws s3 cp "$out" "s3://${BUCKET}/${BACKUP_KEY}"
 

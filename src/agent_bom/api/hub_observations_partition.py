@@ -370,9 +370,9 @@ def run_hub_observations_retention(*, retention_days: int | None = None) -> int:
     if not _postgres_configured():
         return 0
     try:
-        from agent_bom.api.postgres_common import _get_pool, _tenant_connection, bypass_tenant_rls
+        from agent_bom.api.postgres_common import _maintenance_connection, bypass_tenant_rls
 
-        with bypass_tenant_rls(audit=False), _tenant_connection(_get_pool()) as conn:
+        with bypass_tenant_rls(audit=False), _maintenance_connection() as conn:
             ensure_observation_partitions(conn)
             dropped = rollover_observation_partitions(conn, retention_days=days)
             conn.commit()

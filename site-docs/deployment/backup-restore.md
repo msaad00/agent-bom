@@ -12,8 +12,8 @@ instead.
 
 ## What Is Backed Up
 
-The backup CronJob runs `pg_dump --format=custom` against
-`AGENT_BOM_POSTGRES_URL` and uploads the resulting dump to S3-compatible
+The backup CronJob runs `pg_dump --enable-row-security --format=custom` against
+`AGENT_BOM_POSTGRES_MAINTENANCE_URL` with scoped `app.bypass_rls=1` and uploads the resulting dump to S3-compatible
 storage.
 
 Packaged implementation:
@@ -34,7 +34,8 @@ Before enabling the CronJob:
    service account.
 5. Confirm `pg_dump` and `pg_restore` major versions match the Postgres major
    version.
-6. Store `AGENT_BOM_POSTGRES_URL` in your secret manager, not inline values.
+6. Store `AGENT_BOM_POSTGRES_MAINTENANCE_URL` in a maintenance-only secret
+   manager entry, not inline values or the API app-credential Secret.
 
 ## Helm Values
 

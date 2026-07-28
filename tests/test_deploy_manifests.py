@@ -401,6 +401,13 @@ def test_helm_external_secrets_defaults():
     assert ext["secrets"] == []
 
 
+def test_helm_notes_distinguish_secret_sync_from_scanner_only() -> None:
+    notes = (HELM_DIR / "templates" / "NOTES.txt").read_text()
+    assert "EXTERNAL SECRET SYNC ONLY" in notes
+    assert ".Values.controlPlane.externalSecrets.syncOnly" in notes
+    assert "Keep this release installed" in notes
+
+
 def test_helm_teardown_hooks_defaults():
     """Teardown hooks should ship enabled with explicit runtime defaults."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
@@ -644,7 +651,8 @@ def test_production_values_enable_operator_defaults():
     assert production["monitor"]["serviceMonitor"]["enabled"] is True
     assert production["controlPlane"]["api"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["ui"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
-    assert production["controlPlane"]["externalSecrets"]["enabled"] is True
+    assert production["controlPlane"]["externalSecrets"]["enabled"] is False
+    assert production["controlPlane"]["externalSecrets"]["syncOnly"] is False
     assert production["controlPlane"]["observability"]["grafanaDashboard"]["enabled"] is True
     assert production["controlPlane"]["observability"]["prometheusRule"]["enabled"] is True
     assert production["controlPlane"]["backup"]["enabled"] is True
@@ -656,14 +664,25 @@ def test_production_values_enable_operator_defaults():
     secrets = production["controlPlane"]["externalSecrets"]["secrets"]
     assert {secret["target"]["name"] for secret in secrets} == {
         "agent-bom-control-plane-auth",
+        "agent-bom-control-plane-admin",
         "agent-bom-control-plane-db",
+        "agent-bom-control-plane-maintenance",
     }
     assert next(secret for secret in secrets if secret["target"]["name"] == "agent-bom-control-plane-db")["refreshInterval"] == "1h"
     assert next(secret for secret in secrets if secret["target"]["name"] == "agent-bom-control-plane-auth")["refreshInterval"] == "5m"
     env_from = production["controlPlane"]["api"]["envFrom"]
     assert env_from == [
         {"secretRef": {"name": "agent-bom-control-plane-db"}},
+        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
         {"secretRef": {"name": "agent-bom-control-plane-auth"}},
+    ]
+    assert production["controlPlane"]["migrations"]["envFrom"] == [
+        {"secretRef": {"name": "agent-bom-control-plane-admin"}},
+        {"secretRef": {"name": "agent-bom-control-plane-db"}},
+        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
+    ]
+    assert production["controlPlane"]["backup"]["envFrom"] == [
+        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
     ]
     env = {entry["name"]: entry["value"] for entry in production["controlPlane"]["api"]["env"]}
     assert env["AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"] == "1"
@@ -694,7 +713,16 @@ def test_eks_vanilla_values_enable_ha_without_mesh_or_external_secret_dependenci
     assert ui["autoscaling"]["enabled"] is True
     assert api["envFrom"] == [
         {"secretRef": {"name": "agent-bom-control-plane-db"}},
+        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
         {"secretRef": {"name": "agent-bom-control-plane-auth"}},
+    ]
+    assert control_plane["migrations"]["envFrom"] == [
+        {"secretRef": {"name": "agent-bom-control-plane-admin"}},
+        {"secretRef": {"name": "agent-bom-control-plane-db"}},
+        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
+    ]
+    assert control_plane["backup"]["envFrom"] == [
+        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
     ]
     env = {entry["name"]: entry["value"] for entry in api["env"]}
     assert env["AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"] == "1"
@@ -709,6 +737,14 @@ def test_eks_vanilla_values_enable_ha_without_mesh_or_external_secret_dependenci
     assert values["networkPolicy"]["restrictIngress"] is False
     assert values["topologySpread"]["enabled"] is True
     assert values["pdb"]["enabled"] is True
+
+
+def test_eks_vanilla_quickstart_supplies_a_cluster_safe_login_backend() -> None:
+    doc = (Path(__file__).parent.parent / "site-docs" / "deployment" / "eks-vanilla-quickstart.md").read_text()
+
+    assert "AGENT_BOM_API_KEYS=REPLACE_ME_OPENSSL_RAND_HEX_24:admin" in doc
+    assert "AGENT_BOM_CONNECTIONS_KEY=REPLACE_ME_FERNET_KEY" in doc
+    assert "SCIM provisioning does not replace" in doc
 
 
 def test_helm_test_connection_template_checks_api_health_and_readyz():
@@ -808,6 +844,8 @@ def test_alembic_migration_hook_template():
     assert "upgrade" in template
     assert "head" in template
     assert "backoffLimit: {{ $migrations.backoffLimit }}" in template
+    assert "$envFrom = .Values.controlPlane.api.envFrom" not in template
+    assert "requires controlPlane.migrations.envFrom" in template
 
 
 def test_scheduled_cronjobs_are_fail_loud():
@@ -821,6 +859,31 @@ def test_scheduled_cronjobs_are_fail_loud():
         assert "backoffLimit: 0" in template, f"{name} must set jobTemplate.spec.backoffLimit: 0"
         assert "restartPolicy: Never" in template, f"{name} must use restartPolicy: Never"
         assert "restartPolicy: OnFailure" not in template, f"{name} must not use OnFailure retries"
+
+
+def test_control_plane_backup_uses_scoped_maintenance_identity():
+    template = (HELM_DIR / "templates" / "controlplane-backup-cronjob.yaml").read_text()
+    assert 'pg_dump "$AGENT_BOM_POSTGRES_MAINTENANCE_URL"' in template
+    assert "--enable-row-security" in template
+    assert "PGOPTIONS" in template
+    assert "app.bypass_rls=1" in template
+
+
+def test_backup_restore_workflow_proves_rls_maintenance_dump_contract():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "backup-restore.yml").read_text()
+    assert "CREATE ROLE agent_bom_rls_maintenance NOLOGIN" in workflow
+    assert "CREATE ROLE agent_bom_maintenance LOGIN" in workflow
+    assert "NOSUPERUSER NOBYPASSRLS" in workflow
+    assert "GRANT agent_bom_rls_maintenance TO agent_bom_maintenance" in workflow
+    assert "ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY" in workflow
+    assert "ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY" in workflow
+    assert "Verify scoped maintenance RLS boundary" in workflow
+    assert '[ "$role_flags" = "false:false" ]' in workflow
+    assert "PGOPTIONS: -c app.bypass_rls=1" in workflow
+    assert "PGPASSWORD: maintenancepass" in workflow
+    assert (
+        'pg_dump "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" \\\n            --enable-row-security --format=custom --file "$out"'
+    ) in workflow
 
 
 def test_scanner_only_cronjob_warning_annotation():
@@ -879,15 +942,7 @@ def test_control_plane_auth_secret_example_is_shipped_and_enumerates_code_keys()
     names the code reads (secret_source.resolve_secret), not guessed keys.
     """
     documented = _documented_control_plane_secret_names()
-    # Combined single-Secret profile (focused-pilot) carries DB + auth together.
-    combined = documented["agent-bom-control-plane"]
-    assert {
-        "AGENT_BOM_POSTGRES_URL",
-        "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
-        "AGENT_BOM_CONNECTIONS_KEY",
-        "AGENT_BOM_API_KEYS",
-    } <= combined
-    # Split auth Secret (eks-vanilla, REQUIRE_AUDIT_HMAC=1) needs the audit key.
+    # Auth is independent from all database identities.
     auth = documented["agent-bom-control-plane-auth"]
     assert {
         "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
@@ -895,6 +950,11 @@ def test_control_plane_auth_secret_example_is_shipped_and_enumerates_code_keys()
         "AGENT_BOM_CONNECTIONS_KEY",
         "AGENT_BOM_API_KEYS",
     } <= auth
+    assert {"AGENT_BOM_POSTGRES_URL"} <= documented["agent-bom-control-plane-db"]
+    assert {"AGENT_BOM_POSTGRES_MAINTENANCE_URL"} <= documented[
+        "agent-bom-control-plane-maintenance"
+    ]
+    assert {"ALEMBIC_DATABASE_URL"} <= documented["agent-bom-control-plane-admin"]
 
 
 def test_control_plane_profiles_reference_only_documented_secrets():

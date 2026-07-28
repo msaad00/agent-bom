@@ -189,16 +189,19 @@ def _enforce_control_plane_listener_posture(host: str) -> None:
 
 
 def _enforce_database_role_posture(command: str) -> None:
-    """Fail fast at boot when the configured Postgres role can bypass tenant RLS.
+    """Fail fast when Postgres application or maintenance roles are unsafe.
 
     Tenant isolation on Postgres is enforced solely by ``FORCE ROW LEVEL
     SECURITY``; a ``SUPERUSER`` / ``BYPASSRLS`` role ignores it and voids the
     isolation. ``_guard_rls_capable_role`` already refuses such a role, but only
     lazily on the first pool use (i.e. per request). Running it here — beside the
     non-loopback auth gate, before uvicorn binds — turns that into a single,
-    actionable boot error instead of a 500 on every request. No-op unless
-    Postgres is the active backend; only an RLS-bypass verdict is fatal, a
-    transient connect/probe failure defers to the request-time guard.
+    actionable boot error instead of a 500 on every request. The same preflight
+    requires an independently named, marker-authorized maintenance login so
+    cross-tenant work cannot reuse the application principal. No-op unless
+    Postgres is active. Every failed probe is fatal because a configured
+    maintenance boundary that cannot be authenticated and validated is not a
+    safe state in which to accept requests.
     """
     if os.environ.get("SNOWFLAKE_ACCOUNT"):
         return
@@ -208,12 +211,20 @@ def _enforce_database_role_posture(command: str) -> None:
 
     try:
         postgres_common.preflight_rls_capable_role()
-    except postgres_common.RlsRolePrivilegeError as exc:
+    except (
+        postgres_common.MaintenanceRoleConfigurationError,
+        postgres_common.RlsRolePrivilegeError,
+        ValueError,
+    ) as exc:
         raise click.ClickException(str(exc)) from exc
-    except Exception:  # noqa: BLE001 - connectivity/probe blips defer to the request-time guard
-        # A DB that is briefly unreachable at bind must not block startup; the
-        # same guard re-runs on the next successful pool use (lifespan/request).
-        pass
+    except Exception as exc:  # noqa: BLE001 - convert driver/config failures into a safe CLI error
+        # Do not expose the raw driver exception: authentication failures can
+        # include connection strings, hosts, usernames, or secret-file paths.
+        raise click.ClickException(
+            f"Postgres role preflight failed before {command} could bind. Verify the distinct "
+            "application and maintenance credentials, database reachability, migrations, and "
+            "agent_bom_rls_maintenance membership."
+        ) from exc
 
 
 def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow_insecure_no_auth: bool) -> None:

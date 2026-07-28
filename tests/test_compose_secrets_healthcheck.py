@@ -101,6 +101,9 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert "postgres_app_password" in secrets_block, (
         "platform compose must also declare postgres_app_password for the DML-only agent_bom_app role."
     )
+    assert "postgres_maintenance_password" in secrets_block, (
+        "platform compose must declare a distinct maintenance-role password secret."
+    )
     secret_file = secrets_block["postgres_password"].get("file")
     assert secret_file, (
         "postgres_password secret must be file-sourced (file: ./secrets/postgres_password) so docker-compose binds it read-only."
@@ -118,6 +121,7 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
         "platform postgres must read POSTGRES_PASSWORD_FILE from the mounted secret so the password never appears in docker inspect output."
     )
     assert env.get("POSTGRES_APP_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
+    assert env.get("POSTGRES_MAINTENANCE_PASSWORD_FILE") == "/run/secrets/postgres_maintenance_password"
     # The raw POSTGRES_PASSWORD env passthrough must NOT coexist with the
     # file-based variant — if both are set, the postgres image picks the
     # plain one and the secret is silently bypassed.
@@ -126,18 +130,28 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
         "POSTGRES_PASSWORD env passthrough so the secret is enforced."
     )
     assert "POSTGRES_APP_PASSWORD" not in env
+    assert "POSTGRES_MAINTENANCE_PASSWORD" not in env
 
     assert "postgres_password" in (postgres.get("secrets") or []), (
         "platform postgres service must list postgres_password under its secrets: block so the file mount is created."
     )
     assert "postgres_app_password" in (postgres.get("secrets") or [])
+    assert "postgres_maintenance_password" in (postgres.get("secrets") or [])
 
     api = (data.get("services") or {}).get("api") or {}
     api_env = api.get("environment") or []
     api_map = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in api_env if isinstance(item, str) and "=" in item}
     assert api_map.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
     assert api_map.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
+    assert api_map.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith(
+        "postgresql://agent_bom_maintenance@"
+    )
+    assert (
+        api_map.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE")
+        == "/run/secrets/postgres_maintenance_password"
+    )
     assert "postgres_app_password" in (api.get("secrets") or [])
+    assert "postgres_maintenance_password" in (api.get("secrets") or [])
 
 
 def test_env_example_does_not_store_postgres_passwords() -> None:
@@ -154,7 +168,11 @@ def test_env_example_does_not_store_postgres_passwords() -> None:
     assert "POSTGRES_APP_PASSWORD" not in env_values
     assert "Do NOT put Postgres passwords" in text
 
-    for name in ("postgres_password.example", "postgres_app_password.example"):
+    for name in (
+        "postgres_password.example",
+        "postgres_app_password.example",
+        "postgres_maintenance_password.example",
+    ):
         placeholder = COMPOSE_DIR / "secrets" / name
         assert placeholder.exists(), f"documented placeholder must remain available: {name}"
         assert "REPLACE_ME" in placeholder.read_text(encoding="utf-8")
@@ -173,9 +191,13 @@ def test_compose_stacks_never_interpolate_postgres_passwords(compose_name: str) 
     assert "${POSTGRES_APP_PASSWORD}" not in text
     assert "${POSTGRES_APP_PASSWORD:?" not in text
     assert "${POSTGRES_APP_PASSWORD:-" not in text
+    assert "${POSTGRES_MAINTENANCE_PASSWORD}" not in text
+    assert "${POSTGRES_MAINTENANCE_PASSWORD:?" not in text
+    assert "${POSTGRES_MAINTENANCE_PASSWORD:-" not in text
     # Path overrides for secret *files* are allowed (POSTGRES_PASSWORD_FILE).
     assert "POSTGRES_PASSWORD_FILE" in text
     assert "POSTGRES_APP_PASSWORD_FILE" in text or "postgres_app_password" in text
+    assert "POSTGRES_MAINTENANCE_PASSWORD_FILE" in text or "postgres_maintenance_password" in text
 
     services = data.get("services") or {}
     for name, service in services.items():
@@ -184,19 +206,17 @@ def test_compose_stacks_never_interpolate_postgres_passwords(compose_name: str) 
             env = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in env if isinstance(item, str) and "=" in item}
         assert "POSTGRES_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_PASSWORD"
         assert "POSTGRES_APP_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_APP_PASSWORD"
+        assert "POSTGRES_MAINTENANCE_PASSWORD" not in env, (
+            f"{compose_name}:{name} must not set POSTGRES_MAINTENANCE_PASSWORD"
+        )
         for key, value in env.items():
             if key == "AGENT_BOM_POSTGRES_URL":
-                # Long-lived API services use the DML-only app role. The one-shot
-                # migrate service is the Helm-equivalent DDL path and uses the
-                # bootstrap/admin role (password still file-mounted).
-                if name == "migrate":
-                    assert value.startswith("postgresql://agent_bom@"), (
-                        f"{compose_name}:migrate must connect as bootstrap agent_bom without an embedded password"
-                    )
-                else:
-                    assert value.startswith("postgresql://agent_bom_app@"), (
-                        f"{compose_name}:{name} must connect as agent_bom_app without an embedded password"
-                    )
+                # Every AGENT_BOM_POSTGRES_URL is the DML-only app role. The
+                # one-shot migration service carries its distinct admin URL in
+                # ALEMBIC_DATABASE_URL.
+                assert value.startswith("postgresql://agent_bom_app@"), (
+                    f"{compose_name}:{name} must connect as agent_bom_app without an embedded password"
+                )
 
 
 def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
@@ -221,6 +241,23 @@ def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
     assert {"api_key", "audit_hmac_key", "browser_session_signing_key", "connections_key"} <= secrets
 
 
+def test_deprecated_one_shot_scanner_does_not_receive_maintenance_credentials() -> None:
+    path = COMPOSE_DIR / "docker-compose.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    scanner = data["services"]["agent-bom"]
+    raw_env = scanner.get("environment") or []
+    env = {
+        item.split("=", 1)[0]: item.split("=", 1)[1]
+        for item in raw_env
+        if isinstance(item, str) and "=" in item
+    }
+
+    assert "AGENT_BOM_POSTGRES_MAINTENANCE_URL" not in env
+    assert "AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE" not in env
+    assert "postgres_maintenance_password" not in set(scanner.get("secrets") or [])
+    assert "postgres_maintenance_password" in set(data["services"]["postgres"].get("secrets") or [])
+
+
 def test_platform_migrate_runs_alembic_before_api() -> None:
     """Compose upgrades must apply Alembic the same way Helm's migrate Job does."""
     path = COMPOSE_DIR / "docker-compose.platform.yml"
@@ -238,9 +275,22 @@ def test_platform_migrate_runs_alembic_before_api() -> None:
         for item in (migrate.get("environment") or [])
         if isinstance(item, str) and "=" in item
     }
-    assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom@")
-    assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_password"
-    assert "postgres_password" in set(migrate.get("secrets") or [])
+    assert env.get("ALEMBIC_DATABASE_URL", "").startswith("postgresql://agent_bom@")
+    assert env.get("ALEMBIC_DATABASE_PASSWORD_FILE") == "/run/secrets/postgres_password"
+    assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
+    assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith(
+        "postgresql://agent_bom_maintenance@"
+    )
+    assert (
+        env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE")
+        == "/run/secrets/postgres_maintenance_password"
+    )
+    assert {
+        "postgres_password",
+        "postgres_app_password",
+        "postgres_maintenance_password",
+    } <= set(migrate.get("secrets") or [])
     assert (migrate.get("depends_on") or {}).get("postgres", {}).get("condition") == "service_healthy"
 
     api_deps = api.get("depends_on") or {}
@@ -268,13 +318,22 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
     assert "AGENT_BOM_API_KEY" not in env
     assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
     assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith(
+        "postgresql://agent_bom_maintenance@"
+    )
+    assert (
+        env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE")
+        == "/run/secrets/postgres_maintenance_password"
+    )
     assert api.get("ports") == ["127.0.0.1:${API_PORT:-8422}:8422"]
     assert "~/.config:/home/abom/.config:ro" in (api.get("volumes") or [])
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
     assert "api_key" in (api.get("secrets") or [])
     assert "postgres_app_password" in (api.get("secrets") or [])
+    assert "postgres_maintenance_password" in (api.get("secrets") or [])
     assert "postgres_password" in (data.get("secrets") or {})
     assert "postgres_app_password" in (data.get("secrets") or {})
+    assert "postgres_maintenance_password" in (data.get("secrets") or {})
     assert "api_key" in (data.get("secrets") or {})
 
 
@@ -435,6 +494,19 @@ def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:
     ]
     offenders = [str(path.relative_to(ROOT)) for path in active_docs if "/root/.config" in path.read_text(encoding="utf-8")]
     assert not offenders
+
+
+def test_platform_docs_do_not_advertise_an_unwired_managed_postgres_compose_shortcut() -> None:
+    body = (ROOT / "docs" / "DEPLOY_PLATFORM.md").read_text(encoding="utf-8")
+    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+
+    assert "docker compose -f deploy/docker-compose.fullstack.yml up api ui" not in body
+    assert "byo-postgres-values.yaml" in body
+    assert "custom Compose override is outside the packaged deployment contract" in body
+    assert "chmod 0400 deploy/secrets/postgres_password" not in env_example
+    assert "chmod 0644 deploy/secrets/postgres_password" in env_example
+    assert "AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@db.example" not in env_example
+    assert "byo-postgres overlay" in env_example
 
 
 @pytest.mark.parametrize("path", _compose_files(), ids=lambda p: p.name)

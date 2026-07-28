@@ -1010,26 +1010,33 @@ def _put_identity_any_tenant(store: AgentIdentityStore, identity: AgentIdentity)
     """Persist an identity write that may target a non-ambient tenant.
 
     The cleanup loop sweeps every tenant, so a write-back for tenant X must
-    satisfy that tenant's RLS WITH CHECK. For Postgres we do the write under a
-    trusted RLS bypass; other backends ignore tenant scoping on write.
+    satisfy that tenant's RLS WITH CHECK. For Postgres we bind X explicitly and
+    keep the write on the ordinary app connection; other backends ignore
+    tenant scoping on write.
     """
     if _is_postgres_store(store):
-        from agent_bom.api.postgres_common import bypass_tenant_rls
+        from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 
-        with bypass_tenant_rls():
+        token = set_current_tenant(identity.tenant_id)
+        try:
             store.put(identity)
-    else:
-        store.put(identity)
+        finally:
+            reset_current_tenant(token)
+        return
+    store.put(identity)
 
 
 def _put_grant_any_tenant(store: AgentIdentityStore, grant: AgentJITGrant) -> None:
     if _is_postgres_store(store):
-        from agent_bom.api.postgres_common import bypass_tenant_rls
+        from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 
-        with bypass_tenant_rls():
+        token = set_current_tenant(grant.tenant_id)
+        try:
             store.put_jit_grant(grant)
-    else:
-        store.put_jit_grant(grant)
+        finally:
+            reset_current_tenant(token)
+        return
+    store.put_jit_grant(grant)
 
 
 def _export_audit_to_otlp(record: Any) -> None:

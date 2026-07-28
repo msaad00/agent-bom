@@ -632,8 +632,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             from agent_bom.api import postgres_common as _postgres_common
 
-            if _postgres_common._pool is not None:
-                _postgres_common._pool.close()
+            _postgres_common.reset_pool()
     except Exception:
         _logger.debug("Postgres pool close skipped")
     try:

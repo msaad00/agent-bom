@@ -15,6 +15,7 @@ from agent_bom.api.managed_trial_invitation import (
 from agent_bom.api.postgres_common import (
     ConnectionPool,
     _get_pool,
+    _maintenance_connection,
     _tenant_connection,
     bypass_tenant_rls,
     reset_current_tenant,
@@ -25,8 +26,13 @@ from agent_bom.api.tenant_lifecycle import MANAGED_TRIAL_CLEANUP_GRACE, MANAGED_
 
 
 class PostgresManagedTrialInvitationStore:
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         with self._pool.connection() as conn:
             if ensure_postgres_schema_version(conn, "managed_trial_invitations"):
                 conn.commit()
@@ -89,7 +95,7 @@ class PostgresManagedTrialInvitationStore:
         digest = validate_token_digest(token_digest_value)
         current = now or datetime.now(timezone.utc)
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 row = conn.execute(
                     """SELECT invitation_id, token_digest, email, tenant_id, state,
                               created_at, expires_at, accepted_at, verified_subject
@@ -125,7 +131,7 @@ class PostgresManagedTrialInvitationStore:
         if not normalized_subject or len(normalized_subject) > 256:
             raise ManagedTrialInvitationError("Invalid or expired managed-trial invitation")
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 row = conn.execute(
                     """SELECT invitation_id, token_digest, email, tenant_id, state,
                               created_at, expires_at, accepted_at, verified_subject

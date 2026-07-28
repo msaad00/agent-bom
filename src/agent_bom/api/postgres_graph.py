@@ -28,7 +28,14 @@ from agent_bom.graph import EntityType, technique_mappings_from_json
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.security import sanitize_text
 
-from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
+from .postgres_common import (
+    _apply_tenant_session,
+    _ensure_tenant_rls,
+    _get_pool,
+    _maintenance_connection,
+    _tenant_connection,
+    bypass_tenant_rls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -235,8 +242,9 @@ def _backfill_empty_tenant_ids(conn: Any) -> None:
 class PostgresGraphStore:
     """PostgreSQL-backed unified graph persistence and query store."""
 
-    def __init__(self, pool: Any = None) -> None:
+    def __init__(self, pool: Any = None, maintenance_pool: Any = None) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         self._init_tables()
 
     def _init_tables(self) -> None:
@@ -430,9 +438,14 @@ class PostgresGraphStore:
                 ON graph_node_search(tenant_id, scan_id, severity)
                 """
             )
-            with bypass_tenant_rls(audit=False):
-                _apply_tenant_session(conn)
-                _backfill_empty_tenant_ids(conn)
+            # Make the DDL visible before the separate maintenance principal
+            # repairs legacy empty tenant ids. The app connection is never
+            # elevated; only the dedicated marker-bearing login can activate
+            # the scoped bypass.
+            conn.commit()
+            with bypass_tenant_rls(audit=False), _maintenance_connection(self._maintenance_pool) as maintenance_conn:
+                _backfill_empty_tenant_ids(maintenance_conn)
+                maintenance_conn.commit()
             _apply_tenant_session(conn)
             _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
             _ensure_tenant_rls(conn, "graph_edges", "tenant_id")

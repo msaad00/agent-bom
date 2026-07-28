@@ -17,6 +17,7 @@ properties that matter for a multi-replica control plane:
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from agent_bom.api.governance_audit_log import (
     ACTION_IDENTITY_DORMANT_REVOKE,
@@ -144,11 +145,18 @@ class _FakeConnection:
 
 
 class _FakePool:
-    def __init__(self):
-        self._state = {"rows": [], "seq": 0}
+    def __init__(self, *, state: dict[str, Any] | None = None):
+        self._state: dict[str, Any] = state if state is not None else {"rows": [], "seq": 0}
 
     def connection(self):
         return _FakeConnection(self._state)
+
+
+def _postgres_store(pool: _FakePool | None = None) -> PostgresGovernanceAuditLog:
+    """Build distinct app/maintenance pool identities over one fake database."""
+    app_pool = pool or _FakePool()
+    maintenance_pool = _FakePool(state=app_pool._state)
+    return PostgresGovernanceAuditLog(pool=app_pool, maintenance_pool=maintenance_pool)
 
 
 def _rec(tenant, target, window, action=ACTION_IDENTITY_DORMANT_REVOKE):
@@ -170,7 +178,7 @@ def _rec(tenant, target, window, action=ACTION_IDENTITY_DORMANT_REVOKE):
 
 
 def test_append_read_and_chain_verifies():
-    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store = _postgres_store()
     a = store.append(_rec("acme", "id-1", "w1"))
     b = store.append(_rec("acme", "id-2", "w2"))
 
@@ -193,7 +201,7 @@ def test_append_read_and_chain_verifies():
 
 
 def test_idempotent_append():
-    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store = _postgres_store()
     rec = _rec("acme", "id-1", "w1")
     first = store.append(rec)
     second = store.append(_rec("acme", "id-1", "w1"))  # same deterministic action_id
@@ -207,7 +215,7 @@ def test_idempotent_append():
 def test_tenant_isolation_get_denied_cross_tenant():
     from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 
-    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store = _postgres_store()
     acme = store.append(_rec("acme", "id-a", "w1"))
     globex = store.append(_rec("globex", "id-b", "w1"))
 
@@ -225,7 +233,7 @@ def test_tenant_isolation_get_denied_cross_tenant():
 
 
 def test_per_tenant_chains_both_verify():
-    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store = _postgres_store()
     store.append(_rec("acme", "id-a1", "w1"))
     store.append(_rec("acme", "id-a2", "w2"))
     store.append(_rec("globex", "id-b1", "w1"))
@@ -242,7 +250,7 @@ def test_cross_tenant_same_action_both_persist():
     one id, silently dropping the second tenant's row while verify_chain still
     reported healthy. Tenant-folded ids + composite unique keep both.
     """
-    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store = _postgres_store()
     acme = store.append(_rec("acme", "id-shared", "w1"))
     globex = store.append(_rec("globex", "id-shared", "w1"))
 
@@ -258,7 +266,7 @@ def test_cross_tenant_same_action_both_persist():
 
 
 def test_verify_chain_and_head_hash_are_tenant_scoped():
-    store = PostgresGovernanceAuditLog(pool=_FakePool())
+    store = _postgres_store()
     store.append(_rec("acme", "id-a1", "w1"))
     a2 = store.append(_rec("acme", "id-a2", "w2"))
     store.append(_rec("globex", "id-b1", "w1"))
@@ -281,8 +289,8 @@ def test_verify_chain_and_head_hash_are_tenant_scoped():
 def test_shared_pool_is_cluster_consistent():
     """Two store instances over one backend must see each other's writes."""
     pool = _FakePool()
-    node_a = PostgresGovernanceAuditLog(pool=pool)
-    node_b = PostgresGovernanceAuditLog(pool=pool)
+    node_a = _postgres_store(pool)
+    node_b = _postgres_store(pool)
 
     rec_a = node_a.append(_rec("acme", "id-a", "w1"))
     # node_b, a different replica, appends onto node_a's head — one chain.
@@ -295,7 +303,7 @@ def test_shared_pool_is_cluster_consistent():
 
 def test_tamper_is_detected():
     pool = _FakePool()
-    store = PostgresGovernanceAuditLog(pool=pool)
+    store = _postgres_store(pool)
     store.append(_rec("acme", "id-a", "w1"))
     store.append(_rec("acme", "id-b", "w2"))
 

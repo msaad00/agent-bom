@@ -12,7 +12,8 @@
 # Credentials: file-mounted Docker secrets only (never .env passwords):
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
 #   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
-#   chmod 0644 deploy/secrets/postgres_password deploy/secrets/postgres_app_password  # world-readable: non-root container users read the bind-mount
+#   printf '%s' "$(openssl rand -hex 32)" > deploy/secrets/postgres_maintenance_password
+#   chmod 0644 deploy/secrets/postgres_password deploy/secrets/postgres_app_password deploy/secrets/postgres_maintenance_password  # world-readable: non-root container users read the bind-mount
 #   docker compose -f deploy/docker-compose.yml up
 
 services:
@@ -91,10 +92,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+      POSTGRES_MAINTENANCE_PASSWORD_FILE: /run/secrets/postgres_maintenance_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     secrets:
       - postgres_password
       - postgres_app_password
+      - postgres_maintenance_password
     ports:
       # Exposed for dev — platform compose does NOT expose this
       - "${POSTGRES_PORT:-5432}:5432"
@@ -130,6 +133,8 @@ secrets:
     file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
   postgres_app_password:
     file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres_app_password}
+  postgres_maintenance_password:
+    file: ${POSTGRES_MAINTENANCE_PASSWORD_FILE:-./secrets/postgres_maintenance_password}
 
 networks:
   backend:

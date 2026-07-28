@@ -42,7 +42,7 @@ Render only one profile:
 python scripts/validate_helm_profiles.py --profile focused-pilot
 ```
 
-## Install a shipped profile in one command
+## Install a shipped profile
 
 Print the exact Helm command for a profile:
 
@@ -56,6 +56,22 @@ Run the packaged focused EKS pilot profile directly:
 python scripts/install_helm_profile.py focused-pilot
 ```
 
+The `production` profile is intentionally two-stage: install
+`eks-production-values.yaml` together with
+`eks-production-secret-sync-values.yaml` under a separate
+`agent-bom-secrets` release, wait for all four `ExternalSecret` resources to be
+Ready, and only then install the main `agent-bom` workload release with
+`eks-production-values.yaml`. See the chart README for exact commands. This
+prevents the pre-install migration hook from waiting on a normal resource that
+Helm has not created yet.
+
+The packaged helper keeps those releases separate by default:
+
+```bash
+python scripts/install_helm_profile.py production-secret-sync  # agent-bom-secrets
+python scripts/install_helm_profile.py production              # agent-bom
+```
+
 Append your own values file or targeted overrides without forking the shipped profile:
 
 ```bash
@@ -64,23 +80,25 @@ python scripts/install_helm_profile.py production \
   --set controlPlane.ingress.hosts[0].host=agent-bom.acme.internal
 ```
 
-## Control-plane secrets (create these before `helm install`)
+## Control-plane secrets (create or synchronize these before `helm install`)
 
-No chart template renders the control-plane Secrets — you create them
-out-of-band from a real secret manager (External Secrets Operator, SOPS, AWS
-Secrets Manager, CI store) and keep the populated files out of git. A profile
+No chart template embeds control-plane Secret data. You create or synchronize
+the target Secrets out-of-band from a real secret manager (External Secrets
+Operator, SOPS, AWS Secrets Manager, CI store) and keep populated files out of
+git. The production secret-sync release renders only `ExternalSecret` resources;
+all other profiles consume pre-created Kubernetes Secrets. A profile
 whose `controlPlane.api.envFrom` references a Secret that does not exist leaves
 the API/UI pods in `CreateContainerConfigError`, and the multi-replica profiles
 additionally fail closed at boot when the browser-session / audit keys are
-absent. Two example manifests document every key:
+absent. Two example files document every key:
 
-- `postgres-secret.example.yaml` → `agent-bom-control-plane-db`
-  (`AGENT_BOM_POSTGRES_URL`). Used by the split-Secret profiles (`eks-vanilla`).
+- `postgres-secret.example.yaml` → separate app, maintenance, and migration/admin
+  Secrets (`AGENT_BOM_POSTGRES_URL`, `AGENT_BOM_POSTGRES_MAINTENANCE_URL`, and
+  `ALEMBIC_DATABASE_URL`).
 - `control-plane-auth-secret.example.yaml` → the auth/session keys
   (`AGENT_BOM_BROWSER_SESSION_SIGNING_KEY`, `AGENT_BOM_AUDIT_HMAC_KEY`,
-  `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS`, and — for the combined
-  single-Secret profiles — `AGENT_BOM_POSTGRES_URL`). It carries one block per
-  profile; copy the block matching your profile.
+  `AGENT_BOM_CONNECTIONS_KEY`, and `AGENT_BOM_API_KEYS`). It carries one block
+  per profile; copy the block matching your profile.
 
 Generate the placeholder values with:
 
@@ -94,8 +112,8 @@ Which keys each profile requires, and its first-run login posture:
 
 | Profile | Secret(s) `envFrom` references | Required keys | First-run login |
 |---|---|---|---|
-| `focused-pilot` (`eks-mcp-pilot`) | `agent-bom-control-plane` (combined) | `AGENT_BOM_POSTGRES_URL`, `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` (replicas 2), `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS` | Seeded `AGENT_BOM_API_KEYS` admin key |
-| `eks-vanilla` | `agent-bom-control-plane-db` + `agent-bom-control-plane-auth` | db: `AGENT_BOM_POSTGRES_URL`; auth: `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` (replicas 2), `AGENT_BOM_AUDIT_HMAC_KEY` (`REQUIRE_AUDIT_HMAC=1`), `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS` | Seeded `AGENT_BOM_API_KEYS` admin key |
+| `focused-pilot` (`eks-mcp-pilot`) | `agent-bom-control-plane-db` + `agent-bom-control-plane-maintenance` + `agent-bom-control-plane-admin` + `agent-bom-control-plane-auth` | app: `AGENT_BOM_POSTGRES_URL`; maintenance: `AGENT_BOM_POSTGRES_MAINTENANCE_URL`; admin: `ALEMBIC_DATABASE_URL`; auth: browser-session, connections, and API keys | Seeded `AGENT_BOM_API_KEYS` admin key |
+| `eks-vanilla` | same four split Secrets | app: `AGENT_BOM_POSTGRES_URL`; maintenance: `AGENT_BOM_POSTGRES_MAINTENANCE_URL`; admin: `ALEMBIC_DATABASE_URL`; auth: `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY`, `AGENT_BOM_AUDIT_HMAC_KEY`, `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS` | Seeded `AGENT_BOM_API_KEYS` admin key |
 | `sqlite-pilot` | `agent-bom-control-plane` (demo) | `AGENT_BOM_CONNECTIONS_KEY` only (sqlite, replicas 1) | Anonymous — the profile sets a **visible, demo-only** `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1` (viewer role). Not for production |
 
 Swap `AGENT_BOM_API_KEYS` for the OIDC block
@@ -109,7 +127,7 @@ the sqlite demo intentionally leaves it off so login works over plain HTTP.
 
 - The chart intentionally does not install a Postgres subchart. Production
   profiles consume an operator-managed database through
-  `AGENT_BOM_POSTGRES_URL`, either from External Secrets Operator
+  separate app, maintenance, and admin URLs, either from External Secrets Operator
   (`production`) or a Kubernetes Secret (`eks-vanilla`).
 - Use `byo-postgres-values.yaml` as an overlay when the platform team provides
   a Postgres-compatible database such as RDS/Aurora Postgres, Cloud SQL for

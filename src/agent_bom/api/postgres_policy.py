@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING
 
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
-from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from .postgres_common import (
+    _ensure_tenant_rls,
+    _get_pool,
+    _maintenance_connection,
+    _tenant_connection,
+    bypass_tenant_rls,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
@@ -233,8 +239,13 @@ class PostgresPolicyStore:
 class PostgresScheduleStore:
     """PostgreSQL-backed recurring scan schedule persistence."""
 
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         self._init_tables()
 
     def _init_tables(self) -> None:
@@ -325,12 +336,13 @@ class PostgresScheduleStore:
     def list_due(self, now_iso: str) -> list:
         from .schedule_store import ScanSchedule
 
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                "SELECT data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= %s",
-                (now_iso,),
-            ).fetchall()
-            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+        with bypass_tenant_rls():
+            with _maintenance_connection(self._maintenance_pool) as conn:
+                rows = conn.execute(
+                    "SELECT data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= %s",
+                    (now_iso,),
+                ).fetchall()
+                return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
 
 class PostgresSourceStore:

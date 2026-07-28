@@ -730,7 +730,28 @@ CREATE INDEX IF NOT EXISTS idx_api_rate_limit_hits_bucket_hit_at
 -- ══════════════════════════════════════════════════════════════════════════════
 --
 -- Request handlers set app.tenant_id on the Postgres session. Internal trusted
--- scheduler tasks can set app.bypass_rls=1 for cross-tenant maintenance work.
+-- scheduler tasks require both app.bypass_rls=1 and membership in the
+-- non-login maintenance marker role for cross-tenant maintenance work.
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_rls_maintenance') THEN
+        CREATE ROLE agent_bom_rls_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSE
+        ALTER ROLE agent_bom_rls_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_maintenance') THEN
+        CREATE ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSE
+        ALTER ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_app') THEN
+        REVOKE agent_bom_rls_maintenance FROM agent_bom_app;
+    END IF;
+    GRANT agent_bom_rls_maintenance TO agent_bom_maintenance;
+    EXECUTE format('GRANT agent_bom_rls_maintenance TO %I WITH ADMIN OPTION', session_user);
+END
+$$;
 
 CREATE OR REPLACE FUNCTION public.abom_current_tenant()
 RETURNS TEXT
@@ -746,6 +767,7 @@ LANGUAGE SQL
 STABLE
 AS $$
     SELECT COALESCE(NULLIF(current_setting('app.bypass_rls', true), ''), '0') = '1'
+       AND pg_has_role(session_user, 'agent_bom_rls_maintenance', 'MEMBER')
 $$;
 
 ALTER TABLE gateway_policies ENABLE ROW LEVEL SECURITY;
@@ -1265,15 +1287,47 @@ BEGIN
 END
 $$;
 
--- Clear the app-password GUC now that the role has been created. The init
--- wrapper stores it via ALTER DATABASE ... SET, which persists the cleartext
--- password in pg_db_role_setting where any connected role can read it
--- (readonly→readwrite escalation). RESET drops it so current_setting() returns
--- empty for every later session. current_database() targets whatever DB the
--- wrapper set the GUC on (both run against POSTGRES_DB).
+-- Configure the distinct cross-tenant maintenance login from its own secret.
+-- The marker role owns data privileges; the login inherits them but cannot be
+-- granted to the ordinary app role.
+DO $$
+DECLARE
+    maintenance_pass TEXT;
+BEGIN
+    maintenance_pass := current_setting('init.maintenance_password', true);
+    IF maintenance_pass IS NOT NULL AND maintenance_pass != '' THEN
+        EXECUTE format('ALTER ROLE agent_bom_maintenance LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD %L', maintenance_pass);
+    ELSIF maintenance_pass = '' THEN
+        RAISE EXCEPTION 'init.maintenance_password is empty — /run/secrets/postgres_maintenance_password had no value';
+    ELSE
+        RAISE NOTICE 'init.maintenance_password not set — maintenance login password is provisioned out of band';
+    END IF;
+
+    -- Six autoscaled API replicas may each open the bounded four-connection
+    -- maintenance pool; retain headroom for backup and operator sessions.
+    ALTER ROLE agent_bom_maintenance CONNECTION LIMIT 32;
+    ALTER ROLE agent_bom_maintenance SET statement_timeout = '30s';
+    ALTER ROLE agent_bom_maintenance SET lock_timeout = '5s';
+    GRANT CONNECT ON DATABASE agent_bom TO agent_bom_maintenance;
+    GRANT USAGE ON SCHEMA public TO agent_bom_rls_maintenance;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO agent_bom_rls_maintenance;
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO agent_bom_rls_maintenance;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO agent_bom_rls_maintenance;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+        GRANT USAGE, SELECT ON SEQUENCES TO agent_bom_rls_maintenance;
+    REVOKE CREATE ON SCHEMA public FROM agent_bom_maintenance;
+    REVOKE CREATE ON SCHEMA public FROM agent_bom_rls_maintenance;
+END
+$$;
+
+-- Clear the runtime-password GUCs now that the roles have been created. The
+-- wrapper stores them via ALTER DATABASE ... SET, which would otherwise leave
+-- cleartext credentials readable in pg_db_role_setting.
 DO $$
 BEGIN
     EXECUTE format('ALTER DATABASE %I RESET init.app_password', current_database());
+    EXECUTE format('ALTER DATABASE %I RESET init.maintenance_password', current_database());
 END
 $$;
 

@@ -9,13 +9,16 @@ Requires ``pip install 'agent-bom[postgres]'``.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from agent_bom.api import job_status_count_cache
 from agent_bom.api.postgres_common import (
     _ensure_tenant_rls,
     _get_pool,
+    _maintenance_connection,
     _tenant_connection,
+    bypass_tenant_rls,
     reset_current_tenant,
     set_current_tenant,
 )
@@ -23,7 +26,7 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _literal_like_pattern, _require_tenant_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
     from psycopg import Connection
     from psycopg_pool import ConnectionPool
@@ -38,9 +41,24 @@ class PostgresJobStore:
 
     retains_job_objects_in_memory = False
 
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None, maintenance_pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         self._init_tables()
+
+    @contextmanager
+    def _scope_connection(self, *, all_tenants: bool = False) -> Iterator[Connection]:
+        """Use the app pool by default and maintenance only for explicit global work."""
+        if all_tenants:
+            # Reconciliation and retention can run on every worker tick. Their
+            # job lifecycle events are audited separately, so avoid producing a
+            # signed bypass event (and stack walk) for each bounded sweep.
+            with bypass_tenant_rls(audit=False, warn=False):
+                with _maintenance_connection(self._maintenance_pool) as conn:
+                    yield conn
+            return
+        with _tenant_connection(self._pool) as conn:
+            yield conn
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
@@ -156,14 +174,9 @@ class PostgresJobStore:
                 "ON cis_benchmark_checks(team_id, cloud, status, priority, measured_at DESC)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cis_checks_scan ON cis_benchmark_checks(scan_id)")
-            # Shared dispatch queue for multi-replica scan work-stealing. Holds
-            # only routing metadata (job_id + tenant_id + timing), never scan
-            # content or results — those stay in the RLS-protected scan_jobs.data.
-            # It is intentionally NOT tenant-RLS'd: the background claim-loop is a
-            # system dispatcher that must see pending jobs across all tenants, and
-            # it is never exposed through the API. The full job is loaded from
-            # scan_jobs under the job's own tenant context (RLS-scoped) before it
-            # runs, so tenant isolation of actual data is preserved.
+            # Shared dispatch queue for multi-replica work-stealing. Ordinary
+            # app sessions remain tenant-bound; only the distinct maintenance
+            # principal may claim routing rows across tenants.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_dispatch_queue (
                     job_id           TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
@@ -177,6 +190,7 @@ class PostgresJobStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON scan_dispatch_queue(status, created_at)")
             _ensure_tenant_rls(conn, "scan_jobs", "team_id")
             _ensure_tenant_rls(conn, "cis_benchmark_checks", "team_id")
+            _ensure_tenant_rls(conn, "scan_dispatch_queue", "tenant_id")
             conn.commit()
 
     def put(self, job: ScanJob) -> None:
@@ -233,7 +247,7 @@ class PostgresJobStore:
         from .server import ScanJob
 
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
-        with _tenant_connection(self._pool) as conn:
+        with self._scope_connection(all_tenants=all_tenants) as conn:
             if tenant_id is None:
                 row = conn.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,)).fetchone()
             else:
@@ -248,7 +262,7 @@ class PostgresJobStore:
 
     def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.delete()")
-        with _tenant_connection(self._pool) as conn:
+        with self._scope_connection(all_tenants=all_tenants) as conn:
             if tenant_id is None:
                 cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
             else:
@@ -266,7 +280,7 @@ class PostgresJobStore:
 
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_all()")
 
-        with _tenant_connection(self._pool) as conn:
+        with self._scope_connection(all_tenants=all_tenants) as conn:
             if tenant_id is None:
                 rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
             else:
@@ -320,7 +334,7 @@ class PostgresJobStore:
             sql = f"{sql} LIMIT %s OFFSET %s"
             params.extend([max(1, int(limit)), max(0, int(offset))])
 
-        with _tenant_connection(self._pool) as conn:
+        with self._scope_connection(all_tenants=all_tenants) as conn:
             rows = conn.execute(sql, tuple(params)).fetchall()
             return [
                 {
@@ -528,7 +542,7 @@ class PostgresJobStore:
         ]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
-        with _tenant_connection(self._pool) as conn:
+        with self._scope_connection(all_tenants=True) as conn:
             cursor = conn.execute(
                 """DELETE FROM scan_jobs
                    WHERE status IN ('done', 'failed', 'cancelled')
@@ -550,14 +564,19 @@ class PostgresJobStore:
 
     def enqueue_for_dispatch(self, job: ScanJob) -> None:
         """Register a persisted job in the shared queue for work-stealing."""
-        with self._pool.connection() as conn:
-            conn.execute(
-                """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
-                   VALUES (%s, %s, %s, 'pending')
-                   ON CONFLICT (job_id) DO NOTHING""",
-                (job.job_id, job.tenant_id or "default", job.created_at),
-            )
-            conn.commit()
+        tenant_id = job.tenant_id or "default"
+        token = set_current_tenant(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                conn.execute(
+                    """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
+                       VALUES (%s, %s, %s, 'pending')
+                       ON CONFLICT (job_id) DO NOTHING""",
+                    (job.job_id, tenant_id, job.created_at),
+                )
+                conn.commit()
+        finally:
+            reset_current_tenant(token)
 
     def claim_next(self, worker_id: str, lease_seconds: int) -> ScanJob | None:
         """Atomically claim the oldest claimable job and return its full ScanJob.
@@ -567,28 +586,32 @@ class PostgresJobStore:
         claimers on other replicas never block or double-claim. Returns ``None``
         when nothing is claimable.
         """
-        with self._pool.connection() as conn:
-            row = conn.execute(
-                f"""SELECT job_id, tenant_id FROM scan_dispatch_queue
-                    WHERE status = 'pending'
-                       OR (status = 'running'
-                           AND lease_expires_at IS NOT NULL
-                           AND lease_expires_at < {self._NOW_ISO})
-                    ORDER BY created_at ASC
-                    FOR UPDATE SKIP LOCKED
-                    LIMIT 1""",  # nosec B608 - _NOW_ISO is a fixed SQL fragment, no user input
-            ).fetchone()
-            if row is None:
+        # Dispatch polling is a high-frequency internal maintenance loop. The
+        # queue/job lifecycle emits its own business audit events; do not emit
+        # a signed RLS-scope activation record on every idle poll.
+        with bypass_tenant_rls(audit=False, warn=False):
+            with _maintenance_connection(self._maintenance_pool) as conn:
+                row = conn.execute(
+                    f"""SELECT job_id, tenant_id FROM scan_dispatch_queue
+                        WHERE status = 'pending'
+                           OR (status = 'running'
+                               AND lease_expires_at IS NOT NULL
+                               AND lease_expires_at < {self._NOW_ISO})
+                        ORDER BY created_at ASC
+                        FOR UPDATE SKIP LOCKED
+                        LIMIT 1""",  # nosec B608 - _NOW_ISO is a fixed SQL fragment, no user input
+                ).fetchone()
+                if row is None:
+                    conn.commit()
+                    return None
+                job_id, tenant_id = row[0], row[1]
+                conn.execute(
+                    f"""UPDATE scan_dispatch_queue
+                        SET status = 'running', claimed_by = %s, lease_expires_at = {self._LEASE_ISO}
+                        WHERE job_id = %s""",  # nosec B608 - _LEASE_ISO is a fixed SQL fragment
+                    (worker_id, int(lease_seconds), job_id),
+                )
                 conn.commit()
-                return None
-            job_id, tenant_id = row[0], row[1]
-            conn.execute(
-                f"""UPDATE scan_dispatch_queue
-                    SET status = 'running', claimed_by = %s, lease_expires_at = {self._LEASE_ISO}
-                    WHERE job_id = %s""",  # nosec B608 - _LEASE_ISO is a fixed SQL fragment
-                (worker_id, int(lease_seconds), job_id),
-            )
-            conn.commit()
         # Load the full job under its own tenant context so the RLS-scoped read
         # succeeds and the running job carries the correct tenant.
         token = set_current_tenant(tenant_id)
@@ -602,39 +625,43 @@ class PostgresJobStore:
         ids = [j for j in job_ids]
         if not ids:
             return
-        with self._pool.connection() as conn:
-            conn.execute(
-                f"""UPDATE scan_dispatch_queue
-                    SET lease_expires_at = {self._LEASE_ISO}
-                    WHERE status = 'running' AND job_id = ANY(%s)""",  # nosec B608 - fixed fragment
-                (int(lease_seconds), ids),
-            )
-            conn.commit()
+        with bypass_tenant_rls(audit=False, warn=False):
+            with _maintenance_connection(self._maintenance_pool) as conn:
+                conn.execute(
+                    f"""UPDATE scan_dispatch_queue
+                        SET lease_expires_at = {self._LEASE_ISO}
+                        WHERE status = 'running' AND job_id = ANY(%s)""",  # nosec B608 - fixed fragment
+                    (int(lease_seconds), ids),
+                )
+                conn.commit()
 
     def complete_dispatch(self, job_id: str) -> None:
         """Remove a finished job from the dispatch queue."""
-        with self._pool.connection() as conn:
-            conn.execute("DELETE FROM scan_dispatch_queue WHERE job_id = %s", (job_id,))
-            conn.commit()
+        with bypass_tenant_rls(audit=False, warn=False):
+            with _maintenance_connection(self._maintenance_pool) as conn:
+                conn.execute("DELETE FROM scan_dispatch_queue WHERE job_id = %s", (job_id,))
+                conn.commit()
 
     def requeue_expired_leases(self) -> int:
         """Reset jobs whose lease expired (dead node) back to pending. Returns count."""
-        with self._pool.connection() as conn:
-            cursor = conn.execute(
-                f"""UPDATE scan_dispatch_queue
-                    SET status = 'pending', claimed_by = NULL, lease_expires_at = NULL
-                    WHERE status = 'running'
-                      AND lease_expires_at IS NOT NULL
-                      AND lease_expires_at < {self._NOW_ISO}""",  # nosec B608 - fixed fragment
-            )
-            conn.commit()
-            return int(cursor.rowcount)
+        with bypass_tenant_rls(audit=False, warn=False):
+            with _maintenance_connection(self._maintenance_pool) as conn:
+                cursor = conn.execute(
+                    f"""UPDATE scan_dispatch_queue
+                        SET status = 'pending', claimed_by = NULL, lease_expires_at = NULL
+                        WHERE status = 'running'
+                          AND lease_expires_at IS NOT NULL
+                          AND lease_expires_at < {self._NOW_ISO}""",  # nosec B608 - fixed fragment
+                )
+                conn.commit()
+                return int(cursor.rowcount)
 
     def pending_dispatch_count(self) -> int:
         """Number of jobs waiting to be claimed (operator/metrics visibility)."""
-        with self._pool.connection() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM scan_dispatch_queue WHERE status = 'pending'").fetchone()
-            return int(row[0]) if row else 0
+        with bypass_tenant_rls(audit=False, warn=False):
+            with _maintenance_connection(self._maintenance_pool) as conn:
+                row = conn.execute("SELECT COUNT(*) FROM scan_dispatch_queue WHERE status = 'pending'").fetchone()
+                return int(row[0]) if row else 0
 
     def _replace_cis_checks(self, conn: Connection, job: ScanJob) -> None:
         result = getattr(job, "result", None)

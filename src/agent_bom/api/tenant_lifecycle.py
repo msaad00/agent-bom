@@ -307,7 +307,12 @@ def delete_tenant_records(tenant_id: str) -> dict[str, int]:
     are intentionally outside the tenant's own deletion authority.
     """
 
-    from agent_bom.api.postgres_common import bypass_tenant_rls, reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_common import (
+        _maintenance_connection,
+        bypass_tenant_rls,
+        reset_current_tenant,
+        set_current_tenant,
+    )
     from agent_bom.api.routes.privacy import _delete_records
     from agent_bom.api.storage_schema import postgres_deployment_configured
 
@@ -321,10 +326,8 @@ def delete_tenant_records(tenant_id: str) -> dict[str, int]:
     if postgres_deployment_configured():
         from psycopg import sql
 
-        from agent_bom.api.postgres_common import _get_pool
-
         with bypass_tenant_rls():
-            with _get_pool().connection() as conn:
+            with _maintenance_connection() as conn:
                 table_rows = conn.execute(
                     """SELECT table_name
                        FROM information_schema.columns

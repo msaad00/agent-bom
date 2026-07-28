@@ -19,9 +19,11 @@ python scripts/install_helm_profile.py focused-pilot --print-command
 python scripts/install_helm_profile.py focused-pilot
 ```
 
-The chart does not provision Postgres. A direct `--set controlPlane.enabled=true`
-install must supply `AGENT_BOM_POSTGRES_URL` through `controlPlane.api.envFrom`
-or `controlPlane.migrations.env`; otherwise template validation fails before
+The chart does not provision Postgres. A Postgres-backed control plane supplies
+three database identities: tenant-bound app and scoped maintenance credentials
+through `controlPlane.api.envFrom`, plus an admin credential through
+`controlPlane.migrations.envFrom`. The migration hook never inherits API
+credentials. Missing explicit migration wiring fails template validation before
 Helm creates a partial control plane.
 
 Without that flag, Helm succeeds quietly and only scanner pieces land in the
@@ -46,6 +48,43 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
   --set scanner.schedule="0 */2 * * *"
 ```
 
+### Production ExternalSecrets are a separate stage
+
+A Helm pre-install migration hook runs before normal release resources, so it
+cannot safely consume a Secret created by an `ExternalSecret` in that same
+release. The chart rejects that configuration. For the production profile,
+install the secret-sync release first and wait for its four target Secrets:
+
+```bash
+helm upgrade --install agent-bom-secrets deploy/helm/agent-bom \
+  -n agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml \
+  -f deploy/helm/agent-bom/examples/eks-production-secret-sync-values.yaml
+
+kubectl wait -n agent-bom --for=condition=Ready --timeout=2m \
+  externalsecret/agent-bom-control-plane-db \
+  externalsecret/agent-bom-control-plane-maintenance \
+  externalsecret/agent-bom-control-plane-admin \
+  externalsecret/agent-bom-control-plane-auth
+
+kubectl get -n agent-bom secret \
+  agent-bom-control-plane-db \
+  agent-bom-control-plane-maintenance \
+  agent-bom-control-plane-admin \
+  agent-bom-control-plane-auth
+
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  -n agent-bom \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
+The sync overlay renders only `ExternalSecret` resources. The workload release
+keeps `controlPlane.externalSecrets.enabled=false`, consumes the pre-created
+Secrets, and owns the migration/API/UI resources. Keep the sync release in
+place for Secret reconciliation, and roll workloads after rotation according
+to your operator policy. Missing targets fail the migration Pod closed; they
+never cause fallback to app or inline credentials.
+
 ## Shipped profiles
 
 Production-ready value overlays live in [`examples/`](examples/README.md).
@@ -66,7 +105,8 @@ python scripts/install_helm_profile.py focused-pilot
 |---|---|---|
 | `focused-pilot` | `examples/eks-mcp-pilot-values.yaml` | Narrow EKS pilot with control plane |
 | `eks-vanilla` | `examples/eks-vanilla-values.yaml` | EKS + Postgres + IRSA, no mesh/ESO |
-| `production` | `examples/eks-production-values.yaml` | Postgres + ExternalSecrets + autoscaling |
+| `production-secret-sync` | production + `examples/eks-production-secret-sync-values.yaml` | ExternalSecrets-only bootstrap release |
+| `production` | `examples/eks-production-values.yaml` | Postgres + staged ExternalSecrets + autoscaling |
 | `sqlite-pilot` | `examples/eks-control-plane-sqlite-pilot-values.yaml` | Short-lived demo without Postgres |
 
 Full profile matrix: [`examples/README.md`](examples/README.md).

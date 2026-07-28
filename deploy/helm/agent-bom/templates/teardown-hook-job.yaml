@@ -1,8 +1,11 @@
 {{- if .Values.teardownHooks.enabled }}
 {{- $defaults := .Values.controlPlane.externalSecrets }}
-{{- $secrets := $defaults.secrets }}
+{{- $secrets := list }}
+{{- if $defaults.enabled }}
+{{- $secrets = $defaults.secrets }}
 {{- if not $secrets }}
 {{- $secrets = list (dict "target" $defaults.target) }}
+{{- end }}
 {{- end }}
 {{- $targetSecretNames := list }}
 {{- range $secret := $secrets }}

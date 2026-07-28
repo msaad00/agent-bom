@@ -7,7 +7,9 @@
 # PostgreSQL-compatible service that exposes a standard connection string to the
 # agent-bom API pods.
 #
-# Required Kubernetes Secret shape:
+# Required Kubernetes Secret shapes are documented in
+# `postgres-secret.example.yaml`: tenant-bound app, scoped maintenance, and
+# migration/admin. The app Secret starts with:
 #
 #   apiVersion: v1
 #   kind: Secret
@@ -16,7 +18,7 @@
 #     namespace: agent-bom
 #   type: Opaque
 #   stringData:
-#     AGENT_BOM_POSTGRES_URL: postgresql://agent_bom:REDACTED@postgres.example:5432/agent_bom?sslmode=require
+#     AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:REDACTED@postgres.example:5432/agent_bom?sslmode=require
 #
 # Snowflake Postgres note:
 #   Treat Snowflake Postgres as a BYO Postgres candidate when it is reachable
@@ -46,6 +48,17 @@ controlPlane:
     envFrom:
       - secretRef:
           name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
+
+  migrations:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-admin
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
 
   # Managed Postgres services usually own PITR/backups. Keep the packaged
   # pg_dump CronJob disabled unless your database team explicitly wants

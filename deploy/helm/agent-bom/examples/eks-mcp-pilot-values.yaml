@@ -4,7 +4,19 @@ controlPlane:
     replicas: 2
     envFrom:
       - secretRef:
-          name: agent-bom-control-plane
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
+      - secretRef:
+          name: agent-bom-control-plane-auth
+  migrations:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-admin
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
   ui:
     replicas: 2
     env:

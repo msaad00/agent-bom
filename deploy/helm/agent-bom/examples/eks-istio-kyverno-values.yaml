@@ -24,6 +24,10 @@ controlPlane:
     envFrom:
       - secretRef:
           name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
+      - secretRef:
+          name: agent-bom-control-plane-auth
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
         value: "1"
@@ -37,6 +41,14 @@ controlPlane:
         value: deploy/helm/agent-bom/templates/controlplane-istio-peerauthentication.yaml
       - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER
         value: x-forwarded-client-cert
+  migrations:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-admin
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
   ingress:
     enabled: true
     className: nginx

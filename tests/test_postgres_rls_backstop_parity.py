@@ -1,4 +1,4 @@
-"""Tenant-RLS backstop parity for two tenant-adjacent Postgres tables.
+"""Tenant-RLS backstop parity for tenant-adjacent Postgres tables.
 
 Defect: ``audit_chain_checkpoint`` (has tenant_id PK) and ``scan_dispatch_queue``
 (has tenant_id) sat outside the FORCE-ROW-LEVEL-SECURITY backstop that ~47 other
@@ -9,11 +9,9 @@ Resolution:
   * ``audit_chain_checkpoint`` is now registered with ``_ensure_tenant_rls`` for
     parity — its append path already runs under the request tenant context and
     its cross-tenant startup rebuild runs under an explicit ``bypass_tenant_rls``.
-  * ``scan_dispatch_queue`` is global-by-design routing metadata (job_id +
-    tenant_id + timing; the confidential payload lives in the RLS-protected
-    ``scan_jobs.data``). It is intentionally NOT RLS'd because the background
-    claim-loop must see pending jobs across all tenants. This test locks that
-    intent: it stays out of RLS AND must never grow a confidential column.
+  * ``scan_dispatch_queue`` is tenant-protected for app sessions. A dedicated
+    maintenance principal can claim across tenants only inside the explicit
+    maintenance context; ordinary app connections remain tenant-bound.
 
 A live Postgres is not required — a mock connection captures the emitted DDL and
 records every ``_ensure_tenant_rls`` registration.
@@ -114,8 +112,9 @@ def _create_table_columns(ddl: str, table: str) -> set[str]:
 def test_audit_chain_checkpoint_registered_for_rls(monkeypatch):
     calls = _rls_registrations(monkeypatch, audit_mod)
     pool = _FakePool()
+    maintenance_pool = _FakePool()
 
-    audit_mod.PostgresAuditLog(pool=pool)
+    audit_mod.PostgresAuditLog(pool=pool, maintenance_pool=maintenance_pool)
 
     assert ("audit_chain_checkpoint", "tenant_id") in calls
     # audit_log parity (already present) must remain.
@@ -127,7 +126,7 @@ def test_audit_chain_checkpoint_registered_for_rls(monkeypatch):
     assert "tenant_id" in cols
 
 
-# ── scan_dispatch_queue: global-by-design routing metadata, no RLS ───────────
+# ── scan_dispatch_queue: tenant-bound app access + explicit maintenance ─────
 
 # The full, intentional column set. If a future change adds a column it must
 # fail here first, forcing an explicit decision: is the new column confidential
@@ -142,21 +141,24 @@ _DISPATCH_QUEUE_ALLOWED_COLUMNS = {
 }
 
 
-def test_scan_dispatch_queue_is_global_routing_metadata_only(monkeypatch):
+def test_scan_dispatch_queue_is_registered_for_tenant_rls(monkeypatch):
     calls = _rls_registrations(monkeypatch, job_mod)
     pool = _FakePool()
+    maintenance_pool = _FakePool()
 
-    job_mod.PostgresJobStore(pool=pool)
+    job_mod.PostgresJobStore(pool=pool, maintenance_pool=maintenance_pool)
 
     registered = {table for table, _ in calls}
-    # scan_jobs / cis_benchmark_checks stay RLS-registered; the dispatch queue does not.
+    # Queue rows are tenant-scoped even though maintenance workers can claim
+    # them globally through their dedicated database role and policy.
     assert "scan_jobs" in registered
-    assert "scan_dispatch_queue" not in registered
+    assert "scan_dispatch_queue" in registered
+    assert ("scan_dispatch_queue", "tenant_id") in calls
 
     ddl = "\n".join(sql for sql, _ in pool.conn.executed).lower()
     cols = _create_table_columns(ddl, "scan_dispatch_queue")
     assert cols == _DISPATCH_QUEUE_ALLOWED_COLUMNS, (
-        "scan_dispatch_queue grew/lost a column; confirm it is still pure routing "
-        "metadata (widen the allow-set) or RLS-protect it if it now holds "
+        "scan_dispatch_queue grew/lost a column; confirm the new field remains "
+        "appropriate for tenant-scoped queue storage or tighten its contract if it holds "
         f"tenant-confidential data. Got: {sorted(cols)}"
     )

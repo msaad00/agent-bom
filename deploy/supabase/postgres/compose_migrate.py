@@ -7,8 +7,10 @@ changes the same way Helm's pre-upgrade migration Job does.
 
 Contract:
   * Connect as the Postgres bootstrap/admin role (DDL), never ``agent_bom_app``.
-  * Prefer ``AGENT_BOM_POSTGRES_PASSWORD_FILE`` (Docker secret) over embedding
-    passwords in ``AGENT_BOM_POSTGRES_URL``.
+  * Prefer ``ALEMBIC_DATABASE_PASSWORD_FILE`` (Docker secret) over embedding
+    passwords in ``ALEMBIC_DATABASE_URL``. The one-shot migration process also
+    receives the distinct app and maintenance secrets solely to provision or
+    validate those fixed runtime roles; the admin secret never reaches the API.
   * Databases first created from ``init.sql`` have no ``alembic_version`` row —
     stamp baseline ``20260416_01`` once, then ``upgrade head``.
 """
@@ -55,15 +57,23 @@ def _resolve_database_url() -> str:
     parts = urlsplit(url)
     if parts.password:
         return url
-    password_file = os.environ.get("AGENT_BOM_POSTGRES_PASSWORD_FILE", "").strip()
+    # The Alembic/admin connection is a separate trust boundary from the
+    # least-privilege runtime app connection. Never reuse the app password file
+    # merely because both URLs are present in the migration Job environment.
+    password_file_name = (
+        "ALEMBIC_DATABASE_PASSWORD_FILE"
+        if os.environ.get("ALEMBIC_DATABASE_URL", "").strip()
+        else "AGENT_BOM_POSTGRES_PASSWORD_FILE"
+    )
+    password_file = os.environ.get(password_file_name, "").strip()
     if not password_file:
         return url
     path = Path(password_file)
     if not path.is_file():
-        raise SystemExit(f"error: AGENT_BOM_POSTGRES_PASSWORD_FILE not found: {password_file}")
+        raise SystemExit(f"error: {password_file_name} not found: {password_file}")
     password = path.read_text(encoding="utf-8").strip("\r\n")
     if not password:
-        raise SystemExit(f"error: AGENT_BOM_POSTGRES_PASSWORD_FILE is empty: {password_file}")
+        raise SystemExit(f"error: {password_file_name} is empty: {password_file}")
     if not parts.username or not parts.hostname:
         raise SystemExit("error: AGENT_BOM_POSTGRES_URL must include username and hostname")
     host = parts.hostname
@@ -114,7 +124,8 @@ def main() -> int:
     root = _repo_root()
     url = _resolve_database_url()
     os.environ["ALEMBIC_DATABASE_URL"] = url
-    # Keep PASSWORD_FILE for alembic/env.py fallback; URL now carries the secret.
+    # Keep PASSWORD_FILE for operator diagnostics; ALEMBIC_DATABASE_URL now
+    # carries the admin secret only in this child process.
     if _needs_baseline_stamp(url):
         print(
             f"compose-migrate: init.sql baseline detected without alembic_version; "

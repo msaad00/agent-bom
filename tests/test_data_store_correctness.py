@@ -35,12 +35,14 @@ class _FakeResult:
 class _FakeAuditPool:
     """In-memory pool that enforces audit_log RLS by the bound session tenant."""
 
-    def __init__(self) -> None:
-        self.audit_rows: list[dict] = []
-        self.checkpoints: dict[str, tuple[int, str]] = {}
+    def __init__(self, *, shared_with: "_FakeAuditPool | None" = None) -> None:
+        self.audit_rows: list[dict] = shared_with.audit_rows if shared_with is not None else []
+        self.checkpoints: dict[str, tuple[int, str]] = shared_with.checkpoints if shared_with is not None else {}
         # (tenant, bypass) captured for every audit_log SELECT — lets a test
         # prove reads are bound to the right tenant rather than 'default'.
-        self.audit_read_sessions: list[tuple[str, bool]] = []
+        self.audit_read_sessions: list[tuple[str, bool]] = (
+            shared_with.audit_read_sessions if shared_with is not None else []
+        )
 
     def connection(self):
         return _FakeAuditConn(self)
@@ -184,7 +186,8 @@ def _make_audit_log():
     from agent_bom.api.postgres_audit import PostgresAuditLog
 
     pool = _FakeAuditPool()
-    return PostgresAuditLog(pool=pool), pool
+    maintenance_pool = _FakeAuditPool(shared_with=pool)
+    return PostgresAuditLog(pool=pool, maintenance_pool=maintenance_pool), pool
 
 
 def _append_entry(log, tenant_id: str, action: str, ts: str) -> None:

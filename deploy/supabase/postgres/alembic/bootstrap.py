@@ -12,6 +12,10 @@ def rewrite_bootstrap_sql(sql: str, database_name: str) -> str:
         f"GRANT CONNECT ON DATABASE {database_name} TO agent_bom_app;",
     )
     sql = sql.replace(
+        "GRANT CONNECT ON DATABASE agent_bom TO agent_bom_maintenance;",
+        f"GRANT CONNECT ON DATABASE {database_name} TO agent_bom_maintenance;",
+    )
+    sql = sql.replace(
         "GRANT CONNECT ON DATABASE agent_bom TO agent_bom_readonly;",
         f"GRANT CONNECT ON DATABASE {database_name} TO agent_bom_readonly;",
     )

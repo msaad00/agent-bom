@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.api.postgres_common import ConnectionPool, _get_pool, _tenant_connection, bypass_tenant_rls
+from agent_bom.api.postgres_common import (
+    ConnectionPool,
+    _get_pool,
+    _maintenance_connection,
+    bypass_tenant_rls,
+)
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.api.tenant_lifecycle import (
     TenantLifecycleError,
@@ -15,8 +20,13 @@ from agent_bom.api.tenant_lifecycle import (
 
 
 class PostgresTenantLifecycleStore:
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         with self._pool.connection() as conn:
             if ensure_postgres_schema_version(conn, "managed_trial_tenants"):
                 conn.commit()
@@ -45,7 +55,7 @@ class PostgresTenantLifecycleStore:
     ) -> TenantLifecycleRecord:
         current = now or datetime.now(timezone.utc)
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 try:
                     row = conn.execute(
                         """INSERT INTO managed_trial_tenants
@@ -64,7 +74,7 @@ class PostgresTenantLifecycleStore:
 
     def get(self, tenant_id: str) -> TenantLifecycleRecord:
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 row = conn.execute(
                     """SELECT tenant_id, state, created_at, trial_ends_at, cleanup_after,
                               updated_at, cleanup_attempts, cleanup_error, cleanup_completed_at
@@ -89,7 +99,7 @@ class PostgresTenantLifecycleStore:
                        WHERE state IN ('active', 'suspended') AND trial_ends_at <= %s
                        ORDER BY tenant_id"""
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 rows = conn.execute(query, (now,)).fetchall()
         return [self._row(row) for row in rows]
 
@@ -114,7 +124,7 @@ class PostgresTenantLifecycleStore:
             TenantLifecycleState.DELETED: ("expired",),
         }[state]
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 row = conn.execute(
                     """UPDATE managed_trial_tenants
                        SET state = %s,
@@ -141,7 +151,7 @@ class PostgresTenantLifecycleStore:
     ) -> TenantLifecycleRecord:
         current = now or datetime.now(timezone.utc)
         with bypass_tenant_rls():
-            with _tenant_connection(self._pool) as conn:
+            with _maintenance_connection(self._maintenance_pool) as conn:
                 row = conn.execute(
                     """UPDATE managed_trial_tenants
                        SET cleanup_attempts = cleanup_attempts + 1,

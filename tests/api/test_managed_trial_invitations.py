@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
@@ -48,7 +49,13 @@ def _reset_stores() -> None:
     reset_auth_state_for_tests()
 
 
-def _request(*, path: str, method: str = "POST", cookies: dict[str, str] | None = None) -> Request:
+def _request(
+    *,
+    path: str,
+    method: str = "POST",
+    cookies: dict[str, str] | None = None,
+    tenant_id: str = "default",
+) -> Request:
     headers: list[tuple[bytes, bytes]] = []
     if cookies:
         headers.append((b"cookie", "; ".join(f"{key}={value}" for key, value in cookies.items()).encode()))
@@ -68,6 +75,7 @@ def _request(*, path: str, method: str = "POST", cookies: dict[str, str] | None 
         }
     )
     request.state.api_key_name = "synthetic-operator"
+    request.state.tenant_id = tenant_id
     return request
 
 
@@ -195,6 +203,98 @@ def test_managed_trial_creation_is_opt_in_and_never_mints_an_api_key(monkeypatch
     assert response["token"] not in response["login_url"]
     invitation = next(iter(store._records.values()))
     assert not hasattr(invitation, "raw_token")
+
+
+def test_managed_trial_creation_rejects_non_operator_before_generating_or_persisting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_MANAGED_TRIAL_INVITATIONS", "1")
+    monkeypatch.setenv("AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID", "platform-operator")
+    request = _request(path="/v1/auth/trial-invitations", tenant_id="customer-tenant")
+    body = enterprise.ManagedTrialInvitationRequest(email="analyst@example.com", organization="Example Trial")
+
+    with (
+        patch.object(
+            enterprise,
+            "_new_invited_tenant_id",
+            side_effect=AssertionError("tenant id must not be generated"),
+        ),
+        patch(
+            "agent_bom.api.managed_trial_invitation.get_managed_trial_invitation_store",
+            side_effect=AssertionError("store must not be resolved"),
+        ),
+        patch(
+            "agent_bom.api.managed_trial_invitation.issue_managed_trial_invitation",
+            side_effect=AssertionError("invitation must not be issued"),
+        ),
+        pytest.raises(Exception) as denied,
+    ):
+        asyncio.run(enterprise.create_managed_trial_invitation(request, body))
+
+    assert getattr(denied.value, "status_code", None) == 403
+
+
+@pytest.mark.asyncio
+async def test_slow_managed_trial_persistence_keeps_event_loop_responsive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_MANAGED_TRIAL_INVITATIONS", "1")
+    block_seconds = 0.25
+    tick_seconds = 0.01
+    ticks = 0
+
+    class _SlowInvitationStore(InMemoryManagedTrialInvitationStore):
+        def issue(self, invitation, *, team_name: str) -> None:  # type: ignore[no-untyped-def]
+            time.sleep(block_seconds)
+            super().issue(invitation, team_name=team_name)
+
+    class _SlowLifecycleStore(InMemoryTenantLifecycleStore):
+        def transition(self, tenant_id, *, state, now=None):  # type: ignore[no-untyped-def]
+            time.sleep(block_seconds)
+            return super().transition(tenant_id, state=state, now=now)
+
+    invitation_store = _SlowInvitationStore()
+    lifecycle_store = _SlowLifecycleStore()
+    now = datetime.now(timezone.utc)
+    lifecycle_store.create(
+        tenant_id="trial-example-123",
+        trial_ends_at=now + timedelta(days=14),
+        cleanup_after=now + timedelta(days=21),
+        now=now,
+    )
+    lifecycle_store.transition("trial-example-123", state=TenantLifecycleState.SUSPENDED, now=now)
+    set_managed_trial_invitation_store_for_tests(invitation_store)
+    set_tenant_lifecycle_store_for_tests(lifecycle_store)
+
+    async def _heartbeat() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(tick_seconds)
+            ticks += 1
+
+    beat = asyncio.create_task(_heartbeat())
+    await asyncio.sleep(tick_seconds * 2)
+    try:
+        before_issue = ticks
+        created = await enterprise.create_managed_trial_invitation(
+            _request(path="/v1/auth/trial-invitations"),
+            enterprise.ManagedTrialInvitationRequest(email="analyst@example.com", organization="Example Trial"),
+        )
+        issue_ticks = ticks - before_issue
+
+        before_transition = ticks
+        resumed = await enterprise.resume_managed_trial_tenant(
+            _request(path="/v1/auth/trial-tenants/trial-example-123/resume"),
+            "trial-example-123",
+        )
+        transition_ticks = ticks - before_transition
+    finally:
+        beat.cancel()
+
+    assert created["state"] == "pending"
+    assert resumed["state"] == "active"
+    assert issue_ticks >= 5
+    assert transition_ticks >= 5
 
 
 def test_managed_trial_requires_postgres_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:

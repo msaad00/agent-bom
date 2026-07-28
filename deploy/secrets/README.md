@@ -10,9 +10,11 @@ Populate before `docker compose up` (or run
 ```bash
 mkdir -p deploy/secrets
 
-# Postgres: bootstrap (image init only) + DML-only app role (API)
+# Postgres: bootstrap/admin (init+migrations), app (tenant-bound runtime), and
+# trusted maintenance (scoped cross-tenant work) use independent credentials.
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_password
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_app_password
+printf %s "$(openssl rand -hex 32)" > deploy/secrets/postgres_maintenance_password
 
 # Control-plane crypto / auth material
 printf %s "$(openssl rand -hex 32)" > deploy/secrets/api_key
@@ -33,6 +35,7 @@ printf %s "$(python -c 'from cryptography.fernet import Fernet; print(Fernet.gen
 # self-host VM the host filesystem is the trust boundary; swarm/k8s use
 # per-container secret perms instead.
 chmod 0644 deploy/secrets/postgres_password deploy/secrets/postgres_app_password \
+  deploy/secrets/postgres_maintenance_password \
   deploy/secrets/api_key deploy/secrets/audit_hmac_key \
   deploy/secrets/browser_session_signing_key deploy/secrets/connections_key
 ```
@@ -51,5 +54,6 @@ inline env var did:
 - `AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM_FILE` — Ed25519 PEM for
   compliance-bundle signing (unset → HMAC-SHA256 fallback).
 
-The API never connects as the Postgres bootstrap/admin/superuser role — only
-`agent_bom_app`.
+The API's tenant-bound traffic uses `agent_bom_app`; scoped cross-tenant jobs
+use `agent_bom_maintenance` through a separately validated pool. The API never
+uses the Postgres bootstrap/admin role, which is reserved for init/migrations.

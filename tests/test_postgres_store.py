@@ -374,6 +374,14 @@ def mock_pool():
     return MockPool()
 
 
+@pytest.fixture()
+def mock_maintenance_pool(mock_pool):
+    """Return a distinct pool identity backed by the same synthetic database."""
+    pool = MockPool()
+    pool._conn = mock_pool._conn
+    return pool
+
+
 # ─── PostgresJobStore ─────────────────────────────────────────────────────────
 
 
@@ -384,11 +392,11 @@ def test_job_store_init(mock_pool):
     assert store is not None
 
 
-def test_job_store_put_get(mock_pool):
+def test_job_store_put_get(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     job = ScanJob(
         job_id="j-1",
         tenant_id="tenant-alpha",
@@ -436,32 +444,32 @@ def test_job_store_persists_triggered_by(mock_pool):
     assert insert_params[12] == "analyst@example.com"
 
 
-def test_job_store_get_nonexistent(mock_pool):
+def test_job_store_get_nonexistent(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     assert store.get("nonexistent", all_tenants=True) is None
 
 
-def test_job_store_delete(mock_pool):
+def test_job_store_delete(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     mock_pool._conn._store.setdefault("scan_jobs", {})["j-1"] = ("j-1", "done", "", None, "{}")
     assert store.delete("j-1", all_tenants=True) is True
 
 
-def test_job_store_delete_nonexistent(mock_pool):
+def test_job_store_delete_nonexistent(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     assert store.delete("nonexistent", all_tenants=True) is False
 
 
-def test_job_store_list_summary(mock_pool):
+def test_job_store_list_summary(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     # list_summary returns dicts from column-based query
     result = store.list_summary(all_tenants=True)
     assert isinstance(result, list)
@@ -475,10 +483,10 @@ def test_job_store_list_all_requires_tenant_id(mock_pool):
         store.list_all()
 
 
-def test_job_store_list_summary_includes_tenant(mock_pool):
+def test_job_store_list_summary_includes_tenant(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     mock_pool._conn._store.setdefault("scan_jobs", {})["j-1"] = (
         "j-1",
         "tenant-alpha",
@@ -495,11 +503,11 @@ def test_job_store_list_summary_includes_tenant(mock_pool):
     assert result[0]["schedule_id"] == "sched-alpha"
 
 
-def test_job_store_cleanup(mock_pool):
+def test_job_store_cleanup(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
     from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 
-    store = PostgresJobStore(pool=mock_pool)
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     count = store.cleanup_expired(ttl_seconds=7200)
     delete_sql, delete_params = next(
         (sql, params) for sql, params in reversed(mock_pool._conn.executed) if sql.strip().lower().startswith("delete from scan_jobs")
@@ -508,6 +516,48 @@ def test_job_store_cleanup(mock_pool):
     assert "INTERVAL '1 second'" in delete_sql
     assert "triggered_by" in delete_sql
     assert delete_params == (DEMO_ESTATE_TRIGGERED_BY, 7200)
+
+
+def test_job_store_global_paths_use_scoped_maintenance_connection(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    mock_pool._conn.executed.clear()
+
+    store.get("missing", all_tenants=True)
+    store.delete("missing", all_tenants=True)
+    # Keep the permissive SQL mock's list-all fallback from treating schema
+    # version rows as ScanJob payloads.
+    mock_pool._conn._store = {"scan_jobs": {}}
+    store.list_all(all_tenants=True)
+    store.list_summary(all_tenants=True)
+    store.cleanup_expired()
+
+    bypass_settings = [
+        params
+        for sql, params in mock_pool._conn.executed
+        if "set_config('app.bypass_rls'" in sql
+    ]
+    assert bypass_settings == [("1",)] * 5
+
+
+def test_job_store_tenant_paths_never_activate_maintenance_bypass(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    mock_pool._conn.executed.clear()
+
+    store.get("missing", tenant_id="tenant-a")
+    store.delete("missing", tenant_id="tenant-a")
+    store.list_all(tenant_id="tenant-a")
+    store.list_summary(tenant_id="tenant-a")
+
+    bypass_settings = [
+        params
+        for sql, params in mock_pool._conn.executed
+        if "set_config('app.bypass_rls'" in sql
+    ]
+    assert bypass_settings == [("0",)] * 4
 
 
 def test_job_store_init_migrates_triggered_by_column(mock_pool):
@@ -720,11 +770,12 @@ def test_fleet_store_batch_put(mock_pool):
 # ─── PostgresKeyStore ────────────────────────────────────────────────────────
 
 
-def test_key_store_add_get_list_verify_remove(mock_pool):
+def test_key_store_add_get_list_verify_remove(monkeypatch, mock_pool, mock_maintenance_pool):
+    from agent_bom.api import postgres_common
     from agent_bom.api.auth import Role, create_api_key
     from agent_bom.api.postgres_store import PostgresKeyStore
 
-    store = PostgresKeyStore(pool=mock_pool)
+    store = PostgresKeyStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     raw_key, api_key = create_api_key("alpha-admin", Role.ADMIN, tenant_id="tenant-alpha")
     store.add(api_key)
 
@@ -752,9 +803,18 @@ def test_key_store_add_get_list_verify_remove(mock_pool):
     assert len(listed) == 1
     assert listed[0].key_id == api_key.key_id
 
+    monkeypatch.setattr(postgres_common.inspect, "stack", lambda **_kwargs: pytest.fail("stack inspected"))
+    monkeypatch.setattr(postgres_common.logger, "warning", lambda *_args, **_kwargs: pytest.fail("warning emitted"))
+    monkeypatch.setattr(
+        postgres_common,
+        "_audit_rls_bypass_activation",
+        lambda **_kwargs: pytest.fail("bypass audit emitted"),
+    )
+
     verified = store.verify(raw_key)
     assert verified is not None
     assert verified.key_id == api_key.key_id
+    assert store.verify(raw_key) is not None
 
     assert store.remove(api_key.key_id) is True
 
@@ -960,11 +1020,11 @@ def test_policy_store_tenant_filters(mock_pool):
     assert store.list_audit_entries(tenant_id="tenant-a")
 
 
-def test_postgres_audit_log_roundtrip(mock_pool):
+def test_postgres_audit_log_roundtrip(mock_pool, mock_maintenance_pool):
     from agent_bom.api.audit_log import AuditEntry
     from agent_bom.api.postgres_store import PostgresAuditLog
 
-    store = PostgresAuditLog(pool=mock_pool)
+    store = PostgresAuditLog(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     entry = AuditEntry(action="scan", actor="admin", resource="job/1", details={"packages": 42})
     store.append(entry)
 
@@ -988,16 +1048,16 @@ def test_postgres_audit_log_roundtrip(mock_pool):
     assert tampered == 0
 
 
-def test_postgres_audit_hydrates_last_signature_after_restart(mock_pool):
+def test_postgres_audit_hydrates_last_signature_after_restart(mock_pool, mock_maintenance_pool):
     from agent_bom.api.audit_log import AuditEntry
     from agent_bom.api.postgres_store import PostgresAuditLog
 
-    first = PostgresAuditLog(pool=mock_pool)
+    first = PostgresAuditLog(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     first_entry = AuditEntry(action="scan", actor="admin", resource="job/1", details={"tenant_id": "tenant-alpha"})
     first.append(first_entry)
     first_sig = first._last_sig_by_tenant["tenant-alpha"]
 
-    restarted = PostgresAuditLog(pool=mock_pool)
+    restarted = PostgresAuditLog(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     assert restarted._last_sig_by_tenant["tenant-alpha"] == first_sig
 
     second_entry = AuditEntry(action="scan", actor="admin", resource="job/2", details={"tenant_id": "tenant-alpha"})
@@ -1362,10 +1422,10 @@ def test_schedule_store_list_all(mock_pool):
     assert isinstance(result, list)
 
 
-def test_schedule_store_list_due(mock_pool):
+def test_schedule_store_list_due(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresScheduleStore
 
-    store = PostgresScheduleStore(pool=mock_pool)
+    store = PostgresScheduleStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     result = store.list_due("2025-06-15T12:00:00+00:00")
     assert isinstance(result, list)
 
@@ -1461,12 +1521,11 @@ def test_tenant_context_is_applied_to_postgres_session(mock_pool):
     assert any(params == ("tenant-zeta",) for sql, params in mock_pool._conn.executed if "set_config('app.tenant_id'" in sql)
 
 
-def test_scheduler_bypass_sets_rls_flag(mock_pool):
-    from agent_bom.api.postgres_store import PostgresScheduleStore, bypass_tenant_rls
+def test_scheduler_due_query_sets_maintenance_rls_flag(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresScheduleStore
 
-    store = PostgresScheduleStore(pool=mock_pool)
-    with bypass_tenant_rls():
-        store.list_due("2025-06-15T12:00:00+00:00")
+    store = PostgresScheduleStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    store.list_due("2025-06-15T12:00:00+00:00")
 
     assert any("set_config('app.bypass_rls'" in sql for sql, _ in mock_pool._conn.executed)
     assert any(params == ("1",) for sql, params in mock_pool._conn.executed if "set_config('app.bypass_rls'" in sql)
@@ -1483,10 +1542,10 @@ def test_scan_cache_init(mock_pool):
     assert any("idx_cache_age" in sql for sql, _ in mock_pool._conn.executed)
 
 
-def test_graph_store_init_adds_query_indexes(mock_pool):
+def test_graph_store_init_adds_query_indexes(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresGraphStore
 
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     assert store is not None
     assert any("idx_pg_graph_nodes_scan_order" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_nodes_scan_id_cover" in sql for sql, _ in mock_pool._conn.executed)
@@ -1514,10 +1573,15 @@ def test_graph_store_init_tolerates_restricted_pg_trgm_extension():
             self._conn = RestrictedPgTrgmConnection()
 
     pool = RestrictedPgTrgmPool()
-    store = PostgresGraphStore(pool=pool)
+    maintenance_pool = MockPool()
+    maintenance_pool._conn = pool._conn
+    store = PostgresGraphStore(pool=pool, maintenance_pool=maintenance_pool)
 
     assert store is not None
-    assert pool._conn.transaction_events == ["commit", "rollback"]
+    # Schema DDL is committed before the separately scoped maintenance
+    # backfill, then the RLS policy DDL is committed independently. The
+    # optional extension failure rolls back only its own transaction.
+    assert pool._conn.transaction_events == ["commit", "commit", "commit", "rollback"]
     assert any("CREATE TABLE IF NOT EXISTS graph_nodes" in sql for sql, _ in pool._conn.executed)
     assert any("ALTER TABLE graph_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed)
     assert any(
@@ -1529,10 +1593,10 @@ def test_graph_store_init_tolerates_restricted_pg_trgm_extension():
     assert any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql for sql, _ in pool._conn.executed)
 
 
-def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):
+def test_graph_store_init_backfills_empty_tenant_rows(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresGraphStore
 
-    PostgresGraphStore(pool=mock_pool)
+    PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
 
     expected_tables = {
         "graph_nodes",
@@ -1558,7 +1622,9 @@ def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):
     assert expected_tables.issubset(delete_tables)
 
 
-def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool, monkeypatch):
+def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(
+    mock_pool, mock_maintenance_pool, monkeypatch
+):
     from agent_bom.api import postgres_graph
     from agent_bom.api.postgres_store import PostgresGraphStore
 
@@ -1570,7 +1636,7 @@ def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool,
         return real_bypass_tenant_rls(*args, **kwargs)
 
     monkeypatch.setattr(postgres_graph, "bypass_tenant_rls", recording_bypass_tenant_rls)
-    PostgresGraphStore(pool=mock_pool)
+    PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
 
     executed = mock_pool._conn.executed
     bypass_on_index = next(
@@ -1591,11 +1657,11 @@ def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool,
     assert False in bypass_audit_flags
 
 
-def test_graph_store_save_graph_normalizes_empty_tenant_to_default(mock_pool):
+def test_graph_store_save_graph_normalizes_empty_tenant_to_default(mock_pool, mock_maintenance_pool):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
 
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     graph = UnifiedGraph(scan_id="scan-default")
     graph.add_node(UnifiedNode(id="agent:default", entity_type=EntityType.AGENT, label="Default Agent"))
 
@@ -1610,11 +1676,11 @@ def test_graph_store_save_graph_normalizes_empty_tenant_to_default(mock_pool):
     assert graph_search_rows[-1][0][1] == "default"
 
 
-def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, monkeypatch):
+def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
 
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     graph = UnifiedGraph(scan_id="scan-graph", tenant_id="tenant-alpha")
     graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
     graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="Tool T"))
@@ -1631,12 +1697,12 @@ def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, monkeypatch):
     assert "id IN" in select_sql
 
 
-def test_graph_store_save_graph_batches_postgres_writes(mock_pool, monkeypatch):
+def test_graph_store_save_graph_batches_postgres_writes(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 
     monkeypatch.setenv("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", "2")
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     graph = UnifiedGraph(scan_id="scan-batch", tenant_id="tenant-alpha")
     for idx in range(3):
         graph.add_node(UnifiedNode(id=f"agent:{idx}", entity_type=EntityType.AGENT, label=f"Agent {idx}"))
@@ -1656,14 +1722,14 @@ def test_graph_store_save_graph_batches_postgres_writes(mock_pool, monkeypatch):
     assert [len(batch) for batch in graph_edge_batches] == [2]
 
 
-def test_graph_store_search_applies_local_timeout(mock_pool, monkeypatch):
+def test_graph_store_search_applies_local_timeout(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api import postgres_graph
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
 
     monkeypatch.setattr(postgres_graph, "POSTGRES_GRAPH_SEARCH_TIMEOUT_MS", 2500)
     monkeypatch.setattr(postgres_graph, "POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     graph = UnifiedGraph(scan_id="scan-search", tenant_id="tenant-alpha")
     graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent Alpha"))
     store.save_graph(graph)
@@ -1685,11 +1751,13 @@ def test_graph_store_search_timeout_is_capped_by_statement_timeout(monkeypatch):
     assert postgres_graph._graph_search_timeout_ms() == 12_000
 
 
-def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool, monkeypatch):
+def test_graph_store_attack_paths_for_sources_uses_materialized_table(
+    mock_pool, mock_maintenance_pool, monkeypatch
+):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import AttackPath, EntityType, UnifiedGraph, UnifiedNode
 
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     graph = UnifiedGraph(scan_id="scan-graph", tenant_id="tenant-alpha")
     graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
     graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-0001"))
@@ -1723,12 +1791,12 @@ def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool,
     assert "source_node IN" in select_sql
 
 
-def test_graph_store_attack_paths_preserve_technique_mappings(mock_pool):
+def test_graph_store_attack_paths_preserve_technique_mappings(mock_pool, mock_maintenance_pool):
     """Typed MITRE mappings survive the Postgres persist→load path (fake conn)."""
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import AttackPath, EntityType, TechniqueMapping, UnifiedGraph, UnifiedNode
 
-    store = PostgresGraphStore(pool=mock_pool)
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     graph = UnifiedGraph(scan_id="scan-graph", tenant_id="tenant-alpha")
     graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
     graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-0001"))
@@ -1882,14 +1950,14 @@ def test_server_lifespan_postgres_source_store():
 # ─── Audit append tenant alignment (#4276) ────────────────────────────────────
 
 
-def test_audit_append_binds_entry_tenant_for_insert(mock_pool):
+def test_audit_append_binds_entry_tenant_for_insert(mock_pool, mock_maintenance_pool):
     """The audit INSERT must run under the entry's own tenant GUC, not the
     ambient contextvar, so RLS WITH CHECK accepts the row when a caller emits
     an audit event before installing the request tenant context."""
     from agent_bom.api.audit_log import AuditEntry
     from agent_bom.api.postgres_store import PostgresAuditLog
 
-    store = PostgresAuditLog(pool=mock_pool)
+    store = PostgresAuditLog(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     conn = mock_pool._conn
     conn.executed.clear()
 
@@ -1910,7 +1978,9 @@ def test_audit_append_binds_entry_tenant_for_insert(mock_pool):
     )
 
 
-def test_audit_append_rejection_logs_rate_limited_warning(mock_pool, caplog, monkeypatch):
+def test_audit_append_rejection_logs_rate_limited_warning(
+    mock_pool, mock_maintenance_pool, caplog, monkeypatch
+):
     """A rejected audit append must emit a (rate-limited) warning so callers
     that swallow audit errors by design cannot lose events invisibly."""
     import logging
@@ -1919,7 +1989,7 @@ def test_audit_append_rejection_logs_rate_limited_warning(mock_pool, caplog, mon
     from agent_bom.api.audit_log import AuditEntry
     from agent_bom.api.postgres_store import PostgresAuditLog
 
-    store = PostgresAuditLog(pool=mock_pool)
+    store = PostgresAuditLog(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
     conn = mock_pool._conn
     real_execute = conn.execute
 

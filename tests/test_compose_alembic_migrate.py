@@ -31,6 +31,24 @@ def test_resolve_database_url_keeps_embedded_password(monkeypatch: pytest.Monkey
     assert cm._resolve_database_url() == "postgresql+psycopg://agent_bom:already@postgres:5432/agent_bom"
 
 
+def test_resolve_database_url_uses_distinct_alembic_password_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin_secret = tmp_path / "postgres_admin_password"
+    admin_secret.write_text("admin:p@ss\n", encoding="utf-8")
+    app_secret = tmp_path / "postgres_app_password"
+    app_secret.write_text("app-secret\n", encoding="utf-8")
+    monkeypatch.setenv("ALEMBIC_DATABASE_URL", "postgresql://agent_bom@postgres:5432/agent_bom")
+    monkeypatch.setenv("ALEMBIC_DATABASE_PASSWORD_FILE", str(admin_secret))
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://agent_bom_app@postgres:5432/agent_bom")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", str(app_secret))
+
+    url = cm._resolve_database_url()
+
+    assert "agent_bom:admin%3Ap%40ss@postgres" in url
+    assert "app-secret" not in url
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     (

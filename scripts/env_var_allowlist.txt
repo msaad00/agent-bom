@@ -361,6 +361,8 @@ AGENT_BOM_OTEL_TRACES_HEADERS
 AGENT_BOM_OTEL_LOGS_ENDPOINT
 AGENT_BOM_OTEL_LOGS_HEADERS
 AGENT_BOM_POSTGRES_URL
+# Dedicated NOSUPERUSER/NOBYPASSRLS maintenance DSN; validated separately at Postgres startup.
+AGENT_BOM_POSTGRES_MAINTENANCE_URL
 # API posture webhook outbox SQLite path override; deploy-time operator setting.
 AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB
 # Posture webhook signing key fallback for graph delta delivery.
@@ -515,6 +517,8 @@ AGENT_BOM_EXEC_SCORE_POLICY_FILE
 # File-only Postgres credential consumed by postgres_common.py. The value is a
 # mounted secret path, not a scalar application setting for config.py.
 AGENT_BOM_POSTGRES_PASSWORD_FILE
+# File-only credential for the separately bounded Postgres maintenance pool.
+AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE
 
 # File-first audit and connection-encryption secrets are mounted secret paths,
 # not scalar application settings for the generated config reference.

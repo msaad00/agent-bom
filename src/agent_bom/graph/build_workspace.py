@@ -342,6 +342,11 @@ class _PostgresWorkspaceBackend:
         self._psycopg = psycopg
         self._dsn = dsn
         self._workspace_id = workspace_id
+        # Cleanup must stay tenant-bound under FORCE RLS. Record every tenant
+        # this backend actually touches so close() can delete only those rows
+        # through the ordinary application connection; it must never try to
+        # self-authorize cross-tenant maintenance with a session GUC.
+        self._tenant_ids: set[str] = set()
         connect_kwargs: dict[str, Any] = {"autocommit": True}
         if password is not None:
             # Keep mounted/static/IAM credentials out of the DSN, which can be
@@ -369,6 +374,7 @@ class _PostgresWorkspaceBackend:
         that value so ``WITH CHECK`` / ``USING`` policies accept the rows.
         """
         tid = _normalize_tenant(tenant_id)
+        self._tenant_ids.add(tid)
         self._conn.execute("SELECT set_config('app.tenant_id', %s, true)", (tid,))
         self._conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("0",))
 
@@ -523,20 +529,22 @@ class _PostgresWorkspaceBackend:
         return self._count("graph_build_workspace_edges", tenant_id)
 
     def close(self) -> None:
-        # Drop only this workspace's rows; the shared tables persist for reuse.
-        # Bypass RLS so cleanup clears every tenant that staged into this
-        # workspace_id (multi-tenant tests share one workspace backend).
+        # Drop only rows this backend touched. The shared tables persist for
+        # reuse, and each delete remains inside the recorded tenant's FORCE-RLS
+        # scope. A workspace backend is never allowed to turn its application
+        # connection into a cross-tenant maintenance connection.
         try:
             with self._conn.transaction():
-                self._conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("1",))
-                self._conn.execute(
-                    "DELETE FROM graph_build_workspace_nodes WHERE workspace_id = %s",
-                    (self._workspace_id,),
-                )
-                self._conn.execute(
-                    "DELETE FROM graph_build_workspace_edges WHERE workspace_id = %s",
-                    (self._workspace_id,),
-                )
+                for tenant_id in sorted(self._tenant_ids):
+                    self._bind_tenant(tenant_id)
+                    self._conn.execute(
+                        "DELETE FROM graph_build_workspace_nodes WHERE workspace_id = %s AND tenant_id = %s",
+                        (self._workspace_id, tenant_id),
+                    )
+                    self._conn.execute(
+                        "DELETE FROM graph_build_workspace_edges WHERE workspace_id = %s AND tenant_id = %s",
+                        (self._workspace_id, tenant_id),
+                    )
         finally:
             self._conn.close()
 

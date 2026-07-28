@@ -42,6 +42,17 @@ def _parse_created_at(job: ScanJob) -> datetime | None:
         return None
 
 
+def _put_in_job_tenant(store: Any, job: ScanJob) -> None:
+    """Persist a globally discovered job through its own tenant-bound app path."""
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+
+    token = set_current_tenant(job.tenant_id or "default")
+    try:
+        store.put(job)
+    finally:
+        reset_current_tenant(token)
+
+
 def fail_stale_active_scan_jobs(
     store: Any,
     *,
@@ -63,7 +74,7 @@ def fail_stale_active_scan_jobs(
         job.status = JobStatus.FAILED
         job.error = reason
         job.completed_at = current.isoformat()
-        store.put(job)
+        _put_in_job_tenant(store, job)
         failed += 1
     return failed
 
@@ -87,6 +98,6 @@ def fail_orphaned_active_scan_jobs(
         job.status = JobStatus.FAILED
         job.error = reason
         job.completed_at = now.isoformat()
-        store.put(job)
+        _put_in_job_tenant(store, job)
         failed += 1
     return failed

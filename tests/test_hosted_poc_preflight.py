@@ -27,6 +27,7 @@ def _seed_secret_files(root: Path) -> None:
     secrets_dir.mkdir(parents=True, exist_ok=True)
     (secrets_dir / "postgres_password").write_text("p" * 40, encoding="utf-8")
     (secrets_dir / "postgres_app_password").write_text("a" * 40, encoding="utf-8")
+    (secrets_dir / "postgres_maintenance_password").write_text("m" * 40, encoding="utf-8")
     (secrets_dir / "api_key").write_text("k" * 40, encoding="utf-8")
     (secrets_dir / "audit_hmac_key").write_text("h" * 40, encoding="utf-8")
     (secrets_dir / "browser_session_signing_key").write_text("s" * 40, encoding="utf-8")
@@ -39,6 +40,7 @@ def hosted_env(monkeypatch: pytest.MonkeyPatch) -> None:
         if key.startswith("AGENT_BOM_") or key in {
             "POSTGRES_PASSWORD",
             "POSTGRES_APP_PASSWORD",
+            "POSTGRES_MAINTENANCE_PASSWORD",
             "NEXT_PUBLIC_API_URL",
             "CORS_ORIGINS",
         }:

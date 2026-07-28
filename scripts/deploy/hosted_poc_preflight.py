@@ -30,6 +30,7 @@ REQUIRED_ENV = (
 FORBIDDEN_SECRET_ENV = (
     "POSTGRES_PASSWORD",
     "POSTGRES_APP_PASSWORD",
+    "POSTGRES_MAINTENANCE_PASSWORD",
     "AGENT_BOM_API_KEY",
     "AGENT_BOM_API_KEYS",
     "AGENT_BOM_AUDIT_HMAC_KEY",
@@ -44,6 +45,7 @@ FORBIDDEN_SECRET_ENV = (
 REQUIRED_SECRET_FILES = (
     "postgres_password",
     "postgres_app_password",
+    "postgres_maintenance_password",
     "api_key",
     "audit_hmac_key",
     "browser_session_signing_key",
@@ -183,6 +185,7 @@ def _write_secret_files(root: Path, *, force: bool) -> None:
     writers = {
         "postgres_password": lambda: secrets.token_hex(32),
         "postgres_app_password": lambda: secrets.token_hex(32),
+        "postgres_maintenance_password": lambda: secrets.token_hex(32),
         "api_key": lambda: secrets.token_hex(32),
         "audit_hmac_key": lambda: secrets.token_hex(32),
         "browser_session_signing_key": lambda: secrets.token_hex(32),
@@ -231,11 +234,13 @@ def _validate_compose_config(errors: list[str], rendered: str) -> None:
         "0.0.0.0:8422": "API must not bind publicly",
         "postgres_password.example": "platform compose must not mount the placeholder Postgres password",
         "postgres_app_password.example": "platform compose must not mount the placeholder app password",
+        "postgres_maintenance_password.example": "platform compose must not mount the placeholder maintenance password",
         "--allow-insecure-no-auth": "hosted compose must not allow unauthenticated API mode",
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": "hosted compose must not opt into unauthenticated API",
         "NEXT_PUBLIC_API_URL: http://localhost": "UI must not bake localhost API URL",
         "POSTGRES_PASSWORD:": "compose must not interpolate POSTGRES_PASSWORD from env",
         "POSTGRES_APP_PASSWORD:": "compose must not interpolate POSTGRES_APP_PASSWORD from env",
+        "POSTGRES_MAINTENANCE_PASSWORD:": "compose must not interpolate POSTGRES_MAINTENANCE_PASSWORD from env",
     }
     for needle, message in forbidden.items():
         if needle in rendered:

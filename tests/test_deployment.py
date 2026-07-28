@@ -815,6 +815,10 @@ def test_eks_pilot_doc_matches_chart_secret_and_service_port():
     doc = (ROOT / "site-docs" / "deployment" / "eks-mcp-pilot.md").read_text()
     assert "kubectl -n agent-bom create secret generic agent-bom-control-plane" in doc
     assert "controlPlane.externalSecrets" in doc
+    assert '--from-literal=AGENT_BOM_API_KEYS="${API_KEY}:admin"' in doc
+    assert "--from-literal=AGENT_BOM_API_KEY=" not in doc
+    assert "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY" in doc
+    assert "AGENT_BOM_CONNECTIONS_KEY" in doc
     assert "8080:8422" in doc
     assert "/v1/compliance/owasp-llm/report" in doc
     assert "/v1/compliance/soc2/report" not in doc

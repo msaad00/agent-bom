@@ -36,11 +36,17 @@ spec:
                 - |
                   ts="$(date -u +%Y%m%dT%H%M%SZ)"
                   out="/backup/agent-bom-${ts}.dump"
-                  pg_dump "$AGENT_BOM_POSTGRES_URL" --format=custom --file "$out"
+                  pg_dump "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" \
+                    --enable-row-security --format=custom --file "$out"
                   echo "$out" > /backup/latest-path
               env:
                 - name: PGCONNECT_TIMEOUT
                   value: "10"
+                # pg_dump is a deliberate cross-tenant maintenance operation.
+                # The database helper requires both this scoped flag and the
+                # marker-role membership of agent_bom_maintenance.
+                - name: PGOPTIONS
+                  value: "-c app.bypass_rls=1"
                 {{- with .Values.controlPlane.backup.env }}
                 {{- toYaml . | nindent 16 }}
                 {{- end }}

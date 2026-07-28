@@ -133,3 +133,52 @@ def test_startup_orphan_cleanup_fails_active_jobs() -> None:
     assert store.get("done", all_tenants=True).status == JobStatus.DONE
     assert reconcile_scan_jobs_active(store) == 0
     assert metrics.scan_jobs_active() == 0
+
+
+@pytest.mark.parametrize("cleanup", [fail_stale_active_scan_jobs, fail_orphaned_active_scan_jobs])
+def test_cross_tenant_reconciliation_rebinds_each_job_before_write(cleanup) -> None:
+    from datetime import datetime, timezone
+
+    from agent_bom.api.postgres_common import _current_tenant
+
+    class TenantRecordingStore(InMemoryJobStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.write_tenants: list[tuple[str, str]] = []
+
+        def put(self, job: ScanJob) -> None:
+            self.write_tenants.append((job.job_id, _current_tenant.get()))
+            super().put(job)
+
+    store = TenantRecordingStore()
+    store.put(
+        ScanJob(
+            job_id="tenant-a-job",
+            tenant_id="tenant-a",
+            status=JobStatus.PENDING,
+            created_at="2026-04-28T00:00:00+00:00",
+            request=ScanRequest(),
+        )
+    )
+    store.put(
+        ScanJob(
+            job_id="tenant-b-job",
+            tenant_id="tenant-b",
+            status=JobStatus.RUNNING,
+            created_at="2026-04-28T00:00:00+00:00",
+            request=ScanRequest(),
+        )
+    )
+    store.write_tenants.clear()
+
+    kwargs = {}
+    if cleanup is fail_stale_active_scan_jobs:
+        kwargs = {
+            "timeout_seconds": 1800,
+            "now": datetime(2026, 4, 28, 1, 0, tzinfo=timezone.utc),
+        }
+    assert cleanup(store, **kwargs) == 2
+    assert store.write_tenants == [
+        ("tenant-a-job", "tenant-a"),
+        ("tenant-b-job", "tenant-b"),
+    ]

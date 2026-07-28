@@ -147,12 +147,14 @@ runtime model.
 
 ## Minimal values example
 
-Create a Secret with the database URL and auth settings you actually use:
+Create distinct database and auth Secrets (the shipped example contains all
+four object shapes and placeholder keys):
 
 ```bash
-kubectl create secret generic agent-bom-control-plane \
-  -n agent-bom \
-  --from-literal=AGENT_BOM_POSTGRES_URL='postgresql://agent_bom:...@postgres-rw:5432/agent_bom' \
+cp deploy/helm/agent-bom/examples/postgres-secret.example.yaml /tmp/agent-bom-postgres-secrets.yaml
+# Replace every placeholder from the platform secret manager, then:
+kubectl apply -f /tmp/agent-bom-postgres-secrets.yaml
+kubectl create secret generic agent-bom-control-plane-auth -n agent-bom \
   --from-literal=AGENT_BOM_API_KEY='replace-me'
 ```
 
@@ -164,7 +166,19 @@ controlPlane:
   api:
     envFrom:
       - secretRef:
-          name: agent-bom-control-plane
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
+      - secretRef:
+          name: agent-bom-control-plane-auth
+  migrations:
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-admin
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-maintenance
   ingress:
     enabled: true
     className: nginx
@@ -339,7 +353,8 @@ You still own:
 - use anti-affinity and a control-plane `PriorityClass` when you expect node pressure
 - enable topology spread when you run multi-AZ EKS
 - keep same-origin ingress unless you have a strong reason not to
-- use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
+- use distinct `envFrom` / Secrets for app, maintenance, and migration/admin
+  Postgres credentials; use the auth Secret for API keys, OIDC issuer,
   audience, optional required nonce, SAML IdP/SP metadata values, and audit
   HMAC settings
 - enforce API key lifetime policy with `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`
@@ -348,7 +363,7 @@ You still own:
 - split fast-rotating auth secrets from slower DB config with `controlPlane.externalSecrets.secrets[]`
   so `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY`
   can refresh at `5m`
-  while `AGENT_BOM_POSTGRES_URL` stays at `1h`
+  while the app and maintenance Postgres credentials stay at `1h`
 - set `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` for multi-replica production
   control planes so the API refuses to start if the shared limiter backend is unavailable
 - tune Postgres-backed control planes explicitly with
@@ -366,7 +381,9 @@ You still own:
 - `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
 - keep `controlPlane.backup.destination.encryption.enabled=true`; the default is `AES256`, and production should set `mode=aws:kms` with a dedicated `kmsKeyId`
 - restore drills should use [`deploy/ops/restore-postgres-backup.sh`](https://github.com/msaad00/agent-bom/blob/main/deploy/ops/restore-postgres-backup.sh):
-  `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$AGENT_BOM_POSTGRES_URL" REPLACE_ME_BUCKET_REGION`
+  `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$RESTORE_POSTGRES_URL" REPLACE_ME_BUCKET_REGION`
+- `RESTORE_POSTGRES_URL` must use the migration/admin principal because the
+  restore path performs destructive DDL; never expose it to API or backup pods
 - use [Backup and Restore Runbook](backup-restore.md) for the full operator checklist
 - expose `GET /v1/auth/saml/metadata` to your IdP admins and keep
   `POST /v1/auth/saml/login` behind the same ingress hostname as the API

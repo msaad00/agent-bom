@@ -1054,14 +1054,20 @@ async def create_managed_trial_invitation(request: Request, req: ManagedTrialInv
 
     if not managed_trial_invitations_enabled():
         raise HTTPException(status_code=404, detail="Not found")
-    tenant_id = _new_invited_tenant_id(req.organization)
-    try:
+    _require_managed_trial_operator(request)
+
+    def _issue_invitation() -> tuple[str, Any]:
+        tenant_id = _new_invited_tenant_id(req.organization)
         issued = issue_managed_trial_invitation(
             get_managed_trial_invitation_store(),
             email=req.email,
             tenant_id=tenant_id,
             team_name=req.organization.strip(),
         )
+        return tenant_id, issued
+
+    try:
+        tenant_id, issued = await anyio.to_thread.run_sync(_issue_invitation)
     except ManagedTrialInvitationConfigurationError as exc:
         raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
     except ManagedTrialInvitationError as exc:
@@ -1099,7 +1105,7 @@ def _require_managed_trial_operator(request: Request) -> None:
 
     configured = os.environ.get("AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID", "default").strip() or "default"
     if require_request_tenant_id(request) != configured:
-        raise HTTPException(status_code=403, detail="Managed-trial lifecycle operations require the platform operator tenant")
+        raise HTTPException(status_code=403, detail="Managed-trial operator operations require the platform operator tenant")
 
 
 def _trial_lifecycle_payload(record: Any) -> dict[str, Any]:
@@ -1126,8 +1132,12 @@ async def get_managed_trial_tenant(request: Request, tenant_id: str) -> dict[str
 
     _require_managed_trial_operator(request)
     target = validate_customer_tenant_id(tenant_id)
+
+    def _load_record() -> Any:
+        return get_tenant_lifecycle_store().get(target)
+
     try:
-        record = get_tenant_lifecycle_store().get(target)
+        record = await anyio.to_thread.run_sync(_load_record)
     except TenantLifecycleError as exc:
         raise HTTPException(status_code=404, detail="Managed-trial tenant not found") from exc
     return _trial_lifecycle_payload(record)
@@ -1150,33 +1160,41 @@ async def _transition_managed_trial_tenant(
 
     _require_managed_trial_operator(request)
     target = validate_customer_tenant_id(tenant_id)
-    store = get_tenant_lifecycle_store()
-    try:
-        if action == "suspend":
-            revoked = revoke_tenant_access(target)
-            record = store.transition(target, state=TenantLifecycleState.SUSPENDED)
-        elif action == "resume":
-            revoked = {}
-            record = store.transition(target, state=TenantLifecycleState.ACTIVE)
-        elif action == "revoke":
-            revoked = revoke_tenant_access(target)
-            record = store.transition(target, state=TenantLifecycleState.EXPIRED)
-        elif action == "retry-cleanup":
-            from agent_bom.api.tenant_lifecycle import delete_tenant_records
 
-            current = store.get(target)
-            if current.state is not TenantLifecycleState.EXPIRED:
-                raise TenantLifecycleError("Cleanup may only run for an expired tenant")
-            deleted = delete_tenant_records(target)
-            record = store.transition(target, state=TenantLifecycleState.DELETED)
-            revoked = {"deleted_records": sum(deleted.values())}
-        else:
-            raise TenantLifecycleError("Unsupported lifecycle action")
+    def _apply_transition() -> tuple[Any, dict[str, int]]:
+        store = get_tenant_lifecycle_store()
+        try:
+            if action == "suspend":
+                revoked = revoke_tenant_access(target)
+                record = store.transition(target, state=TenantLifecycleState.SUSPENDED)
+            elif action == "resume":
+                revoked = {}
+                record = store.transition(target, state=TenantLifecycleState.ACTIVE)
+            elif action == "revoke":
+                revoked = revoke_tenant_access(target)
+                record = store.transition(target, state=TenantLifecycleState.EXPIRED)
+            elif action == "retry-cleanup":
+                from agent_bom.api.tenant_lifecycle import delete_tenant_records
+
+                current = store.get(target)
+                if current.state is not TenantLifecycleState.EXPIRED:
+                    raise TenantLifecycleError("Cleanup may only run for an expired tenant")
+                deleted = delete_tenant_records(target)
+                record = store.transition(target, state=TenantLifecycleState.DELETED)
+                revoked = {"deleted_records": sum(deleted.values())}
+            else:
+                raise TenantLifecycleError("Unsupported lifecycle action")
+        except Exception as exc:
+            if action == "retry-cleanup" and not isinstance(exc, TenantLifecycleError):
+                store.record_cleanup_failure(target, error=sanitize_error(exc, generic=True))
+            raise
+        return record, revoked
+
+    try:
+        record, revoked = await anyio.to_thread.run_sync(_apply_transition)
     except TenantLifecycleError as exc:
         raise HTTPException(status_code=409, detail=sanitize_error(exc, generic=True)) from exc
     except Exception as exc:
-        if action == "retry-cleanup":
-            store.record_cleanup_failure(target, error=sanitize_error(exc, generic=True))
         raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
     log_action(
         f"auth.managed_trial_tenant_{action.replace('-', '_')}",
@@ -1394,8 +1412,12 @@ async def managed_trial_oidc_start(request: Request, body: ManagedTrialOIDCStart
     if not raw_token.startswith("abti_") or len(raw_token) > 128:
         raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation")
     digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    def _load_invitation() -> Any:
+        return get_managed_trial_invitation_store().get_by_digest(digest)
+
     try:
-        get_managed_trial_invitation_store().get_by_digest(digest)
+        await anyio.to_thread.run_sync(_load_invitation)
     except ManagedTrialInvitationConfigurationError as exc:
         raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
     except ManagedTrialInvitationError as exc:
@@ -1573,8 +1595,14 @@ async def oidc_browser_callback(
             email = str(claims.get("email") or "").strip()
             if claims.get("email_verified") is not True or not subject or not email:
                 raise ManagedTrialInvitationError("Invalid or expired managed-trial invitation")
-            managed_invitation_store = get_managed_trial_invitation_store()
-            managed_invitation = managed_invitation_store.get_by_digest(managed_invitation_digest)
+
+            def _load_managed_invitation() -> tuple[Any, Any]:
+                store = get_managed_trial_invitation_store()
+                return store, store.get_by_digest(managed_invitation_digest)
+
+            managed_invitation_store, managed_invitation = await anyio.to_thread.run_sync(
+                _load_managed_invitation
+            )
             managed_verified_email = email
             role = Role.ANALYST.value
             tenant_id = managed_invitation.tenant_id
@@ -1619,12 +1647,15 @@ async def oidc_browser_callback(
         scopes=scopes,
     )
     if managed_invitation is not None and managed_invitation_store is not None and managed_verified_email is not None:
-        try:
-            managed_invitation_store.accept_digest(
+        def _accept_managed_invitation() -> Any:
+            return managed_invitation_store.accept_digest(
                 managed_invitation.token_digest,
                 verified_email=managed_verified_email,
                 verified_subject=subject,
             )
+
+        try:
+            await anyio.to_thread.run_sync(_accept_managed_invitation)
         except ManagedTrialInvitationError as exc:
             raise HTTPException(status_code=401, detail="Invalid or expired managed-trial invitation") from exc
     secure = _session_cookie_secure(request)

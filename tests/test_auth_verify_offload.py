@@ -100,3 +100,58 @@ async def test_websocket_handshake_verifies_off_the_loop_thread() -> None:
 
     assert seen.get("thread") is not None, "verification was never invoked"
     assert seen["thread"] != loop_thread, "key verification ran on the event loop thread"
+
+
+@pytest.mark.asyncio
+async def test_managed_trial_lifecycle_read_keeps_the_loop_responsive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Managed-trial session validation must not block on Postgres lifecycle reads."""
+    import httpx
+    from fastapi import FastAPI
+
+    from agent_bom.api.browser_session import create_browser_session_token
+    from agent_bom.api.middleware import APIKeyMiddleware
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "synthetic-signing-key-for-tests")
+
+    def _slow_tenant_access_active(_tenant_id: str) -> bool:
+        time.sleep(_BLOCKING_SECONDS)
+        return True
+
+    token, _csrf = create_browser_session_token(
+        subject="oidc-subject-123",
+        role="analyst",
+        tenant_id="trial-example-123",
+        auth_method="managed_trial_oidc",
+        scopes=["finding:read"],
+        max_age_seconds=3600,
+    )
+    app = FastAPI()
+
+    @app.get("/v1/findings")
+    async def _findings() -> dict[str, bool]:
+        return {"reached": True}
+
+    app.add_middleware(APIKeyMiddleware, api_key="")
+    ticks = 0
+
+    async def heartbeat() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(_TICK_SECONDS)
+            ticks += 1
+
+    with patch("agent_bom.api.tenant_lifecycle.tenant_access_active", _slow_tenant_access_active):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            client.cookies.set("agent_bom_session", token)
+            beat = asyncio.create_task(heartbeat())
+            await asyncio.sleep(_TICK_SECONDS * 2)
+            before = ticks
+            response = await client.get("/v1/findings")
+            observed = ticks - before
+            beat.cancel()
+
+    assert response.status_code == 200
+    assert observed >= _MIN_TICKS_WHILE_OFFLOADED, (
+        f"event loop advanced only {observed} tick(s) during a {_BLOCKING_SECONDS}s lifecycle read — it ran inline"
+    )

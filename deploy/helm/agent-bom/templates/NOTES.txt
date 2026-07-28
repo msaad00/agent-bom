@@ -1,4 +1,21 @@
-{{- if not .Values.controlPlane.enabled }}
+{{- if and .Values.controlPlane.externalSecrets.enabled .Values.controlPlane.externalSecrets.syncOnly }}
+================================================================================
+  EXTERNAL SECRET SYNC ONLY
+================================================================================
+
+This release manages only the control-plane ExternalSecret resources. It does
+not run database migrations or deploy scanner, API, UI, or runtime workloads.
+
+Wait for every ExternalSecret to report Ready and verify the four target
+Secrets exist. Then install the workload release with
+controlPlane.externalSecrets.enabled=false so its pre-install migration consumes
+only pre-created Secrets.
+
+Keep this release installed to retain External Secrets Operator reconciliation;
+roll consuming workloads after rotation according to your operator policy.
+
+================================================================================
+{{- else if not .Values.controlPlane.enabled }}
 ================================================================================
   SCANNER-ONLY DEPLOYMENT (controlPlane.enabled=false)
 ================================================================================

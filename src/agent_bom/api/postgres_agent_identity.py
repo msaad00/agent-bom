@@ -33,6 +33,7 @@ from agent_bom.api.postgres_common import (
     ConnectionPool,
     _ensure_tenant_rls,
     _get_pool,
+    _maintenance_connection,
     _tenant_connection,
     bypass_tenant_rls,
 )
@@ -42,8 +43,13 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 class PostgresAgentIdentityStore:
     """Shared agent-identity + JIT + conditional-access store backed by Postgres."""
 
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool | None = None,
+        maintenance_pool: ConnectionPool | None = None,
+    ) -> None:
         self._pool = pool or _get_pool()
+        self._maintenance_pool = maintenance_pool
         self._init_tables()
 
     def _init_tables(self) -> None:
@@ -236,12 +242,12 @@ class PostgresAgentIdentityStore:
         ambient one. The bypass activation is itself audit-logged in
         ``postgres_common``.
         """
-        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(), _maintenance_connection(self._maintenance_pool) as conn:
             rows = conn.execute("SELECT data FROM agent_identities ORDER BY issued_at ASC LIMIT %s", (limit,)).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
 
     def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]:
-        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+        with bypass_tenant_rls(), _maintenance_connection(self._maintenance_pool) as conn:
             rows = conn.execute("SELECT data FROM agent_identity_jit_grants ORDER BY requested_at ASC LIMIT %s", (limit,)).fetchall()
         return [AgentJITGrant(**json.loads(r[0])) for r in rows]
 

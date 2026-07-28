@@ -53,19 +53,25 @@ For AWS/EKS, the reference path is:
 
 The chart expects:
 
-- `AGENT_BOM_POSTGRES_URL`
+- `AGENT_BOM_POSTGRES_URL` for the tenant-bound `agent_bom_app` runtime role
+- `AGENT_BOM_POSTGRES_MAINTENANCE_URL` for the separately validated
+  `agent_bom_maintenance` role used only inside scoped maintenance operations
+- `ALEMBIC_DATABASE_URL` for the migration/admin role; never inject this Secret
+  into the API workload
 
 Typical shape:
 
 ```bash
-export AGENT_BOM_POSTGRES_URL="postgresql://agent_bom:***@postgres.internal:5432/agent_bom"
+export AGENT_BOM_POSTGRES_URL="postgresql://agent_bom_app:***@postgres.internal:5432/agent_bom"
+export AGENT_BOM_POSTGRES_MAINTENANCE_URL="postgresql://agent_bom_maintenance:***@postgres.internal:5432/agent_bom"
+export ALEMBIC_DATABASE_URL="postgresql://agent_bom:***@postgres.internal:5432/agent_bom"
 ```
 
 Recommended operator practice:
 
-- inject this through `Secret` / `ExternalSecret`
-- do not inline it in values files
-- treat it as the switch that enables:
+- inject each identity through its own `Secret` / `ExternalSecret`
+- do not inline credentials in values files
+- treat the app URL as the switch that enables:
   - Postgres transactional stores
   - shared rate limiting in multi-replica deployments
   - tenant-scoped RLS enforcement in the database layer
@@ -92,10 +98,19 @@ The packaged Helm chart therefore has no Postgres subchart dependency. The
 production contract is:
 
 1. provision Postgres/RDS with your platform tooling
-2. run the packaged Postgres migrations
-3. expose the connection string to the API and backup jobs as
-   `AGENT_BOM_POSTGRES_URL`
-4. install the Helm profile
+2. populate three distinct database Secrets: tenant-bound app, scoped
+   maintenance, and migration/admin
+3. before an upgrade from 0.98.2 or earlier, either let a `CREATEROLE` migration
+   principal create/rotate `agent_bom_app` and `agent_bom_maintenance`, or have
+   the DBA pre-provision those exact roles with the supplied credentials; the
+   API role must never inherit `agent_bom_rls_maintenance`
+4. run the packaged migration with all three Secret references; its connection
+   identity remains migration/admin while the app and maintenance credentials
+   are used only to bootstrap or verify the fixed runtime roles
+5. expose only `AGENT_BOM_POSTGRES_URL` and
+   `AGENT_BOM_POSTGRES_MAINTENANCE_URL` to the API; expose only the maintenance
+   URL to backup jobs with the scoped bypass option
+6. install/start the workload profile after migrations complete
 
 For clusters without External Secrets Operator, use the shipped Secret shape as
 a starting point:
@@ -147,14 +162,23 @@ Then point `AGENT_BOM_POSTGRES_URL` at the least-privilege `agent_bom_app` role
 (the intended production connection role). As a temporary stopgap only — for a
 single-tenant or local/dev deployment where tenant isolation is not required —
 you may instead set `AGENT_BOM_ALLOW_SUPERUSER_DB=1` to downgrade the hard
-failure to a warning. Do not use that flag in a multi-tenant deployment: it
-leaves cross-tenant reads/writes possible.
+failure to a warning. The distinct maintenance login and marker-role validation
+remain mandatory even under this acknowledgement. This flag disables database
+tenant isolation and is only for disposable single-tenant/local development;
+never use it in production or any multi-tenant deployment because it leaves
+cross-tenant reads/writes possible.
+
+The trusted-maintenance migration honors that same explicit acknowledgement
+for an existing privileged application role, but it never grants the
+maintenance marker to the application role or reuses the application pool for
+scoped maintenance operations.
 
 ## Operational checklist
 
 Before calling the deployment production-ready:
 
-1. confirm `AGENT_BOM_POSTGRES_URL` is injected from a secret source
+1. confirm app, maintenance, and migration/admin URLs are injected from
+   distinct secret sources and only the app + maintenance Secrets reach API pods
 2. confirm API replicas are using Postgres-backed shared rate limiting
 3. confirm audit log backend is Postgres or an explicitly chosen alternative
 4. confirm backups and restore workflow exist for the database

@@ -28,6 +28,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
         "focused-pilot",
         "enterprise-demo",
         "focused-pilot-byo-postgres",
+        "production-secret-sync",
         "production",
         "keda-autoscaling",
         "eks-vanilla",
@@ -41,6 +42,28 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
             assert values_file.exists(), f"{profile.name} missing values file {values_file}"
         for _key, file_path in profile.set_file_arguments:
             assert file_path.exists(), f"{profile.name} missing set-file input {file_path}"
+
+
+def test_production_secret_sync_profile_layers_the_bootstrap_overlay() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    examples = repo_root / "deploy" / "helm" / "agent-bom" / "examples"
+    profiles = {profile.name: profile for profile in helm_validation_profiles(repo_root)}
+
+    assert profiles["production-secret-sync"].values_files == (
+        examples / "eks-production-values.yaml",
+        examples / "eks-production-secret-sync-values.yaml",
+    )
+
+
+def test_production_secret_sync_uses_a_separate_release_by_default() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+
+    sync = build_helm_profile_command(repo_root, "production-secret-sync")
+    workload = build_helm_profile_command(repo_root, "production")
+
+    assert sync[3] == "agent-bom-secrets"
+    assert workload[3] == "agent-bom"
+    assert sync[3] != workload[3]
 
 
 def test_gateway_runtime_profile_uses_shipped_upstreams_example():
@@ -259,3 +282,21 @@ def test_install_helm_profile_script_prints_packaged_command():
     stdout = result.stdout.strip()
     assert stdout.startswith("helm upgrade --install agent-bom ")
     assert "deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml" in stdout
+
+
+def test_install_helm_profile_script_prints_separate_secret_sync_release():
+    repo_root = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [
+            "python3",
+            "scripts/install_helm_profile.py",
+            "production-secret-sync",
+            "--print-command",
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip().startswith("helm upgrade --install agent-bom-secrets ")

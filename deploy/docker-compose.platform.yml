@@ -20,6 +20,7 @@
 #     /run/secrets/...), never raw env / .env secret values. Operators provide:
 #         deploy/secrets/postgres_password
 #         deploy/secrets/postgres_app_password
+#         deploy/secrets/postgres_maintenance_password
 #         deploy/secrets/api_key
 #         deploy/secrets/audit_hmac_key
 #         deploy/secrets/browser_session_signing_key
@@ -44,10 +45,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+      POSTGRES_MAINTENANCE_PASSWORD_FILE: /run/secrets/postgres_maintenance_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     secrets:
       - postgres_password
       - postgres_app_password
+      - postgres_maintenance_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
@@ -86,10 +89,16 @@ services:
     entrypoint: ["python"]
     command: ["deploy/supabase/postgres/compose_migrate.py"]
     environment:
-      - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom@postgres:5432/${POSTGRES_DB:-agent_bom}
-      - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - ALEMBIC_DATABASE_URL=postgresql://agent_bom@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - ALEMBIC_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password
+      - AGENT_BOM_POSTGRES_MAINTENANCE_URL=postgresql://agent_bom_maintenance@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE=/run/secrets/postgres_maintenance_password
     secrets:
       - postgres_password
+      - postgres_app_password
+      - postgres_maintenance_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +118,8 @@ services:
     environment:
       - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
       - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password
+      - AGENT_BOM_POSTGRES_MAINTENANCE_URL=postgresql://agent_bom_maintenance@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE=/run/secrets/postgres_maintenance_password
       - AGENT_BOM_API_KEY_FILE=/run/secrets/api_key
       - AGENT_BOM_OIDC_ISSUER=${AGENT_BOM_OIDC_ISSUER:-}
       - AGENT_BOM_OIDC_AUDIENCE=${AGENT_BOM_OIDC_AUDIENCE:-}
@@ -130,6 +141,7 @@ services:
       - NVD_API_KEY=${NVD_API_KEY:-}
     secrets:
       - postgres_app_password
+      - postgres_maintenance_password
       - api_key
       - audit_hmac_key
       - browser_session_signing_key
@@ -189,6 +201,8 @@ secrets:
     file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
   postgres_app_password:
     file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres_app_password}
+  postgres_maintenance_password:
+    file: ${POSTGRES_MAINTENANCE_PASSWORD_FILE:-./secrets/postgres_maintenance_password}
   api_key:
     file: ${API_KEY_FILE:-./secrets/api_key}
   audit_hmac_key:

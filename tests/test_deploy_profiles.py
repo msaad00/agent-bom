@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -300,3 +301,64 @@ def test_install_helm_profile_script_prints_separate_secret_sync_release():
     )
 
     assert result.stdout.strip().startswith("helm upgrade --install agent-bom-secrets ")
+
+
+def test_baseline_helm_hint_never_references_an_unpopulated_secret():
+    """Every secret the baseline hint references must be one somebody actually fills.
+
+    The baseline used to create ``aws_secretsmanager_secret.db_url`` and point the
+    emitted ExternalSecret at it, but no resource ever wrote a version. A Secrets
+    Manager secret with no version stores nothing, so ``AGENT_BOM_POSTGRES_URL``
+    never resolved and a baseline-only install started the control plane with no
+    database URL — silently, because the manifest itself looked correct.
+
+    The hint is now workload-only: External Secrets is off and it references
+    Kubernetes Secrets the operator pre-creates, which its own description tells
+    them to do. This guards the contract in both directions — the dangling
+    Secrets Manager reference must not come back, and the count of referenced
+    Secrets must keep matching the count the description promises.
+    """
+
+    repo_root = Path(__file__).resolve().parent.parent
+    outputs = (repo_root / "deploy" / "terraform" / "aws" / "baseline" / "outputs.tf").read_text()
+
+    block = outputs.split('output "helm_values_hint"', 1)[1]
+    description = block.split("value", 1)[0]
+    hint = block.split("EOT", 2)[1]
+
+    assert "REPLACE_ME_DB_URL_SECRET_NAME" not in hint, "the baseline hint points at a db_url secret that no resource populates"
+    assert "aws_secretsmanager_secret.db_url" not in hint, (
+        "the baseline hint reintroduced the never-populated db_url Secrets Manager secret"
+    )
+
+    # Workload-only: the hint hands off to pre-created Kubernetes Secrets rather
+    # than reconciling them itself.
+    assert "externalSecrets:\n    enabled: false" in hint
+
+    referenced = re.findall(r"(?:secretRef|SecretRef):\s*\n\s*name:", hint)
+    assert len(referenced) == 4, f"expected the four documented Secret references, found {len(referenced)}"
+    assert "four referenced Kubernetes Secrets" in description, (
+        "the output description no longer matches the number of Secrets the hint references"
+    )
+
+
+def test_eks_postgres_url_percent_encodes_the_rds_password():
+    """RDS-generated passwords may contain reserved characters that corrupt a URI.
+
+    ``platform-eks`` composes AGENT_BOM_POSTGRES_URL from the RDS master secret
+    via an ExternalSecrets template. Interpolating the raw password breaks the
+    connection string whenever the generated password contains a reserved
+    character, so the password must be percent-encoded in the template.
+    """
+
+    repo_root = Path(__file__).resolve().parent.parent
+    main_tf = (repo_root / "deploy" / "terraform" / "platform-eks" / "main.tf").read_text()
+
+    url_lines = [line for line in main_tf.splitlines() if "AGENT_BOM_POSTGRES_URL" in line and "postgresql://" in line]
+    assert url_lines, "platform-eks no longer composes AGENT_BOM_POSTGRES_URL"
+    for line in url_lines:
+        assert "{{ .password }}" not in line, (
+            "platform-eks interpolates the RDS password unencoded into a URI; "
+            "percent-encode it so reserved characters cannot corrupt the connection string"
+        )
+        assert "urlquery" in line

@@ -196,6 +196,16 @@ def test_ticketing_tables_are_registered_as_one_schema_component() -> None:
     assert ticketing[0].tenant_scoped is True
 
 
+def test_mcp_profile_bindings_require_schema_version_two() -> None:
+    components = [component for component in CONTROL_PLANE_SCHEMA_COMPONENTS if component.component == "mcp_client_configs"]
+
+    assert len(components) == 1
+    assert components[0].backend == "sqlite/postgres"
+    assert components[0].tables == ("mcp_client_configs",)
+    assert components[0].tenant_scoped is True
+    assert components[0].version == 2
+
+
 def test_legacy_postgres_db_setting_uses_the_same_read_only_contract(monkeypatch) -> None:
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
     monkeypatch.setenv("AGENT_BOM_DB", "postgresql://agent_bom_app@postgres/agent_bom")

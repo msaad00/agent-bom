@@ -3851,6 +3851,16 @@ export interface McpClientConfigAssignment {
   created_by: string;
   updated_at: string;
   revoked: boolean;
+  identity_id: string;
+  issuer: string;
+  environment: string;
+  allowed_tools: string[];
+  required_scopes: string[];
+  policy_ids: string[];
+  owner: string;
+  status: "active" | "disabled" | "revoked";
+  revision: number;
+  expires_at: string;
   config_url?: string;
 }
 

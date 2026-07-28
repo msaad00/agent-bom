@@ -2896,6 +2896,143 @@ components:
       - token
       title: ManagedTrialOIDCStartRequest
       type: object
+    McpConfigAssignmentCreate:
+      additionalProperties: false
+      description: Strict, secret-free client-profile assignment request.
+      properties:
+        allowed_tools:
+          items:
+            type: string
+          maxItems: 200
+          title: Allowed Tools
+          type: array
+        connection_ids:
+          items:
+            type: string
+          maxItems: 200
+          title: Connection Ids
+          type: array
+        connector_ids:
+          items:
+            type: string
+          maxItems: 200
+          minItems: 1
+          title: Connector Ids
+          type: array
+        environment:
+          default: ''
+          maxLength: 120
+          title: Environment
+          type: string
+        expires_at:
+          default: ''
+          maxLength: 80
+          title: Expires At
+          type: string
+        identity_id:
+          default: ''
+          maxLength: 200
+          title: Identity Id
+          type: string
+        issuer:
+          default: ''
+          maxLength: 500
+          title: Issuer
+          type: string
+        name:
+          maxLength: 200
+          minLength: 1
+          title: Name
+          type: string
+        policy_ids:
+          items:
+            type: string
+          maxItems: 200
+          title: Policy Ids
+          type: array
+        profile_id:
+          maxLength: 200
+          minLength: 1
+          title: Profile Id
+          type: string
+        required_scopes:
+          items:
+            type: string
+          maxItems: 200
+          title: Required Scopes
+          type: array
+      required:
+      - name
+      - profile_id
+      - connector_ids
+      title: McpConfigAssignmentCreate
+      type: object
+    McpConfigAssignmentUpdate:
+      additionalProperties: false
+      description: Full profile replacement guarded by an optimistic revision.
+      properties:
+        allowed_tools:
+          items:
+            type: string
+          maxItems: 200
+          title: Allowed Tools
+          type: array
+        connection_ids:
+          items:
+            type: string
+          maxItems: 200
+          title: Connection Ids
+          type: array
+        connector_ids:
+          items:
+            type: string
+          maxItems: 200
+          minItems: 1
+          title: Connector Ids
+          type: array
+        environment:
+          default: ''
+          maxLength: 120
+          title: Environment
+          type: string
+        expected_revision:
+          minimum: 1.0
+          title: Expected Revision
+          type: integer
+        expires_at:
+          default: ''
+          maxLength: 80
+          title: Expires At
+          type: string
+        name:
+          maxLength: 200
+          minLength: 1
+          title: Name
+          type: string
+        policy_ids:
+          items:
+            type: string
+          maxItems: 200
+          title: Policy Ids
+          type: array
+        profile_id:
+          maxLength: 200
+          minLength: 1
+          title: Profile Id
+          type: string
+        required_scopes:
+          items:
+            type: string
+          maxItems: 200
+          title: Required Scopes
+          type: array
+      required:
+      - expected_revision
+      - name
+      - profile_id
+      - connector_ids
+      title: McpConfigAssignmentUpdate
+      type: object
     ModelFilesRequest:
       additionalProperties: false
       description: Request body for POST /v1/scan/model-files.
@@ -16589,9 +16726,7 @@ paths:
         content:
           application/json:
             schema:
-              additionalProperties: true
-              title: Body
-              type: object
+              $ref: '#/components/schemas/McpConfigAssignmentCreate'
         required: true
       responses:
         '201':
@@ -16664,6 +16799,66 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Mcp Config Assignment
+      tags:
+      - mcp-config
+    put:
+      description: Replace a profile contract atomically when the expected revision
+        matches.
+      operationId: update_mcp_config_assignment_v1_mcp_config_assignments__config_id__put
+      parameters:
+      - in: path
+        name: config_id
+        required: true
+        schema:
+          title: Config Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpConfigAssignmentUpdate'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Update Mcp Config Assignment V1 Mcp Config Assignments  Config
+                  Id  Put
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Update Mcp Config Assignment
       tags:
       - mcp-config
   /v1/mcp-config/assignments/{config_id}/revoke:

@@ -131,8 +131,10 @@ CREATE TABLE IF NOT EXISTS tenant_quota_overrides (tenant_id TEXT PRIMARY KEY,up
 CREATE TABLE IF NOT EXISTS tenant_graph_retention_overrides (tenant_id TEXT PRIMARY KEY,updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),retention_days INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS tenant_score_config_overrides (tenant_id TEXT PRIMARY KEY,updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),data TEXT NOT NULL);
 
-CREATE TABLE IF NOT EXISTS mcp_client_configs (config_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,name TEXT NOT NULL,profile_id TEXT NOT NULL,created_at TEXT NOT NULL,revoked BOOLEAN NOT NULL DEFAULT FALSE,data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS mcp_client_configs (config_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,name TEXT NOT NULL,profile_id TEXT NOT NULL,created_at TEXT NOT NULL,revoked BOOLEAN NOT NULL DEFAULT FALSE,data TEXT NOT NULL,identity_id TEXT NOT NULL DEFAULT '',issuer TEXT NOT NULL DEFAULT '',environment TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled','revoked')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'));
 CREATE INDEX IF NOT EXISTS idx_mcp_client_configs_tenant ON mcp_client_configs(tenant_id,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_client_configs_active_identity ON mcp_client_configs (tenant_id, identity_id) WHERE identity_id IS NOT NULL AND btrim(identity_id) <> '' AND status = 'active' AND revoked = FALSE;
+CREATE INDEX IF NOT EXISTS idx_mcp_client_configs_identity_history ON mcp_client_configs (tenant_id, identity_id, updated_at DESC) WHERE identity_id IS NOT NULL AND btrim(identity_id) <> '';
 CREATE TABLE IF NOT EXISTS model_provider_keys (provider_key_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS model_virtual_keys (virtual_key_id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider_key_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,status TEXT NOT NULL,issued_at TEXT NOT NULL,data TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_model_provider_keys_tenant ON model_provider_keys(tenant_id,created_at);
@@ -228,10 +230,13 @@ SELECT component,1,now() FROM unnest(ARRAY[
  'scan_jobs','api_keys','exceptions','audit_log','trend_history','gateway_policies','schedules','sources','credential_refs','llm_costs',
  'cloud_connections','compliance_hub','access_review_campaigns','risk_campaign_workflows','fleet','graph','scan_cache','identity_scim',
  'agent_identities','runtime_events','tenant_quotas','tenant_graph_retention','idempotency','proxy_replay_log','rate_limits',
- 'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','mcp_client_configs','model_provider_keys','tenant_score_config',
+ 'shared_auth_state','managed_trial_invitations','managed_trial_tenants','governance_audit_log','ai_system_blueprints','model_provider_keys','tenant_score_config',
  'ticketing_connections'
 ]) component
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('runtime_workload_evidence',2,now())
+ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;
+INSERT INTO control_plane_schema_versions(component,version,updated_at)
+VALUES ('mcp_client_configs',2,now())
 ON CONFLICT(component) DO UPDATE SET version=excluded.version,updated_at=excluded.updated_at;

@@ -20,6 +20,7 @@ class RuntimeRoleBlueprint:
     default_decision: str
     retention_mode: str
     evidence_required: tuple[str, ...]
+    revision: int = 1
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

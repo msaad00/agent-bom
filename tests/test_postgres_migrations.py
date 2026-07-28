@@ -21,6 +21,8 @@ CLOUD_CONNECTIONS_SCOPE_COLUMNS = VERSIONS_DIR / "20260724_02_cloud_connections_
 MANAGED_TRIAL_INVITATIONS = VERSIONS_DIR / "20260724_03_managed_trial_invitations.py"
 TICKETING_SCHEMA_AUTHORITY = VERSIONS_DIR / "20260726_01_ticketing_schema_authority.py"
 RUNTIME_EVIDENCE_TIMESTAMP_AUTHORITY = VERSIONS_DIR / "20260727_01_runtime_evidence_timestamp_authority.py"
+MCP_PROFILE_BINDING_AUTHORITY = VERSIONS_DIR / "20260728_01_mcp_profile_binding_authority.py"
+POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
@@ -142,6 +144,52 @@ def test_runtime_evidence_timestamp_migration_is_chained_and_typed() -> None:
     runtime_schema = RUNTIME_SCHEMA_SQL.read_text()
     assert "observed_at TIMESTAMPTZ NOT NULL" in runtime_schema
     assert "VALUES ('runtime_workload_evidence',2,now())" in runtime_schema
+
+
+def test_mcp_profile_binding_migration_is_chained_unique_and_tenant_isolated() -> None:
+    sql = MCP_PROFILE_BINDING_AUTHORITY.read_text()
+    assert re.search(r'revision\s*=\s*"20260728_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260727_01"', sql)
+    for column in ("identity_id", "issuer", "environment", "status", "revision", "updated_at"):
+        assert f"ADD COLUMN IF NOT EXISTS {column}" in sql
+    assert "UPDATE mcp_client_configs" in sql
+    assert "WHEN revoked THEN 'revoked'" in sql
+    assert "idx_mcp_client_configs_active_identity" in sql
+    assert "idx_mcp_client_configs_identity_history" in sql
+    assert "ON mcp_client_configs (tenant_id, identity_id)" in sql
+    assert "btrim(identity_id) <> ''" in sql
+    assert "WHERE identity_id IS NOT NULL AND btrim(identity_id) <> '' AND status = 'active' AND revoked = FALSE" in sql
+    assert "identity_id = COALESCE(identity_id, '')" in sql
+    assert "ALTER COLUMN identity_id SET DEFAULT ''" in sql
+    assert "ALTER COLUMN identity_id SET NOT NULL" in sql
+    assert "raise NotImplementedError" in sql
+    assert "identity_id = COALESCE(identity_id, '')" in sql
+    assert "ALTER COLUMN identity_id SET DEFAULT ''" in sql
+    assert "ALTER COLUMN identity_id SET NOT NULL" in sql
+    assert "ALTER TABLE mcp_client_configs ENABLE ROW LEVEL SECURITY" in sql
+    assert "ALTER TABLE mcp_client_configs FORCE ROW LEVEL SECURITY" in sql
+    assert "mcp_client_configs_tenant_isolation" in sql
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON mcp_client_configs TO agent_bom_app" in sql
+    assert "VALUES ('mcp_client_configs', 2, now())" in sql
+
+    runtime_schema = RUNTIME_SCHEMA_SQL.read_text()
+    for column in ("identity_id", "issuer", "environment", "status", "revision", "updated_at"):
+        assert column in runtime_schema
+    assert "idx_mcp_client_configs_active_identity" in runtime_schema
+    assert "idx_mcp_client_configs_identity_history" in runtime_schema
+    assert "identity_id TEXT NOT NULL DEFAULT ''" in runtime_schema
+    assert "VALUES ('mcp_client_configs',2,now())" in runtime_schema
+
+
+def test_development_postgres_profile_bootstrap_upgrades_v1_before_indexes() -> None:
+    source = POSTGRES_MCP_CONFIG_STORE.read_text()
+    alter = source.index("ALTER TABLE mcp_client_configs ADD COLUMN IF NOT EXISTS identity_id")
+    active_index = source.index("CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_client_configs_active_identity")
+    assert alter < active_index
+    assert "UPDATE mcp_client_configs SET identity_id = COALESCE(identity_id, '')" in source
+    assert "ALTER TABLE mcp_client_configs ALTER COLUMN identity_id SET NOT NULL" in source
+    assert source.count("btrim(identity_id) <> ''") >= 4
+    assert "ON CONFLICT (config_id) DO UPDATE" not in source
 
 
 def test_baseline_migration_points_at_bootstrap_sql():

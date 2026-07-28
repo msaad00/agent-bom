@@ -86,7 +86,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("governance_audit_log", "sqlite/postgres", ("governance_audit_log",)),
     StorageSchemaComponent("credential_refs", "sqlite/postgres", ("credential_refs",)),
     StorageSchemaComponent("ai_system_blueprints", "sqlite/postgres", ("ai_system_blueprints", "ai_system_blueprint_versions")),
-    StorageSchemaComponent("mcp_client_configs", "sqlite/postgres", ("mcp_client_configs",)),
+    StorageSchemaComponent("mcp_client_configs", "sqlite/postgres", ("mcp_client_configs",), version=2),
     StorageSchemaComponent("model_provider_keys", "sqlite/postgres", ("model_provider_keys", "model_virtual_keys")),
     StorageSchemaComponent("tenant_score_config", "sqlite/postgres", ("tenant_score_config_overrides",)),
     StorageSchemaComponent(

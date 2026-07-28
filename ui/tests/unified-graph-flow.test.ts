@@ -107,4 +107,47 @@ describe("buildUnifiedFlowGraph", () => {
       evidenceMode: "static",
     });
   });
+
+  it("retains application entities through the existing container renderer", () => {
+    const graph: UnifiedGraphData = {
+      scan_id: "scan-application",
+      tenant_id: "default",
+      created_at: createdAt,
+      nodes: [
+        node("agent:checkout", EntityType.AGENT, "Checkout Agent"),
+        node("application:checkout", EntityType.APPLICATION, "Checkout"),
+      ],
+      edges: [
+        edge(
+          "agent:checkout",
+          "application:checkout",
+          RelationshipType.USES,
+        ),
+      ],
+      attack_paths: [],
+      interaction_risks: [],
+      stats: {
+        total_nodes: 2,
+        total_edges: 1,
+        node_types: { agent: 1, application: 1 },
+        severity_counts: {},
+        relationship_types: {},
+        attack_path_count: 0,
+        interaction_risk_count: 0,
+        max_attack_path_risk: 0,
+        highest_interaction_risk: 0,
+      },
+    };
+    const filters = createFocusedGraphFilters();
+    filters.layers.container = true;
+
+    const flow = buildUnifiedFlowGraph(graph, filters);
+
+    expect(flow.nodes).toHaveLength(2);
+    expect(flow.nodes.find((entry) => entry.id === "application:checkout")).toMatchObject({
+      id: "application:checkout",
+      type: "containerNode",
+      data: { nodeType: "container", entityType: "application" },
+    });
+  });
 });

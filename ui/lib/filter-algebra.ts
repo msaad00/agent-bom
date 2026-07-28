@@ -29,6 +29,7 @@ import {
 } from "@/lib/graph-schema";
 import type { UnifiedGraphResponse } from "@/lib/api-types";
 import type { ChangeKind } from "@/lib/graph-utils";
+import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 
 // ───────────────────────────────────────────────────────────────────────
 // Public types
@@ -49,59 +50,6 @@ export interface AppliedFilterResult {
   nodes: UnifiedNode[];
   edges: UnifiedEdge[];
   validValues: FilterValidValues;
-}
-
-// ───────────────────────────────────────────────────────────────────────
-// Layer ↔ entity-type map (mirror of graph-page-client.tsx LAYER_ENTITY_TYPES)
-// Kept local so the algebra has no React dependency.
-// ───────────────────────────────────────────────────────────────────────
-
-const LAYER_TO_ENTITY: Record<LineageNodeType, EntityType | string> = {
-  provider: EntityType.PROVIDER,
-  agent: EntityType.AGENT,
-  org: EntityType.ORG,
-  account: EntityType.ACCOUNT,
-  user: EntityType.USER,
-  group: EntityType.GROUP,
-  role: EntityType.ROLE,
-  policy: EntityType.POLICY,
-  serviceAccount: EntityType.SERVICE_ACCOUNT,
-  servicePrincipal: EntityType.SERVICE_PRINCIPAL,
-  federatedIdentity: EntityType.FEDERATED_IDENTITY,
-  environment: EntityType.ENVIRONMENT,
-  fleet: EntityType.FLEET,
-  cluster: EntityType.CLUSTER,
-  server: EntityType.SERVER,
-  // sharedServer is a UI-only refinement of SERVER — treat as server for
-  // entity-type membership.
-  sharedServer: EntityType.SERVER,
-  package: EntityType.PACKAGE,
-  model: EntityType.MODEL,
-  framework: EntityType.FRAMEWORK,
-  dataset: EntityType.DATASET,
-  container: EntityType.CONTAINER,
-  cloudResource: EntityType.CLOUD_RESOURCE,
-  vulnerability: EntityType.VULNERABILITY,
-  misconfiguration: EntityType.MISCONFIGURATION,
-  credential: EntityType.CREDENTIAL,
-  tool: EntityType.TOOL,
-  managedIdentity: EntityType.MANAGED_IDENTITY,
-  accessGrant: EntityType.ACCESS_GRANT,
-  accessPolicy: EntityType.ACCESS_POLICY,
-  driftIncident: EntityType.DRIFT_INCIDENT,
-  dataStore: EntityType.DATA_STORE,
-  directory: EntityType.DIRECTORY,
-  sourceFile: EntityType.SOURCE_FILE,
-  configFile: EntityType.CONFIG_FILE,
-};
-
-const ENTITY_TO_LAYER: Map<string, LineageNodeType> = new Map();
-for (const [layer, entity] of Object.entries(LAYER_TO_ENTITY)) {
-  // First write wins — sharedServer collides with server, but server is
-  // listed first in the iteration order above so this is safe.
-  if (!ENTITY_TO_LAYER.has(String(entity))) {
-    ENTITY_TO_LAYER.set(String(entity), layer as LineageNodeType);
-  }
 }
 
 const RELATIONSHIP_SCOPE_MAP: Record<
@@ -195,7 +143,7 @@ function layerPasses(
   node: UnifiedNode,
   layers: Record<LineageNodeType, boolean>,
 ): boolean {
-  const layer = ENTITY_TO_LAYER.get(String(node.entity_type));
+  const layer = lineageNodeTypeForEntity(node.entity_type);
   if (!layer) return true; // unmapped entity types pass through
   return Boolean(layers[layer]);
 }
@@ -531,7 +479,7 @@ export function computeValidValues(
   });
   const layers = new Set<LineageNodeType>();
   for (const n of layerSurvivors) {
-    const layer = ENTITY_TO_LAYER.get(String(n.entity_type));
+    const layer = lineageNodeTypeForEntity(n.entity_type);
     if (layer) layers.add(layer);
   }
 
@@ -748,7 +696,3 @@ export function decodeFiltersFromParams(
 
   return patch;
 }
-
-// Re-export for callers that want the layer→entity map without importing
-// from graph-page-client (which is "use client").
-export { LAYER_TO_ENTITY, ENTITY_TO_LAYER };

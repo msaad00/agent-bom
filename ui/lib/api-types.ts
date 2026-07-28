@@ -422,6 +422,7 @@ export interface GraphQueryResponse extends UnifiedGraphData {
   missing_roots: string[];
   depth_by_node: Record<string, number>;
   filters: Record<string, unknown>;
+  completeness: GraphCompleteness;
 }
 
 export interface GraphImpactResponse {

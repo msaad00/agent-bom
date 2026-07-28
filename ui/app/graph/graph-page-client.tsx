@@ -70,10 +70,13 @@ import {
   isClusterPillNode,
 } from "@/lib/sibling-aggregator";
 import {
-  EntityType,
   RelationshipType,
   type UnifiedNode,
 } from "@/lib/graph-schema";
+import {
+  entityTypesForLayers,
+  lineageNodeTypeForEntity,
+} from "@/lib/graph-entity-mapping";
 import {
   attackPathKey,
   decodeGraphInvestigationParams,
@@ -132,9 +135,11 @@ import {
   shouldVirtualizeReactFlowNodes,
 } from "@/lib/graph-renderer-switch";
 import {
+  graphRollupCanvasMode,
   graphRollupEligible,
   parseGraphRollupUrlPreference,
   parseRollupNodeParam,
+  rollupDismissedForPreference,
   rollupViewHasContainers,
 } from "@/lib/graph-rollup-default";
 import {
@@ -318,36 +323,6 @@ function addNeighbor(
   }
 }
 
-const LAYER_ENTITY_TYPES: Array<[LineageNodeType, EntityType]> = [
-  ["provider", EntityType.PROVIDER],
-  ["agent", EntityType.AGENT],
-  ["user", EntityType.USER],
-  ["group", EntityType.GROUP],
-  ["serviceAccount", EntityType.SERVICE_ACCOUNT],
-  ["environment", EntityType.ENVIRONMENT],
-  ["fleet", EntityType.FLEET],
-  ["cluster", EntityType.CLUSTER],
-  ["server", EntityType.SERVER],
-  ["package", EntityType.PACKAGE],
-  ["model", EntityType.MODEL],
-  ["framework", EntityType.FRAMEWORK],
-  ["dataset", EntityType.DATASET],
-  ["container", EntityType.CONTAINER],
-  ["cloudResource", EntityType.CLOUD_RESOURCE],
-  ["vulnerability", EntityType.VULNERABILITY],
-  ["misconfiguration", EntityType.MISCONFIGURATION],
-  ["credential", EntityType.CREDENTIAL],
-  ["tool", EntityType.TOOL],
-  ["managedIdentity", EntityType.MANAGED_IDENTITY],
-  ["accessGrant", EntityType.ACCESS_GRANT],
-  ["accessPolicy", EntityType.ACCESS_POLICY],
-  ["driftIncident", EntityType.DRIFT_INCIDENT],
-  ["dataStore", EntityType.DATA_STORE],
-  ["directory", EntityType.DIRECTORY],
-  ["sourceFile", EntityType.SOURCE_FILE],
-  ["configFile", EntityType.CONFIG_FILE],
-];
-
 const RELATIONSHIP_SCOPE_MAP: Record<
   FilterState["relationshipScope"],
   RelationshipType[] | undefined
@@ -404,12 +379,6 @@ const RELATIONSHIP_SCOPE_MAP: Record<
   ],
 };
 
-function entityTypesForLayers(filters: FilterState): EntityType[] {
-  return LAYER_ENTITY_TYPES.filter(([layer]) => filters.layers[layer]).map(
-    ([, entityType]) => entityType,
-  );
-}
-
 function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
   return {
     scan_id: scanId,
@@ -441,10 +410,7 @@ function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
 }
 
 function lineageTypeForEntity(entityType: string): LineageNodeType {
-  return (
-    LAYER_ENTITY_TYPES.find(([, current]) => current === entityType)?.[0] ??
-    "server"
-  );
+  return lineageNodeTypeForEntity(entityType) ?? "server";
 }
 
 function stringAttribute(
@@ -644,9 +610,17 @@ type InvestigationMode = {
   edgeCount: number;
 };
 
-function queryResponseToGraphResponse(
+export function queryResponseToGraphResponse(
   response: GraphQueryResponse,
 ): UnifiedGraphResponse {
+  const completeness = response.completeness ?? {
+    status: response.truncated ? "truncated" : "complete",
+    complete: !response.truncated,
+    sampled: false,
+    truncated: response.truncated,
+    returned: response.nodes.length,
+    ...(response.truncated ? { reason: "traversal_budget" } : { total: response.nodes.length }),
+  };
   return {
     scan_id: response.scan_id,
     tenant_id: response.tenant_id,
@@ -656,13 +630,20 @@ function queryResponseToGraphResponse(
     attack_paths: response.attack_paths,
     interaction_risks: response.interaction_risks,
     stats: response.stats,
+    completeness,
     pagination: {
-      total: response.nodes.length,
+      total: completeness.total ?? response.nodes.length,
       offset: 0,
       limit: response.nodes.length,
-      has_more: false,
+      has_more: response.truncated,
     },
   };
+}
+
+/** Return only an exhaustive total; truncated traversals intentionally have none. */
+export function knownGraphTotal(response: UnifiedGraphResponse): number | null {
+  if (response.completeness) return response.completeness.total ?? null;
+  return response.pagination.total;
 }
 
 /**
@@ -769,6 +750,7 @@ function GraphPageInner() {
   );
   const [loadingRollup, setLoadingRollup] = useState(false);
   const [rollupError, setRollupError] = useState<string | null>(null);
+  const [rollupUnavailable, setRollupUnavailable] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
@@ -824,8 +806,7 @@ function GraphPageInner() {
   useEffect(() => {
     const preference = parseGraphRollupUrlPreference(searchParams);
     rollupPreferenceRef.current = preference;
-    if (preference === "force") setRollupDismissed(false);
-    if (preference === "off") setRollupDismissed(true);
+    setRollupDismissed(rollupDismissedForPreference(preference));
   }, [searchParams]);
   const firstScanSelectionRef = useRef(true);
   // Last URL the filter→URL sync effect wrote, used to break an infinite
@@ -860,8 +841,8 @@ function GraphPageInner() {
   }, []);
 
   const serverEntityTypes = useMemo(
-    () => entityTypesForLayers(filters),
-    [filters],
+    () => entityTypesForLayers(filters.layers),
+    [filters.layers],
   );
 
   const serverRelationships = useMemo(
@@ -899,8 +880,11 @@ function GraphPageInner() {
     setReachabilityError(null);
     setRollupView(null);
     setRollupStack([]);
-    setRollupDismissed(false);
+    setRollupDismissed(
+      rollupDismissedForPreference(rollupPreferenceRef.current),
+    );
     setRollupError(null);
+    setRollupUnavailable(false);
     if (firstScanSelectionRef.current) {
       firstScanSelectionRef.current = false;
       if (seededFromUrlRef.current) {
@@ -1171,6 +1155,7 @@ function GraphPageInner() {
     hasSelectedScan: Boolean(selectedScanId),
     rollupPreference: rollupPreferenceRef.current,
     rollupDismissed,
+    estateNodeCount,
     investigationMode: Boolean(investigationMode),
     selectedAttackPath: Boolean(selectedAttackPath),
     reachabilityActive: Boolean(reachabilitySummary),
@@ -1178,8 +1163,17 @@ function GraphPageInner() {
     attackPathCount: attackPaths.length,
   });
 
-  const rollupNavigationActive =
-    rollupEligible && !rollupDismissed && rollupView !== null;
+  const rollupCanvasMode = graphRollupCanvasMode({
+    eligible: rollupEligible,
+    dismissed: rollupDismissed,
+    hasView: rollupView !== null,
+    unavailable: rollupUnavailable,
+    failed: rollupError !== null,
+  });
+  const rollupNavigationActive = rollupCanvasMode === "active";
+  const rollupCanvasPending = rollupCanvasMode === "loading";
+  const rollupCanvasOwnsPresentation =
+    rollupNavigationActive || rollupCanvasPending;
 
   useEffect(() => {
     if (!selectedScanId || !rollupEligible || rollupDismissed) {
@@ -1189,6 +1183,7 @@ function GraphPageInner() {
     let cancelled = false;
     setLoadingRollup(true);
     setRollupError(null);
+    setRollupUnavailable(false);
     const drillNode = rollupStack.at(-1)?.id;
 
     api
@@ -1205,18 +1200,20 @@ function GraphPageInner() {
             result.children,
           )
         ) {
-          setRollupDismissed(true);
           setRollupView(null);
+          setRollupUnavailable(true);
           setRollupError(null);
           return;
         }
         setRollupView(result);
+        setRollupUnavailable(false);
         setRollupError(null);
       })
       .catch((e) => {
         if (cancelled) return;
         setRollupError(e.message);
         setRollupView(null);
+        setRollupUnavailable(false);
       })
       .finally(() => {
         if (!cancelled) setLoadingRollup(false);
@@ -1249,6 +1246,16 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
+    if (rollupCanvasPending) {
+      return {
+        nodes: [],
+        edges: [],
+        agentNames: [],
+        legend: [],
+        summary: null as
+          null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
+      };
+    }
     if (!mergedGraphData) {
       return {
         nodes: [],
@@ -1264,6 +1271,7 @@ function GraphPageInner() {
     mergedGraphData,
     filters,
     rollupNavigationActive,
+    rollupCanvasPending,
     rollupView,
   ]);
 
@@ -2007,6 +2015,7 @@ function GraphPageInner() {
       ).length ?? null,
     [graphData],
   );
+  const graphTotal = graphData ? knownGraphTotal(graphData) : null;
 
   const hasContextualGraph = useMemo(
     () =>
@@ -2508,7 +2517,7 @@ function GraphPageInner() {
               label="Severity"
               value={filters.severity ? `${filters.severity}+` : "all"}
             />
-            {sourceNodeCount > 0 && (
+            {sourceNodeCount > 0 && !rollupCanvasOwnsPresentation && (
               <span
                 data-testid="graph-compression-summary"
                 className="graph-chip-neutral"
@@ -2612,6 +2621,7 @@ function GraphPageInner() {
                 breadcrumbs={rollupStack}
                 loading={loadingRollup}
                 error={rollupError}
+                unavailable={rollupUnavailable}
                 active={rollupNavigationActive}
                 onDismiss={dismissRollup}
                 onReset={resetRollupToRoot}
@@ -2660,16 +2670,23 @@ function GraphPageInner() {
         <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-[var(--text-tertiary)]">
           {activeSnapshot && (
             <>
-              <span>{activeSnapshot.node_count} nodes</span>
-              <span>{activeSnapshot.edge_count} edges</span>
+              {!rollupCanvasOwnsPresentation && (
+                <>
+                  <span>{activeSnapshot.node_count} nodes in snapshot</span>
+                  <span>{activeSnapshot.edge_count} edges</span>
+                </>
+              )}
               <span>
                 captured {new Date(activeSnapshot.created_at).toLocaleString()}
               </span>
             </>
           )}
-          {graphData && graphData.pagination.total > 0 && (
+          {graphData &&
+            !rollupCanvasOwnsPresentation &&
+            graphTotal !== null &&
+            graphTotal > 0 && (
             <span>
-              {graphData.pagination.total.toLocaleString()} nodes in graph
+              {graphTotal.toLocaleString()} nodes in graph
             </span>
           )}
         </div>
@@ -2678,7 +2695,12 @@ function GraphPageInner() {
           <GraphEvidenceSummary
             capturedAt={activeSnapshot?.created_at ?? null}
             returnedNodes={graphData?.completeness?.returned ?? graphData?.nodes.length ?? null}
-            totalNodes={graphData?.completeness?.total ?? graphData?.pagination.total ?? null}
+            totalNodes={
+              graphData?.completeness
+                ? (graphData.completeness.total ?? null)
+                : (graphData?.pagination.total ?? null)
+            }
+            snapshotTotalNodes={activeSnapshot?.node_count ?? null}
             evidencedEdges={relationshipEvidenceCount}
             totalEdges={graphData?.edges.length ?? null}
             completeness={
@@ -2689,6 +2711,9 @@ function GraphPageInner() {
                   ? "complete"
                   : null)
             }
+            completenessReason={graphData?.completeness?.reason ?? null}
+            showCompleteness={!rollupCanvasOwnsPresentation}
+            showRelationships={!rollupCanvasOwnsPresentation}
           />
         </div>
 
@@ -3199,6 +3224,11 @@ function GraphPageInner() {
               detail={graphPanelError.detail}
               suggestions={graphPanelError.suggestions}
             />
+          ) : rollupCanvasPending ? (
+            <GraphPanelSkeleton
+              title="Loading scope navigation"
+              detail="Collapsing the containment hierarchy before rendering aggregate navigation cards."
+            />
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState
               title="No nodes match the current graph scope"
@@ -3302,21 +3332,25 @@ function GraphPageInner() {
           {graphTruncated && (
             <div className="mt-2 border-t border-[var(--border-subtle)]/80 px-1 pt-2">
               <GraphCompletenessBanner
-                completeness={{
-                  status: "truncated",
-                  truncated: true,
-                  complete: false,
-                  sampled: false,
-                  returned: displayNodes.length,
-                  total: graphData?.pagination.total ?? GRAPH_FULL_FETCH_LIMIT,
-                  reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes. Dense neighborhoods are aggregated — filter or focus rather than treating this canvas as the full estate.`,
-                }}
+                completeness={
+                  graphData?.completeness ?? {
+                    status: "truncated",
+                    truncated: true,
+                    complete: false,
+                    sampled: false,
+                    returned: displayNodes.length,
+                    reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes. Dense neighborhoods are aggregated — filter or focus rather than treating this canvas as the full estate.`,
+                  }
+                }
                 visibleCount={displayNodes.length}
-                omittedCount={Math.max(
-                  0,
-                  (graphData?.pagination.total ?? displayNodes.length) -
-                    displayNodes.length,
-                )}
+                omittedCount={
+                  graphData?.completeness?.total == null
+                    ? undefined
+                    : Math.max(
+                        0,
+                        graphData.completeness.total - displayNodes.length,
+                      )
+                }
               />
             </div>
           )}
@@ -3586,6 +3620,7 @@ function RollupNavigationPanel({
   breadcrumbs,
   loading,
   error,
+  unavailable,
   active,
   onDismiss,
   onReset,
@@ -3596,6 +3631,7 @@ function RollupNavigationPanel({
   breadcrumbs: RollupBreadcrumb[];
   loading: boolean;
   error: string | null;
+  unavailable: boolean;
   active: boolean;
   onDismiss: () => void;
   onReset: () => void;
@@ -3607,30 +3643,37 @@ function RollupNavigationPanel({
       : (summary?.top_level?.length ?? 0);
 
   return (
-    <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
+    <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-900 dark:text-emerald-100">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2">
-          <Layers className="mt-0.5 h-4 w-4 text-emerald-300" />
+          <Layers className="mt-0.5 h-4 w-4 text-emerald-700 dark:text-emerald-300" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-300">
-              Scope roll-up
+            <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-700 dark:text-emerald-300">
+              Scope navigation
             </p>
-            <p className="mt-1 text-sm font-medium text-emerald-50">
+            <p className="mt-1 text-sm font-medium text-emerald-950 dark:text-emerald-50">
               {active
                 ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot`
+                : unavailable
+                  ? `Roll-up unavailable · ${estateNodeCount} nodes in snapshot`
                 : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}
             </p>
             {active && (
-              <p className="mt-1 text-[11px] text-emerald-200/80">
-                Click a container with descendants to drill down one CONTAINS
-                level. Severity filters apply to rolled-up aggregates.
+              <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-200/80">
+                Aggregate cards help navigate scope; they are not rendered
+                relationship evidence. Open node view for the real topology.
               </p>
             )}
             {error && (
-              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+              <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">{error}</p>
+            )}
+            {unavailable && (
+              <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-200/80">
+                No containment scope is available; showing the real topology.
+              </p>
             )}
             {loading && (
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-emerald-200">
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-emerald-800 dark:text-emerald-200">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Collapsing containment hierarchy
               </p>
@@ -3649,12 +3692,12 @@ function RollupNavigationPanel({
       {breadcrumbs.length > 0 && (
         <nav
           aria-label="Roll-up breadcrumb"
-          className="mt-3 flex flex-wrap items-center gap-1 text-[11px] text-emerald-100"
+          className="mt-3 flex flex-wrap items-center gap-1 text-[11px] text-emerald-900 dark:text-emerald-100"
         >
           <button
             type="button"
             onClick={onReset}
-            className="rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300"
+            className="rounded border border-emerald-500/30 bg-emerald-50 px-2 py-0.5 text-emerald-900 transition hover:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-100"
           >
             Estate root
           </button>

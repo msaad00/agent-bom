@@ -17,6 +17,7 @@ import {
 } from "@/lib/effective-reach";
 import { relationshipLegendItem, type LegendItem } from "@/lib/graph-utils";
 import { displayContextDescription } from "@/lib/context-graph";
+import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 import {
   EntityType,
   type UnifiedEdge,
@@ -65,51 +66,6 @@ export interface UnifiedGraphFlowResult {
   summary: UnifiedGraphFlowSummary;
 }
 
-const ENTITY_TO_NODE_TYPE: Partial<
-  Record<EntityType | string, LineageNodeType>
-> = {
-  [EntityType.PROVIDER]: "provider",
-  [EntityType.AGENT]: "agent",
-  [EntityType.ORG]: "org",
-  [EntityType.ACCOUNT]: "account",
-  [EntityType.USER]: "user",
-  [EntityType.GROUP]: "group",
-  [EntityType.ROLE]: "role",
-  [EntityType.POLICY]: "policy",
-  [EntityType.SERVICE_ACCOUNT]: "serviceAccount",
-  [EntityType.SERVICE_PRINCIPAL]: "servicePrincipal",
-  [EntityType.FEDERATED_IDENTITY]: "federatedIdentity",
-  [EntityType.ENVIRONMENT]: "environment",
-  [EntityType.FLEET]: "fleet",
-  [EntityType.CLUSTER]: "cluster",
-  [EntityType.SERVER]: "server",
-  [EntityType.PACKAGE]: "package",
-  [EntityType.TOOL]: "tool",
-  [EntityType.CREDENTIAL]: "credential",
-  [EntityType.VULNERABILITY]: "vulnerability",
-  [EntityType.MISCONFIGURATION]: "misconfiguration",
-  [EntityType.MODEL]: "model",
-  [EntityType.FRAMEWORK]: "framework",
-  [EntityType.DATASET]: "dataset",
-  [EntityType.CONTAINER]: "container",
-  [EntityType.CLOUD_RESOURCE]: "cloudResource",
-  // Agent-identity governance + cloud-CNAPP nodes get distinct render types
-  // (own color/label/badge) reusing the closest component renderer, so an
-  // investigator can tell a managed identity from a service account, a drift
-  // incident from a misconfiguration, and a data store from a cloud resource.
-  [EntityType.MANAGED_IDENTITY]: "managedIdentity",
-  [EntityType.ACCESS_GRANT]: "accessGrant",
-  [EntityType.ACCESS_POLICY]: "accessPolicy",
-  [EntityType.DRIFT_INCIDENT]: "driftIncident",
-  [EntityType.DATA_STORE]: "dataStore",
-  // Repository folder/file-structure nodes (CODE layer) so a repo / project
-  // scan renders its directory tree, manifest files, and file → dependency →
-  // vuln paths.
-  [EntityType.DIRECTORY]: "directory",
-  [EntityType.SOURCE_FILE]: "sourceFile",
-  [EntityType.CONFIG_FILE]: "configFile",
-};
-
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   provider: "providerNode",
   agent: "agentNode",
@@ -146,6 +102,12 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   sourceFile: "packageNode",
   configFile: "packageNode",
 };
+
+/** Resolve an API entity to the renderer registered by the graph canvas. */
+export function flowRendererTypeForEntity(entityType: EntityType | string): string | null {
+  const nodeType = lineageNodeTypeForEntity(entityType);
+  return nodeType ? FLOW_NODE_TYPES[nodeType] : null;
+}
 
 const NODE_LABELS: Record<LineageNodeType, string> = {
   provider: "Provider",
@@ -319,7 +281,7 @@ export function buildUnifiedFlowGraph(
     if (!nodeType || !filters.layers[nodeType]) continue;
     nodes.push({
       id: node.id,
-      type: FLOW_NODE_TYPES[nodeType],
+      type: flowRendererTypeForEntity(node.entity_type) ?? FLOW_NODE_TYPES[nodeType],
       position: { x: 0, y: 0 },
       data: toLineageData(node, nodeType, outgoing, incoming, nodeById),
       ...(isCriticalNode(node) ? { className: "node-critical-pulse" } : {}),
@@ -961,7 +923,7 @@ function legendShapeForNodeType(
 }
 
 function mapNodeType(node: UnifiedNode): LineageNodeType | null {
-  return ENTITY_TO_NODE_TYPE[String(node.entity_type)] ?? null;
+  return lineageNodeTypeForEntity(node.entity_type);
 }
 
 function stringAttr(node: UnifiedNode, key: string): string {

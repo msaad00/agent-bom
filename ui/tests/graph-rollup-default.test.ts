@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  graphRollupCanvasMode,
   graphRollupEligible,
   parseGraphRollupUrlPreference,
   parseRollupNodeParam,
+  rollupDismissedForPreference,
   rollupViewHasContainers,
 } from "@/lib/graph-rollup-default";
 
 describe("parseGraphRollupUrlPreference", () => {
-  it("defaults to roll-up unless explicitly opted out", () => {
+  it("parses default, forced, and explicitly disabled preferences", () => {
     expect(parseGraphRollupUrlPreference(new URLSearchParams())).toBe("default");
     expect(parseGraphRollupUrlPreference(new URLSearchParams("rollup=1"))).toBe(
       "force",
@@ -30,18 +32,27 @@ describe("graphRollupEligible", () => {
     hasSelectedScan: true,
     rollupPreference: "default" as const,
     rollupDismissed: false,
+    estateNodeCount: 36,
     investigationMode: false,
     selectedAttackPath: false,
     reachabilityActive: false,
     blastRadiusActive: false,
   };
 
-  it("enables roll-up for any snapshot size when not in investigation overlays", () => {
-    expect(graphRollupEligible(base)).toBe(true);
+  it("defaults to real topology below 200 nodes and roll-up at 200 or more", () => {
+    expect(graphRollupEligible(base)).toBe(false);
+    expect(graphRollupEligible({ ...base, estateNodeCount: 199 })).toBe(false);
+    expect(graphRollupEligible({ ...base, estateNodeCount: 200 })).toBe(true);
   });
 
-  it("skips roll-up when ranked attack paths are available", () => {
-    expect(graphRollupEligible({ ...base, attackPathCount: 3 })).toBe(false);
+  it("does not let ranked-path availability override the estate threshold", () => {
+    expect(
+      graphRollupEligible({
+        ...base,
+        estateNodeCount: 200,
+        attackPathCount: 3,
+      }),
+    ).toBe(true);
   });
 
   it("honors an explicit rollup=1 preference even when attack paths exist", () => {
@@ -50,6 +61,7 @@ describe("graphRollupEligible", () => {
         hasSelectedScan: true,
         rollupPreference: "force",
         rollupDismissed: false,
+        estateNodeCount: 36,
         investigationMode: false,
         selectedAttackPath: false,
         reachabilityActive: false,
@@ -70,6 +82,7 @@ describe("graphRollupEligible", () => {
         hasSelectedScan: true,
         rollupPreference: "force",
         rollupDismissed: false,
+        estateNodeCount: 36,
         investigationMode: false,
         selectedAttackPath: false,
         reachabilityActive: false,
@@ -97,6 +110,53 @@ describe("graphRollupEligible", () => {
     expect(graphRollupEligible({ ...base, blastRadiusActive: true })).toBe(
       false,
     );
+  });
+});
+
+describe("roll-up presentation state", () => {
+  it("derives dismissal only from an explicit operator opt-out", () => {
+    expect(rollupDismissedForPreference("off")).toBe(true);
+    expect(rollupDismissedForPreference("force")).toBe(false);
+    expect(rollupDismissedForPreference("default")).toBe(false);
+  });
+
+  it("withholds raw topology while an eligible roll-up is loading", () => {
+    expect(
+      graphRollupCanvasMode({
+        eligible: true,
+        dismissed: false,
+        hasView: false,
+        unavailable: false,
+        failed: false,
+      }),
+    ).toBe("loading");
+    expect(
+      graphRollupCanvasMode({
+        eligible: true,
+        dismissed: false,
+        hasView: true,
+        unavailable: false,
+        failed: false,
+      }),
+    ).toBe("active");
+    expect(
+      graphRollupCanvasMode({
+        eligible: true,
+        dismissed: false,
+        hasView: false,
+        unavailable: true,
+        failed: false,
+      }),
+    ).toBe("raw");
+    expect(
+      graphRollupCanvasMode({
+        eligible: true,
+        dismissed: false,
+        hasView: false,
+        unavailable: false,
+        failed: false,
+      }),
+    ).toBe("loading");
   });
 });
 

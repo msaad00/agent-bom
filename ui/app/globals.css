@@ -470,7 +470,12 @@ body {
 .attack-flow-swatch { @apply h-2.5 w-2.5 rounded border-2; }
 .attack-flow-loading { @apply flex h-[80vh] items-center justify-center text-[var(--text-secondary)]; }
 .attack-flow-error { @apply flex h-[80vh] flex-col items-center justify-center gap-3 text-[var(--text-secondary)]; }
-.graph-page-header { @apply border-b border-[var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3; }
+.graph-page-header {
+  @apply border-b border-[var(--border-subtle)] px-4 py-3;
+  background-image:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.10), transparent 24%),
+    linear-gradient(180deg, var(--surface-panel), var(--background));
+}
 .graph-page-select { @apply rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none; }
 .graph-page-search { @apply min-w-[260px] flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/90 px-3 py-2 text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:border-sky-600 focus:outline-none; }
 .graph-page-action { @apply rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-2 text-sm text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40; }
@@ -487,7 +492,7 @@ body {
 .graph-chip-rose { @apply rounded-lg border border-rose-400/30 bg-rose-950/60 px-2.5 py-1 text-rose-100 transition hover:border-rose-300; }
 .graph-chip-violet { @apply rounded-lg border border-violet-400/30 bg-violet-950/60 px-2.5 py-1 text-violet-100 transition hover:border-violet-300; }
 .graph-chip-emerald { @apply rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300; }
-.graph-chip-emerald-truncate { @apply max-w-[12rem] truncate rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300; }
+.graph-chip-emerald-truncate { @apply max-w-[12rem] truncate rounded border border-emerald-500/30 bg-emerald-50 px-2 py-0.5 text-emerald-900 transition hover:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-100; }
 .graph-chip-elevated { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/80 px-2 py-1 text-[11px] text-[var(--text-secondary)]; }
 .graph-drawer-summary { @apply flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-2; }
 .graph-drawer-summary::-webkit-details-marker { display: none; }

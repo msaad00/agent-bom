@@ -2682,6 +2682,36 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    def test_graph_query_traversal_budget_does_not_fabricate_exhaustive_total(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool-t"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="tool:t", relationship=RelationshipType.PROVIDES_TOOL, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/query",
+            json={"roots": ["agent:a"], "max_depth": 3, "max_nodes": 2},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["truncated"] is True
+        assert body["completeness"] == {
+            "status": "truncated",
+            "complete": False,
+            "sampled": False,
+            "truncated": True,
+            "returned": 2,
+            "reason": "traversal_budget",
+        }
+
     def test_graph_query_keeps_attack_path_with_filtered_intermediate_hop(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))

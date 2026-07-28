@@ -1,9 +1,10 @@
 /**
- * Estate roll-up is the default graph entry when a snapshot is loaded.
- * Operators opt out with `?rollup=0` or "Show full graph".
+ * Estate roll-up is the default graph entry for snapshots at the scale
+ * threshold. Smaller snapshots lead with their real relationship topology.
  */
 
 export type GraphRollupUrlPreference = "default" | "force" | "off";
+export type GraphRollupCanvasMode = "raw" | "loading" | "active";
 
 export function parseGraphRollupUrlPreference(
   params: URLSearchParams | { get(name: string): string | null },
@@ -12,6 +13,27 @@ export function parseGraphRollupUrlPreference(
   if (rollup === "0" || rollup === "false") return "off";
   if (rollup === "1" || rollup === "true") return "force";
   return "default";
+}
+
+/** Only an explicit URL/operator opt-out dismisses roll-up navigation. */
+export function rollupDismissedForPreference(
+  preference: GraphRollupUrlPreference,
+): boolean {
+  return preference === "off";
+}
+
+/** Keep raw topology off-canvas while an eligible roll-up request is pending. */
+export function graphRollupCanvasMode(input: {
+  eligible: boolean;
+  dismissed: boolean;
+  hasView: boolean;
+  unavailable: boolean;
+  failed: boolean;
+}): GraphRollupCanvasMode {
+  if (!input.eligible || input.dismissed) return "raw";
+  if (input.hasView) return "active";
+  if (input.unavailable || input.failed) return "raw";
+  return "loading";
 }
 
 /** Drill-down container id persisted in shareable graph URLs. */
@@ -26,13 +48,16 @@ export interface GraphRollupEligibilityInput {
   hasSelectedScan: boolean;
   rollupPreference: GraphRollupUrlPreference;
   rollupDismissed: boolean;
+  estateNodeCount: number;
   investigationMode: boolean;
   selectedAttackPath: boolean;
   reachabilityActive: boolean;
   blastRadiusActive: boolean;
-  /** When ranked attack paths exist, prefer path-focused canvas over roll-up. */
+  /** Retained for call-site compatibility; availability alone does not select a path. */
   attackPathCount?: number;
 }
+
+export const DEFAULT_GRAPH_ROLLUP_NODE_THRESHOLD = 200;
 
 /** Whether the graph should fetch and prefer the CONTAINS roll-up view. */
 export function graphRollupEligible(input: GraphRollupEligibilityInput): boolean {
@@ -44,11 +69,10 @@ export function graphRollupEligible(input: GraphRollupEligibilityInput): boolean
   if (input.selectedAttackPath) return false;
   if (input.reachabilityActive) return false;
   if (input.blastRadiusActive) return false;
-  // An explicit `?rollup=1` is an operator decision. It must win over the
-  // automatic attack-path-count default, but not the detail overlays above.
+  // An explicit `?rollup=1` is an operator decision, but detail overlays above
+  // still require their focused node set.
   if (input.rollupPreference === "force") return true;
-  if ((input.attackPathCount ?? 0) > 0) return false;
-  return true;
+  return input.estateNodeCount >= DEFAULT_GRAPH_ROLLUP_NODE_THRESHOLD;
 }
 
 export function rollupViewHasContainers(

@@ -147,7 +147,11 @@ function buildCockpitGraph(nodeCount = 5) {
   };
 }
 
-async function routeCockpit(page: Page, snapshotNodeCount?: number) {
+async function routeCockpit(
+  page: Page,
+  snapshotNodeCount?: number,
+  options: { emptyRollup?: boolean; rollupDelayMs?: number } = {},
+) {
   const graph = buildCockpitGraph(snapshotNodeCount);
 
   await page.route("**/health", async (route) => {
@@ -260,6 +264,9 @@ async function routeCockpit(page: Page, snapshotNodeCount?: number) {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
   });
   await page.route("**/v1/graph/rollup?**", async (route) => {
+    if (options.rollupDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, options.rollupDelayMs));
+    }
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -268,7 +275,7 @@ async function routeCockpit(page: Page, snapshotNodeCount?: number) {
         created_at: createdAt,
         mode: "rollup",
         filters: {},
-        top_level: [
+        top_level: options.emptyRollup ? [] : [
           {
             id: "account:production",
             label: "Production account",
@@ -310,7 +317,12 @@ async function routeCockpit(page: Page, snapshotNodeCount?: number) {
             },
           },
         ],
-        summary: { total_nodes: 1241, total_edges: 4, top_level_count: 2, container_count: 2 },
+        summary: {
+          total_nodes: snapshotNodeCount ?? 1241,
+          total_edges: graph.edges.length,
+          top_level_count: options.emptyRollup ? 0 : 2,
+          container_count: options.emptyRollup ? 0 : 2,
+        },
       }),
     });
   });
@@ -423,7 +435,9 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await expect(page).toHaveURL(/scan=scan-cockpit-fixture/);
   await expect(page).toHaveURL(/rollup=1/);
   await rollupRequest;
-  await expect(page.getByText("Scope roll-up")).toBeVisible();
+  await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
+  await expect(page.getByText(/not rendered relationship evidence/i)).toBeVisible();
+  await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
   await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
   const cards = page.locator('[data-rollup-container="true"]');
   await expect(cards).toHaveCount(2);
@@ -437,3 +451,54 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await expect(page).toHaveURL(/rollup=0/);
 });
 }
+
+test("36-node snapshots default to real topology and forced roll-up stays edge-free", async ({ page }) => {
+  await routeCockpit(page, 36);
+
+  await page.goto(`/graph?scan=${scanId}`);
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByText("Scope navigation", { exact: true })).toHaveCount(0);
+  expect(await page.locator(".react-flow__edge").count()).toBeGreaterThan(0);
+
+  await page.goto(`/graph?scan=${scanId}&rollup=1`);
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-rollup-container="true"]')).toHaveCount(2);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+  await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
+});
+
+test("200-node snapshots default to roll-up and explicit raw topology persists", async ({ page }) => {
+  await routeCockpit(page, 200);
+
+  await page.goto(`/graph?scan=${scanId}`);
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
+  await expect(page.getByText(/200 nodes in snapshot/i)).toBeVisible();
+
+  await page.goto(`/graph?scan=${scanId}&rollup=0`);
+  await page.waitForLoadState("networkidle");
+  await expect(page).toHaveURL(/rollup=0/);
+  await expect(page.getByText("Scope navigation", { exact: true })).toHaveCount(0);
+  expect(await page.locator(".react-flow__edge").count()).toBeGreaterThan(0);
+});
+
+test("empty forced roll-up preserves operator preference and falls back to real topology", async ({ page }) => {
+  await routeCockpit(page, 36, { emptyRollup: true });
+
+  await page.goto(`/graph?scan=${scanId}&rollup=1`);
+  await page.waitForLoadState("networkidle");
+  await expect(page).toHaveURL(/rollup=1/);
+  await expect(page.getByText(/Roll-up unavailable/i)).toBeVisible();
+  expect(await page.locator(".react-flow__edge").count()).toBeGreaterThan(0);
+});
+
+test("eligible roll-up shows a loading surface without raw-topology counts", async ({ page }) => {
+  await routeCockpit(page, 200, { rollupDelayMs: 750 });
+
+  await page.goto(`/graph?scan=${scanId}`);
+  await expect(page.getByText("Loading scope navigation")).toBeVisible();
+  await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+  await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
+});

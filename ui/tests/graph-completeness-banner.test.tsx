@@ -38,4 +38,25 @@ describe("GraphCompletenessBanner", () => {
     await user.click(screen.getByRole("button", { name: /Load more/i }));
     expect(onLoadMore).toHaveBeenCalled();
   });
+
+  it("does not invent an exhaustive total for traversal-budget truncation", () => {
+    render(
+      <GraphCompletenessBanner
+        completeness={{
+          status: "truncated",
+          complete: false,
+          truncated: true,
+          sampled: false,
+          returned: 2,
+          reason: "traversal_budget",
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-completeness-banner")).toHaveTextContent(
+      "Showing 2 items",
+    );
+    expect(screen.getByText("traversal_budget")).toBeInTheDocument();
+    expect(screen.queryByText(/2 of 2/i)).not.toBeInTheDocument();
+  });
 });

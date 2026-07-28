@@ -11,8 +11,8 @@ export type GraphCompletenessLike = {
   truncated?: boolean;
   sampled?: boolean;
   returned?: number;
-  total?: number;
-  reason?: string;
+  total?: number | undefined;
+  reason?: string | undefined;
 };
 
 export function GraphCompletenessBanner({

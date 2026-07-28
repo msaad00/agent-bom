@@ -2,43 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
 import type { GraphRollupContainer } from "@/lib/api-types";
-
-const ROLLUP_ENTITY_TO_NODE_TYPE: Record<string, LineageNodeType> = {
-  provider: "provider",
-  org: "org",
-  account: "account",
-  user: "user",
-  group: "group",
-  role: "role",
-  policy: "policy",
-  service_account: "serviceAccount",
-  service_principal: "servicePrincipal",
-  federated_identity: "federatedIdentity",
-  environment: "environment",
-  fleet: "fleet",
-  cluster: "cluster",
-  application: "container",
-  server: "server",
-  package: "package",
-  tool: "tool",
-  credential: "credential",
-  vulnerability: "vulnerability",
-  misconfiguration: "misconfiguration",
-  model: "model",
-  framework: "framework",
-  dataset: "dataset",
-  container: "container",
-  cloud_resource: "cloudResource",
-  managed_identity: "managedIdentity",
-  access_grant: "accessGrant",
-  access_policy: "accessPolicy",
-  drift_incident: "driftIncident",
-  data_store: "dataStore",
-  directory: "directory",
-  source_file: "sourceFile",
-  config_file: "configFile",
-  agent: "agent",
-};
+import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   provider: "providerNode",
@@ -86,7 +50,7 @@ const NODE_WIDTH = NODE_CARD_MAX_WIDTH + NODE_COLUMN_GAP;
 const NODE_HEIGHT = 112;
 
 export function rollupEntityToNodeType(entityType: string): LineageNodeType {
-  return ROLLUP_ENTITY_TO_NODE_TYPE[entityType] ?? "cloudResource";
+  return lineageNodeTypeForEntity(entityType) ?? "cloudResource";
 }
 
 export function rollupContainerSubtitle(container: GraphRollupContainer): string {

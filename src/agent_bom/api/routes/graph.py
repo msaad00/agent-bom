@@ -2876,7 +2876,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         ).to_dict(),
         "completeness": graph_completeness(
             returned=len(filtered_graph.nodes),
-            total=filtered_graph.stats().get("node_count", len(filtered_graph.nodes)),
+            total=None if truncated else filtered_graph.stats().get("node_count", len(filtered_graph.nodes)),
             truncated=truncated,
             reason="traversal_budget" if truncated else "",
         ),

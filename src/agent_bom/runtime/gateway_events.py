@@ -50,14 +50,23 @@ def build_gateway_runtime_event(
     decision: str,
     policy_source: str,
     trace_id: str,
+    identity_id: str = "",
+    profile_revision: int = 0,
+    blueprint_id: str = "",
+    blueprint_revision: int = 0,
+    policy_ids: tuple[str, ...] | list[str] = (),
+    reason_code: str = "",
     data_action: str = "",
     policy_id: str = "",
     evidence_id: str = "",
 ) -> dict[str, Any]:
     """Build one safe metadata event for audit ingest and feed projection."""
 
+    event_id = f"gw_{uuid.uuid4().hex}"
     event: dict[str, Any] = {
-        "event_id": f"gw_{uuid.uuid4().hex}",
+        "schema_version": "gateway.runtime.event.v1",
+        "event_id": event_id,
+        "decision_id": event_id,
         "event_type": event_type.value,
         "event_timestamp": datetime.now(timezone.utc).isoformat(),
         "tenant_id": tenant_id,
@@ -69,6 +78,19 @@ def build_gateway_runtime_event(
         "policy_source": policy_source,
         "trace_id": trace_id,
     }
+    if identity_id:
+        event["identity_id"] = identity_id
+    if profile_revision > 0:
+        event["profile_revision"] = profile_revision
+    if blueprint_id:
+        event["blueprint_id"] = blueprint_id
+    if blueprint_revision > 0:
+        event["blueprint_revision"] = blueprint_revision
+    normalized_policy_ids = list(dict.fromkeys(value for value in policy_ids if value))
+    if normalized_policy_ids:
+        event["policy_ids"] = normalized_policy_ids
+    if reason_code:
+        event["reason_code"] = reason_code
     if data_action:
         event["data_action"] = data_action
     if policy_id:

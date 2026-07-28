@@ -234,6 +234,34 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     ),
 )
 @click.option(
+    "--profile-enforcement",
+    type=click.Choice(["off", "warn", "enforce"]),
+    envvar="AGENT_BOM_GATEWAY_PROFILE_ENFORCEMENT",
+    default="off",
+    show_default=True,
+    help="Resolve canonical managed client profiles before routing; enforce denies unsanctioned callers, warn audits them.",
+)
+@click.option(
+    "--profile-environment",
+    envvar="AGENT_BOM_GATEWAY_PROFILE_ENVIRONMENT",
+    default="",
+    help="Operator-controlled deployment environment matched against canonical client profiles.",
+)
+@click.option(
+    "--profile-issuer",
+    envvar="AGENT_BOM_GATEWAY_PROFILE_ISSUER",
+    default="agent-bom",
+    show_default=True,
+    help="Trusted issuer required by canonical client profiles.",
+)
+@click.option(
+    "--allow-profile-dev-bypass",
+    is_flag=True,
+    envvar="AGENT_BOM_GATEWAY_ALLOW_PROFILE_DEV_BYPASS",
+    default=False,
+    help="Allow unresolved profiles only on a loopback listener and emit an audited development bypass.",
+)
+@click.option(
     "--detect-visual-leaks",
     is_flag=True,
     envvar="AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS",
@@ -379,6 +407,10 @@ def serve_cmd(
     bearer_token: str | None,
     allow_insecure_no_auth: bool,
     allow_anonymous_agents: bool,
+    profile_enforcement: str,
+    profile_environment: str,
+    profile_issuer: str,
+    allow_profile_dev_bypass: bool,
     detect_visual_leaks: bool,
     drift_enforcement: str,
     anomaly_enforcement: str,
@@ -421,6 +453,13 @@ def serve_cmd(
         sys.exit(2)
 
     host, port_num = _parse_bind(bind)
+
+    if profile_enforcement != "off" and not profile_environment.strip():
+        raise click.ClickException("--profile-enforcement warn/enforce requires --profile-environment")
+    if profile_enforcement != "off" and not profile_issuer.strip():
+        raise click.ClickException("--profile-enforcement warn/enforce requires --profile-issuer")
+    if allow_profile_dev_bypass and not _is_loopback_host(host):
+        raise click.ClickException("--allow-profile-dev-bypass is permitted only with a loopback --bind")
 
     from agent_bom.gateway_server import GatewaySettings, build_control_plane_audit_sink, create_gateway_app
     from agent_bom.gateway_upstreams import (
@@ -562,6 +601,10 @@ def serve_cmd(
         listener_host=host,
         allow_insecure_no_auth=allow_insecure_no_auth,
         allow_anonymous_agents=allow_anonymous_agents,
+        runtime_profile_enforcement_mode=profile_enforcement,
+        runtime_profile_environment=profile_environment.strip(),
+        runtime_profile_issuer=profile_issuer.strip(),
+        allow_runtime_profile_dev_bypass=allow_profile_dev_bypass,
         drift_enforcement_mode=drift_enforcement,
         anomaly_enforcement_mode=anomaly_enforcement,
         fleet_enforcement_mode=fleet_enforcement,
@@ -604,6 +647,11 @@ def serve_cmd(
                 f"Rules={policy_summary['total_rules']} "
                 f"(block={policy_summary['blocking_rules']}, warn={policy_summary['advisory_rules']})"
             ),
+        ),
+        (
+            "Client profiles",
+            f"{profile_enforcement}"
+            + (f" ({profile_issuer.strip()} / {profile_environment.strip()})" if profile_enforcement != "off" else ""),
         ),
     ]
     if detect_visual_leaks:

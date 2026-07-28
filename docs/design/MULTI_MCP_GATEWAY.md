@@ -39,15 +39,60 @@ Non-goals (explicitly):
 agent-bom gateway serve \
   --bind 0.0.0.0:8090 \
   --upstreams upstreams.yaml \
-  --control-plane-url https://agent-bom.example.com \
+  --from-control-plane https://agent-bom.example.com \
   --control-plane-token "$CP_TOKEN" \
   --policy-reload-seconds 30 \
   --bearer-token "$GATEWAY_TOKEN"
 ```
 
 The gateway pushes runtime audit events to the control plane when
-`--control-plane-url` is configured. `--response-sign-key` is a **proxy-only**
+`--from-control-plane` is configured. `--response-sign-key` is a **proxy-only**
 option; it is not accepted by `gateway serve`.
+
+### Canonical client-profile enforcement
+
+Profile enforcement is off by default while existing OAuth/JWKS clients are
+migrated to managed identities. Enable it only after creating one active
+`McpClientConfigAssignment` for each managed `AgentIdentity`. The gateway must
+read the same authoritative database that owns those records; replicated/Helm
+deployments require the shared `AGENT_BOM_POSTGRES_URL` Secret. The chart
+requires a gateway-scoped `gateway.envFrom` Secret and refuses to render
+enforced mode when it is absent. Do not reuse the broader control-plane Secret:
+it can contain unrelated session, audit, login, or encryption credentials:
+
+```bash
+agent-bom gateway serve \
+  --bind 0.0.0.0:8090 \
+  --upstreams upstreams.yaml \
+  --bearer-token "$GATEWAY_TOKEN" \
+  --profile-enforcement enforce \
+  --profile-environment prod
+```
+
+The operator-controlled profile environment is matched to the assignment;
+caller-supplied `X-Agent-Environment` metadata cannot select it. Enforce mode
+denies unknown, inactive, revoked, expired, cross-tenant, issuer/environment/
+blueprint-mismatched, under-scoped, or out-of-contract upstream/tool calls
+before contacting the upstream. Warn mode records the same stable reason code
+but allows the call. The gateway removes `_meta.agent_identity` before relay.
+
+Managed `abi_` tokens do not carry OAuth scope claims. An assignment with
+`required_scopes` therefore fails closed for those opaque tokens until the
+managed identity is bound to a verified claims-bearing authentication path;
+the assignment's required scopes are never treated as granted scopes.
+
+For a local-only troubleshooting session, `--allow-profile-dev-bypass` works
+only with a loopback `--bind` and emits
+`gateway.runtime_profile_dev_bypass`. Merely binding to loopback does not
+bypass enforcement. Kubernetes intentionally exposes no equivalent bypass.
+
+Typed tool decisions carry a canonical client-profile ID and revision,
+separate role-blueprint ID and revision, managed identity/agent IDs, bound
+policy IDs, trace ID, and one stable event/decision ID. The control-plane audit
+ingest keeps these Tier-A fields in its bounded, tenant-scoped gateway feed;
+raw arguments, results, tokens, credential references, and unredacted previews
+are excluded. Durable cursor/backfill and multi-replica ordering remain a
+separate delivery stage and are not implied by this enforcement slice.
 
 ### `upstreams.yaml`
 
@@ -147,7 +192,7 @@ Net new code:
 
 - **Tenant isolation** — every upstream request carries the authenticated tenant's context; runtime rate limits are tenant-scoped and split by source-agent identity, with tenant-local `anonymous` buckets for calls that do not present `_meta.agent_identity`.
 - **mTLS-ready** — gateway accepts a client cert at ingress for zero-trust environments; upstream TLS verification is mandatory (not optional like current proxy dev-mode).
-- **No credential forwarding** — per-upstream credentials are injected by the gateway, never read from the client request. This is the whole point of putting a gateway in front: the laptop doesn't hold the Jira token.
+- **No credential forwarding** — per-upstream credentials are injected by the gateway and the caller's `_meta.agent_identity` credential is removed before relay. This is the whole point of putting a gateway in front: the laptop doesn't hold the Jira token and the upstream never receives the gateway identity token.
 - **Audit non-repudiation** — gateway calls are signed with the same Ed25519 key path the compliance bundle uses ([`docs/COMPLIANCE_SIGNING.md`](../COMPLIANCE_SIGNING.md)).
 - **Replay protection** — same nonce + expiry envelope as the compliance bundle for every `tools/call` audit record.
 - **Pod Security Admission restricted** — gateway runs as non-root, read-only root FS, no privilege escalation. Helm template ships this.

@@ -138,7 +138,8 @@ def test_enforce_allows_non_drifted_tool():
     assert len(allowed) == 1
     assert allowed[0]["tenant_id"] == "default"
     assert allowed[0]["agent_id"] == "agent-a"
-    assert allowed[0]["profile_id"] == "finance"
+    assert allowed[0]["profile_id"] == ""
+    assert allowed[0]["blueprint_id"] == "finance"
     assert allowed[0]["upstream"] == "filesystem"
     assert allowed[0]["tool"] == "read_file"
     assert allowed[0]["policy_source"] == "file"

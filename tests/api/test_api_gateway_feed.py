@@ -322,9 +322,16 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
     typed_alerts = [
         {
             "event_id": "evt-allow",
+            "decision_id": "evt-allow",
             "event_type": "gateway.tool_call.allowed",
+            "event_timestamp": "2026-07-28T01:02:03+00:00",
             "agent_id": "agent-a",
-            "profile_id": "finance",
+            "identity_id": "identity-a",
+            "profile_id": "client-profile-finance-prod",
+            "profile_revision": 3,
+            "blueprint_id": "finance",
+            "blueprint_revision": 1,
+            "policy_ids": ["policy-finance@7"],
             "upstream": "filesystem",
             "tool": "read_file",
             "decision": "allow",
@@ -380,13 +387,21 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         },
         {
             "event_id": "evt-identity-block",
+            "decision_id": "evt-identity-block",
             "event_type": "gateway.tool_call.blocked",
             "agent_id": "unknown",
+            "identity_id": "identity-missing-profile",
             "profile_id": "",
+            "profile_revision": 0,
+            "blueprint_id": "finance",
+            "blueprint_revision": 1,
+            "policy_ids": ["policy-finance@7"],
             "upstream": "filesystem",
             "tool": "admin_write",
             "decision": "deny",
             "policy_source": "identity",
+            "reason_code": "profile_not_found",
+            "development_mode": False,
         },
     ]
     try:
@@ -424,13 +439,24 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         assert by_id["evt-visual-redact"]["action_type"] == ACTION_DATA_FILTER_APPLIED
         assert by_id["evt-visual-redact"]["data_action"] == "visual_redacted"
         assert by_id["evt-allow"]["agent"] == "agent-a"
-        assert by_id["evt-allow"]["profile_id"] == "finance"
+        assert by_id["evt-allow"]["decision_id"] == "evt-allow"
+        assert by_id["evt-allow"]["identity_id"] == "identity-a"
+        assert by_id["evt-allow"]["profile_id"] == "client-profile-finance-prod"
+        assert by_id["evt-allow"]["profile_revision"] == 3
+        assert by_id["evt-allow"]["blueprint_id"] == "finance"
+        assert by_id["evt-allow"]["blueprint_revision"] == 1
+        assert by_id["evt-allow"]["policy_ids"] == ["policy-finance@7"]
         assert by_id["evt-allow"]["profile_id"] != feed["tenant_id"]
         assert by_id["evt-allow"]["upstream"] == "filesystem"
         assert by_id["evt-allow"]["target"] == "read_file"
         assert by_id["evt-allow"]["decision"] == "allow"
         assert by_id["evt-allow"]["policy_source"] == "file"
         assert by_id["evt-allow"]["trace_id"] == "trace-allow"
+        assert by_id["evt-identity-block"]["profile_id"] == ""
+        assert by_id["evt-identity-block"]["blueprint_id"] == "finance"
+        assert by_id["evt-identity-block"]["reason_code"] == "profile_not_found"
+        assert by_id["evt-identity-block"]["development_mode"] is False
+
 
         kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant)).json()
         assert kpis["tool_calls_authorized"] == 1

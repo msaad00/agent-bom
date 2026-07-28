@@ -215,14 +215,14 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             redact_for_persistence(
                 {
                     "event_id": enriched.get("event_id", ""),
-                    "event_timestamp": enriched.get("timestamp") or enriched.get("ts"),
+                    "event_timestamp": enriched.get("event_timestamp") or enriched.get("timestamp") or enriched.get("ts"),
                     "tenant_id": tenant_id,
                     "event_type": enriched.get("event_type", enriched.get("type", "runtime_alert")),
                     "detector": enriched.get("detector", ""),
                     "severity": enriched.get("severity", "INFO"),
                     "tool_name": enriched.get("tool_name", enriched.get("tool", "")),
                     "message": enriched.get("message", ""),
-                    "agent_name": enriched.get("agent_name", ""),
+                    "agent_name": enriched.get("agent_name") or enriched.get("agent_id") or enriched.get("source_agent", ""),
                     "session_id": enriched.get("session_id", ""),
                     "trace_id": enriched.get("trace_id", ""),
                     "request_id": enriched.get("request_id", ""),

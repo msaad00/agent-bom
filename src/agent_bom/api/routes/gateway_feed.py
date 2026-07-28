@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
@@ -62,9 +62,17 @@ class GatewayFeedHealthModel(BaseModel):
 
 class GatewayFeedEventModel(BaseModel):
     event_id: str
+    decision_id: str = Field(default="", max_length=200)
     ts: str
     agent: str
-    profile_id: str
+    identity_id: str = Field(default="", max_length=200)
+    profile_id: str = Field(default="", max_length=200)
+    profile_revision: int = Field(default=0, ge=0)
+    blueprint_id: str = Field(default="", max_length=200)
+    blueprint_revision: int = Field(default=0, ge=0)
+    policy_ids: list[str] = Field(default_factory=list, max_length=200)
+    reason_code: str = Field(default="", max_length=200)
+    development_mode: bool = False
     action_type: Literal[
         "tool_call_authorized",
         "tool_call_blocked",
@@ -239,6 +247,36 @@ def _alert_target(alert: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _bounded_alert_identifier(alert: dict[str, Any], key: str) -> str:
+    value = alert.get(key)
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:200]
+
+
+def _alert_revision(alert: dict[str, Any], key: str) -> int:
+    value = alert.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, value)
+
+
+def _alert_policy_ids(alert: dict[str, Any]) -> list[str]:
+    raw_policy_ids = alert.get("policy_ids")
+    if not isinstance(raw_policy_ids, list | tuple):
+        return []
+    policy_ids: list[str] = []
+    for value in raw_policy_ids:
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip()[:200]
+        if normalized and normalized not in policy_ids:
+            policy_ids.append(normalized)
+        if len(policy_ids) == 200:
+            break
+    return policy_ids
+
+
 def _is_shadow_block(alert: dict[str, Any]) -> bool:
     """True when a blocked event is a shadow / undeclared-agent or shadow-server block.
 
@@ -379,9 +417,17 @@ def _normalize_alert_event(alert: dict[str, Any], tenant_id: str) -> dict[str, A
         shadow = False
     return {
         "event_id": str(alert.get("event_id") or ""),
+        "decision_id": _bounded_alert_identifier(alert, "decision_id"),
         "ts": _alert_timestamp(alert),
         "agent": agent,
-        "profile_id": str(alert.get("profile_id") or alert.get("blueprint_id") or ""),
+        "identity_id": _bounded_alert_identifier(alert, "identity_id"),
+        "profile_id": _bounded_alert_identifier(alert, "profile_id"),
+        "profile_revision": _alert_revision(alert, "profile_revision"),
+        "blueprint_id": _bounded_alert_identifier(alert, "blueprint_id"),
+        "blueprint_revision": _alert_revision(alert, "blueprint_revision"),
+        "policy_ids": _alert_policy_ids(alert),
+        "reason_code": _bounded_alert_identifier(alert, "reason_code"),
+        "development_mode": alert.get("development_mode") is True,
         "action_type": action_type,
         "target": target,
         "upstream": str(alert.get("upstream") or ""),
@@ -412,9 +458,17 @@ def _normalize_llm_event(record: Any, tenant_id: str) -> dict[str, Any]:
         detail = f"{int(input_tokens) + int(output_tokens)} tokens"
     return {
         "event_id": "",
+        "decision_id": "",
         "ts": str(getattr(record, "observed_at", "") or ""),
         "agent": agent,
+        "identity_id": "",
         "profile_id": "",
+        "profile_revision": 0,
+        "blueprint_id": "",
+        "blueprint_revision": 0,
+        "policy_ids": [],
+        "reason_code": "",
+        "development_mode": False,
         "action_type": ACTION_LLM_CALL,
         "target": target,
         "upstream": "",

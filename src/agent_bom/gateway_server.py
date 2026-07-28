@@ -37,6 +37,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -138,6 +139,7 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "graph_reachability": "Graph reachability policy blocked this request",
         "policy_plugin": "A gateway policy plugin blocked this request",
         "fail_closed": "Gateway policy unavailable and fail-closed mode is active",
+        "runtime_profile": "Runtime client profile validation blocked this request",
     }.get(policy_source, "Gateway policy blocked this request")
 
 
@@ -202,6 +204,16 @@ class GatewaySettings:
     # this field or AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS). On a non-loopback
     # bind without the opt-out, a missing identity fails closed by default.
     allow_anonymous_agents: bool = False
+    # Canonical managed client-profile resolution. Off preserves compatibility;
+    # warn records unsanctioned callers without blocking; enforce denies before
+    # upstream routing. This environment is operator-controlled, never caller-
+    # declared X-Agent-Environment metadata.
+    runtime_profile_enforcement_mode: str = "off"
+    runtime_profile_environment: str = ""
+    runtime_profile_issuer: str = "agent-bom"
+    # The sole enforcement bypass is explicit *and* loopback-only. Merely
+    # binding to loopback does not bypass canonical profile validation.
+    allow_runtime_profile_dev_bypass: bool = False
     # Control-plane GatewayPolicy bundle (raw dicts with bound_agents /
     # bound_agent_types / bound_environments). The flattened ``policy`` dict
     # above is agent-agnostic; this bundle lets the relay enforce per-agent
@@ -976,6 +988,20 @@ def _enforce_gateway_anonymous_agents_posture(settings: GatewaySettings) -> None
         )
 
 
+def _validate_runtime_profile_posture(settings: GatewaySettings) -> str:
+    """Validate and return the canonical profile-enforcement mode."""
+    mode = settings.runtime_profile_enforcement_mode.strip().lower()
+    if mode not in {"off", "warn", "enforce"}:
+        raise RuntimeError("runtime profile enforcement mode must be off, warn, or enforce")
+    if mode != "off" and not settings.runtime_profile_environment.strip():
+        raise RuntimeError("runtime profile enforcement requires an operator-controlled profile environment")
+    if mode != "off" and not settings.runtime_profile_issuer.strip():
+        raise RuntimeError("runtime profile enforcement requires a trusted profile issuer")
+    if settings.allow_runtime_profile_dev_bypass and not _is_loopback_host(settings.listener_host):
+        raise RuntimeError("runtime profile development bypass is permitted only on a loopback listener")
+    return mode
+
+
 def _role_allows_gateway_relay(role: object) -> bool:
     try:
         normalized = role if isinstance(role, Role) else Role(str(role).lower())
@@ -1059,6 +1085,26 @@ def _inject_jsonrpc_trace_meta(
         meta["baggage"] = baggage
     enriched["_meta"] = meta
     return enriched
+
+
+def _strip_gateway_identity_metadata(message: dict[str, Any]) -> dict[str, Any]:
+    """Remove the gateway caller credential before crossing the upstream boundary."""
+    params = message.get("params")
+    if not isinstance(params, dict):
+        return message
+    raw_meta = params.get("_meta")
+    if not isinstance(raw_meta, dict) or "agent_identity" not in raw_meta:
+        return message
+    forwarded = dict(message)
+    forwarded_params = dict(params)
+    forwarded_meta = dict(raw_meta)
+    forwarded_meta.pop("agent_identity", None)
+    if forwarded_meta:
+        forwarded_params["_meta"] = forwarded_meta
+    else:
+        forwarded_params.pop("_meta", None)
+    forwarded["params"] = forwarded_params
+    return forwarded
 
 
 async def _default_upstream_caller(
@@ -1169,6 +1215,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         require_visual_leak_runtime()
     _enforce_gateway_auth_posture(settings)
     _enforce_gateway_anonymous_agents_posture(settings)
+    runtime_profile_mode = _validate_runtime_profile_posture(settings)
 
     managed_upstream_relay = GatewayUpstreamRelay(settings) if settings.upstream_caller is None else None
     upstream_caller = settings.upstream_caller or managed_upstream_relay
@@ -1719,7 +1766,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "token or set AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS for local development only"
                 )
 
-        profile_id = str(getattr(scoped_identity, "blueprint_id", "") or "")
+        # A role blueprint is not a client profile. Keep them distinct until a
+        # canonical assignment resolves successfully.
+        profile_id = ""
+        profile_revision = 0
+        blueprint_id = str(getattr(scoped_identity, "blueprint_id", "") or "")
+        blueprint_revision = 0
+        profile_policy_ids: tuple[str, ...] = ()
+        profile_identity_id = ""
         event_tool = str((message.get("params") or {}).get("name") or message.get("method") or "")
 
         def _typed_runtime_event(
@@ -1728,6 +1782,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             decision: str,
             policy_source: str,
             tool: str = event_tool,
+            reason_code: str = "",
             data_action: str = "",
             policy_id: str = "",
             evidence_id: str = "",
@@ -1736,12 +1791,18 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 event_type,
                 tenant_id=tenant_id,
                 agent_id=source_agent,
+                identity_id=profile_identity_id,
                 profile_id=profile_id,
                 upstream=upstream.name,
                 tool=tool,
                 decision=decision,
                 policy_source=policy_source,
                 trace_id=str(trace_meta["trace_id"]),
+                profile_revision=profile_revision,
+                blueprint_id=blueprint_id,
+                blueprint_revision=blueprint_revision,
+                policy_ids=profile_policy_ids,
+                reason_code=reason_code,
                 data_action=data_action,
                 policy_id=policy_id,
                 evidence_id=evidence_id,
@@ -1783,6 +1844,122 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 },
                 status_code=200,
             )
+
+        # Canonical profile resolution is deliberately opt-in while existing
+        # OAuth/JWKS deployments migrate to managed identity assignments. In
+        # enforce mode every caller must resolve before any upstream network
+        # call. Warn mode records the same stable reason code without upgrading
+        # unresolved evidence into a profile attribution.
+        if runtime_profile_mode != "off":
+            profile_failure_code = ""
+            if managed_identity_lookup_unavailable:
+                profile_failure_code = "identity_store_unavailable"
+            elif scoped_identity is None:
+                profile_failure_code = "managed_identity_required"
+            else:
+                profile_identity_id = str(getattr(scoped_identity, "identity_id", "") or "")
+                try:
+                    from agent_bom.api.mcp_config_store import get_mcp_config_store
+                    from agent_bom.runtime.profile_resolution import resolve_runtime_profile
+
+                    resolution = resolve_runtime_profile(
+                        get_mcp_config_store(),
+                        identity=scoped_identity,
+                        tenant_id=tenant_id,
+                        issuer=settings.runtime_profile_issuer.strip(),
+                        environment=settings.runtime_profile_environment.strip(),
+                        granted_scopes=token_scopes,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    profile_failure_code = "profile_store_unavailable"
+                    logger.warning("gateway runtime profile lookup unavailable: %s", _public_gateway_error(exc))
+                else:
+                    if not resolution.resolved or resolution.profile is None:
+                        profile_failure_code = resolution.code.value
+                    else:
+                        resolved_profile = resolution.profile
+                        profile_id = resolved_profile.client_profile_id
+                        profile_revision = resolved_profile.revision
+                        blueprint_id = resolved_profile.blueprint_id
+                        blueprint_revision = resolved_profile.blueprint_revision
+                        profile_policy_ids = resolved_profile.policy_ids
+                        if not resolved_profile.allows_upstream(upstream.name):
+                            profile_failure_code = "upstream_not_allowed"
+                        elif is_tools_call(message) and not resolved_profile.allows_tool(event_tool):
+                            profile_failure_code = "tool_not_allowed"
+
+            if profile_failure_code:
+                explicit_dev_bypass = settings.allow_runtime_profile_dev_bypass and _is_loopback_host(settings.listener_host)
+                profile_action = "gateway.runtime_profile_warned"
+                profile_decision = "warn"
+                if runtime_profile_mode == "enforce" and explicit_dev_bypass:
+                    profile_action = "gateway.runtime_profile_dev_bypass"
+                    profile_decision = "allow"
+                elif runtime_profile_mode == "enforce":
+                    profile_action = "gateway.runtime_profile_blocked"
+                    profile_decision = "deny"
+
+                if settings.audit_sink is not None:
+                    profile_audit: dict[str, Any] = {
+                        "schema_version": "gateway.runtime.event.v1",
+                        "action": profile_action,
+                        "event_timestamp": datetime.now(timezone.utc).isoformat(),
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "agent_id": source_agent,
+                        "identity_id": profile_identity_id,
+                        "profile_id": profile_id,
+                        "profile_revision": profile_revision,
+                        "blueprint_id": blueprint_id,
+                        "blueprint_revision": blueprint_revision,
+                        "policy_ids": list(profile_policy_ids),
+                        "decision": profile_decision,
+                        "policy_source": "runtime_profile",
+                        "reason_code": profile_failure_code,
+                        "development_mode": bool(explicit_dev_bypass),
+                        "trace_id": str(trace_meta["trace_id"]),
+                    }
+                    if runtime_profile_mode == "enforce" and not explicit_dev_bypass and is_tools_call(message):
+                        profile_audit.update(
+                            _typed_runtime_event(
+                                GatewayRuntimeEventType.TOOL_CALL_BLOCKED,
+                                decision="deny",
+                                policy_source="runtime_profile",
+                                reason_code=profile_failure_code,
+                            )
+                        )
+                    else:
+                        profile_event_id = f"gw_{uuid.uuid4().hex}"
+                        profile_audit.update({"event_id": profile_event_id, "decision_id": profile_event_id})
+                    await settings.audit_sink(profile_audit)
+
+                if runtime_profile_mode == "enforce" and not explicit_dev_bypass:
+                    record_gateway_relay(upstream.name, "blocked")
+                    return JSONResponse(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": message.get("id"),
+                            "error": {
+                                "code": -32001,
+                                "message": "Blocked by agent-bom gateway runtime profile policy",
+                                "data": {
+                                    "reason": _public_gateway_block_reason("runtime_profile"),
+                                    "policy_source": "runtime_profile",
+                                    "reason_code": profile_failure_code,
+                                },
+                            },
+                        },
+                        status_code=200,
+                    )
+
+                # Warn/bypass paths must not claim an unresolved assignment as
+                # canonical. A valid-but-out-of-scope assignment remains known
+                # and retains its profile attribution for the final allow event.
+                if profile_id and profile_failure_code not in {"upstream_not_allowed", "tool_not_allowed"}:
+                    profile_id = ""
+                    profile_revision = 0
+                    profile_policy_ids = ()
 
         # A2A inline mutual-auth enforcement (assess → enforce). When enabled,
         # every inter-agent / agent-MCP edge must carry a cryptographically
@@ -2760,7 +2937,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             baggage=str(trace_meta["baggage"]) if trace_meta["baggage"] else None,
         )
         forwarded_message = _inject_jsonrpc_trace_meta(
-            message,
+            _strip_gateway_identity_metadata(message),
             traceparent=str(trace_meta["traceparent"]),
             tracestate=str(trace_meta["tracestate"]) if trace_meta["tracestate"] else None,
             baggage=str(trace_meta["baggage"]) if trace_meta["baggage"] else None,

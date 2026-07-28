@@ -3330,6 +3330,18 @@
             "title": "Agent",
             "type": "string"
           },
+          "blueprint_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Blueprint Id",
+            "type": "string"
+          },
+          "blueprint_revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Blueprint Revision",
+            "type": "integer"
+          },
           "cost_usd": {
             "anyOf": [
               {
@@ -3349,12 +3361,29 @@
             "title": "Decision",
             "type": "string"
           },
+          "decision_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Decision Id",
+            "type": "string"
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
           },
+          "development_mode": {
+            "default": false,
+            "title": "Development Mode",
+            "type": "boolean"
+          },
           "event_id": {
             "title": "Event Id",
+            "type": "string"
+          },
+          "identity_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Identity Id",
             "type": "string"
           },
           "input_tokens": {
@@ -3379,12 +3408,34 @@
             ],
             "title": "Output Tokens"
           },
+          "policy_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Policy Ids",
+            "type": "array"
+          },
           "policy_source": {
             "title": "Policy Source",
             "type": "string"
           },
           "profile_id": {
+            "default": "",
+            "maxLength": 200,
             "title": "Profile Id",
+            "type": "string"
+          },
+          "profile_revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Profile Revision",
+            "type": "integer"
+          },
+          "reason_code": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Reason Code",
             "type": "string"
           },
           "shadow": {
@@ -3420,7 +3471,6 @@
           "event_id",
           "ts",
           "agent",
-          "profile_id",
           "action_type",
           "target",
           "upstream",

@@ -648,6 +648,83 @@ def test_gateway_serve_passes_runtime_rate_limit_settings(tmp_path):
     mock_run.assert_called_once()
 
 
+def test_gateway_serve_passes_canonical_profile_enforcement_settings(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    with (
+        patch("agent_bom.gateway_server.create_gateway_app") as mock_create_app,
+        patch("uvicorn.run") as mock_run,
+    ):
+        mock_create_app.return_value = object()
+        result = runner.invoke(
+            gateway_serve_cmd,
+            [
+                "--bind",
+                "127.0.0.1:8090",
+                "--upstreams",
+                str(upstreams),
+                "--profile-enforcement",
+                "enforce",
+                "--profile-environment",
+                "prod",
+                "--profile-issuer",
+                "agent-bom",
+                "--allow-profile-dev-bypass",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    settings = mock_create_app.call_args.args[0]
+    assert settings.runtime_profile_enforcement_mode == "enforce"
+    assert settings.runtime_profile_environment == "prod"
+    assert settings.runtime_profile_issuer == "agent-bom"
+    assert settings.allow_runtime_profile_dev_bypass is True
+    assert "Client profiles" in result.output
+    mock_run.assert_called_once()
+
+
+def test_gateway_serve_profile_enforcement_requires_environment(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    result = runner.invoke(
+        gateway_serve_cmd,
+        ["--bind", "127.0.0.1:8090", "--upstreams", str(upstreams), "--profile-enforcement", "enforce"],
+    )
+
+    assert result.exit_code == 1
+    assert "requires --profile-environment" in result.output
+
+
+def test_gateway_serve_rejects_profile_dev_bypass_on_non_loopback(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    result = runner.invoke(
+        gateway_serve_cmd,
+        [
+            "--bind",
+            "0.0.0.0:8090",
+            "--upstreams",
+            str(upstreams),
+            "--profile-enforcement",
+            "enforce",
+            "--profile-environment",
+            "prod",
+            "--allow-profile-dev-bypass",
+            "--bearer-token",
+            "gateway-token",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "permitted only with a loopback" in result.output
+
+
 def test_gateway_serve_rejects_policy_reload_without_policy_file():
     runner = CliRunner()
     with runner.isolated_filesystem():

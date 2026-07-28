@@ -755,6 +755,8 @@ async def test_proxy_audit_ingest_records_analytics_with_session_trace_context(m
         alerts=[
             {
                 "type": "runtime_alert",
+                "event_timestamp": "2026-07-28T01:02:03+00:00",
+                "agent_id": "agent-runtime-a",
                 "detector": "credential_leak",
                 "severity": "critical",
                 "message": "AWS key copied from /Users/alice/prod",
@@ -769,6 +771,8 @@ async def test_proxy_audit_ingest_records_analytics_with_session_trace_context(m
     assert analytics.events[0]["source_id"] == "laptop-1"
     assert analytics.events[0]["request_id"] == "req-1"
     assert analytics.events[0]["trace_id"] == "0123456789abcdef0123456789abcdef"
+    assert analytics.events[0]["event_timestamp"] == "2026-07-28T01:02:03+00:00"
+    assert analytics.events[0]["agent_name"] == "agent-runtime-a"
     assert "message" not in analytics.events[0]
     assert "details" not in analytics.events[0]
 

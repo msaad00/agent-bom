@@ -326,6 +326,17 @@ gateway:
   runtimeRateLimitPerTenantPerMinute: 0
   # Fail closed unless runtime rate limiting uses a shared backend.
   requireSharedRateLimit: false
+  # Canonical managed client-profile enforcement. Set profileEnvironment when
+  # using warn/enforce. Enforced gateways must share the control plane's
+  # authoritative Postgres identity/profile store. Set gateway.envFrom to the
+  # gateway-scoped Secret containing AGENT_BOM_POSTGRES_URL. Do not reuse the
+  # broader controlPlane.api.envFrom Secret because it may also carry session,
+  # audit, login, or encryption credentials. Enforced mode fails rendering when
+  # gateway.envFrom is empty. The loopback-only development bypass is
+  # intentionally not exposed by this non-loopback Kubernetes deployment.
+  profileEnforcement: "off"
+  profileEnvironment: ""
+  profileIssuer: "agent-bom"
   # OCR-scan image responses for leaked credentials/PII.
   detectVisualLeaks: false
   # Allow startup to continue when OCR runtime support is unavailable.

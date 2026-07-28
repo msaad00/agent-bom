@@ -1,3 +1,8 @@
+{{- $profileEnforcement := .Values.gateway.profileEnforcement | default "off" -}}
+{{- $gatewayEnvFrom := .Values.gateway.envFrom -}}
+{{- if and .Values.gateway.enabled (ne $profileEnforcement "off") (not $gatewayEnvFrom) -}}
+{{- fail "gateway profile enforcement requires gateway.envFrom with a gateway-scoped Secret containing the shared AGENT_BOM_POSTGRES_URL" -}}
+{{- end -}}
 {{- if .Values.gateway.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -70,6 +75,14 @@ spec:
             {{- if .Values.gateway.requireSharedRateLimit }}
             - --require-shared-rate-limit
             {{- end }}
+            {{- if ne $profileEnforcement "off" }}
+            - --profile-enforcement
+            - {{ .Values.gateway.profileEnforcement | quote }}
+            - --profile-environment
+            - {{ required "gateway.profileEnvironment is required when profile enforcement is enabled" .Values.gateway.profileEnvironment | quote }}
+            - --profile-issuer
+            - {{ .Values.gateway.profileIssuer | default "agent-bom" | quote }}
+            {{- end }}
             {{- if .Values.gateway.detectVisualLeaks }}
             - --detect-visual-leaks
             {{- end }}
@@ -96,7 +109,7 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.gateway.envFrom }}
+          {{- with $gatewayEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}

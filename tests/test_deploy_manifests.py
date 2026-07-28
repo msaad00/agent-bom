@@ -481,6 +481,9 @@ def test_helm_gateway_service_account_defaults():
     assert gateway["requireSharedRateLimit"] is False
     assert gateway["detectVisualLeaks"] is False
     assert gateway["allowVisualLeakBestEffort"] is False
+    assert gateway["profileEnforcement"] == "off"
+    assert gateway["profileEnvironment"] == ""
+    assert gateway["profileIssuer"] == "agent-bom"
 
 
 def test_helm_gateway_network_policy_defaults_to_explicit_egress_allowlist():
@@ -513,6 +516,13 @@ def test_helm_gateway_template_wires_control_plane_and_runtime_flags():
     assert "--require-shared-rate-limit" in template
     assert "--detect-visual-leaks" in template
     assert "--allow-visual-leak-best-effort" in template
+    assert "--profile-enforcement" in template
+    assert ".Values.gateway.profileEnforcement" in template
+    assert "--profile-environment" in template
+    assert ".Values.gateway.profileEnvironment" in template
+    assert "--profile-issuer" in template
+    assert "$gatewayEnvFrom = .Values.controlPlane.api.envFrom" not in template
+    assert "gateway profile enforcement requires gateway.envFrom" in template
 
 
 def test_helm_examples_do_not_ship_duplicate_sqlite_pilot_profile():

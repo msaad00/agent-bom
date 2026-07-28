@@ -20,10 +20,6 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — locally or in a control plane you run.
-</p>
-
-<p align="center">
   <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>77</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -47,6 +43,10 @@ runtime policy without requiring a hosted account.
 Graph provenance remains explicit: collected, inferred, static, and runtime
 relationships stay distinct, and unavailable evidence is never upgraded to
 observed.
+
+<p align="center">
+  Scan a repository, image, or cloud account for findings, an SBOM, and a graph of reachable impact — locally or in a control plane you run.
+</p>
 
 <details>
 <summary><b>Control-plane architecture</b></summary>

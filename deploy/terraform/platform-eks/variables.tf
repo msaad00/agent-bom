@@ -123,6 +123,84 @@ variable "db_deletion_protection" {
   default     = true
 }
 
+variable "db_final_snapshot_identifier" {
+  description = "Unique final RDS snapshot identifier used only during an approved destroy after deletion protection is disabled."
+  type        = string
+  default     = ""
+}
+
+variable "db_allowed_security_group_ids" {
+  description = <<-EOT
+    Additional source security-group IDs allowed to reach Postgres on port 5432.
+    The created-cluster mode automatically includes its managed node-group
+    security group. Referenced clusters must set this or
+    db_allowed_cidr_blocks explicitly because their pod networking model cannot
+    be inferred safely.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
+variable "db_allowed_cidr_blocks" {
+  description = <<-EOT
+    Explicit IPv4 CIDRs allowed to reach Postgres on port 5432. Prefer source
+    security groups when possible. Referenced clusters must set this or
+    db_allowed_security_group_ids; created clusters normally need neither.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
+###############################################################################
+# Existing Secrets Manager inputs (values never enter Terraform state)
+###############################################################################
+
+variable "app_db_secret_name" {
+  description = "Name of an existing Secrets Manager secret with username/password for the fixed agent_bom_app login."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.app_db_secret_name) != ""
+    error_message = "app_db_secret_name must name a pre-populated Secrets Manager secret."
+  }
+}
+
+variable "maintenance_db_secret_name" {
+  description = "Name of an existing Secrets Manager secret with username/password for the fixed agent_bom_maintenance login."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.maintenance_db_secret_name) != ""
+    error_message = "maintenance_db_secret_name must name a pre-populated Secrets Manager secret."
+  }
+}
+
+variable "auth_secret_name" {
+  description = "Name of an existing Secrets Manager JSON secret whose AGENT_BOM_* keys are mirrored into the control-plane auth Secret."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.auth_secret_name) != ""
+    error_message = "auth_secret_name must name a pre-populated Secrets Manager secret."
+  }
+}
+
+variable "runtime_credentials_generation" {
+  description = "Non-secret rotation generation shared by ExternalSecret reconciliation, role-password reconciliation, and workload rollout. Change it whenever any referenced secret value changes."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._-]{1,63}$", var.runtime_credentials_generation))
+    error_message = "runtime_credentials_generation must be a 1-63 character non-secret marker using letters, digits, dot, underscore, or hyphen."
+  }
+}
+
+variable "external_secrets_prerequisites_ready" {
+  description = "Explicit acknowledgement that External Secrets Operator and the aws-secrets-manager ClusterSecretStore already exist on the target cluster. Fresh clusters require the documented cluster-first bootstrap before this may be true."
+  type        = bool
+  default     = false
+}
+
 ###############################################################################
 # Helm release: control-plane chart (API + UI)
 ###############################################################################

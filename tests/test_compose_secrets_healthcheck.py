@@ -38,6 +38,11 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # upgrade head). Exits 0; API waits on service_completed_successfully.
         "migrate",
     },
+    "docker-compose.fullstack.yml": {
+        # One-shot Alembic upgrade for persisted local-development volumes.
+        # The API waits on service_completed_successfully.
+        "migrate",
+    },
     "docker-compose.runtime-example.yml": {
         # The mcp-server container talks stdio to the proxy and never opens a
         # TCP listener — there is no port to probe.
@@ -101,9 +106,7 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert "postgres_app_password" in secrets_block, (
         "platform compose must also declare postgres_app_password for the DML-only agent_bom_app role."
     )
-    assert "postgres_maintenance_password" in secrets_block, (
-        "platform compose must declare a distinct maintenance-role password secret."
-    )
+    assert "postgres_maintenance_password" in secrets_block, "platform compose must declare a distinct maintenance-role password secret."
     secret_file = secrets_block["postgres_password"].get("file")
     assert secret_file, (
         "postgres_password secret must be file-sourced (file: ./secrets/postgres_password) so docker-compose binds it read-only."
@@ -143,13 +146,8 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     api_map = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in api_env if isinstance(item, str) and "=" in item}
     assert api_map.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
     assert api_map.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
-    assert api_map.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith(
-        "postgresql://agent_bom_maintenance@"
-    )
-    assert (
-        api_map.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE")
-        == "/run/secrets/postgres_maintenance_password"
-    )
+    assert api_map.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith("postgresql://agent_bom_maintenance@")
+    assert api_map.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE") == "/run/secrets/postgres_maintenance_password"
     assert "postgres_app_password" in (api.get("secrets") or [])
     assert "postgres_maintenance_password" in (api.get("secrets") or [])
 
@@ -206,9 +204,7 @@ def test_compose_stacks_never_interpolate_postgres_passwords(compose_name: str) 
             env = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in env if isinstance(item, str) and "=" in item}
         assert "POSTGRES_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_PASSWORD"
         assert "POSTGRES_APP_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_APP_PASSWORD"
-        assert "POSTGRES_MAINTENANCE_PASSWORD" not in env, (
-            f"{compose_name}:{name} must not set POSTGRES_MAINTENANCE_PASSWORD"
-        )
+        assert "POSTGRES_MAINTENANCE_PASSWORD" not in env, f"{compose_name}:{name} must not set POSTGRES_MAINTENANCE_PASSWORD"
         for key, value in env.items():
             if key == "AGENT_BOM_POSTGRES_URL":
                 # Every AGENT_BOM_POSTGRES_URL is the DML-only app role. The
@@ -246,11 +242,7 @@ def test_deprecated_one_shot_scanner_does_not_receive_maintenance_credentials() 
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     scanner = data["services"]["agent-bom"]
     raw_env = scanner.get("environment") or []
-    env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in raw_env
-        if isinstance(item, str) and "=" in item
-    }
+    env = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in raw_env if isinstance(item, str) and "=" in item}
 
     assert "AGENT_BOM_POSTGRES_MAINTENANCE_URL" not in env
     assert "AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE" not in env
@@ -271,21 +263,14 @@ def test_platform_migrate_runs_alembic_before_api() -> None:
     assert migrate.get("working_dir") == "/opt/agent-bom"
     assert migrate.get("restart") == "no"
     env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in (migrate.get("environment") or [])
-        if isinstance(item, str) and "=" in item
+        item.split("=", 1)[0]: item.split("=", 1)[1] for item in (migrate.get("environment") or []) if isinstance(item, str) and "=" in item
     }
-    assert env.get("ALEMBIC_DATABASE_URL", "").startswith("postgresql://agent_bom@")
+    assert env.get("ALEMBIC_DATABASE_URL", "").startswith("postgresql://${POSTGRES_USER:-agent_bom}@postgres:")
     assert env.get("ALEMBIC_DATABASE_PASSWORD_FILE") == "/run/secrets/postgres_password"
     assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
     assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
-    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith(
-        "postgresql://agent_bom_maintenance@"
-    )
-    assert (
-        env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE")
-        == "/run/secrets/postgres_maintenance_password"
-    )
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith("postgresql://agent_bom_maintenance@")
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE") == "/run/secrets/postgres_maintenance_password"
     assert {
         "postgres_password",
         "postgres_app_password",
@@ -297,6 +282,40 @@ def test_platform_migrate_runs_alembic_before_api() -> None:
     assert api_deps.get("migrate", {}).get("condition") == "service_completed_successfully"
     script = COMPOSE_DIR / "supabase" / "postgres" / "compose_migrate.py"
     assert script.is_file(), "migrate script must ship under deploy/supabase/postgres (image COPY path)"
+
+
+@pytest.mark.parametrize(
+    "compose_name",
+    ("docker-compose.fullstack.yml", "docker-compose.platform.yml"),
+)
+def test_postgres_compose_profiles_migrate_before_api_with_three_distinct_identities(
+    compose_name: str,
+) -> None:
+    """Persisted Compose volumes must upgrade before the runtime starts."""
+
+    data = yaml.safe_load((COMPOSE_DIR / compose_name).read_text(encoding="utf-8"))
+    services = data.get("services") or {}
+    migrate = services.get("migrate") or {}
+    api = services.get("api") or {}
+    env = migrate.get("environment") or {}
+    if isinstance(env, list):
+        env = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in env if isinstance(item, str) and "=" in item}
+
+    assert migrate.get("entrypoint") == ["python"]
+    assert migrate.get("command") == ["deploy/supabase/postgres/compose_migrate.py"]
+    assert env.get("ALEMBIC_DATABASE_URL", "").startswith("postgresql://${POSTGRES_USER:-agent_bom}@postgres:")
+    assert env.get("ALEMBIC_DATABASE_PASSWORD_FILE") == "/run/secrets/postgres_password"
+    assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
+    assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith("postgresql://agent_bom_maintenance@")
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE") == "/run/secrets/postgres_maintenance_password"
+    assert {
+        "postgres_password",
+        "postgres_app_password",
+        "postgres_maintenance_password",
+    } <= set(migrate.get("secrets") or [])
+    assert (migrate.get("depends_on") or {}).get("postgres", {}).get("condition") == "service_healthy"
+    assert (api.get("depends_on") or {}).get("migrate", {}).get("condition") == ("service_completed_successfully")
 
 
 def test_platform_ui_binds_loopback_by_default() -> None:
@@ -318,13 +337,8 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
     assert "AGENT_BOM_API_KEY" not in env
     assert env.get("AGENT_BOM_POSTGRES_URL", "").startswith("postgresql://agent_bom_app@")
     assert env.get("AGENT_BOM_POSTGRES_PASSWORD_FILE") == "/run/secrets/postgres_app_password"
-    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith(
-        "postgresql://agent_bom_maintenance@"
-    )
-    assert (
-        env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE")
-        == "/run/secrets/postgres_maintenance_password"
-    )
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").startswith("postgresql://agent_bom_maintenance@")
+    assert env.get("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE") == "/run/secrets/postgres_maintenance_password"
     assert api.get("ports") == ["127.0.0.1:${API_PORT:-8422}:8422"]
     assert "~/.config:/home/abom/.config:ro" in (api.get("volumes") or [])
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])

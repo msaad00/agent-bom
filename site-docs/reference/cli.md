@@ -134,7 +134,7 @@ metadata or environment defaults.
 | `api` | Start the REST API server |
 | `schedule` | Manage recurring scan schedules |
 | `remediate` | Generate a prioritized remediation plan; with explicit `--apply`, patch supported dependency manifests |
-| `teardown` | Tear down the AWS/EKS reference install owned by agent-bom |
+| `teardown` | Legacy reference cleanup only; the supported EKS platform uses a reviewed `terraform destroy` from `deploy/terraform/platform-eks` |
 
 ### Database And Utilities
 

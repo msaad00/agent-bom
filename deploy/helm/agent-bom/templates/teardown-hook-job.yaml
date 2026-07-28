@@ -51,7 +51,7 @@ spec:
             - --namespace
             - {{ $.Release.Namespace }}
             - --label-selector
-            - app.kubernetes.io/name={{ include "agent-bom.name" $ }},app.kubernetes.io/managed-by={{ $.Release.Service }}
+            - app.kubernetes.io/name={{ include "agent-bom.name" $ }},app.kubernetes.io/instance={{ $.Release.Name }},app.kubernetes.io/managed-by={{ $.Release.Service }}
             {{- range $targetName := $targetSecretNames }}
             - --target-secret
             - {{ $targetName | quote }}

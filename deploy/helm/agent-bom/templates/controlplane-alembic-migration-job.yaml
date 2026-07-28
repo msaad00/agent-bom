@@ -4,8 +4,32 @@
 {{- fail "a Postgres migration cannot consume ExternalSecrets reconciled by the same release; create and wait for the target Secrets in a separate secret-sync release, then install with controlPlane.externalSecrets.enabled=false" }}
 {{- end }}
 {{- $envFrom := $migrations.envFrom }}
-{{- if and (not $envFrom) (not $migrations.env) }}
-{{- fail "controlPlane.migrations requires controlPlane.migrations.envFrom or controlPlane.migrations.env with a migration/admin ALEMBIC_DATABASE_URL" }}
+{{- $postgresSecrets := .Values.controlPlane.postgresSecrets }}
+{{- if $postgresSecrets.enabled }}
+{{- $appSecret := required "controlPlane.postgresSecrets.appSecretRef.name is required" $postgresSecrets.appSecretRef.name }}
+{{- $maintenanceSecret := required "controlPlane.postgresSecrets.maintenanceSecretRef.name is required" $postgresSecrets.maintenanceSecretRef.name }}
+{{- $adminSecret := required "controlPlane.postgresSecrets.adminSecretRef.name is required" $postgresSecrets.adminSecretRef.name }}
+{{- if ne (len (uniq (list $appSecret $maintenanceSecret $adminSecret))) 3 }}
+{{- fail "controlPlane.postgresSecrets app, maintenance, and admin Secret names must be distinct" }}
+{{- end }}
+{{- if $envFrom }}
+{{- fail "controlPlane.migrations.envFrom cannot be combined with canonical Postgres Secrets" }}
+{{- end }}
+{{- range $entry := $migrations.env }}
+{{- if has (get $entry "name") (list "AGENT_BOM_POSTGRES_URL" "AGENT_BOM_POSTGRES_MAINTENANCE_URL" "ALEMBIC_DATABASE_URL") }}
+{{- fail "controlPlane.migrations.env cannot override canonical Postgres identity variables when controlPlane.postgresSecrets.enabled=true" }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- $hasExplicitAdminEnv := false }}
+{{- range $entry := $migrations.env }}
+{{- if eq (get $entry "name") "ALEMBIC_DATABASE_URL" }}
+{{- $hasExplicitAdminEnv = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasExplicitAdminEnv }}
+{{- fail "controlPlane.migrations requires canonical controlPlane.postgresSecrets or an explicit ALEMBIC_DATABASE_URL env reference; generic envFrom cannot prove an admin identity" }}
+{{- end }}
 {{- end }}
 apiVersion: batch/v1
 kind: Job
@@ -42,14 +66,30 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           workingDir: {{ $migrations.workingDir | quote }}
           command:
-            - alembic
-            - -c
+            - python
+            - deploy/supabase/postgres/compose_migrate.py
+            - --config
             - {{ $migrations.alembicConfig | quote }}
-            - upgrade
-            - head
           env:
             {{- with $migrations.env }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if $postgresSecrets.enabled }}
+            - name: ALEMBIC_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $postgresSecrets.adminSecretRef.name | quote }}
+                  key: ALEMBIC_DATABASE_URL
+            - name: AGENT_BOM_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $postgresSecrets.appSecretRef.name | quote }}
+                  key: AGENT_BOM_POSTGRES_URL
+            - name: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $postgresSecrets.maintenanceSecretRef.name | quote }}
+                  key: AGENT_BOM_POSTGRES_MAINTENANCE_URL
             {{- end }}
           {{- with $envFrom }}
           envFrom:

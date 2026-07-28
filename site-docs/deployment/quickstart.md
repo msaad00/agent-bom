@@ -10,7 +10,8 @@ Full doc in the repo: [`docs/DEPLOY_QUICKSTART.md`](https://github.com/msaad00/a
 ```bash
 scripts/deploy/install.sh list
 scripts/deploy/install.sh pilot          # fastest local proof
-scripts/deploy/install.sh eks --create-cluster --region "$AWS_REGION"
+# Configure deploy/terraform/platform-eks/terraform.tfvars and prerequisites first.
+scripts/deploy/install.sh eks            # staged AWS production path
 scripts/deploy/install.sh connect aws    # read-only account onboarding
 ```
 

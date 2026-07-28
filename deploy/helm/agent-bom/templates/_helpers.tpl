@@ -10,6 +10,7 @@ Common labels.
 */}}
 {{- define "agent-bom.labels" -}}
 app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}

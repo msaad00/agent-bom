@@ -53,15 +53,15 @@ Production in your own cluster from a checked-out repo:
 
 ```bash
 export AWS_REGION="<your-aws-region>"
-scripts/deploy/install.sh eks \
-  --create-cluster \
-  --region "$AWS_REGION" \
-  --enable-gateway
-# or the legacy reference installer directly:
-# scripts/deploy/install-eks-reference.sh ...
+cp deploy/terraform/platform-eks/terraform.tfvars.example \
+  deploy/terraform/platform-eks/terraform.tfvars
+# Configure staged prerequisites and secret names, then:
+scripts/deploy/install.sh eks
 ```
 
-Advanced/manual chart install from a checked-out repo:
+Advanced/manual chart install from a checked-out repo requires the four
+pre-created role-separated Secrets documented in
+[Control Plane Helm](control-plane-helm.md):
 
 ```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
@@ -104,7 +104,7 @@ surface.
 | Decision | Default |
 |---|---|
 | **first pilot** | `deploy/docker-compose.pilot.yml` |
-| **production installer** | `scripts/deploy/install-eks-reference.sh` |
+| **production installer** | `scripts/deploy/install.sh eks` + `deploy/terraform/platform-eks` |
 | **system of record** | Postgres |
 | **analytics/lake** | optional ClickHouse, Snowflake, OTEL, or S3 exports |
 | **runtime enforcement** | selected proxy or gateway, not all traffic by default |

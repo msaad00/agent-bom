@@ -192,7 +192,7 @@ data to a vendor-hosted control plane.
 These are the maintained building blocks for this model:
 
 - recommended full self-hosted entrypoint:
-  [scripts/deploy/install-eks-reference.sh](https://github.com/msaad00/agent-bom/blob/main/scripts/deploy/install-eks-reference.sh)
+  [deploy/terraform/platform-eks](https://github.com/msaad00/agent-bom/tree/main/deploy/terraform/platform-eks)
 - control plane:
   [deploy/helm/agent-bom](https://github.com/msaad00/agent-bom/tree/main/deploy/helm/agent-bom)
 - AWS baseline module:
@@ -320,7 +320,8 @@ and follow
 |---|---|
 | `controlPlane.enabled` | packages the API + dashboard in-cluster |
 | `controlPlane.ingress.enabled` | routes `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
-| `controlPlane.api.envFrom` | loads Postgres URL, auth settings, audit HMAC, and other control-plane secrets |
+| `controlPlane.postgresSecrets` | projects exact app, maintenance, and migration/admin database keys from three distinct Secrets |
+| `controlPlane.api.envFrom` | loads auth, signing, and other non-database control-plane settings |
 | `controlPlane.ui.env` | keeps same-origin routing honest with `NEXT_PUBLIC_API_URL=\"\"` or sets an explicit API URL |
 | `serviceAccount.annotations` | shared IRSA/workload-identity annotations inherited by scanner, gateway, and backup service accounts unless you override them per component |
 | `scanner.serviceAccount.annotations` | attach a distinct IRSA role to the scanner CronJob when cluster discovery should use a different IAM role than the shared runtime SA |

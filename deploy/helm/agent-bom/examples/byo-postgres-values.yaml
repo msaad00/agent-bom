@@ -29,6 +29,14 @@
 
 controlPlane:
   enabled: true
+  postgresSecrets:
+    enabled: true
+    appSecretRef:
+      name: agent-bom-control-plane-db
+    maintenanceSecretRef:
+      name: agent-bom-control-plane-maintenance
+    adminSecretRef:
+      name: agent-bom-control-plane-admin
   api:
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
@@ -45,21 +53,6 @@ controlPlane:
         value: "5"
       - name: AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS
         value: "15000"
-    envFrom:
-      - secretRef:
-          name: agent-bom-control-plane-db
-      - secretRef:
-          name: agent-bom-control-plane-maintenance
-
-  migrations:
-    envFrom:
-      - secretRef:
-          name: agent-bom-control-plane-admin
-      - secretRef:
-          name: agent-bom-control-plane-db
-      - secretRef:
-          name: agent-bom-control-plane-maintenance
-
   # Managed Postgres services usually own PITR/backups. Keep the packaged
   # pg_dump CronJob disabled unless your database team explicitly wants
   # agent-bom to produce an additional logical backup artifact.

@@ -45,9 +45,7 @@ class _Connection:
         if "rolsuper" in sql and "rolbypassrls" in sql and "pg_has_role" not in sql:
             return _Cursor((self.superuser, self.bypass_rls, self.role))
         if "pg_has_role" in sql:
-            return _Cursor(
-                (self.role, self.can_login, self.superuser, self.bypass_rls, self.maintenance_member)
-            )
+            return _Cursor((self.role, self.can_login, self.superuser, self.bypass_rls, self.maintenance_member))
         if "set_config" in sql and params:
             if "app.tenant_id" in sql:
                 self.settings["app.tenant_id"] = params[0]
@@ -128,11 +126,30 @@ def test_maintenance_url_is_required_without_app_fallback(monkeypatch):
 def test_maintenance_password_file_stays_out_of_conninfo(monkeypatch, tmp_path):
     _configure_urls(monkeypatch, tmp_path)
 
-    assert postgres_common.resolve_postgres_maintenance_url() == (
-        "postgresql://agent_bom_maintenance@db:5432/agent_bom"
-    )
+    assert postgres_common.resolve_postgres_maintenance_url() == ("postgresql://agent_bom_maintenance@db:5432/agent_bom")
     assert postgres_common.resolve_postgres_maintenance_secret() == "maintenance-secret"
     assert "maintenance-secret" not in postgres_common.resolve_postgres_maintenance_url()
+
+
+def test_maintenance_secret_decodes_uri_userinfo(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE", raising=False)
+    monkeypatch.setenv(
+        "AGENT_BOM_POSTGRES_MAINTENANCE_URL",
+        "postgresql://agent_bom_maintenance:m%40ss%3A%2F%3F%23%25%26%2B%20space@db:5432/agent_bom?sslmode=require",
+    )
+
+    assert postgres_common.resolve_postgres_maintenance_secret() == "m@ss:/?#%&+ space"
+
+
+def test_maintenance_url_decodes_username_before_reencoding(monkeypatch):
+    monkeypatch.setenv(
+        "AGENT_BOM_POSTGRES_MAINTENANCE_URL",
+        "postgresql://ops%2Bmaintenance%40example.com:m%40ss@db:5432/agent_bom?sslmode=require",
+    )
+
+    assert postgres_common.resolve_postgres_maintenance_url() == (
+        "postgresql://ops%2Bmaintenance%40example.com@db:5432/agent_bom?sslmode=require"
+    )
 
 
 def test_maintenance_pool_rejects_same_login_as_app(monkeypatch, tmp_path):

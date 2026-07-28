@@ -19,26 +19,22 @@ target_metadata = None
 def _database_url() -> str:
     """Resolve the Alembic DSN.
 
-    Prefer ``ALEMBIC_DATABASE_URL``, else ``AGENT_BOM_POSTGRES_URL``. When the
-    explicit admin URL has no embedded password, load its distinct
-    ``ALEMBIC_DATABASE_PASSWORD_FILE``. The compatibility app-URL path may use
-    ``AGENT_BOM_POSTGRES_PASSWORD_FILE``; an explicit admin URL never does.
+    Require the explicit migration/admin ``ALEMBIC_DATABASE_URL``. Runtime app
+    credentials are a separate trust boundary and are never a migration
+    fallback. When the URL has no embedded password, load its distinct
+    ``ALEMBIC_DATABASE_PASSWORD_FILE``.
     """
     from pathlib import Path
-    from urllib.parse import quote_plus, urlsplit, urlunsplit
+    from urllib.parse import quote, urlsplit, urlunsplit
 
-    url = os.environ.get("ALEMBIC_DATABASE_URL") or os.environ.get("AGENT_BOM_POSTGRES_URL")
+    url = os.environ.get("ALEMBIC_DATABASE_URL")
     if not url:
-        raise RuntimeError("Set ALEMBIC_DATABASE_URL or AGENT_BOM_POSTGRES_URL before running Alembic migrations.")
+        raise RuntimeError("Set ALEMBIC_DATABASE_URL before running Alembic migrations.")
     url = _normalize_sqlalchemy_url(url)
     parts = urlsplit(url)
     if parts.password:
         return url
-    password_file_name = (
-        "ALEMBIC_DATABASE_PASSWORD_FILE"
-        if os.environ.get("ALEMBIC_DATABASE_URL", "").strip()
-        else "AGENT_BOM_POSTGRES_PASSWORD_FILE"
-    )
+    password_file_name = "ALEMBIC_DATABASE_PASSWORD_FILE"
     password_file = os.environ.get(password_file_name, "").strip()
     if not password_file:
         return url
@@ -50,7 +46,7 @@ def _database_url() -> str:
         raise RuntimeError(f"{password_file_name} is empty: {password_file}")
     if not parts.username or not parts.hostname:
         raise RuntimeError(f"{password_file_name} requires a URL with a username and hostname.")
-    netloc = f"{quote_plus(parts.username)}:{quote_plus(password)}@{parts.hostname}"
+    netloc = f"{quote(parts.username, safe='')}:{quote(password, safe='')}@{parts.hostname}"
     if parts.port:
         netloc = f"{netloc}:{parts.port}"
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))

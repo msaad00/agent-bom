@@ -14,47 +14,11 @@ def _write_fake_command(bin_dir: Path, name: str, body: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
-def test_install_reference_dry_run_writes_verify_hint(tmp_path: Path):
+def test_legacy_eks_reference_installer_fails_closed_without_aws_access(tmp_path: Path):
     result = subprocess.run(
         [
             "bash",
             str(ROOT / "scripts" / "deploy" / "install-eks-reference.sh"),
-            "--cluster-name",
-            "corp-ai",
-            "--region",
-            "us-east-1",
-            "--state-dir",
-            str(tmp_path),
-            "--dry-run",
-        ],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    summary = tmp_path / "corp-ai" / "generated" / "operator-summary.txt"
-    assert summary.exists()
-    rendered = summary.read_text()
-    assert "verify-eks-reference.sh" in rendered
-    assert "--base-url http://localhost:8080" in rendered
-
-
-def test_install_reference_rejects_oidc_without_hostname(tmp_path: Path):
-    result = subprocess.run(
-        [
-            "bash",
-            str(ROOT / "scripts" / "deploy" / "install-eks-reference.sh"),
-            "--cluster-name",
-            "corp-ai",
-            "--region",
-            "us-east-1",
-            "--state-dir",
-            str(tmp_path),
-            "--dry-run",
-            "--oidc-issuer",
-            "https://idp.example.com",
         ],
         cwd=ROOT,
         text=True,
@@ -63,41 +27,50 @@ def test_install_reference_rejects_oidc_without_hostname(tmp_path: Path):
     )
 
     assert result.returncode != 0
-    assert "--hostname is required when --oidc-issuer is set" in result.stderr
+    assert "legacy EKS reference installer has been retired" in result.stderr
+    assert "scripts/deploy/install.sh eks" in result.stderr
+    assert "RDS-managed master credential" in result.stderr
+    assert not any(tmp_path.iterdir())
 
 
-def test_install_reference_preflight_rejects_old_aws_version(tmp_path: Path):
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    _write_fake_command(fake_bin, "aws", 'echo "aws-cli/2.10.0 Python/3.12.0 Linux/6.0 exe/x86_64"\n')
-    _write_fake_command(fake_bin, "kubectl", 'echo "Client Version: v1.30.1"\n')
-    _write_fake_command(fake_bin, "helm", 'echo "v3.15.0"\n')
-    _write_fake_command(fake_bin, "eksctl", 'echo "0.180.0"\n')
-    _write_fake_command(fake_bin, "terraform", 'echo "Terraform v1.6.0"\n')
-
-    env = os.environ.copy()
-    env["PATH"] = f"{fake_bin}:{env['PATH']}"
-
+def test_unified_eks_installer_fails_before_apply_without_operator_config() -> None:
     result = subprocess.run(
-        [
-            "bash",
-            str(ROOT / "scripts" / "deploy" / "install-eks-reference.sh"),
-            "--cluster-name",
-            "corp-ai",
-            "--region",
-            "us-east-1",
-            "--state-dir",
-            str(tmp_path / "state"),
-        ],
+        ["bash", str(ROOT / "scripts" / "deploy" / "install.sh"), "eks", "--dry-run"],
         cwd=ROOT,
         text=True,
         capture_output=True,
         check=False,
-        env=env,
     )
 
     assert result.returncode != 0
-    assert "aws 2.15.0+ is required" in result.stderr
+    assert "terraform.tfvars.example" in result.stderr
+    assert "configure it first" in result.stderr
+    assert "terraform apply" not in result.stdout
+
+
+def test_public_docs_do_not_advertise_retired_eks_cli_flags() -> None:
+    public_roots = (
+        ROOT / "README.md",
+        ROOT / "docs",
+        ROOT / "site-docs",
+        ROOT / "deploy" / "RUNBOOK.md",
+        ROOT / "deploy" / "terraform",
+    )
+    stale = []
+    for root in public_roots:
+        paths = (root,) if root.is_file() else tuple(root.rglob("*.md"))
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            stale_contracts = (
+                "install.sh eks --create-cluster",
+                "install-eks-reference.sh",
+                "~/.agent-bom/eks-reference",
+                "controlPlane.api.envFrom` | loads Postgres",
+                "teardown-eks-reference.sh",
+            )
+            if any(contract in text for contract in stale_contracts):
+                stale.append(str(path.relative_to(ROOT)))
+    assert stale == []
 
 
 def test_verify_wrapper_script_exists_and_parses():
@@ -179,29 +152,3 @@ printf "200"
     assert "status: passed" in summary
     assert "base_url: https://agent-bom.example.com" in summary
     assert "- auth-debug.json" in summary
-
-
-def test_install_reference_dry_run_gateway_summary_includes_gateway_verify(tmp_path: Path):
-    result = subprocess.run(
-        [
-            "bash",
-            str(ROOT / "scripts" / "deploy" / "install-eks-reference.sh"),
-            "--cluster-name",
-            "corp-ai",
-            "--region",
-            "us-east-1",
-            "--state-dir",
-            str(tmp_path),
-            "--dry-run",
-            "--enable-gateway",
-        ],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    summary = tmp_path / "corp-ai" / "generated" / "operator-summary.txt"
-    rendered = summary.read_text()
-    assert "--check-gateway" in rendered

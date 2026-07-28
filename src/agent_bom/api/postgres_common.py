@@ -148,7 +148,7 @@ def _parse_and_validate_postgres_url() -> tuple[ParseResult, str]:
     bootstrap admin role created by the official Postgres image. Returns the
     parsed URL and the validated username.
     """
-    from urllib.parse import urlparse
+    from urllib.parse import unquote, urlparse
 
     url = os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip()
     if not url:
@@ -160,7 +160,7 @@ def _parse_and_validate_postgres_url() -> tuple[ParseResult, str]:
 
     url = _normalize_postgres_conninfo_url(url)
     parsed = urlparse(url)
-    username = (parsed.username or "").strip()
+    username = unquote(parsed.username or "").strip()
     forbidden = {"postgres", "root", "admin", "superuser", "administrator"}
     if username.lower() in forbidden:
         raise ValueError(
@@ -243,12 +243,16 @@ def resolve_postgres_secret() -> str | None:
             raise ValueError("AGENT_BOM_POSTGRES_URL must include a hostname.")
         return password
 
-    return parsed.password or None
+    if parsed.password is None:
+        return None
+    from urllib.parse import unquote
+
+    return unquote(parsed.password)
 
 
 def _parse_and_validate_postgres_maintenance_url() -> tuple[ParseResult, str]:
     """Parse the dedicated maintenance DSN without falling back to the app DSN."""
-    from urllib.parse import urlparse
+    from urllib.parse import unquote, urlparse
 
     url = os.environ.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL", "").strip()
     if not url:
@@ -257,7 +261,7 @@ def _parse_and_validate_postgres_maintenance_url() -> tuple[ParseResult, str]:
             "the application pool is never used as a fallback."
         )
     parsed = urlparse(_normalize_postgres_conninfo_url(url))
-    username = (parsed.username or "").strip()
+    username = unquote(parsed.username or "").strip()
     if not username:
         raise ValueError("AGENT_BOM_POSTGRES_MAINTENANCE_URL must include the dedicated maintenance username.")
     if not parsed.hostname:
@@ -296,7 +300,11 @@ def resolve_postgres_maintenance_secret() -> str | None:
         if not password:
             raise ValueError(f"AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE is empty: {password_file}")
         return password
-    return parsed.password or None
+    if parsed.password is None:
+        return None
+    from urllib.parse import unquote
+
+    return unquote(parsed.password)
 
 
 def _get_pool() -> ConnectionPool:
@@ -391,18 +399,12 @@ def _guard_maintenance_role_separation(app_pool: ConnectionPool, maintenance_poo
     app_name, app_can_login, app_super, app_bypass, app_member = app_row
     maintenance_name, maintenance_can_login, maintenance_super, maintenance_bypass, maintenance_member = maintenance_row
     if str(app_name) == str(maintenance_name):
-        raise MaintenanceRoleConfigurationError(
-            "Postgres application and maintenance pools must use distinct login identities."
-        )
+        raise MaintenanceRoleConfigurationError("Postgres application and maintenance pools must use distinct login identities.")
     if not bool(app_can_login):
-        raise MaintenanceRoleConfigurationError(
-            f"Postgres application role {app_name!r} must be a LOGIN role."
-        )
+        raise MaintenanceRoleConfigurationError(f"Postgres application role {app_name!r} must be a LOGIN role.")
     if bool(app_super) or bool(app_bypass):
         if not ALLOW_SUPERUSER_DB:
-            raise MaintenanceRoleConfigurationError(
-                f"Postgres application role {app_name!r} must be NOSUPERUSER NOBYPASSRLS."
-            )
+            raise MaintenanceRoleConfigurationError(f"Postgres application role {app_name!r} must be NOSUPERUSER NOBYPASSRLS.")
         logger.warning(
             "AGENT_BOM_ALLOW_SUPERUSER_DB is set: Postgres application role %r can bypass "
             "tenant RLS. This acknowledgement is restricted to disposable single-tenant/dev use; "
@@ -414,13 +416,9 @@ def _guard_maintenance_role_separation(app_pool: ConnectionPool, maintenance_poo
             f"Postgres application role {app_name!r} must not be a member of {_RLS_MAINTENANCE_MARKER_ROLE}."
         )
     if not bool(maintenance_can_login):
-        raise MaintenanceRoleConfigurationError(
-            f"Postgres maintenance role {maintenance_name!r} must be a LOGIN role."
-        )
+        raise MaintenanceRoleConfigurationError(f"Postgres maintenance role {maintenance_name!r} must be a LOGIN role.")
     if bool(maintenance_super) or bool(maintenance_bypass):
-        raise MaintenanceRoleConfigurationError(
-            f"Postgres maintenance role {maintenance_name!r} must be NOSUPERUSER NOBYPASSRLS."
-        )
+        raise MaintenanceRoleConfigurationError(f"Postgres maintenance role {maintenance_name!r} must be NOSUPERUSER NOBYPASSRLS.")
     if not bool(maintenance_member):
         raise MaintenanceRoleConfigurationError(
             f"Postgres maintenance role {maintenance_name!r} must be a member of {_RLS_MAINTENANCE_MARKER_ROLE}."
@@ -622,9 +620,7 @@ def _tenant_connection(pool: ConnectionPool) -> Iterator[Connection]:
 def _maintenance_connection(pool: ConnectionPool | None = None) -> Iterator[Connection]:
     """Open the dedicated maintenance connection inside a scoped bypass context."""
     if not _bypass_tenant_rls.get():
-        raise MaintenanceRoleConfigurationError(
-            "A Postgres maintenance connection is valid only inside bypass_tenant_rls()."
-        )
+        raise MaintenanceRoleConfigurationError("A Postgres maintenance connection is valid only inside bypass_tenant_rls().")
     maintenance_pool = pool if pool is not None else _get_maintenance_pool()
     if pool is not None and pool is _pool:
         raise MaintenanceRoleConfigurationError("The application pool cannot be used as a maintenance pool.")

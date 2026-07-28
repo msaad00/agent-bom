@@ -17,11 +17,12 @@ Contract:
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import quote_plus, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 BASELINE_REVISION = "20260416_01"
 ALEMBIC_CONFIG = "deploy/supabase/postgres/alembic.ini"
@@ -47,12 +48,9 @@ def _repo_root() -> Path:
 
 
 def _resolve_database_url() -> str:
-    url = (os.environ.get("ALEMBIC_DATABASE_URL") or os.environ.get("AGENT_BOM_POSTGRES_URL") or "").strip()
+    url = os.environ.get("ALEMBIC_DATABASE_URL", "").strip()
     if not url:
-        raise SystemExit(
-            "error: set ALEMBIC_DATABASE_URL or AGENT_BOM_POSTGRES_URL "
-            "(bootstrap/admin role) before compose migrations"
-        )
+        raise SystemExit("error: set ALEMBIC_DATABASE_URL (bootstrap/admin role) before compose migrations")
     url = _normalize_sqlalchemy_url(url)
     parts = urlsplit(url)
     if parts.password:
@@ -60,11 +58,7 @@ def _resolve_database_url() -> str:
     # The Alembic/admin connection is a separate trust boundary from the
     # least-privilege runtime app connection. Never reuse the app password file
     # merely because both URLs are present in the migration Job environment.
-    password_file_name = (
-        "ALEMBIC_DATABASE_PASSWORD_FILE"
-        if os.environ.get("ALEMBIC_DATABASE_URL", "").strip()
-        else "AGENT_BOM_POSTGRES_PASSWORD_FILE"
-    )
+    password_file_name = "ALEMBIC_DATABASE_PASSWORD_FILE"
     password_file = os.environ.get(password_file_name, "").strip()
     if not password_file:
         return url
@@ -75,9 +69,9 @@ def _resolve_database_url() -> str:
     if not password:
         raise SystemExit(f"error: {password_file_name} is empty: {password_file}")
     if not parts.username or not parts.hostname:
-        raise SystemExit("error: AGENT_BOM_POSTGRES_URL must include username and hostname")
+        raise SystemExit("error: ALEMBIC_DATABASE_URL must include username and hostname")
     host = parts.hostname
-    netloc = f"{quote_plus(parts.username)}:{quote_plus(password)}@{host}"
+    netloc = f"{quote(parts.username, safe='')}:{quote(password, safe='')}@{host}"
     if parts.port:
         netloc = f"{netloc}:{parts.port}"
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
@@ -93,20 +87,14 @@ def _needs_baseline_stamp(url: str) -> bool:
     try:
         with engine.connect() as conn:
             has_version = conn.execute(
-                sqlalchemy.text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'alembic_version'"
-                )
+                sqlalchemy.text("SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'alembic_version'")
             ).scalar()
             if has_version:
                 row = conn.execute(sqlalchemy.text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
                 if row:
                     return False
             has_bootstrap = conn.execute(
-                sqlalchemy.text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = :table"
-                ),
+                sqlalchemy.text("SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = :table"),
                 {"table": BOOTSTRAP_MARKER_TABLE},
             ).scalar()
             return bool(has_bootstrap)
@@ -114,13 +102,115 @@ def _needs_baseline_stamp(url: str) -> bool:
         engine.dispose()
 
 
-def _run_alembic(root: Path, *args: str) -> None:
-    cmd = ["alembic", "-c", ALEMBIC_CONFIG, *args]
+def _run_alembic(root: Path, config_path: str, *args: str) -> None:
+    cmd = ["alembic", "-c", config_path, *args]
     print("+", " ".join(cmd), flush=True)
     subprocess.check_call(cmd, cwd=str(root))
 
 
-def main() -> int:
+def _runtime_credential(url_name: str, password_file_name: str, expected_role: str) -> tuple[str, str] | None:
+    """Resolve one fixed runtime-role credential without accepting rebinding."""
+    raw_url = os.environ.get(url_name, "").strip()
+    if not raw_url:
+        return None
+    parsed = urlsplit(raw_url.replace("postgresql+psycopg://", "postgresql://", 1))
+    if unquote(parsed.username or "") != expected_role:
+        raise SystemExit(f"error: {url_name} must use the fixed {expected_role} role")
+    password_file = os.environ.get(password_file_name, "").strip()
+    if password_file:
+        path = Path(password_file)
+        if not path.is_file():
+            raise SystemExit(f"error: {password_file_name} not found: {password_file}")
+        password = path.read_text(encoding="utf-8").strip("\r\n")
+    else:
+        password = unquote(parsed.password) if parsed.password is not None else ""
+    if not password:
+        raise SystemExit(f"error: {url_name} must supply a non-empty runtime-role password")
+    return raw_url, password
+
+
+def _reconcile_runtime_role_passwords(admin_url: str) -> None:
+    """Idempotently align fixed Postgres logins after every schema upgrade."""
+    try:
+        import sqlalchemy
+        from psycopg import sql
+    except ImportError as exc:  # pragma: no cover - control-plane image includes both
+        raise SystemExit("error: sqlalchemy and psycopg are required to reconcile runtime roles") from exc
+
+    credentials = tuple(
+        item
+        for item in (
+            (
+                "agent_bom_app",
+                _runtime_credential(
+                    "AGENT_BOM_POSTGRES_URL",
+                    "AGENT_BOM_POSTGRES_PASSWORD_FILE",
+                    "agent_bom_app",
+                ),
+            ),
+            (
+                "agent_bom_maintenance",
+                _runtime_credential(
+                    "AGENT_BOM_POSTGRES_MAINTENANCE_URL",
+                    "AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE",
+                    "agent_bom_maintenance",
+                ),
+            ),
+        )
+        if item[1] is not None
+    )
+    if not credentials:
+        return
+
+    engine = sqlalchemy.create_engine(admin_url)
+    try:
+        with engine.begin() as conn:
+            driver_connection = conn.connection.driver_connection
+            for role, resolved in credentials:
+                assert resolved is not None
+                raw_url, password = resolved
+                can_alter = conn.exec_driver_sql(
+                    """
+                    SELECT r.rolsuper OR (r.rolcreaterole AND EXISTS (
+                      SELECT 1 FROM pg_auth_members m
+                      WHERE m.member = r.oid
+                        AND m.roleid = (SELECT oid FROM pg_roles WHERE rolname = %s)
+                        AND m.admin_option
+                    ))
+                    FROM pg_roles r
+                    WHERE r.rolname = session_user
+                    """,
+                    (role,),
+                ).scalar()
+                if can_alter:
+                    driver_connection.execute(
+                        sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+                            sql.Identifier(role),
+                            sql.Literal(password),
+                        )
+                    )
+                    continue
+                try:
+                    import psycopg
+
+                    conninfo = raw_url.replace("postgresql+psycopg://", "postgresql://", 1)
+                    with psycopg.connect(conninfo, password=password, connect_timeout=5) as runtime_conn:
+                        row = runtime_conn.execute("SELECT session_user").fetchone()
+                except Exception:
+                    raise SystemExit(
+                        f"error: migration principal cannot rotate {role}; grant role-admin authority "
+                        "or pre-provision the supplied credential"
+                    ) from None
+                if not row or str(row[0]) != role:
+                    raise SystemExit(f"error: supplied runtime credential must authenticate as {role}")
+    finally:
+        engine.dispose()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run Postgres migrations and reconcile the fixed runtime roles.")
+    parser.add_argument("--config", default=ALEMBIC_CONFIG, help="Alembic configuration path relative to the repository root.")
+    args = parser.parse_args([] if argv is None else argv)
     root = _repo_root()
     url = _resolve_database_url()
     os.environ["ALEMBIC_DATABASE_URL"] = url
@@ -128,15 +218,15 @@ def main() -> int:
     # carries the admin secret only in this child process.
     if _needs_baseline_stamp(url):
         print(
-            f"compose-migrate: init.sql baseline detected without alembic_version; "
-            f"stamping {BASELINE_REVISION}",
+            f"compose-migrate: init.sql baseline detected without alembic_version; stamping {BASELINE_REVISION}",
             flush=True,
         )
-        _run_alembic(root, "stamp", BASELINE_REVISION)
-    _run_alembic(root, "upgrade", "head")
+        _run_alembic(root, args.config, "stamp", BASELINE_REVISION)
+    _run_alembic(root, args.config, "upgrade", "head")
+    _reconcile_runtime_role_passwords(url)
     print("compose-migrate: upgrade head OK", flush=True)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

@@ -163,22 +163,18 @@ Then install with a values file like:
 ```yaml
 controlPlane:
   enabled: true
+  postgresSecrets:
+    enabled: true
+    appSecretRef:
+      name: agent-bom-control-plane-db
+    maintenanceSecretRef:
+      name: agent-bom-control-plane-maintenance
+    adminSecretRef:
+      name: agent-bom-control-plane-admin
   api:
     envFrom:
       - secretRef:
-          name: agent-bom-control-plane-db
-      - secretRef:
-          name: agent-bom-control-plane-maintenance
-      - secretRef:
           name: agent-bom-control-plane-auth
-  migrations:
-    envFrom:
-      - secretRef:
-          name: agent-bom-control-plane-admin
-      - secretRef:
-          name: agent-bom-control-plane-db
-      - secretRef:
-          name: agent-bom-control-plane-maintenance
   ingress:
     enabled: true
     className: nginx
@@ -357,6 +353,9 @@ You still own:
   Postgres credentials; use the auth Secret for API keys, OIDC issuer,
   audience, optional required nonce, SAML IdP/SP metadata values, and audit
   HMAC settings
+- configure the three distinct `controlPlane.postgresSecrets` references. The
+  chart projects app + maintenance to the API, admin + app + maintenance to the
+  idempotent migration/reconcile Job, and maintenance only to backups
 - enforce API key lifetime policy with `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`
   and `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`; admin key replacement uses
   `POST /v1/auth/keys/{key_id}/rotate` so rotation stays explicit and audited
@@ -373,7 +372,10 @@ You still own:
 - enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
 - keep `monitor.enabled=true` and `monitor.serviceMonitor.enabled=true` in the production preset unless your platform team has a different scrape contract
 - enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
-- enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions
+- enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket,
+  prefix, IRSA-backed upload permissions, and a maintenance-only
+  canonical maintenance Secret containing
+  `AGENT_BOM_POSTGRES_MAINTENANCE_URL`
 - enable `controlPlane.serviceMesh.enabled=true` only when the control-plane namespace is already part of your Istio data plane
 - keep `controlPlane.serviceMesh.istio.authorizationPolicy.allowedNamespaces` explicit; the packaged example allows `ingress-nginx` and `istio-system`, but production should match your real ingress path
 - enable `controlPlane.policyController.enabled=true` only when Kyverno is already installed cluster-wide; the chart packages the namespaced policy, not the controller itself

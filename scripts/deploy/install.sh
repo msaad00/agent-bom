@@ -2,12 +2,12 @@
 # install.sh — unified deploy entrypoint for agent-bom control planes.
 #
 # One script, many targets. Delegates to existing compose, Helm, Terraform, and
-# reference installers — does not duplicate infrastructure logic.
+# deployment modules — does not duplicate infrastructure logic.
 #
 # Usage:
 #   scripts/deploy/install.sh list
 #   scripts/deploy/install.sh pilot
-#   scripts/deploy/install.sh eks --create-cluster --region us-east-1
+#   scripts/deploy/install.sh eks
 #   scripts/deploy/install.sh connect aws
 #   scripts/deploy/install.sh onboard --url https://agent-bom.example.com --api-key "$KEY"
 #
@@ -61,8 +61,8 @@ Targets (control plane):
   pilot             Fastest local pilot (loopback Docker, SQLite, demo UI)
   docker            Full local stack (API + UI + Postgres via compose)
   platform-docker   Production-shaped single-host Docker (secrets + split nets)
-  eks               AWS EKS reference installer (scripts/deploy/install-eks-reference.sh)
-  eks-terraform     One terraform apply (deploy/terraform/platform-eks)
+  eks               Staged Terraform EKS platform (pre-populated AWS secrets required)
+  eks-terraform     Alias for the staged Terraform EKS platform
   aks               Helm on AKS + Azure collector overlay (BYO cluster)
   gke               Helm on GKE + GCP collector overlay (BYO cluster)
   helm <profile>    Shipped Helm profile (scripts/install_helm_profile.py --list)
@@ -82,8 +82,8 @@ Common options:
   --dry-run         Print delegated commands without running them
   --demo-estate     Start API with curated demo graph + offline scan (pilots)
   --region REGION   AWS region for EKS/connect paths (default: AWS_REGION or us-east-1)
-  --create-cluster  Pass through to EKS reference installer (create cluster with eksctl)
-  --enable-gateway  Pass through to EKS reference installer (enable gateway Deployment)
+  --create-cluster  Deprecated; set create_cluster=true in platform-eks/terraform.tfvars
+  --enable-gateway  Configure gateway through extra_helm_values in platform-eks
   --profile NAME    Helm profile for aks/gke/helm targets (default: enterprise-demo)
   --release NAME    Helm release name (default: agent-bom)
   --namespace NAME  Kubernetes namespace (default: agent-bom)
@@ -96,9 +96,9 @@ Examples:
   # Fastest look — dashboard + demo inventory in under 2 minutes
   scripts/deploy/install.sh pilot
 
-  # Production AWS / EKS (creates cluster + baseline + Helm + next-step hints)
+  # Production AWS / EKS (staged prerequisites + RDS/IRSA/S3 + Helm)
   export AWS_REGION="<your-aws-region>"
-  scripts/deploy/install.sh eks --create-cluster --region "$AWS_REGION" --enable-gateway
+  scripts/deploy/install.sh eks
 
   # Connect a second AWS account read-only (after control plane is live)
   scripts/deploy/install.sh connect aws
@@ -152,8 +152,8 @@ Local / pilot
   platform-docker   Production-shaped Docker on one host.
 
 Kubernetes control plane
-  eks               Opinionated AWS EKS installer (cluster optional).
-  eks-terraform     Single terraform apply (EKS + RDS + Helm).
+  eks               Staged Terraform (cluster prerequisites + secrets + RDS + Helm).
+  eks-terraform     Alias for the same staged Terraform path.
   aks               Helm enterprise-demo + AKS workload-identity collector overlay.
   gke               Helm enterprise-demo + GKE workload-identity collector overlay.
   helm <profile>    Any shipped profile (production, focused-pilot, snowflake-backend, …).
@@ -249,20 +249,37 @@ compose_up() {
 }
 
 install_eks() {
-  need_cmd bash
-  local args=(--region "$AWS_REGION")
-  [ "$CREATE_CLUSTER" -eq 1 ] && args+=(--create-cluster)
-  [ "$ENABLE_GATEWAY" -eq 1 ] && args+=(--enable-gateway)
-  [ "$DRY_RUN" -eq 1 ] && args+=(--dry-run)
-  log "Delegating to install-eks-reference.sh"
-  run bash scripts/deploy/install-eks-reference.sh "${args[@]}"
+  if [ "$CREATE_CLUSTER" -eq 1 ] || [ "$ENABLE_GATEWAY" -eq 1 ]; then
+    die "EKS CLI flags are retired; set create_cluster and extra_helm_values in deploy/terraform/platform-eks/terraform.tfvars"
+  fi
+  install_eks_terraform
 }
 
 install_eks_terraform() {
   need_cmd terraform
-  log "EKS platform module — one terraform apply"
-  warn "Prereqs: ingress controller, cert-manager, External Secrets Operator — see deploy/terraform/platform-eks/README.md"
-  run bash -c "cd deploy/terraform/platform-eks && terraform init && terraform apply"
+  log "EKS platform module — staged secret sync, migration, and workloads"
+  local tfvars="deploy/terraform/platform-eks/terraform.tfvars"
+  [ -f "$tfvars" ] || die "copy deploy/terraform/platform-eks/terraform.tfvars.example to $tfvars and configure it first"
+  if ! grep -Eq '^[[:space:]]*external_secrets_prerequisites_ready[[:space:]]*=[[:space:]]*true([[:space:]]*(#.*)?)?$' "$tfvars"; then
+    cat >&2 <<'EOF'
+[required] External Secrets prerequisites are not acknowledged.
+
+Fresh cluster:
+  cd deploy/terraform/platform-eks
+  terraform init
+  terraform apply -target=module.vpc -target=module.eks
+  # Install External Secrets Operator and aws-secrets-manager ClusterSecretStore.
+
+Existing cluster:
+  # Install/verify External Secrets Operator and aws-secrets-manager ClusterSecretStore.
+
+Then set external_secrets_prerequisites_ready=true in terraform.tfvars and rerun:
+  scripts/deploy/install.sh eks
+EOF
+    return 2
+  fi
+  run terraform -chdir=deploy/terraform/platform-eks init
+  run terraform -chdir=deploy/terraform/platform-eks apply
   print_onboarding_card "https://<your-ingress-host>" "https://<your-ingress-host>"
 }
 

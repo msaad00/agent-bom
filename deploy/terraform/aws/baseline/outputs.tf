@@ -48,7 +48,7 @@ output "auth_secret_name" {
 }
 
 output "helm_values_hint" {
-  description = "Copy/paste baseline wiring for the packaged Helm chart."
+  description = "Workload-only Helm wiring. Pre-create the four referenced Kubernetes Secrets before installing it."
   value       = <<-EOT
 serviceAccount:
   annotations:
@@ -61,27 +61,20 @@ scanner:
 
 controlPlane:
   externalSecrets:
+    enabled: false
+    syncOnly: false
+  postgresSecrets:
     enabled: true
-    secretStoreRef:
-      kind: ClusterSecretStore
-      name: aws-secrets-manager
-    secrets:
-      - nameSuffix: control-plane-db
-        target:
-          name: agent-bom-control-plane-db
-        data:
-          - secretKey: AGENT_BOM_POSTGRES_URL
-            remoteRef:
-              key: ${coalesce(var.create_db_url_secret ? aws_secretsmanager_secret.db_url[0].name : null, "REPLACE_ME_DB_URL_SECRET_NAME")}
-              property: AGENT_BOM_POSTGRES_URL
-      - nameSuffix: control-plane-auth
-        target:
-          name: agent-bom-control-plane-auth
-        data:
-          - secretKey: AGENT_BOM_OIDC_ISSUER
-            remoteRef:
-              key: ${coalesce(var.create_auth_secret ? aws_secretsmanager_secret.auth[0].name : null, "REPLACE_ME_AUTH_SECRET_NAME")}
-              property: OIDC_ISSUER
+    appSecretRef:
+      name: ${var.release_name}-control-plane-db
+    maintenanceSecretRef:
+      name: ${var.release_name}-control-plane-maintenance
+    adminSecretRef:
+      name: ${var.release_name}-control-plane-admin
+  api:
+    envFrom:
+      - secretRef:
+          name: ${var.release_name}-control-plane-auth
 
   backup:
     enabled: ${var.create_backup_bucket ? "true" : "false"}

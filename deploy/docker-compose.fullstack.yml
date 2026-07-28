@@ -29,11 +29,43 @@
 #   Dashboard  →  http://localhost:3000
 #   API docs   →  http://localhost:8422/docs
 #
-# For production, swap the postgres service for a managed Postgres/Supabase URL
-# that uses IAM/cert auth when available, or mount AGENT_BOM_POSTGRES_PASSWORD_FILE
-# for the DML-only app role — never the bootstrap/admin role.
+# The packaged profile intentionally owns its bundled Postgres service. For an
+# operator-managed database, use the Helm BYO-Postgres profile with distinct
+# app, maintenance, and migration/admin credentials; replacing only this
+# service would leave dependencies, migrations, and secret mounts inconsistent.
 
 services:
+
+  # ── One-shot schema migration ─────────────────────────────────────────────
+  # Existing local volumes do not replay docker-entrypoint-initdb.d scripts.
+  # Apply forward Alembic revisions before the API starts so upgrades preserve
+  # the same schema and role contract as the production-shaped Compose stack.
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: agentbom/agent-bom:0.98.2
+    container_name: agent-bom-fullstack-migrate
+    working_dir: /opt/agent-bom
+    entrypoint: ["python"]
+    command: ["deploy/supabase/postgres/compose_migrate.py"]
+    environment:
+      ALEMBIC_DATABASE_URL: postgresql://${POSTGRES_USER:-agent_bom}@postgres:5432/${POSTGRES_DB:-agent_bom}
+      ALEMBIC_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
+      AGENT_BOM_POSTGRES_PASSWORD_FILE: /run/secrets/postgres_app_password
+      AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance@postgres:5432/${POSTGRES_DB:-agent_bom}
+      AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE: /run/secrets/postgres_maintenance_password
+    secrets:
+      - postgres_password
+      - postgres_app_password
+      - postgres_maintenance_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent-bom
+    restart: "no"
 
   # ── FastAPI backend ────────────────────────────────────────────────────────
   api:
@@ -90,6 +122,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/health')\""]
       interval: 15s

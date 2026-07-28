@@ -89,7 +89,7 @@ services:
     entrypoint: ["python"]
     command: ["deploy/supabase/postgres/compose_migrate.py"]
     environment:
-      - ALEMBIC_DATABASE_URL=postgresql://agent_bom@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - ALEMBIC_DATABASE_URL=postgresql://${POSTGRES_USER:-agent_bom}@postgres:5432/${POSTGRES_DB:-agent_bom}
       - ALEMBIC_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
       - AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app@postgres:5432/${POSTGRES_DB:-agent_bom}
       - AGENT_BOM_POSTGRES_PASSWORD_FILE=/run/secrets/postgres_app_password

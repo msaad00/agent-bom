@@ -39,48 +39,29 @@ docker compose -f docker-compose.pilot.yml up -d
 Reference full self-hosted AWS / EKS rollout:
 
 ```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/install-eks-reference.sh \
-  --create-cluster \
-  --cluster-name corp-ai \
-  --region "$AWS_REGION" \
-  --hostname agent-bom.internal.example.com \
-  --enable-gateway
+cp deploy/terraform/platform-eks/terraform.tfvars.example \
+  deploy/terraform/platform-eks/terraform.tfvars
+# Configure cluster mode, secret names, region, domain, and optional gateway values.
+scripts/deploy/install.sh eks
 ```
 
-If the company already has an EKS platform, reuse it with the same installer:
+For an existing EKS platform, set `create_cluster=false` plus its cluster,
+network, and explicit database source-SG/CIDR inputs in `terraform.tfvars`.
+For a fresh cluster, follow the cluster-first External Secrets bootstrap in
+the platform module README before the full apply.
 
-```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/install-eks-reference.sh \
-  --cluster-name corp-ai \
-  --region "$AWS_REGION" \
-  --hostname agent-bom.internal.example.com \
-  --enable-gateway
-```
-
-If you want browser operators behind corporate SSO on day 1, add OIDC at install
-time:
-
-```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/install-eks-reference.sh \
-  --cluster-name corp-ai \
-  --region "$AWS_REGION" \
-  --hostname agent-bom.internal.example.com \
-  --oidc-issuer https://idp.example.com \
-  --oidc-audience agent-bom
-```
+Put OIDC/API-key/signing settings in the pre-populated auth secret; secret
+values never enter Terraform state.
 
 ## What The Installer Owns
 
-The reference installer at `scripts/deploy/install-eks-reference.sh` is intentionally opinionated:
+The `deploy/terraform/platform-eks` module is intentionally opinionated:
 
-1. Optionally creates a reference EKS cluster with `eksctl`
+1. Optionally creates a reference VPC and EKS cluster
 2. Applies the `agent-bom` AWS baseline Terraform module
-3. Creates the product secrets needed by the Helm release
-4. Installs the packaged Helm chart with production profile defaults
-5. Prints next-step commands for fleet onboarding, gateway rollout, and post-deploy verification
+3. Synchronizes four pre-populated, role-separated secret inputs
+4. Runs migration/admin work before starting the packaged Helm workloads
+5. Prints next-step commands for fleet onboarding and verification
 
 It does **not** try to replace a customer's full AWS platform stack. Keep these as platform-owned:
 
@@ -203,7 +184,7 @@ What this means in practice:
 Start with one of these shapes:
 
 - existing EKS platform: preferred for real companies
-- reference EKS cluster from the installer: good for evaluation, pilot, and demos
+- fresh EKS cluster from the staged platform module: good for evaluation, pilot, and demos
 
 Before installing `agent-bom`, confirm:
 
@@ -214,28 +195,23 @@ Before installing `agent-bom`, confirm:
 
 ### 2. Product-specific AWS baseline
 
-Run the reference installer or the Terraform module directly:
+Run the staged Terraform platform path:
 
 ```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/install-eks-reference.sh \
-  --cluster-name corp-ai \
-  --region "$AWS_REGION" \
-  --hostname agent-bom.internal.example.com \
-  --enable-gateway
+scripts/deploy/install.sh eks
 ```
 
-The installer now does two important safety checks before it mutates anything:
+The installer now fails before a full apply unless:
 
-- verifies the minimum supported `aws`, `kubectl`, `helm`, `eksctl`, and `terraform`/`tofu` versions
-- rejects OIDC installs without a stable `--hostname` same-origin entrypoint
+- `terraform.tfvars` exists with pre-populated app, maintenance, and auth secret names
+- External Secrets Operator and the `aws-secrets-manager` ClusterSecretStore are acknowledged ready
 
 Under the hood this uses the baseline in `deploy/terraform/aws/baseline` to create:
 
 - RDS Postgres for the control plane
 - S3 backup bucket
 - IRSA roles for scan and backup jobs
-- Secrets Manager containers for DB/auth wiring
+- the RDS-managed migration/admin secret; app, maintenance, and auth secrets remain pre-populated operator inputs
 
 ### 3. Helm release on EKS
 
@@ -246,7 +222,9 @@ The installer then applies the production Helm profile plus generated overrides:
 - optional gateway
 - auth and DB secrets wired from generated values
 
-For manual control, use the packaged chart directly:
+For manual control, first create and verify the four distinct app,
+maintenance, migration/admin, and auth Kubernetes Secrets described in
+[Control Plane Helm](control-plane-helm.md), then use the packaged chart:
 
 ```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
@@ -347,22 +325,15 @@ The goal is not just "pods are running." The goal is one coherent operator plane
 - `/gateway` and runtime views for policy/audit surfaces when enabled
 - one deployment story for pilot and production instead of two unrelated stacks
 
-## Dry-Run And Ownership Notes
+## Plan And Ownership Notes
 
-The reference installer supports `--dry-run` so teams can see the generated
-Terraform root, Helm values, and operator summary before any apply:
+Review the exact Terraform plan before apply:
 
 ```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/install-eks-reference.sh \
-  --cluster-name corp-ai \
-  --region "$AWS_REGION" \
-  --hostname agent-bom.internal.example.com \
-  --enable-gateway \
-  --dry-run
+terraform -chdir=deploy/terraform/platform-eks plan
 ```
 
-Use that mode when:
+Use that review when:
 
 - security wants to review what the installer owns
 - platform wants to compare the reference shape to their internal landing zone

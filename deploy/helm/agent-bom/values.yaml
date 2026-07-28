@@ -13,9 +13,9 @@
 #
 # A bare `--set controlPlane.enabled=true` is NOT enough on its own: the
 # control plane needs distinct app and maintenance Postgres credentials plus
-# the control-plane auth Secret supplied via `controlPlane.api.envFrom`. The
-# migration hook separately requires an admin credential through
-# `controlPlane.migrations.envFrom`; it never inherits the runtime credentials.
+# the control-plane auth Secret supplied via `controlPlane.api.envFrom`.
+# Postgres profiles declare all three database identities through
+# `controlPlane.postgresSecrets`; the chart projects each one by role.
 # See `examples/postgres-secret.example.yaml` +
 # `examples/control-plane-auth-secret.example.yaml` and the chart README.
 #
@@ -446,6 +446,17 @@ teardownHooks:
 
 controlPlane:
   enabled: false
+  # Canonical Postgres Secret references. When enabled, the chart injects
+  # app + maintenance into the API, admin + app + maintenance into the
+  # migration Job, and maintenance only into backups. Names must be distinct.
+  postgresSecrets:
+    enabled: false
+    appSecretRef:
+      name: ""
+    maintenanceSecretRef:
+      name: ""
+    adminSecretRef:
+      name: ""
   # Opt-in background loop that re-scans due cloud connections (row
   # scan_interval_minutes). When true, injects AGENT_BOM_CONNECTIONS_SCHEDULER=1
   # on the API Deployment. Cadence still requires a per-connection interval;
@@ -695,6 +706,7 @@ controlPlane:
     # with externalSecrets.enabled=false. A pre-install migration hook is never
     # allowed to depend on ExternalSecrets from its own release.
     syncOnly: false
+    refreshPolicy: Periodic
     refreshInterval: 1h
     secretStoreRef:
       kind: ClusterSecretStore
@@ -703,6 +715,7 @@ controlPlane:
       name: agent-bom-control-plane
       creationPolicy: Owner
     data: []
+    dataFrom: []
     secrets: []
   migrations:
     enabled: true
@@ -716,9 +729,9 @@ controlPlane:
     alembicConfig: deploy/supabase/postgres/alembic.ini
     workingDir: /opt/agent-bom
     env: []
-    # Required for Postgres profiles. Keep the migration/admin credential
-    # distinct from the API app and maintenance credentials; there is no
-    # fallback to controlPlane.api.envFrom.
+    # Generic extras only. Postgres profiles use controlPlane.postgresSecrets,
+    # unless ALEMBIC_DATABASE_URL is supplied as an explicit env entry for an
+    # externally provisioned role contract.
     envFrom: []
     resources:
       requests:
@@ -772,6 +785,9 @@ controlPlane:
       extraArgs: []
     retentionDays: 14
     env: []
+    # Required when backup.enabled=true. Reference only the scoped maintenance
+    # Secret containing AGENT_BOM_POSTGRES_MAINTENANCE_URL; never the app or
+    # migration/admin Secret.
     envFrom: []
 
 rbac:

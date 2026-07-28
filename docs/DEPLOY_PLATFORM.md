@@ -114,20 +114,38 @@ split networks) use `deploy/docker-compose.platform.yml`.
 
 ## Tier 2 — Kubernetes / EKS
 
-### Option A — one `terraform apply` (EKS, recommended)
+### Option A — staged Terraform on EKS (recommended)
 
-The [`platform-eks`](../deploy/terraform/platform-eks/) root module stands up
-the full platform in a single apply: it provisions (or references) an EKS
-cluster, calls the `aws/baseline` module for RDS + IRSA + S3 backups + Secrets
-Manager, and `helm_release`s the control-plane chart wired to those outputs.
-Optionally it also mints the read-only connect role the scanner assumes.
+The [`platform-eks`](../deploy/terraform/platform-eks/) root module provisions
+or references EKS, calls `aws/baseline` for RDS + IRSA + S3 backups, syncs
+pre-populated runtime/auth Secrets Manager entries, waits for all four
+Kubernetes targets, runs the RDS-master migration, and then starts the Helm
+workloads. Optionally it also mints the read-only connect role the scanner
+assumes. Secret names enter Terraform; secret values do not.
 
 ```bash
 cd deploy/terraform/platform-eks
-cp terraform.tfvars.example terraform.tfvars   # set region, domain, cluster mode
+cp terraform.tfvars.example terraform.tfvars   # set secret names, region, domain, cluster mode
 terraform init
-terraform apply
+```
 
+Fresh-cluster mode has an explicit prerequisite stage: target the VPC/EKS
+modules first, install External Secrets Operator plus the
+`aws-secrets-manager` ClusterSecretStore, then set
+`external_secrets_prerequisites_ready=true` for the full apply. Existing
+clusters must already have those components. Secret-value rotation is also
+coordinated: update Secrets Manager, increment the non-secret
+`runtime_credentials_generation`, and apply so reconciliation, role-password
+alignment, migrations, and pod rollout happen in that order.
+
+```bash
+# Fresh-cluster mode only:
+terraform apply -target=module.vpc -target=module.eks
+# Install External Secrets Operator and aws-secrets-manager ClusterSecretStore.
+
+# After prerequisites exist in either mode, set
+# external_secrets_prerequisites_ready=true, then:
+terraform apply
 terraform output how_to_reach_it
 ```
 
@@ -135,13 +153,14 @@ Two modes, selected by one variable:
 
 | `create_cluster` | You provide | Module provisions |
 |------------------|-------------|-------------------|
-| `true` | `region` | VPC + EKS + node group + RDS/IRSA/S3/Secrets + Helm |
-| `false` | `cluster_name`, `vpc_id`, `private_subnet_ids` | RDS/IRSA/S3/Secrets + Helm onto your existing cluster |
+| `true` | pre-populated app/maintenance/auth secret names, region | VPC + EKS + node group + RDS/IRSA/S3 + secret sync + Helm; the node SG is authorized to RDS automatically |
+| `false` | secret names, `cluster_name`, `vpc_id`, `private_subnet_ids`, and `db_allowed_security_group_ids` or `db_allowed_cidr_blocks` | RDS/IRSA/S3 + secret sync + Helm onto your existing cluster |
 
 Set `create_aws_connect_role = true` to also create the keyless, read-only role
 the scanner uses to inventory the AWS account. See the
 [module README](../deploy/terraform/platform-eks/README.md) for prerequisites
-(ingress controller, cert-manager, External Secrets Operator) and the full
+(secret payloads, ingress controller, cert-manager, External Secrets Operator)
+and the full
 variable/output reference.
 
 ### Option B — Helm onto a cluster you already manage
@@ -157,22 +176,27 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 The [`examples/`](../deploy/helm/agent-bom/examples/) directory ships values for
 EKS, AKS, GKE, BYO-Postgres, SQLite pilots, collector-only workloads, and more.
-On AWS you can still run `aws/baseline` on its own for RDS/IRSA/S3/Secrets and
-feed its `helm_values_hint` output into your values file.
+On AWS you can still run `aws/baseline` on its own for RDS/IRSA/S3. Its
+`helm_values_hint` is workload-only and is valid only after an independent
+operator-controlled stage has created the four split Kubernetes Secrets.
 
 **Schema migrations:** for Helm installs against Postgres, the chart's
-`pre-install,pre-upgrade` hook runs Alembic automatically
+`pre-install,pre-upgrade` hook runs the packaged Alembic plus idempotent
+runtime-role credential reconciliation automatically
 (`controlPlane.migrations.enabled`, on by default). A normal `helm upgrade`
 does not require a manual `alembic upgrade head`. See
 [Control-Plane Helm — migration contract](../site-docs/deployment/control-plane-helm.md)
 for the one-time `init.sql` stamp path and the non-Helm override.
 
-For **Compose** (`deploy/docker-compose.platform.yml` and overlays that layer
-it), a one-shot `migrate` service runs the same contract before `api` starts:
-stamp baseline `20260416_01` when the volume was first created from `init.sql`,
-then `alembic upgrade head`. Image upgrades therefore apply schema changes on
-`docker compose up` without a manual Alembic step. The migrate container uses
-the Postgres bootstrap/admin role (DDL); the API stays on `agent_bom_app` (DML).
+For **Compose** (`deploy/docker-compose.fullstack.yml`,
+`deploy/docker-compose.platform.yml`, and overlays that layer the platform
+profile), a one-shot `migrate` service runs the same contract before `api`
+starts: stamp baseline `20260416_01` when the volume was first created from
+`init.sql`, then `alembic upgrade head`. Image upgrades therefore apply schema
+changes on `docker compose up` without a manual Alembic step. The migrate
+container requires the explicit Postgres bootstrap/admin URL and its separate
+password file; the API stays on `agent_bom_app` (DML) plus the independently
+scoped maintenance connection.
 
 ---
 
@@ -241,7 +265,7 @@ policy scoped to the connection-role name pattern (`agent-bom-readonly*` /
 **(b) Read the control plane's identity ARN — this is what target accounts trust.**
 
 ```bash
-# EKS one-apply
+# EKS staged Terraform
 terraform -chdir=deploy/terraform/platform-eks output -raw scanner_role_arn
 # aws/baseline standalone
 terraform -chdir=deploy/terraform/aws/baseline output -raw scanner_role_arn
@@ -302,7 +326,7 @@ Full read-only contract (what is read, why it stays least-privilege) lives in
 |------|------|
 | Fastest look at the full product | 1 — Docker Compose |
 | Single team / air-gapped VM | 1 — Docker Compose (or `docker-compose.platform.yml`) |
-| Production on AWS, one command | 2A — `platform-eks` Terraform |
+| Production on AWS | 2A — staged `platform-eks` Terraform |
 | Production on an existing/any cluster | 2B — Helm |
 | Invite-only hosted design partner or customer-0 | 3 — Operator-hosted + connect roles |
 | Gated customer-0 demo link | [`HOSTED_POC.md`](HOSTED_POC.md) |
@@ -311,7 +335,7 @@ Full read-only contract (what is read, why it stays least-privilege) lives in
 
 - [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) — unified install script + onboarding
 - [`deploy/RUNBOOK.md`](../deploy/RUNBOOK.md) — multicloud collector federation
-- [`platform-eks` module](../deploy/terraform/platform-eks/README.md) — one-apply EKS
+- [`platform-eks` module](../deploy/terraform/platform-eks/README.md) — staged EKS secret sync, migration, and workloads
 - [`aws/baseline` module](../deploy/terraform/aws/baseline/README.md) — RDS/IRSA/S3/Secrets
 - [`connect-*` modules](../deploy/terraform/) — read-only cloud connect roles
 - [Helm chart](../deploy/helm/agent-bom/) — control-plane chart + examples

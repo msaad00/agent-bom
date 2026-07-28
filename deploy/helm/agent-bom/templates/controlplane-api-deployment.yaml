@@ -1,4 +1,18 @@
 {{- if and .Values.controlPlane.enabled .Values.controlPlane.api.enabled }}
+{{- $postgresSecrets := .Values.controlPlane.postgresSecrets }}
+{{- if $postgresSecrets.enabled }}
+{{- $appSecret := required "controlPlane.postgresSecrets.appSecretRef.name is required" $postgresSecrets.appSecretRef.name }}
+{{- $maintenanceSecret := required "controlPlane.postgresSecrets.maintenanceSecretRef.name is required" $postgresSecrets.maintenanceSecretRef.name }}
+{{- $adminSecret := required "controlPlane.postgresSecrets.adminSecretRef.name is required" $postgresSecrets.adminSecretRef.name }}
+{{- if ne (len (uniq (list $appSecret $maintenanceSecret $adminSecret))) 3 }}
+{{- fail "controlPlane.postgresSecrets app, maintenance, and admin Secret names must be distinct" }}
+{{- end }}
+{{- range $entry := .Values.controlPlane.api.env }}
+{{- if has (get $entry "name") (list "AGENT_BOM_POSTGRES_URL" "AGENT_BOM_POSTGRES_MAINTENANCE_URL" "ALEMBIC_DATABASE_URL") }}
+{{- fail "controlPlane.api.env cannot override canonical Postgres identity variables when controlPlane.postgresSecrets.enabled=true" }}
+{{- end }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -76,6 +90,18 @@ spec:
           {{- with .Values.controlPlane.api.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
+            {{- if $postgresSecrets.enabled }}
+            - name: AGENT_BOM_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $postgresSecrets.appSecretRef.name | quote }}
+                  key: AGENT_BOM_POSTGRES_URL
+            - name: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $postgresSecrets.maintenanceSecretRef.name | quote }}
+                  key: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+            {{- end }}
           {{- with .Values.controlPlane.api.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

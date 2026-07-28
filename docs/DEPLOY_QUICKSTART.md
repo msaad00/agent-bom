@@ -168,17 +168,17 @@ scripts/deploy/install.sh platform-docker
 ### AWS / EKS (recommended production installer)
 
 ```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/install.sh eks --create-cluster --region "$AWS_REGION" --enable-gateway
-```
-
-Or one `terraform apply` (cluster + RDS + IRSA + Helm):
-
-```bash
 cd deploy/terraform/platform-eks
 cp terraform.tfvars.example terraform.tfvars
-terraform init && terraform apply
+# Configure cluster mode, split secret names, region, domain, and optional Helm values.
+cd ../../..
+scripts/deploy/install.sh eks
 ```
+
+For a fresh cluster, follow the module's cluster-first bootstrap to install
+External Secrets Operator and its ClusterSecretStore before the full apply.
+Set the required non-secret credential generation and advance it for every
+coordinated secret rotation.
 
 ### Azure / AKS
 
@@ -432,7 +432,7 @@ See [`docs/operations/ENV_VARS.md`](operations/ENV_VARS.md) for the full enrichm
 
 - **Connections wizard ships** — browser **Connections** (`/connections`) walks Provider → Setup → Details (grant script + `POST /v1/cloud/connections`). Headless parity: Terraform connect modules and the same API. See [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md) §1c and the Practical enable path.
 - **Continuous mid-interval refresh needs a queue** — cadence (`AGENT_BOM_CONNECTIONS_SCHEDULER` + `scan_interval_minutes`) is opt-in; `scan_mode=continuous` additionally needs a provider event queue env. Helm scanner CronJob remains a separate Job/CLI path.
-- **AKS/GKE platform Terraform** — collector Helm overlays exist; full one-apply platform modules are EKS-only today.
+- **AKS/GKE platform Terraform** — collector Helm overlays exist; the full staged platform module is EKS-only today.
 - **MSSP multi-tenant provider ops** — self-hosted team tenancy (OIDC/SCIM) ships; provider-style tenant automation is a later track.
 
 ---

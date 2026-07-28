@@ -7,7 +7,7 @@ scanner, container image, self-hosted API/UI, fleet sync, proxy, gateway, MCP
 server mode, and Snowflake-specific compatibility views. This document covers
 the maintained deployment shapes. For the canonical chooser, start with
 [`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md). For
-the three-tier deploy-anywhere guide (Compose · EKS one-apply · hosted), see
+the three-tier deploy-anywhere guide (Compose · staged EKS · hosted), see
 [`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md).
 
 ---
@@ -462,8 +462,9 @@ collectors use workload identity and call only `List*` / `Describe*` / `get`
 APIs. Nothing leaves the account — see
 [`SECURITY_ARCHITECTURE.md` § Cloud connect — read-only by design](SECURITY_ARCHITECTURE.md#cloud-connect--read-only-by-design).
 
-For a one-`terraform apply` control plane (VPC, EKS, RDS Postgres, IRSA, and
-the Helm release wired together), use the EKS platform module at
+For a staged control plane (pre-populated runtime/auth secrets, VPC, EKS, RDS
+Postgres, IRSA, secret synchronization, migrations, and Helm workloads), use
+the EKS platform module at
 `deploy/terraform/platform-eks/` — walked through in
 [`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md). A CloudFormation one-click read-only
 AWS scan via CodeBuild is also available for a no-infrastructure trial.

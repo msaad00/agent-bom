@@ -1,4 +1,32 @@
 {{- if and .Values.controlPlane.enabled .Values.controlPlane.backup.enabled }}
+{{- $backup := .Values.controlPlane.backup }}
+{{- $postgresSecrets := .Values.controlPlane.postgresSecrets }}
+{{- if $postgresSecrets.enabled }}
+{{- $appSecret := required "controlPlane.postgresSecrets.appSecretRef.name is required" $postgresSecrets.appSecretRef.name }}
+{{- $maintenanceSecret := required "controlPlane.postgresSecrets.maintenanceSecretRef.name is required" $postgresSecrets.maintenanceSecretRef.name }}
+{{- $adminSecret := required "controlPlane.postgresSecrets.adminSecretRef.name is required" $postgresSecrets.adminSecretRef.name }}
+{{- if ne (len (uniq (list $appSecret $maintenanceSecret $adminSecret))) 3 }}
+{{- fail "controlPlane.postgresSecrets app, maintenance, and admin Secret names must be distinct" }}
+{{- end }}
+{{- if $backup.envFrom }}
+{{- fail "controlPlane.backup.envFrom cannot be combined with canonical Postgres Secrets" }}
+{{- end }}
+{{- range $entry := $backup.env }}
+{{- if has (get $entry "name") (list "AGENT_BOM_POSTGRES_URL" "AGENT_BOM_POSTGRES_MAINTENANCE_URL" "ALEMBIC_DATABASE_URL") }}
+{{- fail "controlPlane.backup.env cannot override canonical Postgres identity variables when controlPlane.postgresSecrets.enabled=true" }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- $hasMaintenanceEnv := false }}
+{{- range $entry := $backup.env }}
+{{- if eq (get $entry "name") "AGENT_BOM_POSTGRES_MAINTENANCE_URL" }}
+{{- $hasMaintenanceEnv = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasMaintenanceEnv }}
+{{- fail "controlPlane.backup requires canonical controlPlane.postgresSecrets or an explicit AGENT_BOM_POSTGRES_MAINTENANCE_URL env reference; generic envFrom cannot prove a maintenance identity" }}
+{{- end }}
+{{- end }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -49,6 +77,13 @@ spec:
                   value: "-c app.bypass_rls=1"
                 {{- with .Values.controlPlane.backup.env }}
                 {{- toYaml . | nindent 16 }}
+                {{- end }}
+                {{- if $postgresSecrets.enabled }}
+                - name: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $postgresSecrets.maintenanceSecretRef.name | quote }}
+                      key: AGENT_BOM_POSTGRES_MAINTENANCE_URL
                 {{- end }}
               {{- with .Values.controlPlane.backup.envFrom }}
               envFrom:

@@ -20,11 +20,15 @@ python scripts/install_helm_profile.py focused-pilot
 ```
 
 The chart does not provision Postgres. A Postgres-backed control plane supplies
-three database identities: tenant-bound app and scoped maintenance credentials
-through `controlPlane.api.envFrom`, plus an admin credential through
-`controlPlane.migrations.envFrom`. The migration hook never inherits API
-credentials. Missing explicit migration wiring fails template validation before
-Helm creates a partial control plane.
+three database identities through `controlPlane.postgresSecrets`: tenant-bound
+app, scoped maintenance, and migration/admin. The chart injects app +
+maintenance into the API, admin + app + maintenance into the migration Job, and
+maintenance only into backups; duplicate or missing names fail template
+validation. The migration hook runs the idempotent packaged upgrade/reconcile
+entrypoint and never inherits or falls back to generic API credentials.
+Secret-sync and workload releases are isolated by the standard Helm instance
+label, including teardown cleanup; uninstalling one release cannot
+collection-delete ExternalSecrets owned by the other.
 
 Without that flag, Helm succeeds quietly and only scanner pieces land in the
 cluster. See the `controlPlane:` block in `values.yaml` for every subcomponent

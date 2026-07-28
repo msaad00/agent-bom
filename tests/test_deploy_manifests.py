@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -671,19 +672,13 @@ def test_production_values_enable_operator_defaults():
     assert next(secret for secret in secrets if secret["target"]["name"] == "agent-bom-control-plane-db")["refreshInterval"] == "1h"
     assert next(secret for secret in secrets if secret["target"]["name"] == "agent-bom-control-plane-auth")["refreshInterval"] == "5m"
     env_from = production["controlPlane"]["api"]["envFrom"]
-    assert env_from == [
-        {"secretRef": {"name": "agent-bom-control-plane-db"}},
-        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
-        {"secretRef": {"name": "agent-bom-control-plane-auth"}},
-    ]
-    assert production["controlPlane"]["migrations"]["envFrom"] == [
-        {"secretRef": {"name": "agent-bom-control-plane-admin"}},
-        {"secretRef": {"name": "agent-bom-control-plane-db"}},
-        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
-    ]
-    assert production["controlPlane"]["backup"]["envFrom"] == [
-        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
-    ]
+    assert env_from == [{"secretRef": {"name": "agent-bom-control-plane-auth"}}]
+    assert production["controlPlane"]["postgresSecrets"] == {
+        "enabled": True,
+        "appSecretRef": {"name": "agent-bom-control-plane-db"},
+        "maintenanceSecretRef": {"name": "agent-bom-control-plane-maintenance"},
+        "adminSecretRef": {"name": "agent-bom-control-plane-admin"},
+    }
     env = {entry["name"]: entry["value"] for entry in production["controlPlane"]["api"]["env"]}
     assert env["AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"] == "1"
     assert env["AGENT_BOM_POSTGRES_POOL_MIN_SIZE"] == "5"
@@ -711,19 +706,8 @@ def test_eks_vanilla_values_enable_ha_without_mesh_or_external_secret_dependenci
     assert ui["replicas"] == 2
     assert api["autoscaling"]["enabled"] is True
     assert ui["autoscaling"]["enabled"] is True
-    assert api["envFrom"] == [
-        {"secretRef": {"name": "agent-bom-control-plane-db"}},
-        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
-        {"secretRef": {"name": "agent-bom-control-plane-auth"}},
-    ]
-    assert control_plane["migrations"]["envFrom"] == [
-        {"secretRef": {"name": "agent-bom-control-plane-admin"}},
-        {"secretRef": {"name": "agent-bom-control-plane-db"}},
-        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
-    ]
-    assert control_plane["backup"]["envFrom"] == [
-        {"secretRef": {"name": "agent-bom-control-plane-maintenance"}},
-    ]
+    assert api["envFrom"] == [{"secretRef": {"name": "agent-bom-control-plane-auth"}}]
+    assert control_plane["postgresSecrets"]["enabled"] is True
     env = {entry["name"]: entry["value"] for entry in api["env"]}
     assert env["AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"] == "1"
     assert env["AGENT_BOM_REQUIRE_SHARED_SCIM_STORE"] == "1"
@@ -776,6 +760,28 @@ def test_teardown_hook_template_uses_cleanup_module():
     template = (HELM_DIR / "templates" / "teardown-hook-job.yaml").read_text()
     assert "agent_bom.deploy_k8s_cleanup" in template
     assert "helm.sh/hook: {{ $hook }}" in template
+
+
+def test_teardown_hook_cleanup_is_scoped_to_its_helm_release_instance() -> None:
+    """A workload uninstall must not delete a sibling secret-sync release."""
+    helpers = (HELM_DIR / "templates" / "_helpers.tpl").read_text(encoding="utf-8")
+    template = (HELM_DIR / "templates" / "teardown-hook-job.yaml").read_text(encoding="utf-8")
+
+    assert 'app.kubernetes.io/instance: {{ .Release.Name | quote }}' in helpers
+    assert "app.kubernetes.io/instance={{ $.Release.Name }}" in template
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_release_instance_label_remains_a_string_for_scalar_names() -> None:
+    result = subprocess.run(
+        ["helm", "template", "true", str(HELM_DIR)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    docs = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+    assert docs
+    assert all(doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/instance") == "true" for doc in docs)
 
 
 def test_helm_single_node_sqlite_pilot_example_is_shipped():
@@ -840,12 +846,12 @@ def test_alembic_migration_hook_template():
     template = (HELM_DIR / "templates" / "controlplane-alembic-migration-job.yaml").read_text()
     assert "controlPlane.migrations.postgres.enabled" in template
     assert "helm.sh/hook: {{ $migrations.hooks | quote }}" in template
-    assert "alembic" in template
-    assert "upgrade" in template
-    assert "head" in template
+    assert "deploy/supabase/postgres/compose_migrate.py" in template
+    assert "{{ $migrations.alembicConfig | quote }}" in template
     assert "backoffLimit: {{ $migrations.backoffLimit }}" in template
     assert "$envFrom = .Values.controlPlane.api.envFrom" not in template
-    assert "requires controlPlane.migrations.envFrom" in template
+    assert "generic envFrom cannot prove an admin identity" in template
+    assert "app, maintenance, and admin Secret names must be distinct" in template
 
 
 def test_scheduled_cronjobs_are_fail_loud():
@@ -867,6 +873,190 @@ def test_control_plane_backup_uses_scoped_maintenance_identity():
     assert "--enable-row-security" in template
     assert "PGOPTIONS" in template
     assert "app.bypass_rls=1" in template
+    assert "generic envFrom cannot prove a maintenance identity" in template
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_postgres_jobs_fail_render_without_distinct_credentials() -> None:
+    common = [
+        "helm",
+        "template",
+        "abom",
+        str(HELM_DIR),
+        "--set",
+        "controlPlane.enabled=true",
+        "--set",
+        "controlPlane.api.envFrom[0].secretRef.name=runtime-db",
+    ]
+
+    missing_admin = subprocess.run(common, capture_output=True, text=True, check=False)
+    assert missing_admin.returncode != 0
+    assert "generic envFrom cannot prove an admin identity" in missing_admin.stderr
+
+    reused_runtime = subprocess.run(
+        [
+            *common,
+            "--set",
+            "controlPlane.migrations.envFrom[0].secretRef.name=runtime-db",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert reused_runtime.returncode != 0
+    assert "generic envFrom cannot prove an admin identity" in reused_runtime.stderr
+
+    missing_maintenance = subprocess.run(
+        [
+            *common,
+            "--set",
+            "controlPlane.migrations.env[0].name=ALEMBIC_DATABASE_URL",
+            "--set",
+            "controlPlane.migrations.env[0].value=postgresql://admin@db/app",
+            "--set",
+            "controlPlane.backup.enabled=true",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert missing_maintenance.returncode != 0
+    assert "generic envFrom cannot prove a maintenance identity" in missing_maintenance.stderr
+
+    duplicate_canonical = subprocess.run(
+        [
+            "helm",
+            "template",
+            "abom",
+            str(HELM_DIR),
+            "--set",
+            "controlPlane.enabled=true",
+            "--set",
+            "controlPlane.postgresSecrets.enabled=true",
+            "--set",
+            "controlPlane.postgresSecrets.appSecretRef.name=runtime-db",
+            "--set",
+            "controlPlane.postgresSecrets.maintenanceSecretRef.name=runtime-db",
+            "--set",
+            "controlPlane.postgresSecrets.adminSecretRef.name=admin-db",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert duplicate_canonical.returncode != 0
+    assert "app, maintenance, and admin Secret names must be distinct" in duplicate_canonical.stderr
+
+    canonical = [
+        "helm",
+        "template",
+        "abom",
+        str(HELM_DIR),
+        "--set",
+        "controlPlane.enabled=true",
+        "--set",
+        "controlPlane.postgresSecrets.enabled=true",
+        "--set",
+        "controlPlane.postgresSecrets.appSecretRef.name=runtime-db",
+        "--set",
+        "controlPlane.postgresSecrets.maintenanceSecretRef.name=maintenance-db",
+        "--set",
+        "controlPlane.postgresSecrets.adminSecretRef.name=admin-db",
+    ]
+    for values_path, variable, expected in (
+        ("controlPlane.api.env", "AGENT_BOM_POSTGRES_URL", "controlPlane.api.env cannot override"),
+        ("controlPlane.migrations.env", "ALEMBIC_DATABASE_URL", "controlPlane.migrations.env cannot override"),
+        (
+            "controlPlane.backup.env",
+            "AGENT_BOM_POSTGRES_MAINTENANCE_URL",
+            "controlPlane.backup.env cannot override",
+        ),
+    ):
+        command = [
+            *canonical,
+            "--set",
+            f"{values_path}[0].name={variable}",
+            "--set",
+            f"{values_path}[0].value=postgresql://wrong@db/agent_bom",
+        ]
+        if values_path == "controlPlane.backup.env":
+            command.extend(["--set", "controlPlane.backup.enabled=true"])
+        overridden = subprocess.run(command, capture_output=True, text=True, check=False)
+        assert overridden.returncode != 0
+        assert expected in overridden.stderr
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_production_render_projects_only_canonical_postgres_identities() -> None:
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "agent-bom",
+            str(HELM_DIR),
+            "--values",
+            str(HELM_DIR / "examples" / "eks-production-values.yaml"),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    docs = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+    api = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "api"
+    )
+    migration = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Job" and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "postgres-migration"
+    )
+    backup = next(doc for doc in docs if doc.get("kind") == "CronJob" and doc["metadata"]["name"].endswith("backup"))
+
+    api_container = api["spec"]["template"]["spec"]["containers"][0]
+    migration_container = migration["spec"]["template"]["spec"]["containers"][0]
+    backup_container = backup["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
+
+    assert [item["secretRef"]["name"] for item in api_container["envFrom"]] == ["agent-bom-control-plane-auth"]
+    assert "envFrom" not in migration_container
+    assert "envFrom" not in backup_container
+
+    def projected_secret_names(container: dict) -> dict[str, str]:
+        return {
+            entry["name"]: entry["valueFrom"]["secretKeyRef"]["name"]
+            for entry in container["env"]
+            if "valueFrom" in entry
+        }
+
+    assert projected_secret_names(api_container) == {
+        "AGENT_BOM_POSTGRES_URL": "agent-bom-control-plane-db",
+        "AGENT_BOM_POSTGRES_MAINTENANCE_URL": "agent-bom-control-plane-maintenance",
+    }
+    assert projected_secret_names(migration_container) == {
+        "ALEMBIC_DATABASE_URL": "agent-bom-control-plane-admin",
+        "AGENT_BOM_POSTGRES_URL": "agent-bom-control-plane-db",
+        "AGENT_BOM_POSTGRES_MAINTENANCE_URL": "agent-bom-control-plane-maintenance",
+    }
+    assert projected_secret_names(backup_container) == {
+        "AGENT_BOM_POSTGRES_MAINTENANCE_URL": "agent-bom-control-plane-maintenance"
+    }
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_published_control_plane_helm_example_renders() -> None:
+    docs = (REPO_ROOT / "site-docs" / "deployment" / "control-plane-helm.md").read_text(encoding="utf-8")
+    match = re.search(r"Then install with a values file like:\n\n```yaml\n(.*?)\n```", docs, flags=re.DOTALL)
+    assert match is not None
+
+    result = subprocess.run(
+        ["helm", "template", "agent-bom", str(HELM_DIR), "--values", "-"],
+        input=match.group(1),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_backup_restore_workflow_proves_rls_maintenance_dump_contract():
@@ -881,9 +1071,7 @@ def test_backup_restore_workflow_proves_rls_maintenance_dump_contract():
     assert '[ "$role_flags" = "false:false" ]' in workflow
     assert "PGOPTIONS: -c app.bypass_rls=1" in workflow
     assert "PGPASSWORD: maintenancepass" in workflow
-    assert (
-        'pg_dump "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" \\\n            --enable-row-security --format=custom --file "$out"'
-    ) in workflow
+    assert ('pg_dump "$AGENT_BOM_POSTGRES_MAINTENANCE_URL" \\\n            --enable-row-security --format=custom --file "$out"') in workflow
 
 
 def test_scanner_only_cronjob_warning_annotation():
@@ -951,9 +1139,7 @@ def test_control_plane_auth_secret_example_is_shipped_and_enumerates_code_keys()
         "AGENT_BOM_API_KEYS",
     } <= auth
     assert {"AGENT_BOM_POSTGRES_URL"} <= documented["agent-bom-control-plane-db"]
-    assert {"AGENT_BOM_POSTGRES_MAINTENANCE_URL"} <= documented[
-        "agent-bom-control-plane-maintenance"
-    ]
+    assert {"AGENT_BOM_POSTGRES_MAINTENANCE_URL"} <= documented["agent-bom-control-plane-maintenance"]
     assert {"ALEMBIC_DATABASE_URL"} <= documented["agent-bom-control-plane-admin"]
 
 

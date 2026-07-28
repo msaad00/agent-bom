@@ -1,4 +1,4 @@
-# Provider wiring for the one-apply platform root module.
+# Provider wiring for the staged platform root module.
 #
 # The aws provider is configured from var.region. The kubernetes and helm
 # providers authenticate against the target EKS cluster — either the one this

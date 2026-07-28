@@ -56,13 +56,24 @@ module "agent_bom_baseline" {
 }
 ```
 
-Then wire the output into Helm:
+This module is infrastructure-only. Before using its workload values, create
+four distinct Kubernetes Secrets in the release namespace:
+
+- `${release_name}-control-plane-db` with `AGENT_BOM_POSTGRES_URL` for the fixed `agent_bom_app` login
+- `${release_name}-control-plane-maintenance` with `AGENT_BOM_POSTGRES_MAINTENANCE_URL`
+- `${release_name}-control-plane-admin` with `ALEMBIC_DATABASE_URL` from the RDS-managed master secret
+- `${release_name}-control-plane-auth` with the required auth and signing settings
+
+Create and verify those Secrets in a separate operator-controlled sync stage;
+the baseline does not copy secret values or create Kubernetes objects. Then
+save the workload-only output and install the chart:
 
 ```bash
-terraform output -raw helm_values_hint
+terraform output -raw helm_values_hint > baseline-workload-values.yaml
 helm upgrade --install agent-bom deploy/helm/agent-bom \
   --namespace agent-bom --create-namespace \
-  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml \
+  -f baseline-workload-values.yaml
 ```
 
 ## State Security
@@ -70,16 +81,17 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 Terraform/OpenTofu state can contain generated credentials, resource ARNs, and
 customer infrastructure identifiers. For production, keep state in a
 customer-managed encrypted backend such as S3 with SSE-KMS, bucket versioning,
-least-privilege IAM, and state locking. Local state under
-`~/.agent-bom/eks-reference` is intended only for pilots and should live on
-encrypted disk with operator-only permissions.
+least-privilege IAM, and state locking. Any local state is pilot-only and must
+live on encrypted disk with operator-only permissions.
 
-Populate the chart-facing database URL secret after the first apply:
+If the optional empty app secret container is enabled, populate it only with
+the **least-privilege app** URL after the first apply. Never use the RDS master
+login as a runtime URL:
 
 ```bash
 aws secretsmanager put-secret-value \
   --secret-id agent-bom/control-plane-db \
-  --secret-string '{"AGENT_BOM_POSTGRES_URL":"postgresql://agent_bom:REPLACE_ME@REPLACE_ME_RDS_ENDPOINT:5432/agent_bom"}'
+  --secret-string '{"AGENT_BOM_POSTGRES_URL":"postgresql://agent_bom_app:REPLACE_ME@REPLACE_ME_RDS_ENDPOINT:5432/agent_bom?sslmode=require"}'
 ```
 
 ## Destroy / decommission

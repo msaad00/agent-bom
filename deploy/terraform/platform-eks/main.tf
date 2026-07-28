@@ -1,8 +1,10 @@
 ###############################################################################
-# agent-bom platform — one-apply root module
+# agent-bom platform — staged, fail-closed EKS root module
 #
-# A single `terraform apply` stands up the full self-hosted control plane on
-# EKS:
+# Operators pre-populate the runtime/auth Secrets Manager entries named by this
+# module. Terraform then provisions the baseline, synchronizes four distinct
+# Kubernetes Secrets, waits for them to become Ready, runs the admin migration,
+# and only then starts the runtime workloads.
 #
 #   1. Cluster        — reference an existing EKS cluster, OR provision a
 #                       minimal managed one (var.create_cluster).
@@ -14,7 +16,7 @@
 #                       assumes to inventory this AWS account. Keyless.
 #
 # Cloud access is read-only; the only writable infrastructure is the platform's
-# own control-plane database, backup bucket, and secret containers.
+# own control-plane database and backup bucket.
 ###############################################################################
 
 data "aws_caller_identity" "current" {}
@@ -107,6 +109,10 @@ locals {
   resolved_subnets = (
     var.create_cluster ? module.vpc[0].private_subnets : var.private_subnet_ids
   )
+  resolved_db_allowed_security_group_ids = distinct(concat(
+    var.db_allowed_security_group_ids,
+    var.create_cluster ? [module.eks[0].node_security_group_id] : [],
+  ))
 
   effective_image_tag = var.image_tag
 
@@ -151,6 +157,27 @@ locals {
   } : {}
 }
 
+# A newly provisioned node group has one authoritative source security group,
+# which the module can wire automatically. Referenced clusters may use managed
+# nodes, self-managed nodes, Fargate, or security groups for pods, so guessing a
+# source would either fail closed accidentally or open the database too widely.
+resource "terraform_data" "platform_input_validation" {
+  lifecycle {
+    precondition {
+      condition     = var.external_secrets_prerequisites_ready
+      error_message = "Install External Secrets Operator and the aws-secrets-manager ClusterSecretStore first, then set external_secrets_prerequisites_ready=true. Fresh clusters require the documented cluster-first bootstrap."
+    }
+    precondition {
+      condition = (
+        var.create_cluster ||
+        length(var.db_allowed_security_group_ids) > 0 ||
+        length(var.db_allowed_cidr_blocks) > 0
+      )
+      error_message = "referenced EKS clusters require db_allowed_security_group_ids or db_allowed_cidr_blocks so RDS is reachable only from an explicit workload source."
+    }
+  }
+}
+
 ###############################################################################
 # 2. Baseline — RDS + IRSA + S3 + Secrets
 ###############################################################################
@@ -168,20 +195,32 @@ module "baseline" {
   vpc_id             = local.resolved_vpc_id
   private_subnet_ids = local.resolved_subnets
 
-  db_instance_class      = var.db_instance_class
-  db_allocated_storage   = var.db_allocated_storage
-  db_multi_az            = var.db_multi_az
-  db_deletion_protection = var.db_deletion_protection
+  db_allowed_security_group_ids = local.resolved_db_allowed_security_group_ids
+  db_allowed_cidr_blocks        = var.db_allowed_cidr_blocks
+
+  db_instance_class            = var.db_instance_class
+  db_allocated_storage         = var.db_allocated_storage
+  db_multi_az                  = var.db_multi_az
+  db_deletion_protection       = var.db_deletion_protection
+  db_final_snapshot_identifier = var.db_final_snapshot_identifier
+
+  # The standalone baseline can optionally create empty operator-populated
+  # containers. This composed platform requires existing, populated secrets and
+  # therefore must not create unused lookalikes.
+  create_db_url_secret = false
+  create_auth_secret   = false
 
   # Keyless cross-account read: the scanner IRSA role may sts:AssumeRole the
   # read-only connection roles in target accounts (org fan-out / hosted connect).
   connect_role_arns = var.connect_role_arns
 
   tags = var.tags
+
+  depends_on = [terraform_data.platform_input_validation]
 }
 
 ###############################################################################
-# 3. Control plane — Helm release wired to the baseline outputs
+# 3. Secret synchronization and control-plane workload
 ###############################################################################
 
 resource "kubernetes_namespace" "this" {
@@ -190,68 +229,190 @@ resource "kubernetes_namespace" "this" {
   }
 }
 
-# Baseline wiring rendered as a values document. Enables the control plane,
-# binds the scanner/backup IRSA roles, and points External Secrets at the
-# Secrets Manager containers the baseline created.
 locals {
-  baseline_values = {
-    controlPlane = {
-      enabled = true
-      externalSecrets = {
-        enabled = true
-        secretStoreRef = {
-          kind = "ClusterSecretStore"
-          name = "aws-secrets-manager"
+  # RDS rotates its managed master secret independently of the runtime
+  # credential generation. A non-secret apply nonce forces only the admin
+  # ExternalSecret to reconcile before each migration without reading the
+  # master value into Terraform state.
+  admin_refresh_nonce = sha256(timestamp())
+
+  control_plane_secret_names = {
+    app         = "${var.name}-control-plane-db"
+    maintenance = "${var.name}-control-plane-maintenance"
+    admin       = "${var.name}-control-plane-admin"
+    auth        = "${var.name}-control-plane-auth"
+  }
+
+  external_secret_values = {
+    secretStoreRef = {
+      kind = "ClusterSecretStore"
+      name = "aws-secrets-manager"
+    }
+    secrets = [
+      {
+        nameSuffix    = "control-plane-db"
+        refreshPolicy = "OnChange"
+        target        = { name = local.control_plane_secret_names.app }
+        metadata = {
+          annotations = { "force-sync" = var.runtime_credentials_generation }
         }
-        secrets = [
-          # Composed from the RDS-managed master secret rather than read from a
-          # pre-populated entry. RDS owns and rotates that password, so this
-          # keeps the credential out of Terraform state and removes the manual
-          # "populate the DB URL secret" step the documented apply never had.
+        template = {
+          engineVersion = "v2"
+          metadata = {
+            annotations = { "agent-bom.com/credentials-generation" = var.runtime_credentials_generation }
+          }
+          data = {
+            AGENT_BOM_POSTGRES_URL = "postgresql://{{ .username | urlquery | replace \"+\" \"%20\" }}:{{ .password | urlquery | replace \"+\" \"%20\" }}@${module.baseline.db_endpoint}:${module.baseline.db_port}/${module.baseline.db_name}?sslmode=require"
+          }
+        }
+        data = [
           {
-            nameSuffix = "control-plane-db"
-            target     = { name = "${var.name}-control-plane-db" }
-            template = {
-              engineVersion = "v2"
-              data = {
-                AGENT_BOM_POSTGRES_URL = "postgresql://{{ .username }}:{{ .password }}@${module.baseline.db_endpoint}:${module.baseline.db_port}/${module.baseline.db_name}"
-              }
+            secretKey = "username"
+            remoteRef = {
+              key      = var.app_db_secret_name
+              property = "username"
             }
-            data = [
-              {
-                secretKey = "username"
-                remoteRef = {
-                  key      = module.baseline.db_secret_name
-                  property = "username"
-                }
-              },
-              {
-                secretKey = "password"
-                remoteRef = {
-                  key      = module.baseline.db_secret_name
-                  property = "password"
-                }
-              },
-            ]
           },
           {
-            nameSuffix = "control-plane-auth"
-            target     = { name = "${var.name}-control-plane-auth" }
-            data = [{
-              secretKey = "AGENT_BOM_OIDC_ISSUER"
-              remoteRef = {
-                key      = module.baseline.auth_secret_name
-                property = "OIDC_ISSUER"
-              }
-            }]
+            secretKey = "password"
+            remoteRef = {
+              key      = var.app_db_secret_name
+              property = "password"
+            }
           },
         ]
+      },
+      {
+        nameSuffix    = "control-plane-maintenance"
+        refreshPolicy = "OnChange"
+        target        = { name = local.control_plane_secret_names.maintenance }
+        metadata = {
+          annotations = { "force-sync" = var.runtime_credentials_generation }
+        }
+        template = {
+          engineVersion = "v2"
+          metadata = {
+            annotations = { "agent-bom.com/credentials-generation" = var.runtime_credentials_generation }
+          }
+          data = {
+            AGENT_BOM_POSTGRES_MAINTENANCE_URL = "postgresql://{{ .username | urlquery | replace \"+\" \"%20\" }}:{{ .password | urlquery | replace \"+\" \"%20\" }}@${module.baseline.db_endpoint}:${module.baseline.db_port}/${module.baseline.db_name}?sslmode=require"
+          }
+        }
+        data = [
+          {
+            secretKey = "username"
+            remoteRef = {
+              key      = var.maintenance_db_secret_name
+              property = "username"
+            }
+          },
+          {
+            secretKey = "password"
+            remoteRef = {
+              key      = var.maintenance_db_secret_name
+              property = "password"
+            }
+          },
+        ]
+      },
+      {
+        nameSuffix    = "control-plane-admin"
+        refreshPolicy = "OnChange"
+        target        = { name = local.control_plane_secret_names.admin }
+        metadata = {
+          annotations = { "force-sync" = local.admin_refresh_nonce }
+        }
+        template = {
+          engineVersion = "v2"
+          metadata = {
+            annotations = {
+              "agent-bom.com/credentials-generation" = var.runtime_credentials_generation
+              "agent-bom.com/admin-refresh-nonce"    = local.admin_refresh_nonce
+            }
+          }
+          data = {
+            ALEMBIC_DATABASE_URL = "postgresql://{{ .username | urlquery | replace \"+\" \"%20\" }}:{{ .password | urlquery | replace \"+\" \"%20\" }}@${module.baseline.db_endpoint}:${module.baseline.db_port}/${module.baseline.db_name}?sslmode=require"
+          }
+        }
+        data = [
+          {
+            secretKey = "username"
+            remoteRef = {
+              key      = module.baseline.db_secret_name
+              property = "username"
+            }
+          },
+          {
+            secretKey = "password"
+            remoteRef = {
+              key      = module.baseline.db_secret_name
+              property = "password"
+            }
+          },
+        ]
+      },
+      {
+        nameSuffix    = "control-plane-auth"
+        refreshPolicy = "OnChange"
+        target        = { name = local.control_plane_secret_names.auth }
+        metadata = {
+          annotations = { "force-sync" = var.runtime_credentials_generation }
+        }
+        template = {
+          metadata = {
+            annotations = { "agent-bom.com/credentials-generation" = var.runtime_credentials_generation }
+          }
+        }
+        dataFrom = [{
+          extract = { key = var.auth_secret_name }
+        }]
+      },
+    ]
+  }
+
+  # This release owns only ExternalSecret resources. Keeping it separate from
+  # the workload release avoids the pre-install migration race.
+  secret_sync_values = {
+    nameOverride   = var.name
+    scanner        = { enabled = false }
+    rbac           = { create = false }
+    serviceAccount = { create = false }
+    networkPolicy  = { enabled = false }
+    teardownHooks  = { enabled = false }
+    controlPlane = {
+      enabled = false
+      externalSecrets = merge(local.external_secret_values, {
+        enabled  = true
+        syncOnly = true
+      })
+    }
+  }
+
+  workload_values = {
+    nameOverride = var.name
+    podAnnotations = {
+      "agent-bom.com/credentials-generation" = var.runtime_credentials_generation
+    }
+    teardownHooks = { enabled = false }
+    controlPlane = {
+      enabled = true
+      postgresSecrets = {
+        enabled              = true
+        appSecretRef         = { name = local.control_plane_secret_names.app }
+        maintenanceSecretRef = { name = local.control_plane_secret_names.maintenance }
+        adminSecretRef       = { name = local.control_plane_secret_names.admin }
+      }
+      externalSecrets = {
+        enabled  = false
+        syncOnly = false
       }
       api = {
         envFrom = [
-          { secretRef = { name = "${var.name}-control-plane-db" } },
-          { secretRef = { name = "${var.name}-control-plane-auth" } },
+          { secretRef = { name = local.control_plane_secret_names.auth } },
         ]
+      }
+      migrations = {
+        envFrom = []
       }
       backup = {
         enabled = true
@@ -265,6 +426,7 @@ locals {
           prefix       = "agent-bom/postgres"
           bucketRegion = var.region
         }
+        envFrom = []
       }
     }
     serviceAccount = {
@@ -282,6 +444,78 @@ locals {
   }
 }
 
+resource "helm_release" "control_plane_secrets" {
+  name      = "${var.name}-secret-sync"
+  namespace = kubernetes_namespace.this.metadata[0].name
+
+  chart   = var.chart_path
+  version = var.chart_version != "" ? var.chart_version : null
+
+  timeout       = var.helm_timeout_seconds
+  wait          = true
+  atomic        = true
+  recreate_pods = false
+
+  values = [yamlencode(local.secret_sync_values)]
+
+  lifecycle {
+    precondition {
+      condition = length(toset([
+        var.app_db_secret_name,
+        var.maintenance_db_secret_name,
+        var.auth_secret_name,
+        module.baseline.db_secret_name,
+      ])) == 4
+      error_message = "app, maintenance, auth, and RDS master Secrets Manager names must be distinct."
+    }
+  }
+
+  depends_on = [module.baseline, kubernetes_namespace.this]
+}
+
+# Helm can wait for the ExternalSecret objects, but not for the controller to
+# materialize their target Secrets. Use an ephemeral kubeconfig and block until
+# all four sources report Ready and all four target Secrets exist.
+resource "terraform_data" "control_plane_secrets_ready" {
+  triggers_replace = [
+    helm_release.control_plane_secrets.metadata[0].revision,
+    var.app_db_secret_name,
+    var.maintenance_db_secret_name,
+    var.auth_secret_name,
+    var.runtime_credentials_generation,
+    local.admin_refresh_nonce,
+  ]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -eu
+      KUBECONFIG_PATH="$(mktemp)"
+      trap 'rm -f "$KUBECONFIG_PATH"' EXIT
+      aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" --kubeconfig "$KUBECONFIG_PATH" >/dev/null
+      for external_secret in "$APP_SECRET" "$MAINTENANCE_SECRET" "$ADMIN_SECRET" "$AUTH_SECRET"; do
+        kubectl --kubeconfig "$KUBECONFIG_PATH" --namespace "$NAMESPACE" wait --for=condition=Ready "externalsecret.external-secrets.io/$external_secret" --timeout="$WAIT_TIMEOUT"
+        kubectl --kubeconfig "$KUBECONFIG_PATH" --namespace "$NAMESPACE" wait --for=jsonpath='{.metadata.annotations.agent-bom\.com/credentials-generation}'="$CREDENTIALS_GENERATION" "secret/$external_secret" --timeout="$WAIT_TIMEOUT"
+      done
+      kubectl --kubeconfig "$KUBECONFIG_PATH" --namespace "$NAMESPACE" wait --for=jsonpath='{.metadata.annotations.agent-bom\.com/admin-refresh-nonce}'="$ADMIN_REFRESH_NONCE" "secret/$ADMIN_SECRET" --timeout="$WAIT_TIMEOUT"
+    EOT
+
+    environment = {
+      AWS_REGION             = var.region
+      CLUSTER_NAME           = local.cluster_name
+      NAMESPACE              = var.namespace
+      WAIT_TIMEOUT           = "${var.helm_timeout_seconds}s"
+      CREDENTIALS_GENERATION = var.runtime_credentials_generation
+      ADMIN_REFRESH_NONCE    = local.admin_refresh_nonce
+      APP_SECRET             = local.control_plane_secret_names.app
+      MAINTENANCE_SECRET     = local.control_plane_secret_names.maintenance
+      ADMIN_SECRET           = local.control_plane_secret_names.admin
+      AUTH_SECRET            = local.control_plane_secret_names.auth
+    }
+  }
+
+  depends_on = [helm_release.control_plane_secrets]
+}
+
 resource "helm_release" "control_plane" {
   name      = var.name
   namespace = kubernetes_namespace.this.metadata[0].name
@@ -294,17 +528,17 @@ resource "helm_release" "control_plane" {
   atomic        = true
   recreate_pods = false
 
-  # Precedence (low -> high): baseline wiring, image tag, ingress, report
+  # Precedence (low -> high): workload wiring, image tag, ingress, report
   # export, user extras.
   values = compact([
-    yamlencode(local.baseline_values),
+    yamlencode(local.workload_values),
     length(local.image_values) > 0 ? yamlencode(local.image_values) : "",
     length(local.ingress_values) > 0 ? yamlencode(local.ingress_values) : "",
     length(local.report_values) > 0 ? yamlencode(local.report_values) : "",
     var.extra_helm_values,
   ])
 
-  depends_on = [module.baseline]
+  depends_on = [terraform_data.control_plane_secrets_ready]
 }
 
 ###############################################################################

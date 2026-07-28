@@ -10,7 +10,8 @@ post-install onboarding. Complements [`docs/DEPLOY_QUICKSTART.md`](../docs/DEPLO
 ```bash
 scripts/deploy/install.sh list
 scripts/deploy/install.sh pilot                    # local proof
-scripts/deploy/install.sh eks --create-cluster     # AWS production path
+# Configure deploy/terraform/platform-eks/terraform.tfvars and prerequisites first.
+scripts/deploy/install.sh eks                      # staged AWS production path
 scripts/deploy/install.sh connect aws              # read-only account onboarding
 scripts/deploy/install.sh onboard --url URL --api-key KEY
 ```
@@ -121,8 +122,8 @@ If federation is not configured, use Pattern A.
 ## Teardown
 
 ```bash
-scripts/deploy/teardown-eks-reference.sh    # EKS reference install
-helm uninstall agent-bom -n agent-bom        # Helm-only
+cd deploy/terraform/platform-eks && terraform destroy # staged EKS platform after backup + deletion-protection review
+helm uninstall agent-bom -n agent-bom                # Helm-only
 cd deploy/terraform/connect-aws && terraform destroy   # per connect module
 ```
 

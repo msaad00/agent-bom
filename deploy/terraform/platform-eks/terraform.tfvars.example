@@ -1,4 +1,15 @@
-# Example A — provision a fresh, minimal cluster + full platform in one apply.
+# Pre-populate these three Secrets Manager entries before Terraform runs. The
+# database secrets must be JSON objects with fixed usernames and generated
+# passwords; the auth secret must be a JSON object of AGENT_BOM_* environment
+# keys. Only these names enter Terraform state, never their values.
+app_db_secret_name         = "agent-bom/runtime-app"
+maintenance_db_secret_name = "agent-bom/runtime-maintenance"
+auth_secret_name           = "agent-bom/control-plane-auth"
+runtime_credentials_generation = "1" # increment after updating any referenced secret value
+external_secrets_prerequisites_ready = false # set true only after ESO + ClusterSecretStore exist
+db_final_snapshot_identifier = "" # set a new globally unique value before an approved destroy
+
+# Example A — provision a fresh, minimal cluster and the full platform.
 region         = "us-east-1"
 create_cluster = true
 cluster_name   = "agent-bom-platform"
@@ -15,4 +26,7 @@ create_aws_connect_role = true
 # cluster_name       = "my-existing-eks"
 # vpc_id             = "vpc-0123456789abcdef0"
 # private_subnet_ids = ["subnet-aaa", "subnet-bbb", "subnet-ccc"]
+# db_allowed_security_group_ids = ["sg-eks-workload-nodes"]
+# # Or, for a pod-networking model without stable source security groups:
+# # db_allowed_cidr_blocks = ["10.20.0.0/16"]
 # domain             = "agent-bom.internal.example.com"

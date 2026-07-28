@@ -544,12 +544,11 @@ Use the backend story this way:
 - `ClickHouse`: analytics add-on
 - `Snowflake`: warehouse-native and governance-oriented mode with explicit parity limits
 
-For the EKS reference installer, local Terraform/OpenTofu state under
-`~/.agent-bom/eks-reference` is pilot convenience state and may include generated
-database credentials, secret ARNs, and Helm override paths. Production operators
-should migrate that Terraform root to customer-managed encrypted remote state,
-for example S3 with SSE-KMS, versioning, locked-down IAM, and state locking.
-Do not commit, ticket, or share local state artifacts without redaction.
+For `deploy/terraform/platform-eks`, use customer-managed encrypted remote
+state, for example S3 with SSE-KMS, versioning, locked-down IAM, and state
+locking. Secret names and infrastructure identifiers enter state; runtime
+secret values do not. Do not commit, ticket, or share local state artifacts
+without review and redaction.
 
 For the detailed matrix, see `site-docs/deployment/backend-parity.md`.
 

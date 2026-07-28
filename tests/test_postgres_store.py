@@ -533,11 +533,7 @@ def test_job_store_global_paths_use_scoped_maintenance_connection(mock_pool, moc
     store.list_summary(all_tenants=True)
     store.cleanup_expired()
 
-    bypass_settings = [
-        params
-        for sql, params in mock_pool._conn.executed
-        if "set_config('app.bypass_rls'" in sql
-    ]
+    bypass_settings = [params for sql, params in mock_pool._conn.executed if "set_config('app.bypass_rls'" in sql]
     assert bypass_settings == [("1",)] * 5
 
 
@@ -552,11 +548,7 @@ def test_job_store_tenant_paths_never_activate_maintenance_bypass(mock_pool, moc
     store.list_all(tenant_id="tenant-a")
     store.list_summary(tenant_id="tenant-a")
 
-    bypass_settings = [
-        params
-        for sql, params in mock_pool._conn.executed
-        if "set_config('app.bypass_rls'" in sql
-    ]
+    bypass_settings = [params for sql, params in mock_pool._conn.executed if "set_config('app.bypass_rls'" in sql]
     assert bypass_settings == [("0",)] * 4
 
 
@@ -1132,6 +1124,31 @@ def test_resolve_postgres_url_rejects_privileged_role_names(monkeypatch):
         resolve_postgres_url()
 
 
+def test_resolve_postgres_secret_decodes_uri_userinfo(monkeypatch):
+    from agent_bom.api.postgres_common import resolve_postgres_secret
+
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_PASSWORD_FILE", raising=False)
+    monkeypatch.setenv(
+        "AGENT_BOM_POSTGRES_URL",
+        "postgresql://agent_bom_app:p%40ss%3A%2F%3F%23%25%26%2B%20space@db:5432/agent_bom?sslmode=require",
+    )
+
+    assert resolve_postgres_secret() == "p@ss:/?#%&+ space"
+
+
+def test_resolve_postgres_url_decodes_username_before_reencoding(monkeypatch):
+    from agent_bom.api.postgres_common import resolve_postgres_url
+
+    monkeypatch.setenv(
+        "AGENT_BOM_POSTGRES_URL",
+        "postgresql://ops%2Btenant%40example.com:p%40ss@db:5432/agent_bom?sslmode=require",
+    )
+
+    assert resolve_postgres_url() == (
+        "postgresql://ops%2Btenant%40example.com@db:5432/agent_bom?sslmode=require"
+    )
+
+
 def test_get_pool_missing_env(monkeypatch):
     """Missing AGENT_BOM_POSTGRES_URL raises ValueError (or ImportError if psycopg not installed)."""
     from agent_bom.api.postgres_store import _get_pool, reset_pool
@@ -1584,12 +1601,8 @@ def test_graph_store_init_tolerates_restricted_pg_trgm_extension():
     assert pool._conn.transaction_events == ["commit", "commit", "commit", "rollback"]
     assert any("CREATE TABLE IF NOT EXISTS graph_nodes" in sql for sql, _ in pool._conn.executed)
     assert any("ALTER TABLE graph_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed)
-    assert any(
-        "ALTER TABLE graph_build_workspace_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed
-    )
-    assert any(
-        "ALTER TABLE graph_build_workspace_edges ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed
-    )
+    assert any("ALTER TABLE graph_build_workspace_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed)
+    assert any("ALTER TABLE graph_build_workspace_edges ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed)
     assert any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql for sql, _ in pool._conn.executed)
 
 
@@ -1622,9 +1635,7 @@ def test_graph_store_init_backfills_empty_tenant_rows(mock_pool, mock_maintenanc
     assert expected_tables.issubset(delete_tables)
 
 
-def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(
-    mock_pool, mock_maintenance_pool, monkeypatch
-):
+def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api import postgres_graph
     from agent_bom.api.postgres_store import PostgresGraphStore
 
@@ -1751,9 +1762,7 @@ def test_graph_store_search_timeout_is_capped_by_statement_timeout(monkeypatch):
     assert postgres_graph._graph_search_timeout_ms() == 12_000
 
 
-def test_graph_store_attack_paths_for_sources_uses_materialized_table(
-    mock_pool, mock_maintenance_pool, monkeypatch
-):
+def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import AttackPath, EntityType, UnifiedGraph, UnifiedNode
 
@@ -1978,9 +1987,7 @@ def test_audit_append_binds_entry_tenant_for_insert(mock_pool, mock_maintenance_
     )
 
 
-def test_audit_append_rejection_logs_rate_limited_warning(
-    mock_pool, mock_maintenance_pool, caplog, monkeypatch
-):
+def test_audit_append_rejection_logs_rate_limited_warning(mock_pool, mock_maintenance_pool, caplog, monkeypatch):
     """A rejected audit append must emit a (rate-limited) warning so callers
     that swallow audit errors by design cannot lose events invisibly."""
     import logging
@@ -1995,7 +2002,7 @@ def test_audit_append_rejection_logs_rate_limited_warning(
 
     def failing_execute(sql, params=None):
         if sql.strip().lower().startswith("insert into audit_log"):
-            raise RuntimeError('connection postgres://audit:secret@example.invalid/db violated row-level security policy')
+            raise RuntimeError("connection postgres://audit:secret@example.invalid/db violated row-level security policy")
         return real_execute(sql, params)
 
     monkeypatch.setattr(conn, "execute", failing_execute)

@@ -66,66 +66,46 @@ The module outputs:
 - `auth_secret_name`
 - `helm_values_hint`
 
-`helm_values_hint` is a copy/paste bridge into the packaged chart values so the
-module and the chart stay aligned instead of relying on tribal glue.
+`helm_values_hint` is workload-only wiring for four already-created Kubernetes
+Secrets. It does not sync secret values or make the infrastructure-only module
+a one-step installer.
 
 ## Install flow
 
 1. Apply the AWS baseline module.
 2. Create or configure your `ClusterSecretStore` for AWS Secrets Manager.
-3. Populate separate chart-facing app, maintenance, migration/admin, and auth
-   Secrets before installing the workload chart. Until the AWS baseline module
-   exposes all four existing-secret inputs, this is an explicit platform-team
-   prerequisite rather than a module-generated credential contract.
-4. Copy the `helm_values_hint` output into your values file or map it into your
-   Helm pipeline.
+3. Populate and verify separate chart-facing app, maintenance,
+   migration/admin, and auth Kubernetes Secrets in an operator-controlled sync
+   stage. Never use the RDS master login in the app or maintenance Secret.
+4. Save `terraform output -raw helm_values_hint` as
+   `baseline-workload-values.yaml`.
 5. Install the chart:
 
 ```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
   --namespace agent-bom --create-namespace \
-  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml \
+  -f baseline-workload-values.yaml
 ```
 
 ## Destroy flow
 
-Use the packaged teardown helper for the supported reverse path:
+For the composed EKS platform, use the owning Terraform root. First verify a
+backup, stop dependent workloads through the same state, set deletion
+protection false only with approval, and choose a new final snapshot identifier:
 
 ```bash
-export AWS_REGION="<your-aws-region>"
-agent-bom teardown \
-  --cluster-name agent-bom-prod \
-  --region "$AWS_REGION" \
-  --namespace agent-bom \
-  --release agent-bom \
-  --yes
+cd deploy/terraform/platform-eks
+terraform plan -destroy
+terraform destroy
 ```
 
-The helper does the same two-phase decommission in the correct order:
+Terraform removes resources in reverse dependency order:
 
-1. uninstall the Helm release
-2. run Helm pre/post-delete cleanup hooks for generated target secrets, CronJobs, Jobs, and PVCs
-3. wait for in-cluster workloads to disappear
-4. destroy the product-owned Terraform baseline
-
-If you want to inspect the plan first:
-
-```bash
-export AWS_REGION="<your-aws-region>"
-agent-bom teardown \
-  --cluster-name agent-bom-prod \
-  --region "$AWS_REGION" \
-  --namespace agent-bom \
-  --release agent-bom \
-  --dry-run
-```
-
-For teams working directly from a checked-out repo, the equivalent wrapper is:
-
-```bash
-export AWS_REGION="<your-aws-region>"
-scripts/deploy/teardown-eks-reference.sh --cluster-name agent-bom-prod --region "$AWS_REGION" --dry-run
-```
+1. workload Helm release
+2. secret-sync Helm release and generated target Secrets
+3. product-owned RDS, backup, and IAM resources
+4. an optional module-created EKS/VPC
 
 That ordering avoids:
 
@@ -133,7 +113,8 @@ That ordering avoids:
 - live pods holding IRSA assumptions while IAM roles are deleted
 - live API pods trying to reconnect to an RDS instance Terraform is tearing down
 
-The teardown helper intentionally does **not** delete platform-owned shared infrastructure such as:
+In referenced-cluster mode, Terraform intentionally does **not** delete
+platform-owned shared infrastructure such as:
 
 - the EKS cluster itself
 - VPC and subnet topology

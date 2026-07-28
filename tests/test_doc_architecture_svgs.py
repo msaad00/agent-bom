@@ -76,7 +76,7 @@ def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
     """Public onboarding stays accessible while retaining visual workflow proof."""
     titles = [row[0] for row in _readme_persona_rows()]
     for title in (
-        "Local developers",
+        "Developers",
         "AppSec",
         "Security engineers",
         "Platform / SRE",

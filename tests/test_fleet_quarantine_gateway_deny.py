@@ -82,3 +82,49 @@ def test_quarantine_unknown_agent_is_404(client_with_agent):
     assert resp.status_code == 404
     # No policy created for a missing agent.
     assert policy_store.list_policies(tenant_id="default") == []
+
+
+def test_leaving_quarantine_disables_the_deny_policy(client_with_agent):
+    """Releasing an agent must reverse containment, not just relabel it.
+
+    ``PUT /state`` flipped the lifecycle row but left the enforce-mode
+    ``block_tools:["*"]`` policy bound to the agent forever, so a released agent
+    stayed blocked on the control-plane policy path.
+    """
+    client, fleet_store, policy_store = client_with_agent
+
+    client.post("/v1/fleet/agent-123/quarantine")
+    assert policy_store.list_policies(tenant_id="default")[0].enabled is True
+
+    resp = client.put("/v1/fleet/agent-123/state", json={"state": "approved"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["gateway_policy"]["disabled"] is True
+
+    policies = policy_store.list_policies(tenant_id="default")
+    assert len(policies) == 1, "releasing must reuse the same policy, never orphan a second one"
+    assert policies[0].enabled is False
+
+
+def test_requarantine_after_release_reuses_the_same_policy(client_with_agent):
+    """Idempotency has to survive the full quarantine → release → quarantine round trip."""
+    client, fleet_store, policy_store = client_with_agent
+
+    client.post("/v1/fleet/agent-123/quarantine")
+    first_id = policy_store.list_policies(tenant_id="default")[0].policy_id
+    client.put("/v1/fleet/agent-123/state", json={"state": "approved"})
+    client.post("/v1/fleet/agent-123/quarantine")
+
+    policies = policy_store.list_policies(tenant_id="default")
+    assert len(policies) == 1
+    assert policies[0].policy_id == first_id
+    assert policies[0].enabled is True
+
+
+def test_state_change_that_is_not_a_release_leaves_the_policy_alone(client_with_agent):
+    """Only a transition OUT of quarantine reverses containment."""
+    client, fleet_store, policy_store = client_with_agent
+
+    resp = client.put("/v1/fleet/agent-123/state", json={"state": "pending_review"})
+    assert resp.status_code == 200, resp.text
+    assert "gateway_policy" not in resp.json()
+    assert policy_store.list_policies(tenant_id="default") == []

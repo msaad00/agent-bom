@@ -421,9 +421,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
         matched_discovery: list[tuple[Any, FleetAgent | None]] = []
         for discovered_agent in discovered:
             discovered_type = (
-                discovered_agent.agent_type.value
-                if hasattr(discovered_agent.agent_type, "value")
-                else str(discovered_agent.agent_type)
+                discovered_agent.agent_type.value if hasattr(discovered_agent.agent_type, "value") else str(discovered_agent.agent_type)
             )
             match = match_discovered_fleet_agent(
                 existing_agents,
@@ -445,9 +443,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
         ):
             for discovered_agent, existing in matched_discovery:
                 discovered_type = (
-                    discovered_agent.agent_type.value
-                    if hasattr(discovered_agent.agent_type, "value")
-                    else str(discovered_agent.agent_type)
+                    discovered_agent.agent_type.value if hasattr(discovered_agent.agent_type, "value") else str(discovered_agent.agent_type)
                 )
                 discovered_canonical_id = str(getattr(discovered_agent, "canonical_id", "") or "")
                 server_count, pkg_count, cred_count, vuln_count = _server_counts(discovered_agent)
@@ -467,9 +463,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                     existing.updated_at = now
                     existing.config_path = discovered_agent.config_path or ""
                     existing.source_id = str(getattr(discovered_agent, "source_id", "") or existing.source_id)
-                    existing.device_fingerprint = str(
-                        getattr(discovered_agent, "device_fingerprint", "") or existing.device_fingerprint
-                    )
+                    existing.device_fingerprint = str(getattr(discovered_agent, "device_fingerprint", "") or existing.device_fingerprint)
                     store.put(existing)
                     updated_count += 1
                 else:
@@ -543,6 +537,7 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     agent = store.get(agent_id, tenant_id=tenant_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
+    was_quarantined = agent.lifecycle_state == FleetLifecycleState.QUARANTINED
     store.update_state(agent_id, new_state)
     log_action(
         "fleet.state_update",
@@ -551,7 +546,43 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
         tenant_id=tenant_id,
         lifecycle_state=new_state.value,
     )
-    return {"agent_id": agent_id, "lifecycle_state": new_state.value}
+    result: dict[str, Any] = {"agent_id": agent_id, "lifecycle_state": new_state.value}
+
+    # Releasing an agent has to reverse containment, not just relabel it.
+    # Quarantine mints an enforce-mode deny-all policy; leaving the state
+    # without disabling it left the agent blocked forever on the control-plane
+    # policy path. Reuses _quarantine_policy_name so the two sides cannot drift.
+    if was_quarantined and new_state != FleetLifecycleState.QUARANTINED:
+        disabled = _disable_quarantine_policy(agent.name, tenant_id=tenant_id, actor=actor)
+        if disabled is not None:
+            result["gateway_policy"] = {"policy_id": disabled, "disabled": True}
+    return result
+
+
+def _disable_quarantine_policy(agent_name: str, *, tenant_id: str, actor: str) -> str | None:
+    """Disable the agent's quarantine deny policy; return its id when one was found."""
+    from agent_bom.api.audit_log import log_action
+
+    policy_store = _get_policy_store()
+    policy_name = _quarantine_policy_name(agent_name)
+    policy = next(
+        (p for p in policy_store.list_policies(tenant_id=tenant_id) if p.name == policy_name),
+        None,
+    )
+    if policy is None or not policy.enabled:
+        return None
+    policy.enabled = False
+    policy.updated_at = datetime.now(timezone.utc).isoformat()
+    policy_store.put_policy(policy)
+    log_action(
+        "gateway.policy_updated",
+        actor=actor,
+        resource=f"gateway-policy/{policy.policy_id}",
+        tenant_id=tenant_id,
+        origin="fleet_unquarantine",
+        enabled=False,
+    )
+    return str(policy.policy_id)
 
 
 @router.post("/fleet/{agent_id}/quarantine", tags=["fleet"], dependencies=[_dep("policy_write")])

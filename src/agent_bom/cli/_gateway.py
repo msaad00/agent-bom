@@ -288,9 +288,13 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     "--fleet-enforcement",
     type=click.Choice(["off", "warn", "enforce"]),
     envvar="AGENT_BOM_GATEWAY_FLEET_ENFORCEMENT",
-    default="off",
+    default="enforce",
     show_default=True,
-    help="Act on quarantined fleet agents: 'enforce' blocks every call from a quarantined agent, 'warn' audits it, 'off' stays advisory.",
+    help=(
+        "Act on quarantined fleet agents: 'enforce' blocks every call from a quarantined agent, "
+        "'warn' audits it, 'off' stays advisory. Defaults to 'enforce' so quarantine actually "
+        "contains on this relay; the check fails open if the fleet store is unreachable."
+    ),
 )
 @click.option(
     "--graph-reachability-report",

@@ -802,6 +802,39 @@ def revoke_identity(store: AgentIdentityStore, identity_id: str, *, tenant_id: s
     return identity
 
 
+def live_identity_for_agent(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> AgentIdentity | None:
+    """Return one live identity for ``agent_id``, or ``None`` if every one is dead.
+
+    ``identity_for_token`` resolves by token hash, which only matches an
+    agent-bom-issued ``abi_`` token. A caller presenting a JWKS/OIDC JWT or an
+    opaque ``policy.agent_tokens`` mapping never reaches the identity store, so
+    the gateway needs an agent-keyed lookup to honour revocation for them too.
+    """
+    key = (agent_id or "").strip()
+    if not key:
+        return None
+    for identity in store.list(tenant_id, include_inactive=True, limit=200):
+        if (identity.agent_id or "").strip() == key and identity.is_live():
+            return identity
+    return None
+
+
+def agent_identity_revoked(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> bool:
+    """Return True only when ``agent_id`` has identities and none are live.
+
+    An agent with no managed identity at all is *not* revoked — deployments that
+    never issued one must keep working. Rotation also leaves revoked rows behind,
+    so a single live identity is enough to keep the agent alive.
+    """
+    key = (agent_id or "").strip()
+    if not key:
+        return False
+    known = [i for i in store.list(tenant_id, include_inactive=True, limit=200) if (i.agent_id or "").strip() == key]
+    if not known:
+        return False
+    return not any(i.is_live() for i in known)
+
+
 def request_jit_grant(
     store: AgentIdentityStore,
     *,

@@ -5,7 +5,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -18,6 +18,25 @@ pytest.importorskip("mcp", reason="mcp SDK not installed — pip install 'agent-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_registry_network():
+    """Keep this module hermetic — no test here may reach a package registry.
+
+    The ``check`` tool confirms a pinned version actually exists before calling
+    it clean, which is a live npm/PyPI lookup. Tests that only mocked the
+    scanner still made that request, so their result depended on CI egress:
+    a blocked or rate-limited runner turned "clean" into "unknown" and failed
+    the build on one Python version while the others passed.
+
+    The real published/unpublished semantics are covered deliberately in
+    ``tests/test_mcp_check_version_existence.py``, which mocks this same
+    function both ways. Here it is pinned to "published" so these tests
+    exercise the scanner path they are actually about.
+    """
+    with patch("agent_bom.mcp_tools.scanning._version_published", new=AsyncMock(return_value=True)):
+        yield
 
 
 def _run(coro):
@@ -122,9 +141,7 @@ def test_static_operator_token_authorizes_every_registered_write_family():
     assert operator_access is not None
     server_root = Path(__file__).resolve().parents[1] / "src" / "agent_bom"
     required_scopes = {
-        match
-        for path in server_root.glob("mcp_server_*.py")
-        for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
+        match for path in server_root.glob("mcp_server_*.py") for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
     }
     assert required_scopes == {"findings:write", "identity:write", "shield:write", "ticketing:write"}
     for required_scope in required_scopes:

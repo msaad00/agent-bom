@@ -374,6 +374,14 @@ class PostgresRuntimeWorkloadEvidenceStore:
             reset_current_tenant(token)
 
     def _create_schema(self, conn: Connection) -> None:
+        # Serialize bootstrap DDL across processes. Every store construction runs
+        # this path, so replicas and workers starting together each issue
+        # CREATE INDEX / ALTER TABLE / DROP INDEX plus the v2 backfill UPDATE on
+        # the same relation. Those take conflicting relation-level locks and
+        # deadlock rather than queue — reproducible with concurrent writers
+        # against real Postgres. The advisory lock is transaction-scoped, so it
+        # releases on the commit below (or on rollback) with no cleanup path.
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"agent_bom.schema.{self.table}",))
         conn.execute(
             f"""
             CREATE TABLE IF NOT EXISTS {self.table} (

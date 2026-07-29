@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import JobStatus, _get_store, app, configure_api
@@ -12,6 +13,31 @@ from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_e
 
 _AUTH_HEADERS = proxy_headers(tenant="default")
 _ADMIN_HEADERS = proxy_headers(role="admin", tenant="default")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_overview_process_globals():
+    """Drop every process-global the overview reads, before and after each test.
+
+    ``/v1/overview`` answers from more than the job store: ``hub_overview_cache``
+    holds a TTL-bounded per-tenant severity/KEV cache that any other test in the
+    same worker can populate for ``default``. ``_clear_jobs`` resets the job
+    store and the overview route's own cache but not that one, so a cached
+    ``{"critical": 3, ...}`` survived into these tests and the exec-headline
+    assertions read another test's data — the file passed alone and failed under
+    ``pytest-randomly`` + ``xdist`` depending on which files shared the worker.
+    """
+
+    from agent_bom.api import hub_overview_cache
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    def _reset() -> None:
+        hub_overview_cache.reset_hub_overview_cache()
+        get_compliance_hub_store().clear("default")
+
+    _reset()
+    yield
+    _reset()
 
 
 def _recent_stamp() -> str:
@@ -456,9 +482,7 @@ def test_overview_vuln_tile_ok_when_only_low_severity() -> None:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     get_compliance_hub_store().clear("default")
-    _ingest_hub_findings(
-        [{"finding_id": "L-1", "severity": "low", "title": "cve", "vulnerability_id": "CVE-2025-low"}]
-    )
+    _ingest_hub_findings([{"finding_id": "L-1", "severity": "low", "title": "cve", "vulnerability_id": "CVE-2025-low"}])
     data = client_get_overview()
     vuln = data["domains"]["vuln"]
     assert vuln["metric"] > 0

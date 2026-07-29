@@ -734,6 +734,44 @@ function GraphPageInner() {
   );
   const [blastRadius, setBlastRadius] = useState<BlastRadiusState | null>(null);
   const [loadingBlast, setLoadingBlast] = useState(false);
+  // Containment is a two-step action: the first click arms it, the second
+  // commits. Blocking every tool call for an agent is not a one-click gesture.
+  const [quarantine, setQuarantine] = useState<{
+    state: "idle" | "confirming" | "pending" | "done" | "error";
+    message: string;
+  }>({ state: "idle", message: "" });
+
+  const quarantineSelectedAgent = useCallback(
+    async (node: LineageNodeData | null) => {
+      const label = node?.label?.trim();
+      if (!label) return;
+      if (quarantine.state === "idle" || quarantine.state === "error") {
+        setQuarantine({
+          state: "confirming",
+          message: `Blocks every tool call from ${label} at the gateway. Release it from the fleet roster.`,
+        });
+        return;
+      }
+      if (quarantine.state !== "confirming") return;
+      setQuarantine({ state: "pending", message: "" });
+      try {
+        await quarantineAgentByLabel(label);
+        setQuarantine({ state: "done", message: `${label} is quarantined; every tool call is now denied.` });
+      } catch (e) {
+        setQuarantine({
+          state: "error",
+          message: e instanceof Error ? e.message : "Quarantine failed.",
+        });
+      }
+    },
+    [quarantine.state],
+  );
+
+  // Containment state belongs to one agent. Without this reset, opening a
+  // different node would show it already "quarantined".
+  useEffect(() => {
+    setQuarantine({ state: "idle", message: "" });
+  }, [selectedNodeId]);
   const [blastError, setBlastError] = useState<string | null>(null);
   const [rollupView, setRollupView] = useState<GraphRollupResponse | null>(null);
   const [rollupStack, setRollupStack] = useState<RollupBreadcrumb[]>(() => {
@@ -2449,6 +2487,22 @@ function GraphPageInner() {
                   label="paths"
                   accent="blue"
                 />
+                {/* Spend is opt-in by data: a tenant with no ingested LLM cost
+                    sees the header exactly as before rather than a $0 tile. */}
+                {flow.summary.costUsd30d > 0 && (
+                  <MetricCard
+                    value={flow.summary.costUsd30d}
+                    label="spend 30d"
+                    format="usd"
+                  />
+                )}
+                {flow.summary.expensiveExposed > 0 && (
+                  <MetricCard
+                    value={flow.summary.expensiveExposed}
+                    label="expensive & exposed"
+                    accent="red"
+                  />
+                )}
               </>
             )}
 
@@ -3366,6 +3420,9 @@ function GraphPageInner() {
               }}
               blastRadiusActive={blastRadius?.rootId === selectedNodeId}
               blastRadiusLoading={loadingBlast}
+              quarantineState={quarantine.state}
+              quarantineMessage={quarantine.message}
+              onQuarantine={() => void quarantineSelectedAgent(selectedNode)}
               onShowBlastRadius={
                 selectedNodeId
                   ? () =>
@@ -3384,14 +3441,34 @@ function GraphPageInner() {
   );
 }
 
+/** Resolve a graph agent label to its fleet id, then contain it at the gateway.
+ *
+ * The graph knows an agent by label; quarantine is keyed by fleet id, so this
+ * bridges the two through the existing fleet list. An agent that is not in the
+ * roster cannot be contained — say so plainly rather than failing silently.
+ */
+async function quarantineAgentByLabel(label: string): Promise<string> {
+  const roster = await api.listFleet({ search: label, include_quarantined: true });
+  const match = roster.agents.find(
+    (agent) => (agent.name || "").trim().toLowerCase() === label.trim().toLowerCase(),
+  );
+  if (!match) {
+    throw new Error(`"${label}" is not registered in the fleet roster, so it cannot be quarantined.`);
+  }
+  await api.quarantineFleetAgent(match.agent_id);
+  return match.agent_id;
+}
+
 function MetricCard({
   value,
   label,
   accent = "zinc",
+  format = "count",
 }: {
   value: number;
   label: string;
   accent?: "zinc" | "red" | "orange" | "blue";
+  format?: "count" | "usd";
 }) {
   const accentClass =
     accent === "red"
@@ -3402,9 +3479,18 @@ function MetricCard({
           ? "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200"
           : "border-[var(--border-subtle)] bg-[var(--surface)]/80 text-[var(--text-secondary)]";
 
+  const rendered =
+    format === "usd"
+      ? value.toLocaleString(undefined, {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: value < 100 ? 2 : 0,
+        })
+      : value.toLocaleString();
+
   return (
     <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
-      <span className="font-mono text-[var(--foreground)]">{value}</span> {label}
+      <span className="font-mono text-[var(--foreground)]">{rendered}</span> {label}
     </div>
   );
 }

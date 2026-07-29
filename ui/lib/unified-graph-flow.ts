@@ -42,6 +42,19 @@ export interface UnifiedGraphFlowSummary {
   critical: number;
   attackPaths: number;
   runtimeEdges: number;
+  /** Rolling 30-day spend across the nodes currently visible, in USD. */
+  costUsd30d: number;
+  /** Visible nodes the cost overlay flagged as both high-cost and high-risk. */
+  expensiveExposed: number;
+}
+
+/** Read a numeric node attribute, ignoring absent or non-numeric values.
+ *
+ * Node attributes are an untyped bag written by backend overlays, so a string
+ * or null must degrade to 0 rather than propagate NaN into the header.
+ */
+function numericAttribute(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function safeGraphConnection(value: string): string {
@@ -700,6 +713,17 @@ function buildSummary(
       RUNTIME_RELATIONSHIPS.has(String(edge.relationship)),
   ).length;
 
+  // Spend is summed over the visible nodes only, so the header reconciles with
+  // what is actually on the canvas rather than reporting an estate-wide figure
+  // beside a filtered graph.
+  const costUsd30d = nodes.reduce(
+    (total, node) => total + numericAttribute(node.data.attributes?.cost_usd_30d),
+    0,
+  );
+  const expensiveExposed = nodes.filter(
+    (node) => node.data.attributes?.cost_risk_priority === "expensive_and_exposed",
+  ).length;
+
   return {
     agents: nodes.filter((node) => node.data.nodeType === "agent").length,
     servers: nodes.filter((node) => node.data.nodeType === "server").length,
@@ -707,6 +731,8 @@ function buildSummary(
     critical,
     attackPaths: graph.attack_paths.length,
     runtimeEdges,
+    costUsd30d: Math.round(costUsd30d * 1e6) / 1e6,
+    expensiveExposed,
   };
 }
 

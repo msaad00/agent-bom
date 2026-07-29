@@ -151,3 +151,66 @@ describe("buildUnifiedFlowGraph", () => {
     });
   });
 });
+
+describe("cost summary", () => {
+  function costGraph(attrs: Record<string, unknown>[]): UnifiedGraphData {
+    const nodes = attrs.map((a, i) => ({
+      ...node(`agent:a${i}`, EntityType.AGENT, `agent-${i}`),
+      attributes: a as Record<string, never>,
+    }));
+    return {
+      scan_id: "scan-cost",
+      tenant_id: "default",
+      created_at: createdAt,
+      nodes,
+      edges: [],
+      attack_paths: [],
+      interaction_risks: [],
+      stats: {
+        total_nodes: nodes.length,
+        total_edges: 0,
+        node_types: {},
+        severity_counts: {},
+        relationship_types: {},
+        attack_path_count: 0,
+        interaction_risk_count: 0,
+        max_attack_path_risk: 0,
+        highest_interaction_risk: 0,
+        analysis_status: {},
+      },
+    } as unknown as UnifiedGraphData;
+  }
+
+  it("sums windowed spend across visible nodes", () => {
+    const flow = buildUnifiedFlowGraph(
+      costGraph([{ cost_usd_30d: 12.5 }, { cost_usd_30d: 7.25 }, {}]),
+      createFocusedGraphFilters(""),
+    );
+    expect(flow.summary.costUsd30d).toBeCloseTo(19.75, 5);
+  });
+
+  it("counts nodes that are both expensive and exposed", () => {
+    const flow = buildUnifiedFlowGraph(
+      costGraph([
+        { cost_usd_30d: 500, cost_risk_priority: "expensive_and_exposed" },
+        { cost_usd_30d: 10 },
+      ]),
+      createFocusedGraphFilters(""),
+    );
+    expect(flow.summary.expensiveExposed).toBe(1);
+  });
+
+  it("reports zero when no node carries cost, so the strip stays hidden", () => {
+    const flow = buildUnifiedFlowGraph(costGraph([{}, {}]), createFocusedGraphFilters(""));
+    expect(flow.summary.costUsd30d).toBe(0);
+    expect(flow.summary.expensiveExposed).toBe(0);
+  });
+
+  it("ignores a non-numeric cost attribute rather than rendering NaN", () => {
+    const flow = buildUnifiedFlowGraph(
+      costGraph([{ cost_usd_30d: "not-a-number" }, { cost_usd_30d: 5 }]),
+      createFocusedGraphFilters(""),
+    );
+    expect(flow.summary.costUsd30d).toBe(5);
+  });
+});

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Loader2, Network, Radar } from "lucide-react";
+import { ArrowRight, Loader2, Network, Radar, ShieldAlert } from "lucide-react";
 
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import type { LineageNodeData } from "@/components/lineage-nodes";
@@ -31,6 +31,9 @@ export function GraphEntityDrawer({
   blastRadiusLoading = false,
   onExpandNeighbors,
   onShowImpact,
+  onQuarantine,
+  quarantineState = "idle",
+  quarantineMessage = "",
   remediationHref,
   enrich = true,
 }: {
@@ -43,6 +46,10 @@ export function GraphEntityDrawer({
   blastRadiusLoading?: boolean;
   onExpandNeighbors?: (() => void) | undefined;
   onShowImpact?: (() => void) | undefined;
+  /** Contain this agent at the gateway. Agent nodes only; drawer stays presentational. */
+  onQuarantine?: (() => void) | undefined;
+  quarantineState?: "idle" | "confirming" | "pending" | "done" | "error";
+  quarantineMessage?: string;
   remediationHref?: string | undefined;
   /** When true and scanId is set, refresh node detail from /v1/graph/node. */
   enrich?: boolean;
@@ -156,6 +163,33 @@ export function GraphEntityDrawer({
               Impact
             </button>
           ) : null}
+        </div>
+      )}
+      {onQuarantine && enriched.nodeType === "agent" && (
+        <div className="space-y-1.5 border-t border-[color:var(--border-subtle)] pt-2">
+          <button
+            type="button"
+            onClick={onQuarantine}
+            disabled={quarantineState === "pending" || quarantineState === "done"}
+            data-testid="graph-quarantine-agent"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-2 text-[11px] font-medium text-red-700 transition hover:border-red-500/60 disabled:opacity-60 dark:text-red-200"
+          >
+            <ShieldAlert className="h-3.5 w-3.5" />
+            {quarantineState === "confirming"
+              ? "Confirm — block every tool call"
+              : quarantineState === "pending"
+                ? "Quarantining…"
+                : quarantineState === "done"
+                  ? "Quarantined"
+                  : "Quarantine agent"}
+          </button>
+          {quarantineMessage && (
+            <p
+              className={`text-[10px] ${quarantineState === "error" ? "text-red-600 dark:text-red-300" : "text-[color:var(--text-tertiary)]"}`}
+            >
+              {quarantineMessage}
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -388,8 +388,42 @@ def test_gateway_activity_window_index_is_chained_and_matches_runtime_schema() -
     assert _canonical_sql(index_ddl) in _canonical_sql(sql)
     runtime_index_ddl = index_ddl.replace(" CONCURRENTLY", "")
     assert _canonical_sql(runtime_index_ddl) in _canonical_sql(RUNTIME_SCHEMA_SQL.read_text())
+    assert "SELECT to_regclass('public.gateway_activity_events')" in sql
     assert "autocommit_block" in sql
     assert "DROP TABLE" not in sql
+
+
+def test_gateway_activity_window_index_allows_legacy_schema_without_ledger(monkeypatch) -> None:
+    """A stamped 0.98.2 database may not have provisioned the optional ledger."""
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
+    migration = _load_module(GATEWAY_ACTIVITY_WINDOW_INDEX, "gateway_activity_window_index_legacy")
+    statements: list[str] = []
+
+    class _MissingRelationResult:
+        @staticmethod
+        def scalar():
+            return None
+
+    class _LegacyBind:
+        @staticmethod
+        def exec_driver_sql(statement: str):
+            statements.append(statement)
+            return _MissingRelationResult()
+
+    def _unexpected_context():
+        raise AssertionError("the concurrent index block must be skipped when the ledger is absent")
+
+    migration.op = SimpleNamespace(
+        get_bind=lambda: _LegacyBind(),
+        get_context=_unexpected_context,
+        execute=lambda _statement: (_ for _ in ()).throw(
+            AssertionError("no index DDL is valid without the ledger")
+        ),
+    )
+
+    migration.upgrade()
+
+    assert statements == ["SELECT to_regclass('public.gateway_activity_events')"]
 
 
 def test_trusted_maintenance_migration_is_forward_only_and_preserves_queue_rows() -> None:

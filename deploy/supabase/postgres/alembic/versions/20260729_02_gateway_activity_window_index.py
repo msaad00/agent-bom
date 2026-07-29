@@ -15,6 +15,16 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # A 0.98.2 deployment may have been stamped at the previous revision by
+    # the legacy bootstrap path without provisioning the optional runtime
+    # ledger.  Keep that supported forward-upgrade path non-destructive; the
+    # runtime bootstrap creates this same index when it creates the ledger.
+    relation = op.get_bind().exec_driver_sql(
+        "SELECT to_regclass('public.gateway_activity_events')"
+    ).scalar()
+    if relation is None:
+        return
+
     with op.get_context().autocommit_block():
         op.execute(
             "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gateway_activity_events_tenant_event_time "

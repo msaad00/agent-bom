@@ -21,9 +21,10 @@ Stores seeded (all the ones the gateway/proxy/runtime dashboards read):
       ``/v1/gateway/stats``.
 
 Events reuse the demo estate's real agent / server / tool names so the feed is
-consistent with the showcase graph. Everything is deterministic (a fixed time
-anchor, no wall-clock or randomness) and idempotent (re-running detects the
-demo marker and skips) so repeated bootstraps do not inflate the counters.
+consistent with the showcase graph. Event content and relative ordering are
+deterministic, while timestamps are anchored to the current UTC day so exact
+daily KPI windows remain truthful. Seeding is idempotent within that day, so
+repeated bootstraps do not inflate the counters.
 
 The event records are shaped exactly like alerts ingested through
 ``/v1/proxy/audit`` (they are pushed through ``push_proxy_alert``, which applies
@@ -47,19 +48,18 @@ _logger = logging.getLogger(__name__)
 # events are unmistakably demo data (never mixed with real ingested traffic).
 _DEMO_SOURCE_ID = "demo-estate-gateway"
 
-# Fixed time anchor — deterministic across runs (no Date.now / randomness). The
-# gateway KPI counters and feed are windowed by ring-buffer contents, not a
-# wall-clock midnight cut, so a fixed anchor still reads as recent activity.
-_ANCHOR = datetime(2026, 7, 6, 15, 30, 0, tzinfo=timezone.utc)
+def _event_time(anchor: datetime, minutes_ago: int) -> datetime:
+    """Return an event time inside the anchor's exact UTC-day KPI window."""
+    start_of_day = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(start_of_day, anchor - timedelta(minutes=minutes_ago))
 
 
-def _ts(minutes_ago: int) -> str:
-    """ISO-8601 timestamp ``minutes_ago`` before the fixed anchor."""
-    return (_ANCHOR - timedelta(minutes=minutes_ago)).isoformat()
+def _ts(anchor: datetime, minutes_ago: int) -> str:
+    return _event_time(anchor, minutes_ago).isoformat()
 
 
-def _epoch(minutes_ago: int) -> float:
-    return (_ANCHOR - timedelta(minutes=minutes_ago)).timestamp()
+def _epoch(anchor: datetime, minutes_ago: int) -> float:
+    return _event_time(anchor, minutes_ago).timestamp()
 
 
 # ── Curated feed ────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ _FIREWALL_DECISIONS: tuple[tuple[int, str, str, str, dict[str, Any] | None], ...
 )
 
 
-def _proxy_metrics_summary(tenant_id: str) -> dict[str, Any]:
+def _proxy_metrics_summary(tenant_id: str, *, anchor: datetime) -> dict[str, Any]:
     """Believable traffic / uptime rollup for the proxy + runtime dashboards.
 
     Numbers are a curated day of activity — larger than the visible feed sample
@@ -166,8 +166,8 @@ def _proxy_metrics_summary(tenant_id: str) -> dict[str, Any]:
         "tenant_id": tenant_id,
         "source_id": _DEMO_SOURCE_ID,
         "session_id": "demo-estate",
-        "received_at": _ts(0),
-        "ts": _ts(0),
+        "received_at": _ts(anchor, 0),
+        "ts": _ts(anchor, 0),
         "uptime_seconds": 356_400.0,  # ~4.1 days
         "total_tool_calls": total_tool_calls,
         "total_blocked": total_blocked,
@@ -177,12 +177,14 @@ def _proxy_metrics_summary(tenant_id: str) -> dict[str, Any]:
     }
 
 
-def _tenant_has_demo_gateway_events(tenant_id: str) -> bool:
-    """True when this tenant's proxy alert buffer already holds the demo feed."""
+def _tenant_has_demo_gateway_events(tenant_id: str, *, anchor: datetime) -> bool:
+    """True when this tenant already holds the current UTC day's demo feed."""
     from agent_bom.api.routes.proxy import _load_proxy_alerts
 
+    day_prefix = anchor.date().isoformat()
     for alert in _load_proxy_alerts(tenant_id):
-        if str(alert.get("source_id") or "") == _DEMO_SOURCE_ID:
+        event_time = str(alert.get("timestamp") or alert.get("ts") or "")
+        if str(alert.get("source_id") or "") == _DEMO_SOURCE_ID and event_time.startswith(day_prefix):
             return True
     return False
 
@@ -192,15 +194,16 @@ def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT) -> dict[st
     from agent_bom.api.routes.proxy import push_proxy_alert, push_proxy_metrics
     from agent_bom.api.stores import _get_firewall_decision_store
 
-    if _tenant_has_demo_gateway_events(tenant_id):
+    anchor = datetime.now(timezone.utc).replace(microsecond=0)
+    if _tenant_has_demo_gateway_events(tenant_id, anchor=anchor):
         return {"seeded": False, "reason": "already_present", "tenant_id": tenant_id}
 
     authorized = blocked = data_filters = shadow_blocked = 0
     for (minutes_ago, agent_name, tool_name, event_type, detector, decision, reason_code, severity) in _FEED_EVENTS:
         alert = {
-            "event_id": f"{_DEMO_SOURCE_ID}:{minutes_ago}:{tool_name}",
-            "ts": _ts(minutes_ago),
-            "timestamp": _ts(minutes_ago),
+            "event_id": f"{_DEMO_SOURCE_ID}:{anchor.date().isoformat()}:{minutes_ago}:{tool_name}",
+            "ts": _ts(anchor, minutes_ago),
+            "timestamp": _ts(anchor, minutes_ago),
             "tenant_id": tenant_id,
             "source_id": _DEMO_SOURCE_ID,
             "session_id": "demo-estate",
@@ -224,7 +227,7 @@ def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT) -> dict[st
             if detector in {"undeclared_agent", "shadow_mcp"}:
                 shadow_blocked += 1
 
-    push_proxy_metrics(_proxy_metrics_summary(tenant_id))
+    push_proxy_metrics(_proxy_metrics_summary(tenant_id, anchor=anchor))
 
     firewall_store = _get_firewall_decision_store()
     for (minutes_ago, source_agent, target_agent, decision, matched_rule) in _FIREWALL_DECISIONS:
@@ -238,7 +241,7 @@ def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT) -> dict[st
                 "effective_decision": decision,
                 "matched_rule": matched_rule,
                 "enforcement_mode": "enforce",
-                "timestamp": _epoch(minutes_ago),
+                "timestamp": _epoch(anchor, minutes_ago),
                 "tenant_id": tenant_id,
             },
         )

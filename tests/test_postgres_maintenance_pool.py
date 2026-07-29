@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 import types
 
@@ -226,7 +227,8 @@ def test_combined_preflight_preserves_explicit_single_tenant_superuser_acknowled
     monkeypatch.setattr(postgres_common, "ALLOW_SUPERUSER_DB", True)
     _install_pool_factory(monkeypatch, app_super=True)
 
-    postgres_common.preflight_rls_capable_role()
+    with caplog.at_level(logging.WARNING, logger=postgres_common.logger.name):
+        postgres_common.preflight_rls_capable_role()
 
     assert postgres_common._pool is not postgres_common._maintenance_pool
     assert any("disposable single-tenant/dev" in record.message for record in caplog.records)

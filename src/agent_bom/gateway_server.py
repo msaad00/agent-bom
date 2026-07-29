@@ -377,7 +377,11 @@ def _agent_identity_revoked(tenant_id: str, source_agent: str) -> tuple[bool, bo
     try:
         from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
 
-        return agent_identity_revoked(get_agent_identity_store(), tenant_id, source_agent), False
+        # The store returns its own "lookup incomplete" signal when the roster
+        # exceeded the scan cap: absence of a matching identity is then unproven
+        # and must not be read as "authorized".
+        revoked, lookup_incomplete = agent_identity_revoked(get_agent_identity_store(), tenant_id, source_agent)
+        return revoked, lookup_incomplete
     except Exception as exc:  # noqa: BLE001
         logger.warning("gateway agent identity revocation check failed: %s", _sanitize_for_log(exc))
         return False, True

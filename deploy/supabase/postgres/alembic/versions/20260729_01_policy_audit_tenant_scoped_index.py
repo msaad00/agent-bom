@@ -28,14 +28,43 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # A pre-existing duplicate across tenants is impossible: the old index made
-    # it unrepresentable. So the tenant-scoped index can be built directly.
-    op.execute("DROP INDEX IF EXISTS uq_policy_audit_log_entry")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(team_id, entry_id)")
+    # policy_audit_log is created by init.sql or lazily by the policy store, so
+    # a database migrating forward from an older revision may not have it yet —
+    # the legacy upgrade contract starts from a fixture that has only scan_jobs
+    # and scan_dispatch_queue. Rebuild the index only when the table is actually
+    # present; the runtime store creates the tenant-scoped index itself on first
+    # use, and init.sql ships it for fresh bootstraps.
+    #
+    # A pre-existing duplicate across tenants is impossible — the old index made
+    # it unrepresentable — so the new index can be built without deduping first.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF to_regclass('public.policy_audit_log') IS NOT NULL THEN
+                DROP INDEX IF EXISTS uq_policy_audit_log_entry;
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry
+                    ON policy_audit_log(team_id, entry_id);
+            END IF;
+        END
+        $$;
+        """
+    )
 
 
 def downgrade() -> None:
     # Narrowing back can fail if two tenants have since written the same
     # entry_id — which is exactly the data this migration exists to preserve.
-    op.execute("DROP INDEX IF EXISTS uq_policy_audit_log_entry")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id)")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF to_regclass('public.policy_audit_log') IS NOT NULL THEN
+                DROP INDEX IF EXISTS uq_policy_audit_log_entry;
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry
+                    ON policy_audit_log(entry_id);
+            END IF;
+        END
+        $$;
+        """
+    )

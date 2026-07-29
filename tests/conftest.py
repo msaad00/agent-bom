@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import tempfile
+import types
 from typing import Any
 
 import pytest
@@ -588,6 +589,46 @@ def _restore_scanner_globals(snapshot: list[tuple[Any, str, Any]]) -> None:
             pass
 
 
+# Optional provider SDKs that tests fake by writing synthetic modules straight
+# into `sys.modules`. Those entries outlive the test that wrote them, so under
+# `--dist worksteal` a stub from one file can already be installed when an
+# unrelated file starts — and a victim installer that `setdefault`s then no-ops,
+# patches an orphan module, and the code under test resolves the leaked stub.
+# Snapshot/restore the namespace so no test can hand one to the next.
+_STUB_SDK_ROOTS = (
+    "boto3",
+    "botocore",
+    "databricks",
+    "google",
+    "googleapiclient",
+    "snowflake",
+)
+
+
+def _is_stub_module(module: Any) -> bool:
+    """True for a hand-rolled test double, false for a genuinely imported package.
+
+    Real packages carry an import `__spec__`; `types.ModuleType(...)` doubles and
+    `MagicMock` stand-ins do not. Restoring only stubs keeps a real optional SDK
+    (installed in some CI images but not others) out of the blast radius.
+    """
+    return not isinstance(module, types.ModuleType) or getattr(module, "__spec__", None) is None
+
+
+def _snapshot_stub_sdk_modules() -> dict[str, Any]:
+    return {name: module for name, module in sys.modules.items() if name.split(".", 1)[0] in _STUB_SDK_ROOTS}
+
+
+def _restore_stub_sdk_modules(snapshot: dict[str, Any]) -> None:
+    for name in [name for name in sys.modules if name.split(".", 1)[0] in _STUB_SDK_ROOTS]:
+        current = sys.modules[name]
+        if name not in snapshot:
+            if _is_stub_module(current):
+                del sys.modules[name]
+        elif current is not snapshot[name] and _is_stub_module(current):
+            sys.modules[name] = snapshot[name]
+
+
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
     """Reset process-global caches so test order does not affect outcomes."""
@@ -637,11 +678,18 @@ def reset_global_test_state():
     # binding + include_unfixed share the same set_*() global-mutation pattern.
     scanner_offline_snapshot = _snapshot_scanner_globals()
 
+    # Snapshot the faked provider-SDK entries in sys.modules (see
+    # _STUB_SDK_ROOTS). Taken AFTER module-scoped setup so a module-wide stub is
+    # preserved across that module's tests; anything a test body installs is
+    # reverted on teardown and cannot shadow the next test's own mock.
+    stub_sdk_modules_snapshot = _snapshot_stub_sdk_modules()
+
     yield
 
     # Drain first: stop any scan worker thread the test left running before we
     # restore globals it may still be mutating (scanner offline flags, stores).
     _drain_scan_executor()
+    _restore_stub_sdk_modules(stub_sdk_modules_snapshot)
     root_logger.handlers[:] = logging_handlers_snapshot
     root_logger.setLevel(logging_level_snapshot)
     _restore_scanner_globals(scanner_offline_snapshot)

@@ -34,11 +34,11 @@ _REPO_ROOT = _TESTS_ROOT.parent
 _CLOUD_FIXTURES = _TESTS_ROOT / "fixtures" / "cloud"
 
 # Provider SDKs that tests inject as mocks (or patch to None) in sys.modules.
-# The cloud submodules import these at module level, so reloading a submodule
-# while its SDK is mocked/absent rebinds the submodule against that transient
-# state. Left in place, that leaks into the next test on the same worker —
-# e.g. `_install_mock_snowflake()` uses setdefault and silently no-ops once a
-# prior mock persists, so discover() finds zero agents.
+# Reloading a cloud submodule while its SDK is mocked/absent rebinds that
+# submodule against the transient state, so it is restored per test here.
+# The sys.modules entries themselves are additionally snapshotted/restored for
+# every test by `reset_global_test_state` in tests/conftest.py, which is what
+# keeps a stub installed by ANOTHER file off this module's back.
 _MOCK_PROVIDER_SDK_MODULES = (
     "boto3",
     "botocore",
@@ -136,7 +136,11 @@ def _install_mock_boto3():
 
 
 def _install_mock_databricks():
-    """Install a mock databricks-sdk in sys.modules."""
+    """Install a mock databricks-sdk in sys.modules.
+
+    Assigns rather than ``setdefault``s: a stub another module leaked must not
+    win the import while the caller patches the object returned here.
+    """
     databricks = types.ModuleType("databricks")
     databricks_sdk = types.ModuleType("databricks.sdk")
     databricks_sdk_errors = types.ModuleType("databricks.sdk.errors")
@@ -149,15 +153,19 @@ def _install_mock_databricks():
     databricks_sdk.errors = databricks_sdk_errors
     databricks.sdk = databricks_sdk
 
-    sys.modules.setdefault("databricks", databricks)
-    sys.modules.setdefault("databricks.sdk", databricks_sdk)
-    sys.modules.setdefault("databricks.sdk.errors", databricks_sdk_errors)
+    sys.modules["databricks"] = databricks
+    sys.modules["databricks.sdk"] = databricks_sdk
+    sys.modules["databricks.sdk.errors"] = databricks_sdk_errors
 
     return databricks_sdk
 
 
 def _install_mock_snowflake():
-    """Install a mock snowflake-connector-python in sys.modules."""
+    """Install a mock snowflake-connector-python in sys.modules.
+
+    Assigns rather than ``setdefault``s: a stub another module leaked must not
+    win the import while the caller patches the object returned here.
+    """
     snowflake = types.ModuleType("snowflake")
     snowflake_connector = types.ModuleType("snowflake.connector")
     snowflake_connector_errors = types.ModuleType("snowflake.connector.errors")
@@ -170,9 +178,9 @@ def _install_mock_snowflake():
     snowflake_connector.errors = snowflake_connector_errors
     snowflake.connector = snowflake_connector
 
-    sys.modules.setdefault("snowflake", snowflake)
-    sys.modules.setdefault("snowflake.connector", snowflake_connector)
-    sys.modules.setdefault("snowflake.connector.errors", snowflake_connector_errors)
+    sys.modules["snowflake"] = snowflake
+    sys.modules["snowflake.connector"] = snowflake_connector
+    sys.modules["snowflake.connector.errors"] = snowflake_connector_errors
 
     return snowflake_connector
 
@@ -590,6 +598,46 @@ def test_snowflake_cortex_agents():
     assert len(cortex_agents) == 1
     assert cortex_agents[0].name == "cortex:my-search-service"
     assert "snowflake://" in cortex_agents[0].config_path
+
+
+def test_snowflake_mock_install_overrides_a_leaked_stub():
+    """A stub another test file leaked must not shadow this module's mock.
+
+    `_install_mock_snowflake()` has to be authoritative: whatever it returns must
+    be the object `agent_bom.cloud.snowflake` actually resolves `connect` from.
+    When it merely `setdefault`s, a foreign stub left in `sys.modules` wins the
+    import while the caller patches an orphan — and discovery silently yields
+    zero agents.
+    """
+    foreign = types.ModuleType("snowflake")
+    foreign_connector = types.ModuleType("snowflake.connector")
+    foreign_connector.connect = MagicMock(name="foreign-connect")
+    foreign.connector = foreign_connector
+    sys.modules["snowflake"] = foreign
+    sys.modules["snowflake.connector"] = foreign_connector
+
+    mock_sf = _install_mock_snowflake()
+
+    assert mock_sf is sys.modules["snowflake.connector"]
+    assert mock_sf is sys.modules["snowflake"].connector
+
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+    mock_cursor.description = [("name",), ("database_name",), ("schema_name",)]
+    mock_cursor.fetchall.side_effect = [
+        [("my-search-service", "MY_DB", "PUBLIC")],  # Cortex
+        [],  # Snowpark
+        [],  # Streamlit
+    ]
+
+    with patch.object(mock_sf, "connect", return_value=mock_conn):
+        importlib.reload(importlib.import_module("agent_bom.cloud.snowflake"))
+        from agent_bom.cloud.snowflake import discover
+
+        agents, _warnings = discover(account="myorg.us-east-1", user="test_user")
+
+    assert [a for a in agents if a.source == "snowflake-cortex"]
 
 
 def test_snowflake_snowpark_packages():

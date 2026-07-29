@@ -46,12 +46,13 @@ class _FakePolicyConnection:
     def execute(self, sql, params=None):
         s = " ".join(sql.lower().split())
         params = tuple(params or ())
-        audit = self._state["audit"]  # entry_id -> (entry_id, ts, team_id, data)
+        audit = self._state["audit"]  # physical key -> (physical key, ts, team_id, data)
         anon = self._state["anon"]  # rows inserted without an entry_id
 
         if s.startswith("insert into policy_audit_log") and "entry_id" in s:
             entry_id, ts, team_id, data = params
-            audit.setdefault(entry_id, (entry_id, ts, team_id, data))  # ON CONFLICT DO NOTHING
+            physical_key = f"{len(team_id.encode('utf-8'))}:{team_id}:{entry_id}"
+            audit.setdefault(physical_key, (physical_key, ts, team_id, data))  # trigger + ON CONFLICT
             return _FakeCursor()
         if s.startswith("insert into policy_audit_log"):
             anon.append(("__anon__", *params))  # (ts, team_id, data)
@@ -200,7 +201,7 @@ def test_pg_policy_audit_idempotent_no_duplicate(monkeypatch):
     rows = store.list_audit_entries(tenant_id="acme")
     assert len(rows) == 1
     assert rows[0].timestamp == ts
-    assert pool._state["audit"]["e1"][1] == ts  # stored ts == caller ts
+    assert pool._state["audit"]["4:acme:e1"][1] == ts  # stored ts == caller ts
 
 
 def test_pg_policy_audit_persists_caller_timestamp(monkeypatch):
@@ -208,7 +209,22 @@ def test_pg_policy_audit_persists_caller_timestamp(monkeypatch):
     store, pool = _pg_policy_store(monkeypatch)
     ts = "2020-01-01T12:00:00+00:00"  # in the past — cannot be insert time
     store.put_audit_entry(_audit_entry("e1", ts))
-    assert pool._state["audit"]["e1"][1] == ts
+    assert pool._state["audit"]["4:acme:e1"][1] == ts
+
+
+def test_pg_policy_audit_same_logical_id_isolated_by_tenant(monkeypatch):
+    """A retry dedupes within one tenant without discarding another's row."""
+    store, pool = _pg_policy_store(monkeypatch)
+    first = _audit_entry("shared", "2026-07-29T00:00:00+00:00")
+    second = first.model_copy(update={"tenant_id": "globex"})
+
+    store.put_audit_entry(first)
+    store.put_audit_entry(first)
+    store.put_audit_entry(second)
+
+    assert [row.entry_id for row in store.list_audit_entries(tenant_id="acme")] == ["shared"]
+    assert [row.entry_id for row in store.list_audit_entries(tenant_id="globex")] == ["shared"]
+    assert len(pool._state["audit"]) == 2
 
 
 def test_pg_policy_audit_filters_before_limit(monkeypatch):

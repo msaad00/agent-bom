@@ -197,15 +197,45 @@ CREATE TABLE IF NOT EXISTS gateway_policies (
 );
 
 CREATE TABLE IF NOT EXISTS policy_audit_log (
-    id       SERIAL PRIMARY KEY,
-    entry_id TEXT,                    -- mirrors SQLite PRIMARY KEY; dedup key for idempotent re-ingestion
-    ts       TEXT NOT NULL,
-    team_id  TEXT NOT NULL DEFAULT 'default',
-    data     JSONB NOT NULL
+    id               SERIAL PRIMARY KEY,
+    entry_id         TEXT, -- tenant-derived physical key; old replicas conflict on this column
+    logical_entry_id TEXT, -- caller-visible ID, also retained in data->>'entry_id'
+    ts               TEXT NOT NULL,
+    team_id          TEXT NOT NULL DEFAULT 'default',
+    data             JSONB NOT NULL
 );
 
--- Idempotent: add entry_id to existing policy_audit_log tables that predate
--- the dedup key (matches the application bootstrap in api/postgres_policy.py).
+-- Old application replicas use ON CONFLICT(entry_id), so that unique target
+-- must remain present throughout rolling deploys. A trigger rewrites the
+-- caller-visible ID into a tenant-derived physical key before conflict checking.
+CREATE OR REPLACE FUNCTION public.abom_policy_audit_key(
+    tenant_id TEXT,
+    logical_id TEXT
+) RETURNS TEXT
+LANGUAGE SQL
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $$
+    SELECT octet_length(tenant_id)::TEXT || ':' || tenant_id || ':' || logical_id
+$$;
+
+CREATE OR REPLACE FUNCTION public.abom_policy_audit_set_key()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.logical_entry_id := COALESCE(NEW.logical_entry_id, NEW.entry_id);
+    IF NEW.logical_entry_id IS NOT NULL THEN
+        NEW.entry_id := public.abom_policy_audit_key(NEW.team_id, NEW.logical_entry_id);
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+-- Idempotently reconcile a legacy bootstrap. The table lock and temporary RLS
+-- disable are transactional; previous RLS state is restored before the block
+-- commits, and no runtime insert can race the physical-key rewrite.
 DO $$ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -215,11 +245,53 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+DO $$
+DECLARE
+    had_rls BOOLEAN;
+    had_force_rls BOOLEAN;
+BEGIN
+    LOCK TABLE policy_audit_log IN ACCESS EXCLUSIVE MODE;
+    SELECT relrowsecurity, relforcerowsecurity
+      INTO had_rls, had_force_rls
+      FROM pg_class
+     WHERE oid = 'public.policy_audit_log'::regclass;
+
+    IF had_rls THEN
+        ALTER TABLE policy_audit_log DISABLE ROW LEVEL SECURITY;
+    END IF;
+
+    ALTER TABLE policy_audit_log
+        ADD COLUMN IF NOT EXISTS logical_entry_id TEXT;
+    DROP TRIGGER IF EXISTS policy_audit_set_key ON policy_audit_log;
+    CREATE TRIGGER policy_audit_set_key
+        BEFORE INSERT OR UPDATE OF team_id, entry_id, logical_entry_id
+        ON policy_audit_log
+        FOR EACH ROW
+        EXECUTE FUNCTION public.abom_policy_audit_set_key();
+
+    DROP INDEX IF EXISTS uq_policy_audit_log_entry;
+    UPDATE policy_audit_log
+       SET logical_entry_id = COALESCE(logical_entry_id, entry_id),
+           entry_id = public.abom_policy_audit_key(
+               team_id,
+               COALESCE(logical_entry_id, entry_id)
+           )
+     WHERE entry_id IS NOT NULL;
+    CREATE UNIQUE INDEX uq_policy_audit_log_entry
+        ON policy_audit_log(entry_id);
+    COMMENT ON INDEX uq_policy_audit_log_entry IS
+        'agent-bom policy audit tenant key v2';
+
+    IF had_rls THEN
+        ALTER TABLE policy_audit_log ENABLE ROW LEVEL SECURITY;
+    END IF;
+    IF had_force_rls THEN
+        ALTER TABLE policy_audit_log FORCE ROW LEVEL SECURITY;
+    END IF;
+END
+$$;
+
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON policy_audit_log(ts DESC);
--- Tenant-scoped: a bare UNIQUE(entry_id) let one tenant's audit row discard
--- another's, because unique indexes are enforced below RLS. Matches the
--- governance chain's uq_governance_audit_tenant_action.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(team_id, entry_id);
 CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id);
 CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC);
 

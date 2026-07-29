@@ -1317,6 +1317,12 @@ jobs:
               raise SystemExit(f"wheel is missing required package data: {', '.join(missing)}")
           PY
 
+      - name: Smoke clean unlocked wheel MCP protocol
+        run: |
+          python -m venv "$RUNNER_TEMP/agent-bom-wheel-smoke"
+          "$RUNNER_TEMP/agent-bom-wheel-smoke/bin/pip" install --disable-pip-version-check dist/*.whl
+          "$RUNNER_TEMP/agent-bom-wheel-smoke/bin/python" scripts/smoke_mcp_wheel.py
+
       - name: Upload package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

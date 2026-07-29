@@ -262,6 +262,12 @@ jobs:
               raise SystemExit("wheel dashboard CSP hash manifest has no script hashes; packaged UI would fall back to unsafe-inline")
           PY
 
+      - name: Smoke clean unlocked wheel MCP protocol
+        run: |
+          python -m venv "$RUNNER_TEMP/agent-bom-wheel-smoke"
+          "$RUNNER_TEMP/agent-bom-wheel-smoke/bin/pip" install --disable-pip-version-check dist/*.whl
+          "$RUNNER_TEMP/agent-bom-wheel-smoke/bin/python" scripts/smoke_mcp_wheel.py
+
       - name: Upload dist artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

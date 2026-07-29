@@ -79,7 +79,8 @@ class TestRoundTripSelfScan:
     """Larger real-world fixture — guards against parser regressions."""
 
     @pytest.fixture(scope="class")
-    def inventory(self) -> dict:
+    @classmethod
+    def inventory(cls) -> dict:
         return load_self_scan_fixture()
 
     def test_self_scan_round_trip_subset(self, inventory: dict) -> None:

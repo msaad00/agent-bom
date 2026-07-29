@@ -94,7 +94,8 @@ class TestSyntheticEdgeCounts:
     """Exact-count assertions on the synthetic fixture (no corpus drift here)."""
 
     @pytest.fixture(scope="class")
-    def graph(self):
+    @classmethod
+    def graph(cls):
         return build_graph_from_inventory(synthetic_inventory())
 
     def test_synthetic_emits_all_expected_edge_kinds(self, graph) -> None:

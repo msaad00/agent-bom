@@ -249,12 +249,16 @@ dev = [
     "pytest-xdist>=3.5",  # Parallel test execution (-n auto) — cuts CI test wall time
     "pytest-randomly>=3.15",  # Randomize test order to surface order-dependence early
     # API-layer test modules (tests/test_api_*, TestClient) fail to COLLECT
-    # without these. httpx is already a core dep (powers TestClient); fastapi +
-    # starlette live in the [api] extra, so a dev-only env can't import the API
-    # app under test. Pin them into [dev] so the full suite collects locally
-    # without needing `[dev,api]`. (#1969)
+    # without these. httpx remains a core runtime dependency; Starlette 1.x
+    # TestClient uses its successor package, httpx2, and warns on the legacy
+    # fallback. Keep Starlette's documented TestClient contract explicit in the
+    # dev environment so test imports stay warning-free. fastapi + starlette
+    # live in the [api] extra, so a dev-only env can't import the API app under
+    # test. Pin them into [dev] so the full suite collects locally without
+    # needing `[dev,api]`. (#1969)
     "fastapi>=0.115,!=0.136.3",
     "starlette>=0.40",
+    "httpx2>=2.0.0",
 ]
 dev-all = [
     "agent-bom[dev]",

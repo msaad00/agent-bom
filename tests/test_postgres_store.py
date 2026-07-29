@@ -1198,11 +1198,12 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
     captured: dict[str, object] = {}
 
     class CapturePool:
-        def __init__(self, conninfo, min_size, max_size, kwargs=None):
+        def __init__(self, conninfo, min_size, max_size, kwargs=None, open=None):
             captured["url"] = conninfo
             captured["min_size"] = min_size
             captured["max_size"] = max_size
             captured["kwargs"] = kwargs or {}
+            captured["open"] = open
 
     reset = postgres_common.reset_pool
     reset()
@@ -1237,6 +1238,7 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
             "min_size": 7,
             "max_size": 21,
             "kwargs": {"connect_timeout": 9},
+            "open": True,
         }
     finally:
         reset()

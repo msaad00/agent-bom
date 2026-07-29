@@ -354,6 +354,7 @@ def _get_pool() -> ConnectionPool:
                 max_size=max_size,
                 kwargs=kwargs,
                 connection_class=iam_auth_connection_class,
+                open=True,
             )
         else:
             _pool = psycopg_pool.ConnectionPool(
@@ -361,6 +362,7 @@ def _get_pool() -> ConnectionPool:
                 min_size=min_size,
                 max_size=max_size,
                 kwargs=kwargs,
+                open=True,
             )
     _guard_rls_capable_role(_pool)
     return _pool
@@ -454,6 +456,7 @@ def _get_maintenance_pool() -> ConnectionPool:
             min_size=1,
             max_size=max_size,
             kwargs=kwargs,
+            open=True,
         )
         try:
             _guard_maintenance_role_separation(_get_pool(), _maintenance_pool)

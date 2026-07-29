@@ -60,6 +60,7 @@ class PostgresPolicyStore:
                 CREATE TABLE IF NOT EXISTS policy_audit_log (
                     id SERIAL PRIMARY KEY,
                     entry_id TEXT,
+                    logical_entry_id TEXT,
                     ts TEXT NOT NULL,
                     team_id TEXT NOT NULL DEFAULT 'default',
                     data JSONB NOT NULL
@@ -88,10 +89,104 @@ class PostgresPolicyStore:
                     ) THEN
                         ALTER TABLE policy_audit_log ADD COLUMN entry_id TEXT;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'policy_audit_log' AND column_name = 'logical_entry_id'
+                    ) THEN
+                        ALTER TABLE policy_audit_log ADD COLUMN logical_entry_id TEXT;
+                    END IF;
                 END
                 $$;
             """)
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(team_id, entry_id)")
+            conn.execute("""
+                CREATE OR REPLACE FUNCTION public.abom_policy_audit_key(
+                    tenant_id TEXT,
+                    logical_id TEXT
+                ) RETURNS TEXT
+                LANGUAGE SQL
+                IMMUTABLE
+                STRICT
+                PARALLEL SAFE
+                AS $$
+                    SELECT octet_length(tenant_id)::TEXT || ':' || tenant_id || ':' || logical_id
+                $$
+            """)
+            conn.execute("""
+                CREATE OR REPLACE FUNCTION public.abom_policy_audit_set_key()
+                RETURNS TRIGGER
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    NEW.logical_entry_id := COALESCE(NEW.logical_entry_id, NEW.entry_id);
+                    IF NEW.logical_entry_id IS NOT NULL THEN
+                        NEW.entry_id := public.abom_policy_audit_key(NEW.team_id, NEW.logical_entry_id);
+                    END IF;
+                    RETURN NEW;
+                END
+                $$
+            """)
+            conn.execute("""
+                DO $$
+                DECLARE
+                    had_rls BOOLEAN;
+                    had_force_rls BOOLEAN;
+                    physical_key_ready BOOLEAN;
+                BEGIN
+                    SELECT COALESCE(
+                        obj_description(to_regclass('public.uq_policy_audit_log_entry'), 'pg_class') =
+                            'agent-bom policy audit tenant key v2',
+                        FALSE
+                    )
+                      INTO physical_key_ready
+                    ;
+
+                    IF NOT COALESCE(physical_key_ready, FALSE) THEN
+                        LOCK TABLE policy_audit_log IN ACCESS EXCLUSIVE MODE;
+                        SELECT relrowsecurity, relforcerowsecurity
+                          INTO had_rls, had_force_rls
+                          FROM pg_class
+                         WHERE oid = 'public.policy_audit_log'::regclass;
+
+                        IF had_rls THEN
+                            ALTER TABLE policy_audit_log DISABLE ROW LEVEL SECURITY;
+                        END IF;
+
+                        DROP INDEX IF EXISTS uq_policy_audit_log_entry;
+                        UPDATE policy_audit_log
+                           SET logical_entry_id = COALESCE(logical_entry_id, entry_id),
+                               entry_id = public.abom_policy_audit_key(
+                                   team_id,
+                                   COALESCE(logical_entry_id, entry_id)
+                               )
+                         WHERE entry_id IS NOT NULL;
+                        CREATE UNIQUE INDEX uq_policy_audit_log_entry
+                            ON policy_audit_log(entry_id);
+                        COMMENT ON INDEX uq_policy_audit_log_entry IS
+                            'agent-bom policy audit tenant key v2';
+
+                        IF had_rls THEN
+                            ALTER TABLE policy_audit_log ENABLE ROW LEVEL SECURITY;
+                        END IF;
+                        IF had_force_rls THEN
+                            ALTER TABLE policy_audit_log FORCE ROW LEVEL SECURITY;
+                        END IF;
+                    END IF;
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_trigger
+                         WHERE tgrelid = 'public.policy_audit_log'::regclass
+                           AND tgname = 'policy_audit_set_key'
+                           AND NOT tgisinternal
+                    ) THEN
+                        CREATE TRIGGER policy_audit_set_key
+                            BEFORE INSERT OR UPDATE OF team_id, entry_id, logical_entry_id
+                            ON policy_audit_log
+                            FOR EACH ROW
+                            EXECUTE FUNCTION public.abom_policy_audit_set_key();
+                    END IF;
+                END
+                $$;
+            """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC)")
             _ensure_tenant_rls(conn, "gateway_policies", "team_id")
@@ -181,13 +276,14 @@ class PostgresPolicyStore:
         entry_id = getattr(entry, "entry_id", None)
         with _tenant_connection(self._pool) as conn:
             if entry_id:
-                # entry_id carries the dedup key (mirrors the SQLite PRIMARY
-                # KEY); ON CONFLICT keeps re-ingestion idempotent.
+                # Old and new replicas intentionally retain this conflict target.
+                # The database trigger maps the logical entry ID to a
+                # tenant-derived physical key before uniqueness is evaluated.
                 conn.execute(
                     """
                     INSERT INTO policy_audit_log (entry_id, ts, team_id, data)
                     VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (team_id, entry_id) DO NOTHING
+                    ON CONFLICT (entry_id) DO NOTHING
                     """,
                     (entry_id, ts, team_id, data),
                 )

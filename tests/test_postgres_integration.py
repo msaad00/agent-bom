@@ -611,6 +611,180 @@ def test_postgres_audit_log_real_roundtrip_and_schema_marker():
     assert row[0] == CONTROL_PLANE_SCHEMA_VERSION
 
 
+def test_policy_audit_dedup_is_tenant_safe_and_old_replica_compatible():
+    """The database trigger preserves the legacy conflict target during rollout."""
+    from agent_bom.api.policy_store import PolicyAuditEntry
+    from agent_bom.api.postgres_common import _tenant_connection, reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_policy import PostgresPolicyStore
+
+    store = PostgresPolicyStore()
+    suffix = uuid4().hex
+    logical_id = f"shared-{suffix}"
+    tenant_a = f"policy-a-{suffix}"
+    tenant_b = f"policy-b-{suffix}"
+
+    def _entry(tenant_id: str) -> PolicyAuditEntry:
+        return PolicyAuditEntry(
+            entry_id=logical_id,
+            policy_id="rollout-policy",
+            policy_name="rollout compatibility",
+            rule_id="r1",
+            agent_name="agent-a",
+            tool_name="shell",
+            action_taken="blocked",
+            reason="test",
+            timestamp="2026-07-29T00:00:00+00:00",
+            tenant_id=tenant_id,
+        )
+
+    physical_keys: list[str] = []
+    for tenant_id in (tenant_a, tenant_b):
+        entry = _entry(tenant_id)
+        token = set_current_tenant(tenant_id)
+        try:
+            store.put_audit_entry(entry)
+            store.put_audit_entry(entry)  # same-tenant retry still dedupes
+            rows = store.list_audit_entries(tenant_id=tenant_id)
+            with _tenant_connection(store._pool) as conn:
+                stored = conn.execute(
+                    """
+                    SELECT entry_id, logical_entry_id, data ->> 'entry_id'
+                      FROM policy_audit_log
+                     WHERE logical_entry_id = %s
+                    """,
+                    (logical_id,),
+                ).fetchall()
+        finally:
+            reset_current_tenant(token)
+
+        assert [row.entry_id for row in rows if row.entry_id == logical_id] == [logical_id]
+        assert len(stored) == 1
+        assert stored[0][1:] == (logical_id, logical_id)
+        physical_keys.append(stored[0][0])
+
+    assert physical_keys[0] != physical_keys[1]
+
+
+# Bare unique indexes on tenant tables need an explicit identity contract. Most
+# are server-issued opaque/global IDs, database surrogates, security-token
+# digests, or the globally unique team slug. policy_audit_log is the one
+# compatibility exception: its trigger turns the bare entry_id column into a
+# tenant-derived physical key so old ON CONFLICT(entry_id) writers remain valid.
+_AUDITED_GLOBAL_TENANT_INDEXES = {
+    # Server-issued or globally canonical opaque identifiers.
+    ("agent_conditional_access_policies", "agent_conditional_access_policies_pkey"),
+    ("agent_identities", "agent_identities_pkey"),
+    ("agent_identity_jit_grants", "agent_identity_jit_grants_pkey"),
+    ("agents", "agents_pkey"),
+    ("api_keys", "api_keys_pkey"),
+    ("audit_log", "audit_log_pkey"),
+    ("cloud_connections", "cloud_connections_pkey"),
+    ("control_plane_sources", "control_plane_sources_pkey"),
+    ("credential_refs", "credential_refs_pkey"),
+    ("exceptions", "exceptions_pkey"),
+    ("findings", "findings_pkey"),
+    ("fleet_agents", "fleet_agents_pkey"),
+    ("gateway_policies", "gateway_policies_pkey"),
+    ("job_queue", "job_queue_pkey"),
+    ("managed_trial_invitations", "managed_trial_invitations_pkey"),
+    ("mcp_client_configs", "mcp_client_configs_pkey"),
+    ("model_provider_keys", "model_provider_keys_pkey"),
+    ("model_virtual_keys", "model_virtual_keys_pkey"),
+    ("policy_results", "policy_results_pkey"),
+    ("proxy_replay_log", "proxy_replay_log_pkey"),
+    ("scan_dispatch_queue", "scan_dispatch_queue_pkey"),
+    ("scan_jobs", "scan_jobs_pkey"),
+    ("scan_schedules", "scan_schedules_pkey"),
+    ("ticket_links", "ticket_links_pkey"),
+    ("ticketing_connections", "ticketing_connections_pkey"),
+    # Database-generated surrogate sequence keys; tenant uniqueness is carried
+    # by a separate logical index where the table has a logical dedupe key.
+    ("cis_benchmark_checks", "cis_benchmark_checks_pkey"),
+    ("governance_audit_log", "governance_audit_log_pkey"),
+    ("policy_audit_log", "policy_audit_log_pkey"),
+    ("trend_history", "trend_history_pkey"),
+    # Credential/token digests are intentionally globally unique so the same
+    # bearer secret can never authenticate as two principals or invitations.
+    ("agent_identities", "agent_identities_token_hash_key"),
+    ("managed_trial_invitations", "managed_trial_invitations_token_digest_key"),
+    ("model_virtual_keys", "model_virtual_keys_token_hash_key"),
+    # Team slugs are the global routing namespace.
+    ("teams", "teams_slug_key"),
+    # Rolling-deployment-compatible tenant-derived physical key, asserted below.
+    ("policy_audit_log", "uq_policy_audit_log_entry"),
+}
+
+
+def test_every_tenant_table_global_unique_index_has_an_audited_contract():
+    """Fail CI when a tenant table gains a bare unique key without review."""
+    from agent_bom.api.postgres_common import _get_pool
+
+    with _get_pool().connection() as conn:
+        rows = conn.execute(
+            """
+            WITH tenant_tables AS (
+                SELECT c.oid,
+                       c.relname,
+                       array_agg(a.attname ORDER BY a.attname)
+                           FILTER (WHERE a.attname IN ('tenant_id', 'team_id')) AS tenant_cols
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_attribute a
+                    ON a.attrelid = c.oid
+                   AND a.attnum > 0
+                   AND NOT a.attisdropped
+                 WHERE n.nspname = 'public'
+                   AND c.relkind IN ('r', 'p')
+                 GROUP BY c.oid, c.relname
+                HAVING bool_or(a.attname IN ('tenant_id', 'team_id'))
+            ), unique_indexes AS (
+                SELECT tables.relname AS table_name,
+                       tables.tenant_cols,
+                       index_class.relname AS index_name,
+                       array_agg(attribute.attname ORDER BY key.ordinality)
+                           FILTER (WHERE attribute.attname IS NOT NULL) AS index_cols
+                  FROM tenant_tables tables
+                  JOIN pg_index index_meta
+                    ON index_meta.indrelid = tables.oid
+                   AND index_meta.indisunique
+                  JOIN pg_class index_class ON index_class.oid = index_meta.indexrelid
+                  LEFT JOIN LATERAL unnest(index_meta.indkey)
+                       WITH ORDINALITY AS key(attnum, ordinality) ON TRUE
+                  LEFT JOIN pg_attribute attribute
+                    ON attribute.attrelid = tables.oid
+                   AND attribute.attnum = key.attnum
+                 GROUP BY tables.relname, tables.tenant_cols, index_class.relname
+            )
+            SELECT table_name, index_name
+              FROM unique_indexes
+             WHERE NOT (index_cols && tenant_cols)
+             ORDER BY table_name, index_name
+            """
+        ).fetchall()
+        policy_key = conn.execute(
+            """
+            SELECT indexdef,
+                   obj_description(to_regclass('public.uq_policy_audit_log_entry'), 'pg_class'),
+                   EXISTS (
+                       SELECT 1 FROM pg_trigger
+                        WHERE tgrelid = 'public.policy_audit_log'::regclass
+                          AND tgname = 'policy_audit_set_key'
+                          AND NOT tgisinternal
+                   )
+              FROM pg_indexes
+             WHERE schemaname = 'public'
+               AND indexname = 'uq_policy_audit_log_entry'
+            """
+        ).fetchone()
+
+    actual = {(str(table), str(index)) for table, index in rows}
+    assert actual == _AUDITED_GLOBAL_TENANT_INDEXES
+    assert policy_key is not None
+    assert "(entry_id)" in policy_key[0] and "team_id, entry_id" not in policy_key[0]
+    assert policy_key[1] == "agent-bom policy audit tenant key v2"
+    assert policy_key[2] is True
+
+
 def test_postgres_scan_jobs_rls_schema_is_locked_down():
     # Schema-level guard for #1815: assert the structural RLS guarantees on
     # scan_jobs so a future migration cannot quietly relax them. This catches

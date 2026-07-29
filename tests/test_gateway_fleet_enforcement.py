@@ -290,3 +290,69 @@ def test_boot_is_silent_when_enforcement_is_opted_out(caplog):
     with caplog.at_level(logging.WARNING, logger="agent_bom.gateway_server"):
         create_gateway_app(_settings("off"))
     assert not [r for r in caplog.records if "fleet enforcement is active" in r.getMessage()]
+
+
+def test_revocation_is_not_defeated_by_a_large_identity_roster():
+    """The lookup must not silently fail open once a tenant grows.
+
+    store.list() returns the N most recently issued identities. A revoked
+    agent whose identity is older than that window fell out of the result,
+    the helper saw "no identities for this agent", and concluded "not
+    revoked" — reporting no degradation, so the fail-closed branch never
+    fired either.
+    """
+    from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
+
+    _seed_fleet()
+    # The revoked identity is the OLDEST, so any recency-capped window drops it.
+    identities = [_identity("agent-b", "revoked")]
+    identities[0].issued_at = "2020-01-01T00:00:00Z"
+    for i in range(500):
+        filler = _identity(f"filler-{i}", "active")
+        filler.identity_id = f"filler-id-{i}"
+        filler.token_hash = f"filler-hash-{i}"
+        filler.issued_at = "2026-01-01T00:00:00Z"
+        identities.append(filler)
+    _seed_identities(*identities)
+
+    assert agent_identity_revoked(get_agent_identity_store(), "default", "agent-b") == (True, False)
+
+    client = TestClient(create_gateway_app(_settings("enforce")))
+    resp = client.post("/mcp/filesystem", json=_call("token-b"))
+    assert _is_blocked(resp), "a revoked agent must stay blocked regardless of roster size"
+
+
+def test_unknown_agent_in_a_capped_roster_reports_the_lookup_as_incomplete():
+    """Absence past the scan cap is unproven, not evidence of absence.
+
+    With a roster larger than the cap and no matching identity, the helper must
+    say so rather than returning a confident "not revoked" — otherwise the
+    caller's fail-closed branch can never fire.
+    """
+    from agent_bom.api import agent_identity_store as store_mod
+    from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
+
+    original_cap = store_mod._IDENTITY_LOOKUP_CAP
+    store_mod._IDENTITY_LOOKUP_CAP = 10
+    try:
+        fillers = []
+        for i in range(20):
+            filler = _identity(f"filler-{i}", "active")
+            filler.identity_id = f"filler-id-{i}"
+            filler.token_hash = f"filler-hash-{i}"
+            fillers.append(filler)
+        _seed_identities(*fillers)
+
+        revoked, incomplete = agent_identity_revoked(get_agent_identity_store(), "default", "agent-zzz")
+        assert revoked is False
+        assert incomplete is True, "a capped lookup must not read as a clean negative"
+    finally:
+        store_mod._IDENTITY_LOOKUP_CAP = original_cap
+
+
+def test_small_roster_reports_a_clean_negative():
+    """Below the cap, absence IS proven — this must not start failing closed."""
+    from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
+
+    _seed_identities(_identity("agent-b", "active"))
+    assert agent_identity_revoked(get_agent_identity_store(), "default", "agent-zzz") == (False, False)

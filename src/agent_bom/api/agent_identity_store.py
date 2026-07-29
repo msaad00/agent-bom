@@ -802,6 +802,26 @@ def revoke_identity(store: AgentIdentityStore, identity_id: str, *, tenant_id: s
     return identity
 
 
+# Upper bound on identities fetched per revocation check. ``store.list`` returns
+# the most recently issued identities, so a smaller window would silently drop an
+# older revoked identity and read as "this agent was never issued one". When the
+# cap is actually hit we cannot rule out an identity in the untraversed tail, so
+# the lookup reports ``unavailable`` — an honest partial signal the caller can
+# fail closed on — rather than a confident "not revoked". Mirrors
+# ``_DRIFT_INCIDENT_LOOKUP_CAP`` in the gateway.
+_IDENTITY_LOOKUP_CAP = 5000
+
+
+def identities_for_agent(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> tuple[list[AgentIdentity], bool]:
+    """Return ``(identities_for_agent, lookup_was_capped)`` for one tenant."""
+    key = (agent_id or "").strip()
+    if not key:
+        return [], False
+    rows = store.list(tenant_id, include_inactive=True, limit=_IDENTITY_LOOKUP_CAP)
+    capped = len(rows) >= _IDENTITY_LOOKUP_CAP
+    return [i for i in rows if (i.agent_id or "").strip() == key], capped
+
+
 def live_identity_for_agent(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> AgentIdentity | None:
     """Return one live identity for ``agent_id``, or ``None`` if every one is dead.
 
@@ -810,29 +830,28 @@ def live_identity_for_agent(store: AgentIdentityStore, tenant_id: str, agent_id:
     opaque ``policy.agent_tokens`` mapping never reaches the identity store, so
     the gateway needs an agent-keyed lookup to honour revocation for them too.
     """
-    key = (agent_id or "").strip()
-    if not key:
-        return None
-    for identity in store.list(tenant_id, include_inactive=True, limit=200):
-        if (identity.agent_id or "").strip() == key and identity.is_live():
+    identities, _capped = identities_for_agent(store, tenant_id, agent_id)
+    for identity in identities:
+        if identity.is_live():
             return identity
     return None
 
 
-def agent_identity_revoked(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> bool:
-    """Return True only when ``agent_id`` has identities and none are live.
+def agent_identity_revoked(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> tuple[bool, bool]:
+    """Return ``(revoked, lookup_incomplete)`` for ``agent_id`` in one tenant.
 
     An agent with no managed identity at all is *not* revoked — deployments that
     never issued one must keep working. Rotation also leaves revoked rows behind,
     so a single live identity is enough to keep the agent alive.
+
+    ``lookup_incomplete`` is True when the roster hit the lookup cap and this
+    agent had no matching identity: absence is then unproven, not evidence of
+    absence, and the caller must not read it as "authorized".
     """
-    key = (agent_id or "").strip()
-    if not key:
-        return False
-    known = [i for i in store.list(tenant_id, include_inactive=True, limit=200) if (i.agent_id or "").strip() == key]
-    if not known:
-        return False
-    return not any(i.is_live() for i in known)
+    identities, capped = identities_for_agent(store, tenant_id, agent_id)
+    if not identities:
+        return False, capped
+    return not any(i.is_live() for i in identities), False
 
 
 def request_jit_grant(

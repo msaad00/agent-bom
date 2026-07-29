@@ -445,3 +445,28 @@ def test_budget_enforcement_uses_rolling_window(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_BUDGET_WINDOW_DAYS", "30")
     blocked, _b, spend = check_budget_enforcement(store, "t1", "")
     assert blocked is False and spend == 3.0
+
+
+def test_traces_ingest_attributes_cost_to_the_calling_agent(client):
+    """The join key that makes cost fusible with the graph.
+
+    LLMAPICall carried no agent field, so every OTLP-ingested cost row was
+    persisted with agent="" and rolled up as "unknown" — leaving the graph cost
+    overlay nothing to match on.
+    """
+    payload = _ml_otlp_payload()
+    payload["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["attributes"].append(
+        {"key": "gen_ai.agent.name", "value": {"stringValue": "checkout-agent"}}
+    )
+    assert client.post("/v1/traces", json=payload).status_code == 200
+
+    costs = client.get("/v1/observability/costs").json()
+    assert [b["key"] for b in costs["by_agent"]] == ["checkout-agent"]
+    assert costs["by_agent"][0]["cost_usd"] == 12.5
+
+
+def test_traces_ingest_without_agent_attribution_stays_unknown(client):
+    """Absent attribution must stay honest, not be invented."""
+    assert client.post("/v1/traces", json=_ml_otlp_payload()).status_code == 200
+    costs = client.get("/v1/observability/costs").json()
+    assert [b["key"] for b in costs["by_agent"]] == ["unknown"]

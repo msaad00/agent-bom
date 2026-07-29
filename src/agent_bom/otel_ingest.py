@@ -128,6 +128,10 @@ class LLMAPICall:
     output_tokens: int
     duration_ms: float
     status: str  # "ok" | "error"
+    # Calling agent, when the span says so. This is the join key that attributes
+    # spend to a graph node — without it every cost row buckets as "unknown".
+    # Defaulted and last so existing positional construction keeps working.
+    agent: str = ""
 
 
 @dataclass
@@ -299,6 +303,7 @@ def parse_ml_api_spans(trace_data: dict) -> list[LLMAPICall]:
     calls: list[LLMAPICall] = []
 
     for rs in trace_data.get("resourceSpans", []):
+        resource_attrs = rs.get("resource", {}).get("attributes", [])
         for ss in rs.get("scopeSpans", []):
             scope_name = ss.get("scope", {}).get("name", "")
             for span in ss.get("spans", []):
@@ -306,6 +311,15 @@ def parse_ml_api_spans(trace_data: dict) -> list[LLMAPICall]:
                     continue
 
                 attrs = span.get("attributes", [])
+                # Span-level attribution beats resource-level: one service can run
+                # several agents, so service.name is the fallback, not the answer.
+                agent = (
+                    _extract_attr(attrs, "gen_ai.agent.name")
+                    or _extract_attr(attrs, "agent.name")
+                    or _extract_attr(attrs, "gen_ai.agent.id")
+                    or _extract_attr(attrs, "agent.id")
+                    or _extract_attr(resource_attrs, "service.name")
+                )
 
                 # Provider: gen_ai.system (OTel convention) or infer from scope
                 provider = _extract_attr(attrs, "gen_ai.system")
@@ -371,6 +385,7 @@ def parse_ml_api_spans(trace_data: dict) -> list[LLMAPICall]:
                         output_tokens=output_tokens,
                         duration_ms=duration_ms,
                         status=status,
+                        agent=agent,
                     )
                 )
 

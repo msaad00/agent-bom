@@ -740,6 +740,58 @@ def deduplicate_packages(packages: list) -> list:
     return result
 
 
+def merge_local_vulns(pkg: "Any", local_vulns: "list[Any]") -> "list[Vulnerability]":
+    """Merge local-DB advisories into ``pkg``, collapsing alias clusters.
+
+    One CVE can arrive as several advisories (GHSA, PYSEC, CVE) carrying
+    *different* severity labels — GitHub rates several Jinja2 sandbox escapes
+    "Moderate" where PySec rates the same CVE "high". This previously skipped
+    any advisory whose id or alias had already been seen, so whichever row the
+    query returned first won and the rest were discarded silently.
+
+    That let a lower band win by sort order, producing findings like
+    ``severity: medium`` beside ``cvss_score: 8.8`` and letting
+    ``--fail-on-severity high`` exit 0 on a high-rated CVE. For a security
+    scanner, resolving a disagreement downward under-blocks, so the cluster now
+    keeps the MOST severe band any of its advisories assert and records which
+    advisory set it.
+
+    Returns only the genuinely NEW vulnerabilities appended, so callers keep
+    counting findings rather than advisory rows — an advisory that merely
+    escalated an existing cluster is not a new finding.
+    """
+    added: list[Vulnerability] = []
+    by_id: dict[str, Vulnerability] = {}
+    for existing in pkg.vulnerabilities:
+        for key in {existing.id, *existing.aliases}:
+            by_id[str(key)] = existing
+
+    for lv in local_vulns:
+        candidate = _local_vuln_to_vulnerability(lv)
+        cluster_keys = {str(candidate.id), *(str(a) for a in candidate.aliases)}
+        prior = next((by_id[k] for k in cluster_keys if k in by_id), None)
+
+        if prior is None:
+            pkg.vulnerabilities.append(candidate)
+            added.append(candidate)
+            for key in cluster_keys:
+                by_id[key] = candidate
+            continue
+
+        # Same underlying vulnerability: reconcile rather than drop.
+        from agent_bom.graph.severity import severity_rank
+
+        if severity_rank(candidate.severity) > severity_rank(prior.severity):
+            prior.severity = candidate.severity
+            # Name the ADVISORY that asserted the higher band, not the canonical
+            # CVE — the whole point is to show which source disagreed.
+            prior.severity_source = f"advisory:{getattr(lv, 'id', candidate.id)}"
+        for key in cluster_keys:
+            by_id.setdefault(key, prior)
+
+    return added
+
+
 def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
     """Convert a LocalVuln (from SQLite DB) to a Vulnerability model object.
 
@@ -884,20 +936,7 @@ def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]
         _attach_cpe_candidates(conn, pkg, candidate_names, local_vulns, db_hit=db_hit)
 
         if local_vulns:
-            existing_ids = {v.id for v in pkg.vulnerabilities}
-            # Also track aliases to prevent PYSEC/GHSA/CVE duplicates
-            for v in pkg.vulnerabilities:
-                existing_ids.update(v.aliases)
-            new_vulns = []
-            for lv in local_vulns:
-                # Skip if this vuln or any of its aliases already seen
-                lv_all_ids = {lv.id} | set(getattr(lv, "aliases", []))
-                if lv_all_ids & existing_ids:
-                    continue
-                new_vulns.append(_local_vuln_to_vulnerability(lv))
-                existing_ids.add(lv.id)
-                existing_ids.update(getattr(lv, "aliases", []))
-            pkg.vulnerabilities.extend(new_vulns)
+            new_vulns = merge_local_vulns(pkg, local_vulns)
             total += len(new_vulns)
             for v in new_vulns:
                 v.compliance_tags = _tag_vuln(v, pkg)
@@ -1022,20 +1061,7 @@ def _scan_packages_local_db_batch(
         _attach_cpe_candidates(conn, pkg, candidate_names, local_vulns, db_hit=db_hit)
 
         if local_vulns:
-            existing_ids = {v.id for v in pkg.vulnerabilities}
-            # Also track aliases to prevent PYSEC/GHSA/CVE duplicates
-            for v in pkg.vulnerabilities:
-                existing_ids.update(v.aliases)
-            new_vulns = []
-            for lv in local_vulns:
-                # Skip if this vuln or any of its aliases already seen
-                lv_all_ids = {lv.id} | set(getattr(lv, "aliases", []))
-                if lv_all_ids & existing_ids:
-                    continue
-                new_vulns.append(_local_vuln_to_vulnerability(lv))
-                existing_ids.add(lv.id)
-                existing_ids.update(getattr(lv, "aliases", []))
-            pkg.vulnerabilities.extend(new_vulns)
+            new_vulns = merge_local_vulns(pkg, local_vulns)
             total += len(new_vulns)
             for v in new_vulns:
                 v.compliance_tags = _tag_vuln(v, pkg)

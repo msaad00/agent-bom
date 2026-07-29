@@ -15,6 +15,13 @@ from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warni
 
 
 def _install_mock_snowflake() -> types.ModuleType:
+    """Install a stub snowflake-connector-python and return the live connector.
+
+    Assigns rather than ``setdefault``s so the returned object is always the one
+    ``agent_bom.cloud.snowflake`` will import. ``reset_global_test_state`` in
+    ``tests/conftest.py`` drops these entries again after the test, so the stub
+    cannot shadow another module's mock later on the same xdist worker.
+    """
     snowflake = types.ModuleType("snowflake")
     snowflake_connector = types.ModuleType("snowflake.connector")
     snowflake_connector_errors = types.ModuleType("snowflake.connector.errors")
@@ -27,9 +34,9 @@ def _install_mock_snowflake() -> types.ModuleType:
     snowflake_connector.errors = snowflake_connector_errors
     snowflake.connector = snowflake_connector
 
-    sys.modules.setdefault("snowflake", snowflake)
-    sys.modules.setdefault("snowflake.connector", snowflake_connector)
-    sys.modules.setdefault("snowflake.connector.errors", snowflake_connector_errors)
+    sys.modules["snowflake"] = snowflake
+    sys.modules["snowflake.connector"] = snowflake_connector
+    sys.modules["snowflake.connector.errors"] = snowflake_connector_errors
     return snowflake_connector
 
 

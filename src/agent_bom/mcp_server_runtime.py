@@ -670,7 +670,30 @@ def get_registry_data_raw(registry_raw_cache: str | None, registry_path: Path) -
 
 
 def check_mcp_sdk() -> None:
+    """Verify the MCP SDK is present AND exposes the entry point we build on.
+
+    Checking only ``import mcp`` was not enough: mcp 2.x removed
+    ``mcp.server.fastmcp``, so the import succeeded while the server could not
+    start, and the user was told to install a package they already had.
+    """
     try:
         import mcp  # noqa: F401
     except ImportError:
         raise ImportError("mcp SDK is required for the MCP server. Install with: pip install 'agent-bom[mcp-server]'") from None
+
+    try:
+        import mcp.server.fastmcp  # noqa: F401
+    except ImportError:
+        installed = ""
+        try:
+            from importlib.metadata import version
+
+            installed = f" (found {version('mcp')})"
+        except Exception:  # noqa: BLE001 - diagnostics only; never mask the real error
+            installed = ""
+        raise ImportError(
+            f"The installed mcp SDK is incompatible{installed}: it does not provide "
+            "'mcp.server.fastmcp', which agent-bom's MCP server is built on. mcp 2.x "
+            "removed that module. Install a supported release with: "
+            "pip install 'mcp<2'  (agent-bom pins mcp>=1.26,<2)"
+        ) from None

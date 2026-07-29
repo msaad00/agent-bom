@@ -22,6 +22,20 @@ def test_base_install_contains_advertised_mcp_runtime() -> None:
     assert any(item.startswith("mcp>=") for item in dependencies)
 
 
+def test_mcp_dependency_is_bounded_to_the_supported_major() -> None:
+    """An unbounded ``mcp>=`` resolves to a major that removed our entry point.
+
+    We import ``mcp.server.fastmcp``. mcp 2.0.0 deleted that module, so an
+    unbounded floor silently installed an SDK where ``agent-bom mcp server``
+    cannot start — and the failure told the user to run the very command they
+    had just run. The advertised MCP surface must not depend on the resolver
+    happening to pick an older major.
+    """
+    project = tomllib.loads(_read("pyproject.toml"))["project"]
+    spec = next(item for item in project["dependencies"] if str(item).lower().startswith("mcp>="))
+    assert "<2" in str(spec).replace(" ", ""), f"{spec!r} is unbounded; pin the supported major so a fresh install cannot pull mcp 2.x"
+
+
 def test_public_mcp_counts_match_server_card() -> None:
     count = len(_SERVER_CARD_TOOLS)
     expected = {

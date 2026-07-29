@@ -235,8 +235,15 @@ class GatewaySettings:
     # Fleet-state enforcement. An agent the operator has moved to the
     # QUARANTINED lifecycle state in the fleet roster can be fully blocked
     # ("enforce") or flagged ("warn") at the gateway — isolating a compromised
-    # or under-review agent without touching per-tool policy. Default "off".
-    fleet_enforcement_mode: str = "off"
+    # or under-review agent without touching per-tool policy.
+    #
+    # Defaults to "enforce": quarantine is an explicit operator action, and the
+    # minted deny GatewayPolicy only reaches the relay on the control-plane
+    # polling path (proxy.py), never on this one — so "off" made the documented
+    # one-click containment a no-op here. The check fails open on store error, so
+    # a fleet-store outage cannot become a fleet-wide outage. Opt out with
+    # ``--fleet-enforcement off`` / AGENT_BOM_GATEWAY_FLEET_ENFORCEMENT=off.
+    fleet_enforcement_mode: str = "enforce"
     # Fail-closed posture for the policy engine. "closed" (the secure default,
     # used when the env var is unset) makes a missing/unloadable policy or an
     # evaluation error DENY so a security-conscious operator never silently runs
@@ -354,6 +361,26 @@ def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
         if key in identifiers:
             return getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED
     return False
+
+
+def _agent_identity_revoked(tenant_id: str, source_agent: str) -> tuple[bool, bool]:
+    """Return ``(revoked, lookup_unavailable)`` for a caller with no managed token.
+
+    ``identity_for_token`` only matches an agent-bom-issued ``abi_`` token, so a
+    JWKS/OIDC JWT or an opaque ``policy.agent_tokens`` caller previously bypassed
+    identity revocation entirely. Fail-open on store errors — the caller decides
+    whether its posture warrants failing closed — so an identity-store outage can
+    never become a fleet-wide outage.
+    """
+    if not source_agent or source_agent == ANONYMOUS:
+        return False, False
+    try:
+        from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
+
+        return agent_identity_revoked(get_agent_identity_store(), tenant_id, source_agent), False
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gateway agent identity revocation check failed: %s", _sanitize_for_log(exc))
+        return False, True
 
 
 # Upper bound on open incidents fetched per drift enforcement check. When a
@@ -1203,6 +1230,40 @@ def build_control_plane_audit_sink(
     return _sink
 
 
+def _warn_on_quarantined_agents(settings: GatewaySettings) -> None:
+    """Name the agents that fleet enforcement will block, once, at boot.
+
+    ``fleet_enforcement_mode`` now defaults to ``enforce``. An operator upgrading
+    with a stale QUARANTINED row would otherwise discover the new behaviour as
+    unexplained traffic loss — especially likely because releasing an agent did
+    not disable its deny policy until this release. Best-effort and silent on
+    error: this is an advisory log, never a boot gate.
+    """
+    if settings.fleet_enforcement_mode != "enforce":
+        return
+    try:
+        from agent_bom.api.fleet_store import FleetLifecycleState
+        from agent_bom.api.stores import _get_fleet_store
+
+        # The relay resolves a tenant per request; at boot only the default
+        # tenant is knowable, which is the single-tenant self-host shape this
+        # warning exists for.
+        quarantined = [
+            (getattr(a, "name", "") or getattr(a, "agent_id", ""))
+            for a in _get_fleet_store().list_by_tenant("default")
+            if getattr(a, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED
+        ]
+    except Exception:  # noqa: BLE001
+        return
+    if quarantined:
+        logger.warning(
+            "fleet enforcement is active: %d quarantined agent(s) will be blocked at this gateway: %s "
+            "(opt out with --fleet-enforcement off)",
+            len(quarantined),
+            ", ".join(sorted(_sanitize_for_log(name) for name in quarantined)[:20]),
+        )
+
+
 def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     """Build the FastAPI app for `agent-bom gateway serve`.
 
@@ -1215,6 +1276,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         require_visual_leak_runtime()
     _enforce_gateway_auth_posture(settings)
     _enforce_gateway_anonymous_agents_posture(settings)
+    _warn_on_quarantined_agents(settings)
     runtime_profile_mode = _validate_runtime_profile_posture(settings)
 
     managed_upstream_relay = GatewayUpstreamRelay(settings) if settings.upstream_caller is None else None
@@ -1753,6 +1815,21 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             )
             if identity_token and identity_invalid_reason is None:
                 token_scopes = identity_token_scopes(identity_token)
+
+        # Revocation is agent-wide, so it is checked here — above the tool-call
+        # branch — rather than beside ``allowed_tools``. Stages that key off a
+        # resolved tool only run for ``tools/call``, which would leave a revoked
+        # caller free to run ``initialize`` / ``tools/list`` / ``resources/read``.
+        # It also has to precede the JIT-grant path, which can override a
+        # per-tool deny: a revoked identity must never be JIT-grantable.
+        if scoped_identity is None and identity_invalid_reason is None and source_agent != ANONYMOUS:
+            agent_revoked, revocation_lookup_unavailable = _agent_identity_revoked(tenant_id, source_agent)
+            if agent_revoked:
+                identity_invalid_reason = "agent identity revoked"
+            elif revocation_lookup_unavailable and (
+                current_policy.get("require_agent_identity") or not _gateway_allows_anonymous_agents(settings)
+            ):
+                identity_invalid_reason = "agent identity revocation status unavailable"
 
         identity_block_reason: str | None = None
         if identity_invalid_reason is not None:

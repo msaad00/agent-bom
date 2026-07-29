@@ -513,6 +513,21 @@ def _persist_graph_snapshot(
     tenant_id = job.tenant_id or "default"
     scan_id = report_json.get("scan_id") or job.job_id
 
+    # Fuse tenant LLM spend into the build so the graph cost overlay actually
+    # runs. The overlay has always existed but read report_json["llm_cost_records"],
+    # which nothing populated, so per-node cost_usd / subtree_cost_usd were never
+    # stamped. Shallow copy, never mutation: report_json is persisted elsewhere
+    # and must stay byte-identical. Best-effort, like the delta/webhook steps.
+    graph_input = report_json
+    try:
+        from agent_bom.api.cost_store import get_cost_store, graph_cost_rollup
+
+        cost_records = graph_cost_rollup(get_cost_store(), tenant_id)
+        if cost_records:
+            graph_input = {**report_json, "llm_cost_records": cost_records}
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("graph cost rollup skipped: %s", exc)
+
     # Store-backed producer (#4055/#4075): auto-on above the entity threshold
     # (or forced via AGENT_BOM_GRAPH_STORE_BACKED_BUILD). Builds into a per-build
     # store-backed container on a throwaway private SQLite workspace so peak RSS
@@ -529,7 +544,7 @@ def _persist_graph_snapshot(
         container_cm = contextlib.nullcontext(None)
 
     with container_cm as container:
-        graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id, container=container)
+        graph = build_unified_graph_from_report(graph_input, scan_id=scan_id, tenant_id=tenant_id, container=container)
 
         # Stamp Finding.id onto vuln/misconfig nodes before persist so attack-path
         # finding_ids (and investigation deep-links) are not CVE-label-only.

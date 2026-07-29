@@ -79,6 +79,14 @@ def _record_tags(record: Any) -> dict[str, str]:
     return {}
 
 
+def _record_calls(record: Any) -> int:
+    """Call count for one record: an aggregate's own count, else a single call."""
+    calls = _record_field(record, "calls")
+    if isinstance(calls, bool) or not isinstance(calls, (int, float)):
+        return 1
+    return max(0, int(calls))
+
+
 def _node_match_keys(node: UnifiedNode) -> set[str]:
     """Lower-cased identifiers a cost record may name this node by.
 
@@ -180,7 +188,9 @@ def apply_cost_overlay(
         candidate_keys.discard("unknown")
         for key in candidate_keys:
             total_by_key[key] += cost_val
-            calls_by_key[key] += 1
+            # Aggregated rows carry their own call count; a raw LLMCostRecord has
+            # no ``calls`` field and falls back to one call per record.
+            calls_by_key[key] += _record_calls(record)
             if in_window:
                 window_by_key[key] += cost_val
 

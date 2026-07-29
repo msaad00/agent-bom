@@ -16,14 +16,38 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _tracked_files(*pathspecs: str) -> list[Path]:
-    """Return tracked files for metrics so local ignored artifacts do not skew counts."""
-    result = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "--", *pathspecs],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    """Return tracked files for metrics so local ignored artifacts do not skew counts.
+
+    Falls back to a filesystem walk when git cannot answer. The Alpine/musl CI
+    job runs where ``git -C <root> ls-files`` exits 128 — git declines a
+    repository whose ownership it considers dubious — and a hard failure there
+    took down the whole metrics snapshot for a reason unrelated to any metric.
+
+    The fallback is equivalent on the checkout that matters: a fresh CI clone
+    has no untracked or ignored files, so the walk yields the same set. It is
+    only a divergence risk in a dirty working tree, which is exactly where the
+    git path still works.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "--", *pathspecs],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return _globbed_files(*pathspecs)
     return [ROOT / line for line in result.stdout.splitlines() if line]
+
+
+def _globbed_files(*pathspecs: str) -> list[Path]:
+    """Resolve git pathspecs against the filesystem, de-duplicated and sorted."""
+    found: set[Path] = set()
+    for spec in pathspecs:
+        for path in ROOT.glob(spec):
+            if path.is_file():
+                found.add(path)
+    return sorted(found)
 
 
 def _count_workflows() -> int:

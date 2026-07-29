@@ -60,7 +60,7 @@
     "eslint-config-next": "^16.2.12",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "jsdom": "^30.0.0",
+    "jsdom": "^30.0.1",
     "lightningcss": "1.33.0",
     "storybook": "^10.5.5",
     "tailwindcss": "^4.3.3",

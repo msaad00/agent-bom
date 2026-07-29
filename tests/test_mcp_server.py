@@ -122,9 +122,7 @@ def test_static_operator_token_authorizes_every_registered_write_family():
     assert operator_access is not None
     server_root = Path(__file__).resolve().parents[1] / "src" / "agent_bom"
     required_scopes = {
-        match
-        for path in server_root.glob("mcp_server_*.py")
-        for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
+        match for path in server_root.glob("mcp_server_*.py") for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
     }
     assert required_scopes == {"findings:write", "identity:write", "shield:write", "ticketing:write"}
     for required_scope in required_scopes:
@@ -1530,3 +1528,40 @@ def test_safe_path_traversal():
 
     with pytest.raises(ValueError, match="outside home directory"):
         _safe_path("/etc/passwd")
+
+
+def test_sdk_check_names_an_incompatible_major_distinctly():
+    """An installed-but-incompatible SDK must not read as "not installed".
+
+    ``check_mcp_sdk`` only did ``import mcp``, which succeeds on mcp 2.x — the
+    major that removed ``mcp.server.fastmcp``. Users got "install
+    agent-bom[mcp-server]", the exact command they had just run, for a problem
+    that installing more could never fix.
+    """
+    import builtins
+
+    from agent_bom.mcp_server_runtime import check_mcp_sdk
+
+    real_import = builtins.__import__
+
+    def _fastmcp_missing(name, *args, **kwargs):
+        if name == "mcp.server.fastmcp" or name.startswith("mcp.server.fastmcp."):
+            raise ModuleNotFoundError("No module named 'mcp.server.fastmcp'")
+        return real_import(name, *args, **kwargs)
+
+    with patch.object(builtins, "__import__", _fastmcp_missing):
+        with pytest.raises(ImportError) as excinfo:
+            check_mcp_sdk()
+
+    message = str(excinfo.value)
+    assert "incompatible" in message.lower(), message
+    assert "<2" in message or "2.x" in message, message
+
+
+def test_sdk_check_still_reports_a_genuinely_missing_sdk():
+    """The absent-SDK message must survive — it is the common case."""
+    from agent_bom.mcp_server_runtime import check_mcp_sdk
+
+    with patch.dict(sys.modules, {"mcp": None}):
+        with pytest.raises(ImportError, match="mcp SDK is required"):
+            check_mcp_sdk()

@@ -34,6 +34,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
+import anyio.to_thread
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
@@ -586,10 +587,39 @@ def _load_tenant_alerts(tenant_id: str) -> list[dict[str, Any]]:
     Delegates to ``proxy._load_proxy_alerts`` which already enforces per-tenant
     visibility and reads the configured audit log when the in-process buffer is
     empty. This module never mutates that buffer.
+
+    Synchronous by design — callers on the event loop must use
+    :func:`_load_tenant_alerts_async`.
     """
     from agent_bom.api.routes.proxy import _load_proxy_alerts
 
     return _load_proxy_alerts(tenant_id)
+
+
+async def _gather_feed_inputs_async(tenant_id: str, *, limit: int) -> tuple[list[dict[str, Any]], list[Any]]:
+    """Load every synchronous feed input off the event loop, in one hop.
+
+    Both the audit-log fallback and the cost-store read are blocking; offloading
+    only one still left the loop stalled for hundreds of milliseconds.
+    """
+
+    def _gather() -> tuple[list[dict[str, Any]], list[Any]]:
+        return _load_tenant_alerts(tenant_id), _load_tenant_llm_records(tenant_id, limit=limit)
+
+    return await anyio.to_thread.run_sync(_gather)
+
+
+async def _load_tenant_alerts_async(tenant_id: str) -> list[dict[str, Any]]:
+    """Off-loop variant for async routes.
+
+    The audit-log fallback opens a JSONL file and parses up to _MAX_LOG_LINES
+    records, redacting each one. Called inline from an ``async def`` handler
+    that froze the entire process -- measured at several seconds on a large log,
+    stalling every other tenant's request and every background task, not just
+    this one. AGENT_BOM_LOG is a shipped deployment surface, so this is reachable
+    in a normal install.
+    """
+    return await anyio.to_thread.run_sync(_load_tenant_alerts, tenant_id)
 
 
 def _load_tenant_uptime(tenant_id: str) -> float | None:
@@ -658,15 +688,14 @@ async def gateway_feed(
     no raw arguments, responses, or credential values are returned.
     """
     tenant_id = require_request_tenant_id(request)
-    alerts = _load_tenant_alerts(tenant_id)
-    llm_records = _load_tenant_llm_records(tenant_id, limit=limit)
+    alerts, llm_records = await _gather_feed_inputs_async(tenant_id, limit=limit)
     payload = build_gateway_feed(
         tenant_id=tenant_id,
         alerts=alerts,
         llm_records=llm_records,
         limit=limit,
     )
-    payload["health"] = _feed_health_from_metrics(_load_tenant_transport_metrics(tenant_id))
+    payload["health"] = _feed_health_from_metrics(await anyio.to_thread.run_sync(_load_tenant_transport_metrics, tenant_id))
     return payload
 
 
@@ -684,14 +713,13 @@ async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
     ``uptime_seconds`` (only when the proxy reports it — never fabricated).
     """
     tenant_id = require_request_tenant_id(request)
-    alerts = _load_tenant_alerts(tenant_id)
-    llm_records = _load_tenant_llm_records(tenant_id, limit=10000)
-    uptime_seconds = _load_tenant_uptime(tenant_id)
+    alerts, llm_records = await _gather_feed_inputs_async(tenant_id, limit=10000)
+    uptime_seconds = await anyio.to_thread.run_sync(_load_tenant_uptime, tenant_id)
     payload = build_gateway_feed_kpis(
         tenant_id=tenant_id,
         alerts=alerts,
         llm_records=llm_records,
         uptime_seconds=uptime_seconds,
     )
-    payload["health"] = _feed_health_from_metrics(_load_tenant_transport_metrics(tenant_id))
+    payload["health"] = _feed_health_from_metrics(await anyio.to_thread.run_sync(_load_tenant_transport_metrics, tenant_id))
     return payload

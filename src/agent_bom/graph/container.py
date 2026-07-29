@@ -989,7 +989,7 @@ class UnifiedGraph:
 
         sub = self._subgraph(node_filter=node_filter, edge_filter=edge_filter)
         if not edge_scoped:
-            return sub
+            return self._inherit_completeness(sub)
 
         keep_ids = set(filters.include_ids)
         for edge in sub.edges:
@@ -1009,7 +1009,24 @@ class UnifiedGraph:
         for edge in sub.edges:
             if edge.source in pruned.nodes and edge.target in pruned.nodes:
                 pruned.add_edge(edge)
-        return pruned
+        return self._inherit_completeness(pruned)
+
+    def _inherit_completeness(self, view: "UnifiedGraph") -> "UnifiedGraph":
+        """Carry the source's truncation onto a derived view.
+
+        Truncation is a property of the SOURCE snapshot. Filtering cannot make
+        it untrue: nodes that were never loaded might have matched the filter,
+        and nobody can know whether they did. So the flag and reason propagate
+        unchanged, ``returned_nodes`` is recomputed for what this view actually
+        holds, and ``total_nodes`` stays the upstream total so ``omitted_nodes``
+        keeps meaning "how much of the estate we never saw".
+        """
+        view.completeness.truncated = self.completeness.truncated
+        view.completeness.node_budget = self.completeness.node_budget
+        view.completeness.reason = self.completeness.reason
+        view.completeness.total_nodes = self.completeness.total_nodes
+        view.completeness.returned_nodes = len(view.nodes)
+        return view
 
     def _subgraph(
         self,

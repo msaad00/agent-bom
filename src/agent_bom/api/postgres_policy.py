@@ -91,7 +91,7 @@ class PostgresPolicyStore:
                 END
                 $$;
             """)
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id)")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(team_id, entry_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC)")
             _ensure_tenant_rls(conn, "gateway_policies", "team_id")
@@ -187,7 +187,7 @@ class PostgresPolicyStore:
                     """
                     INSERT INTO policy_audit_log (entry_id, ts, team_id, data)
                     VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (entry_id) DO NOTHING
+                    ON CONFLICT (team_id, entry_id) DO NOTHING
                     """,
                     (entry_id, ts, team_id, data),
                 )

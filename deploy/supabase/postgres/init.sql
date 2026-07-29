@@ -216,7 +216,10 @@ DO $$ BEGIN
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON policy_audit_log(ts DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id);
+-- Tenant-scoped: a bare UNIQUE(entry_id) let one tenant's audit row discard
+-- another's, because unique indexes are enforced below RLS. Matches the
+-- governance chain's uq_governance_audit_tenant_action.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(team_id, entry_id);
 CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id);
 CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC);
 

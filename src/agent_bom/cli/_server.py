@@ -24,6 +24,16 @@ def _require_optional_dependencies(command: str, extra: str, modules: dict[str, 
     _fail_missing_optional_dependencies(command, extra, missing)
 
 
+def _mcp_sdk_installed() -> bool:
+    """True when the mcp package is importable, whatever version it is."""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("mcp") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def _fail_missing_optional_dependencies(command: str, extra: str, missing: list[str]) -> None:
     """Print the shared optional-extra install hint and exit."""
     missing_text = ", ".join(missing)
@@ -1103,7 +1113,15 @@ def mcp_server_cmd(
 
     try:
         from agent_bom.mcp_server import create_mcp_server
-    except ImportError:
+    except ImportError as exc:
+        # An SDK that is installed but INCOMPATIBLE is not a missing extra.
+        # mcp 2.x removed `mcp.server.fastmcp`, so the import fails while the
+        # package is plainly present — and the `mcp-server` extra carries only
+        # smithery, so the install hint could never fix it. Surface the real
+        # diagnosis in that case instead of the generic extras message.
+        if _mcp_sdk_installed():
+            click.echo(f"ERROR: cannot start `agent-bom mcp server`.\n{exc}", err=True)
+            sys.exit(1)
         _fail_missing_optional_dependencies("agent-bom mcp server", "mcp-server", ["MCP SDK"])
 
     if transport in ("sse", "streamable-http"):

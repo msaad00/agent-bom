@@ -1565,3 +1565,40 @@ def test_sdk_check_still_reports_a_genuinely_missing_sdk():
     with patch.dict(sys.modules, {"mcp": None}):
         with pytest.raises(ImportError, match="mcp SDK is required"):
             check_mcp_sdk()
+
+
+def test_cli_reports_an_incompatible_sdk_rather_than_a_missing_extra():
+    """The CLI must not answer an incompatibility with an install hint.
+
+    `agent-bom mcp server` caught any ImportError and printed "install
+    agent-bom[mcp-server]" — an extra that carries only smithery, so it could
+    never fix an SDK incompatibility. With mcp 2.x installed the package is
+    plainly present and the advice was actively misleading.
+    """
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    with patch(
+        "agent_bom.cli._server._mcp_sdk_installed",
+        return_value=True,
+    ):
+        with patch.dict(sys.modules, {"agent_bom.mcp_server": None}):
+            result = CliRunner().invoke(main, ["mcp", "server"])
+
+    assert result.exit_code == 1
+    assert "agent-bom[mcp-server]" not in result.output, result.output
+
+
+def test_cli_still_points_at_the_extra_when_the_sdk_is_absent():
+    """A genuinely missing SDK keeps the install hint — the common case."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    with patch("agent_bom.cli._server._mcp_sdk_installed", return_value=False):
+        with patch.dict(sys.modules, {"agent_bom.mcp_server": None}):
+            result = CliRunner().invoke(main, ["mcp", "server"])
+
+    assert result.exit_code == 1
+    assert "agent-bom[mcp-server]" in result.output, result.output

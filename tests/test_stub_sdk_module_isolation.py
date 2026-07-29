@@ -25,18 +25,16 @@ from tests.conftest import _restore_stub_sdk_modules, _snapshot_stub_sdk_modules
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_snapshot_restore_drops_stubs_a_test_added():
+def test_snapshot_restore_drops_stub_modules_a_test_added():
+    """The contract is independent of whether a real provider SDK is installed."""
     snapshot = _snapshot_stub_sdk_modules()
 
-    stub = types.ModuleType("snowflake")
-    stub.connector = types.ModuleType("snowflake.connector")
-    sys.modules["snowflake"] = stub
-    sys.modules["snowflake.connector"] = stub.connector
+    stub_name = "snowflake.__agent_bom_test_stub__"
+    sys.modules[stub_name] = types.ModuleType(stub_name)
 
     _restore_stub_sdk_modules(snapshot)
 
-    assert "snowflake" not in sys.modules
-    assert "snowflake.connector" not in sys.modules
+    assert stub_name not in sys.modules
 
 
 def test_snapshot_restore_reinstates_a_stub_a_test_replaced():

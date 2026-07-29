@@ -309,6 +309,14 @@ def test_sqlite_cursor_query_uses_tenant_ordinal_index(tmp_path) -> None:
     plan = store.query_plan("tenant-a", after_ordinal=10, limit=100)
     assert "idx_gateway_activity_events_tenant_ordinal" in plan
 
+    window_plan = store._conn.execute(
+        "EXPLAIN QUERY PLAN SELECT data FROM gateway_activity_events "
+        "WHERE tenant_id = ? AND event_timestamp >= ? AND event_timestamp <= ?",
+        ("tenant-a", "2026-07-28T00:00:00+00:00", "2026-07-28T23:59:59+00:00"),
+    ).fetchall()
+    rendered = " ".join(str(column) for row in window_plan for column in row)
+    assert "idx_gateway_activity_events_tenant_event_time" in rendered
+
 
 def test_sqlite_concurrent_writers_allocate_unique_ordinals(tmp_path) -> None:
     store = SQLiteGatewayActivityStore(str(tmp_path / "activity.db"), max_events_per_tenant=20)
@@ -331,3 +339,71 @@ def test_sqlite_concurrent_writers_allocate_unique_ordinals(tmp_path) -> None:
     assert errors == []
     events = store.list_activity("tenant-a", limit=20).events
     assert [event["ingest_ordinal"] for event in events] == list(range(1, 9))
+
+
+def test_two_sqlite_api_replicas_share_one_gap_free_tenant_sequence(tmp_path) -> None:
+    path = str(tmp_path / "activity.db")
+    stores = [
+        SQLiteGatewayActivityStore(path, max_events_per_tenant=20),
+        SQLiteGatewayActivityStore(path, max_events_per_tenant=20),
+    ]
+    barrier = threading.Barrier(8)
+    errors: list[Exception] = []
+
+    def worker(index: int) -> None:
+        try:
+            barrier.wait()
+            stores[index % 2].append_batch([_record(f"replica-evt-{index}")])
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(index,)) for index in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    page = stores[0].list_activity("tenant-a", limit=20)
+    assert [event["ingest_ordinal"] for event in page.events] == list(range(1, 9))
+    assert len({event["event_id"] for event in page.events}) == 8
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_window_summary_counts_canonical_events_without_materializing_payloads(store_kind: str, tmp_path) -> None:
+    store = (
+        InMemoryGatewayActivityStore(max_events_per_tenant=20)
+        if store_kind == "memory"
+        else SQLiteGatewayActivityStore(str(tmp_path / "activity.db"), max_events_per_tenant=20)
+    )
+    store.append_batch(
+        [
+            _record("allowed"),
+            _record(
+                "blocked",
+                event_type="gateway.tool_call.blocked",
+                decision="deny",
+                reason_code="unknown_agent",
+            ),
+            _record(
+                "redacted",
+                event_type="gateway.dlp.result_redacted",
+                decision="allow",
+                data_action="pii_redacted",
+            ),
+            _record("outside", timestamp="2026-07-27T11:59:00+00:00"),
+        ]
+    )
+
+    summary = store.summarize_window(
+        "tenant-a",
+        start="2026-07-28T00:00:00+00:00",
+        end="2026-07-28T23:59:59+00:00",
+    )
+
+    assert summary.tool_calls_authorized == 1
+    assert summary.blocked == 1
+    assert summary.shadow_blocked == 1
+    assert summary.data_filters == 1
+    assert summary.retention_floor_ordinal == 1
+    assert summary.latest_ordinal == 4

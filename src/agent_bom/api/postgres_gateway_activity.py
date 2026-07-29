@@ -16,11 +16,14 @@ from agent_bom.api.gateway_activity_store import (
     GatewayActivityCursorExpiredError,
     GatewayActivityPage,
     GatewayActivityRecord,
+    GatewayActivityWindowSummary,
     _decode_cursor,
+    _encode_cursor,
     _page,
     _prepare_batch,
     _record_from_json,
     _validate_store_config,
+    _window_summary,
 )
 from agent_bom.api.postgres_common import Connection, ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
@@ -37,6 +40,13 @@ def bootstrap_postgres_gateway_activity_schema(conn: Connection) -> None:
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal "
         "ON gateway_activity_events(tenant_id, ingest_ordinal)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_event_time "
+        "ON gateway_activity_events("
+        "tenant_id, event_timestamp, "
+        "((data::jsonb) ->> 'event_type'), ((data::jsonb) ->> 'reason_code')"
+        ")"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal "
@@ -74,6 +84,10 @@ class PostgresGatewayActivityStore:
                 return
             bootstrap_postgres_gateway_activity_schema(conn)
             conn.commit()
+
+    @staticmethod
+    def encode_cursor(tenant_id: str, ordinal: int) -> str:
+        return _encode_cursor(tenant_id, ordinal)
 
     def append_batch(self, records: list[GatewayActivityRecord]) -> GatewayActivityAppendResult:
         tenant_id, prepared = _prepare_batch(records)
@@ -246,6 +260,49 @@ class PostgresGatewayActivityStore:
             latest=latest,
             max_events=self.max_events_per_tenant,
             max_tombstones=self.max_tombstones_per_tenant,
+        )
+
+    def summarize_window(self, tenant_id: str, *, start: str, end: str) -> GatewayActivityWindowSummary:
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                """
+                WITH bounds AS (
+                    SELECT
+                        COALESCE(
+                            (SELECT next_ordinal - 1 FROM gateway_activity_sequences WHERE tenant_id = %s),
+                            0
+                        ) AS latest,
+                        COALESCE(
+                            (SELECT MIN(ingest_ordinal) FROM gateway_activity_events WHERE tenant_id = %s),
+                            (SELECT next_ordinal FROM gateway_activity_sequences WHERE tenant_id = %s),
+                            1
+                        ) AS floor
+                ), grouped AS (
+                    SELECT
+                        ((data::jsonb) ->> 'event_type') AS event_type,
+                        ((data::jsonb) ->> 'reason_code') AS reason_code,
+                        COUNT(*) AS event_count
+                    FROM gateway_activity_events
+                    WHERE tenant_id = %s AND event_timestamp >= %s AND event_timestamp <= %s
+                    GROUP BY 1, 2
+                )
+                SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count
+                FROM bounds LEFT JOIN grouped ON TRUE
+                """,
+                (tenant_id, tenant_id, tenant_id, tenant_id, start, end),
+            ).fetchall()
+        latest, floor = int(rows[0][0]), int(rows[0][1])
+        return _window_summary(
+            tenant_id,
+            start=start,
+            end=end,
+            event_rows=[
+                (str(event_type), str(reason), int(count))
+                for _, _, event_type, reason, count in rows
+                if event_type is not None and count is not None
+            ],
+            floor=floor,
+            latest=latest,
         )
 
 

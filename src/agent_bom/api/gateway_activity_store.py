@@ -18,7 +18,7 @@ from collections import deque
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.runtime.gateway_events import (
@@ -122,6 +122,13 @@ def ensure_sqlite_gateway_activity_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal "
         "ON gateway_activity_events(tenant_id, ingest_ordinal)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_event_time "
+        "ON gateway_activity_events("
+        "tenant_id, event_timestamp, "
+        "json_extract(data, '$.event_type'), json_extract(data, '$.reason_code')"
+        ")"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal "
@@ -255,6 +262,42 @@ class GatewayActivityPage:
     dedupe_window_events: int
 
 
+@dataclass(frozen=True)
+class GatewayActivityWindowSummary:
+    tenant_id: str
+    start: str
+    end: str
+    tool_calls_authorized: int
+    blocked: int
+    shadow_blocked: int
+    data_filters: int
+    retention_floor_ordinal: int
+    latest_ordinal: int
+
+
+class GatewayActivityStore(Protocol):
+    """Shared contract for the tenant-scoped gateway activity ledger."""
+
+    max_events_per_tenant: int
+    max_tombstones_per_tenant: int
+
+    def init_schema(self) -> None: ...
+
+    def append_batch(self, records: list[GatewayActivityRecord]) -> GatewayActivityAppendResult: ...
+
+    def list_activity(
+        self,
+        tenant_id: str,
+        *,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> GatewayActivityPage: ...
+
+    def encode_cursor(self, tenant_id: str, ordinal: int) -> str: ...
+
+    def summarize_window(self, tenant_id: str, *, start: str, end: str) -> GatewayActivityWindowSummary: ...
+
+
 def _required_text(value: object, field: str, *, max_len: int = 200) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"gateway activity {field} is required")
@@ -324,6 +367,51 @@ def _validate_store_config(max_events_per_tenant: int, max_tombstones_per_tenant
         raise ValueError("gateway activity max_events_per_tenant must be at least 1")
     if isinstance(max_tombstones_per_tenant, bool) or max_tombstones_per_tenant < 1:
         raise ValueError("gateway activity max_tombstones_per_tenant must be at least 1")
+
+
+_SHADOW_REASON_MARKERS = (
+    "undeclared",
+    "shadow",
+    "unknown_agent",
+    "unknown agent",
+    "unregistered",
+    "unknown-agent",
+)
+
+
+def _is_shadow_reason(reason_code: str) -> bool:
+    normalized = reason_code.lower()
+    return any(marker in normalized for marker in _SHADOW_REASON_MARKERS)
+
+
+def _window_summary(
+    tenant_id: str,
+    *,
+    start: str,
+    end: str,
+    event_rows: list[tuple[str, str, int]],
+    floor: int,
+    latest: int,
+) -> GatewayActivityWindowSummary:
+    authorized = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_ALLOWED_EVENT_TYPES)
+    blocked = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES)
+    data_filters = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES)
+    shadow_blocked = sum(
+        count
+        for event_type, reason, count in event_rows
+        if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
+    )
+    return GatewayActivityWindowSummary(
+        tenant_id=tenant_id,
+        start=start,
+        end=end,
+        tool_calls_authorized=authorized,
+        blocked=blocked,
+        shadow_blocked=shadow_blocked,
+        data_filters=data_filters,
+        retention_floor_ordinal=floor,
+        latest_ordinal=latest,
+    )
 
 
 def _digest_payload(record: GatewayActivityRecord) -> str:
@@ -561,6 +649,31 @@ class InMemoryGatewayActivityStore:
                 max_tombstones=self.max_tombstones_per_tenant,
             )
 
+    def summarize_window(self, tenant_id: str, *, start: str, end: str) -> GatewayActivityWindowSummary:
+        with self._lock:
+            rows = [
+                record
+                for (row_tenant, _), record in self._events.items()
+                if row_tenant == tenant_id and start <= record.event_timestamp <= end
+            ]
+            all_tenant_rows = [
+                record for (row_tenant, _), record in self._events.items() if row_tenant == tenant_id
+            ]
+            latest = self._next_ordinal.get(tenant_id, 1) - 1
+            floor = min((record.ingest_ordinal for record in all_tenant_rows), default=latest + 1)
+        grouped: dict[tuple[str, str], int] = {}
+        for record in rows:
+            key = (record.event_type, record.reason_code)
+            grouped[key] = grouped.get(key, 0) + 1
+        return _window_summary(
+            tenant_id,
+            start=start,
+            end=end,
+            event_rows=[(event_type, reason, count) for (event_type, reason), count in grouped.items()],
+            floor=floor,
+            latest=latest,
+        )
+
 
 class SQLiteGatewayActivityStore:
     def __init__(
@@ -763,6 +876,48 @@ class SQLiteGatewayActivityStore:
             max_tombstones=self.max_tombstones_per_tenant,
         )
 
+    def summarize_window(self, tenant_id: str, *, start: str, end: str) -> GatewayActivityWindowSummary:
+        rows = self._conn.execute(
+            """
+            WITH bounds AS (
+                SELECT
+                    COALESCE(
+                        (SELECT next_ordinal - 1 FROM gateway_activity_sequences WHERE tenant_id = ?),
+                        0
+                    ) AS latest,
+                    COALESCE(
+                        (SELECT MIN(ingest_ordinal) FROM gateway_activity_events WHERE tenant_id = ?),
+                        (SELECT next_ordinal FROM gateway_activity_sequences WHERE tenant_id = ?),
+                        1
+                    ) AS floor
+            ), grouped AS (
+                SELECT
+                    json_extract(data, '$.event_type') AS event_type,
+                    json_extract(data, '$.reason_code') AS reason_code,
+                    COUNT(*) AS event_count
+                FROM gateway_activity_events
+                WHERE tenant_id = ? AND event_timestamp >= ? AND event_timestamp <= ?
+                GROUP BY 1, 2
+            )
+            SELECT bounds.latest, bounds.floor, grouped.event_type, grouped.reason_code, grouped.event_count
+            FROM bounds LEFT JOIN grouped ON TRUE
+            """,
+            (tenant_id, tenant_id, tenant_id, tenant_id, start, end),
+        ).fetchall()
+        latest, floor = int(rows[0][0]), int(rows[0][1])
+        return _window_summary(
+            tenant_id,
+            start=start,
+            end=end,
+            event_rows=[
+                (str(event_type), str(reason), int(count))
+                for _, _, event_type, reason, count in rows
+                if event_type is not None and count is not None
+            ],
+            floor=floor,
+            latest=latest,
+        )
+
     def query_plan(self, tenant_id: str, *, after_ordinal: int, limit: int) -> str:
         rows = self._conn.execute(
             "EXPLAIN QUERY PLAN SELECT data FROM gateway_activity_events "
@@ -808,6 +963,47 @@ def _record_from_json(raw: str) -> GatewayActivityRecord:
     )
 
 
+_GATEWAY_ACTIVITY_STORE: GatewayActivityStore | None = None
+
+
+def get_gateway_activity_store() -> GatewayActivityStore:
+    """Return the process gateway ledger, durable by default.
+
+    The selection ladder matches the runtime observation store: shared
+    Postgres for replicas, SQLite for the default single-node deployment, and
+    memory only when the operator explicitly enables the ephemeral backend.
+    """
+
+    global _GATEWAY_ACTIVITY_STORE
+    if _GATEWAY_ACTIVITY_STORE is not None:
+        return _GATEWAY_ACTIVITY_STORE
+
+    from agent_bom.storage.factory import resolve_backend
+
+    selection = resolve_backend(mode="durable")
+    if selection.backend is BackendKind.POSTGRES:
+        from agent_bom.api.postgres_gateway_activity import PostgresGatewayActivityStore
+
+        store: GatewayActivityStore = PostgresGatewayActivityStore()
+    elif selection.backend is BackendKind.MEMORY:
+        store = InMemoryGatewayActivityStore()
+    else:
+        store = SQLiteGatewayActivityStore(selection.sqlite_path or "")
+    _GATEWAY_ACTIVITY_STORE = store
+    return store
+
+
+def set_gateway_activity_store(store: GatewayActivityStore | None) -> None:
+    """Override or reset the process gateway ledger (tests and embedding)."""
+
+    global _GATEWAY_ACTIVITY_STORE
+    _GATEWAY_ACTIVITY_STORE = store
+
+
+def reset_gateway_activity_store() -> None:
+    set_gateway_activity_store(None)
+
+
 __all__ = [
     "GatewayActivityAppendResult",
     "GatewayActivityConflictError",
@@ -815,11 +1011,16 @@ __all__ = [
     "GatewayActivityCursorExpiredError",
     "GatewayActivityPage",
     "GatewayActivityRecord",
+    "GatewayActivityStore",
+    "GatewayActivityWindowSummary",
     "GATEWAY_ACTIVITY_STORE_SCHEMA",
     "DEFAULT_MAX_TOMBSTONES_PER_TENANT",
     "MAX_ACTIVITY_BATCH_SIZE",
     "InMemoryGatewayActivityStore",
     "SQLiteGatewayActivityStore",
     "gateway_activity_record_from_event",
+    "get_gateway_activity_store",
+    "reset_gateway_activity_store",
+    "set_gateway_activity_store",
     "ensure_sqlite_gateway_activity_schema",
 ]

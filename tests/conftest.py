@@ -307,6 +307,12 @@ def _reset_durable_store_singletons() -> None:
     except Exception:
         pass
     try:
+        from agent_bom.api.gateway_activity_store import set_gateway_activity_store
+
+        set_gateway_activity_store(None)
+    except Exception:
+        pass
+    try:
         from agent_bom.api.cost_store import set_cost_store
 
         set_cost_store(None)

@@ -24,6 +24,7 @@ RUNTIME_EVIDENCE_TIMESTAMP_AUTHORITY = VERSIONS_DIR / "20260727_01_runtime_evide
 MCP_PROFILE_BINDING_AUTHORITY = VERSIONS_DIR / "20260728_01_mcp_profile_binding_authority.py"
 GATEWAY_ACTIVITY_LEDGER = VERSIONS_DIR / "20260728_02_gateway_activity_ledger.py"
 TRUSTED_MAINTENANCE_RLS = VERSIONS_DIR / "20260728_03_trusted_maintenance_rls.py"
+GATEWAY_ACTIVITY_WINDOW_INDEX = VERSIONS_DIR / "20260729_02_gateway_activity_window_index.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -372,6 +373,22 @@ def test_gateway_activity_ledger_migration_is_chained_durable_and_tenant_isolate
     assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal" in sql
     assert "CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal" in sql
     assert "VALUES ('runtime_events', 2, now())" in sql
+    assert "DROP TABLE" not in sql
+
+
+def test_gateway_activity_window_index_is_chained_and_matches_runtime_schema() -> None:
+    sql = GATEWAY_ACTIVITY_WINDOW_INDEX.read_text()
+    index_ddl = (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gateway_activity_events_tenant_event_time "
+        "ON gateway_activity_events(tenant_id, event_timestamp, "
+        "((data::jsonb) ->> 'event_type'), ((data::jsonb) ->> 'reason_code'))"
+    )
+    assert re.search(r'revision\s*=\s*"20260729_02"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260729_01"', sql)
+    assert _canonical_sql(index_ddl) in _canonical_sql(sql)
+    runtime_index_ddl = index_ddl.replace(" CONCURRENTLY", "")
+    assert _canonical_sql(runtime_index_ddl) in _canonical_sql(RUNTIME_SCHEMA_SQL.read_text())
+    assert "autocommit_block" in sql
     assert "DROP TABLE" not in sql
 
 

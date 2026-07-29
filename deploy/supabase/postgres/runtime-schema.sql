@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS gateway_activity_events (tenant_id TEXT NOT NULL,even
 CREATE TABLE IF NOT EXISTS gateway_activity_sequences (tenant_id TEXT PRIMARY KEY,next_ordinal BIGINT NOT NULL CHECK(next_ordinal >= 1));
 CREATE TABLE IF NOT EXISTS gateway_activity_tombstones (tenant_id TEXT NOT NULL,event_id TEXT NOT NULL,event_digest TEXT NOT NULL,pruned_ordinal BIGINT NOT NULL,PRIMARY KEY(tenant_id,event_id));
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal ON gateway_activity_events(tenant_id,ingest_ordinal);
+CREATE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_event_time ON gateway_activity_events(tenant_id,event_timestamp,((data::jsonb)->>'event_type'),((data::jsonb)->>'reason_code'));
 CREATE INDEX IF NOT EXISTS idx_gateway_activity_tombstones_tenant_ordinal ON gateway_activity_tombstones(tenant_id,pruned_ordinal);
 CREATE TABLE IF NOT EXISTS runtime_workload_evidence (
   tenant_id TEXT NOT NULL,

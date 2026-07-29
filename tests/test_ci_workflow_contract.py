@@ -80,8 +80,8 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
 
 
 def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:
-    """Full-suite Alpine runs must outlive the observed 25-minute ceiling."""
-    assert _ci()["jobs"]["test-alpine"]["timeout-minutes"] == 35
+    """Full-suite Alpine runs must leave cleanup margin over the 34m51s baseline."""
+    assert _ci()["jobs"]["test-alpine"]["timeout-minutes"] == 45
 
 
 def test_pull_request_pytest_reports_slowest_tests() -> None:

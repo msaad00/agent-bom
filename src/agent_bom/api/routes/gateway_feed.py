@@ -1,10 +1,12 @@
 """Gateway Live Feed — unified fleet event stream.
 
-A single normalized, time-ordered stream that fuses three runtime surfaces the
-platform already produces, with per-agent attribution:
+A single normalized, cursor-backed stream that projects the durable gateway
+activity ledger with per-agent attribution. Legacy proxy alerts and recent LLM
+cost observations remain an explicitly partial initial-page compatibility
+projection; cursor resume is ledger-only and server ordered.
 
-    * tool-call authorization decisions  (allowed / blocked)  — proxy alert ring
-      buffer + gateway audit events
+    * tool-call authorization decisions  (allowed / blocked)  — durable gateway
+      activity ledger
     * data-filter / DLP redaction events  (PII / credential masking applied to
       tool responses)                                         — proxy alert ring
       buffer (credential_leak / pii detectors)
@@ -12,9 +14,9 @@ platform already produces, with per-agent attribution:
       cost store (priced OTel GenAI spans)
 
 This module is read-only over those existing stores. It does NOT re-implement
-enforcement, DLP, audit, or streaming — it consumes the in-process proxy alert
-ring buffer (``agent_bom.api.routes.proxy``) and the cost store
-(``agent_bom.api.cost_store``) and projects a unified, redaction-safe feed.
+enforcement, DLP, audit, or streaming. Postgres/SQLite ledger data is primary;
+the in-process ring/JSONL path is labeled degraded and never satisfies a cursor
+resume when the ledger is unavailable.
 
 Endpoints:
     GET /v1/gateway/feed       normalized, time-ordered fused event list
@@ -25,8 +27,8 @@ All reads are RBAC-gated (``read`` permission), tenant-scoped, and
 redaction-safe: only metadata (timestamps, agent identifiers, tool/target
 names, action class, short non-secret detail strings) is returned. No raw
 arguments, raw responses, or credential values cross this surface — the source
-records are already sanitized by ``push_proxy_alert`` /
-``redact_for_persistence`` before they reach the ring buffer.
+records are projected through the ledger's strict metadata allowlist; degraded
+records are sanitized by ``push_proxy_alert`` / ``redact_for_persistence``.
 """
 
 from __future__ import annotations
@@ -35,9 +37,16 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from agent_bom.api.gateway_activity_store import (
+    GatewayActivityCursorError,
+    GatewayActivityCursorExpiredError,
+    GatewayActivityPage,
+    GatewayActivityWindowSummary,
+    get_gateway_activity_store,
+)
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.runtime.gateway_events import (
@@ -50,6 +59,10 @@ router = APIRouter()
 
 _FEED_SCHEMA_VERSION = "gateway.feed.v1"
 _FEED_STALE_AFTER_SECONDS = 120
+
+
+class GatewayFeedLedgerUnavailableError(RuntimeError):
+    """The shared ledger cannot satisfy a cursor-backed read."""
 
 
 class GatewayFeedHealthModel(BaseModel):
@@ -90,9 +103,34 @@ class GatewayFeedEventModel(BaseModel):
     tenant: str
     shadow: bool
     source: str
+    ingest_ordinal: int | None = Field(default=None, ge=1)
     input_tokens: int | None = None
     output_tokens: int | None = None
     cost_usd: float | None = None
+
+
+class GatewayFeedCompletenessModel(BaseModel):
+    status: Literal["complete", "partial"]
+    reasons: list[str]
+    server_ordered: bool
+    retention_floor_ordinal: int = Field(ge=1)
+    latest_ordinal: int = Field(ge=0)
+    max_events_per_tenant: int = Field(ge=0)
+    dedupe_window_events: int = Field(ge=0)
+
+
+class GatewayFeedKpiCompletenessModel(BaseModel):
+    status: Literal["complete", "partial"]
+    reasons: list[str]
+    retention_floor_ordinal: int = Field(ge=1)
+    latest_ordinal: int = Field(ge=0)
+
+
+class GatewayFeedWindowModel(BaseModel):
+    start: str
+    end: str
+    timezone: Literal["UTC"]
+    exact: bool
 
 
 class GatewayFeedResponseModel(BaseModel):
@@ -101,6 +139,10 @@ class GatewayFeedResponseModel(BaseModel):
     generated_at: str
     count: int
     events: list[GatewayFeedEventModel]
+    next_cursor: str | None
+    has_more: bool
+    source: Literal["gateway_activity_ledger", "degraded_single_process"]
+    completeness: GatewayFeedCompletenessModel
     health: GatewayFeedHealthModel
 
 
@@ -115,6 +157,9 @@ class GatewayFeedKpisModel(BaseModel):
     tool_calls_authorized: int
     llm_calls: int
     uptime_seconds: float | None = None
+    source: Literal["gateway_activity_ledger", "degraded_single_process"]
+    completeness: GatewayFeedKpiCompletenessModel
+    window: GatewayFeedWindowModel
     health: GatewayFeedHealthModel
 
 
@@ -124,6 +169,7 @@ ACTION_TOOL_CALL_AUTHORIZED = "tool_call_authorized"
 ACTION_TOOL_CALL_BLOCKED = "tool_call_blocked"
 ACTION_DATA_FILTER_APPLIED = "data_filter_applied"
 ACTION_LLM_CALL = "llm_call"
+_EVENT_TYPES = GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
 
 # Block reasons that indicate a shadow / undeclared agent or shadow MCP server
 # rather than an ordinary policy block. ``undeclared`` is emitted by the proxy
@@ -224,6 +270,15 @@ def _sort_key(event: dict[str, Any]) -> str:
     timestamp sort last (oldest) by mapping to the empty string.
     """
     return str(event.get("ts") or "")
+
+
+def _feed_order_key(event: dict[str, Any]) -> tuple[int, int, str]:
+    """Prefer the server-owned ledger ordinal over caller timestamps."""
+
+    ordinal = event.get("ingest_ordinal")
+    if isinstance(ordinal, int) and not isinstance(ordinal, bool) and ordinal > 0:
+        return (1, ordinal, "")
+    return (0, 0, _sort_key(event))
 
 
 def _alert_agent(alert: dict[str, Any]) -> str:
@@ -439,7 +494,16 @@ def _normalize_alert_event(alert: dict[str, Any], tenant_id: str) -> dict[str, A
         "detail": detail,
         "tenant": tenant_id,
         "shadow": shadow,
-        "source": "proxy",
+        "source": (
+            "gateway_activity_ledger"
+            if str(alert.get("record_schema_version") or "").startswith("gateway.activity.record.")
+            else "proxy"
+        ),
+        "ingest_ordinal": (
+            int(alert["ingest_ordinal"])
+            if isinstance(alert.get("ingest_ordinal"), int) and int(alert["ingest_ordinal"]) > 0
+            else None
+        ),
     }
 
 
@@ -481,6 +545,7 @@ def _normalize_llm_event(record: Any, tenant_id: str) -> dict[str, Any]:
         "tenant": tenant_id,
         "shadow": False,
         "source": "observability",
+        "ingest_ordinal": None,
         "input_tokens": int(input_tokens),
         "output_tokens": int(output_tokens),
         "cost_usd": float(cost) if priced and isinstance(cost, int | float) else None,
@@ -510,7 +575,7 @@ def build_gateway_feed(
     for record in llm_records:
         events.append(_normalize_llm_event(record, tenant_id))
 
-    events.sort(key=_sort_key, reverse=True)
+    events.sort(key=_feed_order_key, reverse=True)
     bounded = events[:limit]
     return {
         "schema_version": _FEED_SCHEMA_VERSION,
@@ -542,10 +607,8 @@ def build_gateway_feed_kpis(
         * ``uptime_seconds``       — only emitted when the proxy reports it; never
                                      fabricated.
 
-    ``_today`` reflects the live in-process window the ring buffer retains (the
-    proxy alert deque + the day's cost records), not a wall-clock midnight cut —
-    the label matches the operator-facing "today" framing without overstating
-    retention.
+    The route applies a UTC-midnight-to-request-time window and reports whether
+    retention or supplemental source limits make the result partial.
     """
     authorized = 0
     blocked = 0
@@ -588,38 +651,134 @@ def _load_tenant_alerts(tenant_id: str) -> list[dict[str, Any]]:
     visibility and reads the configured audit log when the in-process buffer is
     empty. This module never mutates that buffer.
 
-    Synchronous by design — callers on the event loop must use
-    :func:`_load_tenant_alerts_async`.
+    Synchronous by design — route callers offload the complete evidence read.
     """
     from agent_bom.api.routes.proxy import _load_proxy_alerts
 
     return _load_proxy_alerts(tenant_id)
 
 
-async def _gather_feed_inputs_async(tenant_id: str, *, limit: int) -> tuple[list[dict[str, Any]], list[Any]]:
-    """Load every synchronous feed input off the event loop, in one hop.
+def _load_gateway_activity_page(
+    tenant_id: str,
+    *,
+    cursor: str | None,
+    limit: int,
+) -> tuple[GatewayActivityPage, bool]:
+    """Read a forward cursor page, using the newest bounded slice initially."""
 
-    Both the audit-log fallback and the cost-store read are blocking; offloading
-    only one still left the loop stalled for hundreds of milliseconds.
-    """
+    store = get_gateway_activity_store()
+    if cursor:
+        return store.list_activity(tenant_id, cursor=cursor, limit=limit), False
 
-    def _gather() -> tuple[list[dict[str, Any]], list[Any]]:
-        return _load_tenant_alerts(tenant_id), _load_tenant_llm_records(tenant_id, limit=limit)
+    bounds = store.list_activity(tenant_id, limit=1)
+    retained = max(0, bounds.latest_ordinal - bounds.retention_floor_ordinal + 1)
+    if retained <= limit:
+        return store.list_activity(tenant_id, limit=limit), False
+
+    after = bounds.latest_ordinal - limit
+    page = store.list_activity(
+        tenant_id,
+        cursor=store.encode_cursor(tenant_id, after),
+        limit=limit,
+    )
+    return page, True
+
+
+async def _gather_durable_feed_inputs_async(
+    tenant_id: str,
+    *,
+    cursor: str | None,
+    limit: int,
+) -> tuple[GatewayActivityPage, bool, list[dict[str, Any]], list[Any], bool, bool]:
+    """Read the ledger and compatibility sources without blocking the loop."""
+
+    def _load_llm() -> tuple[list[Any], bool]:
+        try:
+            return _load_tenant_llm_records(tenant_id, limit=limit), True
+        except Exception:  # noqa: BLE001 - optional evidence is reported partial
+            return [], False
+
+    def _gather() -> tuple[GatewayActivityPage, bool, list[dict[str, Any]], list[Any], bool, bool]:
+        try:
+            page, older_omitted = _load_gateway_activity_page(tenant_id, cursor=cursor, limit=limit)
+        except (GatewayActivityCursorError, GatewayActivityCursorExpiredError):
+            raise
+        except Exception as exc:  # noqa: BLE001 - caller receives sanitized state only
+            if cursor:
+                raise GatewayFeedLedgerUnavailableError from exc
+            page = GatewayActivityPage(
+                tenant_id=tenant_id,
+                events=[],
+                cursor=None,
+                next_cursor=None,
+                has_more=False,
+                retention_floor_ordinal=1,
+                latest_ordinal=0,
+                max_events_per_tenant=0,
+                dedupe_window_events=0,
+            )
+            older_omitted = False
+            llm_records, observability_available = _load_llm()
+            return (
+                page,
+                older_omitted,
+                _load_tenant_alerts(tenant_id),
+                llm_records,
+                False,
+                observability_available,
+            )
+        if cursor:
+            return page, older_omitted, [], [], True, True
+        # Legacy proxy-shaped events and cost spans have no ledger ordinal.
+        # Keep them only on the initial compatibility projection and never on
+        # cursor resumes, where replay-free server ordering is the contract.
+        alerts = _load_tenant_alerts(tenant_id)
+        ledger_ids = {str(event.get("event_id") or "") for event in page.events}
+        compatibility_alerts = [
+            alert
+            for alert in alerts
+            if str(alert.get("event_id") or "") not in ledger_ids
+            and (
+                str(alert.get("event_type") or "") not in _EVENT_TYPES
+                or not str(alert.get("event_id") or "")
+            )
+        ]
+        llm_records, observability_available = _load_llm()
+        return page, older_omitted, compatibility_alerts, llm_records, True, observability_available
 
     return await anyio.to_thread.run_sync(_gather)
 
 
-async def _load_tenant_alerts_async(tenant_id: str) -> list[dict[str, Any]]:
-    """Off-loop variant for async routes.
-
-    The audit-log fallback opens a JSONL file and parses up to _MAX_LOG_LINES
-    records, redacting each one. Called inline from an ``async def`` handler
-    that froze the entire process -- measured at several seconds on a large log,
-    stalling every other tenant's request and every background task, not just
-    this one. AGENT_BOM_LOG is a shipped deployment surface, so this is reachable
-    in a normal install.
-    """
-    return await anyio.to_thread.run_sync(_load_tenant_alerts, tenant_id)
+def _feed_completeness(
+    page: GatewayActivityPage,
+    *,
+    older_omitted: bool,
+    supplemental_event_count: int,
+    ledger_available: bool,
+    observability_available: bool,
+) -> dict[str, Any]:
+    partial_reasons: list[str] = []
+    if not ledger_available:
+        partial_reasons.append("ledger_unavailable")
+    if page.retention_floor_ordinal > 1:
+        partial_reasons.append("retention_floor_advanced")
+    if older_omitted:
+        partial_reasons.append("bounded_initial_backfill")
+    if page.has_more:
+        partial_reasons.append("page_limit")
+    if supplemental_event_count:
+        partial_reasons.append("supplemental_unordered_sources")
+    if not observability_available:
+        partial_reasons.append("observability_unavailable")
+    return {
+        "status": "partial" if partial_reasons else "complete",
+        "reasons": partial_reasons,
+        "server_ordered": ledger_available and supplemental_event_count == 0,
+        "retention_floor_ordinal": page.retention_floor_ordinal,
+        "latest_ordinal": page.latest_ordinal,
+        "max_events_per_tenant": page.max_events_per_tenant,
+        "dedupe_window_events": page.dedupe_window_events,
+    }
 
 
 def _load_tenant_uptime(tenant_id: str) -> float | None:
@@ -661,12 +820,77 @@ def _feed_health_from_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
 
 def _load_tenant_llm_records(tenant_id: str, *, limit: int) -> list[Any]:
     """Read recent priced LLM cost records for the tenant (read-only)."""
-    try:
-        from agent_bom.api.cost_store import get_cost_store
+    from agent_bom.api.cost_store import get_cost_store
 
-        return list(get_cost_store().list_records(tenant_id, limit=limit))
-    except Exception:  # noqa: BLE001 — cost store is optional; feed degrades to proxy-only
-        return []
+    return list(get_cost_store().list_records(tenant_id, limit=limit))
+
+
+def _timestamp_in_window(value: object, *, start: datetime, end: datetime) -> bool:
+    parsed = _parse_iso_timestamp(str(value) if value else None)
+    return parsed is not None and start <= parsed <= end
+
+
+async def _gather_kpi_inputs_async(
+    tenant_id: str,
+    *,
+    start: datetime,
+    end: datetime,
+) -> tuple[list[dict[str, Any]], list[Any], GatewayActivityWindowSummary, int, bool, bool, bool]:
+    """Load UTC-window KPI evidence and completeness facts off-loop."""
+
+    def _gather() -> tuple[list[dict[str, Any]], list[Any], GatewayActivityWindowSummary, int, bool, bool, bool]:
+        try:
+            summary = get_gateway_activity_store().summarize_window(
+                tenant_id,
+                start=start.isoformat(),
+                end=end.isoformat(),
+            )
+            ledger_available = True
+        except Exception:  # noqa: BLE001 - degraded status is returned without exception text
+            ledger_available = False
+            summary = GatewayActivityWindowSummary(
+                tenant_id=tenant_id,
+                start=start.isoformat(),
+                end=end.isoformat(),
+                tool_calls_authorized=0,
+                blocked=0,
+                shadow_blocked=0,
+                data_filters=0,
+                retention_floor_ordinal=1,
+                latest_ordinal=0,
+            )
+        compatibility_alerts = [
+            alert
+            for alert in _load_tenant_alerts(tenant_id)
+            if (
+                str(alert.get("event_type") or "") not in _EVENT_TYPES
+                or not str(alert.get("event_id") or "")
+            )
+            and _timestamp_in_window(_alert_timestamp(alert), start=start, end=end)
+        ]
+        try:
+            raw_llm = _load_tenant_llm_records(tenant_id, limit=10_001)
+            observability_available = True
+        except Exception:  # noqa: BLE001 - optional evidence is reported partial
+            raw_llm = []
+            observability_available = False
+        llm_truncated = len(raw_llm) > 10_000
+        llm_records = [
+            record
+            for record in raw_llm[:10_000]
+            if _timestamp_in_window(getattr(record, "observed_at", None), start=start, end=end)
+        ]
+        return (
+            compatibility_alerts,
+            llm_records,
+            summary,
+            len(compatibility_alerts),
+            llm_truncated,
+            ledger_available,
+            observability_available,
+        )
+
+    return await anyio.to_thread.run_sync(_gather)
 
 
 @router.get(
@@ -678,6 +902,7 @@ def _load_tenant_llm_records(tenant_id: str, *, limit: int) -> list[Any]:
 async def gateway_feed(
     request: Request,
     limit: int = Query(default=100, ge=1, le=500, description="Max fused events to return (1-500)"),
+    cursor: str | None = Query(default=None, max_length=1000, description="Opaque tenant-bound ledger cursor"),
 ) -> dict[str, Any]:
     """Unified, time-ordered fleet event feed for the active tenant.
 
@@ -688,12 +913,53 @@ async def gateway_feed(
     no raw arguments, responses, or credential values are returned.
     """
     tenant_id = require_request_tenant_id(request)
-    alerts, llm_records = await _gather_feed_inputs_async(tenant_id, limit=limit)
+    # Direct unit calls invoke the handler without FastAPI resolving Query.
+    if not isinstance(cursor, str):
+        cursor = None
+    try:
+        (
+            page,
+            older_omitted,
+            compatibility_alerts,
+            llm_records,
+            ledger_available,
+            observability_available,
+        ) = await _gather_durable_feed_inputs_async(
+            tenant_id,
+            cursor=cursor,
+            limit=limit,
+        )
+    except GatewayActivityCursorExpiredError as exc:
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "message": "Gateway activity cursor is older than retained history",
+                "retention_floor_ordinal": exc.retention_floor_ordinal,
+            },
+        ) from exc
+    except GatewayActivityCursorError as exc:
+        raise HTTPException(status_code=400, detail="Invalid gateway activity cursor") from exc
+    except GatewayFeedLedgerUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Gateway activity storage unavailable") from exc
     payload = build_gateway_feed(
         tenant_id=tenant_id,
-        alerts=alerts,
+        alerts=[*page.events, *compatibility_alerts],
         llm_records=llm_records,
         limit=limit,
+    )
+    payload["next_cursor"] = page.next_cursor
+    payload["has_more"] = page.has_more
+    payload["source"] = (
+        "gateway_activity_ledger"
+        if ledger_available and (page.latest_ordinal > 0 or not compatibility_alerts)
+        else "degraded_single_process"
+    )
+    payload["completeness"] = _feed_completeness(
+        page,
+        older_omitted=older_omitted,
+        supplemental_event_count=len(compatibility_alerts) + len(llm_records),
+        ledger_available=ledger_available,
+        observability_available=observability_available,
     )
     payload["health"] = _feed_health_from_metrics(await anyio.to_thread.run_sync(_load_tenant_transport_metrics, tenant_id))
     return payload
@@ -713,7 +979,21 @@ async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
     ``uptime_seconds`` (only when the proxy reports it — never fabricated).
     """
     tenant_id = require_request_tenant_id(request)
-    alerts, llm_records = await _gather_feed_inputs_async(tenant_id, limit=10000)
+    window_end = datetime.now(timezone.utc)
+    window_start = window_end.replace(hour=0, minute=0, second=0, microsecond=0)
+    (
+        alerts,
+        llm_records,
+        summary,
+        compatibility_count,
+        llm_truncated,
+        ledger_available,
+        observability_available,
+    ) = await _gather_kpi_inputs_async(
+        tenant_id,
+        start=window_start,
+        end=window_end,
+    )
     uptime_seconds = await anyio.to_thread.run_sync(_load_tenant_uptime, tenant_id)
     payload = build_gateway_feed_kpis(
         tenant_id=tenant_id,
@@ -721,5 +1001,39 @@ async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
         llm_records=llm_records,
         uptime_seconds=uptime_seconds,
     )
+    payload["tool_calls_authorized"] += summary.tool_calls_authorized
+    payload["blocked_today"] += summary.blocked
+    payload["shadow_ai_blocked"] += summary.shadow_blocked
+    payload["data_filters_applied"] += summary.data_filters
+    payload["calls_today"] += summary.tool_calls_authorized + summary.blocked
+    partial_reasons: list[str] = []
+    if not ledger_available:
+        partial_reasons.append("ledger_unavailable")
+    if summary.retention_floor_ordinal > 1:
+        partial_reasons.append("retention_floor_advanced")
+    if compatibility_count:
+        partial_reasons.append("legacy_unordered_sources")
+    if llm_truncated:
+        partial_reasons.append("observability_window_limit")
+    if not observability_available:
+        partial_reasons.append("observability_unavailable")
+    exact = not partial_reasons
+    payload["source"] = (
+        "gateway_activity_ledger"
+        if ledger_available and (summary.latest_ordinal > 0 or compatibility_count == 0)
+        else "degraded_single_process"
+    )
+    payload["completeness"] = {
+        "status": "complete" if exact else "partial",
+        "reasons": partial_reasons,
+        "retention_floor_ordinal": summary.retention_floor_ordinal,
+        "latest_ordinal": summary.latest_ordinal,
+    }
+    payload["window"] = {
+        "start": window_start.isoformat(),
+        "end": window_end.isoformat(),
+        "timezone": "UTC",
+        "exact": exact,
+    }
     payload["health"] = _feed_health_from_metrics(await anyio.to_thread.run_sync(_load_tenant_transport_metrics, tenant_id))
     return payload

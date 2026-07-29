@@ -172,3 +172,36 @@ def test_postgres_conflict_rolls_back_and_rls_hides_foreign_tenant() -> None:
     finally:
         reset_current_tenant(foreign_token)
         _cleanup(store, tenant_id)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("AGENT_BOM_POSTGRES_URL"),
+    reason="requires a migrated live PostgreSQL database",
+)
+def test_two_postgres_api_replicas_resume_one_shared_cursor_without_gaps() -> None:
+    first_replica = PostgresGatewayActivityStore(max_events_per_tenant=100)
+    second_replica = PostgresGatewayActivityStore(max_events_per_tenant=100)
+    tenant_id = f"gateway-replicas-{uuid.uuid4().hex}"
+    token = set_current_tenant(tenant_id)
+    try:
+        first_replica.append_batch([_record("evt-1", tenant_id), _record("evt-2", tenant_id)])
+        first_page = second_replica.list_activity(tenant_id, limit=2)
+        assert [event["event_id"] for event in first_page.events] == ["evt-1", "evt-2"]
+        assert first_page.next_cursor
+
+        second_replica.append_batch([_record("evt-3", tenant_id)])
+        resumed = first_replica.list_activity(tenant_id, cursor=first_page.next_cursor, limit=10)
+        assert [event["event_id"] for event in resumed.events] == ["evt-3"]
+        assert resumed.next_cursor != first_page.next_cursor
+
+        summary = second_replica.summarize_window(
+            tenant_id,
+            start="2000-01-01T00:00:00+00:00",
+            end="2099-12-31T23:59:59+00:00",
+        )
+        assert summary.tool_calls_authorized == 3
+        assert summary.retention_floor_ordinal == 1
+        assert summary.latest_ordinal == 3
+    finally:
+        reset_current_tenant(token)
+        _cleanup(first_replica, tenant_id)

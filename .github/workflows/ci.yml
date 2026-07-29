@@ -1112,10 +1112,11 @@ jobs:
       )
     runs-on: ubuntu-latest
     # Version and dependency changes run the full suite under musl. The
-    # 0.98.0 release candidate reached the previous 25-minute ceiling while
-    # tests were still active, so keep a finite budget with enough Alpine
-    # headroom to finish and report an actual test result.
-    timeout-minutes: 35
+    # The 0.98.4 stabilization baseline completed the tests at 34m51s, then the
+    # previous 35-minute ceiling canceled action cleanup and falsely marked the
+    # passing job red. Keep a finite budget with cleanup and runner-variance
+    # headroom so CI reports the actual test result.
+    timeout-minutes: 45
     permissions:
       contents: read
     needs: [changes]

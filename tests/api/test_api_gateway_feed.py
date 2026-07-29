@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from starlette.testclient import TestClient
 
@@ -318,13 +319,14 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     tenant = "tenant-runtime"
+    now = datetime.now(timezone.utc).isoformat()
     leaked_secret = "sk-live-never-persist-this-value"
     typed_alerts = [
         {
             "event_id": "evt-allow",
             "decision_id": "evt-allow",
             "event_type": "gateway.tool_call.allowed",
-            "event_timestamp": "2026-07-28T01:02:03+00:00",
+            "event_timestamp": now,
             "agent_id": "agent-a",
             "identity_id": "identity-a",
             "profile_id": "client-profile-finance-prod",
@@ -484,12 +486,13 @@ def test_feed_http_is_tenant_scoped() -> None:
 
         configure_api(api_key=None)
         proxy_routes._proxy_alerts.clear()
+        now = datetime.now(timezone.utc).timestamp()
         # Use the realistic post-redaction shape: tier-A whitelist strips
         # free-text action/reason, so classification must ride on event_type /
         # decision (which survive the ring buffer).
         proxy_routes.push_proxy_alert(
             {
-                "ts": 10.0,
+                "ts": now,
                 "tenant_id": "tenant-x",
                 "agent_name": "x-agent",
                 "event_type": "gateway.policy_blocked",
@@ -500,7 +503,7 @@ def test_feed_http_is_tenant_scoped() -> None:
         )
         proxy_routes.push_proxy_alert(
             {
-                "ts": 11.0,
+                "ts": now,
                 "tenant_id": "tenant-y",
                 "agent_name": "y-agent",
                 "event_type": "gateway.policy_allowed",

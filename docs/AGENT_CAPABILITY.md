@@ -40,8 +40,8 @@ attack paths, compliance tags, and runtime audit chain.
 |---|---|---|
 | Local MCP proxy | `agent-bom proxy …` | stdio MCP on laptop or sidecar |
 | Shared gateway | `agent-bom gateway serve` / `/v1/gateway/*` | remote HTTP/SSE MCP traffic plane |
-| Gateway KPIs | `GET /v1/gateway/feed/kpis` | calls today, blocked, shadow AI, data filters |
-| Gateway feed | `GET /v1/gateway/feed` | per-agent tool-call authorization stream |
+| Gateway KPIs | `GET /v1/gateway/feed/kpis` | UTC-window calls, blocks, shadow AI, data filters, and exact/partial evidence state |
+| Gateway feed | `GET /v1/gateway/feed` | durable per-agent authorization stream with tenant-bound cursor resume |
 | Control plane UI | `/gateway?capture=1` | operator cockpit |
 
 ## Endpoints and resources

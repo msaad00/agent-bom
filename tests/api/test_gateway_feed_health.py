@@ -204,5 +204,11 @@ def test_gateway_feed_openapi_declares_health_contract() -> None:
 
     response = schema["components"]["schemas"]["GatewayFeedResponseModel"]
     assert response["properties"]["events"]["items"]["$ref"].endswith("/GatewayFeedEventModel")
+    assert {"next_cursor", "has_more", "source", "completeness"} <= response["properties"].keys()
+    assert response["properties"]["completeness"]["$ref"].endswith("/GatewayFeedCompletenessModel")
     event = schema["components"]["schemas"]["GatewayFeedEventModel"]
-    assert {"input_tokens", "output_tokens", "cost_usd"} <= event["properties"].keys()
+    assert {"input_tokens", "output_tokens", "cost_usd", "ingest_ordinal"} <= event["properties"].keys()
+
+    kpis = schema["components"]["schemas"]["GatewayFeedKpisModel"]
+    assert {"source", "completeness", "window"} <= kpis["properties"].keys()
+    assert kpis["properties"]["window"]["$ref"].endswith("/GatewayFeedWindowModel")

@@ -24,6 +24,12 @@ from typing import TYPE_CHECKING, Any, cast
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 
+from agent_bom.api.gateway_activity_store import (
+    GatewayActivityConflictError,
+    GatewayActivityRecord,
+    gateway_activity_record_from_event,
+    get_gateway_activity_store,
+)
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.tenancy import require_request_tenant_id
 
@@ -33,6 +39,11 @@ if TYPE_CHECKING:
 from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.runtime.gateway_events import (
+    GATEWAY_ALLOWED_EVENT_TYPES,
+    GATEWAY_BLOCKED_EVENT_TYPES,
+    GATEWAY_DATA_FILTER_EVENT_TYPES,
+)
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 router = APIRouter()
@@ -40,9 +51,10 @@ ws_router = APIRouter()
 
 # ── In-process ring buffer for proxy alerts/metrics ──────────────────────────
 #
-# The proxy (when running in the same process, e.g. via the API) pushes
-# records here.  External proxy processes write to the JSONL audit log,
-# and these endpoints read it.
+# This ring remains a compatibility projection for legacy proxy alerts and
+# WebSocket hints. Canonical standalone-gateway decisions are acknowledged only
+# after the durable gateway activity ledger commits them; feed cursor reads do
+# not depend on this process-local deque.
 #
 # _proxy_alerts is a bounded deque (O(1) append/pop from both ends).
 # _proxy_alerts_total is a monotonic counter that never decrements —
@@ -149,6 +161,84 @@ def _alert_visible_to_tenant(alert: dict, tenant_id: str) -> bool:
     return alert_tenant == tenant_id
 
 
+_CANONICAL_GATEWAY_EVENT_TYPES = (
+    GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
+)
+
+
+def _gateway_activity_record_from_alert(
+    alert: dict[str, Any],
+    *,
+    tenant_id: str,
+    source_id: str,
+    session_id: str,
+    received_at: datetime,
+    request_trace_id: str,
+) -> GatewayActivityRecord | None:
+    """Project one gateway-shaped alert onto the strict metadata-only ledger.
+
+    Historical audit envelopes contain extra proxy fields and some omit fields
+    that the standalone gateway now emits. Only canonical gateway event types
+    enter the durable ledger; the projection allowlists metadata and fills old
+    transport omissions from server-owned context. Raw arguments, prompts,
+    responses, previews, and free-text messages are never copied.
+    """
+
+    event_type = str(alert.get("event_type") or "")
+    event_id = str(alert.get("event_id") or "").strip()
+    if event_type not in _CANONICAL_GATEWAY_EVENT_TYPES or not event_id:
+        return None
+    expected_decision = "deny" if event_type in GATEWAY_BLOCKED_EVENT_TYPES else "allow"
+    agent_id = str(
+        alert.get("agent_id")
+        or alert.get("agent_name")
+        or alert.get("source_agent")
+        or source_id
+        or "unknown"
+    )
+    canonical: dict[str, Any] = {
+        "schema_version": "gateway.runtime.event.v1",
+        "event_id": event_id,
+        "decision_id": str(alert.get("decision_id") or event_id),
+        "event_type": event_type,
+        "event_timestamp": str(alert.get("event_timestamp") or received_at.isoformat()),
+        "agent_id": agent_id,
+        "upstream": str(alert.get("upstream") or alert.get("target") or "unknown"),
+        "tool": str(alert.get("tool") or alert.get("tool_name") or "unknown"),
+        "decision": str(alert.get("decision") or expected_decision),
+        "policy_source": str(alert.get("policy_source") or "legacy_proxy"),
+        "trace_id": str(alert.get("trace_id") or request_trace_id or event_id),
+    }
+    for field in (
+        "identity_id",
+        "profile_id",
+        "blueprint_id",
+        "reason_code",
+        "data_action",
+        "policy_id",
+        "evidence_id",
+    ):
+        value = alert.get(field)
+        if isinstance(value, str):
+            canonical[field] = value
+    for field in ("profile_revision", "blueprint_revision"):
+        value = alert.get(field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            canonical[field] = value
+    policy_ids = alert.get("policy_ids")
+    if isinstance(policy_ids, list | tuple):
+        canonical["policy_ids"] = list(policy_ids)
+    if isinstance(alert.get("development_mode"), bool):
+        canonical["development_mode"] = alert["development_mode"]
+    return gateway_activity_record_from_event(
+        canonical,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        session_id=session_id,
+        received_at=received_at,
+    )
+
+
 @router.post("/proxy/audit", tags=["proxy"])
 async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) -> dict:
     """Ingest alerts and summary from an external proxy process."""
@@ -181,8 +271,9 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     from agent_bom.api.stores import _get_firewall_decision_store
 
     firewall_store = _get_firewall_decision_store()
-    duplicate_event_ids: list[str] = []
-    accepted_alerts: list[dict] = []
+    received_at = datetime.now(timezone.utc)
+    prepared_alerts: list[dict[str, Any]] = []
+    activity_records: list[GatewayActivityRecord] = []
     for alert in body.alerts:
         enriched = dict(alert)
         enriched.setdefault("source_id", source_id)
@@ -190,17 +281,59 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched.setdefault("request_id", request_id)
         enriched.setdefault("trace_id", trace_id)
         enriched.setdefault("event_type", enriched.get("action") or enriched.get("type", "runtime_alert"))
-        # Force the server-authoritative tenant_id on the in-memory record so
-        # per-tenant posture queries (e.g. compliance has_proxy) scope correctly.
-        # The ring buffer is process-wide; never honor a client-supplied
-        # tenant_id here — setdefault would let a caller pre-tag another tenant
-        # and write a cross-tenant alert that surfaces in that tenant's reads.
         enriched["tenant_id"] = tenant_id
+        prepared_alerts.append(enriched)
+        try:
+            record = _gateway_activity_record_from_alert(
+                enriched,
+                tenant_id=tenant_id,
+                source_id=source_id,
+                session_id=session_id,
+                received_at=received_at,
+                request_trace_id=trace_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid canonical gateway activity event") from exc
+        if record is not None:
+            activity_records.append(record)
+
+    durable_inserted_ids: set[str] = set()
+    durable_duplicate_ids: set[str] = set()
+    if activity_records:
+        try:
+            activity_result = await anyio.to_thread.run_sync(
+                partial(get_gateway_activity_store().append_batch, activity_records)
+            )
+        except GatewayActivityConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Gateway activity event conflicts with durable history",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid canonical gateway activity batch") from exc
+        except Exception as exc:  # noqa: BLE001 - storage failure is a safe 503
+            raise HTTPException(status_code=503, detail="Gateway activity storage unavailable") from exc
+        durable_inserted_ids.update(activity_result.inserted_event_ids)
+        durable_duplicate_ids.update(activity_result.duplicate_event_ids)
+
+    duplicate_event_ids: list[str] = []
+    accepted_alerts: list[dict] = []
+    consumed_durable_ids: set[str] = set()
+    for enriched in prepared_alerts:
         # dedupe by event_id so a buggy or hostile proxy
         # cannot replay credential_leak alerts and inflate per-detector
         # tallies. Empty event_id falls through to keep legacy callers working.
         event_id = str(enriched.get("event_id") or "")
-        if event_id and not _claim_audit_event(tenant_id, event_id):
+        canonical_gateway = str(enriched.get("event_type") or "") in _CANONICAL_GATEWAY_EVENT_TYPES and bool(event_id)
+        if canonical_gateway:
+            if event_id in durable_duplicate_ids or event_id in consumed_durable_ids:
+                duplicate_event_ids.append(event_id)
+                continue
+            if event_id not in durable_inserted_ids:
+                duplicate_event_ids.append(event_id)
+                continue
+            consumed_durable_ids.add(event_id)
+        elif event_id and not _claim_audit_event(tenant_id, event_id):
             duplicate_event_ids.append(event_id)
             continue
         accepted_alerts.append(enriched)
@@ -283,6 +416,8 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         "accepted_alert_count": accepted_count,
         "duplicate_alert_count": len(duplicate_event_ids),
         "duplicate_event_ids": duplicate_event_ids,
+        "durable_accepted_count": len(durable_inserted_ids),
+        "durable_duplicate_count": len(durable_duplicate_ids),
         "has_summary": body.summary is not None,
     }
     if body.idempotency_key:
@@ -315,32 +450,51 @@ def _get_configured_log_path() -> _Path | None:
     return path
 
 
-_MAX_LOG_LINES = 50_000  # Cap log parsing to prevent memory issues
+_MAX_LOG_LINES = 1_000
+_LOG_TAIL_BLOCK_BYTES = 64 * 1024
+
+
+def _read_newest_log_lines(path: _Path, *, limit: int) -> list[bytes]:
+    """Read at most the newest ``limit`` JSONL lines without scanning the file."""
+
+    if limit < 1:
+        return []
+    with open(path, "rb") as handle:
+        handle.seek(0, 2)
+        position = handle.tell()
+        chunks: list[bytes] = []
+        newline_count = 0
+        while position > 0 and newline_count <= limit:
+            block_size = min(_LOG_TAIL_BLOCK_BYTES, position)
+            position -= block_size
+            handle.seek(position)
+            chunk = handle.read(block_size)
+            chunks.append(chunk)
+            newline_count += chunk.count(b"\n")
+    data = b"".join(reversed(chunks))
+    return data.splitlines()[-limit:]
 
 
 def _read_alerts_from_log(path: _Path) -> list[dict]:
-    """Read runtime_alert records from a JSONL audit log."""
+    """Read the newest bounded runtime alerts from a JSONL audit log."""
     import json as _json
 
     alerts: list[dict] = []
     try:
-        with open(path) as f:
-            for i, raw_line in enumerate(f):
-                if i >= _MAX_LOG_LINES:
-                    break
-                line = raw_line.strip()
-                if not line:
-                    continue
-                try:
-                    record = _json.loads(line)
-                    if record.get("type") == "runtime_alert":
-                        sanitized = sanitize_sensitive_payload(record)
-                        if isinstance(sanitized, dict):
-                            safe = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
-                            if isinstance(safe, dict):
-                                alerts.append(safe)
-                except (ValueError, KeyError):
-                    continue
+        for raw_line in _read_newest_log_lines(path, limit=_MAX_LOG_LINES):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                record = _json.loads(line)
+                if record.get("type") == "runtime_alert":
+                    sanitized = sanitize_sensitive_payload(record)
+                    if isinstance(sanitized, dict):
+                        safe = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
+                        if isinstance(safe, dict):
+                            alerts.append(safe)
+            except (UnicodeDecodeError, ValueError, KeyError):
+                continue
     except OSError:
         pass
     return alerts

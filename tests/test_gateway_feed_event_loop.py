@@ -37,6 +37,30 @@ def _write_log(path, lines: int) -> None:
             )
 
 
+def test_jsonl_fallback_reads_the_newest_bounded_records(tmp_path) -> None:
+    from agent_bom.api.routes.proxy import _read_alerts_from_log
+
+    log = tmp_path / "runtime.jsonl"
+    with open(log, "w") as handle:
+        for index in range(1_250):
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "runtime_alert",
+                        "tenant_id": "default",
+                        "event_id": f"evt-{index}",
+                    }
+                )
+                + "\n"
+            )
+
+    alerts = _read_alerts_from_log(log)
+
+    assert len(alerts) == 1_000
+    assert alerts[0]["event_id"] == "evt-250"
+    assert alerts[-1]["event_id"] == "evt-1249"
+
+
 async def _max_stall_while(coro, *, tick: float = 0.001) -> tuple[object, float]:
     """Run *coro*, sampling how long the loop ever went without servicing a tick."""
     worst = 0.0

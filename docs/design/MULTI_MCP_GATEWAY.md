@@ -89,10 +89,16 @@ bypass enforcement. Kubernetes intentionally exposes no equivalent bypass.
 Typed tool decisions carry a canonical client-profile ID and revision,
 separate role-blueprint ID and revision, managed identity/agent IDs, bound
 policy IDs, trace ID, and one stable event/decision ID. The control-plane audit
-ingest keeps these Tier-A fields in its bounded, tenant-scoped gateway feed;
+ingest stores these Tier-A fields in the bounded, tenant-scoped gateway
+activity ledger (shared Postgres for replicas, SQLite for a single node). Feed
+reads use server-owned ordinals and tenant-bound cursors; initial reads return
+the newest bounded backfill, while cursor reads resume forward without using
+caller timestamps for ordering. The response reports source, retention floor,
+and complete/partial state. The local ring/JSONL path is explicitly degraded;
+it cannot satisfy a durable cursor resume. KPI windows run from UTC midnight to
+the request time and report whether retained evidence makes the count exact;
 raw arguments, results, tokens, credential references, and unredacted previews
-are excluded. Durable cursor/backfill and multi-replica ordering remain a
-separate delivery stage and are not implied by this enforcement slice.
+are excluded.
 
 ### `upstreams.yaml`
 

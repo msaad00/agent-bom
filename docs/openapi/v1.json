@@ -3314,6 +3314,60 @@
         "title": "FleetAgentUpdate",
         "type": "object"
       },
+      "GatewayFeedCompletenessModel": {
+        "properties": {
+          "dedupe_window_events": {
+            "minimum": 0.0,
+            "title": "Dedupe Window Events",
+            "type": "integer"
+          },
+          "latest_ordinal": {
+            "minimum": 0.0,
+            "title": "Latest Ordinal",
+            "type": "integer"
+          },
+          "max_events_per_tenant": {
+            "minimum": 0.0,
+            "title": "Max Events Per Tenant",
+            "type": "integer"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "retention_floor_ordinal": {
+            "minimum": 1.0,
+            "title": "Retention Floor Ordinal",
+            "type": "integer"
+          },
+          "server_ordered": {
+            "title": "Server Ordered",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reasons",
+          "server_ordered",
+          "retention_floor_ordinal",
+          "latest_ordinal",
+          "max_events_per_tenant",
+          "dedupe_window_events"
+        ],
+        "title": "GatewayFeedCompletenessModel",
+        "type": "object"
+      },
       "GatewayFeedEventModel": {
         "properties": {
           "action_type": {
@@ -3385,6 +3439,18 @@
             "maxLength": 200,
             "title": "Identity Id",
             "type": "string"
+          },
+          "ingest_ordinal": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingest Ordinal"
           },
           "input_tokens": {
             "anyOf": [
@@ -3544,6 +3610,43 @@
         "title": "GatewayFeedHealthModel",
         "type": "object"
       },
+      "GatewayFeedKpiCompletenessModel": {
+        "properties": {
+          "latest_ordinal": {
+            "minimum": 0.0,
+            "title": "Latest Ordinal",
+            "type": "integer"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "retention_floor_ordinal": {
+            "minimum": 1.0,
+            "title": "Retention Floor Ordinal",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reasons",
+          "retention_floor_ordinal",
+          "latest_ordinal"
+        ],
+        "title": "GatewayFeedKpiCompletenessModel",
+        "type": "object"
+      },
       "GatewayFeedKpisModel": {
         "properties": {
           "blocked_today": {
@@ -3553,6 +3656,9 @@
           "calls_today": {
             "title": "Calls Today",
             "type": "integer"
+          },
+          "completeness": {
+            "$ref": "#/components/schemas/GatewayFeedKpiCompletenessModel"
           },
           "data_filters_applied": {
             "title": "Data Filters Applied",
@@ -3577,6 +3683,14 @@
             "title": "Shadow Ai Blocked",
             "type": "integer"
           },
+          "source": {
+            "enum": [
+              "gateway_activity_ledger",
+              "degraded_single_process"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
           "tenant_id": {
             "title": "Tenant Id",
             "type": "string"
@@ -3595,6 +3709,9 @@
               }
             ],
             "title": "Uptime Seconds"
+          },
+          "window": {
+            "$ref": "#/components/schemas/GatewayFeedWindowModel"
           }
         },
         "required": [
@@ -3607,6 +3724,9 @@
           "data_filters_applied",
           "tool_calls_authorized",
           "llm_calls",
+          "source",
+          "completeness",
+          "window",
           "health"
         ],
         "title": "GatewayFeedKpisModel",
@@ -3614,6 +3734,9 @@
       },
       "GatewayFeedResponseModel": {
         "properties": {
+          "completeness": {
+            "$ref": "#/components/schemas/GatewayFeedCompletenessModel"
+          },
           "count": {
             "title": "Count",
             "type": "integer"
@@ -3629,11 +3752,34 @@
             "title": "Generated At",
             "type": "string"
           },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
           "health": {
             "$ref": "#/components/schemas/GatewayFeedHealthModel"
           },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
           "schema_version": {
             "title": "Schema Version",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "gateway_activity_ledger",
+              "degraded_single_process"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "tenant_id": {
@@ -3647,9 +3793,42 @@
           "generated_at",
           "count",
           "events",
+          "next_cursor",
+          "has_more",
+          "source",
+          "completeness",
           "health"
         ],
         "title": "GatewayFeedResponseModel",
+        "type": "object"
+      },
+      "GatewayFeedWindowModel": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "exact": {
+            "title": "Exact",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "timezone": {
+            "const": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "timezone",
+          "exact"
+        ],
+        "title": "GatewayFeedWindowModel",
         "type": "object"
       },
       "GraphCompletenessResponse": {
@@ -17587,6 +17766,25 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque tenant-bound ledger cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque tenant-bound ledger cursor",
+              "title": "Cursor"
             }
           },
           {

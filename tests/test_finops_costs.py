@@ -445,3 +445,133 @@ def test_budget_enforcement_uses_rolling_window(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_BUDGET_WINDOW_DAYS", "30")
     blocked, _b, spend = check_budget_enforcement(store, "t1", "")
     assert blocked is False and spend == 3.0
+
+
+def test_traces_ingest_attributes_cost_to_the_calling_agent(client):
+    """The join key that makes cost fusible with the graph.
+
+    LLMAPICall carried no agent field, so every OTLP-ingested cost row was
+    persisted with agent="" and rolled up as "unknown" — leaving the graph cost
+    overlay nothing to match on.
+    """
+    payload = _ml_otlp_payload()
+    payload["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["attributes"].append(
+        {"key": "gen_ai.agent.name", "value": {"stringValue": "checkout-agent"}}
+    )
+    assert client.post("/v1/traces", json=payload).status_code == 200
+
+    costs = client.get("/v1/observability/costs").json()
+    assert [b["key"] for b in costs["by_agent"]] == ["checkout-agent"]
+    assert costs["by_agent"][0]["cost_usd"] == 12.5
+
+
+def test_traces_ingest_without_agent_attribution_stays_unknown(client):
+    """Absent attribution must stay honest, not be invented."""
+    assert client.post("/v1/traces", json=_ml_otlp_payload()).status_code == 200
+    costs = client.get("/v1/observability/costs").json()
+    assert [b["key"] for b in costs["by_agent"]] == ["unknown"]
+
+
+# ── Graph cost rollup (the aggregate the graph overlay joins on) ───────────────
+
+
+def _rollup_store():
+    from agent_bom.api.cost_store import LLMCostRecord
+
+    store = InMemoryCostStore()
+    for i, (agent, cost, observed) in enumerate(
+        [
+            ("checkout-agent", 10.0, "2026-07-20T00:00:00Z"),
+            ("checkout-agent", 5.0, "2026-07-25T00:00:00Z"),
+            ("billing-agent", 2.0, "2026-07-25T00:00:00Z"),
+            ("checkout-agent", 100.0, "2026-01-01T00:00:00Z"),  # outside a 30d window
+        ]
+    ):
+        store.record_cost(
+            LLMCostRecord(
+                tenant_id="default",
+                call_id=f"c{i}",
+                agent=agent,
+                session_id="s",
+                provider="openai",
+                model="gpt-4o",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=cost,
+                priced=True,
+                observed_at=observed,
+                cost_center="ai-platform",
+            )
+        )
+    return store
+
+
+def test_spend_rollup_groups_by_agent_cost_center_provider():
+    from agent_bom.api.cost_store import spend_rollup
+
+    rows = spend_rollup(_rollup_store(), "default")
+    by_agent = {r["agent"]: r for r in rows}
+    assert by_agent["checkout-agent"]["cost_usd"] == 115.0
+    assert by_agent["checkout-agent"]["calls"] == 3
+    assert by_agent["billing-agent"]["cost_usd"] == 2.0
+    assert by_agent["checkout-agent"]["cost_center"] == "ai-platform"
+
+
+def test_spend_rollup_honours_the_since_bound():
+    from agent_bom.api.cost_store import spend_rollup
+
+    rows = spend_rollup(_rollup_store(), "default", since="2026-07-01T00:00:00Z")
+    by_agent = {r["agent"]: r for r in rows}
+    assert by_agent["checkout-agent"]["cost_usd"] == 15.0
+
+
+def test_graph_cost_rollup_splits_at_the_window_boundary():
+    """The two emitted buckets must reconcile to all-time spend, exactly."""
+    from datetime import datetime, timezone
+
+    from agent_bom.api.cost_store import graph_cost_rollup
+
+    store = _rollup_store()
+    now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+    records = graph_cost_rollup(store, "default", now=now, window_days=30)
+
+    checkout = [r for r in records if r["agent"] == "checkout-agent"]
+    assert round(sum(r["cost_usd"] for r in checkout), 6) == store.total_spend("default", agent="checkout-agent")
+
+    in_window = [r for r in checkout if r["observed_at"] >= "2026-06-29"]
+    assert round(sum(r["cost_usd"] for r in in_window), 6) == 15.0
+
+
+def test_graph_cost_rollup_is_empty_when_no_spend():
+    from datetime import datetime, timezone
+
+    from agent_bom.api.cost_store import graph_cost_rollup
+
+    assert graph_cost_rollup(InMemoryCostStore(), "default", now=datetime(2026, 7, 29, tzinfo=timezone.utc)) == []
+
+
+def test_sqlite_spend_rollup_matches_the_python_fallback(tmp_path):
+    """SQL GROUP BY and the in-memory fallback must agree — backend parity."""
+    from agent_bom.api.cost_store import LLMCostRecord, SQLiteCostStore, spend_rollup
+
+    sqlite_store = SQLiteCostStore(str(tmp_path / "costs.db"))
+    memory_store = InMemoryCostStore()
+    for i, (agent, cost) in enumerate([("a", 3.0), ("a", 1.5), ("b", 2.0)]):
+        record = LLMCostRecord(
+            tenant_id="default",
+            call_id=f"c{i}",
+            agent=agent,
+            session_id="s",
+            provider="openai",
+            model="gpt-4o",
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=cost,
+            priced=True,
+            observed_at="2026-07-25T00:00:00Z",
+            cost_center="cc",
+        )
+        sqlite_store.record_cost(record)
+        memory_store.record_cost(record)
+
+    assert spend_rollup(sqlite_store, "default") == spend_rollup(memory_store, "default")

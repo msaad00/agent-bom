@@ -159,6 +159,31 @@ class PostgresCostStore:
             )
             conn.commit()
 
+    def spend_rollup(self, tenant_id: str, *, since: str | None = None) -> list[dict[str, Any]]:
+        """GROUP BY in SQL so a busy tenant is never truncated or walked in Python.
+
+        Sargable on idx_llm_costs_tenant_agent_observed: tenant_id leads and
+        observed_at bounds the scan.
+        """
+        sql = "SELECT agent, cost_center, provider, COUNT(*), COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = %s"
+        params: list[Any] = [tenant_id]
+        if since is not None:
+            sql += " AND observed_at >= %s"
+            params.append(since)
+        sql += " GROUP BY agent, cost_center, provider ORDER BY SUM(cost_usd) DESC, agent"
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [
+            {
+                "agent": r[0] or "",
+                "cost_center": r[1] or "",
+                "provider": r[2] or "",
+                "calls": int(r[3]),
+                "cost_usd": round(float(r[4]), 6),
+            }
+            for r in rows
+        ]
+
     def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(

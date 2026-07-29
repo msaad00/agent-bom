@@ -494,3 +494,61 @@ def test_validate_otel_schema_rejects_non_list_resource_spans():
 
     with pytest.raises(ValueError, match="array"):
         validate_otel_schema({"resourceSpans": "not-a-list"})
+
+
+# ── Agent attribution (cost → graph join key) ─────────────────────────────────
+#
+# LLMCostRecord.agent was always "" for real OTLP ingest because LLMAPICall
+# carried no agent field, so every persisted cost row bucketed as "unknown" and
+# the graph cost overlay had nothing to join on.
+
+
+def _ml_span(attributes: list[dict]) -> dict:
+    return {
+        "traceId": "t1",
+        "spanId": "s1",
+        "parentSpanId": "",
+        "name": "chat gpt-4o",
+        "startTimeUnixNano": 1000000000,
+        "endTimeUnixNano": 1500000000,
+        "attributes": [{"key": "gen_ai.system", "value": {"stringValue": "openai"}}, *attributes],
+        "status": {},
+    }
+
+
+def _otlp_with_resource(spans: list[dict], resource_attributes: list[dict]) -> dict:
+    return {
+        "resourceSpans": [
+            {
+                "resource": {"attributes": resource_attributes},
+                "scopeSpans": [{"spans": spans}],
+            }
+        ]
+    }
+
+
+def test_ml_span_agent_read_from_gen_ai_agent_name():
+    calls = parse_ml_api_spans(_otlp_trace([_ml_span([{"key": "gen_ai.agent.name", "value": {"stringValue": "checkout-agent"}}])]))
+    assert len(calls) == 1
+    assert calls[0].agent == "checkout-agent"
+
+
+def test_ml_span_agent_falls_back_to_resource_service_name():
+    calls = parse_ml_api_spans(_otlp_with_resource([_ml_span([])], [{"key": "service.name", "value": {"stringValue": "billing-svc"}}]))
+    assert calls[0].agent == "billing-svc"
+
+
+def test_span_agent_attribute_beats_resource_service_name():
+    calls = parse_ml_api_spans(
+        _otlp_with_resource(
+            [_ml_span([{"key": "agent.name", "value": {"stringValue": "span-agent"}}])],
+            [{"key": "service.name", "value": {"stringValue": "resource-svc"}}],
+        )
+    )
+    assert calls[0].agent == "span-agent"
+
+
+def test_ml_span_agent_is_empty_when_absent():
+    """No attribution must stay empty rather than inventing one."""
+    calls = parse_ml_api_spans(_otlp_trace([_ml_span([])]))
+    assert calls[0].agent == ""

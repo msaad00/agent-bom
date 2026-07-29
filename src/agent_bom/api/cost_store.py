@@ -253,6 +253,79 @@ class CostStore(Protocol):
     ) -> CostBudget | None: ...
 
 
+def spend_rollup(store: Any, tenant_id: str, *, since: str | None = None) -> list[dict[str, Any]]:
+    """Aggregate spend by ``(agent, cost_center, provider)`` for one tenant.
+
+    Prefers a store-side ``spend_rollup`` (a SQL ``GROUP BY``, which stays
+    sargable on the ``idx_llm_costs_tenant_agent_observed`` index) and falls back
+    to aggregating in Python. The fallback deliberately does NOT use the default
+    ``list_records`` limit: that caps at 1000 rows ordered by recency, which
+    would silently drop a busy tenant's older spend from the total.
+    """
+    native = getattr(store, "spend_rollup", None)
+    if callable(native):
+        return list(native(tenant_id, since=since))
+
+    buckets: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for record in store.list_records(tenant_id, limit=1_000_000):
+        if since is not None and record.observed_at < since:
+            continue
+        key = (record.agent, record.cost_center, record.provider)
+        bucket = buckets.setdefault(
+            key,
+            {"agent": record.agent, "cost_center": record.cost_center, "provider": record.provider, "calls": 0, "cost_usd": 0.0},
+        )
+        bucket["calls"] += 1
+        bucket["cost_usd"] += record.cost_usd
+    for bucket in buckets.values():
+        bucket["cost_usd"] = round(float(bucket["cost_usd"]), 6)
+    return sorted(buckets.values(), key=lambda b: (-float(b["cost_usd"]), str(b["agent"])))
+
+
+def graph_cost_rollup(
+    store: Any,
+    tenant_id: str,
+    *,
+    now: datetime | None = None,
+    window_days: int = 30,
+) -> list[dict[str, Any]]:
+    """Spend shaped for the graph cost overlay, split across the window boundary.
+
+    The overlay stamps both a windowed ``cost_usd_30d`` and an all-time
+    ``cost_usd`` per node, and decides which is which from each record's
+    ``observed_at``. So each group is emitted twice: once inside the window and
+    once as the out-of-window remainder. The two always reconcile to all-time
+    spend, which the tests assert directly.
+    """
+    ref = now or datetime.now(timezone.utc)
+    window_start = (ref - timedelta(days=window_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    before_window = (ref - timedelta(days=window_days + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    all_time = {(r["agent"], r["cost_center"], r["provider"]): r for r in spend_rollup(store, tenant_id)}
+    windowed = {(r["agent"], r["cost_center"], r["provider"]): r for r in spend_rollup(store, tenant_id, since=window_start)}
+
+    records: list[dict[str, Any]] = []
+    for key, total in all_time.items():
+        agent, cost_center, provider = key
+        recent = windowed.get(key)
+        if recent is not None and recent["cost_usd"]:
+            records.append({**recent, "observed_at": ref.strftime("%Y-%m-%dT%H:%M:%SZ")})
+        remainder = round(float(total["cost_usd"]) - float(recent["cost_usd"] if recent else 0.0), 6)
+        remainder_calls = int(total["calls"]) - int(recent["calls"] if recent else 0)
+        if remainder > 0 or remainder_calls > 0:
+            records.append(
+                {
+                    "agent": agent,
+                    "cost_center": cost_center,
+                    "provider": provider,
+                    "calls": remainder_calls,
+                    "cost_usd": remainder,
+                    "observed_at": before_window,
+                }
+            )
+    return records
+
+
 def _rollup_by_owner(records: list[LLMCostRecord], agent_owner: dict[str, str]) -> list[dict[str, Any]]:
     """Aggregate spend + tokens by the accountable owner governing each agent (#3909).
 
@@ -573,6 +646,25 @@ class SQLiteCostStore:
                 _decode_tags(r[12] if len(r) > 12 else None),
             )
             for r in rows
+        ]
+
+    def spend_rollup(self, tenant_id: str, *, since: str | None = None) -> list[dict[str, Any]]:
+        """GROUP BY in SQL so a busy tenant is never truncated or walked in Python."""
+        sql = "SELECT agent, cost_center, provider, COUNT(*), COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ?"
+        params: list[Any] = [tenant_id]
+        if since is not None:
+            sql += " AND observed_at >= ?"
+            params.append(since)
+        sql += " GROUP BY agent, cost_center, provider ORDER BY SUM(cost_usd) DESC, agent"
+        return [
+            {
+                "agent": r[0] or "",
+                "cost_center": r[1] or "",
+                "provider": r[2] or "",
+                "calls": int(r[3]),
+                "cost_usd": round(float(r[4]), 6),
+            }
+            for r in self._conn.execute(sql, params).fetchall()
         ]
 
     def total_spend_by_cost_center(self, tenant_id: str, cost_center: str, *, since: str | None = None) -> float:

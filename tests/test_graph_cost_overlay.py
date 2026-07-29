@@ -209,3 +209,138 @@ def test_builder_without_cost_records_leaves_no_cost_attrs():
     for node in graph.nodes.values():
         assert "cost_usd" not in node.attributes
         assert "subtree_cost_usd" not in node.attributes
+
+
+def test_aggregate_record_calls_field_is_honoured():
+    """An aggregated row stands for many calls, not one.
+
+    graph_cost_rollup emits one dict per (agent, cost_center, provider) group
+    carrying its own ``calls`` count; counting it as a single call would report
+    a fleet's spend as two calls.
+    """
+    graph = _org_account_agent_graph()
+    apply_cost_overlay(
+        graph,
+        [{"agent": "billing-bot", "cost_usd": 100.0, "calls": 42, "observed_at": "2026-06-20T00:00:00+00:00"}],
+        _NOW,
+    )
+    assert graph.get_node("agent:billing-bot").attributes["cost_calls"] == 42
+
+
+def test_raw_records_without_calls_field_count_as_one_each():
+    """A real LLMCostRecord has no ``calls`` field — it must not read as zero."""
+    graph = _org_account_agent_graph()
+    apply_cost_overlay(graph, [_record("billing-bot", 1.0), _record("billing-bot", 2.0, observed="2026-06-21T00:00:00+00:00")], _NOW)
+    assert graph.get_node("agent:billing-bot").attributes["cost_calls"] == 2
+
+
+# ── Pipeline fusion (the wiring that was missing) ──────────────────────────────
+#
+# apply_cost_overlay was reachable only from report_json["llm_cost_records"],
+# which no production path ever populated — so the overlay never ran on a real
+# scan and no node ever carried cost.
+
+
+def _seed_cost_store(agent: str, cost: float):
+    from agent_bom.api.cost_store import InMemoryCostStore, LLMCostRecord, set_cost_store
+
+    store = InMemoryCostStore()
+    store.record_cost(
+        LLMCostRecord(
+            tenant_id="default",
+            call_id="c1",
+            agent=agent,
+            session_id="s",
+            provider="openai",
+            model="gpt-4o",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=cost,
+            priced=True,
+            observed_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            cost_center="ai-platform",
+        )
+    )
+    set_cost_store(store)
+    return store
+
+
+def test_pipeline_injects_tenant_spend_without_mutating_the_report(monkeypatch):
+    """The wiring contract: records reach the build, report_json stays untouched.
+
+    Whether the overlay then stamps the nodes is the builder's job and is covered
+    above -- this pins the injection that was missing, and pins that report_json
+    (persisted elsewhere and expected byte-identical) is copied, never mutated.
+    """
+    from types import SimpleNamespace
+
+    from agent_bom.api import pipeline
+    from agent_bom.api.cost_store import set_cost_store
+
+    graph = _org_account_agent_graph()
+    _seed_cost_store("billing-bot", 77.0)
+    captured: dict[str, object] = {}
+
+    def _fake_build(report_json, scan_id, tenant_id, container=None):
+        captured["report_json"] = report_json
+        return graph
+
+    monkeypatch.setattr("agent_bom.graph.builder.build_unified_graph_from_report", _fake_build)
+    monkeypatch.setattr(
+        pipeline,
+        "_get_graph_store",
+        lambda: SimpleNamespace(save_graph_streaming=lambda **k: None, prior_delta_digest=lambda *a, **k: None),
+    )
+    try:
+        original = {"scan_id": "scan-1"}
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            pipeline._persist_graph_snapshot(SimpleNamespace(job_id="j1", tenant_id="default", progress=[]), original)
+
+        records = captured["report_json"]["llm_cost_records"]
+        assert any(r["agent"] == "billing-bot" for r in records)
+        assert "llm_cost_records" not in original, "report_json must never be mutated in place"
+    finally:
+        set_cost_store(None)
+
+
+def test_pipeline_leaves_the_report_alone_when_there_is_no_spend(monkeypatch):
+    from types import SimpleNamespace
+
+    from agent_bom.api import pipeline
+    from agent_bom.api.cost_store import InMemoryCostStore, set_cost_store
+
+    set_cost_store(InMemoryCostStore())
+    captured: dict[str, object] = {}
+
+    def _fake_build(report_json, scan_id, tenant_id, container=None):
+        captured["report_json"] = report_json
+        return _org_account_agent_graph()
+
+    monkeypatch.setattr("agent_bom.graph.builder.build_unified_graph_from_report", _fake_build)
+    monkeypatch.setattr(
+        pipeline,
+        "_get_graph_store",
+        lambda: SimpleNamespace(save_graph_streaming=lambda **k: None, prior_delta_digest=lambda *a, **k: None),
+    )
+    try:
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            pipeline._persist_graph_snapshot(SimpleNamespace(job_id="j1", tenant_id="default", progress=[]), {"scan_id": "s"})
+        assert "llm_cost_records" not in captured["report_json"]
+    finally:
+        set_cost_store(None)
+
+
+def test_builder_applies_injected_cost_records_to_agent_nodes():
+    """The other half: given the records, the builder must stamp the nodes."""
+    from agent_bom.graph.builder import _apply_cost_overlay
+
+    graph = _org_account_agent_graph()
+    _apply_cost_overlay(
+        graph,
+        {"llm_cost_records": [{"agent": "billing-bot", "cost_usd": 77.0, "calls": 3, "observed_at": _NOW.isoformat()}]},
+    )
+    assert graph.get_node("agent:billing-bot").attributes["cost_usd"] == 77.0

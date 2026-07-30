@@ -207,7 +207,11 @@ _OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
     # ── AWS ────────────────────────────────────────────────────────────
     CISControlIdentity("aws", "3.0", "1.4", "No root account access keys", "1 - Identity and Access Management"): CISRemediationOverride(
         why="Root account access keys allow full account takeover with no MFA and no per-user audit trail.",
-        fix_console="AWS Console → IAM → Security credentials (root) → Delete access key",
+        fix_console=(
+            "AWS Organizations → Root access management (preferred for member accounts), or an approved "
+            "break-glass root session → IAM → Security credentials → Delete access key → sign out immediately"
+        ),
+        docs="https://docs.aws.amazon.com/IAM/latest/UserGuide/id_root-user_manage_delete-key.html",
         guardrails=("identity", "least-privilege", "priv-escalation", "zero-trust"),
     ),
     CISControlIdentity("aws", "3.0", "1.5", "Root account MFA enabled", "1 - Identity and Access Management"): CISRemediationOverride(

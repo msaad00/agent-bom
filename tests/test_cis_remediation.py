@@ -7,6 +7,8 @@ validated against the same schema.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
@@ -128,6 +130,36 @@ def test_override_applies_only_when_full_identity_matches():
     assert result.remediation["effort"] == "manual"
     assert result.remediation["requires_human_review"] is True
     assert "priv-escalation" in result.remediation["guardrails"]
+
+
+def test_aws_root_access_key_guidance_is_break_glass_only():
+    rem = build_remediation(
+        cloud="aws",
+        benchmark_version="3.0",
+        check_id="1.4",
+        title="No root account access keys",
+        severity="high",
+        recommendation="Remove root access keys.",
+        cis_section="1 - Identity and Access Management",
+    )
+
+    guidance = rem["fix_console"].lower()
+    assert "aws organizations" in guidance
+    assert "break-glass" in guidance
+    assert "sign out immediately" in guidance
+    assert rem["fix_cli"] is None
+    assert rem["requires_human_review"] is True
+    assert rem["docs"] == "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_root-user_manage_delete-key.html"
+
+
+def test_aws_root_access_key_playbook_does_not_normalize_root_login():
+    playbook = (Path(__file__).parents[1] / "docs/skills/cspm-aws-benchmark.md").read_text(encoding="utf-8")
+    root_key_guidance = playbook.split("FINDING: Root account has access keys", 1)[1].split("```", 1)[0]
+
+    assert "Sign in as the root user" not in root_key_guidance
+    assert "AWS Organizations" in root_key_guidance
+    assert "break-glass" in root_key_guidance
+    assert "sign out immediately" in root_key_guidance
 
 
 def test_guardrails_inferred_from_iam_section():

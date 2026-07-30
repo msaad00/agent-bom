@@ -170,9 +170,6 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
     assert '<a href="https://demo.agent-bom.com">Live demo</a>' in hero
-    assert hero.count("how-it-works-dark.svg") == 1
-    assert hero.count("how-it-works-light.svg") == 1
-    assert hero.index("how-it-works-dark.svg") > hero.index('href="https://demo.agent-bom.com"')
     assert "## How it works" not in readme
 
     current_what_it_is = """`agent-bom` is an open scanner and self-hosted control plane for software,
@@ -205,9 +202,8 @@ observed."""
     assert "| AppSec |" in readme
     assert "| GRC / audit |" in readme
 
-    # The workflow and persona proof stay directly visible. Architecture and
-    # product screenshots remain collapsible, with the gallery open by default.
-    assert readme.count("how-it-works-dark.svg") == 1
+    # Persona proof stays directly visible. Architecture and product
+    # screenshots remain collapsible, with the gallery open by default.
     assert readme.count("architecture-dark.svg") == 1
     assert "<summary><b>Audience workflow map</b></summary>" not in readme
     assert "<summary><b>Control-plane architecture</b></summary>" in readme

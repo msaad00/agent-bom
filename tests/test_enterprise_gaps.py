@@ -536,6 +536,29 @@ class TestTrendAnalysis:
 class TestSIEMConnectors:
     """Test SIEM integrations."""
 
+    @pytest.fixture(autouse=True)
+    def _governed_delivery_client(self, tmp_path):
+        from agent_bom.delivery import DeliveryClient, DeliveryStore, RetryPolicy, SendOutcome, set_delivery_client
+
+        def _sender(url, headers, body, timeout):
+            import httpx
+
+            try:
+                response = httpx.post(url, json=json.loads(body), headers=headers, timeout=timeout)
+                return SendOutcome(http_status=response.status_code)
+            except Exception:
+                return SendOutcome(http_status=None, error="transport failure")
+
+        set_delivery_client(
+            DeliveryClient(
+                DeliveryStore(tmp_path / "delivery.db"),
+                sender=_sender,
+                retry=RetryPolicy(max_attempts=1),
+            )
+        )
+        yield
+        set_delivery_client(None)
+
     def test_list_connectors(self):
         from agent_bom.siem import list_connectors
 

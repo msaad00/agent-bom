@@ -294,9 +294,10 @@ def _record_graph_persistence(
     """Expose graph persistence truth without leaking backend exceptions."""
 
     def _record() -> None:
-        if not isinstance(job.result, dict):
+        result = getattr(job, "result", None)
+        if not isinstance(result, dict):
             return
-        current = job.result.get("graph_persistence")
+        current = result.get("graph_persistence")
         # Delivery or post-persist bookkeeping can fail after the snapshot has
         # committed. Never overwrite durable evidence with a false failure.
         if status == "failed" and isinstance(current, dict) and current.get("status") == "persisted":
@@ -309,7 +310,7 @@ def _record_graph_persistence(
             evidence["nodes"] = nodes
         if edges is not None:
             evidence["edges"] = edges
-        job.result["graph_persistence"] = evidence
+        result["graph_persistence"] = evidence
 
     if lock is None:
         _record()

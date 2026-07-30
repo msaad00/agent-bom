@@ -785,6 +785,7 @@ class PostgresGraphStore:
                         edge.activity_id,
                         scan,
                         tenant,
+                        previous_scan,
                     )
 
             def attack_path_rows() -> Iterator[tuple[Any, ...]]:
@@ -826,7 +827,44 @@ class PostgresGraphStore:
                     traversable, first_seen, last_seen, valid_from, valid_to,
                     confidence, provenance, source_scan_id, source_run_id,
                     evidence, activity_id, scan_id, tenant_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                )
+                SELECT
+                    incoming.source_id,
+                    incoming.target_id,
+                    incoming.relationship,
+                    incoming.direction,
+                    incoming.weight,
+                    incoming.traversable,
+                    COALESCE(NULLIF(previous.first_seen, ''), incoming.first_seen),
+                    incoming.last_seen,
+                    COALESCE(
+                        NULLIF(previous.valid_from, ''),
+                        NULLIF(previous.first_seen, ''),
+                        incoming.valid_from
+                    ),
+                    incoming.valid_to,
+                    incoming.confidence,
+                    incoming.provenance,
+                    incoming.source_scan_id,
+                    incoming.source_run_id,
+                    incoming.evidence,
+                    incoming.activity_id,
+                    incoming.scan_id,
+                    incoming.tenant_id
+                FROM (
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) AS incoming (
+                    source_id, target_id, relationship, direction, weight,
+                    traversable, first_seen, last_seen, valid_from, valid_to,
+                    confidence, provenance, source_scan_id, source_run_id,
+                    evidence, activity_id, scan_id, tenant_id
+                )
+                LEFT JOIN graph_edges AS previous
+                  ON previous.tenant_id = incoming.tenant_id
+                 AND previous.scan_id = %s
+                 AND previous.source_id = incoming.source_id
+                 AND previous.target_id = incoming.target_id
+                 AND previous.relationship = incoming.relationship
                 ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
                     direction = EXCLUDED.direction,
                     weight = EXCLUDED.weight,
@@ -846,35 +884,10 @@ class PostgresGraphStore:
                 batch_size=batch_size,
             )
             if previous_scan:
-                # Preserve temporal continuity and retire missing prior edges
-                # inside Postgres. Materialize each bounded snapshot slice once:
-                # a direct graph_edges self-join made Postgres repeatedly rescan
-                # the table and hit the statement timeout on modest second
-                # snapshots, while loading the prior snapshot into Python would
-                # restore O(previous-edge-count) application memory.
-                conn.execute(
-                    """
-                    WITH previous_edges AS MATERIALIZED (
-                        SELECT source_id, target_id, relationship, first_seen, valid_from
-                        FROM graph_edges
-                        WHERE tenant_id = %s AND scan_id = %s
-                    )
-                    UPDATE graph_edges AS current
-                    SET first_seen = COALESCE(NULLIF(previous.first_seen, ''), current.first_seen),
-                        valid_from = COALESCE(
-                            NULLIF(previous.valid_from, ''),
-                            NULLIF(previous.first_seen, ''),
-                            current.valid_from
-                        )
-                    FROM previous_edges AS previous
-                    WHERE current.source_id = previous.source_id
-                      AND current.target_id = previous.target_id
-                      AND current.relationship = previous.relationship
-                      AND current.scan_id = %s
-                      AND current.tenant_id = %s
-                    """,
-                    (tenant, previous_scan, scan, tenant),
-                )
+                # Continuity is resolved while each bounded insert batch is
+                # written, avoiding a second full-snapshot UPDATE. Compute only
+                # the missing prior-edge set here so retired edges can be closed
+                # without materializing the snapshot in application memory.
                 conn.execute(
                     """
                     WITH current_edge_keys AS MATERIALIZED (

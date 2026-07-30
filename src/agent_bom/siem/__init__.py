@@ -67,6 +67,7 @@ def _deliver_event(
         auth_token=auth_token,
         headers={"Content-Type": "application/json"},
         accepted_statuses=accepted_statuses,
+        allow_private_networks=config.allow_private_networks,
         timeout=10.0,
     )
     delivery = Delivery(
@@ -102,6 +103,7 @@ class SIEMConfig:
     source_type: str = "agent-bom"
     verify_ssl: bool = True
     event_format: str = "raw"
+    allow_private_networks: bool = False
 
 
 class SplunkHEC:
@@ -311,5 +313,7 @@ def create_from_env() -> SIEMConnector | None:
         url=os.environ.get("AGENT_BOM_SIEM_URL", ""),
         token=os.environ.get("AGENT_BOM_SIEM_TOKEN", ""),
         index=os.environ.get("AGENT_BOM_SIEM_INDEX", ""),
+        allow_private_networks=os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower()
+        in {"1", "true", "yes", "on"},
     )
     return create_connector(siem_type, config)

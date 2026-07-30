@@ -1850,7 +1850,7 @@ def _finding_facets_bounded(
     scanned_rows = 0
     truncated = False
     reason = ""
-    deadline = time.monotonic() + max(0.001, deadline_seconds)
+    deadline: float | None = None
     for row in iter_current_findings(
         tenant_id,
         severity=None,
@@ -1859,9 +1859,18 @@ def _finding_facets_bounded(
         scope=base_scope,
         status="all",
     ):
-        if scanned_rows >= scan_budget or time.monotonic() >= deadline:
+        if scanned_rows >= scan_budget:
             truncated = True
-            reason = "scan_budget" if scanned_rows >= scan_budget else "deadline"
+            reason = "scan_budget"
+            break
+        if deadline is None:
+            # Bound facet processing, not the backing iterator's time-to-first
+            # row. A slow cursor setup must not turn a non-empty tenant into a
+            # zero-count Findings response.
+            deadline = time.monotonic() + max(0.001, deadline_seconds)
+        elif time.monotonic() >= deadline:
+            truncated = True
+            reason = "deadline"
             break
         scanned_rows += 1
         finding_class = finding_class_for_row(row)
@@ -2599,7 +2608,7 @@ def _list_findings_impl(
     facets: dict[str, dict[str, int]] | None = None
     facet_completeness: dict[str, Any] | None = None
     if include_facets:
-        facets, total, facet_completeness = _finding_facets_bounded(
+        facets, facet_total, facet_completeness = _finding_facets_bounded(
             tenant_id,
             severity=severity,
             scan_id=scan_id,
@@ -2607,6 +2616,11 @@ def _list_findings_impl(
             scope=scope_filters,
             status=status_key,
         )
+        # A partial walk that could not process even one row is not evidence
+        # that the result set is empty. Preserve the list path's total instead
+        # of replacing it with a misleading zero.
+        if facet_completeness["status"] == "complete" or facet_completeness["scanned_rows"] > 0:
+            total = facet_total
         total_approximate = facet_completeness["status"] != "complete"
 
     try:

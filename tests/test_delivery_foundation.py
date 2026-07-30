@@ -188,6 +188,67 @@ def test_auth_failure_is_permanent_no_retry_and_warned(tmp_path: Path) -> None:
     assert dead_letters[0]["attempt"] == 1
 
 
+def test_destination_policy_rejection_is_permanent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", raising=False)
+    clock = FakeClock()
+    client = DeliveryClient(
+        DeliveryStore(tmp_path / "policy-rejection.db"),
+        retry=RetryPolicy(max_attempts=4, initial_backoff=1.0),
+        now=clock.now,
+        sleep=clock.sleep,
+        rng=lambda: 0.0,
+    )
+    destination = Destination(destination_id="private-blocked", url="https://127.0.0.1:9200/events")
+    delivery = Delivery(destination_id=destination.destination_id, payload={"event": "blocked"})
+
+    result = client.deliver(destination, delivery)
+
+    assert result.status == "dead_letter"
+    assert result.attempts == 1
+    assert clock.slept == []
+
+
+def test_private_http_destination_approval_reaches_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", raising=False)
+    clock = FakeClock()
+
+    class _Response:
+        status_code = 200
+
+    class _Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def request(self, *_args, **_kwargs):
+            return _Response()
+
+    monkeypatch.setattr("agent_bom.http_client.create_sync_client", lambda **_kwargs: _Client())
+    client = DeliveryClient(
+        DeliveryStore(tmp_path / "private-approved.db"),
+        retry=RetryPolicy(max_attempts=2, initial_backoff=1.0),
+        now=clock.now,
+        sleep=clock.sleep,
+        rng=lambda: 0.0,
+    )
+    destination = Destination(
+        destination_id="private-approved",
+        url="http://127.0.0.1:9200/events",
+        allow_private_networks=True,
+    )
+    delivery = Delivery(destination_id=destination.destination_id, payload={"event": "approved"})
+
+    result = client.deliver(destination, delivery)
+
+    assert result.delivered is True
+    assert result.attempts == 1
+    assert clock.slept == []
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

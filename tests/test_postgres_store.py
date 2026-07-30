@@ -1736,6 +1736,69 @@ def test_graph_hot_paths_never_materialize_the_full_postgres_snapshot(mock_pool,
     assert "statement_timeout" in sql
 
 
+def test_filtered_edge_rows_reports_when_the_query_limit_omits_rows():
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    rows = [(f"source:{index}", f"target:{index}") for index in range(3)]
+
+    class EdgeConnection:
+        def __init__(self):
+            self.params = None
+
+        def execute(self, _sql, params=None):
+            self.params = params
+            return MockCursor(rows)
+
+    conn = EdgeConnection()
+    store = object.__new__(PostgresGraphStore)
+
+    bounded_rows, hit_limit = store._filtered_edge_rows(
+        conn,
+        tenant_id="tenant-alpha",
+        scan_id="scan-limited",
+        frontier={"agent:a"},
+        limit=2,
+    )
+
+    assert bounded_rows == rows[:2]
+    assert hit_limit is True
+    assert conn.params[-1] == 3
+
+
+def test_graph_walk_marks_query_limit_omissions_truncated(monkeypatch):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    class WalkConnection:
+        def execute(self, sql, _params=None):
+            if "SELECT created_at FROM graph_snapshots" in sql:
+                return MockCursor([("2026-07-30T00:00:00+00:00",)])
+            if "SELECT id FROM graph_nodes" in sql:
+                return MockCursor([("agent:a",)])
+            raise AssertionError(sql)
+
+    store = object.__new__(PostgresGraphStore)
+    monkeypatch.setattr(store, "_filtered_edge_rows", lambda *_args, **_kwargs: ([], True))
+
+    result = store._walk_graph(
+        WalkConnection(),
+        tenant_id="tenant-alpha",
+        scan_id="scan-limited",
+        roots=["agent:a"],
+        direction="forward",
+        max_depth=4,
+        max_nodes=100,
+        max_edges=100,
+        deadline_monotonic=None,
+        traversable_only=False,
+        relationship_types=None,
+        static_only=False,
+        dynamic_only=False,
+        include_roots=True,
+    )
+
+    assert result[-1] is True
+
+
 def test_graph_store_save_graph_batches_postgres_writes(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode

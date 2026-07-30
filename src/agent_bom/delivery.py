@@ -193,13 +193,21 @@ Sender = Callable[[str, dict[str, str], bytes, float], "SendOutcome"]
 class SendOutcome:
     http_status: int | None
     error: str = ""
+    retryable: bool | None = None
 
     @property
     def is_success(self) -> bool:
         return self.http_status is not None and 200 <= self.http_status < 300
 
 
-def http_sender(url: str, headers: dict[str, str], body: bytes, timeout: float) -> SendOutcome:
+def http_sender(
+    url: str,
+    headers: dict[str, str],
+    body: bytes,
+    timeout: float,
+    *,
+    allow_private_networks: bool = False,
+) -> SendOutcome:
     """Default sender: one POST through the shared resilient sync client.
 
     The shared client already validates the URL (SSRF) and does connection-level
@@ -209,11 +217,20 @@ def http_sender(url: str, headers: dict[str, str], body: bytes, timeout: float) 
     from agent_bom.http_client import create_sync_client
     from agent_bom.security import SecurityError, validate_url
 
-    allow_private = os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {"1", "true", "yes", "on"}
+    allow_private = allow_private_networks or os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     try:
         validate_url(url, allowed_schemes=("https", "http") if allow_private else ("https",), allow_private=allow_private)
     except SecurityError as exc:
-        return SendOutcome(http_status=None, error=f"url rejected by outbound policy: {sanitize_error(exc)}")
+        return SendOutcome(
+            http_status=None,
+            error=f"url rejected by outbound policy: {sanitize_error(exc)}",
+            retryable=False,
+        )
     try:
         with create_sync_client(timeout=timeout) as client:
             resp = client.request("POST", url, content=body, headers=headers)
@@ -671,7 +688,16 @@ class DeliveryClient:
         for attempt in range(1, self.retry.max_attempts + 1):
             attempts_made = attempt
             headers = self._build_headers(destination, delivery, body, attempt)
-            outcome = self.sender(destination.url, headers, body, destination.timeout)
+            if self.sender is http_sender:
+                outcome = http_sender(
+                    destination.url,
+                    headers,
+                    body,
+                    destination.timeout,
+                    allow_private_networks=destination.allow_private_networks,
+                )
+            else:
+                outcome = self.sender(destination.url, headers, body, destination.timeout)
             attempt_now = self._now()
             last_http = outcome.http_status
             last_error = outcome.error
@@ -788,6 +814,8 @@ class DeliveryClient:
 
 
 def _is_retryable(outcome: SendOutcome) -> bool:
+    if outcome.retryable is not None:
+        return outcome.retryable
     if outcome.http_status is None:
         return True  # transport/connection error — retry
     if outcome.http_status in _RETRYABLE_STATUS:

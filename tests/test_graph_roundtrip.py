@@ -7,7 +7,7 @@ during the build step).
 Two fixtures:
 
 1. A tiny synthetic inventory (3 agents, 5 packages on servers, 2 CVEs,
-   2 credentials, 1 cloud principal) — exercises every ``EdgeKind`` /
+   2 credential names across 3 server-scoped slots, 1 cloud principal) — exercises every ``EdgeKind`` /
    ``NodeKind`` the builder produces.
 2. The trimmed agent-bom self-scan at
    ``tests/fixtures/agent_bom_self_scan_inventory.json`` — exercises a
@@ -66,7 +66,11 @@ class TestRoundTripSynthetic:
         inv = synthetic_inventory()
         graph = build_graph_from_inventory(inv)
         projected = project_graph_to_inventory_sets(graph)
-        assert {"cred:GITHUB_TOKEN", "cred:GH_TOKEN"} <= projected["credentials"]
+        assert {
+            "cred:server:agent-a:filesystem:GITHUB_TOKEN",
+            "cred:server:agent-b:filesystem:GITHUB_TOKEN",
+            "cred:server:agent-c:github:GH_TOKEN",
+        } <= projected["credentials"]
 
     def test_synthetic_vulnerabilities_present(self) -> None:
         inv = synthetic_inventory()

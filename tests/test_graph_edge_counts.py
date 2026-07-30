@@ -106,7 +106,6 @@ class TestSyntheticEdgeCounts:
             "provides",
             "vulnerable_to",
             "shares_server",
-            "shares_credential",
             "attached_to",
         }
         missing = required - set(counts.keys())
@@ -117,11 +116,9 @@ class TestSyntheticEdgeCounts:
         # agent-a and agent-b both use ``filesystem`` → exactly one SHARES_SERVER edge.
         assert counts["shares_server"] == 1
 
-    def test_synthetic_shares_credential_count(self, graph) -> None:
+    def test_synthetic_does_not_infer_shared_credentials_from_env_names(self, graph) -> None:
         counts = edge_counts_by_kind(graph)
-        # GITHUB_TOKEN is exposed by both agent-a and agent-b → exactly one
-        # SHARES_CREDENTIAL edge.
-        assert counts["shares_credential"] == 1
+        assert "shares_credential" not in counts
 
     def test_synthetic_attached_to_count(self, graph) -> None:
         counts = edge_counts_by_kind(graph)

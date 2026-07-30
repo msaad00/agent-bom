@@ -881,7 +881,7 @@ def test_postgres_second_large_graph_snapshot_reconciles_within_statement_timeou
             created_at="2026-07-30T00:01:00Z",
         )
         stats = store.snapshot_stats(tenant_id=tenant_id, scan_id=current_scan)
-        assert persisted["edge_count"] == edge_count
+        assert persisted["edges"] == edge_count
         assert stats["total_edges"] == edge_count
     finally:
         store.delete_tenant(tenant_id=tenant_id)

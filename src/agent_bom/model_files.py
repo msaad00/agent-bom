@@ -12,9 +12,13 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from agent_bom.floating_refs import classify_model_revision, is_hex_digest
 from agent_bom.model_pickle_scan import PICKLE_BEARING_EXTENSIONS, scan_pickle_file_flags
+
+if TYPE_CHECKING:
+    from agent_bom.finding import Finding
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +294,82 @@ def scan_model_files(
         results_by_path[path_str] = entry
 
     return results, warnings
+
+
+def model_file_findings(model_files: list[dict]) -> list["Finding"]:
+    """Convert content-confirmed malicious model flags to unified findings.
+
+    Extension-only warnings such as ``PICKLE_DESERIALIZATION`` describe an
+    unsafe format, not a proven malicious payload, and intentionally remain
+    inventory metadata. Only ``MALICIOUS_PICKLE`` flags emitted by bounded
+    static opcode disassembly are promoted to fail-closed findings.
+    """
+    from agent_bom.compliance_hub import apply_hub_classification
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+    from agent_bom.security import sanitize_text
+
+    findings: list[Finding] = []
+    seen_ids: set[str] = set()
+    for model_file in model_files:
+        if not isinstance(model_file, dict):
+            continue
+        path = sanitize_text(model_file.get("path", "") or "", max_len=1000)
+        filename = sanitize_text(model_file.get("filename", "") or Path(path).name or "model artifact", max_len=255)
+        for raw_flag in model_file.get("security_flags", []) or []:
+            if not isinstance(raw_flag, dict) or raw_flag.get("type") != "MALICIOUS_PICKLE":
+                continue
+            description = sanitize_text(
+                raw_flag.get("description", "") or "Static pickle analysis found an executable payload.",
+                max_len=2000,
+            )
+            dangerous_imports = [
+                sanitize_text(value, max_len=200)
+                for value in raw_flag.get("dangerous_imports", []) or []
+                if isinstance(value, str)
+            ][:32]
+            code_exec_opcodes = [
+                sanitize_text(value, max_len=80)
+                for value in raw_flag.get("code_exec_opcodes", []) or []
+                if isinstance(value, str)
+            ][:32]
+            finding = apply_hub_classification(
+                Finding(
+                    finding_type=FindingType.MALICIOUS_MODEL,
+                    source=FindingSource.MODEL_SCAN,
+                    asset=Asset(
+                        name=filename,
+                        asset_type="model_file",
+                        identifier=path or filename,
+                        location=path or None,
+                    ),
+                    severity=str(raw_flag.get("severity") or "critical"),
+                    title=f"Malicious model payload: {filename}",
+                    description=description,
+                    cwe_ids=["CWE-502"],
+                    is_malicious=True,
+                    malicious_reason="Content-confirmed executable pickle payload",
+                    remediation_guidance=(
+                        "Quarantine the artifact, verify its publisher and digest, and replace it with a trusted "
+                        "safetensors or ONNX artifact. Do not deserialize the flagged file."
+                    ),
+                    is_actionable=True,
+                    risk_score=10.0,
+                    evidence={
+                        "detector": "pickletools-static-disassembly",
+                        "detection_type": "MALICIOUS_PICKLE",
+                        "format": sanitize_text(model_file.get("format", "") or "", max_len=120),
+                        "extension": sanitize_text(model_file.get("extension", "") or "", max_len=40),
+                        "size_bytes": model_file.get("size_bytes") if isinstance(model_file.get("size_bytes"), int) else None,
+                        "dangerous_imports": dangerous_imports,
+                        "code_exec_opcodes": code_exec_opcodes,
+                        "deserialized": False,
+                    },
+                )
+            )
+            if finding.id not in seen_ids:
+                findings.append(finding)
+                seen_ids.add(finding.id)
+    return findings
 
 
 def scan_model_manifests(

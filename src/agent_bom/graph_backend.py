@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedGraph
+from agent_bom.graph.bottleneck import BottleneckAnalysis, compute_bottlenecks
 
 
 @runtime_checkable
@@ -36,6 +37,7 @@ class GraphBackend(Protocol):
     def to_dict(self) -> dict: ...
     def centrality_scores(self) -> dict[str, float]: ...
     def bottleneck_nodes(self, top_n: int = 5) -> list[tuple[str, float]]: ...
+    def bottleneck_analysis(self, top_n: int = 5) -> BottleneckAnalysis: ...
 
 
 @dataclass
@@ -44,6 +46,9 @@ class InMemoryBackend:
 
     _nodes: dict[str, dict] = field(default_factory=dict)
     _adj: dict[str, dict[str, dict]] = field(default_factory=lambda: defaultdict(dict))
+    # "What points AT this node?" — traversal stays out-edge only, but a degree
+    # score that ignores in-edges reports a heavily-referenced node as isolated.
+    _rev: dict[str, dict[str, dict]] = field(default_factory=lambda: defaultdict(dict))
     _edge_count: int = 0
 
     def add_node(self, node_id: str, kind: str, label: str, **metadata: object) -> None:
@@ -51,8 +56,10 @@ class InMemoryBackend:
 
     def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, *, directed: bool = False, **metadata: object) -> None:
         self._adj[source][target] = {"kind": kind, "weight": weight, **metadata}
+        self._rev[target][source] = {"kind": kind, "weight": weight, **metadata}
         if not directed:
             self._adj[target][source] = {"kind": kind, "weight": weight, **metadata}
+            self._rev[source][target] = {"kind": kind, "weight": weight, **metadata}
         self._edge_count += 1
 
     def has_node(self, node_id: str) -> bool:
@@ -118,41 +125,19 @@ class InMemoryBackend:
         }
 
     def centrality_scores(self) -> dict[str, float]:
-        """Degree-based centrality (normalized by max possible connections)."""
+        """Degree centrality over distinct neighbours in EITHER direction."""
         if not self._nodes:
             return {}
         max_possible = max(len(self._nodes) - 1, 1)
-        return {nid: len(self._adj.get(nid, {})) / max_possible for nid in self._nodes}
+        return {nid: len(set(self._adj.get(nid, {})) | set(self._rev.get(nid, {}))) / max_possible for nid in self._nodes}
+
+    def bottleneck_analysis(self, top_n: int = 5) -> BottleneckAnalysis:
+        """Approximate betweenness over a declared, insertion-order-independent
+        sample of sources."""
+        return compute_bottlenecks(list(self._nodes), lambda node_id: self._adj.get(node_id, {}), top_n=top_n)
 
     def bottleneck_nodes(self, top_n: int = 5) -> list[tuple[str, float]]:
-        """Approximate betweenness centrality using BFS counting."""
-        if not self._nodes:
-            return []
-        scores: dict[str, float] = {nid: 0.0 for nid in self._nodes}
-        node_list = list(self._nodes.keys())
-
-        # Sample a subset for performance (BFS from each node)
-        sample = node_list[: min(50, len(node_list))]
-        for src in sample:
-            # BFS to find shortest paths
-            visited: dict[str, list[str]] = {src: [src]}
-            queue: deque[str] = deque([src])
-            while queue:
-                current = queue.popleft()
-                for neighbor in self._adj.get(current, {}):
-                    if neighbor not in visited:
-                        visited[neighbor] = visited[current] + [neighbor]
-                        queue.append(neighbor)
-            # Count intermediate nodes
-            for path in visited.values():
-                for node in path[1:-1]:
-                    scores[node] += 1.0
-
-        # Normalize
-        total = sum(scores.values()) or 1.0
-        normalized = {nid: score / total for nid, score in scores.items()}
-        sorted_nodes = sorted(normalized.items(), key=lambda x: x[1], reverse=True)
-        return sorted_nodes[:top_n]
+        return self.bottleneck_analysis(top_n).nodes
 
 
 class NetworkXBackend:
@@ -233,13 +218,22 @@ class NetworkXBackend:
             return {}
         return self._nx.pagerank(self._graph)
 
-    def bottleneck_nodes(self, top_n: int = 5) -> list[tuple[str, float]]:
-        """Betweenness centrality via NetworkX."""
-        if self._graph.number_of_nodes() == 0:
-            return []
+    def bottleneck_analysis(self, top_n: int = 5) -> BottleneckAnalysis:
+        """Exact betweenness via NetworkX — every node is a source, so nothing
+        is sampled away; the provenance says so rather than leaving the caller
+        to guess which backend answered."""
+        total = self._graph.number_of_nodes()
+        if total == 0:
+            return BottleneckAnalysis()
         centrality = self._nx.betweenness_centrality(self._graph)
-        sorted_nodes = sorted(centrality.items(), key=lambda x: x[1], reverse=True)
-        return sorted_nodes[:top_n]
+        ranked = sorted(
+            ((node_id, score) for node_id, score in centrality.items() if score > 0.0),
+            key=lambda item: (-item[1], item[0]),
+        )
+        return BottleneckAnalysis(nodes=ranked[:top_n], sampled_sources=total, total_nodes=total)
+
+    def bottleneck_nodes(self, top_n: int = 5) -> list[tuple[str, float]]:
+        return self.bottleneck_analysis(top_n).nodes
 
 
 def get_backend(backend: str = "auto") -> GraphBackend:

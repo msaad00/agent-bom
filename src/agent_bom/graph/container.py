@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
+from agent_bom.graph.bottleneck import BottleneckAnalysis, compute_bottlenecks
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
@@ -780,31 +781,36 @@ class UnifiedGraph:
     # ── Centrality ───────────────────────────────────────────────────────
 
     def degree_centrality(self) -> dict[str, float]:
+        """Distinct neighbours in EITHER direction, normalised.
+
+        Out-degree alone scored a node that 50,000 identities point at as 0 —
+        the single most-referenced node in an estate read as unconnected.
+        Counting distinct neighbours (rather than edges) keeps a bidirectional
+        edge, which is indexed both ways, from counting twice.
+        """
         if not self.nodes:
             return {}
         max_possible = max(len(self.nodes) - 1, 1)
-        return {nid: len(self.adjacency.get(nid, [])) / max_possible for nid in self.nodes}
+
+        def degree(node_id: str) -> int:
+            out = {edge.target for edge in self.adjacency.get(node_id, ())}
+            incoming = {edge.source for edge in self.reverse_adjacency.get(node_id, ())}
+            return len(out | incoming)
+
+        return {nid: degree(nid) / max_possible for nid in self.nodes}
+
+    def bottleneck_analysis(self, top_n: int = 5) -> BottleneckAnalysis:
+        """Ranked bottlenecks with the source sample they were derived from."""
+        return compute_bottlenecks(
+            list(self.nodes),
+            lambda node_id: (edge.target for edge in self.adjacency.get(node_id, ())),
+            top_n=top_n,
+        )
 
     def bottleneck_nodes(self, top_n: int = 5) -> list[tuple[str, float]]:
-        if not self.nodes:
-            return []
-        scores: dict[str, float] = {nid: 0.0 for nid in self.nodes}
-        sample = list(self.nodes.keys())[: min(50, len(self.nodes))]
-        for src in sample:
-            visited: dict[str, list[str]] = {src: [src]}
-            queue: deque[str] = deque([src])
-            while queue:
-                current = queue.popleft()
-                for edge in self.adjacency.get(current, []):
-                    if edge.target not in visited:
-                        visited[edge.target] = visited[current] + [edge.target]
-                        queue.append(edge.target)
-            for path in visited.values():
-                for node in path[1:-1]:
-                    scores[node] += 1.0
-        total = sum(scores.values()) or 1.0
-        normalised = {nid: score / total for nid, score in scores.items()}
-        return sorted(normalised.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        """Ranked bottlenecks only. Prefer :meth:`bottleneck_analysis` — any
+        surface that PRESENTS this ranking has to disclose that it is a sample."""
+        return self.bottleneck_analysis(top_n).nodes
 
     # ── Stats ────────────────────────────────────────────────────────────
 

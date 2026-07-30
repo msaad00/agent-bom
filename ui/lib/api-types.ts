@@ -1149,6 +1149,20 @@ export interface FindingListEnvelope<T> {
       missing_or_invalid: "unavailable";
     };
   } | undefined;
+  /**
+   * Completeness of the server-side scope walk. Present only when a scope
+   * filter (`provider` / `account` / `environment` / `domain` / `q`) is
+   * applied. `partial` means the walk hit its row budget or deadline: the page
+   * is a prefix, not the whole matching set — continue with `next_cursor`.
+   */
+  scope_completeness?: ScopeCompleteness | undefined;
+}
+
+export interface ScopeCompleteness {
+  status: "complete" | "partial";
+  reason: string;
+  scanned_rows: number;
+  scan_budget: number;
 }
 
 export interface FindingFacets {

@@ -658,7 +658,11 @@ class PostgresComplianceHubStore:
             finding_id = str(payload.get("id") or f"hub-{now}-{id(original)}")
             rows_to_insert.append((finding_id, frameworks_csv, payload))
         existing_ids = self._existing_finding_ids(conn, tenant_id, [row[0] for row in rows_to_insert])
-        new_rows = sum(1 for finding_id, _, _ in rows_to_insert if finding_id not in existing_ids)
+        # Count DISTINCT ids: ``ON CONFLICT … DO UPDATE`` collapses ids repeated
+        # WITHIN the batch into one row, so counting per-row overstated the
+        # tenant total permanently (the cached total then disagreed with
+        # ``COUNT(*)`` forever).
+        new_rows = len({finding_id for finding_id, _, _ in rows_to_insert} - existing_ids)
         # Idempotent ingest: a resend of the same (tenant_id, finding_id) refreshes
         # payload/metadata and keeps the original ``ordinal`` (the BIGSERIAL default
         # only advances on genuine inserts). Batched via ``executemany`` (psycopg
@@ -1243,6 +1247,7 @@ class PostgresComplianceHubStore:
         since: str | None = None,
         scope: Mapping[str, str] | None = None,
         status: str | None = None,
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
@@ -1296,6 +1301,7 @@ class PostgresComplianceHubStore:
                 limit=limit,
                 cursor=cursor,
                 scope=scope,
+                scope_metadata=scope_metadata,
             )
         if cursor:
             keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, cursor)
@@ -1357,6 +1363,7 @@ class PostgresComplianceHubStore:
         limit: int,
         cursor: str | None,
         scope: Mapping[str, str],
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
         from agent_bom.finding_scope import row_matches_scope
@@ -1403,6 +1410,7 @@ class PostgresComplianceHubStore:
                 start_cursor=cursor,
                 sort=normalized_sort,
                 batch_size=scope_filter_batch_size(page_limit),
+                metadata=scope_metadata,
             )
         return payloads, None, next_cursor
 

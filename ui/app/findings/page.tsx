@@ -11,7 +11,7 @@ import {
   type FindingTriageJustification,
   type ReadWindow,
 } from "@/lib/api";
-import type { FindingFacets } from "@/lib/api-types";
+import type { FindingFacets, ScopeCompleteness } from "@/lib/api-types";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { FindingDrawer } from "@/components/finding-drawer";
 import { FindingsQueueTable } from "@/components/findings-queue";
@@ -311,6 +311,7 @@ function FindingsPage() {
   const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
   const [findingFacets, setFindingFacets] = useState<FindingFacets | null>(null);
   const [findingFacetsApproximate, setFindingFacetsApproximate] = useState(false);
+  const [scopeCompleteness, setScopeCompleteness] = useState<ScopeCompleteness | null>(null);
   const [hasMoreFindings, setHasMoreFindings] = useState(false);
   const [nextFindingsCursor, setNextFindingsCursor] = useState("");
   const [pageCursors, setPageCursors] = useState<string[]>([""]);
@@ -554,6 +555,7 @@ function FindingsPage() {
         setFindingsTotalApproximate(Boolean(response.total_approximate));
         setFindingFacets(response.facets ?? null);
         setFindingFacetsApproximate(Boolean(response.facets_approximate));
+        setScopeCompleteness(response.scope_completeness ?? null);
         setHasMoreFindings(Boolean(response.has_more || response.next_cursor));
         setNextFindingsCursor(response.next_cursor ?? "");
       } catch (e: unknown) {
@@ -772,7 +774,20 @@ function FindingsPage() {
         />
       )}
 
-      {!loading && !error && vulns.length === 0 && (
+      {/* A scope walk that stopped on its row budget is NOT evidence of an empty
+          estate. Say so, and never let the "No findings found" empty state stand
+          in for a partial page. */}
+      {!loading && !error && scopeCompleteness?.status === "partial" && (
+        <div
+          data-testid="findings-scope-partial"
+          className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]"
+        >
+          Partial results — filter matching stopped after {scopeCompleteness.scanned_rows.toLocaleString()} scanned rows
+          to keep the read fast. Page through with Next for the rest, or narrow the filters.
+        </div>
+      )}
+
+      {!loading && !error && vulns.length === 0 && scopeCompleteness?.status !== "partial" && (
         <PageEmptyState
           title="No findings found"
           detail="Run a scan or connect a cloud account to populate CVE, cloud posture, graph, and remediation evidence."

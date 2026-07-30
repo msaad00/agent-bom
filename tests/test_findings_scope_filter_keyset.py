@@ -512,3 +512,149 @@ def test_postgres_list_current_page_scoped_no_dup_no_drop(monkeypatch) -> None:
     first_sql, first_params = conn.select_calls[0]
     assert "effective_reach_score <" not in first_sql  # first batch: no keyset
     assert int(first_params[-1]) == 201  # scope_filter_batch_size(17)=200 -> fetch 201
+
+
+# --------------------------------------------------------------------------- #
+# Truncation honesty: a scope walk that stops on its budget must SAY so, all
+# the way out to the response envelope. A sparse filter otherwise returns an
+# empty page with a "more" cursor and no partial signal.
+# --------------------------------------------------------------------------- #
+
+
+def _no_match_findings(count: int = 400) -> list[dict]:
+    return [
+        {
+            "id": f"nomatch-{idx:04d}",
+            "title": f"Finding {idx}",
+            "severity": "high",
+            "effective_reach_score": float(count - idx),
+            "provider": "gcp",
+            "account_ref": "gcp:acct-0",
+            "environment": "dev",
+            "security_domain": "cspm",
+            "origin": "bulk_ingest",
+            "source": "test",
+            "batch_id": "batch-scope-budget",
+        }
+        for idx in range(count)
+    ]
+
+
+def _seed_memory_bulk(findings: list[dict]) -> InMemoryComplianceHubStore:
+    store = InMemoryComplianceHubStore()
+    store.add("default", findings)
+    store.upsert_current_batch(
+        "default",
+        findings,
+        observed_at="2026-07-18T00:00:00Z",
+        batch_id="batch-scope-budget",
+        source="test",
+    )
+    set_compliance_hub_store(store)
+    set_job_store(InMemoryJobStore())
+    return store
+
+
+def test_memory_store_reports_scope_walk_truncation(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET", "25")
+    store = _seed_memory_bulk(_no_match_findings())
+
+    metadata: dict = {}
+    rows, total, next_cursor = store.list_current_page(
+        "default",
+        limit=20,
+        origin="bulk_ingest",
+        include_total=False,
+        scope={"provider": "aws"},
+        scope_metadata=metadata,
+    )
+
+    assert rows == []
+    assert total is None
+    assert next_cursor, "a budget-bounded walk must hand back a resume cursor"
+    assert metadata["truncated"] is True
+    assert metadata["reason"] == "scan_budget"
+    assert metadata["scanned_rows"] == 25
+    assert metadata["scan_budget"] == 25
+
+
+def test_sqlite_store_reports_scope_walk_truncation(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET", "25")
+    store = _seed_sqlite_bulk(_no_match_findings())
+
+    metadata: dict = {}
+    rows, _total, next_cursor = store.list_current_page(
+        "default",
+        limit=20,
+        origin="bulk_ingest",
+        include_total=False,
+        scope={"provider": "aws"},
+        scope_metadata=metadata,
+    )
+
+    assert rows == []
+    assert next_cursor
+    assert metadata["truncated"] is True
+    assert metadata["scanned_rows"] == 25
+
+
+def test_scope_walk_completes_reports_complete(monkeypatch) -> None:
+    """A walk that finishes inside its budget must NOT be flagged partial."""
+    monkeypatch.setenv("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET", "5000")
+    store = _seed_memory_bulk(_bulk_findings())
+
+    metadata: dict = {}
+    rows, _total, _next_cursor = store.list_current_page(
+        "default",
+        limit=500,
+        origin="bulk_ingest",
+        include_total=False,
+        scope={"provider": "aws"},
+        scope_metadata=metadata,
+    )
+
+    assert len(rows) == 150
+    assert metadata["truncated"] is False
+
+
+def test_findings_envelope_flags_a_bounded_scope_walk(monkeypatch) -> None:
+    """GET /v1/findings must surface the partial walk, not a silent empty page."""
+    monkeypatch.setenv("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET", "25")
+    _seed_sqlite_bulk(_no_match_findings())
+    client = TestClient(app)
+
+    resp = client.get("/v1/findings?provider=aws&limit=20&include_facets=false", headers=_AUTH)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body["findings"] == []
+    completeness = body["scope_completeness"]
+    assert completeness["status"] == "partial"
+    assert completeness["reason"] == "scan_budget"
+    assert completeness["scanned_rows"] == 25
+    assert completeness["scan_budget"] == 25
+    assert body["total_approximate"] is True
+    assert any("scope filter" in warning.lower() for warning in body["warnings"]), body["warnings"]
+
+
+def test_findings_envelope_marks_a_complete_scope_walk(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET", "5000")
+    _seed_sqlite_bulk(_bulk_findings())
+    client = TestClient(app)
+
+    resp = client.get("/v1/findings?provider=aws&limit=25&include_facets=false", headers=_AUTH)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert len(body["findings"]) == 25
+    assert body["scope_completeness"]["status"] == "complete"
+    assert not [warning for warning in body["warnings"] if "scope filter" in warning.lower()]
+
+
+def test_findings_envelope_omits_scope_completeness_without_a_scope_filter() -> None:
+    _seed_sqlite_bulk(_bulk_findings())
+    client = TestClient(app)
+
+    resp = client.get("/v1/findings?limit=5&include_facets=false", headers=_AUTH)
+    assert resp.status_code == 200, resp.text
+    assert "scope_completeness" not in resp.json()

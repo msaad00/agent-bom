@@ -330,6 +330,12 @@ AGENT_BOM_OCI_MAX_LAYER_UNCOMPRESSED_BYTES
 AGENT_BOM_OFFLINE
 # TTL (seconds) for the per-tenant /v1/overview payload cache; read at call time so tests can vary it. 0 disables.
 AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS
+# How long a concurrent /v1/overview reader waits on the in-flight fold before recomputing itself; read at call time.
+AGENT_BOM_OVERVIEW_SINGLEFLIGHT_TIMEOUT_SECONDS
+# Rows one scope-filtered /v1/findings page walk may examine before it stops and reports a partial page; read at call time.
+AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET
+# Wall-clock ceiling (seconds) for one scope-filtered /v1/findings page walk; read at call time.
+AGENT_BOM_SCOPE_FILTER_DEADLINE_SECONDS
 # TTL (seconds) for the hub-derived severity cache; read at call time so tests and operators can disable it with 0.
 AGENT_BOM_HUB_OVERVIEW_CACHE_TTL_SECONDS
 AGENT_BOM_SKIP_UPDATE_CHECK

@@ -554,9 +554,21 @@ class TestBuildUnifiedGraphFromReport:
         assert "GITHUB_TOKEN" in labels
         assert "OPENAI_API_KEY" in labels
 
+    def test_same_env_var_name_does_not_merge_credential_slots(self):
+        report = _minimal_report()
+
+        g = build_unified_graph_from_report(report)
+
+        github_creds = {node.id for node in g.nodes_by_type(EntityType.CREDENTIAL) if node.label == "GITHUB_TOKEN"}
+        assert github_creds == {
+            "cred:server:claude-desktop:mcp-fs:GITHUB_TOKEN",
+            "cred:server:cursor:mcp-fs:GITHUB_TOKEN",
+        }
+        assert not any(edge.relationship == RelationshipType.SHARES_CRED for edge in g.edges)
+
     def test_credential_to_tool_reaches_edges(self):
         g = build_unified_graph_from_report(_minimal_report())
-        github_cred_id = "cred:GITHUB_TOKEN"
+        github_cred_id = "cred:server:claude-desktop:mcp-fs:GITHUB_TOKEN"
         read_tool_id = "tool:server:claude-desktop:mcp-fs:read_file"
         write_tool_id = "tool:server:claude-desktop:mcp-fs:write_file"
 
@@ -578,9 +590,11 @@ class TestBuildUnifiedGraphFromReport:
 
         g = build_unified_graph_from_report(report)
 
-        assert g.has_edge("cred:GITHUB_TOKEN", "tool:server:cursor:mcp-fs:delete_repo")
+        cursor_cred_id = "cred:server:cursor:mcp-fs:GITHUB_TOKEN"
+        claude_cred_id = "cred:server:claude-desktop:mcp-fs:OPENAI_API_KEY"
+        assert g.has_edge(cursor_cred_id, "tool:server:cursor:mcp-fs:delete_repo")
         assert not any(
-            edge.source == "cred:OPENAI_API_KEY"
+            edge.source == claude_cred_id
             and edge.target == "tool:server:cursor:mcp-fs:delete_repo"
             and edge.relationship == RelationshipType.REACHES_TOOL
             for edge in g.edges
@@ -718,11 +732,9 @@ class TestBuildUnifiedGraphFromReport:
         g = build_unified_graph_from_report(report)
         assert g.has_edge("server:claude-desktop:mcp-fs", "vuln:CVE-2024-1234")
 
-    def test_shared_credential_edge(self):
+    def test_same_env_var_name_does_not_create_shared_credential_edge(self):
         g = build_unified_graph_from_report(_minimal_report())
-        # Both agents expose GITHUB_TOKEN
-        has_share = any(e.relationship == RelationshipType.SHARES_CRED for e in g.edges)
-        assert has_share
+        assert not any(e.relationship == RelationshipType.SHARES_CRED for e in g.edges)
 
     def test_compliance_tags_on_vuln(self):
         g = build_unified_graph_from_report(_minimal_report())

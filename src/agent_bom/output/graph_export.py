@@ -203,7 +203,10 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
                 tool_ids.append((tool_name, tool_id))
 
             for cred_name in _credential_names_from_server(server):
-                cred_id = f"cred:{cred_name}"
+                # Env-var names are credential slots, not globally identifying
+                # secret material.  Scope them to the server to prevent the
+                # export from inventing cross-server reachability.
+                cred_id = f"cred:{srv_id}:{cred_name}"
                 graph.add_node(cred_id, cred_name, "credential", attributes={"server": srv_id})
                 graph.add_edge(srv_id, cred_id, "exposes_cred")
                 for tool_name, tool_id in tool_ids:

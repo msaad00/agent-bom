@@ -43,13 +43,12 @@ def load_self_scan_fixture() -> dict[str, Any]:
 
 
 def synthetic_inventory() -> dict[str, Any]:
-    """Tiny deterministic inventory: 3 agents, 5 packages, 2 CVEs, 2 credentials.
+    """Tiny inventory: 3 agents, 5 packages, 2 CVEs, 3 credential slots.
 
     Designed to exercise every ``EdgeKind`` produced by the builder:
 
     - USES, PROVIDES, EXPOSES, VULNERABLE_TO
     - SHARES_SERVER (agents A & B both use ``filesystem``)
-    - SHARES_CREDENTIAL (agents A & B both expose ``GITHUB_TOKEN``)
     - ATTACHED_TO (agent A has a cloud_principal in metadata)
     """
     return {
@@ -169,7 +168,7 @@ def expected_inventory_sets(inv: dict[str, Any]) -> dict[str, set[str]]:
     agents: set[str] = set()
     servers: set[str] = set()  # ``server:<agent>:<name>``
     tools: set[str] = set()  # ``tool:server:<agent>:<server>:<name>``
-    credentials: set[str] = set()  # ``cred:<env_key>``
+    credentials: set[str] = set()  # ``cred:<server_id>:<env_key>``
     iam_roles: set[str] = set()  # ``iam_role:<principal_id>``
     vulnerabilities: set[str] = set()  # ``vuln:<id>``
 
@@ -193,7 +192,7 @@ def expected_inventory_sets(inv: dict[str, Any]) -> dict[str, set[str]]:
             servers.add(srv_id)
             for env_key in srv.get("env") or {}:
                 if is_credential_key(env_key):
-                    credentials.add(f"cred:{env_key}")
+                    credentials.add(f"cred:{srv_id}:{env_key}")
             for tool in srv.get("tools", []) or []:
                 t_name = tool.get("name", "")
                 if t_name:

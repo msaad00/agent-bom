@@ -5,6 +5,8 @@ from __future__ import annotations
 from agent_bom.context_graph import (
     ContextGraph,
     EdgeKind,
+    GraphEdge,
+    GraphNode,
     NodeKind,
     build_context_graph,
     collect_lateral_paths,
@@ -106,10 +108,11 @@ class TestBuildGraph:
     def test_credential_nodes(self):
         agents = [_agent(servers=[_server(env={"GITHUB_TOKEN": "xxx", "PATH": "/usr/bin"})])]
         graph = build_context_graph(agents, [])
-        assert "cred:GITHUB_TOKEN" in graph.nodes
-        assert graph.nodes["cred:GITHUB_TOKEN"].kind == NodeKind.CREDENTIAL
+        credential_id = "cred:server:agent-a:filesystem:GITHUB_TOKEN"
+        assert credential_id in graph.nodes
+        assert graph.nodes[credential_id].kind == NodeKind.CREDENTIAL
         # PATH should not be a credential
-        assert "cred:PATH" not in graph.nodes
+        assert "cred:server:agent-a:filesystem:PATH" not in graph.nodes
         exposes = [e for e in graph.edges if e.kind == EdgeKind.EXPOSES]
         assert len(exposes) == 1
 
@@ -124,16 +127,30 @@ class TestBuildGraph:
             "credential_env_vars": ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN"],
         }
         graph = build_context_graph([_agent(servers=[server])], [])
-        assert "cred:AWS_SECRET_ACCESS_KEY" in graph.nodes
-        assert "cred:GITHUB_TOKEN" in graph.nodes
-        assert graph.nodes["cred:AWS_SECRET_ACCESS_KEY"].kind == NodeKind.CREDENTIAL
+        aws_credential_id = "cred:server:agent-a:aws-ops:AWS_SECRET_ACCESS_KEY"
+        github_credential_id = "cred:server:agent-a:aws-ops:GITHUB_TOKEN"
+        assert aws_credential_id in graph.nodes
+        assert github_credential_id in graph.nodes
+        assert graph.nodes[aws_credential_id].kind == NodeKind.CREDENTIAL
         exposes = [e for e in graph.edges if e.kind == EdgeKind.EXPOSES]
         assert len(exposes) == 2
 
-    def test_shares_credential_edge_from_credential_env_vars(self):
-        # Two agents whose servers expose the same credential (surfaced via
-        # credential_env_vars) must yield a SHARES_CREDENTIAL lateral edge —
-        # previously lost because no credential nodes were built from output JSON.
+    def test_same_env_var_name_does_not_merge_credential_slots(self):
+        agents = [
+            _agent(name="a1", servers=[{**_server(name="s1"), "credential_env_vars": ["DATABASE_URL"]}]),
+            _agent(name="a2", servers=[{**_server(name="s2"), "credential_env_vars": ["DATABASE_URL"]}]),
+        ]
+
+        graph = build_context_graph(agents, [])
+
+        credential_ids = {node.id for node in graph.nodes.values() if node.kind == NodeKind.CREDENTIAL}
+        assert credential_ids == {
+            "cred:server:a1:s1:DATABASE_URL",
+            "cred:server:a2:s2:DATABASE_URL",
+        }
+        assert not any(edge.kind == EdgeKind.SHARES_CREDENTIAL for edge in graph.edges)
+
+    def test_credential_env_var_names_do_not_imply_sharing(self):
         def _cred_server(name):
             return {**_server(name=name), "env": {}, "credential_env_vars": ["DATABASE_URL"]}
 
@@ -143,7 +160,7 @@ class TestBuildGraph:
         ]
         graph = build_context_graph(agents, [])
         shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
-        assert len(shares) >= 1
+        assert shares == []
 
     def test_tool_nodes_with_capability(self):
         agents = [_agent(servers=[_server(tools=[_tool("execute_code", "Run arbitrary code")])])]
@@ -201,17 +218,16 @@ class TestBuildGraph:
         assert len(shares) == 1
         assert set([shares[0].source, shares[0].target]) == {"agent:agent-a", "agent:agent-b"}
 
-    def test_shared_credential_detection(self):
+    def test_different_values_under_same_env_name_are_not_correlated(self):
         agents = [
             _agent(name="agent-a", servers=[_server(env={"API_KEY": "xxx"})]),
             _agent(name="agent-b", servers=[_server(env={"API_KEY": "yyy"})]),
         ]
         graph = build_context_graph(agents, [])
         shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
-        assert len(shares) == 1
-        assert shares[0].metadata["credential"] == "API_KEY"
+        assert shares == []
 
-    def test_large_shared_groups_use_bounded_edges(self):
+    def test_large_same_name_credential_groups_do_not_fabricate_edges(self):
         def _shared_server(name):
             return {
                 **_server(name=name),
@@ -229,15 +245,16 @@ class TestBuildGraph:
         cred_shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
         # The old pairwise implementation emitted 4,950 edges per resource.
         assert len(server_shares) == 100
-        assert len(cred_shares) == 100
+        assert cred_shares == []
         assert "shared-server:shared-srv" in graph.nodes
-        assert graph.nodes["cred:SHARED_TOKEN"].metadata["shared_agent_count"] == 100
-        assert all("shared_agents" not in edge.metadata for edge in server_shares + cred_shares)
+        credential_nodes = [node for node in graph.nodes.values() if node.kind == NodeKind.CREDENTIAL]
+        assert len(credential_nodes) == 100
+        assert all("shared_agents" not in edge.metadata for edge in server_shares)
 
         risks = compute_interaction_risks(graph)
         patterns = {risk.pattern for risk in risks}
         assert "shared_server" in patterns
-        assert "shared_credential" in patterns
+        assert "shared_credential" not in patterns
 
 
 # ---------------------------------------------------------------------------
@@ -363,11 +380,17 @@ class TestLateralPaths:
 
 class TestInteractionRisks:
     def test_shared_credential_pattern(self):
-        agents = [
-            _agent(name="agent-a", servers=[_server(env={"DB_PASSWORD": "x"})]),
-            _agent(name="agent-b", servers=[_server(env={"DB_PASSWORD": "y"})]),
-        ]
-        graph = build_context_graph(agents, [])
+        graph = ContextGraph()
+        graph.add_node(GraphNode(id="agent:agent-a", kind=NodeKind.AGENT, label="agent-a"))
+        graph.add_node(GraphNode(id="agent:agent-b", kind=NodeKind.AGENT, label="agent-b"))
+        graph.add_edge(
+            GraphEdge(
+                source="agent:agent-a",
+                target="agent:agent-b",
+                kind=EdgeKind.SHARES_CREDENTIAL,
+                metadata={"credential": "DB_PASSWORD", "correlation": "explicit"},
+            )
+        )
         risks = compute_interaction_risks(graph)
         cred_risks = [r for r in risks if r.pattern == "shared_credential"]
         assert len(cred_risks) == 1
@@ -415,11 +438,17 @@ class TestInteractionRisks:
         assert len(risks) == 0
 
     def test_owasp_tag_assignment(self):
-        agents = [
-            _agent(name="agent-a", servers=[_server(env={"TOKEN": "x"})]),
-            _agent(name="agent-b", servers=[_server(env={"TOKEN": "y"})]),
-        ]
-        graph = build_context_graph(agents, [])
+        graph = ContextGraph()
+        graph.add_node(GraphNode(id="agent:agent-a", kind=NodeKind.AGENT, label="agent-a"))
+        graph.add_node(GraphNode(id="agent:agent-b", kind=NodeKind.AGENT, label="agent-b"))
+        graph.add_edge(
+            GraphEdge(
+                source="agent:agent-a",
+                target="agent:agent-b",
+                kind=EdgeKind.SHARES_CREDENTIAL,
+                metadata={"credential": "TOKEN", "correlation": "explicit"},
+            )
+        )
         risks = compute_interaction_risks(graph)
         cred_risks = [r for r in risks if r.pattern == "shared_credential"]
         assert cred_risks[0].owasp_agentic_tag == "ASI07"

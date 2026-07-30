@@ -318,6 +318,10 @@ class PostgresGraphStore:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_snapshot_key "
+                "ON graph_edges(tenant_id, scan_id, source_id, target_id, relationship)"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_valid ON graph_edges(tenant_id, valid_from, valid_to)")
             conn.execute(
@@ -781,6 +785,7 @@ class PostgresGraphStore:
                         edge.activity_id,
                         scan,
                         tenant,
+                        previous_scan,
                     )
 
             def attack_path_rows() -> Iterator[tuple[Any, ...]]:
@@ -822,7 +827,44 @@ class PostgresGraphStore:
                     traversable, first_seen, last_seen, valid_from, valid_to,
                     confidence, provenance, source_scan_id, source_run_id,
                     evidence, activity_id, scan_id, tenant_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                )
+                SELECT
+                    incoming.source_id,
+                    incoming.target_id,
+                    incoming.relationship,
+                    incoming.direction,
+                    incoming.weight,
+                    incoming.traversable,
+                    COALESCE(NULLIF(previous.first_seen, ''), incoming.first_seen),
+                    incoming.last_seen,
+                    COALESCE(
+                        NULLIF(previous.valid_from, ''),
+                        NULLIF(previous.first_seen, ''),
+                        incoming.valid_from
+                    ),
+                    incoming.valid_to,
+                    incoming.confidence,
+                    incoming.provenance,
+                    incoming.source_scan_id,
+                    incoming.source_run_id,
+                    incoming.evidence::jsonb,
+                    incoming.activity_id,
+                    incoming.scan_id,
+                    incoming.tenant_id
+                FROM (
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) AS incoming (
+                    source_id, target_id, relationship, direction, weight,
+                    traversable, first_seen, last_seen, valid_from, valid_to,
+                    confidence, provenance, source_scan_id, source_run_id,
+                    evidence, activity_id, scan_id, tenant_id
+                )
+                LEFT JOIN graph_edges AS previous
+                  ON previous.tenant_id = incoming.tenant_id
+                 AND previous.scan_id = %s
+                 AND previous.source_id = incoming.source_id
+                 AND previous.target_id = incoming.target_id
+                 AND previous.relationship = incoming.relationship
                 ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
                     direction = EXCLUDED.direction,
                     weight = EXCLUDED.weight,
@@ -842,47 +884,36 @@ class PostgresGraphStore:
                 batch_size=batch_size,
             )
             if previous_scan:
-                # Preserve temporal continuity and retire missing prior edges
-                # inside Postgres. Loading the prior snapshot into a Python dict
-                # + set made this streamed writer O(previous-edge-count) memory.
+                # Continuity is resolved while each bounded insert batch is
+                # written, avoiding a second full-snapshot UPDATE. Compute only
+                # the missing prior-edge set here so retired edges can be closed
+                # without materializing the snapshot in application memory.
                 conn.execute(
                     """
-                    UPDATE graph_edges AS current
-                    SET first_seen = COALESCE(NULLIF(previous.first_seen, ''), current.first_seen),
-                        valid_from = COALESCE(
-                            NULLIF(previous.valid_from, ''),
-                            NULLIF(previous.first_seen, ''),
-                            current.valid_from
-                        )
-                    FROM graph_edges AS previous
-                    WHERE current.source_id = previous.source_id
-                      AND current.target_id = previous.target_id
-                      AND current.relationship = previous.relationship
-                      AND current.scan_id = %s
-                      AND current.tenant_id = %s
-                      AND previous.scan_id = %s
-                      AND previous.tenant_id = %s
-                    """,
-                    (scan, tenant, previous_scan, tenant),
-                )
-                conn.execute(
-                    """
+                    WITH current_edge_keys AS MATERIALIZED (
+                        SELECT source_id, target_id, relationship
+                        FROM graph_edges
+                        WHERE tenant_id = %s AND scan_id = %s
+                    ),
+                    retired_edge_keys AS MATERIALIZED (
+                        SELECT source_id, target_id, relationship
+                        FROM graph_edges
+                        WHERE tenant_id = %s AND scan_id = %s
+                        EXCEPT
+                        SELECT source_id, target_id, relationship
+                        FROM current_edge_keys AS current
+                    )
                     UPDATE graph_edges AS previous
                     SET valid_to = COALESCE(previous.valid_to, %s),
                         activity_id = CASE WHEN previous.activity_id = 1 THEN 3 ELSE previous.activity_id END
+                    FROM retired_edge_keys AS retired
                     WHERE previous.tenant_id = %s
                       AND previous.scan_id = %s
-                      AND NOT EXISTS (
-                            SELECT 1
-                            FROM graph_edges AS current
-                            WHERE current.source_id = previous.source_id
-                              AND current.target_id = previous.target_id
-                              AND current.relationship = previous.relationship
-                              AND current.scan_id = %s
-                              AND current.tenant_id = %s
-                      )
+                      AND previous.source_id = retired.source_id
+                      AND previous.target_id = retired.target_id
+                      AND previous.relationship = retired.relationship
                     """,
-                    (now, tenant, previous_scan, scan, tenant),
+                    (tenant, scan, tenant, previous_scan, now, tenant, previous_scan),
                 )
             _execute_many_batched(
                 conn,
@@ -2358,17 +2389,32 @@ class PostgresGraphStore:
                     [tenant_id, effective_scan_id, *params, *params],
                 ).fetchone()
                 total_edges = int((total_edges_row[0] if total_edges_row else 0) or 0)
-            rel_rows = conn.execute(
-                f"""
-                SELECT relationship, COUNT(*)
-                FROM graph_edges
-                WHERE tenant_id = %s AND scan_id = %s
-                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                GROUP BY relationship
-                """,  # nosec B608 - where_sql is built from static clause fragments
-                [tenant_id, effective_scan_id, *params, *params],
-            ).fetchall()
+            if not filters_active:
+                # Persisted snapshots already validate their topology while
+                # writing. Avoid two redundant graph_nodes membership scans on
+                # the common unfiltered stats path; the snapshot-key index can
+                # serve this bounded edge aggregation directly.
+                rel_rows = conn.execute(
+                    """
+                    SELECT relationship, COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                    GROUP BY relationship
+                    """,
+                    (tenant_id, effective_scan_id),
+                ).fetchall()
+            else:
+                rel_rows = conn.execute(
+                    f"""
+                    SELECT relationship, COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                    GROUP BY relationship
+                    """,  # nosec B608 - where_sql is built from static clause fragments
+                    [tenant_id, effective_scan_id, *params, *params],
+                ).fetchall()
             attack_row = conn.execute(
                 "SELECT COUNT(*), COALESCE(MAX(composite_risk), 0.0) FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",
                 (tenant_id, effective_scan_id),

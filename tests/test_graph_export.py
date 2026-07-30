@@ -194,7 +194,7 @@ def test_credential_to_tool_reaches_edges_export_with_evidence():
         payload = to_json(graph)
         edge = next(edge for edge in payload["edges"] if edge["kind"] == "reaches_tool" and edge["target"].endswith("/delete_repo"))
 
-        assert edge["source"] == "cred:GITHUB_TOKEN"
+        assert edge["source"] == "cred:server:a/github:GITHUB_TOKEN"
         assert edge["evidence"]["mapping_method"] == "server_scope_conservative"
         assert edge["evidence"]["confidence"] == "medium"
         assert "|reaches_tool|" in to_mermaid(graph)
@@ -204,8 +204,34 @@ def test_credential_to_tool_reaches_edges_export_with_evidence():
         os.unlink(path)
 
 
+def test_same_env_var_name_stays_scoped_to_each_exported_server():
+    data = _make_scan_json(
+        [
+            _agent("a", [_server("github", tools=[{"name": "create_issue"}], credential_env_vars=["GITHUB_TOKEN"])]),
+            _agent("b", [_server("github", tools=[{"name": "delete_repo"}], credential_env_vars=["GITHUB_TOKEN"])]),
+        ]
+    )
+    path = _write_scan(data)
+    try:
+        graph = load_graph_from_scan(path)
+    finally:
+        os.unlink(path)
+
+    credential_ids = {node.id for node in graph.nodes if node.kind == "credential"}
+    assert credential_ids == {
+        "cred:server:a/github:GITHUB_TOKEN",
+        "cred:server:b/github:GITHUB_TOKEN",
+    }
+    for edge in graph.edges:
+        if edge.kind != "reaches_tool":
+            continue
+        credential = next(node for node in graph.nodes if node.id == edge.source)
+        tool = next(node for node in graph.nodes if node.id == edge.target)
+        assert credential.attributes["server"] == tool.attributes["server"]
+
+
 def test_redacted_report_keeps_distinct_credential_nodes_and_no_phantom_edges():
-    """Regression: credential env-var NAMES are identifiers, not secret values.
+    """Regression: credential slots retain names without becoming global IDs.
 
     The report-write path (``to_redacted_json`` → ``sanitize_sensitive_payload``)
     must not collapse distinct credential names into one ``***REDACTED***`` label.
@@ -263,10 +289,10 @@ def test_redacted_report_keeps_distinct_credential_nodes_and_no_phantom_edges():
     cred_nodes = {node.id for node in graph.nodes if node.kind == "credential"}
     # (a) each distinct credential stays its own node — no collapse to one label.
     assert cred_nodes == {
-        "cred:OPENAI_API_KEY",
-        "cred:VECTOR_DB_TOKEN",
-        "cred:BROWSER_SESSION_TOKEN",
-        "cred:ANTHROPIC_API_KEY",
+        "cred:server:agent-a/openai-srv:OPENAI_API_KEY",
+        "cred:server:agent-a/vector-srv:VECTOR_DB_TOKEN",
+        "cred:server:agent-b/browser-srv:BROWSER_SESSION_TOKEN",
+        "cred:server:agent-b/anthropic-srv:ANTHROPIC_API_KEY",
     }
     assert "cred:***REDACTED***" not in cred_nodes
 

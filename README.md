@@ -30,13 +30,6 @@
   <a href="https://demo.agent-bom.com">Live demo</a>
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="Scan, centralize, and enforce on one Finding and UnifiedGraph evidence model" width="900" />
-  </picture>
-</p>
-
 ## What it is
 
 `agent-bom` is an open scanner and self-hosted control plane for software,

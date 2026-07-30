@@ -72,7 +72,7 @@ FINDING_SEVERITY_FILTERS: tuple[FindingSeverityFilter, ...] = (
     "unknown",
 )
 
-_VULNERABILITY_TYPES = {"CVE", "MALICIOUS_PACKAGE", "SAST"}
+_VULNERABILITY_TYPES = {"CVE", "MALICIOUS_PACKAGE", "MALICIOUS_MODEL", "SAST"}
 _MISCONFIGURATION_TYPES = {
     "CIS_FAIL",
     "CIS_ERROR",
@@ -328,7 +328,7 @@ def security_lenses_for(
     )
 
     # Vulnerability-management lens.
-    if finding_type in (FindingType.CVE, FindingType.MALICIOUS_PACKAGE, FindingType.LICENSE):
+    if finding_type in (FindingType.CVE, FindingType.MALICIOUS_PACKAGE, FindingType.MALICIOUS_MODEL, FindingType.LICENSE):
         lenses.add("vuln")
     if not is_code_or_secret and source in (
         FindingSource.CONTAINER,

@@ -308,6 +308,7 @@ _SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
         FRAMEWORK_CIS,
         FRAMEWORK_SOC2,
     ),
+    FindingSource.MODEL_SCAN: _AI_FRAMEWORKS,
     FindingSource.EXTERNAL: _EXTERNAL_BASELINE,
 }
 
@@ -320,6 +321,7 @@ _ASSET_TYPE_ADDITIONS: dict[str, tuple[str, ...]] = {
     "tool": _AI_FRAMEWORKS,
     "skill": _AI_FRAMEWORKS,
     "container": _CONTAINER_FRAMEWORKS,
+    "model_file": _AI_FRAMEWORKS,
     "cloud_resource": _CLOUD_POSTURE_FRAMEWORKS,
     "iac_resource": (FRAMEWORK_CIS, FRAMEWORK_NIST_800_53, FRAMEWORK_FEDRAMP),
 }
@@ -332,6 +334,7 @@ _FINDING_TYPE_ADDITIONS: dict[FindingType, tuple[str, ...]] = {
     FindingType.LICENSE: (FRAMEWORK_NIST_CSF, FRAMEWORK_SOC2),
     FindingType.INJECTION: _AI_FRAMEWORKS,
     FindingType.EXFILTRATION: _AI_FRAMEWORKS + (FRAMEWORK_SOC2,),
+    FindingType.MALICIOUS_MODEL: _AI_FRAMEWORKS,
     FindingType.CIS_FAIL: (FRAMEWORK_CIS,),
     FindingType.CIS_ERROR: (FRAMEWORK_CIS,),
     FindingType.CLOUD_BEST_PRACTICE_FAIL: (),

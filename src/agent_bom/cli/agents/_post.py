@@ -387,8 +387,9 @@ def compute_exit_code(
             for finding in report.to_findings():
                 if getattr(finding, "is_malicious", False):
                     if not quiet:
-                        reason = finding.malicious_reason or "known malicious package"
-                        con.print(f"\n  [red]Exiting with code 1: malicious package {finding.asset.name} ({reason})[/red]")
+                        asset_kind = "package" if finding.asset.asset_type == "package" else finding.asset.asset_type.replace("_", " ")
+                        reason = finding.malicious_reason or f"known malicious {asset_kind}"
+                        con.print(f"\n  [red]Exiting with code 1: malicious {asset_kind} {finding.asset.name} ({reason})[/red]")
                     exit_code = 1
                     break
             if exit_code == 0:

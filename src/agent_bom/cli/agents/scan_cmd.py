@@ -2275,7 +2275,13 @@ def scan(
             con.print("  [cyan]>[/cyan] Auto-detected model files in project — scanning...")
 
     if not skill_only and model_dirs:
-        from agent_bom.model_files import check_sigstore_signature, scan_model_files, scan_model_manifests, verify_model_hash
+        from agent_bom.model_files import (
+            check_sigstore_signature,
+            model_file_findings,
+            scan_model_files,
+            scan_model_manifests,
+            verify_model_hash,
+        )
 
         for mdir in model_dirs:
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
@@ -2293,6 +2299,10 @@ def scan(
                     mf["signature_path"] = sig_result["signature_path"]
                     mf["security_flags"].extend(sig_result["security_flags"])
             report.model_files.extend(mf_results)
+            _existing_finding_ids = {finding.id for finding in report.findings}
+            report.findings.extend(
+                finding for finding in model_file_findings(mf_results) if finding.id not in _existing_finding_ids
+            )
             report.model_manifests.extend(manifest_results)
             for w in mf_warnings:
                 con.print(f"  [yellow]⚠[/yellow] {w}")

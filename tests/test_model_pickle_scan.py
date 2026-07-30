@@ -11,13 +11,17 @@ embedded ``__reduce__``. The scanner under test never deserializes either.
 from __future__ import annotations
 
 import io
+import json
 import pickle
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from click.testing import CliRunner
 
 from agent_bom import model_pickle_scan
+from agent_bom.cli import main
 from agent_bom.model_files import scan_model_files
 from agent_bom.model_pickle_scan import scan_pickle_file, scan_pickle_file_flags
 
@@ -211,6 +215,109 @@ def test_wired_into_scan_model_files(tmp_path: Path):
     crit = [f for f in flags if f["type"] == "MALICIOUS_PICKLE"][0]
     assert crit["severity"] == "CRITICAL"
     assert any("MALICIOUS_PICKLE" in w for w in warnings)
+
+
+def test_malicious_pickle_becomes_canonical_finding(tmp_path: Path):
+    """Content-confirmed malicious models must enter the unified finding stream."""
+    from agent_bom.finding import FindingSource, FindingType
+    from agent_bom.model_files import model_file_findings
+
+    model = tmp_path / "model.pkl"
+    model.write_bytes(_malicious_bytes())
+    results, _ = scan_model_files(tmp_path)
+
+    findings = model_file_findings(results)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.finding_type is FindingType.MALICIOUS_MODEL
+    assert finding.source is FindingSource.MODEL_SCAN
+    assert finding.severity == "critical"
+    assert finding.asset.asset_type == "model_file"
+    assert finding.asset.location == str(model)
+    assert finding.is_malicious is True
+    assert finding.is_actionable is True
+    assert finding.cwe_ids == ["CWE-502"]
+    assert finding.evidence["detector"] == "pickletools-static-disassembly"
+    assert finding.security_domain == "aispm"
+    assert finding.applicable_frameworks
+    assert "echo pwned" not in json.dumps(finding.to_dict())
+    assert model_file_findings(results)[0].id == finding.id
+
+
+def test_unsafe_but_benign_pickle_does_not_become_malicious_finding(tmp_path: Path):
+    """The extension-only pickle warning is not a content-confirmed malicious result."""
+    from agent_bom.model_files import model_file_findings
+
+    (tmp_path / "benign.pkl").write_bytes(pickle.dumps([1, 2, 3]))
+    results, _ = scan_model_files(tmp_path)
+
+    assert model_file_findings(results) == []
+
+
+def test_scan_cli_gates_on_malicious_model_finding(tmp_path: Path):
+    """A malicious model must be visible in JSON and fail the normal CI severity gate."""
+    model = tmp_path / "model.pkl"
+    model.write_bytes(_malicious_bytes())
+    output = tmp_path / "report.json"
+
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = CliRunner().invoke(
+            main,
+            [
+                "scan",
+                "--model-files",
+                str(tmp_path),
+                "--no-discover",
+                "--no-scan",
+                "--no-auto-update-db",
+                "--fail-on-severity",
+                "critical",
+                "--format",
+                "json",
+                "--output",
+                str(output),
+            ],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 1
+    assert "found critical finding (MALICIOUS_MODEL)" in result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    finding = next(item for item in payload["findings"] if item["finding_type"] == "MALICIOUS_MODEL")
+    assert finding["severity"] == "critical"
+    assert finding["asset"]["name"] == model.name
+    assert finding["evidence"]["deserialized"] is False
+
+    default_gate_output = tmp_path / "default-gate.json"
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        default_gate = CliRunner().invoke(
+            main,
+            [
+                "scan",
+                "--model-files",
+                str(tmp_path),
+                "--no-discover",
+                "--no-scan",
+                "--no-auto-update-db",
+                "--format",
+                "json",
+                "--output",
+                str(default_gate_output),
+            ],
+            catch_exceptions=False,
+        )
+
+    assert default_gate.exit_code == 1
+    assert "malicious model file model.pkl" in default_gate.output
 
 
 def test_wired_benign_pickle_only_extension_flag(tmp_path: Path):

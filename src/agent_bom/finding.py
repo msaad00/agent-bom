@@ -55,6 +55,7 @@ class FindingType(str, Enum):
     MCP_BLOCKLIST = "MCP_BLOCKLIST"  # Curated malicious/suspicious MCP server match
     COMBINATION = "COMBINATION"  # Toxic combination — multiple signals chained into one exploitable path
     MALICIOUS_PACKAGE = "MALICIOUS_PACKAGE"  # Known-malicious / typosquat package with no CVE row
+    MALICIOUS_MODEL = "MALICIOUS_MODEL"  # Content-confirmed executable payload in a model artifact
     CIEM_OVER_PRIVILEGE = "CIEM_OVER_PRIVILEGE"  # Cloud identity granted permissions it never uses (right-sizing)
     SENSITIVE_DATA = "SENSITIVE_DATA"  # Content-confirmed sensitive data at rest (DSPM object/database sampling)
 
@@ -77,6 +78,7 @@ class FindingSource(str, Enum):
     SECRET_SCAN = "SECRET_SCAN"  # hardcoded secret / PII scanner
     GRAPH_ANALYSIS = "GRAPH_ANALYSIS"  # graph-level correlation (toxic combinations, attack-path fusion)
     DSPM = "DSPM"  # data security posture content classifier (S3/GCS/Azure Blob/database sampling)
+    MODEL_SCAN = "MODEL_SCAN"  # static model-artifact safety scanner
 
 
 @dataclass(frozen=True)

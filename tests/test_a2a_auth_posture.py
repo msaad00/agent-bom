@@ -49,17 +49,14 @@ def test_shared_static_token_across_agents_flagged() -> None:
     assert "static-token-xyz" not in str(f.to_dict())
 
 
-def test_shared_credential_env_var_across_agents_flagged() -> None:
+def test_shared_credential_env_var_name_across_agents_is_not_flagged() -> None:
     server_a = MCPServer(name="db", env={"SHARED_API_TOKEN": "x"})
     server_b = MCPServer(name="db2", env={"SHARED_API_TOKEN": "y"})
     findings = evaluate_a2a_auth_posture(
         [_agent("a", servers=[server_a]), _agent("b", servers=[server_b])],
     )
     shared = [f for f in findings if f.evidence.get("credential_ref") == "SHARED_API_TOKEN"]
-    assert shared
-    assert set(shared[0].evidence["agents"]) == {"a", "b"}
-    # Secret value must not leak.
-    assert '"x"' not in str(shared[0].to_dict())
+    assert shared == []
 
 
 # ── Weakness 2: missing mutual auth ──────────────────────────────────────────

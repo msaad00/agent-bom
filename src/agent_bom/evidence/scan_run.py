@@ -123,4 +123,39 @@ def effective_scan_run(report: Any) -> ScanRun:
     return run
 
 
-__all__ = ["ScanIssue", "ScanOutcome", "ScanRun", "effective_scan_run"]
+# Issue codes that mean the VULNERABILITY lane specifically could not be fully
+# evaluated. A failure in another lane (a cloud collector, a k8s collector) makes
+# the run partial without invalidating the vulnerability verdict, so it must not
+# blank the posture grade.
+_VULN_COVERAGE_CODES = frozenset({"required_scanner_unavailable", "scanner_warning", "vulnerability_coverage_gap"})
+
+
+def vulnerability_coverage_incomplete(report: Any) -> bool:
+    """True when the scan could not fully evaluate vulnerabilities.
+
+    This is the single derivation shared by the posture grade and the console /
+    compact renderers, so an "incomplete coverage" banner and an "A" grade can
+    never appear on the same screen.
+
+    Distinct from "we examined nothing": a scan can discover packages (making
+    ``examined_artifacts`` non-zero) while the vulnerability database never
+    answered. Discovery is not evaluability.
+    """
+    coverage = getattr(report, "scan_performance_data", None) or {}
+    if isinstance(coverage, dict) and coverage.get("coverage_state") == "incomplete":
+        return True
+    run = effective_scan_run(report)
+    if run.outcome is ScanOutcome.FAILED:
+        return True
+    return any(
+        issue.affects_coverage and (issue.code in _VULN_COVERAGE_CODES or issue.source == "vulnerability-data") for issue in run.issues
+    )
+
+
+__all__ = [
+    "ScanIssue",
+    "ScanOutcome",
+    "ScanRun",
+    "effective_scan_run",
+    "vulnerability_coverage_incomplete",
+]

@@ -11,9 +11,8 @@ mint or exchange tokens, and never emits secret values. It inspects discovered
 agents, gateway/proxy policies, and delegation chains and flags four classes of
 weakness as unified :class:`~agent_bom.finding.Finding` objects:
 
-1. **Long-lived / shared credentials between agents** — one static token (or a
-   credential env var) feeding multiple agents, violating short-lived-token
-   policy.
+1. **Long-lived / shared credentials between agents** — one static token
+   explicitly mapped to multiple agents, violating short-lived-token policy.
 2. **Missing mutual auth** — an agent-to-agent or agent-to-MCP edge with no
    verified caller identity (``require_agent_identity`` off) or no
    ``bound_agents`` restriction (wildcard / unbounded delegation).
@@ -242,8 +241,12 @@ def _agent_asset(agent: Agent) -> Asset:
     return Asset(name=agent.name, asset_type="agent", identifier=agent.canonical_id, location=agent.config_path or None)
 
 
-def _detect_shared_credentials(agents: list[Agent], policies: list[A2APolicyView]) -> list[Finding]:
-    """Weakness 1: long-lived / shared credentials between agents."""
+def _detect_shared_credentials(_agents: list[Agent], policies: list[A2APolicyView]) -> list[Finding]:
+    """Weakness 1: credentials explicitly shared between agents.
+
+    Credential env-var names are intentionally excluded: a common name such as
+    ``GITHUB_TOKEN`` does not prove two agent processes resolve the same secret.
+    """
     findings: list[Finding] = []
 
     # 1a. One opaque gateway/proxy token mapped to multiple agent_ids.
@@ -277,31 +280,6 @@ def _detect_shared_credentials(agents: list[Agent], policies: list[A2APolicyView
                     },
                     remediation="Issue a unique short-lived credential per agent; never map one static token to many agents.",
                     risk_score=7.5,
-                    weakness="shared_credentials",
-                )
-            )
-
-    # 1b. The same credential env-var name feeding multiple agents' servers.
-    cred_to_agents: dict[str, set[str]] = defaultdict(set)
-    for agent in agents:
-        for server in agent.mcp_servers:
-            for cred in server.credential_names:
-                cred_to_agents[cred].add(agent.name)
-    for cred, agent_names in sorted(cred_to_agents.items()):
-        if len(agent_names) >= A2A_AUTH_SHARED_TOKEN_MIN_AGENTS:
-            findings.append(
-                _finding(
-                    title="Shared credential referenced across multiple agents",
-                    description=(
-                        f"Credential env var {cred!r} is referenced by {len(agent_names)} agents "
-                        f"({', '.join(sorted(agent_names))}). A credential shared across agents cannot be "
-                        "rotated or revoked per agent and widens the blast radius of any single compromise."
-                    ),
-                    severity="medium",
-                    asset=Asset(name=cred, asset_type="agent", identifier=f"a2a:shared-cred:{cred}"),
-                    evidence={"credential_ref": cred, "agents": sorted(agent_names), "agent_count": len(agent_names)},
-                    remediation="Scope each credential to a single agent identity and rotate on a short interval.",
-                    risk_score=5.5,
                     weakness="shared_credentials",
                 )
             )

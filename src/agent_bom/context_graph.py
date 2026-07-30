@@ -171,9 +171,8 @@ def build_context_graph(
     """
     graph = ContextGraph()
 
-    # Track which agents use which server names / credential names
+    # Track which agents use which server names.
     server_to_agents: dict[str, list[str]] = defaultdict(list)
-    cred_to_agents: dict[str, list[str]] = defaultdict(list)
 
     # ── Build agent → server → credential / tool nodes & edges ────────
     for agent_dict in agents_data:
@@ -246,26 +245,24 @@ def build_context_graph(
             # Credentials. The serialized scan contract surfaces credential env
             # var names via ``credential_env_vars`` (the canonical builder writes
             # them there and leaves ``env`` empty/redacted in output), so reading
-            # only ``env`` produced zero credential nodes — and zero
-            # SHARES_CREDENTIAL lateral edges — on real scan JSON. Read both:
-            # the explicit credential list plus any credential-looking inline env
-            # keys, deduped.
+            # only ``env`` produced zero credential nodes on real scan JSON. Read
+            # both the explicit credential list and any credential-looking inline
+            # env keys, deduped within this server.
             cred_keys = list(srv_dict.get("credential_env_vars", []))
             cred_keys += [k for k in srv_dict.get("env", {}) if _is_credential_key(k)]
             for env_key in dict.fromkeys(cred_keys):
-                cred_id = f"cred:{env_key}"
-                if cred_id not in graph.nodes:
-                    graph.add_node(
-                        GraphNode(
-                            id=cred_id,
-                            kind=NodeKind.CREDENTIAL,
-                            label=env_key,
-                            metadata={"servers": []},
-                        )
+                # The report carries only a credential env-var name, not proof
+                # that two servers resolve it to the same secret.  Keep each
+                # credential slot server-scoped and fail closed on correlation.
+                cred_id = f"cred:{srv_id}:{env_key}"
+                graph.add_node(
+                    GraphNode(
+                        id=cred_id,
+                        kind=NodeKind.CREDENTIAL,
+                        label=env_key,
+                        metadata={"server": srv_id, "servers": [srv_id]},
                     )
-                # Track which servers expose this credential
-                if srv_id not in graph.nodes[cred_id].metadata["servers"]:
-                    graph.nodes[cred_id].metadata["servers"].append(srv_id)
+                )
                 graph.add_edge(
                     GraphEdge(
                         source=srv_id,
@@ -274,7 +271,6 @@ def build_context_graph(
                         weight=2.0,
                     )
                 )
-                cred_to_agents[env_key].append(agent_name)
 
             # Tools
             for tool_dict in srv_dict.get("tools", []):
@@ -395,54 +391,6 @@ def build_context_graph(
                                 kind=EdgeKind.SHARES_SERVER,
                                 weight=3.0,
                                 metadata={"server": _srv_name},
-                            )
-                        )
-
-    # ── Shared credential edges ──────────────────────────────────────
-    # Deduplication is now handled by ContextGraph.add_edge() in O(1).
-    for _cred_name, agent_names in cred_to_agents.items():
-        unique = sorted(set(agent_names))
-        if len(unique) >= 2:
-            metadata: dict[str, object] = {"credential": _cred_name}
-            if len(unique) > _MAX_PAIRWISE_SHARED_AGENTS:
-                # The canonical credential node already connects all of its
-                # servers.  Add one linear agent→credential edge per member;
-                # reverse adjacency lets BFS discover the other agents without
-                # materializing every pair.
-                cred_id = f"cred:{_cred_name}"
-                if cred_id in graph.nodes:
-                    graph.nodes[cred_id].metadata.update(
-                        {
-                            "shared_group": True,
-                            "shared_agent_count": len(unique),
-                            "shared_agents": unique,
-                        }
-                    )
-                metadata = {
-                    **metadata,
-                    "shared_group": True,
-                    "shared_agent_count": len(unique),
-                }
-                for agent_name in unique:
-                    graph.add_edge(
-                        GraphEdge(
-                            source=f"agent:{agent_name}",
-                            target=cred_id,
-                            kind=EdgeKind.SHARES_CREDENTIAL,
-                            weight=4.0,
-                            metadata=metadata,
-                        )
-                    )
-            else:
-                for i, a1 in enumerate(unique):
-                    for a2 in unique[i + 1 :]:
-                        graph.add_edge(
-                            GraphEdge(
-                                source=f"agent:{a1}",
-                                target=f"agent:{a2}",
-                                kind=EdgeKind.SHARES_CREDENTIAL,
-                                weight=4.0,
-                                metadata=metadata,
                             )
                         )
 

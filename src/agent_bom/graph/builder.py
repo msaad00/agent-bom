@@ -87,7 +87,6 @@ def build_unified_graph_from_report(
 
     # Track shared resources for lateral movement edges
     server_to_agents: dict[str, list[str]] = defaultdict(list)
-    cred_to_agents: dict[str, list[str]] = defaultdict(list)
     # Track server/package indexes for vuln edges
     pkg_key_to_servers: dict[str, list[str]] = defaultdict(list)
     package_name_to_ids: dict[str, list[str]] = defaultdict(list)
@@ -355,7 +354,11 @@ def build_unified_graph_from_report(
                 if isinstance(env_dict, dict):
                     env_keys = [k for k in env_dict if _is_credential_key(k)]
             for env_key in env_keys:
-                cred_id = f"cred:{env_key}"
+                # An env-var name identifies a credential slot on this server,
+                # not the underlying secret.  Scoping the node prevents common
+                # names such as GITHUB_TOKEN from merging unrelated credentials
+                # and fabricating cross-agent blast radius.
+                cred_id = f"cred:{srv_id}:{env_key}"
                 graph.add_node(
                     UnifiedNode(
                         id=cred_id,
@@ -363,7 +366,8 @@ def build_unified_graph_from_report(
                         label=env_key,
                         attributes={
                             "canonical_id": canonical_graph_node_id(EntityType.CREDENTIAL.value, cred_id),
-                            "source_ids": source_ids(env_key=env_key),
+                            "source_ids": source_ids(env_key=env_key, server_id=srv_id),
+                            "server": srv_id,
                             "servers": [srv_id],
                         },
                         data_sources=[data_source_tag],
@@ -377,7 +381,6 @@ def build_unified_graph_from_report(
                         weight=2.0,
                     )
                 )
-                cred_to_agents[env_key].append(agent_id)
                 for tool_id in tool_ids:
                     graph.add_edge(
                         UnifiedEdge(
@@ -523,23 +526,6 @@ def build_unified_graph_from_report(
                             direction="bidirectional",
                             weight=3.0,
                             evidence={"server": srv_name},
-                        )
-                    )
-
-    # ── Shared credential edges (agent ↔ agent) ─────────────────────
-    for cred_name, agent_names in cred_to_agents.items():
-        unique = sorted(set(agent_names))
-        if len(unique) >= 2:
-            for i, a1 in enumerate(unique):
-                for a2 in unique[i + 1 :]:
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=a1,
-                            target=a2,
-                            relationship=RelationshipType.SHARES_CRED,
-                            direction="bidirectional",
-                            weight=4.0,
-                            evidence={"credential": cred_name},
                         )
                     )
 

@@ -1183,8 +1183,12 @@ function GraphPageInner() {
     }
   }, [attackPaths, selectedAttackPathKey]);
 
+  // Prefer the pre-truncation estate total: a bounded load leaves
+  // `summary.total_nodes` at what survived the budget, which reads as the whole
+  // estate and understates it.
   const estateNodeCount =
     activeSnapshot?.node_count ??
+    rollupView?.summary.total_nodes_source ??
     rollupView?.summary.total_nodes ??
     graphData?.nodes.length ??
     0;
@@ -1798,7 +1802,9 @@ function GraphPageInner() {
 
   const compressedGroupCount = aggregatedClusterNodes.length;
   const sourceNodeCount = rollupNavigationActive
-    ? (rollupView?.summary.total_nodes ?? estateNodeCount)
+    ? (rollupView?.summary.total_nodes_source ??
+      rollupView?.summary.total_nodes ??
+      estateNodeCount)
     : (graphData?.nodes.length ?? flow.nodes.length);
   const renderedNodeCount = displayNodes.length;
 

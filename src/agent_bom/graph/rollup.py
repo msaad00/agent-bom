@@ -90,6 +90,27 @@ _TOXIC_ATTRS: tuple[str, ...] = (
 )
 
 
+def _source_total_nodes(graph: UnifiedGraph) -> int:
+    """Estate node count BEFORE any load-time bound, falling back to what loaded."""
+    return graph.completeness.total_nodes or len(graph.nodes)
+
+
+def _combine_reasons(*reasons: str) -> str:
+    """Merge truncation reasons, deduped and order-preserving.
+
+    A roll-up can be cut twice — once by the loader's node budget and again by
+    the orphan limit. Reporting only one hides the other, so both travel as a
+    comma-separated list under the single ``reason`` key clients already read.
+    """
+    merged: list[str] = []
+    for reason in reasons:
+        for part in reason.split(","):
+            cleaned = part.strip()
+            if cleaned and cleaned not in merged:
+                merged.append(cleaned)
+    return ",".join(merged)
+
+
 def _node_type_value(node: UnifiedNode) -> str:
     return node.entity_type.value if isinstance(node.entity_type, EntityType) else str(node.entity_type)
 
@@ -432,6 +453,10 @@ def rollup_view(
         "orphan_summary": orphan_summary,
         "summary": {
             "total_nodes": len(graph.nodes),
+            # What the estate held before the loader bounded it. Equal to
+            # total_nodes on an unbounded load; strictly larger otherwise, and
+            # the number a reader must see before treating this as the estate.
+            "total_nodes_source": _source_total_nodes(graph),
             "total_edges": len(graph.edges),
             "top_level_count": len(top_level),
             "container_count": len(containers),
@@ -439,11 +464,17 @@ def rollup_view(
             "orphan_shown_count": len(orphans),
             "orphan_truncated_count": len(truncated_orphan_ids),
         },
+        # Two independent cuts: the loader's node budget (recorded on the source
+        # graph) and this roll-up's own orphan limit. Either one makes the view
+        # non-exhaustive, so both are folded into one honest verdict.
         "completeness": graph_completeness(
             returned=len(top_level),
             total=len(containers) + len(orphan_ids),
-            truncated=bool(truncated_orphan_ids),
-            reason="orphan_limit" if truncated_orphan_ids else "",
+            truncated=bool(truncated_orphan_ids) or graph.completeness.truncated,
+            reason=_combine_reasons(
+                graph.completeness.reason if graph.completeness.truncated else "",
+                "orphan_limit" if truncated_orphan_ids else "",
+            ),
         ),
     }
 
@@ -469,7 +500,14 @@ def drill_down(
             "filters": _filters_dict(filters),
             "children": [],
             "summary": {"direct_child_count": 0, "returned_child_count": 0},
-            "completeness": graph_completeness(returned=0, total=0),
+            # "Not in this graph" over a bounded snapshot may only mean "never
+            # loaded" — say which, rather than implying the node does not exist.
+            "completeness": graph_completeness(
+                returned=0,
+                total=0,
+                truncated=graph.completeness.truncated,
+                reason=graph.completeness.reason if graph.completeness.truncated else "",
+            ),
         }
 
     children = _contains_children(graph)
@@ -517,7 +555,14 @@ def drill_down(
             "direct_child_count": len(direct),
             "returned_child_count": len(child_entries),
         },
-        "completeness": graph_completeness(returned=len(child_entries), total=len(direct)),
+        # A bounded load can have dropped children of this very node, so the
+        # direct-child denominator is only a floor when the source was cut.
+        "completeness": graph_completeness(
+            returned=len(child_entries),
+            total=len(direct),
+            truncated=graph.completeness.truncated,
+            reason=graph.completeness.reason if graph.completeness.truncated else "",
+        ),
     }
 
 
@@ -585,16 +630,22 @@ def attack_path_view(
         "collapsed": collapsed_off_path,
         "summary": {
             "total_nodes": len(graph.nodes),
+            "total_nodes_source": _source_total_nodes(graph),
             "path_count": len(paths_payload),
             "path_node_count": len(path_nodes),
             "path_edge_count": len(path_edges),
             "collapsed_count": len(collapsed_off_path),
         },
+        # Paths are only as complete as the snapshot they were walked over: a
+        # bounded load can have removed the hop that made a path exist.
         "completeness": graph_completeness(
             returned=len(ranked),
             total=len(ranked_all),
-            truncated=len(ranked_all) > len(ranked),
-            reason="path_limit" if len(ranked_all) > len(ranked) else "",
+            truncated=len(ranked_all) > len(ranked) or graph.completeness.truncated,
+            reason=_combine_reasons(
+                graph.completeness.reason if graph.completeness.truncated else "",
+                "path_limit" if len(ranked_all) > len(ranked) else "",
+            ),
         ),
     }
 

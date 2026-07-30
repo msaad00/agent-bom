@@ -2852,6 +2852,38 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 422
         assert "Unsupported graph relationship type" in response.json()["detail"]
 
+    def test_graph_get_stats_do_not_contradict_completeness_under_a_node_budget(self, recording_graph_store, monkeypatch):
+        """`stats.total_nodes` counts what survived the load. Sitting next to
+        `completeness.total` with nothing distinguishing them, it read as the
+        estate — the response contradicted itself in two adjacent keys."""
+        estate = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        previous = ""
+        for index in range(40):
+            node_id = f"pkg:{index:03d}"
+            estate.add_node(UnifiedNode(id=node_id, entity_type=EntityType.PACKAGE, label=node_id, risk_score=float(index)))
+            if previous:
+                estate.add_edge(UnifiedEdge(source=previous, target=node_id, relationship=RelationshipType.DEPENDS_ON))
+            previous = node_id
+        recording_graph_store.graph = estate
+        monkeypatch.setattr(graph_routes, "GRAPH_INVESTIGATION_NODE_BUDGET", 10)
+
+        response = TestClient(app).get("/v1/graph?relationships=depends_on")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["completeness"]["truncated"] is True
+        assert body["completeness"]["total"] == 40
+        assert body["stats"]["total_nodes"] == 10
+        assert body["stats"]["total_nodes_source"] == body["completeness"]["total"]
+
+    def test_graph_get_paged_stats_carry_the_same_source_total_field(self, recording_graph_store):
+        """Both branches of the route ship one stats shape — a client must not
+        have to know which code path answered it."""
+        body = TestClient(app).get("/v1/graph?limit=1").json()
+
+        assert "total_nodes_source" in body["stats"]
+        assert body["stats"]["total_nodes_source"] >= body["stats"]["total_nodes"]
+
     def test_graph_get_relationship_filter_prunes_unconnected_nodes(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))

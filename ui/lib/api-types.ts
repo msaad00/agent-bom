@@ -496,6 +496,9 @@ export interface GraphRollupContainer {
 
 export interface GraphRollupSummary {
   total_nodes?: number;
+  /** Estate node count before the loader bounded the snapshot. Equals
+   * `total_nodes` on an unbounded load; larger when the load was truncated. */
+  total_nodes_source?: number;
   total_edges?: number;
   top_level_count?: number;
   container_count?: number;

@@ -828,6 +828,11 @@ class UnifiedGraph:
             rel_counts[rel] += 1
         return {
             "total_nodes": len(self.nodes),
+            # Estate size BEFORE any load-time bound. `total_nodes` counts what
+            # this graph holds; without the source total beside it a bounded
+            # load reads as the whole estate, and contradicts the `completeness`
+            # block shipped in the same response.
+            "total_nodes_source": max(self.completeness.total_nodes, len(self.nodes)),
             "total_edges": len(self.edges),
             "node_types": dict(type_counts),
             "severity_counts": dict(severity_counts),

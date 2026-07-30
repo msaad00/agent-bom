@@ -1686,9 +1686,15 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
     Ordering is deterministic so the same report renders identically
     across runs. Emits nothing when no CIS data is present.
     """
+    from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
     con = _console()
     raw_bundles = [(cloud, label, getattr(report, attr, None)) for cloud, label, attr in _CIS_CLOUD_BUNDLES]
-    bundles = [(c, lbl, b) for c, lbl, b in raw_bundles if b and b.get("checks")]
+    bundles = [
+        (c, lbl, fail_closed_cis_bundle(b, cloud=c) if c in {"aws", "azure", "gcp", "snowflake"} else b)
+        for c, lbl, b in raw_bundles
+        if b and b.get("checks")
+    ]
     if not bundles:
         return
 

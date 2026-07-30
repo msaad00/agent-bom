@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
 
-from agent_bom.compliance_coverage import FRAMEWORK_SLUG_ALIASES, normalize_framework_slug
+from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS, FRAMEWORK_SLUG_ALIASES, normalize_framework_slug
 
 # ─── Catalogue lookups ────────────────────────────────────────────────────────
 # Imported lazily where needed to keep top-level import cost low.
@@ -696,21 +696,7 @@ def generate_compliance_narrative(
                 "affected_agents": [a.name for a in br.affected_agents],
                 "affected_servers": [s.name for s in br.affected_servers],
                 "exposed_credentials": br.exposed_credentials,
-                "owasp_tags": br.owasp_tags,
-                "atlas_tags": br.atlas_tags,
-                "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
-                "owasp_mcp_tags": br.owasp_mcp_tags,
-                "owasp_agentic_tags": br.owasp_agentic_tags,
-                "eu_ai_act_tags": br.eu_ai_act_tags,
-                "nist_csf_tags": br.nist_csf_tags,
-                "iso_27001_tags": br.iso_27001_tags,
-                "soc2_tags": br.soc2_tags,
-                "cis_tags": br.cis_tags,
-                "cmmc_tags": br.cmmc_tags,
-                "attack_tags": getattr(br, "attack_tags", []),
-                "nist_800_53_tags": getattr(br, "nist_800_53_tags", []),
-                "fedramp_tags": getattr(br, "fedramp_tags", []),
-                "pci_dss_tags": getattr(br, "pci_dss_tags", []),
+                **{field: list(getattr(br, field, []) or []) for field in COMPLIANCE_TAG_FIELDS},
             }
         )
 

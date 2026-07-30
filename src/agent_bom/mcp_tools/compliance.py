@@ -50,7 +50,8 @@ async def compliance_impl(
         from agent_bom.owasp import OWASP_LLM_TOP10
         from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
-        agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline(config_path, image)
+        agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path, image)
+        has_evidence = bool(agents or blast_radii or scan_sources)
 
         # Convert BlastRadius objects to dicts for aggregation
         br_dicts = []
@@ -83,7 +84,11 @@ async def compliance_impl(
                             pkgs.add(br["package"])
                         for a in br.get("affected_agents", []):
                             ags.add(a)
-                status = "pass" if findings == 0 else ("fail" if sev_bk["critical"] > 0 or sev_bk["high"] > 0 else "warning")
+                status = (
+                    "not_evaluated"
+                    if not has_evidence
+                    else ("pass" if findings == 0 else ("fail" if sev_bk["critical"] > 0 or sev_bk["high"] > 0 else "warning"))
+                )
                 controls.append(
                     {
                         id_key: code,
@@ -105,7 +110,9 @@ async def compliance_impl(
         all_controls = owasp + atlas + nist + owasp_mcp
         total = len(all_controls)
         total_pass = sum(1 for c in all_controls if c["status"] == "pass")
-        score = round((total_pass / total) * 100, 1) if total > 0 else 100.0
+        evaluated_controls = sum(1 for c in all_controls if c["status"] != "not_evaluated")
+        not_evaluated_controls = total - evaluated_controls
+        score = round((total_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
         has_fail = any(c["status"] == "fail" for c in all_controls)
         has_warn = any(c["status"] == "warning" for c in all_controls)
 
@@ -119,14 +126,18 @@ async def compliance_impl(
         # estate reads no_data, never a false pass.
         from agent_bom.compliance_nist_catalog import build_nist_800_53_catalog_line
 
-        nist_800_53_catalog = build_nist_800_53_catalog_line(br_dicts, {}, 1 if agents else 0)
+        nist_800_53_catalog = build_nist_800_53_catalog_line(br_dicts, {}, 1 if has_evidence else 0)
 
         return _truncate_response(
             json.dumps(
                 {
                     "overall_score": score,
-                    "overall_status": "fail" if has_fail else ("warning" if has_warn else "pass"),
+                    "overall_status": (
+                        "no_data" if evaluated_controls == 0 else ("fail" if has_fail else ("warning" if has_warn else "pass"))
+                    ),
                     "total_controls": total,
+                    "evaluated_controls": evaluated_controls,
+                    "not_evaluated_controls": not_evaluated_controls,
                     "owasp_llm_top10": owasp,
                     "mitre_atlas": atlas,
                     "nist_ai_rmf": nist,

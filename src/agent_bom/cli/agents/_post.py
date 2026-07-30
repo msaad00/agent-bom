@@ -415,6 +415,20 @@ def compute_exit_code(
                     f"finding(s) found (use --enrich if not already)[/red bold]"
                 )
             exit_code = 1
+        else:
+            sources = ctx.enrichment_posture.get("sources", []) if isinstance(ctx.enrichment_posture, dict) else []
+            kev_source = next(
+                (source for source in sources if isinstance(source, dict) and source.get("source") == "cisa_kev"),
+                None,
+            )
+            kev_status = str(kev_source.get("status") if kev_source else "unknown")
+            if kev_status != "ok":
+                if not quiet:
+                    con.print(
+                        "\n  [red bold]Exiting with code 1: CISA KEV evidence is unavailable or stale; "
+                        "--fail-on-kev cannot prove a clean result[/red bold]"
+                    )
+                exit_code = 1
 
     if fail_if_ai_risk and _active_blast_radii:
         ai_findings = [br for br in _active_blast_radii if br.ai_risk_context and br.exposed_credentials]

@@ -114,6 +114,41 @@ def test_scan_exits_one_on_malicious_package_by_default() -> None:
     assert code == 1
 
 
+def test_fail_on_kev_fails_closed_when_catalog_evidence_is_unavailable() -> None:
+    from io import StringIO
+
+    from rich.console import Console
+
+    from agent_bom.cli.agents._context import ScanContext
+    from agent_bom.cli.agents._post import compute_exit_code
+
+    blast_radius = _malicious_blast_radius()
+    blast_radius.package.is_malicious = False
+    blast_radius.package.malicious_reason = None
+    blast_radius.vulnerability.id = "CVE-2021-44228"
+    blast_radius.vulnerability.is_kev = False
+    ctx = ScanContext(
+        con=Console(file=StringIO(), force_terminal=False),
+        blast_radii=[blast_radius],
+        enrichment_posture={
+            "sources": [{"source": "cisa_kev", "status": "degraded"}],
+        },
+    )
+
+    code = compute_exit_code(
+        ctx,
+        fail_on_severity=None,
+        warn_on_severity=None,
+        fail_on_kev=True,
+        fail_if_ai_risk=False,
+        push_url=None,
+        push_api_key=None,
+        quiet=True,
+    )
+
+    assert code == 1
+
+
 def test_forward_fixed_version_rejects_downgrade() -> None:
     assert _forward_fixed_version("0.2.1", "1.2.0", "npm") is None
     assert _forward_fixed_version("1.2.3", "1.2.0", "npm") == "1.2.3"

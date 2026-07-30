@@ -63,17 +63,24 @@ def test_partition_is_expired_uses_partition_end() -> None:
     )
 
 
-def test_ensure_observation_partitions_creates_missing_children() -> None:
+def test_ensure_observation_partitions_creates_missing_children(monkeypatch) -> None:
+    monkeypatch.setattr("agent_bom.api.hub_observations_partition._ensure_observation_partition_rls", lambda *_args: None)
     conn = MagicMock()
     conn.execute.side_effect = [
         MagicMock(fetchone=MagicMock(return_value=("p",))),  # is_observations_partitioned
         MagicMock(fetchone=MagicMock(return_value=None)),  # y2026m06 missing
-        MagicMock(),
+        MagicMock(),  # savepoint
+        MagicMock(),  # create
+        MagicMock(),  # release savepoint
         MagicMock(fetchone=MagicMock(return_value=("child",))),  # y2026m07 exists
         MagicMock(fetchone=MagicMock(return_value=None)),  # y2026m08 missing
-        MagicMock(),
+        MagicMock(),  # savepoint
+        MagicMock(),  # create
+        MagicMock(),  # release savepoint
         MagicMock(fetchone=MagicMock(return_value=None)),  # y2026m09 missing
-        MagicMock(),
+        MagicMock(),  # savepoint
+        MagicMock(),  # create
+        MagicMock(),  # release savepoint
     ]
 
     created = ensure_observation_partitions(
@@ -87,6 +94,64 @@ def test_ensure_observation_partitions_creates_missing_children() -> None:
     executed = [str(call.args[0]).strip() for call in conn.execute.call_args_list]
     assert any("CREATE TABLE IF NOT EXISTS hub_findings_current_observations_y2026m06" in sql for sql in executed)
     assert any("CREATE TABLE IF NOT EXISTS hub_findings_current_observations_y2026m08" in sql for sql in executed)
+
+
+def test_ensure_observation_partitions_enforces_rls_on_existing_and_new_children(monkeypatch) -> None:
+    protected: list[str] = []
+    monkeypatch.setattr(
+        "agent_bom.api.hub_observations_partition._ensure_observation_partition_rls",
+        lambda _conn, child: protected.append(child),
+    )
+    conn = MagicMock()
+    conn.execute.side_effect = [
+        MagicMock(fetchone=MagicMock(return_value=("p",))),
+        MagicMock(fetchone=MagicMock(return_value=("child",))),
+        MagicMock(fetchone=MagicMock(return_value=None)),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(fetchone=MagicMock(return_value=("child",))),
+        MagicMock(fetchone=MagicMock(return_value=("child",))),
+    ]
+
+    ensure_observation_partitions(conn, now=datetime(2026, 7, 5, tzinfo=timezone.utc))
+
+    assert protected == [
+        "hub_findings_current_observations_y2026m06",
+        "hub_findings_current_observations_y2026m07",
+        "hub_findings_current_observations_y2026m08",
+        "hub_findings_current_observations_y2026m09",
+    ]
+
+
+def test_concurrent_partition_creation_recovers_transaction_before_rls(monkeypatch) -> None:
+    from agent_bom.api import hub_observations_partition as partitions
+
+    protected: list[str] = []
+    monkeypatch.setattr(partitions, "_ensure_observation_partition_rls", lambda _conn, child: protected.append(child))
+
+    class DuplicatePartitionError(Exception):
+        sqlstate = "42P07"
+
+    class RecordingConnection:
+        def __init__(self) -> None:
+            self.statements: list[str] = []
+
+        def execute(self, sql: str):
+            self.statements.append(sql.strip())
+            if "CREATE TABLE IF NOT EXISTS" in sql:
+                raise DuplicatePartitionError("already exists")
+            return MagicMock()
+
+    conn = RecordingConnection()
+    partitions._create_observation_partition(conn, 2026, 7)
+
+    assert conn.statements[0] == "SAVEPOINT agent_bom_observation_partition"
+    assert conn.statements[-2:] == [
+        "ROLLBACK TO SAVEPOINT agent_bom_observation_partition",
+        "RELEASE SAVEPOINT agent_bom_observation_partition",
+    ]
+    assert protected == ["hub_findings_current_observations_y2026m07"]
 
 
 def test_ensure_observation_partitions_noop_when_not_partitioned() -> None:
@@ -132,7 +197,9 @@ def test_rollover_disabled_when_retention_non_positive() -> None:
     conn.execute.assert_not_called()
 
 
-def test_migrate_observations_to_partitioned_renames_and_copies() -> None:
+def test_migrate_observations_to_partitioned_renames_and_copies(monkeypatch) -> None:
+    monkeypatch.setattr("agent_bom.api.hub_observations_partition._ensure_observation_partition_rls", lambda *_args: None)
+    monkeypatch.setattr("agent_bom.api.hub_observations_partition.ensure_observation_partition_children_rls", lambda *_args: 0)
     conn = MagicMock()
     fetchone_queue = [
         (1,),  # observations_table_exists

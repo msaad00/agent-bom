@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 from agent_bom.finding import Finding, FindingType, blast_radius_to_finding
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 
@@ -288,12 +289,7 @@ def compliance_row_dict(finding: Finding) -> dict[str, Any]:
     """Framework table row payload from a unified CVE finding."""
     return {
         "severity": severity_value(finding),
-        "owasp_tags": list(finding.owasp_tags),
-        "atlas_tags": list(finding.atlas_tags),
-        "attack_tags": list(finding.attack_tags),
-        "nist_ai_rmf_tags": list(finding.nist_ai_rmf_tags),
-        "owasp_agentic_tags": list(finding.owasp_agentic_tags),
-        "eu_ai_act_tags": list(finding.eu_ai_act_tags),
+        **{field: list(getattr(finding, field, []) or []) for field in COMPLIANCE_TAG_FIELDS},
     }
 
 
@@ -307,11 +303,5 @@ def topology_vuln_dict(finding: Finding) -> dict[str, Any]:
         "risk_score": finding.risk_score,
         "cvss_score": finding.cvss_score or 0,
         "fix_version": finding.fixed_version or "",
-        "owasp_tags": list(finding.owasp_tags),
-        "atlas_tags": list(finding.atlas_tags),
-        "attack_tags": list(finding.attack_tags),
-        "nist_ai_rmf_tags": list(finding.nist_ai_rmf_tags),
-        "owasp_mcp_tags": list(finding.owasp_mcp_tags),
-        "owasp_agentic_tags": list(finding.owasp_agentic_tags),
-        "eu_ai_act_tags": list(finding.eu_ai_act_tags),
+        **{field: list(getattr(finding, field, []) or []) for field in COMPLIANCE_TAG_FIELDS},
     }

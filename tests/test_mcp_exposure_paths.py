@@ -123,12 +123,15 @@ async def test_deploy_decision_blocks_high_risk_candidate():
 
 
 @pytest.mark.asyncio
-async def test_deploy_decision_allows_without_matching_paths():
+async def test_deploy_decision_does_not_approve_without_matching_evidence():
     response = await deploy_decision_impl(candidate="safe-service", _get_graph_store=lambda: _GraphStore())
     payload = json.loads(response)
 
-    assert payload["decision"] == "allow"
+    assert payload["decision"] == "warn"
+    assert payload["maxRisk"] is None
+    assert payload["evidenceStatus"] == "not_evaluated"
     assert payload["matchedPathCount"] == 0
+    assert "not an approval" in payload["reasons"][0]
 
 
 @pytest.mark.asyncio

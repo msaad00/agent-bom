@@ -135,6 +135,20 @@
       "expected_message_contains": "AWS"
     },
     {
+      "name": "aws_secret_key_quoted_json",
+      "tool": "read_file",
+      "text": "\"AWS_SECRET_ACCESS_KEY\": \"Ab3dEf4gH5jKAb3dEf4gH5jKAb3dEf4gH5jKLm7N\"",
+      "expected_alert_count": 1,
+      "expected_severity": "critical",
+      "expected_message_contains": "AWS"
+    },
+    {
+      "name": "aws_secret_placeholder_no_alert",
+      "tool": "read_file",
+      "text": "AWS_SECRET_ACCESS_KEY='<set-me>'",
+      "expected_alert_count": 0
+    },
+    {
       "name": "github_token",
       "tool": "exec",
       "text": "token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij",

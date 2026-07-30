@@ -408,7 +408,10 @@ class TestClickHouseAnalyticsStore:
                     {
                         "scan_id": "scan-verified",
                         "cloud": "aws",
+                        "benchmark_version": "3.0",
                         "check_id": "3.2",
+                        "title": "CloudTrail log file validation enabled",
+                        "cis_section": "3 - Logging",
                         "status": "fail",
                         "priority": 2,
                         "remediation": {

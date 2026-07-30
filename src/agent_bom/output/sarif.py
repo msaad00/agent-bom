@@ -12,6 +12,7 @@ from agent_bom.asset_provenance import (
     agent_discovery_provenance,
     sanitize_discovery_provenance,
 )
+from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.exploitability import exploitability_tags, parse_cvss_vector_signals
 from agent_bom.finding import Finding, FindingType
@@ -385,25 +386,6 @@ _DEDICATED_CIS_BENCHMARKS: tuple[tuple[str, str], ...] = (
 )
 _DEDICATED_CIS_PROVIDERS = frozenset(provider for provider, _ in _DEDICATED_CIS_BENCHMARKS)
 
-_FRAMEWORK_TAG_FIELDS: tuple[str, ...] = (
-    "owasp_tags",
-    "atlas_tags",
-    "attack_tags",
-    "nist_ai_rmf_tags",
-    "owasp_mcp_tags",
-    "owasp_agentic_tags",
-    "eu_ai_act_tags",
-    "nist_csf_tags",
-    "iso_27001_tags",
-    "soc2_tags",
-    "cis_tags",
-    "cmmc_tags",
-    "nist_800_53_tags",
-    "fedramp_tags",
-    "pci_dss_tags",
-)
-
-
 def _finding_artifact_uri(report: AIBOMReport, finding: Finding) -> str:
     """Resolve a SARIF artifact URI from unified finding + report agent inventory."""
     ecosystem = package_ecosystem(finding) or None
@@ -450,7 +432,7 @@ def _server_discovery_provenance_from_report(report: AIBOMReport, server_names: 
 
 def _framework_tag_properties(finding: Finding) -> dict[str, list[str]]:
     props: dict[str, list[str]] = {}
-    for field in _FRAMEWORK_TAG_FIELDS:
+    for field in COMPLIANCE_TAG_FIELDS:
         value = getattr(finding, field, [])
         if value:
             props[field] = list(value)
@@ -966,10 +948,13 @@ def to_sarif(
     # and downstream SARIF consumers can surface fix guidance per finding.
     cis_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
     cis_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
+    from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
     for cloud_key, data_attr in _DEDICATED_CIS_BENCHMARKS:
         bundle = getattr(report, data_attr, None)
         if not bundle:
             continue
+        bundle = fail_closed_cis_bundle(bundle, cloud=cloud_key)
         for check in bundle.get("checks", []):
             if check.get("status") != "fail":
                 continue

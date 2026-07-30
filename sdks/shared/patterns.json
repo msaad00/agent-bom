@@ -8,7 +8,7 @@
     },
     {
       "name": "AWS Secret Key",
-      "pattern": "(?:aws_secret_access_key|secret_?key)\\s*[=:]\\s*[A-Za-z0-9/+=]{40}",
+      "pattern": "(['\\\"]?)(?:aws_secret_access_key|secret_?key)\\1\\s*[=:]\\s*(['\\\"]?)[A-Za-z0-9/+=]{40}\\2(?![A-Za-z0-9/+=])",
       "flags": "i"
     },
     {

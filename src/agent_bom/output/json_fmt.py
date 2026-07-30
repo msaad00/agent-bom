@@ -1337,10 +1337,14 @@ def to_json(report: AIBOMReport) -> dict:
         result["cloud_audit_trail"] = report.cloud_audit_trail_data
 
     if report.cis_benchmark_data:
-        result["cis_benchmark"] = report.cis_benchmark_data
+        from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
+        result["cis_benchmark"] = fail_closed_cis_bundle(report.cis_benchmark_data, cloud="aws")
 
     if report.snowflake_cis_benchmark_data:
-        result["snowflake_cis_benchmark"] = report.snowflake_cis_benchmark_data
+        from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
+        result["snowflake_cis_benchmark"] = fail_closed_cis_bundle(report.snowflake_cis_benchmark_data, cloud="snowflake")
     if report.snowflake_object_graph_data:
         result["snowflake_object_graph"] = report.snowflake_object_graph_data
     if report.snowflake_login_anomalies_data:
@@ -1363,10 +1367,14 @@ def to_json(report: AIBOMReport) -> dict:
         result["snowflake_activity"] = report.snowflake_activity_data
 
     if report.azure_cis_benchmark_data:
-        result["azure_cis_benchmark"] = report.azure_cis_benchmark_data
+        from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
+        result["azure_cis_benchmark"] = fail_closed_cis_bundle(report.azure_cis_benchmark_data, cloud="azure")
 
     if report.gcp_cis_benchmark_data:
-        result["gcp_cis_benchmark"] = report.gcp_cis_benchmark_data
+        from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
+        result["gcp_cis_benchmark"] = fail_closed_cis_bundle(report.gcp_cis_benchmark_data, cloud="gcp")
 
     if report.databricks_security_data:
         # Canonical vendor-best-practice key; Databricks has no official CIS

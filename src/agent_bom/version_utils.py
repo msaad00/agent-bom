@@ -44,12 +44,12 @@ _PEP440_RE = re.compile(
 )
 
 # Go: v-prefix semver or vX.Y.Z-pre
-_GO_VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z\-.]+)?(?:\+[0-9A-Za-z\-.]+)?$")
+_GO_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z\-.]+)?(?:\+[0-9A-Za-z\-.]+)?$")
 
 # Maven: flexible (major.minor.patch.qualifier or major.minor.patch-qualifier)
 _MAVEN_RE = re.compile(r"^\d+(?:\.\d+){0,3}(?:[.-][A-Za-z0-9\-.]+)?$")
 
-_GO_PSEUDO_RE = re.compile(r"^v\d+\.\d+\.\d+-(\d{14})-[0-9a-f]{12}$")
+_GO_PSEUDO_RE = re.compile(r"^v?\d+\.\d+\.\d+-(\d{14})-[0-9a-f]{12}$")
 _HEXISH_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
 

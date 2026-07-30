@@ -403,31 +403,39 @@ _VERIFIED_CLI_CONTROLS: frozenset[CISControlIdentity] = frozenset(
     }
 )
 
-_VERIFIED_CLI_BY_COMMAND: dict[str, CISRemediationOverride] = {
-    override.fix_cli: override
-    for identity, override in _OVERRIDES.items()
-    if identity in _VERIFIED_CLI_CONTROLS and override.fix_cli is not None
-}
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def fail_closed_remediation_payload(value: Any) -> dict[str, Any]:
+def fail_closed_remediation_payload(
+    value: Any,
+    *,
+    cloud: str | None = None,
+    benchmark_version: str | None = None,
+    check_id: str | None = None,
+    title: str | None = None,
+    cis_section: str | None = None,
+) -> dict[str, Any]:
     """Return a copy containing only an exact provider-verified command.
 
     Historical scan jobs and analytics rows can contain commands written by an
-    older release. Exact command allowlisting at projection boundaries prevents
-    those rows from replaying stale mutations after an upgrade without rewriting
-    evidence. Current command metadata is canonicalized from the reviewed
-    override; commands are never executed by this module.
+    older release. Projection boundaries must provide the complete benchmark
+    identity: command text alone is not an identity and can otherwise be replayed
+    onto a different control. Missing, stale, or drifted metadata therefore
+    falls back to manual guidance. Commands are never executed by this module.
     """
     remediation = dict(value) if isinstance(value, dict) else {}
     command = remediation.get("fix_cli")
-    verified = _VERIFIED_CLI_BY_COMMAND.get(command) if isinstance(command, str) else None
-    if verified is None:
+    identity = CISControlIdentity(
+        cloud=cloud or "",
+        benchmark_version=benchmark_version or "",
+        check_id=check_id or "",
+        title=title or "",
+        cis_section=cis_section or "",
+    )
+    verified = _OVERRIDES.get(identity) if identity in _VERIFIED_CLI_CONTROLS else None
+    if verified is None or not isinstance(command, str) or command != verified.fix_cli:
         remediation["fix_cli"] = None
         remediation["effort"] = "manual"
     else:
@@ -437,6 +445,66 @@ def fail_closed_remediation_payload(value: Any) -> dict[str, Any]:
             remediation["docs"] = verified.docs
     remediation["requires_human_review"] = True
     return remediation
+
+
+def fail_closed_check_remediation(
+    check: Any,
+    *,
+    cloud: str,
+    benchmark_version: str | None,
+) -> dict[str, Any]:
+    """Validate one serialized check's remediation against its full identity."""
+    item = check if isinstance(check, dict) else {}
+    return fail_closed_remediation_payload(
+        item.get("remediation"),
+        cloud=cloud,
+        benchmark_version=benchmark_version,
+        check_id=str(item.get("check_id") or ""),
+        title=str(item.get("title") or ""),
+        cis_section=str(item.get("cis_section") or ""),
+    )
+
+
+def fail_closed_cis_bundle(value: Any, *, cloud: str) -> Any:
+    """Copy a CIS bundle and identity-validate every projected remediation."""
+    if not isinstance(value, dict):
+        return value
+    bundle = dict(value)
+    benchmark_version = str(bundle.get("benchmark_version") or "")
+    checks: list[Any] = []
+    for raw_check in bundle.get("checks", []) or []:
+        if not isinstance(raw_check, dict):
+            checks.append(raw_check)
+            continue
+        check = dict(raw_check)
+        check["remediation"] = fail_closed_check_remediation(
+            check,
+            cloud=cloud,
+            benchmark_version=benchmark_version,
+        )
+        checks.append(check)
+    bundle["checks"] = checks
+    return bundle
+
+
+_CIS_RESULT_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("aws", ("cis_benchmark", "cis_benchmark_data")),
+    ("azure", ("azure_cis_benchmark", "azure_cis_benchmark_data")),
+    ("gcp", ("gcp_cis_benchmark", "gcp_cis_benchmark_data")),
+    ("snowflake", ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data")),
+)
+
+
+def fail_closed_cis_result(value: Any) -> Any:
+    """Copy a serialized report and validate every known CIS side bundle."""
+    if not isinstance(value, dict):
+        return value
+    result = dict(value)
+    for cloud, keys in _CIS_RESULT_KEYS:
+        for key in keys:
+            if key in result:
+                result[key] = fail_closed_cis_bundle(result[key], cloud=cloud)
+    return result
 
 
 def build_remediation(

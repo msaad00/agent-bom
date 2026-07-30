@@ -137,7 +137,10 @@ _GATEWAY_SECRET_PATTERNS: list[tuple[re.Pattern, str, str]] = [
         # AWS secret access key value (40-char base64) — REQUIRE the label. A
         # bare 40-char base64 string collides with git SHAs, hashes, etc., so it
         # is only flagged when explicitly named ``aws_secret_access_key``.
-        re.compile(r"(?i)aws_secret_access_key\s*[:=]\s*['\"]?[A-Za-z0-9/+]{40}"),
+        re.compile(
+            r"(?i)(?P<aws_label_quote>['\"]?)aws_secret_access_key(?P=aws_label_quote)\s*[:=]\s*"
+            r"(?P<aws_value_quote>['\"]?)[A-Za-z0-9/+=]{40}(?P=aws_value_quote)(?![A-Za-z0-9/+=])"
+        ),
         "aws_secret_access_key",
         "critical",
     ),
@@ -214,7 +217,11 @@ _UNICODE_CONTROL_CHARS = {
 def _normalize_detector_text(text: str) -> str:
     """Normalize detector input so invisible Unicode controls cannot split patterns."""
     normalized = unicodedata.normalize("NFKC", text)
-    return "".join(ch for ch in normalized if ch not in _UNICODE_CONTROL_CHARS)
+    normalized = "".join(ch for ch in normalized if ch not in _UNICODE_CONTROL_CHARS)
+    # Tool responses are commonly JSON-serialized before DLP inspection, so
+    # quoted keys/values arrive as \"key\": \"value\". Normalize quote escapes
+    # for detection only; the original response is never rewritten or logged.
+    return normalized.replace('\\"', '"').replace("\\'", "'")
 
 
 def _redact_excerpt(match_text: str, max_len: int = 12) -> str:

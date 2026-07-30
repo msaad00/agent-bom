@@ -247,3 +247,21 @@ def test_postgres_append_seed_uses_true_count_for_legacy_tenant() -> None:
         assert store.verify_integrity(tenant_id=tenant) == (n + 1, 0)
     finally:
         _current_tenant.reset(token)
+
+
+@_REQUIRES_PG
+def test_postgres_full_ledger_wipe_with_checkpoint_is_tampered() -> None:
+    from agent_bom.api.postgres_common import _current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    store = PostgresAuditLog()
+    tenant = f"tenant-wipe-{uuid.uuid4().hex[:12]}"
+    token = set_current_tenant(tenant)
+    try:
+        _pg_build_chain(store, tenant, 2)
+        _pg_exec("DELETE FROM audit_log WHERE team_id = %s", (tenant,))
+
+        assert store.verify_integrity(tenant_id=tenant) == (0, 1)
+    finally:
+        _pg_exec("DELETE FROM audit_chain_checkpoint WHERE tenant_id = %s", (tenant,))
+        _current_tenant.reset(token)

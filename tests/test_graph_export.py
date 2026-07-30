@@ -16,6 +16,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
@@ -710,6 +711,7 @@ def test_to_graphml_basic_structure():
         assert "<node" in gml
         assert "<edge" in gml
         assert 'key="kind"' in gml
+        assert 'xmlns="http://graphml.graphdrawing.org/xmlns"' in gml
     finally:
         os.unlink(path)
 
@@ -734,6 +736,20 @@ def test_to_graphml_empty_graph():
     gml = to_graphml(g)
     assert "<graphml" in gml
     assert "<node" not in gml
+
+
+def test_to_graphml_round_trips_through_networkx_with_escaped_labels():
+    nx = pytest.importorskip("networkx")
+    graph = DepGraph()
+    graph.add_node("node<&\"", "Agent <prod> & ops", "agent")
+    graph.add_node("target", "Target", "server")
+    graph.add_edge("node<&\"", "target", "uses_server")
+
+    parsed = nx.read_graphml(io.BytesIO(to_graphml(graph).encode("utf-8")))
+
+    assert parsed.is_directed()
+    assert set(parsed.nodes) == {"node<&\"", "target"}
+    assert parsed.nodes["node<&\""]["label"] == "Agent <prod> & ops"
 
 
 # ── to_cypher ──────────────────────────────────────────────────────────────

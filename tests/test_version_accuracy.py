@@ -60,11 +60,11 @@ class TestValidateVersion:
 
     def test_go_valid(self):
         assert validate_version("v1.9.1", "go") is True
+        assert validate_version("1.9.1", "go") is True
         assert validate_version("v0.1.0", "go") is True
         assert validate_version("v1.0.0-rc.1", "go") is True
 
     def test_go_invalid(self):
-        assert validate_version("1.9.1", "go") is False  # Missing v prefix
         assert validate_version("latest", "go") is False
 
     def test_cargo_valid(self):

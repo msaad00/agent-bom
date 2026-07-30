@@ -1037,7 +1037,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             image: Docker image reference to scan (e.g. "nginx:1.25").
 
         Returns:
-            JSON with overall_score (0-100), overall_status (pass/warning/fail),
+            JSON with overall_score (0-100), overall_status (pass/warning/fail/no_data),
             and per-control details for OWASP LLM Top 10 (10 controls),
             OWASP MCP Top 10 (10 controls), MITRE ATLAS (13 techniques),
             and NIST AI RMF (14 subcategories). Plus a nist_800_53_catalog line:

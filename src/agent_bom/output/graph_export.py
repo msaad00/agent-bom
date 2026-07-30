@@ -623,9 +623,9 @@ def to_graphml(graph: DepGraph) -> str:
     """
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<graphml xmlns="http://graphml.graphstruct.org/graphml"',
+        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns"',
         '         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
-        '         xsi:schemaLocation="http://graphml.graphstruct.org/graphml http://graphml.graphstruct.org/xmlns/1.1/graphml.xsd">',
+        '         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">',
         "  <!-- AIBOM graph exported by agent-bom -->",
     ]
 

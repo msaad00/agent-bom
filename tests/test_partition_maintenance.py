@@ -18,6 +18,7 @@ from agent_bom.api.partition_maintenance import (
     maintain_partitions,
     migrate_table_to_partitioned,
     month_range_bounds,
+    partition_children_missing_rls,
     partition_end_date,
     partition_is_expired,
     partition_table_name,
@@ -33,6 +34,7 @@ _AUDIT = PartitionSpec(
     time_column="timestamp",
     retention_env="AGENT_BOM_AUDIT_LOG_RETENTION_DAYS",
     default_retention_days=0,
+    tenant_column="team_id",
 )
 
 
@@ -104,7 +106,8 @@ def test_partitioned_parent_ddl_requires_time_key_in_pk() -> None:
 # ── Ensure-ahead ─────────────────────────────────────────────────────────────
 
 
-def test_ensure_partitions_creates_missing_children() -> None:
+def test_ensure_partitions_creates_missing_children(monkeypatch) -> None:
+    monkeypatch.setattr("agent_bom.api.partition_maintenance._ensure_partition_tenant_rls", lambda *_args: None)
     conn = MagicMock()
     conn.execute.side_effect = [
         MagicMock(fetchone=MagicMock(return_value=("p",))),  # is_partitioned
@@ -121,6 +124,32 @@ def test_ensure_partitions_creates_missing_children() -> None:
     executed = [str(call.args[0]) for call in conn.execute.call_args_list]
     assert any("audit_log_y2026m06 PARTITION OF audit_log" in sql for sql in executed)
     assert any("audit_log_y2026m08 PARTITION OF audit_log" in sql for sql in executed)
+
+
+def test_ensure_partitions_enforces_rls_on_existing_and_new_children(monkeypatch) -> None:
+    protected: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "agent_bom.api.partition_maintenance._ensure_partition_tenant_rls",
+        lambda _conn, child, tenant_column: protected.append((child, tenant_column)),
+    )
+    conn = MagicMock()
+    conn.execute.side_effect = [
+        MagicMock(fetchone=MagicMock(return_value=("p",))),
+        MagicMock(fetchone=MagicMock(return_value=("child",))),
+        MagicMock(fetchone=MagicMock(return_value=None)),
+        MagicMock(),
+        MagicMock(fetchone=MagicMock(return_value=("child",))),
+        MagicMock(fetchone=MagicMock(return_value=("child",))),
+    ]
+
+    ensure_partitions(conn, _AUDIT, now=datetime(2026, 7, 5, tzinfo=timezone.utc))
+
+    assert protected == [
+        ("audit_log_y2026m06", "team_id"),
+        ("audit_log_y2026m07", "team_id"),
+        ("audit_log_y2026m08", "team_id"),
+        ("audit_log_y2026m09", "team_id"),
+    ]
 
 
 def test_ensure_partitions_noop_when_not_partitioned() -> None:
@@ -196,10 +225,22 @@ def test_list_partition_names_returns_children() -> None:
     assert list_partition_names(conn, "audit_log") == ["audit_log_y2026m06", "audit_log_y2026m07"]
 
 
+def test_partition_rls_guard_returns_only_catalog_gaps() -> None:
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.return_value = [("audit_log_y2026m05",)]
+
+    assert partition_children_missing_rls(conn, "audit_log") == ["audit_log_y2026m05"]
+    sql = str(conn.execute.call_args.args[0])
+    assert "relrowsecurity" in sql
+    assert "relforcerowsecurity" in sql
+    assert "pg_policies" in sql
+
+
 # ── Migration (opt-in) ───────────────────────────────────────────────────────
 
 
-def test_migrate_table_renames_copies_and_drops() -> None:
+def test_migrate_table_renames_copies_and_drops(monkeypatch) -> None:
+    monkeypatch.setattr("agent_bom.api.partition_maintenance._ensure_partition_tenant_rls", lambda *_args: None)
     conn = MagicMock()
     fetchone_queue = [
         (1,),  # table_exists

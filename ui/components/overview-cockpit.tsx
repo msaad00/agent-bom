@@ -51,7 +51,7 @@ export type OverviewComplianceFramework = {
 
 export type OverviewComplianceSnapshot = {
   overallScore: number;
-  overallStatus: "pass" | "warning" | "fail";
+  overallStatus: "pass" | "warning" | "fail" | "no_data";
   frameworks: OverviewComplianceFramework[];
 };
 

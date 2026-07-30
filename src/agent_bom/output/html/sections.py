@@ -835,11 +835,15 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
             priority = 3
         return (severity_worst_first_rank(c.get("severity")), priority, str(c.get("check_id") or ""))
 
+    from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
     panels: list[str] = []
     for idx, (cloud_key, (label, attr)) in enumerate(_CIS_CLOUD_LABELS.items()):
         bundle = getattr(report, attr, None)
         if not bundle:
             continue
+        if cloud_key in {"aws", "azure", "gcp", "snowflake"}:
+            bundle = fail_closed_cis_bundle(bundle, cloud=cloud_key)
         checks = bundle.get("checks") or []
         if not checks:
             continue

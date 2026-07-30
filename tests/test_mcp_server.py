@@ -802,17 +802,20 @@ def test_cli_mcp_server_transport_options():
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_compliance_no_agents(mock_pipeline):
-    """Compliance with no agents should return 100% score."""
+    """Compliance with no evidence must be unevaluated, never a clean pass."""
     mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
     result = _call_tool(server, "compliance", {})
-    assert result["overall_score"] == 100.0
-    assert result["overall_status"] == "pass"
+    assert result["overall_score"] == 0.0
+    assert result["overall_status"] == "no_data"
+    assert result["evaluated_controls"] == 0
+    assert result["not_evaluated_controls"] == result["total_controls"]
     assert len(result["owasp_llm_top10"]) == 10
     assert len(result["mitre_atlas"]) >= 50
     assert len(result["nist_ai_rmf"]) == 14
+    assert all(control["status"] == "not_evaluated" for control in result["owasp_llm_top10"])
 
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")

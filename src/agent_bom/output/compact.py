@@ -128,6 +128,8 @@ def _agent_display_name(agent) -> str:
 
 def _iter_cis_bundles(report: AIBOMReport):
     """Yield (cloud, bundle_dict) for every populated CIS benchmark bundle."""
+    from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
+
     bundles = [
         ("aws", getattr(report, "cis_benchmark_data", None)),
         ("azure", getattr(report, "azure_cis_benchmark_data", None)),
@@ -136,7 +138,7 @@ def _iter_cis_bundles(report: AIBOMReport):
     ]
     for cloud, bundle in bundles:
         if bundle and bundle.get("checks"):
-            yield cloud, bundle
+            yield cloud, fail_closed_cis_bundle(bundle, cloud=cloud)
 
 
 # ─── Compact Output (default mode) ───────────────────────────────────────────

@@ -278,11 +278,11 @@ def _build_model_card(provenance: dict) -> dict:
     considerations: dict = {}
     risk_flags = provenance.get("risk_flags", [])
     if risk_flags:
-        considerations["technicalLimitations"] = [{"description": f"Risk flag: {flag}"} for flag in risk_flags]
+        considerations["technicalLimitations"] = [f"Risk flag: {flag}" for flag in risk_flags]
     safe_format = provenance.get("is_safe_format", True)
     if not safe_format:
         considerations.setdefault("technicalLimitations", []).append(
-            {"description": "Model uses unsafe serialization format (pickle/pt) — arbitrary code execution on load"}
+            "Model uses unsafe serialization format (pickle/pt) — arbitrary code execution on load"
         )
     if considerations:
         card["considerations"] = considerations
@@ -353,7 +353,7 @@ def _build_model_file_component(model_file: dict, comp_id: int) -> tuple[dict, s
         )
         # Also add to considerations in modelCard
         component.setdefault("modelCard", {}).setdefault("considerations", {}).setdefault("technicalLimitations", []).append(
-            {"description": flag.get("description", "")}
+            str(flag.get("description", ""))
         )
 
     return component, ref
@@ -467,7 +467,7 @@ def _build_training_component(run: dict, comp_id: int) -> tuple[dict, str]:
     # considerations — security flags
     for flag in run.get("security_flags", []):
         model_card.setdefault("considerations", {}).setdefault("technicalLimitations", []).append(
-            {"description": flag.get("description", "")}
+            str(flag.get("description", ""))
         )
 
     if model_card:

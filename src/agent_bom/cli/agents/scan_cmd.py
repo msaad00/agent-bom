@@ -2957,6 +2957,9 @@ def scan(
     )
 
     # Step 9: Exit code
+    from agent_bom.enrichment_posture import describe_enrichment_posture
+
+    ctx.enrichment_posture = describe_enrichment_posture()
     exit_code = compute_exit_code(
         ctx,
         fail_on_severity=fail_on_severity,

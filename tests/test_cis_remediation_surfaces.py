@@ -13,7 +13,9 @@ from rich.console import Console
 from agent_bom.cloud.cis_remediation import build_remediation
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_compact_cis_posture
+from agent_bom.output.console_render import print_cis_findings
 from agent_bom.output.html import _cis_benchmark_section
+from agent_bom.output.json_fmt import to_json
 from agent_bom.output.sarif import to_sarif
 
 
@@ -171,6 +173,43 @@ def test_provider_verified_command_reaches_cli_html_and_sarif():
     assert props["fix_cli"] == command
     assert props["remediation"]["fix_cli"] == command
     assert props["requires_human_review"] is True
+
+
+def test_verified_command_cannot_replay_on_a_different_control_or_surface():
+    report, command = _report_with_verified_aws_cis()
+    check = report.cis_benchmark_data["checks"][0]
+    check.update(
+        {
+            "check_id": "3.1",
+            "title": "CloudTrail enabled in all regions",
+            "cis_section": "3 - Logging",
+        }
+    )
+
+    import agent_bom.output as output_mod
+
+    for renderer in (print_compact_cis_posture, print_cis_findings):
+        buf = StringIO()
+        original = output_mod.console
+        output_mod.console = Console(file=buf, force_terminal=False, width=240)
+        try:
+            renderer(report)
+        finally:
+            output_mod.console = original
+        assert command not in buf.getvalue()
+
+    assert command not in _cis_benchmark_section(report)
+    serialized = to_json(report)
+    assert serialized["cis_benchmark"]["checks"][0]["remediation"]["fix_cli"] is None
+    sarif = to_sarif(report)
+    result = next(item for item in sarif["runs"][0]["results"] if item["ruleId"] == "cis/aws/3.1")
+    assert result["properties"]["fix_cli"] is None
+
+    from agent_bom.api.routes.scan import _redact_scan_result_for_response
+
+    api_result = _redact_scan_result_for_response({"cis_benchmark": report.cis_benchmark_data})
+    assert api_result is not None
+    assert api_result["cis_benchmark"]["checks"][0]["remediation"]["fix_cli"] is None
 
 
 def test_cli_compact_cis_posture_silent_without_cis_data():

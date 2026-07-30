@@ -376,8 +376,10 @@ def _verify_audit_chain_with_checkpoint(
 ) -> tuple[int, int]:
     """Verify chain integrity and detect tail truncation via signed checkpoint."""
     verified, tampered = _verify_audit_chain(entries)
-    if checkpoint is None or not entries:
+    if checkpoint is None:
         return verified, tampered
+    if not entries:
+        return verified, tampered + (1 if checkpoint.entry_count > 0 else 0)
     if len(entries) != checkpoint.entry_count:
         return verified, tampered + 1
     if entries[-1].hmac_signature != checkpoint.head_signature:

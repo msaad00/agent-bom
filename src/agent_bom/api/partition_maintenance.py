@@ -135,6 +135,7 @@ class PartitionSpec:
     months_ahead: int = 2
     months_behind: int = 1
     partition_safe: bool = True
+    tenant_column: str = "tenant_id"
 
     def retention_days(self) -> int:
         """Resolve the retention window (env override → config default). ``<=0`` disables."""
@@ -163,6 +164,7 @@ DEFAULT_PARTITION_SPECS: tuple[PartitionSpec, ...] = (
         time_column="timestamp",
         retention_env="AGENT_BOM_AUDIT_LOG_RETENTION_DAYS",
         default_retention_days=0,
+        tenant_column="team_id",
     ),
 )
 
@@ -243,6 +245,50 @@ def list_partition_names(conn: Any, table: str) -> list[str]:
     return [str(row[0]) for row in rows]
 
 
+def _ensure_partition_tenant_rls(conn: Any, child: str, tenant_column: str) -> None:
+    """Apply the same forced tenant policy to a direct child partition."""
+    from agent_bom.api.postgres_common import _ensure_tenant_rls
+
+    _ensure_tenant_rls(conn, child, tenant_column)
+
+
+def ensure_partition_children_rls(conn: Any, spec: PartitionSpec) -> int:
+    """Idempotently backfill forced RLS on every existing child partition."""
+    children = list_partition_names(conn, spec.table)
+    for child in children:
+        if _partition_name_re(spec.table).fullmatch(child):
+            _ensure_partition_tenant_rls(conn, child, spec.tenant_column)
+    return len(children)
+
+
+def partition_children_missing_rls(conn: Any, table: str) -> list[str]:
+    """Return child partitions missing ENABLE/FORCE RLS or a tenant policy."""
+    rows = conn.execute(
+        """
+        SELECT child.relname
+        FROM pg_inherits inh
+        JOIN pg_class parent ON parent.oid = inh.inhparent
+        JOIN pg_class child ON child.oid = inh.inhrelid
+        JOIN pg_namespace n ON n.oid = parent.relnamespace
+        WHERE n.nspname = current_schema()
+          AND parent.relname = %s
+          AND (
+              NOT child.relrowsecurity
+              OR NOT child.relforcerowsecurity
+              OR NOT EXISTS (
+                  SELECT 1 FROM pg_policies p
+                  WHERE p.schemaname = n.nspname
+                    AND p.tablename = child.relname
+                    AND p.policyname = child.relname || '_tenant_isolation'
+              )
+          )
+        ORDER BY child.relname
+        """,
+        (table,),
+    ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
 # ── DDL builders ─────────────────────────────────────────────────────────────
 
 
@@ -292,8 +338,10 @@ def ensure_partitions(
     for year, month in _iter_months(anchor, behind=spec.months_behind, ahead=spec.months_ahead):
         child = partition_table_name(spec.table, year, month)
         if child_partition_exists(conn, child):
+            _ensure_partition_tenant_rls(conn, child, spec.tenant_column)
             continue
         conn.execute(create_partition_ddl(spec.table, year, month))
+        _ensure_partition_tenant_rls(conn, child, spec.tenant_column)
         created += 1
     return created
 
@@ -340,6 +388,7 @@ def maintain_partitions(
 ) -> tuple[int, int]:
     """Ensure ahead + roll over expired for one spec. Returns ``(created, dropped)``."""
     created = ensure_partitions(conn, spec, now=now)
+    ensure_partition_children_rls(conn, spec)
     dropped = rollover_partitions(conn, spec, now=now)
     return created, dropped
 
@@ -387,7 +436,9 @@ def migrate_table_to_partitioned(
     cursor = date(min_month.year, min_month.month, 1)
     end_cursor = date(max_month.year, max_month.month, 1)
     while cursor <= end_cursor:
+        child = partition_table_name(spec.table, cursor.year, cursor.month)
         conn.execute(create_partition_ddl(spec.table, cursor.year, cursor.month))
+        _ensure_partition_tenant_rls(conn, child, spec.tenant_column)
         cursor = date(cursor.year + 1, 1, 1) if cursor.month == 12 else date(cursor.year, cursor.month + 1, 1)
 
     ensure_partitions(conn, spec, now=datetime.now(timezone.utc))

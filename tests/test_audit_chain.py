@@ -57,6 +57,27 @@ def test_chain_hash_head_deletion_detected_with_checkpoint():
     assert tampered == 1
 
 
+def test_chain_hash_full_wipe_detected_with_checkpoint():
+    log = InMemoryAuditLog()
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-a"))
+    log._entries.clear()
+
+    assert log.verify_integrity() == (0, 1)
+
+
+def test_new_empty_chain_without_checkpoint_is_not_tampered():
+    assert InMemoryAuditLog().verify_integrity() == (0, 0)
+
+
+def test_sqlite_full_wipe_detected_with_checkpoint(tmp_path):
+    log = SQLiteAuditLog(str(tmp_path / "audit-wipe.db"))
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-a"))
+    log._conn.execute("DELETE FROM audit_log")
+    log._conn.commit()
+
+    assert log.verify_integrity() == (0, 1)
+
+
 def test_sqlite_audit_hydrates_last_signature_after_restart(tmp_path):
     db = str(tmp_path / "audit.db")
     first = SQLiteAuditLog(db)

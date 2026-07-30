@@ -48,6 +48,10 @@ class ScanContext:
     cloud_provider_failures: list = field(default_factory=list)
     cloud_provider_successes: list = field(default_factory=list)
     cloud_provider_warnings: list = field(default_factory=list)
+    # Runtime evidence for vulnerability-enrichment sources. Active CI gates
+    # consume this snapshot so an unavailable KEV feed cannot look like zero
+    # known-exploited findings.
+    enrichment_posture: dict = field(default_factory=dict)
     # per-step timing breakdown (step_name → seconds)
     step_timings: dict = field(default_factory=dict)
     # internal references used for AI enrichment

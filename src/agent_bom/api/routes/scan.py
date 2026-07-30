@@ -1097,10 +1097,12 @@ def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str,
     """Drop replay-only fields from top-level scan findings before API return."""
     if not isinstance(result, dict):
         return result
+    from agent_bom.cloud.cis_remediation import fail_closed_cis_result
+
+    redacted = cast(dict[str, Any], fail_closed_cis_result(result))
     findings = result.get("findings")
     if not isinstance(findings, list):
-        return result
-    redacted = dict(result)
+        return redacted
     redacted["findings"] = redact_for_persistence(findings, EvidenceTier.SAFE_TO_STORE)
     return redacted
 

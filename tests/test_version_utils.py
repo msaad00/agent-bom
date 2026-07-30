@@ -43,8 +43,8 @@ def test_validate_version_go_valid():
     assert validate_version("v1.2.3", "go") is True
 
 
-def test_validate_version_go_invalid():
-    assert validate_version("1.2.3", "go") is False  # Go requires v prefix
+def test_validate_version_go_accepts_parser_normalized_form():
+    assert validate_version("1.2.3", "go") is True
 
 
 def test_validate_version_maven_valid():
@@ -291,6 +291,15 @@ def test_version_in_range_go_pseudo_vs_tagged_bounds():
     assert version_in_range(older, "v1.0.0", None, None, "go") is True
     assert version_in_range(newer, None, "v2.0.0", None, "go") is True
     assert version_in_range(newer, "v1.0.0", "v2.0.0", None, "go") is True
+
+    # Package parsers commonly normalize away the leading v. Internal Go
+    # comparison must preserve identical semantics for that canonical form.
+    unprefixed = older.removeprefix("v")
+    assert validate_version(unprefixed, "go") is True
+    assert compare_version_order(unprefixed, "v1.5.0", "go") == -1
+    assert version_in_range(unprefixed, "v1.5.0", None, None, "go") is False
+    assert version_in_range(unprefixed, None, "v1.2.3", None, "go") is False
+    assert version_in_range(unprefixed, None, None, "v1.2.0", "go") is False
 
     # Pseudo-vs-pseudo bounds still resolve by timestamp.
     assert (

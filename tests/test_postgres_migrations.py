@@ -25,6 +25,7 @@ MCP_PROFILE_BINDING_AUTHORITY = VERSIONS_DIR / "20260728_01_mcp_profile_binding_
 GATEWAY_ACTIVITY_LEDGER = VERSIONS_DIR / "20260728_02_gateway_activity_ledger.py"
 TRUSTED_MAINTENANCE_RLS = VERSIONS_DIR / "20260728_03_trusted_maintenance_rls.py"
 GATEWAY_ACTIVITY_WINDOW_INDEX = VERSIONS_DIR / "20260729_02_gateway_activity_window_index.py"
+PARTITION_CHILD_RLS = VERSIONS_DIR / "20260729_03_partition_child_rls.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -391,6 +392,21 @@ def test_gateway_activity_window_index_is_chained_and_matches_runtime_schema() -
     assert "SELECT to_regclass('public.gateway_activity_events')" in sql
     assert "autocommit_block" in sql
     assert "DROP TABLE" not in sql
+
+
+def test_partition_child_rls_is_chained_idempotent_and_irreversible() -> None:
+    sql = PARTITION_CHILD_RLS.read_text()
+    assert re.search(r'revision\s*=\s*"20260729_03"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260729_02"', sql)
+    assert "pg_inherits" in sql
+    assert "audit_log" in sql
+    assert "hub_findings_current_observations" in sql
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+    assert "FORCE ROW LEVEL SECURITY" in sql
+    assert "IF NOT EXISTS" in sql
+    assert "CREATE POLICY" in sql
+    assert "DROP POLICY" not in sql
+    assert "DISABLE ROW LEVEL SECURITY" not in sql
 
 
 def test_gateway_activity_window_index_allows_legacy_schema_without_ledger(monkeypatch) -> None:

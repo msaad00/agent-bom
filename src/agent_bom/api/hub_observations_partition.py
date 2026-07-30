@@ -51,17 +51,42 @@ def _create_observation_partition(conn: Any, year: int, month: int) -> None:
     of the Postgres catalog race would raise duplicate_table/duplicate_object ->
     500. Since the partition now exists either way, that is treated as success.
     """
+    savepoint = "agent_bom_observation_partition"
+    conn.execute(f"SAVEPOINT {savepoint}")
     try:
         conn.execute(create_observation_partition_ddl(year, month))
     except Exception as exc:  # noqa: BLE001 — narrowed by _is_duplicate_partition_error
+        # A caught Postgres DDL error still aborts the transaction. Recover the
+        # savepoint before inspecting the now-existing child or applying RLS.
+        conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+        conn.execute(f"RELEASE SAVEPOINT {savepoint}")
         if _is_duplicate_partition_error(exc):
             logger.debug(
                 "observation partition y%dm%02d already created concurrently; treating as success",
                 year,
                 month,
             )
+            _ensure_observation_partition_rls(conn, partition_table_name(year, month))
             return
         raise
+    conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+    _ensure_observation_partition_rls(conn, partition_table_name(year, month))
+
+
+def _ensure_observation_partition_rls(conn: Any, child: str) -> None:
+    """Apply forced tenant isolation directly to an observations child."""
+    from agent_bom.api.postgres_common import _ensure_tenant_rls
+
+    _ensure_tenant_rls(conn, child, "tenant_id")
+
+
+def ensure_observation_partition_children_rls(conn: Any) -> int:
+    """Idempotently backfill RLS on all existing observation partitions."""
+    children = list_observation_partition_names(conn)
+    for child in children:
+        if _PARTITION_NAME_RE.fullmatch(child):
+            _ensure_observation_partition_rls(conn, child)
+    return len(children)
 
 
 def partition_table_name(year: int, month: int) -> str:
@@ -169,6 +194,7 @@ def ensure_observation_partitions(
             (child,),
         ).fetchone()
         if exists:
+            _ensure_observation_partition_rls(conn, child)
             continue
         _create_observation_partition(conn, year, month)
         created += 1
@@ -342,13 +368,14 @@ def migrate_observations_to_partitioned(conn: Any) -> bool:
     cursor = date(min_month.year, min_month.month, 1)
     end_cursor = date(max_month.year, max_month.month, 1)
     while cursor <= end_cursor:
-        conn.execute(create_observation_partition_ddl(cursor.year, cursor.month))
+        _create_observation_partition(conn, cursor.year, cursor.month)
         if cursor.month == 12:
             cursor = date(cursor.year + 1, 1, 1)
         else:
             cursor = date(cursor.year, cursor.month + 1, 1)
 
     ensure_observation_partitions(conn, now=datetime.now(timezone.utc), months_ahead=2, months_behind=0)
+    ensure_observation_partition_children_rls(conn)
 
     conn.execute(
         f"""
@@ -374,6 +401,7 @@ def run_hub_observations_retention(*, retention_days: int | None = None) -> int:
 
         with bypass_tenant_rls(audit=False), _maintenance_connection() as conn:
             ensure_observation_partitions(conn)
+            ensure_observation_partition_children_rls(conn)
             dropped = rollover_observation_partitions(conn, retention_days=days)
             conn.commit()
             return dropped

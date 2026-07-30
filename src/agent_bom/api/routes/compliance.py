@@ -766,7 +766,14 @@ def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:
             remediation = json.loads(remediation)
         except json.JSONDecodeError:
             remediation = {}
-    remediation = fail_closed_remediation_payload(remediation)
+    remediation = fail_closed_remediation_payload(
+        remediation,
+        cloud=str(coerced.get("cloud") or ""),
+        benchmark_version=str(coerced.get("benchmark_version") or ""),
+        check_id=str(coerced.get("check_id") or ""),
+        title=str(coerced.get("title") or ""),
+        cis_section=str(coerced.get("cis_section") or ""),
+    )
     coerced["remediation"] = remediation
     coerced["fix_cli"] = str(remediation.get("fix_cli") or "")
     coerced["fix_console"] = str(remediation.get("fix_console") or coerced.get("fix_console") or "")
@@ -966,6 +973,7 @@ def _latest_report(request: Request) -> "AIBOMReport | None":
     We reconstruct a minimal report with only the fields the narrative generator
     reads (``blast_radii``, ``agents``, ``total_packages``, ``total_agents``).
     """
+    from agent_bom.compliance_coverage import blast_radius_tag_kwargs
     from agent_bom.models import (
         Agent,
         AgentType,
@@ -1029,18 +1037,9 @@ def _latest_report(request: Request) -> "AIBOMReport | None":
             exposed_credentials=bd.get("exposed_credentials", []),
             exposed_tools=[],
             risk_score=float(bd.get("risk_score") or 0),
-            owasp_tags=bd.get("owasp_tags", []),
-            atlas_tags=bd.get("atlas_tags", []),
-            nist_ai_rmf_tags=bd.get("nist_ai_rmf_tags", []),
-            owasp_mcp_tags=bd.get("owasp_mcp_tags", []),
-            owasp_agentic_tags=bd.get("owasp_agentic_tags", []),
-            eu_ai_act_tags=bd.get("eu_ai_act_tags", []),
-            nist_csf_tags=bd.get("nist_csf_tags", []),
-            iso_27001_tags=bd.get("iso_27001_tags", []),
-            soc2_tags=bd.get("soc2_tags", []),
-            cis_tags=bd.get("cis_tags", []),
-            cmmc_tags=bd.get("cmmc_tags", []),
         )
+        for tag_field, tags in blast_radius_tag_kwargs(bd).items():
+            setattr(br, tag_field, tags)
         blast_radii.append(br)
 
     # Pad agents list to match counts from scan summaries (narrative uses len(agents))
@@ -1426,6 +1425,8 @@ def _scan_request_payload(job: Any) -> dict:
 
 def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
     """Build a flat tag → list[blast-radius] index across all completed scans."""
+    from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
+
     by_tag: dict[str, list[dict]] = {}
     for job in jobs:
         if job.status != JobStatus.DONE or not job.result:
@@ -1442,22 +1443,7 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
         }
         for br in job.result.get("blast_radius", []):
             br_with_scan = {**br, **scan_context}
-            for tag_field in (
-                "owasp_tags",
-                "owasp_mcp_tags",
-                "atlas_tags",
-                "nist_ai_rmf_tags",
-                "nist_csf_tags",
-                "iso_27001_tags",
-                "soc2_tags",
-                "cmmc_tags",
-                "fedramp_tags",
-                "owasp_agentic_tags",
-                "eu_ai_act_tags",
-                "cis_tags",
-                "nist_800_53_tags",
-                "pci_dss_tags",
-            ):
+            for tag_field in COMPLIANCE_TAG_FIELDS:
                 for tag in br.get(tag_field, []) or []:
                     by_tag.setdefault(tag, []).append(br_with_scan)
     return by_tag

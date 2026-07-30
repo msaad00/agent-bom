@@ -264,11 +264,19 @@ def _cis_rows_for_cloud(cloud: str, benchmark: dict[str, Any], scan_id: str, mea
     from agent_bom.cloud.cis_remediation import fail_closed_remediation_payload
 
     rows: list[dict[str, Any]] = []
+    benchmark_version = str(benchmark.get("benchmark_version") or "")
     for check in benchmark.get("checks", []) or []:
         if not isinstance(check, dict):
             continue
         raw_remediation = check.get("remediation")
-        remediation = fail_closed_remediation_payload(raw_remediation)
+        remediation = fail_closed_remediation_payload(
+            raw_remediation,
+            cloud=cloud,
+            benchmark_version=benchmark_version,
+            check_id=str(check.get("check_id") or ""),
+            title=str(check.get("title") or ""),
+            cis_section=str(check.get("cis_section") or ""),
+        )
         priority = remediation.get("priority", check.get("priority", 0))
         try:
             priority_int = int(priority or 0)
@@ -279,6 +287,7 @@ def _cis_rows_for_cloud(cloud: str, benchmark: dict[str, Any], scan_id: str, mea
                 "scan_id": scan_id,
                 "measured_at": measured_at,
                 "cloud": cloud,
+                "benchmark_version": benchmark_version,
                 "check_id": str(check.get("check_id", "")),
                 "title": str(check.get("title", "")),
                 "status": str(check.get("status", "unknown")).lower() or "unknown",

@@ -480,7 +480,14 @@ class ClickHouseAnalyticsStore:
         scan_id = check.get("scan_id", "")
         cloud = check.get("cloud", "")
         check_id = check.get("check_id", "")
-        remediation = fail_closed_remediation_payload(check.get("remediation"))
+        remediation = fail_closed_remediation_payload(
+            check.get("remediation"),
+            cloud=str(cloud),
+            benchmark_version=str(check.get("benchmark_version") or ""),
+            check_id=str(check_id),
+            title=str(check.get("title") or ""),
+            cis_section=str(check.get("cis_section") or ""),
+        )
         fix_cli = str(remediation.get("fix_cli") or "")
         fix_console = str(remediation.get("fix_console") or check.get("fix_console") or "")
         effort = str(remediation.get("effort") or "manual")

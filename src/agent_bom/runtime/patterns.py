@@ -13,7 +13,14 @@ import re
 # Each pattern: (name, compiled regex)
 CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("AWS Access Key", re.compile(r"AKIA[0-9A-Z]{16}")),
-    ("AWS Secret Key", re.compile(r"(?:aws_secret_access_key|secret_?key)\s*[=:]\s*[A-Za-z0-9/+=]{40}", re.IGNORECASE)),
+    (
+        "AWS Secret Key",
+        re.compile(
+            r"(['\"]?)(?:aws_secret_access_key|secret_?key)\1\s*[=:]\s*"
+            r"(['\"]?)[A-Za-z0-9/+=]{40}\2(?![A-Za-z0-9/+=])",
+            re.IGNORECASE,
+        ),
+    ),
     ("GitHub Token", re.compile(r"gh[pousr]_[A-Za-z0-9_]{36,}")),
     ("GitLab Token", re.compile(r"glpat-[A-Za-z0-9\-_]{20,}")),
     ("OpenAI API Key", re.compile(r"sk-(?:proj-)?[A-Za-z0-9\-_]{20,}")),

@@ -170,6 +170,42 @@ def test_cyclonedx_conforms_to_1_7_schema(report: AIBOMReport) -> None:
     )
 
 
+def test_cyclonedx_model_limitations_are_schema_valid_strings() -> None:
+    report = AIBOMReport(
+        model_provenance=[{"model": "org/model", "risk_flags": ["unsigned"], "is_safe_format": False}],
+        model_files=[
+            {
+                "filename": "unsafe.pkl",
+                "format": "pickle",
+                "security_flags": [{"type": "MALICIOUS_PICKLE", "severity": "CRITICAL", "description": "Unsafe opcode"}],
+            }
+        ],
+        training_pipelines={
+            "runs": [
+                {
+                    "name": "train",
+                    "security_flags": [{"type": "UNPINNED_INPUT", "description": "Input is not pinned"}],
+                }
+            ]
+        },
+    )
+    cdx = to_cyclonedx(report)
+    _assert_schema_valid(
+        "CycloneDX 1.7 model limitations",
+        "cyclonedx-1.7.schema.json",
+        Draft7Validator,
+        cdx,
+        registry=_cyclonedx_registry(),
+    )
+    limitations = [
+        item
+        for component in cdx.get("components", [])
+        for item in component.get("modelCard", {}).get("considerations", {}).get("technicalLimitations", [])
+    ]
+    assert limitations
+    assert all(isinstance(item, str) for item in limitations)
+
+
 def _shared_server_cyclonedx_report() -> AIBOMReport:
     """Demo-equivalent overlap: repeated agent/server discovery and a package
     without a package URL must still produce one strict-valid BOM graph."""

@@ -266,8 +266,8 @@ async def deploy_decision_impl(
 
     matched_paths = [path for path in payload.get("paths", []) if _candidate_matches_path(candidate_value, path)]
     matched_paths = matched_paths[:limit]
-    max_risk = max((float(path.get("riskScore", 0.0) or 0.0) for path in matched_paths), default=0.0)
-    decision = _decision_for_risk(max_risk, warn_risk=warn_risk, block_risk=block_risk)
+    max_risk = max((float(path.get("riskScore", 0.0) or 0.0) for path in matched_paths), default=None)
+    decision = _decision_for_risk(max_risk, warn_risk=warn_risk, block_risk=block_risk) if max_risk is not None else "warn"
     reasons: list[str] = []
     if matched_paths:
         top = matched_paths[0]
@@ -276,7 +276,7 @@ async def deploy_decision_impl(
         if findings:
             reasons.append(f"Matched findings: {', '.join(findings[:5])}.")
     else:
-        reasons.append("No matching exposure paths were found for the candidate in the selected graph snapshot.")
+        reasons.append("No matching exposure path evidence was found for the candidate; this is not an approval to deploy.")
 
     encoded = json.dumps(
         {
@@ -287,11 +287,15 @@ async def deploy_decision_impl(
             "candidate": {"value": candidate_value},
             "decision": decision,
             "maxRisk": max_risk,
+            "evidenceStatus": "evaluated" if matched_paths else "not_evaluated",
             "thresholds": {"warnRisk": warn_risk, "blockRisk": block_risk},
             "reasons": reasons,
             "matchedPathCount": len(matched_paths),
             "matchedPaths": matched_paths,
-            "provenance": {"source": "mcp_should_i_deploy", "basis": "exposure_paths"},
+            "provenance": {
+                "source": "mcp_should_i_deploy",
+                "basis": "exposure_paths" if matched_paths else "no_matching_exposure_path_evidence",
+            },
         },
         indent=2,
         default=str,

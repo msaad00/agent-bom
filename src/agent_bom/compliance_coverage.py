@@ -275,6 +275,20 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
     ),
 )
 
+# One authoritative inventory for every framework-tag field carried by both
+# BlastRadius and Finding. Reconstructors and exporters must consume this
+# registry instead of maintaining partial literal tuples that silently drift.
+COMPLIANCE_TAG_FIELDS: tuple[str, ...] = tuple(metadata.tag_field for metadata in TAG_MAPPED_FRAMEWORKS)
+
+
+def blast_radius_tag_kwargs(payload: Mapping[str, object]) -> dict[str, list[str]]:
+    """Return normalized BlastRadius tag kwargs from a serialized payload."""
+    normalized: dict[str, list[str]] = {}
+    for field in COMPLIANCE_TAG_FIELDS:
+        raw = payload.get(field)
+        normalized[field] = [str(tag) for tag in raw] if isinstance(raw, (list, tuple, set)) else []
+    return normalized
+
 # Canonical hyphenated slugs (``TAG_MAPPED_FRAMEWORKS``) vs legacy ingest aliases.
 FRAMEWORK_SLUG_ALIASES: dict[str, str] = {
     "mitre-attack": "attack",

@@ -218,10 +218,24 @@ _MODERN_SECRET_CASES = [
     ("bearer_opaque", _sample("Authorization: ", "Bearer ", _token_body(24))),
     ("aws_secret_lower", _sample("aws_", "secret_", "access_", "key=", _token_body(40, "Ab3dEf4gH5jK/Lm7N"))),
     ("aws_secret_upper", _sample("AWS_", "SECRET_", "ACCESS_", "KEY = ", _token_body(40, "Ab3dEf4gH5jK/Lm7N"))),
+    ("aws_secret_single_quoted", _sample("aws_secret_access_key='", _token_body(40, "Ab3dEf4gH5jK/Lm7N"), "'")),
+    ("aws_secret_double_quoted_json", _sample('"AWS_SECRET_ACCESS_KEY": "', _token_body(40, "Ab3dEf4gH5jK/Lm7N"), '"')),
     ("client_secret_embedded", _sample("client_", "secret=", _token_body(28))),
     ("secret_key_embedded", _sample("my_", "secret_", "key: ", _token_body(24))),
     ("access_token_embedded", _sample("access_", "token=", _token_body(28))),
 ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "aws_secret_access_key='short'",
+        '"AWS_SECRET_ACCESS_KEY": "<set-me>"',
+        "aws_secret_access_key=EXAMPLE_AWS_SECRET_ACCESS_KEY_VALUE",
+    ],
+)
+def test_aws_secret_pattern_ignores_short_and_placeholder_values(text):
+    assert not [result for result in scan_content(text, _cfg()) if result.rule_id == "aws_secret_access_key"]
 
 
 class TestModernSecretFormats:

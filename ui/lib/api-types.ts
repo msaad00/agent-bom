@@ -2244,7 +2244,7 @@ export interface NistCatalogDrill extends NistCatalogLine {
 
 export interface ComplianceResponse {
   overall_score: number;
-  overall_status: "pass" | "warning" | "fail";
+  overall_status: "pass" | "warning" | "fail" | "no_data";
   scan_count: number;
   latest_scan: string | null;
   has_mcp_context?: boolean | undefined;

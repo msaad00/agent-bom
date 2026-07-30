@@ -11,6 +11,7 @@ from agent_bom.cloud.cis_remediation import (
     _VERIFIED_CLI_CONTROLS,
     CISControlIdentity,
     CISRemediationOverride,
+    build_remediation,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -76,9 +77,77 @@ def test_each_override_matches_exactly_one_live_catalog_control() -> None:
         assert live[identity] == 1, f"override is stale or ambiguous: {identity}"
 
 
-def test_pr1_has_no_verified_cli_mutations() -> None:
-    assert _VERIFIED_CLI_CONTROLS == frozenset()
-    for override in _OVERRIDES.values():
-        assert override.fix_cli is None
-        assert override.effort == "manual"
+_VERIFIED_EXPECTATIONS = {
+    CISControlIdentity("aws", "3.0", "2.1.1", "S3 account-level public access block configured", "2 - Storage"): (
+        "aws s3control put-public-access-block --account-id <ACCOUNT_ID> "
+        "--public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,"
+        "BlockPublicPolicy=true,RestrictPublicBuckets=true",
+        "https://docs.aws.amazon.com/cli/latest/reference/s3control/put-public-access-block.html",
+    ),
+    CISControlIdentity("aws", "3.0", "2.1.2", "S3 bucket server-side encryption enabled", "2 - Storage"): (
+        "aws s3api put-bucket-encryption --bucket <BUCKET_NAME> "
+        "--server-side-encryption-configuration "
+        '\'{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}\'',
+        "https://docs.aws.amazon.com/cli/latest/reference/s3api/put-bucket-encryption.html",
+    ),
+    CISControlIdentity("aws", "3.0", "3.2", "CloudTrail log file validation enabled", "3 - Logging"): (
+        "aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation",
+        "https://docs.aws.amazon.com/cli/latest/reference/cloudtrail/update-trail.html",
+    ),
+    CISControlIdentity("azure", "3.0", "3.1", "Secure transfer required on storage accounts", "3 - Storage Accounts"): (
+        "az storage account update --name <STORAGE_ACCOUNT_NAME> --resource-group <RESOURCE_GROUP_NAME> --https-only true",
+        "https://learn.microsoft.com/azure/storage/common/storage-require-secure-transfer",
+    ),
+    CISControlIdentity("azure", "3.0", "3.7", "Blob containers set to private access", "3 - Storage Accounts"): (
+        "az storage account update --name <STORAGE_ACCOUNT_NAME> --resource-group <RESOURCE_GROUP_NAME> --allow-blob-public-access false",
+        "https://learn.microsoft.com/azure/storage/blobs/anonymous-read-access-configure",
+    ),
+    CISControlIdentity("gcp", "3.0", "5.2", "Uniform bucket-level access enabled on buckets", "5 - Cloud Storage"): (
+        "gcloud storage buckets update gs://<BUCKET_NAME> --uniform-bucket-level-access",
+        "https://cloud.google.com/storage/docs/using-uniform-bucket-level-access",
+    ),
+}
+
+
+def test_only_provider_verified_cli_mutations_are_enabled() -> None:
+    assert _VERIFIED_CLI_CONTROLS == frozenset(_VERIFIED_EXPECTATIONS)
+
+    for identity, (expected_command, expected_docs) in _VERIFIED_EXPECTATIONS.items():
+        override = _OVERRIDES[identity]
+        assert override.fix_cli == expected_command
+        assert override.docs == expected_docs
+        assert override.effort == "low"
         assert override.requires_human_review is True
+
+        remediation = build_remediation(
+            cloud=identity.cloud,
+            benchmark_version=identity.benchmark_version,
+            check_id=identity.check_id,
+            title=identity.title,
+            severity="high",
+            recommendation="",
+            cis_section=identity.cis_section,
+        )
+        assert remediation["fix_cli"] == expected_command
+        assert remediation["docs"] == expected_docs
+        assert remediation["effort"] == "low"
+        assert remediation["requires_human_review"] is True
+
+
+def test_every_exposed_cis_command_is_placeholder_bound_and_allowlisted() -> None:
+    for identity in _OVERRIDES:
+        remediation = build_remediation(
+            cloud=identity.cloud,
+            benchmark_version=identity.benchmark_version,
+            check_id=identity.check_id,
+            title=identity.title,
+            severity="high",
+            recommendation="",
+            cis_section=identity.cis_section,
+        )
+        command = remediation["fix_cli"]
+        if command is None:
+            continue
+        assert identity in _VERIFIED_EXPECTATIONS
+        assert "<" in command and ">" in command
+        assert remediation["requires_human_review"] is True

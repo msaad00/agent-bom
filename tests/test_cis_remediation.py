@@ -14,6 +14,7 @@ import pytest
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISCheckResult
 from agent_bom.cloud.cis_remediation import (
     _OVERRIDES,
+    _VERIFIED_CLI_CONTROLS,
     GUARDRAIL_TAGS,
     attach_all,
     attach_remediation,
@@ -77,8 +78,12 @@ def test_all_overrides_validate_against_schema():
         )
         _assert_schema(rem)
         assert rem["why"] == override.why
-        assert rem["fix_cli"] is None
-        assert rem["effort"] == "manual"
+        if identity in _VERIFIED_CLI_CONTROLS:
+            assert rem["fix_cli"] == override.fix_cli
+            assert rem["effort"] == override.effort
+        else:
+            assert rem["fix_cli"] is None
+            assert rem["effort"] == "manual"
         assert rem["requires_human_review"] is True
 
 
@@ -212,11 +217,12 @@ _AWS_ACCOUNT_PUBLIC_ACCESS = {
 }
 
 
-def test_matching_override_is_advisory_only_until_command_is_verified():
+def test_matching_verified_override_exposes_advisory_command():
     rem = build_remediation(**_AWS_ACCOUNT_PUBLIC_ACCESS, benchmark_version="3.0")
 
-    assert rem["fix_cli"] is None
-    assert rem["effort"] == "manual"
+    assert rem["fix_cli"].startswith("aws s3control put-public-access-block")
+    assert "<ACCOUNT_ID>" in rem["fix_cli"]
+    assert rem["effort"] == "low"
     assert rem["requires_human_review"] is True
     assert "account-level" in rem["why"].lower()
 
@@ -253,5 +259,6 @@ def test_attach_all_propagates_report_benchmark_version():
 
     attach_all(report, cloud="aws")
 
-    assert check.remediation["fix_cli"] is None
+    assert check.remediation["fix_cli"].startswith("aws s3control put-public-access-block")
+    assert check.remediation["requires_human_review"] is True
     assert "account-level" in check.remediation["why"].lower()

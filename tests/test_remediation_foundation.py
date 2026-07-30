@@ -108,7 +108,13 @@ def test_versioned_cis_finding_uses_exact_advisory_metadata() -> None:
     )
 
     assert finding.remediation is not None
-    assert finding.remediation.fix.cli is None
+    assert finding.remediation.fix.cli == (
+        "aws s3control put-public-access-block --account-id <ACCOUNT_ID> "
+        "--public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,"
+        "BlockPublicPolicy=true,RestrictPublicBuckets=true"
+    )
+    assert finding.remediation.fix.requires_human_review is True
+    assert finding.remediation.fix.docs == ("https://docs.aws.amazon.com/cli/latest/reference/s3control/put-public-access-block.html")
     assert "Block Public Access settings for this account" in (finding.remediation.fix.console or "")
     assert "network-exposure" in finding.remediation.guardrails
 

@@ -387,6 +387,54 @@ class TestClickHouseAnalyticsStore:
         assert row["effort"] == "manual"
         assert row["requires_human_review"] == 1
 
+    def test_record_cis_benchmark_checks_preserves_verified_remediation(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        inserted = {}
+        command = "aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation"
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted["table"] = table
+                inserted["rows"] = rows
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_cis_benchmark_checks(
+                [
+                    {
+                        "scan_id": "scan-verified",
+                        "cloud": "aws",
+                        "check_id": "3.2",
+                        "status": "fail",
+                        "priority": 2,
+                        "remediation": {
+                            "fix_cli": command,
+                            "fix_console": "AWS Console → CloudTrail → Trails",
+                            "effort": "high",
+                            "docs": "https://untrusted.example/old-doc",
+                            "guardrails": ["logging-and-audit"],
+                            "requires_human_review": False,
+                        },
+                    }
+                ],
+                tenant_id="tenant-alpha",
+            )
+
+        assert inserted["table"] == "cis_benchmark_checks"
+        row = inserted["rows"][0]
+        remediation = json.loads(row["remediation"])
+        assert remediation["fix_cli"] == command
+        assert remediation["effort"] == "low"
+        assert remediation["docs"] == "https://docs.aws.amazon.com/cli/latest/reference/cloudtrail/update-trail.html"
+        assert remediation["requires_human_review"] is True
+        assert row["fix_cli"] == command
+        assert row["effort"] == "low"
+        assert row["requires_human_review"] == 1
+
     def test_buffered_store_flushes_before_query(self):
         from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
 

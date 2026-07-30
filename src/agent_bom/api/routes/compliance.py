@@ -768,9 +768,9 @@ def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:
             remediation = {}
     remediation = fail_closed_remediation_payload(remediation)
     coerced["remediation"] = remediation
-    coerced["fix_cli"] = ""
+    coerced["fix_cli"] = str(remediation.get("fix_cli") or "")
     coerced["fix_console"] = str(remediation.get("fix_console") or coerced.get("fix_console") or "")
-    coerced["effort"] = "manual"
+    coerced["effort"] = str(remediation.get("effort") or "manual")
     coerced["requires_human_review"] = True
     return coerced
 

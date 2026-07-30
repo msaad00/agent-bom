@@ -653,6 +653,40 @@ def test_cis_checks_fail_closed_for_legacy_remediation_rows():
     _clear_jobs()
 
 
+def test_cis_checks_preserve_exact_provider_verified_remediation():
+    command = "az storage account update --name <STORAGE_ACCOUNT_NAME> --resource-group <RESOURCE_GROUP_NAME> --https-only true"
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra=_cis_benchmark_result(
+            [
+                {
+                    "check_id": "3.1",
+                    "title": "Secure transfer required on storage accounts",
+                    "status": "FAIL",
+                    "severity": "high",
+                    "remediation": {
+                        "fix_cli": command,
+                        "fix_console": "Azure Portal → Storage accounts → Configuration",
+                        "effort": "low",
+                        "docs": "https://untrusted.example/old-doc",
+                        "requires_human_review": False,
+                    },
+                }
+            ],
+            cloud_key="azure_cis_benchmark",
+        ),
+    )
+
+    row = TestClient(app).get("/v1/cis/checks", headers=_AUTH_HEADERS).json()["checks"][0]
+    assert row["fix_cli"] == command
+    assert row["effort"] == "low"
+    assert row["requires_human_review"] is True
+    assert row["remediation"]["fix_cli"] == command
+    assert row["remediation"]["docs"] == ("https://learn.microsoft.com/azure/storage/common/storage-require-secure-transfer")
+    _clear_jobs()
+
+
 def test_persisted_cis_rows_are_canonicalized_fail_closed():
     from agent_bom.api.routes.compliance import _coerce_cis_row
 
@@ -679,6 +713,33 @@ def test_persisted_cis_rows_are_canonicalized_fail_closed():
     assert row["remediation"]["fix_cli"] is None
     assert row["remediation"]["requires_human_review"] is True
     assert "Event selectors" in row["fix_console"]
+
+
+def test_persisted_cis_rows_preserve_only_exact_verified_command():
+    from agent_bom.api.routes.compliance import _coerce_cis_row
+
+    command = "gcloud storage buckets update gs://<BUCKET_NAME> --uniform-bucket-level-access"
+    row = _coerce_cis_row(
+        {
+            "fix_cli": "stale top-level command",
+            "effort": "manual",
+            "requires_human_review": False,
+            "remediation": json.dumps(
+                {
+                    "fix_cli": command,
+                    "fix_console": "GCP Console → Cloud Storage → Permissions",
+                    "effort": "high",
+                    "docs": "https://untrusted.example/old-doc",
+                    "requires_human_review": False,
+                }
+            ),
+        }
+    )
+
+    assert row["fix_cli"] == command
+    assert row["effort"] == "low"
+    assert row["requires_human_review"] is True
+    assert row["remediation"]["docs"] == ("https://cloud.google.com/storage/docs/using-uniform-bucket-level-access")
 
 
 # ─── PR3: NIST 800-53 catalog-backed scoring line ────────────────────────────

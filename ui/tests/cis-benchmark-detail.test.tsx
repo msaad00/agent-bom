@@ -104,10 +104,10 @@ describe("CISBenchmarkDetail", () => {
         makeCheck({
           check_id: "3.2",
           title: "Enable CloudTrail log file validation",
-          fix_cli: "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
+          fix_cli: "aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation",
           requires_human_review: true,
           remediation: {
-            fix_cli: "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
+            fix_cli: "aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation",
             requires_human_review: true,
           },
         }),
@@ -125,7 +125,7 @@ describe("CISBenchmarkDetail", () => {
     fireEvent.click(copyButton);
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
-        "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
+        "aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation",
       ),
     );
     expect(await screen.findByText(/review carefully before running/i)).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("CISBenchmarkDetail", () => {
           check_id: "1.4",
           title: "No root account access keys",
           fix_cli: "",
-          fix_console: "AWS Console → IAM → Security credentials (root) → Delete access key",
+          fix_console: "AWS Organizations → Root access management, or approved break-glass root session → sign out immediately",
           effort: "manual",
           requires_human_review: true,
         }),
@@ -149,7 +149,7 @@ describe("CISBenchmarkDetail", () => {
     render(<CISBenchmarkDetail />);
 
     expect(await screen.findByText(/no copy-pasteable cli fix/i)).toBeInTheDocument();
-    expect(screen.getByText(/security credentials \(root\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/approved break-glass root session/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /copy fix command/i })).not.toBeInTheDocument();
   });
 

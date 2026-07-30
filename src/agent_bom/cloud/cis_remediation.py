@@ -247,13 +247,29 @@ _OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
     ),
     CISControlIdentity("aws", "3.0", "2.1.1", "S3 account-level public access block configured", "2 - Storage"): CISRemediationOverride(
         why="Missing account-level Block Public Access permits bucket policies or ACLs to expose data publicly.",
+        fix_cli=(
+            "aws s3control put-public-access-block --account-id <ACCOUNT_ID> "
+            "--public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,"
+            "BlockPublicPolicy=true,RestrictPublicBuckets=true"
+        ),
         fix_console="AWS Console → S3 → Block Public Access settings for this account",
+        docs="https://docs.aws.amazon.com/cli/latest/reference/s3control/put-public-access-block.html",
         guardrails=("network-exposure", "defense-in-depth"),
+        effort="low",
+        requires_human_review=True,
     ),
     CISControlIdentity("aws", "3.0", "2.1.2", "S3 bucket server-side encryption enabled", "2 - Storage"): CISRemediationOverride(
         why="Buckets without default server-side encryption can persist new objects without encryption at rest.",
+        fix_cli=(
+            "aws s3api put-bucket-encryption --bucket <BUCKET_NAME> "
+            "--server-side-encryption-configuration "
+            '\'{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}\''
+        ),
         fix_console="AWS Console → S3 → <bucket> → Properties → Default encryption",
+        docs="https://docs.aws.amazon.com/cli/latest/reference/s3api/put-bucket-encryption.html",
         guardrails=("encryption", "defense-in-depth"),
+        effort="low",
+        requires_human_review=True,
     ),
     CISControlIdentity("aws", "3.0", "3.1", "CloudTrail enabled in all regions", "3 - Logging"): CISRemediationOverride(
         why="Without a multi-region CloudTrail, API activity can go unlogged in unused regions.",
@@ -262,8 +278,12 @@ _OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
     ),
     CISControlIdentity("aws", "3.0", "3.2", "CloudTrail log file validation enabled", "3 - Logging"): CISRemediationOverride(
         why="CloudTrail without log file validation cannot prove log integrity after the fact.",
+        fix_cli="aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation",
         fix_console="AWS Console → CloudTrail → Trails → <trail> → Edit → Enable log file validation",
+        docs="https://docs.aws.amazon.com/cli/latest/reference/cloudtrail/update-trail.html",
         guardrails=("logging-and-audit", "defense-in-depth"),
+        effort="low",
+        requires_human_review=True,
     ),
     CISControlIdentity("aws", "3.0", "3.5", "CloudTrail records management events in all regions", "3 - Logging"): CISRemediationOverride(
         why="Excluding management events from CloudTrail leaves control-plane changes unavailable for investigation.",
@@ -275,13 +295,24 @@ _OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
         "azure", "3.0", "3.1", "Secure transfer required on storage accounts", "3 - Storage Accounts"
     ): CISRemediationOverride(
         why="Storage accounts without secure transfer accept plaintext HTTP traffic.",
+        fix_cli=("az storage account update --name <STORAGE_ACCOUNT_NAME> --resource-group <RESOURCE_GROUP_NAME> --https-only true"),
         fix_console="Azure Portal → Storage accounts → <account> → Configuration → Secure transfer required",
+        docs="https://learn.microsoft.com/azure/storage/common/storage-require-secure-transfer",
         guardrails=("encryption", "network-exposure"),
+        effort="low",
+        requires_human_review=True,
     ),
     CISControlIdentity("azure", "3.0", "3.7", "Blob containers set to private access", "3 - Storage Accounts"): CISRemediationOverride(
         why="Public blob access enables unauthenticated data reads over the internet.",
+        fix_cli=(
+            "az storage account update --name <STORAGE_ACCOUNT_NAME> "
+            "--resource-group <RESOURCE_GROUP_NAME> --allow-blob-public-access false"
+        ),
         fix_console="Azure Portal → Storage accounts → <account> → Containers → Change access level to Private",
+        docs="https://learn.microsoft.com/azure/storage/blobs/anonymous-read-access-configure",
         guardrails=("network-exposure", "defense-in-depth"),
+        effort="low",
+        requires_human_review=True,
     ),
     CISControlIdentity(
         "azure", "3.0", "5.1.1", "Diagnostic setting captures Activity Log", "5 - Logging and Monitoring"
@@ -320,8 +351,12 @@ _OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
     ),
     CISControlIdentity("gcp", "3.0", "5.2", "Uniform bucket-level access enabled on buckets", "5 - Cloud Storage"): CISRemediationOverride(
         why="Buckets without uniform access retain ACL-based authorization paths outside centralized IAM policy.",
+        fix_cli="gcloud storage buckets update gs://<BUCKET_NAME> --uniform-bucket-level-access",
         fix_console="GCP Console → Cloud Storage → <bucket> → Permissions → Uniform access control",
+        docs="https://cloud.google.com/storage/docs/using-uniform-bucket-level-access",
         guardrails=("identity", "least-privilege", "defense-in-depth"),
+        effort="low",
+        requires_human_review=True,
     ),
     # ── Snowflake ──────────────────────────────────────────────────────
     CISControlIdentity(
@@ -354,9 +389,25 @@ _OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
     ),
 }
 
-# PR 1 deliberately contains no verified commands. PR 2 may add an identity to
-# this set only with provider-doc evidence and exact command-contract tests.
-_VERIFIED_CLI_CONTROLS: frozenset[CISControlIdentity] = frozenset()
+# Commands are advisory strings only; agent-bom never executes them. A command
+# is exposed only when the complete benchmark identity matches this reviewed
+# set, and every entry retains an explicit placeholder and human approval.
+_VERIFIED_CLI_CONTROLS: frozenset[CISControlIdentity] = frozenset(
+    {
+        CISControlIdentity("aws", "3.0", "2.1.1", "S3 account-level public access block configured", "2 - Storage"),
+        CISControlIdentity("aws", "3.0", "2.1.2", "S3 bucket server-side encryption enabled", "2 - Storage"),
+        CISControlIdentity("aws", "3.0", "3.2", "CloudTrail log file validation enabled", "3 - Logging"),
+        CISControlIdentity("azure", "3.0", "3.1", "Secure transfer required on storage accounts", "3 - Storage Accounts"),
+        CISControlIdentity("azure", "3.0", "3.7", "Blob containers set to private access", "3 - Storage Accounts"),
+        CISControlIdentity("gcp", "3.0", "5.2", "Uniform bucket-level access enabled on buckets", "5 - Cloud Storage"),
+    }
+)
+
+_VERIFIED_CLI_BY_COMMAND: dict[str, CISRemediationOverride] = {
+    override.fix_cli: override
+    for identity, override in _OVERRIDES.items()
+    if identity in _VERIFIED_CLI_CONTROLS and override.fix_cli is not None
+}
 
 
 # ---------------------------------------------------------------------------
@@ -365,15 +416,25 @@ _VERIFIED_CLI_CONTROLS: frozenset[CISControlIdentity] = frozenset()
 
 
 def fail_closed_remediation_payload(value: Any) -> dict[str, Any]:
-    """Return a copy safe to expose while the verified CLI set is empty.
+    """Return a copy containing only an exact provider-verified command.
 
     Historical scan jobs and analytics rows can contain commands written by an
-    older release. Canonicalizing at projection boundaries prevents those rows
-    from replaying stale mutations after an upgrade without rewriting evidence.
+    older release. Exact command allowlisting at projection boundaries prevents
+    those rows from replaying stale mutations after an upgrade without rewriting
+    evidence. Current command metadata is canonicalized from the reviewed
+    override; commands are never executed by this module.
     """
     remediation = dict(value) if isinstance(value, dict) else {}
-    remediation["fix_cli"] = None
-    remediation["effort"] = "manual"
+    command = remediation.get("fix_cli")
+    verified = _VERIFIED_CLI_BY_COMMAND.get(command) if isinstance(command, str) else None
+    if verified is None:
+        remediation["fix_cli"] = None
+        remediation["effort"] = "manual"
+    else:
+        remediation["fix_cli"] = command
+        remediation["effort"] = verified.effort
+        if verified.docs:
+            remediation["docs"] = verified.docs
     remediation["requires_human_review"] = True
     return remediation
 

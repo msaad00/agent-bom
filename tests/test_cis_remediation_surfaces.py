@@ -10,6 +10,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from agent_bom.cloud.cis_remediation import build_remediation
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_compact_cis_posture
 from agent_bom.output.html import _cis_benchmark_section
@@ -40,7 +41,10 @@ def _bundle_with_remediation(cloud: str = "aws") -> dict:
                 "remediation": {
                     "why": "Root account access keys allow full account takeover with no per-user audit trail.",
                     "fix_cli": None,
-                    "fix_console": "AWS Console → IAM → Security credentials (root) → Delete access key",
+                    "fix_console": (
+                        "AWS Organizations → Root access management, or approved break-glass root session → "
+                        "IAM → Security credentials → Delete access key → sign out immediately"
+                    ),
                     "effort": "manual",
                     "priority": 1,
                     "docs": "https://example/docs",
@@ -81,6 +85,36 @@ def _report_with_aws_cis() -> AIBOMReport:
     return report
 
 
+def _report_with_verified_aws_cis() -> tuple[AIBOMReport, str]:
+    command = "aws cloudtrail update-trail --name <TRAIL_NAME_OR_ARN> --enable-log-file-validation"
+    bundle = _bundle_with_remediation("aws")
+    check = bundle["checks"][0]
+    check.update(
+        {
+            "check_id": "3.2",
+            "title": "CloudTrail log file validation enabled",
+            "status": "fail",
+            "severity": "medium",
+            "evidence": "Trail has log file validation disabled.",
+            "resource_ids": ["arn:aws:cloudtrail:us-east-1:123456789012:trail/audit"],
+            "recommendation": "Enable log file validation on all CloudTrail trails.",
+            "cis_section": "3 - Logging",
+            "remediation": build_remediation(
+                cloud="aws",
+                benchmark_version="3.0",
+                check_id="3.2",
+                title="CloudTrail log file validation enabled",
+                severity="medium",
+                recommendation="Enable log file validation on all CloudTrail trails.",
+                cis_section="3 - Logging",
+            ),
+        }
+    )
+    report = AIBOMReport(tool_version="0.98.2")
+    report.cis_benchmark_data = bundle
+    return report, command
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────
 
 
@@ -106,6 +140,37 @@ def test_cli_compact_cis_posture_renders_remediation():
     assert "Security credentials" in out  # manual console path surfaced
     assert "priv-escalation" in out or "least-privilege" in out  # guardrails surfaced
     assert "review" in out  # requires_human_review flag shown
+
+
+def test_provider_verified_command_reaches_cli_html_and_sarif():
+    report, command = _report_with_verified_aws_cis()
+    buf = StringIO()
+    con = Console(file=buf, force_terminal=False, width=240)
+
+    import agent_bom.output as output_mod
+
+    original = output_mod.console
+    output_mod.console = con
+    try:
+        print_compact_cis_posture(report)
+    finally:
+        output_mod.console = original
+
+    cli = buf.getvalue()
+    assert "update-trail" in cli
+    assert "<TRAIL_NAME_OR_ARN>" in cli
+    assert "review" in cli.lower()
+
+    html = _cis_benchmark_section(report)
+    assert "update-trail" in html
+    assert "&lt;TRAIL_NAME_OR_ARN&gt;" in html
+
+    sarif = to_sarif(report)
+    result = next(item for item in sarif["runs"][0]["results"] if item["ruleId"] == "cis/aws/3.2")
+    props = result["properties"]
+    assert props["fix_cli"] == command
+    assert props["remediation"]["fix_cli"] == command
+    assert props["requires_human_review"] is True
 
 
 def test_cli_compact_cis_posture_silent_without_cis_data():

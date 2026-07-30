@@ -481,6 +481,10 @@ class ClickHouseAnalyticsStore:
         cloud = check.get("cloud", "")
         check_id = check.get("check_id", "")
         remediation = fail_closed_remediation_payload(check.get("remediation"))
+        fix_cli = str(remediation.get("fix_cli") or "")
+        fix_console = str(remediation.get("fix_console") or check.get("fix_console") or "")
+        effort = str(remediation.get("effort") or "manual")
+        guardrails = list(remediation.get("guardrails") or check.get("guardrails") or [])
         return {
             "measured_at": _coerce_clickhouse_timestamp(check.get("measured_at")),
             "scan_id": scan_id,
@@ -496,11 +500,11 @@ class ClickHouseAnalyticsStore:
             "evidence": check.get("evidence", ""),
             "resource_ids": list(check.get("resource_ids", []) or []),
             "remediation": json.dumps(remediation, sort_keys=True),
-            "fix_cli": "",
-            "fix_console": check.get("fix_console", ""),
-            "effort": "manual",
+            "fix_cli": fix_cli,
+            "fix_console": fix_console,
+            "effort": effort,
             "priority": int(check.get("priority", 0) or 0),
-            "guardrails": list(check.get("guardrails", []) or []),
+            "guardrails": guardrails,
             "requires_human_review": 1,
         }
 

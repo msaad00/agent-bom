@@ -272,7 +272,12 @@ def test_list_cis_checks_prefers_columnar_store():
     set_job_store(_ColumnarStore())
     body = asyncio.run(compliance_routes.list_cis_benchmark_checks(_request("tenant-alpha"), cloud="aws"))
     assert body["source"] == "columnar"
-    assert body["checks"][0]["remediation"] == {"priority": 1}
+    assert body["checks"][0]["remediation"] == {
+        "priority": 1,
+        "fix_cli": None,
+        "effort": "manual",
+        "requires_human_review": True,
+    }
 
 
 def _patched_get_compliance_returns(payload: dict):

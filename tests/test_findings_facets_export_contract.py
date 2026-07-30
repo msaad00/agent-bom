@@ -234,6 +234,80 @@ def test_facet_walk_is_single_pass_and_marks_scan_budget_partial(monkeypatch: py
     }
 
 
+def test_facet_deadline_starts_after_the_first_row_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.routes import scan as scan_routes
+
+    clock = {"now": 0.0}
+
+    def _rows(*_args, **_kwargs):
+        # Model a database cursor whose first row takes longer than the Python
+        # facet-processing budget to become available. Query latency must not
+        # turn a non-empty result set into a zero-count response.
+        clock["now"] = 2.0
+        yield {
+            "id": "finding-delayed",
+            "finding_type": "CVE",
+            "source": "SBOM",
+            "severity": "high",
+        }
+
+    monkeypatch.setattr("agent_bom.export.runner.iter_current_findings", _rows)
+    monkeypatch.setattr(scan_routes.time, "monotonic", lambda: clock["now"])
+
+    facets, total, metadata = scan_routes._finding_facets_bounded(
+        "tenant-delayed-facets",
+        severity=None,
+        scan_id=None,
+        since=None,
+        scope={},
+        status="open",
+        scan_budget=10,
+        deadline_seconds=1.0,
+    )
+
+    assert total == 1
+    assert facets["severity"]["high"] == 1
+    assert metadata["scanned_rows"] == 1
+    assert metadata["status"] == "complete"
+
+
+def test_partial_zero_row_facet_walk_preserves_the_list_total(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant = "default"
+    _seed_scan(tenant)
+    empty_facets = {
+        "finding_class": {},
+        "severity": {},
+        "status": {},
+        "domain": {},
+        "freshness": {},
+    }
+    monkeypatch.setattr(
+        "agent_bom.api.routes.scan._finding_facets_bounded",
+        lambda *_args, **_kwargs: (
+            empty_facets,
+            0,
+            {
+                "status": "partial",
+                "reason": "deadline",
+                "scanned_rows": 0,
+                "scan_budget": 50_000,
+                "deadline_ms": 1_500,
+            },
+        ),
+    )
+
+    response = TestClient(app).get(
+        "/v1/findings?include_facets=true&window_days=0",
+        headers=_headers(tenant),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["findings"]) == 6
+    assert body["total"] == 6
+    assert body["total_approximate"] is True
+
+
 def test_async_export_uses_the_same_finding_predicates(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

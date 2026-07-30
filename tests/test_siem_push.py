@@ -418,6 +418,34 @@ def test_siem_send_uses_governed_delivery_client(connector_type, config, sample_
     assert delivery.idempotency_key
 
 
+def test_siem_private_network_approval_reaches_governed_destination(sample_event):
+    config = SIEMConfig(
+        name="splunk",
+        url="http://127.0.0.1:8088",
+        token="splunk-token",
+        allow_private_networks=True,
+    )
+    captured: dict[str, object] = {}
+    client = MagicMock()
+
+    def _deliver(destination, delivery):
+        captured["destination"] = destination
+        return DeliveryResult(
+            idempotency_key=delivery.idempotency_key,
+            destination_id=destination.destination_id,
+            status="delivered",
+            http_status=200,
+            attempts=1,
+            delivered=True,
+        )
+
+    client.deliver.side_effect = _deliver
+    with patch("agent_bom.delivery.get_delivery_client", return_value=client):
+        assert SplunkHEC(config).send_event(sample_event) is True
+
+    assert captured["destination"].allow_private_networks is True
+
+
 def test_siem_delivery_failure_preserves_boolean_contract(splunk_config, sample_event):
     client = MagicMock()
     client.deliver.return_value = DeliveryResult(

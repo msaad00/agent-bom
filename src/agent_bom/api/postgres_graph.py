@@ -1298,9 +1298,9 @@ class PostgresGraphStore:
         static_only: bool = False,
         dynamic_only: bool = False,
         limit: int = 25_001,
-    ) -> list[Sequence[Any]]:
+    ) -> tuple[list[Sequence[Any]], bool]:
         if not frontier:
-            return []
+            return [], False
         placeholders = ",".join("%s" for _ in frontier)
         where = [
             "tenant_id = %s",
@@ -1323,8 +1323,9 @@ class PostgresGraphStore:
             dynamic_placeholders = ",".join("%s" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
             where.append(f"relationship IN ({dynamic_placeholders})")
             params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
-        params.append(max(1, int(limit)))
-        return cast(
+        bounded_limit = max(1, int(limit))
+        params.append(bounded_limit + 1)
+        rows = cast(
             "list[Sequence[Any]]",
             conn.execute(
                 f"""
@@ -1339,6 +1340,7 @@ class PostgresGraphStore:
                 params,
             ).fetchall(),
         )
+        return rows[:bounded_limit], len(rows) > bounded_limit
 
     def _walk_graph(
         self,
@@ -1414,7 +1416,7 @@ class PostgresGraphStore:
             index += 1
             if depth >= max_depth:
                 continue
-            rows = self._filtered_edge_rows(
+            rows, hit_limit = self._filtered_edge_rows(
                 conn,
                 tenant_id=tenant_id,
                 scan_id=effective_scan_id,
@@ -1425,6 +1427,8 @@ class PostgresGraphStore:
                 dynamic_only=dynamic_only,
                 limit=max_edges - edge_count + 1,
             )
+            if hit_limit:
+                truncated = True
             for row in rows:
                 edge = self._edge_from_row(row)
                 candidates: list[str] = []
@@ -1457,6 +1461,8 @@ class PostgresGraphStore:
                     parent_by_node.setdefault(neighbor, current)
                     discovery_order.append(neighbor)
                     queue.append((neighbor, depth + 1))
+            if hit_limit:
+                break
             if truncated and (
                 edge_count > max_edges
                 or (deadline_monotonic is not None and time.monotonic() >= deadline_monotonic)

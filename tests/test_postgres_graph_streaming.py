@@ -297,10 +297,43 @@ def test_prior_edges_reconcile_in_postgres_without_python_materialization(monkey
         edges=iter([edge]),
     )
 
-    continuity_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("update graph_edges as current"))
-    retirement_at = next(i for i, sql in enumerate(conn.sql_calls) if sql.startswith("update graph_edges as previous"))
-    assert conn.sql_params[continuity_at] == ("current-scan", "tenant-a", "prior-scan", "tenant-a")
-    assert conn.sql_params[retirement_at][1:] == ("tenant-a", "prior-scan", "current-scan", "tenant-a")
+    continuity_at = next(i for i, sql in enumerate(conn.sql_calls) if "update graph_edges as current" in sql)
+    retirement_at = next(i for i, sql in enumerate(conn.sql_calls) if "update graph_edges as previous" in sql)
+    assert conn.sql_params[continuity_at] == ("tenant-a", "prior-scan", "current-scan", "tenant-a")
+    assert conn.sql_params[retirement_at][:4] == ("tenant-a", "current-scan", "tenant-a", "prior-scan")
+    assert conn.sql_params[retirement_at][5:] == ("tenant-a", "prior-scan")
+
+
+def test_prior_edge_reconciliation_materializes_each_snapshot_before_updates(monkeypatch):
+    class _PreviousSnapshotConn(_RecordingConn):
+        def execute(self, sql, params=None):
+            low = " ".join(sql.strip().lower().split())
+            if low.startswith("select scan_id, created_at") and "from graph_snapshots" in low:
+                self.sql_calls.append(low)
+                self.sql_params.append(tuple(params) if params is not None else None)
+                return _FakeCursor([("prior-scan", "2026-07-18T00:00:00Z")])
+            return super().execute(sql, params)
+
+    conn = _PreviousSnapshotConn()
+    store = _make_store(conn, monkeypatch)
+    edge = UnifiedEdge(source="agent:1", target="pkg:1", relationship=RelationshipType.DEPENDS_ON)
+
+    store.save_graph_streaming(
+        scan_id="current-scan",
+        tenant_id="tenant-a",
+        nodes=_nodes(1),
+        edges=iter([edge]),
+    )
+
+    continuity_sql = next(sql for sql in conn.sql_calls if "update graph_edges as current" in sql)
+    retirement_sql = next(sql for sql in conn.sql_calls if "update graph_edges as previous" in sql)
+    assert continuity_sql.startswith("with previous_edges as materialized")
+    assert "from previous_edges as previous" in continuity_sql
+    assert "from graph_edges as previous" not in continuity_sql
+    assert retirement_sql.startswith("with current_edge_keys as materialized")
+    assert "from current_edge_keys as current" in retirement_sql
+    assert "except select source_id, target_id, relationship from current_edge_keys as current" in retirement_sql
+    assert "from graph_edges as current" not in retirement_sql
 
 
 @pytest.mark.parametrize(
@@ -555,7 +588,7 @@ def test_retired_edge_update_records_ocsf_close_activity(monkeypatch):
             low = " ".join(sql.strip().lower().split())
             if low.startswith("select scan_id, created_at from graph_snapshots"):
                 return _FakeCursor([("scan-old", "2026-07-16T00:00:00Z")])
-            if low.startswith("update graph_edges as previous"):
+            if "update graph_edges as previous" in low:
                 self.retirement_sql = low
             return super().execute(sql, params)
 

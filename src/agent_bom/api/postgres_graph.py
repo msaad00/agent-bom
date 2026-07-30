@@ -843,10 +843,18 @@ class PostgresGraphStore:
             )
             if previous_scan:
                 # Preserve temporal continuity and retire missing prior edges
-                # inside Postgres. Loading the prior snapshot into a Python dict
-                # + set made this streamed writer O(previous-edge-count) memory.
+                # inside Postgres. Materialize each bounded snapshot slice once:
+                # a direct graph_edges self-join made Postgres repeatedly rescan
+                # the table and hit the statement timeout on modest second
+                # snapshots, while loading the prior snapshot into Python would
+                # restore O(previous-edge-count) application memory.
                 conn.execute(
                     """
+                    WITH previous_edges AS MATERIALIZED (
+                        SELECT source_id, target_id, relationship, first_seen, valid_from
+                        FROM graph_edges
+                        WHERE tenant_id = %s AND scan_id = %s
+                    )
                     UPDATE graph_edges AS current
                     SET first_seen = COALESCE(NULLIF(previous.first_seen, ''), current.first_seen),
                         valid_from = COALESCE(
@@ -854,35 +862,41 @@ class PostgresGraphStore:
                             NULLIF(previous.first_seen, ''),
                             current.valid_from
                         )
-                    FROM graph_edges AS previous
+                    FROM previous_edges AS previous
                     WHERE current.source_id = previous.source_id
                       AND current.target_id = previous.target_id
                       AND current.relationship = previous.relationship
                       AND current.scan_id = %s
                       AND current.tenant_id = %s
-                      AND previous.scan_id = %s
-                      AND previous.tenant_id = %s
                     """,
-                    (scan, tenant, previous_scan, tenant),
+                    (tenant, previous_scan, scan, tenant),
                 )
                 conn.execute(
                     """
+                    WITH current_edge_keys AS MATERIALIZED (
+                        SELECT source_id, target_id, relationship
+                        FROM graph_edges
+                        WHERE tenant_id = %s AND scan_id = %s
+                    ),
+                    retired_edge_keys AS MATERIALIZED (
+                        SELECT source_id, target_id, relationship
+                        FROM graph_edges
+                        WHERE tenant_id = %s AND scan_id = %s
+                        EXCEPT
+                        SELECT source_id, target_id, relationship
+                        FROM current_edge_keys AS current
+                    )
                     UPDATE graph_edges AS previous
                     SET valid_to = COALESCE(previous.valid_to, %s),
                         activity_id = CASE WHEN previous.activity_id = 1 THEN 3 ELSE previous.activity_id END
+                    FROM retired_edge_keys AS retired
                     WHERE previous.tenant_id = %s
                       AND previous.scan_id = %s
-                      AND NOT EXISTS (
-                            SELECT 1
-                            FROM graph_edges AS current
-                            WHERE current.source_id = previous.source_id
-                              AND current.target_id = previous.target_id
-                              AND current.relationship = previous.relationship
-                              AND current.scan_id = %s
-                              AND current.tenant_id = %s
-                      )
+                      AND previous.source_id = retired.source_id
+                      AND previous.target_id = retired.target_id
+                      AND previous.relationship = retired.relationship
                     """,
-                    (now, tenant, previous_scan, scan, tenant),
+                    (tenant, scan, tenant, previous_scan, now, tenant, previous_scan),
                 )
             _execute_many_batched(
                 conn,

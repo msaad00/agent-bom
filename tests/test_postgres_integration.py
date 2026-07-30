@@ -833,6 +833,61 @@ def test_postgres_scan_jobs_rls_schema_is_locked_down():
     )
 
 
+def test_postgres_second_large_graph_snapshot_reconciles_within_statement_timeout(monkeypatch):
+    """A 7k-edge second persist completes under the production timeout contract."""
+    from agent_bom.api import postgres_common
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+    from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedNode
+
+    edge_count = 7_000
+    suffix = uuid4().hex
+    tenant_id = f"graph-reconcile-{suffix}"
+    prior_scan = f"prior-{suffix}"
+    current_scan = f"current-{suffix}"
+
+    def nodes():
+        for index in range(edge_count + 1):
+            yield UnifiedNode(id=f"node:{index}", entity_type=EntityType.AGENT, label=f"Node {index}")
+
+    def edges():
+        for index in range(edge_count):
+            yield UnifiedEdge(
+                source=f"node:{index}",
+                target=f"node:{index + 1}",
+                relationship=RelationshipType.DEPENDS_ON,
+            )
+
+    # Keep the live regression tighter than the production 15s default while
+    # leaving ample room for CI variance. The timeout is applied when the pool
+    # checks out each connection.
+    monkeypatch.setattr(postgres_common, "POSTGRES_STATEMENT_TIMEOUT_MS", 5_000)
+    postgres_common.reset_pool()
+    store = PostgresGraphStore()
+    token = set_current_tenant(tenant_id)
+    try:
+        store.save_graph_streaming(
+            scan_id=prior_scan,
+            tenant_id=tenant_id,
+            nodes=nodes(),
+            edges=edges(),
+            created_at="2026-07-30T00:00:00Z",
+        )
+        persisted = store.save_graph_streaming(
+            scan_id=current_scan,
+            tenant_id=tenant_id,
+            nodes=nodes(),
+            edges=edges(),
+            created_at="2026-07-30T00:01:00Z",
+        )
+        stats = store.snapshot_stats(tenant_id=tenant_id, scan_id=current_scan)
+        assert persisted["edge_count"] == edge_count
+        assert stats["total_edges"] == edge_count
+    finally:
+        store.delete_tenant(tenant_id=tenant_id)
+        reset_current_tenant(token)
+
+
 def test_postgres_graph_build_workspace_rls_schema_is_locked_down():
     """Structural RLS guard for graph_build_workspace_* staging tables."""
     from agent_bom.api.postgres_common import _get_pool

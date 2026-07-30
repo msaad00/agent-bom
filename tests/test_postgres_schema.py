@@ -647,6 +647,7 @@ def test_graph_hot_path_indexes_exist():
     for index_name in (
         "idx_pg_graph_nodes_scan_id_cover",
         "idx_pg_graph_edges_scan_source_traversable",
+        "idx_pg_graph_edges_snapshot_key",
         "idx_pg_attack_paths_source_risk",
         "idx_pg_graph_node_search_trgm",
         "idx_pg_graph_node_search_lower_trgm",

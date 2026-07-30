@@ -26,6 +26,7 @@ GATEWAY_ACTIVITY_LEDGER = VERSIONS_DIR / "20260728_02_gateway_activity_ledger.py
 TRUSTED_MAINTENANCE_RLS = VERSIONS_DIR / "20260728_03_trusted_maintenance_rls.py"
 GATEWAY_ACTIVITY_WINDOW_INDEX = VERSIONS_DIR / "20260729_02_gateway_activity_window_index.py"
 PARTITION_CHILD_RLS = VERSIONS_DIR / "20260729_03_partition_child_rls.py"
+GRAPH_EDGE_SNAPSHOT_KEY_INDEX = VERSIONS_DIR / "20260730_01_graph_edge_snapshot_key_index.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -407,6 +408,22 @@ def test_partition_child_rls_is_chained_idempotent_and_irreversible() -> None:
     assert "CREATE POLICY" in sql
     assert "DROP POLICY" not in sql
     assert "DISABLE ROW LEVEL SECURITY" not in sql
+
+
+def test_graph_edge_snapshot_key_index_is_chained_and_matches_bootstrap() -> None:
+    sql = GRAPH_EDGE_SNAPSHOT_KEY_INDEX.read_text()
+    index_ddl = (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pg_graph_edges_snapshot_key "
+        "ON graph_edges(tenant_id, scan_id, source_id, target_id, relationship)"
+    )
+    assert re.search(r'revision\s*=\s*"20260730_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260729_03"', sql)
+    assert _canonical_sql(index_ddl) in _canonical_sql(sql)
+    bootstrap_index_ddl = index_ddl.replace(" CONCURRENTLY", "")
+    assert _canonical_sql(bootstrap_index_ddl) in _canonical_sql((POSTGRES_DIR / "init.sql").read_text())
+    assert "SELECT to_regclass('public.graph_edges')" in sql
+    assert "autocommit_block" in sql
+    assert "DROP TABLE" not in sql
 
 
 def test_gateway_activity_window_index_allows_legacy_schema_without_ledger(monkeypatch) -> None:

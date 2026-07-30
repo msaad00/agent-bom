@@ -1569,6 +1569,7 @@ def test_graph_store_init_adds_query_indexes(mock_pool, mock_maintenance_pool):
     assert any("idx_pg_graph_nodes_scan_order" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_nodes_scan_id_cover" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_edges_scan_source" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_edges_snapshot_key" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_edges_scan_target" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_edges_scan_source_traversable" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_attack_paths_scan_risk" in sql for sql, _ in mock_pool._conn.executed)

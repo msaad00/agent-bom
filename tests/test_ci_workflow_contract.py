@@ -28,6 +28,46 @@ def test_path_classifier_covers_main_pushes() -> None:
     assert "git diff-tree --no-commit-id" in script
 
 
+def test_required_ci_contexts_use_docs_only_fast_paths_without_disappearing() -> None:
+    """Branch-protection contexts must report success instead of being path-skipped."""
+    jobs = _ci()["jobs"]
+    assert "docs_only" in jobs["changes"]["outputs"]
+
+    for name in ("security", "lint", "test", "build"):
+        job = jobs[name]
+        assert "changes" in job["needs"]
+        assert "!cancelled()" in job["if"]
+
+    workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert "scripts/classify_ci_changes.py" in workflow_text
+    assert "Documentation-only safety checks" in workflow_text
+    assert "Documentation-only test skip" in workflow_text
+    assert "Documentation-only package skip" in workflow_text
+
+
+def test_non_required_heavy_jobs_are_path_gated() -> None:
+    jobs = _ci()["jobs"]
+    assert "needs.changes.outputs.helm == 'true'" in jobs["helm-profiles"]["if"]
+    assert "needs.changes.result != 'success'" in jobs["helm-profiles"]["if"]
+
+
+def test_dependency_security_skips_only_proven_docs_only_changes() -> None:
+    workflow_path = ROOT / ".github" / "workflows" / "pr-security-gate.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    assert "scripts/classify_ci_changes.py" in workflow_path.read_text(encoding="utf-8")
+    for name in ("code-scanning-config-pr", "pip-audit-pr", "self-scan-pr"):
+        condition = jobs[name]["if"]
+        assert "needs.changes.result != 'success'" in condition
+        assert "needs.changes.outputs.docs_only != 'true'" in condition
+
+
+def test_gitleaks_remains_unconditional_for_documentation_changes() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "gitleaks.yml").read_text(encoding="utf-8")
+    assert "classify_ci_changes.py" not in workflow
+    assert "paths-ignore" not in workflow
+
+
 def test_main_ui_smoke_covers_every_ui_classifier_surface() -> None:
     """The main-push smoke must mirror paths that make PR UI validation run."""
     workflow = (ROOT / ".github" / "workflows" / "main-ui-smoke.yml").read_text(

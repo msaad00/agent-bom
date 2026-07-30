@@ -52,7 +52,9 @@ jobs:
       alpine: ${{ steps.classify.outputs.alpine }}
       alpine_full: ${{ steps.classify.outputs.alpine_full }}
       docs: ${{ steps.classify.outputs.docs }}
+      docs_only: ${{ steps.classify.outputs.docs_only }}
       endpoint: ${{ steps.classify.outputs.endpoint }}
+      helm: ${{ steps.classify.outputs.helm }}
       postgres: ${{ steps.classify.outputs.postgres }}
       python: ${{ steps.classify.outputs.python }}
       ui: ${{ steps.classify.outputs.ui }}
@@ -81,6 +83,7 @@ jobs:
           alpine_full=false
           docs=false
           endpoint=false
+          helm=false
           postgres=false
           # UI Validate boots a real Next.js standalone container and runs a
           # Playwright e2e suite — slow, occasionally cold-runner flaky, and
@@ -132,15 +135,22 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|site-docs/deployment/aws-company-rollout\.md$)'; then
             endpoint=true
           fi
+          if printf '%s\n' "$changed" | grep -Eq '^(deploy/helm/agent-bom/|scripts/validate_helm_profiles\.py$|\.github/workflows/ci\.yml$)'; then
+            helm=true
+          fi
           if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py)'; then
             ui=true
           fi
+          classification="$(printf '%s\n' "$changed" | python3 scripts/classify_ci_changes.py)"
+          printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+          docs_only="$(printf '%s\n' "$classification" | sed -n 's/^docs_only=//p')"
           {
             echo "action=${action}"
             echo "alpine=${alpine}"
             echo "alpine_full=${alpine_full}"
             echo "docs=${docs}"
             echo "endpoint=${endpoint}"
+            echo "helm=${helm}"
             echo "postgres=${postgres}"
             echo "python=${python}"
             echo "ui=${ui}"
@@ -152,7 +162,9 @@ jobs:
             echo "- Alpine/musl compatibility required: \`${alpine}\`"
             echo "- Alpine/musl full-suite required: \`${alpine_full}\`"
             echo "- Docs strict build required: \`${docs}\`"
+            echo "- Documentation-only fast path: \`${docs_only}\`"
             echo "- Endpoint packaging required: \`${endpoint}\`"
+            echo "- Helm profile validation required: \`${helm}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
             echo "- Python test suite required: \`${python}\`"
             echo "- UI Validate (lint + test + build + e2e) required: \`${ui}\`"
@@ -163,6 +175,8 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs: changes
+    if: ${{ !cancelled() }}
     permissions:
       contents: read
     steps:
@@ -173,12 +187,13 @@ jobs:
           # them past 24h. A shallow checkout (the default fetch-depth=1) makes
           # git blame return nothing, which previously let stale markers pass
           # silently. Fetch full history so the gate enforces its SLA.
-          fetch-depth: 0
+          fetch-depth: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' && 1 || 0 }}
 
       - name: Block Finder duplicate artifacts
         run: python scripts/check_duplicate_artifacts.py
 
       - name: Docker base-image policy
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Source: scripts/check_docker_base_policy.py
         # Closes #1961: every Dockerfile FROM line must match the per-file
         # policy table (expected base + tag) and must be digest-pinned. A
@@ -187,6 +202,7 @@ jobs:
         run: python scripts/check_docker_base_policy.py
 
       - name: Workflow job timeout policy
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Closes the audit-4 P1 finding that #1995 only swept release.yml
         # + post-merge-self-scan + container-rescan; the rest of
         # .github/workflows/ still had jobs that could run unbounded and
@@ -211,12 +227,14 @@ jobs:
         run: python scripts/check_public_docs_hygiene.py
 
       - name: Package layout — no new top-level src/agent_bom/*.py modules
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Source: scripts/check_package_layout.py
         # The flat namespace is frozen; new modules belong in packages
         # (api/, graph/, runtime/, cloud/, …). Pure stdlib.
         run: python scripts/check_package_layout.py
 
       - name: Exception sanitization — no raw exception text in HTTP responses or logs
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Source: scripts/check_exception_sanitization.py
         # Raw exception strings carry secrets, ARNs, paths, and connection
         # strings. New detail=str(exc) / detail=f"...{exc}" HTTPException bodies
@@ -225,6 +243,7 @@ jobs:
         run: python scripts/check_exception_sanitization.py
 
       - name: Trust-contract — provisioning stays read-only
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Source: scripts/check_provisioning_readonly.py
         # The cloud-connect Terraform modules (deploy/terraform/connect-*)
         # mint agent-bom's read-only customer-cloud grant and must stay
@@ -234,20 +253,39 @@ jobs:
         # the heavier setup so a regression fails fast.
         run: python scripts/check_provisioning_readonly.py
 
+      - name: Documentation-only safety checks
+        if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
+        run: |
+          PYPROJECT_VER=$(python -c "import re, pathlib; text = pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\\s*=\\s*\"([^\"]+)\"', text, re.M).group(1))")
+          python scripts/bump-version.py "$PYPROJECT_VER" --check
+          python scripts/check_version_alignment.py
+          python scripts/check_release_consistency.py
+          python scripts/generate_agent_capability_manifest.py --check
+          python scripts/check-counts.py
+          python scripts/check_benchmark_drift.py
+          python scripts/check_framework_catalog.py
+          python scripts/check_product_surface_contract.py
+          python sdks/shared/generate-patterns.py --check
+
       - uses: ./.github/actions/setup-python
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.11'
 
       - name: Set up UI toolchain
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         uses: ./.github/actions/setup-ui
 
       - name: Install dependencies
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv sync --frozen --extra dev
 
       - name: Bandit (Static Security Analysis)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run bandit -r src/ --severity-level medium
 
       - name: OSV Scanner (all lockfiles)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           OSV_SCANNER_VERSION="v2.3.3"
           OSV_SCANNER_SHA256="777b4bb7ddd10bdcc8a1aa398d37d05e91e866e7586f9cff3fca2f72b8153033"
@@ -290,6 +328,7 @@ jobs:
           }
 
       - name: Filesystem vulnerability scan (agent-bom — dogfood)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Self-hosted filesystem dependency gate. Mirrors the previous
         # third-party scanner: MEDIUM+ severity (agent-bom has no separate
         # UNKNOWN tier), unfixable findings excluded (= ignore-unfixed), and
@@ -301,6 +340,7 @@ jobs:
             --fail-on-severity medium
 
       - name: Filesystem secret scan (agent-bom — informational)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Dogfoods agent-bom's secret/PII scanner over the tree, matching the
         # secret-scanning the previous filesystem scanner performed. The
         # authoritative blocking secret gate is the dedicated gitleaks workflow
@@ -309,9 +349,11 @@ jobs:
         run: uv run agent-bom secrets . || true
 
       - name: Validate npm lockfiles
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: python scripts/check_npm_lockfile.py ui/package-lock.json sdks/typescript/package-lock.json
 
       - name: npm audit (ui/ transitive deps)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           cd ui
           npm config set fetch-retries 5
@@ -321,6 +363,7 @@ jobs:
           npm audit --audit-level=high
 
       - name: npm audit (TypeScript SDK transitive deps)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           cd sdks/typescript
           npm config set fetch-retries 5
@@ -330,6 +373,7 @@ jobs:
           npm audit --audit-level=high
 
       - name: JavaScript supply-chain guard
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           python scripts/check_js_supply_chain.py
           cd sdks/typescript
@@ -347,25 +391,36 @@ jobs:
     name: Lint and Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: ${{ !cancelled() }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Documentation-only lint skip
+        if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
+        run: echo "No Python, generated contract, or dependency path changed."
+
       - uses: ./.github/actions/setup-python
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.11'
 
       - name: Install dependencies
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv sync --frozen --extra dev
 
       - name: Ruff
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run ruff check src/
 
       - name: MyPy
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run mypy src/ --ignore-missing-imports --disable-error-code import-untyped
 
       - name: Env-var reference is current (config.py + allowlist gate)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Generator: scripts/generate_env_var_reference.py
         # Doc: docs/operations/ENV_VARS.md
         # Allowlist: scripts/env_var_allowlist.txt
@@ -375,12 +430,14 @@ jobs:
         run: uv run python scripts/generate_env_var_reference.py --check
 
       - name: CLI reference alignment (fast preflight)
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Mirrors tests/test_public_docs_cli_alignment.py but runs in Lint so a
         # new CLI root command missing a site-docs/reference/cli.md row fails
         # in ~1 min instead of burning 6-8 min on the Test matrix.
         run: uv run python scripts/check_cli_reference_alignment.py
 
       - name: Skill CLI citation alignment
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run python scripts/check_skill_cli_citations.py
 
   docs-strict:
@@ -598,6 +655,13 @@ jobs:
     name: Helm Profile Validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: changes
+    if: >-
+      !cancelled() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.helm == 'true'
+      )
     permissions:
       contents: read
     steps:
@@ -776,9 +840,21 @@ jobs:
         # wall-clock near the 4-5 minute mark instead of ~10.
         python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.13"]') || fromJSON('["3.11", "3.13", "3.14"]') }}
     steps:
+      - name: Documentation-only test skip
+        if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
+        run: echo "No Python test input changed; the test matrix is not required."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: >-
+          (github.event_name != 'pull_request' && github.event_name != 'push') ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.python == 'true'
 
       - uses: ./.github/actions/setup-python
+        if: >-
+          (github.event_name != 'pull_request' && github.event_name != 'push') ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.python == 'true'
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -1208,6 +1284,12 @@ jobs:
     name: Version Alignment
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: >-
+      !cancelled() && (
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.docs_only != 'true'
+      )
     permissions:
       contents: read
     steps:
@@ -1244,15 +1326,18 @@ jobs:
         run: python scripts/check_product_surface_contract.py
 
       - name: Install dependencies for CLI smoke checks
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Verify Snowflake Native App distribution contract
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           uv run python scripts/release/snowflake_native_app.py validate
           uv run --with snowflake-cli==3.23.0 snow app bundle \
             --project deploy/snowflake/native-app
 
       - name: Verify v1 schemas match Pydantic models
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Drift gate for #1963: any change to agent_bom.api.models must be
         # accompanied by a refreshed docs/schemas/v1/ so SDK consumers are
         # never reading a stale contract. Regenerate locally with
@@ -1262,12 +1347,14 @@ jobs:
         run: uv run python scripts/generate_v1_schemas.py --check
 
       - name: Verify OpenAPI artifacts match FastAPI routes
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Drift gate for generated control-plane clients. Regenerate locally
         # with `python scripts/export_openapi.py` whenever API routes or
         # models change.
         run: uv run python scripts/export_openapi.py --check
 
       - name: Validate canonical README commands parse
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           uv run agent-bom --version >/dev/null
           uv run agent-bom scan --help >/dev/null
@@ -1287,18 +1374,25 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [security, lint, test]
+    needs: [changes, security, lint, test]
     # Build still runs when the classifier legitimately skipped the test
     # suite (docs-only PRs); a failed or cancelled test still blocks it.
     if: ${{ !cancelled() && needs.security.result == 'success' && needs.lint.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     steps:
+      - name: Documentation-only package skip
+        if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
+        run: echo "No package input changed; package build is not required."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
 
       - uses: ./.github/actions/setup-python
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.11'
 
       - name: Build and verify
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           uv run --with build==1.4.0 python -m build
           uvx twine==6.2.0 check dist/*
@@ -1319,12 +1413,14 @@ jobs:
           PY
 
       - name: Smoke clean unlocked wheel MCP protocol
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: |
           python -m venv "$RUNNER_TEMP/agent-bom-wheel-smoke"
           "$RUNNER_TEMP/agent-bom-wheel-smoke/bin/pip" install --disable-pip-version-check dist/*.whl
           "$RUNNER_TEMP/agent-bom-wheel-smoke/bin/python" scripts/smoke_mcp_wheel.py
 
       - name: Upload package
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-package

@@ -22,9 +22,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Security change classifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Classify documentation-only changes
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            before="${{ github.event.before }}"
+            if [ -n "$before" ] && ! printf '%s' "$before" | grep -qE '^0+$'; then
+              changed="$(git diff --name-only "$before" "$GITHUB_SHA")"
+            fi
+          fi
+          printf '%s\n' "$changed" | python3 scripts/classify_ci_changes.py --github-output "$GITHUB_OUTPUT"
+
   code-scanning-config-pr:
     name: Code scanning config placeholders
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -66,6 +99,10 @@ jobs:
 
   pip-audit-pr:
     name: pip-audit on PR
+    needs: changes
+    if: >-
+      !cancelled() &&
+      (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -187,6 +224,10 @@ jobs:
 
   self-scan-pr:
     name: agent-bom self-scan on PR
+    needs: changes
+    if: >-
+      !cancelled() &&
+      (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -40,6 +40,7 @@ class LocalVuln:
     epss_percentile: Optional[float] = None
     is_kev: bool = False
     kev_date_added: Optional[str] = None
+    kev_due_date: Optional[str] = None  # CISA BOD 22-01 remediation deadline
     published_at: Optional[str] = None
     modified_at: Optional[str] = None
     source: str = "osv"
@@ -68,7 +69,7 @@ def _cve_candidates(vuln_id: str, raw_aliases: str) -> list[str]:
 def _load_cve_enrichment(
     conn: sqlite3.Connection,
     rows: list[sqlite3.Row],
-) -> tuple[dict[str, tuple[Optional[float], Optional[float]]], dict[str, str]]:
+) -> tuple[dict[str, tuple[Optional[float], Optional[float]]], dict[str, tuple[Optional[str], Optional[str]]]]:
     """Load EPSS and KEV data for any CVE aliases referenced by *rows*."""
     cve_ids: list[str] = []
     seen: set[str] = set()
@@ -88,7 +89,7 @@ def _load_cve_enrichment(
         WHERE cve_id IN ({placeholders})
     """  # nosec B608 - placeholders are generated solely from "?" markers
     kev_query = f"""
-        SELECT cve_id, date_added
+        SELECT cve_id, date_added, due_date
         FROM kev_entries
         WHERE cve_id IN ({placeholders})
     """  # nosec B608 - placeholders are generated solely from "?" markers
@@ -96,30 +97,36 @@ def _load_cve_enrichment(
     kev_rows = conn.execute(kev_query, cve_ids).fetchall()
 
     epss_map = {row["cve_id"]: (row["probability"], row["percentile"]) for row in epss_rows}
-    kev_map = {row["cve_id"]: row["date_added"] for row in kev_rows}
+    kev_map = {row["cve_id"]: (row["date_added"], row["due_date"]) for row in kev_rows}
     return epss_map, kev_map
 
 
 def _resolve_row_enrichment(
     row: sqlite3.Row,
     epss_map: dict[str, tuple[Optional[float], Optional[float]]],
-    kev_map: dict[str, str],
-) -> tuple[Optional[float], Optional[float], Optional[str]]:
-    """Return EPSS probability/percentile and KEV date, falling back to CVE aliases."""
+    kev_map: dict[str, tuple[Optional[str], Optional[str]]],
+) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+    """Return EPSS probability/percentile and KEV dates, falling back to CVE aliases.
+
+    ``kev_due_date`` is the CISA BOD 22-01 remediation deadline. It is carried
+    alongside ``date_added`` because every downstream consumer (CSV, CycloneDX,
+    SPDX, Markdown, Parquet, the ``check`` CLI) already renders it.
+    """
     epss_prob = row["epss_prob"]
     epss_pct = row["epss_pct"]
     kev_date = row["kev_date"]
+    kev_due = row["kev_due_date"]
     if epss_prob is not None and kev_date is not None:
-        return epss_prob, epss_pct, kev_date
+        return epss_prob, epss_pct, kev_date, kev_due
 
     for cve_id in _cve_candidates(row["id"], row["aliases"] or ""):
         if epss_prob is None and cve_id in epss_map:
             epss_prob, epss_pct = epss_map[cve_id]
         if kev_date is None and cve_id in kev_map:
-            kev_date = kev_map[cve_id]
+            kev_date, kev_due = kev_map[cve_id]
         if epss_prob is not None and kev_date is not None:
             break
-    return epss_prob, epss_pct, kev_date
+    return epss_prob, epss_pct, kev_date, kev_due
 
 
 def lookup_package(
@@ -149,7 +156,7 @@ def lookup_package(
                 v.published, v.modified,
                 a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                 e.probability AS epss_prob, e.percentile AS epss_pct,
-                k.date_added AS kev_date
+                k.date_added AS kev_date, k.due_date AS kev_due_date
             FROM affected a
             JOIN vulns v ON v.id = a.vuln_id
             LEFT JOIN epss_scores e ON e.cve_id = v.id
@@ -168,7 +175,7 @@ def lookup_package(
             cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
             raw_aliases = row["aliases"] or ""
             alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
-            epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
+            epss_prob, epss_pct, kev_date, kev_due = _resolve_row_enrichment(row, epss_map, kev_map)
 
             results.append(
                 LocalVuln(
@@ -182,6 +189,7 @@ def lookup_package(
                     epss_percentile=epss_pct,
                     is_kev=kev_date is not None,
                     kev_date_added=kev_date,
+                    kev_due_date=kev_due,
                     published_at=row["published"],
                     modified_at=row["modified"],
                     source=row["source"],
@@ -578,7 +586,7 @@ def lookup_packages_batch(
                     v.published, v.modified,
                     a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                     e.probability AS epss_prob, e.percentile AS epss_pct,
-                    k.date_added AS kev_date
+                    k.date_added AS kev_date, k.due_date AS kev_due_date
                 FROM affected a
                 JOIN vulns v ON v.id = a.vuln_id
                 LEFT JOIN epss_scores e ON e.cve_id = v.id
@@ -608,7 +616,7 @@ def lookup_packages_batch(
                 cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
                 raw_aliases = row["aliases"] or ""
                 alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
-                epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
+                epss_prob, epss_pct, kev_date, kev_due = _resolve_row_enrichment(row, epss_map, kev_map)
 
                 vulns.append(
                     LocalVuln(
@@ -622,6 +630,7 @@ def lookup_packages_batch(
                         epss_percentile=epss_pct,
                         is_kev=kev_date is not None,
                         kev_date_added=kev_date,
+                        kev_due_date=kev_due,
                         published_at=row["published"],
                         modified_at=row["modified"],
                         source=row["source"],

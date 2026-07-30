@@ -91,23 +91,34 @@ def _pkg_index_key(package: str, ecosystem: str) -> str:
     return f"{eco}:{_normalize_pkg(package, eco)}"
 
 
-def _symbol_tokens(symbol: str) -> set[str]:
+def _symbol_tokens(symbol: str, *, expand_head: bool = False) -> set[str]:
     """Expand one symbol string into comparable tokens.
 
-    A reached symbol may be a dotted access like ``SandboxedEnvironment.from_string``
-    while the advisory only names the type ``SandboxedEnvironment`` (or vice
-    versa for a method-on-type advisory). We index both the full dotted form
-    and its leading component so either side matches without leaking
-    unrelated leaf names (we deliberately do *not* index the trailing
-    ``.from_string`` leaf, which would over-match common method names).
+    The expansion is deliberately ASYMMETRIC, and only the REACHED side may set
+    ``expand_head``:
+
+    * A reached ``SandboxedEnvironment.from_string`` DOES satisfy an advisory
+      that only names the type ``SandboxedEnvironment`` — the reached symbol is
+      strictly more specific than the advisory's, so it also indexes its head.
+    * A reached bare ``SandboxedEnvironment`` does NOT satisfy an advisory
+      naming ``SandboxedEnvironment.from_string``. Constructing a class is no
+      proof that a particular method on it is called.
+
+    Expanding the head on both sides made the second case match too, so 3 of 5
+    measured ``function_reachable`` verdicts were decided by the class token
+    alone — exactly the over-claim this module's docstring forbids.
+
+    The trailing ``.from_string`` leaf is never indexed on its own; it would
+    over-match common method names across unrelated types.
     """
     sym = (symbol or "").strip()
     if not sym:
         return set()
     tokens = {sym}
-    head = sym.split(".", 1)[0]
-    if head:
-        tokens.add(head)
+    if expand_head:
+        head = sym.split(".", 1)[0]
+        if head:
+            tokens.add(head)
     return tokens
 
 
@@ -127,7 +138,9 @@ class SymbolReachIndex:
                 continue
             key = _pkg_index_key(reach.package, reach.ecosystem)
             bucket = symbols_by_key.setdefault(key, set())
-            bucket |= _symbol_tokens(reach.symbol)
+            # Reached side only: a reached ``Type.method`` also answers to
+            # ``Type``. The advisory side never expands (see _symbol_tokens).
+            bucket |= _symbol_tokens(reach.symbol, expand_head=True)
             # Keep the shortest (closest) call path as evidence per package.
             existing = paths_by_key.get(key)
             candidate = tuple(reach.call_path)

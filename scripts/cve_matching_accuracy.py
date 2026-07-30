@@ -50,6 +50,7 @@ class Outcome:
     evaluated: int = 0
     skipped_no_ranges: int = 0
     skipped_uncomparable: int = 0
+    skipped_unsound_oracle: int = 0
     multi_window: int = 0
     true_positive: int = 0
     false_negative: int = 0
@@ -79,6 +80,7 @@ class Outcome:
             "evaluated": self.evaluated,
             "skipped_no_ranges": self.skipped_no_ranges,
             "skipped_uncomparable": self.skipped_uncomparable,
+            "skipped_unsound_oracle": self.skipped_unsound_oracle,
             "multi_window_advisories": self.multi_window,
             "true_positive": self.true_positive,
             "false_negative": self.false_negative,
@@ -88,6 +90,39 @@ class Outcome:
             "precision": round(self.precision, 4),
             "f1": round(self.f1, 4),
         }
+
+
+_ECOSYSTEM_RANGE_TYPES = frozenset({"ECOSYSTEM", "SEMVER", ""})
+
+
+def _git_tag_contaminated(block: dict) -> bool:
+    """True when ``versions[]`` is a git-tag walk, not an ecosystem statement.
+
+    A ``GIT`` range beginning at ``introduced: 0`` makes OSV's importer write
+    every tag reachable before the fix commit into ``versions[]``. When the same
+    block ALSO carries an ecosystem range with a non-zero lower bound, the two
+    disagree about where the vulnerability starts, and the enumeration names
+    releases the advisory's own ecosystem range excludes: PYSEC-2015-17 lists
+    ``requests v0.2.0`` beside an ECOSYSTEM range introduced at 2.1.0, while NVD
+    scopes CVE-2015-2296 to "2.1.0 through 2.5.3".
+
+    Such a block cannot label anything — counting its tags as affected would
+    demand a FALSE POSITIVE to score full recall — so it is skipped and reported
+    rather than scored. The test is a property of the DATA (two lower bounds in
+    one block); it never consults the matcher's answer, so it cannot be tuned to
+    flatter the score.
+    """
+    ranges = block.get("ranges") or []
+    git_from_zero = any(
+        (rng.get("type") or "") == "GIT" and any(event.get("introduced") == "0" for event in rng.get("events") or []) for rng in ranges
+    )
+    if not git_from_zero:
+        return False
+    return any(
+        (rng.get("type") or "") in _ECOSYSTEM_RANGE_TYPES
+        and any(event.get("introduced") not in (None, "0") for event in rng.get("events") or [])
+        for rng in ranges
+    )
 
 
 def _sound_negatives(block: dict) -> list[str]:
@@ -130,12 +165,17 @@ def score(entries: list[dict]) -> Outcome:
             continue
 
         scored_any = False
+        unsound_any = False
         for block in affected_blocks:
             package = block.get("package") or {}
             name = package.get("name") or ""
             ecosystem = package.get("ecosystem") or ""
             declared = [str(v) for v in (block.get("versions") or [])]
             if not (name and declared and block.get("ranges")):
+                continue
+            if _git_tag_contaminated(block):
+                unsound_any = True
+                out.skipped_unsound_oracle += 1
                 continue
 
             # Score against a RANGES-ONLY copy. ``_is_version_affected`` checks
@@ -167,7 +207,9 @@ def score(entries: list[dict]) -> Outcome:
 
         if scored_any:
             out.evaluated += 1
-        else:
+        elif not unsound_any:
+            # Only a real comparator gap belongs in this bucket; an advisory
+            # skipped for an unsound oracle is already counted above.
             out.skipped_uncomparable += 1
     return out
 
@@ -188,7 +230,11 @@ def main() -> int:
     payload = result.to_dict()
 
     print(f"advisories: {payload['advisories']}  evaluated: {payload['evaluated']}")
-    print(f"  skipped (no ranges): {payload['skipped_no_ranges']}  (uncomparable): {payload['skipped_uncomparable']}")
+    print(
+        f"  skipped (no ranges): {payload['skipped_no_ranges']}"
+        f"  (uncomparable): {payload['skipped_uncomparable']}"
+        f"  (unsound oracle): {payload['skipped_unsound_oracle']}"
+    )
     print(f"  recall:    {payload['recall']:.4f}  ({payload['true_positive']} found / {payload['false_negative']} missed)")
     print(f"  precision: {payload['precision']:.4f}  ({payload['false_positive']} spurious)")
     print(f"  f1:        {payload['f1']:.4f}")
@@ -221,6 +267,16 @@ def main() -> int:
                 f"ERROR: multi-window coverage dropped "
                 f"{prior.get('multi_window_advisories')} -> {payload['multi_window_advisories']}; "
                 "the corpus can no longer detect a window-collapse regression",
+                file=sys.stderr,
+            )
+            failed = True
+        # Skipping is how the gate stays honest about data it cannot label, but
+        # it is also how a corpus could be quietly hollowed out. Pin it.
+        if payload["skipped_unsound_oracle"] > prior.get("skipped_unsound_oracle", 0):
+            print(
+                f"ERROR: unsound-oracle skips grew "
+                f"{prior.get('skipped_unsound_oracle', 0)} -> {payload['skipped_unsound_oracle']}; "
+                "more of the corpus is going unscored",
                 file=sys.stderr,
             )
             failed = True

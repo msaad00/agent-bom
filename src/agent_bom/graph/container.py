@@ -903,7 +903,7 @@ class UnifiedGraph:
     # ── Graph views (subgraphs) ──────────────────────────────────────────
 
     def inventory_view(self) -> UnifiedGraph:
-        return self._subgraph(
+        sub = self._subgraph(
             node_filter=lambda n: (
                 n.status == NodeStatus.ACTIVE
                 and n.entity_type
@@ -926,9 +926,10 @@ class UnifiedGraph:
                 )
             ),
         )
+        return self._inherit_completeness(sub)
 
     def attack_path_view(self) -> UnifiedGraph:
-        return self._subgraph(edge_filter=lambda e: e.traversable)
+        return self._inherit_completeness(self._subgraph(edge_filter=lambda e: e.traversable))
 
     def lateral_movement_view(self) -> UnifiedGraph:
         lateral_rels = {
@@ -941,7 +942,7 @@ class UnifiedGraph:
             RelationshipType.REACHES_TOOL,
             RelationshipType.VULNERABLE_TO,
         }
-        return self._subgraph(edge_filter=lambda e: e.relationship in lateral_rels)
+        return self._inherit_completeness(self._subgraph(edge_filter=lambda e: e.relationship in lateral_rels))
 
     def compliance_view(self, framework: str = "") -> UnifiedGraph:
         def node_filter(n: UnifiedNode) -> bool:
@@ -951,7 +952,7 @@ class UnifiedGraph:
                 return any(framework.upper() in t.upper() for t in n.compliance_tags)
             return True
 
-        return self._subgraph(node_filter=node_filter)
+        return self._inherit_completeness(self._subgraph(node_filter=node_filter))
 
     def runtime_view(self) -> UnifiedGraph:
         runtime_rels = {
@@ -959,7 +960,7 @@ class UnifiedGraph:
             RelationshipType.ACCESSED,
             RelationshipType.DELEGATED_TO,
         }
-        return self._subgraph(edge_filter=lambda e: e.relationship in runtime_rels)
+        return self._inherit_completeness(self._subgraph(edge_filter=lambda e: e.relationship in runtime_rels))
 
     def filtered_view(self, filters: GraphFilterOptions) -> UnifiedGraph:
         """Build a subgraph from user-controlled filter options."""
@@ -1020,11 +1021,18 @@ class UnifiedGraph:
         unchanged, ``returned_nodes`` is recomputed for what this view actually
         holds, and ``total_nodes`` stays the upstream total so ``omitted_nodes``
         keeps meaning "how much of the estate we never saw".
+
+        Every derived view goes through here — the five typed views as much as
+        ``filtered_view`` — so no projection can report completeness its source
+        does not have.
         """
         view.completeness.truncated = self.completeness.truncated
         view.completeness.node_budget = self.completeness.node_budget
         view.completeness.reason = self.completeness.reason
-        view.completeness.total_nodes = self.completeness.total_nodes
+        # An untruncated graph built by hand never populates total_nodes; falling
+        # back to the source's own size keeps `total` from reading as 0 next to a
+        # non-empty `returned`.
+        view.completeness.total_nodes = self.completeness.total_nodes or len(self.nodes)
         view.completeness.returned_nodes = len(view.nodes)
         return view
 

@@ -112,9 +112,11 @@ def test_terminal_each_failed_has_evidence_and_recommendation():
     out = _render(_report_large())
     assert "evidence:" in out
     assert "fix:" in out
-    # A resource id (evidence) and a fix command both surface.
+    # Evidence and truthful manual guidance both surface.  The synthetic
+    # command has no verified CIS identity and must therefore fail closed.
     assert "arn:res:0" in out
-    assert "aws fix-0" in out
+    assert "aws fix-0" not in out
+    assert "Remediate c0." in out
 
 
 def test_terminal_header_has_verdict_and_pass_rate():
@@ -166,7 +168,8 @@ def test_html_per_finding_evidence_and_remediation():
     html = _cis_benchmark_section(_report_large())
     assert "Evidence" in html  # column header
     assert "arn:res:0" in html  # resource id evidence rendered
-    assert "aws fix-0" in html  # remediation command rendered
+    assert "aws fix-0" not in html  # unverified command fails closed
+    assert "Remediate c0." in html  # manual guidance remains available
 
 
 def test_html_rows_carry_severity_for_filtering():

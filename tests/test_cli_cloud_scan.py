@@ -398,7 +398,10 @@ class TestGroupedCisRendererRouting:
         # Failed checks carry evidence + fix lines.
         assert "evidence:" in out and "fix:" in out
         assert "arn:aws:iam::1:root" in out
-        assert "aws iam delete-access-key" in out
+        # A command without the complete version-bound control identity must
+        # fail closed to the manual recommendation on every render surface.
+        assert "aws iam delete-access-key" not in out
+        assert "Delete root access keys." in out
         # Passes are collapsed into a count, not listed individually.
         assert "2 passed" in out
         assert "--show-passed" in out

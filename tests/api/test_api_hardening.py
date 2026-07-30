@@ -749,11 +749,28 @@ def test_configured_app_cors_preflight_survives_auth_and_rate_limit(monkeypatch)
             app.middleware_stack = app.build_middleware_stack()
 
 
-def test_api_key_middleware_exempts_packaged_dashboard_assets():
-    """Dashboard shell assets must load before browser auth/bootstrap completes."""
+def test_api_key_middleware_exempts_packaged_dashboard_assets(monkeypatch):
+    """Dashboard shell assets must load before browser auth/bootstrap completes.
+
+    The public-route set is derived from the dashboard files the server ships
+    (``register_dashboard_spa_routes``), so this fixes a representative export
+    rather than restating a hand-maintained list. ``/dashboard`` and
+    ``/settings``, which the old hardcoded list allowlisted even though no such
+    page exists, are asserted 401 here.
+    """
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse as StarletteJSONResponse
     from starlette.routing import Route
+
+    from agent_bom.api import middleware as middleware_module
+
+    monkeypatch.setattr(
+        middleware_module,
+        "_DASHBOARD_SPA_ROUTES",
+        middleware_module.dashboard_spa_routes_from_files(
+            ["index.html", "agents/index.html", "manifest/index.html", "vulns.html"]
+        ),
+    )
 
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
@@ -776,11 +793,11 @@ def test_api_key_middleware_exempts_packaged_dashboard_assets():
     client = TestClient(test_app)
     assert client.get("/_next/static/app.js").status_code == 200
     assert client.get("/agents/index.html").status_code == 200
-    assert client.get("/dashboard").status_code == 200
     assert client.get("/manifest").status_code == 200
     assert client.get("/manifest/index.html").status_code == 200
-    assert client.get("/settings").status_code == 200
     assert client.get("/vulns.html").status_code == 200
+    assert client.get("/dashboard").status_code == 401
+    assert client.get("/settings").status_code == 401
     assert client.get("/admin.js").status_code == 401
     assert client.get("/v1/test.js").status_code == 401
 

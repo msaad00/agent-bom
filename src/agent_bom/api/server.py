@@ -34,6 +34,7 @@ from agent_bom.api.middleware import (
     TrustHeadersMiddleware,
     global_ip_rate_limit_rpm,
     install_error_envelope,
+    register_dashboard_spa_routes,
 )
 
 # ─── Extracted modules ────────────────────────────────────────────────────────
@@ -1466,6 +1467,11 @@ def _mount_dashboard(application: FastAPI) -> None:
     _index_html = _validated_dashboard_file(ui_dist, "index.html")
     if _index_html is None:
         return
+
+    # Auth's public-SPA allowlist is derived from exactly the files the
+    # catch-all below can resolve, so a cold deep-link to a real page never
+    # 401s and a route the SPA does not serve is never allowlisted.
+    register_dashboard_spa_routes(_static_file_map)
 
     # SPA catch-all for client-side routing
     @application.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)

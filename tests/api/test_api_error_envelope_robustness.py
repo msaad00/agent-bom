@@ -108,3 +108,28 @@ def test_nul_byte_in_path_parameter_returns_400_envelope_not_500() -> None:
 def test_nul_byte_rejection_does_not_break_ordinary_paths() -> None:
     client = TestClient(app)
     assert client.get("/health").status_code == 200
+
+
+def test_idempotency_payload_error_detail_is_sanitized() -> None:
+    """The 422 body must never echo raw exception text (paths, URLs, secrets)."""
+    from fastapi import FastAPI
+
+    from agent_bom.api.idempotency_store import IdempotencyPayloadError
+    from agent_bom.api.middleware import install_error_envelope
+
+    leaky = FastAPI()
+    install_error_envelope(leaky)
+
+    @leaky.post("/boom")
+    async def _boom() -> None:
+        raise IdempotencyPayloadError(
+            "payload rejected at /srv/agent-bom/secrets/creds.json via https://internal.example/api token=SUPER_SECRET"
+        )
+
+    response = TestClient(leaky, raise_server_exceptions=False).post("/boom")
+    assert response.status_code == 422, response.text
+    error = _envelope(response)
+    assert "/srv/agent-bom/secrets/creds.json" not in response.text
+    assert "https://internal.example/api" not in response.text
+    assert "SUPER_SECRET" not in response.text
+    assert "<path>" in error["message"] or "<url>" in error["message"]

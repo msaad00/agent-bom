@@ -44,7 +44,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message
 
 from agent_bom.api.dashboard_csp import dashboard_csp_header, describe_dashboard_csp_posture
-from agent_bom.security import sanitize_text
+from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
@@ -2742,7 +2742,7 @@ def install_error_envelope(application: object) -> None:
         # this is a client error — not an unhandled 500 that poisons 5xx alerting.
         return _build_error_envelope(
             status_code=422,
-            detail=str(exc) or "Request payload could not be processed",
+            detail=sanitize_error(exc) or "Request payload could not be processed",
             correlation_id=_correlation_id(request),
         )
 

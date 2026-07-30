@@ -5,6 +5,28 @@ stuck, a workflow fails unexpectedly, or you need to retrigger checks.
 
 ---
 
+## Documentation-only fast path
+
+The CI path classifier treats a change as documentation-only only when every
+changed path is a recognized public documentation file or asset. Empty,
+mixed, malformed, workflow, dependency, source, UI, and deployment path sets
+fail closed to the normal validation lanes.
+
+For a documentation-only pull request, the five branch-protection contexts
+still attach to the head SHA. Python, dependency scanning, type checking, and
+package construction use explicit fast-success steps instead of disappearing
+through workflow-level path filters. Public-doc hygiene, release-copy/count
+consistency, strict MkDocs validation when applicable, and the unconditional
+gitleaks range scan still run. Main pushes use the same classification; merge
+queues, manual runs, classifier failures, and workflow changes run the full
+lanes.
+
+The dependency-focused PR security workflow uses the same classifier. CodeQL
+and gitleaks remain independent, always-triggered controls so this optimization
+does not weaken branch-protection or secret-scanning behavior.
+
+---
+
 ## Ready PRs blocked behind `main`
 
 ### Symptom

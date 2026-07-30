@@ -984,6 +984,7 @@ def scan(
             or tf_dirs
             or gha_path
             or agent_projects
+            or skill_paths
             or jupyter_dirs
             or iac_paths
             or model_dirs
@@ -1001,7 +1002,7 @@ def scan(
             raise click.UsageError(
                 "--no-discover requires at least one explicit input artifact to scan "
                 "(e.g. --project/-p, --repo, --config-dir, --inventory, --sbom, "
-                "--external-scan, --image, --image-tar, or --filesystem). None were "
+                "--external-scan, --image, --image-tar, --filesystem, or --skill). None were "
                 "provided, so there is nothing to scan."
             )
 
@@ -1194,6 +1195,10 @@ def scan(
     # Step 2: Extract packages
     _step_t0 = _time.monotonic()
     total_packages = 0
+    # These enrichment results are consumed while building every report,
+    # including the focused --skill-only path that skips package extraction.
+    _intro_report = None
+    _hc_results = None
     if skill_only:
         blast_radii: list[Any] = []
     else:
@@ -1324,7 +1329,6 @@ def scan(
 
         # Step 2b: MCP Runtime Introspection (--introspect)
         _enforcement_data: dict | None = None
-        _intro_report = None
         if introspect:
             from agent_bom.mcp_introspect import IntrospectionError, enrich_servers, introspect_servers_sync
 
@@ -1362,7 +1366,6 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
 
         # Step 2b-hc: Post-discovery health checks (--health-check)
-        _hc_results = None
         if health_check:
             from agent_bom.mcp_introspect import IntrospectionError as _HCError
             from agent_bom.mcp_introspect import health_check_servers_sync
@@ -1849,6 +1852,8 @@ def scan(
         _scan_sources.append("terraform")
     if gha_path:
         _scan_sources.append("github_actions")
+    if ctx.skill_audit_data is not None:
+        _scan_sources.append("skill")
     if browser_extensions:
         _scan_sources.append("browser_extensions")
     if scan_prompts:

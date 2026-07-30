@@ -800,7 +800,11 @@ def run_local_discovery(
 
         if skill_file_list:
             skill_result = scan_skill_files(skill_file_list)
-            if skill_result.servers or skill_result.packages or skill_result.credential_env_vars:
+            # A successfully read instruction file is itself an auditable
+            # security surface. Behavioral risks live in ``raw_content`` and
+            # must not be gated on whether inventory extraction happened to
+            # find a package, server, or credential reference.
+            if skill_result.source_files:
                 con.print(f"\n[bold blue]Scanning {len(skill_file_list)} skill file(s)...[/bold blue]\n")
                 if verbose:
                     for sf in skill_file_list:

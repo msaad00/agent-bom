@@ -2026,7 +2026,14 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
 
 DEFAULT_SCAN_RATE_LIMIT_RPM = 600
+# Anonymous / unidentified read budget. Kept where it was so raising the
+# authenticated budget below does not widen the pre-auth abuse surface.
 DEFAULT_READ_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM * 5
+# Reads on a bucket we resolved to a tenant or API key. A cursor walk of a
+# large tenant is thousands of requests, so a connector or SIEM doing a full
+# sync through the public API was being 429'd partway through a legitimate
+# paginated read. Still bounded, and still under the coarse per-IP ceiling.
+DEFAULT_AUTHENTICATED_READ_RATE_LIMIT_RPM = DEFAULT_READ_RATE_LIMIT_RPM * 2
 MAX_RATE_LIMIT_RPM = 60_000
 # Coarse per-client-IP ceiling enforced OUTERMOST (before authentication) so an
 # unauthenticated flood is capped regardless of auth outcome. Deliberately much
@@ -2110,10 +2117,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         scan_rpm: int = DEFAULT_SCAN_RATE_LIMIT_RPM,
         read_rpm: int = DEFAULT_READ_RATE_LIMIT_RPM,
+        authenticated_read_rpm: int = DEFAULT_AUTHENTICATED_READ_RATE_LIMIT_RPM,
     ):
         super().__init__(app)
         self._scan_rpm = _validate_rate_limit("scan_rpm", scan_rpm, max_rpm=MAX_RATE_LIMIT_RPM)
         self._read_rpm = _validate_rate_limit("read_rpm", read_rpm, max_rpm=MAX_RATE_LIMIT_RPM * 5)
+        self._authenticated_read_rpm = _validate_rate_limit(
+            "authenticated_read_rpm", authenticated_read_rpm, max_rpm=MAX_RATE_LIMIT_RPM * 10
+        )
         self._window = 60
         self._store = self._build_store()
 
@@ -2183,9 +2194,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
 
         is_scan = self._is_write_rate_limited(request.url.path, request.method)
-        limit = self._scan_rpm if is_scan else self._read_rpm
-
         key = await self._bucket_key(request, is_scan)
+        if is_scan:
+            limit = self._scan_rpm
+        elif key.startswith("ip:"):
+            # No tenant and no API key resolved — the anonymous budget, which
+            # is deliberately tighter than the authenticated one below.
+            limit = self._read_rpm
+        else:
+            limit = self._authenticated_read_rpm
+
         hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
         remaining = max(0, limit - hit_count)
 

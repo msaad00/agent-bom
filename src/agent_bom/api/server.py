@@ -855,7 +855,15 @@ def configure_api(
     # the front; this call order keeps the coarse per-IP limiter outermost
     # (capping unauthenticated floods before auth), then body-size, then auth
     # before the tenant-scoped rate limiter, which needs tenant/auth state.
-    _replace_middleware(RateLimitMiddleware, scan_rpm=_rate_limit_rpm, read_rpm=_rate_limit_rpm * 5)
+    # The authenticated read budget keeps the same 2x relationship to the
+    # anonymous one that the defaults have, so an operator override of
+    # rate_limit_rpm still controls both.
+    _replace_middleware(
+        RateLimitMiddleware,
+        scan_rpm=_rate_limit_rpm,
+        read_rpm=_rate_limit_rpm * 5,
+        authenticated_read_rpm=_rate_limit_rpm * 10,
+    )
     # Authentication can be optional; authorization cannot.  Keep the
     # principal resolver installed in pure no-auth mode so credential-less
     # callers receive the configured NO_AUTH_ROLE and traverse the same route

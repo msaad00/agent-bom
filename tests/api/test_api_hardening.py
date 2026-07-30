@@ -767,9 +767,7 @@ def test_api_key_middleware_exempts_packaged_dashboard_assets(monkeypatch):
     monkeypatch.setattr(
         middleware_module,
         "_DASHBOARD_SPA_ROUTES",
-        middleware_module.dashboard_spa_routes_from_files(
-            ["index.html", "agents/index.html", "manifest/index.html", "vulns.html"]
-        ),
+        middleware_module.dashboard_spa_routes_from_files(["index.html", "agents/index.html", "manifest/index.html", "vulns.html"]),
     )
 
     async def dummy(request):
@@ -1734,7 +1732,9 @@ def test_rate_limit_middleware_scopes_api_keys_by_tenant():
     try:
         test_app = Starlette(routes=[Route("/v1/test", dummy)])
         test_app.add_middleware(APIKeyMiddleware, api_key="unused-static-key")
-        test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=2)
+        # These reads resolve to a tenant bucket, so the authenticated budget is
+        # the one under test here; read_rpm covers anonymous callers only.
+        test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=2, authenticated_read_rpm=2)
 
         client = TestClient(test_app)
         assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 200

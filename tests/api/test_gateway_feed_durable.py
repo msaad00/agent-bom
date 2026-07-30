@@ -258,6 +258,34 @@ def test_store_outage_is_explicitly_degraded_and_cannot_resume_cursor() -> None:
     assert "database URL" not in resumed.text
 
 
+def test_store_outage_counts_canonical_ring_events_as_partial_evidence() -> None:
+    class _UnavailableStore:
+        max_events_per_tenant = 50_000
+        max_tombstones_per_tenant = 100_000
+
+        def summarize_window(self, tenant_id, *, start, end):
+            raise RuntimeError("database URL with secret must not escape")
+
+    set_gateway_activity_store(_UnavailableStore())
+    tenant_id = "tenant-canonical-outage"
+    event = _blocked_event("evt-blocked-during-outage")
+    event["tenant_id"] = tenant_id
+    event["gateway_activity_durable"] = False
+    proxy_routes.push_proxy_alert(event)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant_id))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["blocked_today"] == 1
+    assert body["calls_today"] == 1
+    assert body["source"] == "degraded_single_process"
+    assert body["completeness"]["status"] == "partial"
+    assert "ledger_unavailable" in body["completeness"]["reasons"]
+    assert body["window"]["exact"] is False
+
+
 def test_observability_outage_marks_feed_and_kpis_partial(monkeypatch: pytest.MonkeyPatch) -> None:
     def _unavailable(_tenant_id: str, *, limit: int):
         raise RuntimeError("cost store URL with secret must not escape")
@@ -275,3 +303,56 @@ def test_observability_outage_marks_feed_and_kpis_partial(monkeypatch: pytest.Mo
     assert "observability_unavailable" in kpis.json()["completeness"]["reasons"]
     assert kpis.json()["window"]["exact"] is False
     assert "cost store URL" not in kpis.text
+
+
+def test_missing_timestamp_replay_is_degraded_not_a_durable_conflict() -> None:
+    client = TestClient(app)
+    tenant_id = "tenant-missing-timestamp"
+    event = _blocked_event("evt-no-timestamp")
+    event.pop("event_timestamp")
+    payload = {
+        "source_id": "legacy-gateway",
+        "session_id": "session-a",
+        "alerts": [event],
+    }
+
+    first = client.post("/v1/proxy/audit", headers=_headers(tenant_id, role="admin"), json=payload)
+    replay = client.post("/v1/proxy/audit", headers=_headers(tenant_id, role="admin"), json=payload)
+
+    assert first.status_code == 200, first.text
+    assert first.json()["durable_accepted_count"] == 0
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["duplicate_event_ids"] == ["evt-no-timestamp"]
+    feed = client.get("/v1/gateway/feed", headers=_headers(tenant_id)).json()
+    assert [row["event_id"] for row in feed["events"]] == ["evt-no-timestamp"]
+    assert feed["source"] == "degraded_single_process"
+    assert feed["completeness"]["status"] == "partial"
+
+
+def test_one_durable_conflict_does_not_discard_valid_batch_members() -> None:
+    client = TestClient(app)
+    tenant_id = "tenant-partial-conflict"
+    initial = client.post(
+        "/v1/proxy/audit",
+        headers=_headers(tenant_id, role="admin"),
+        json={"source_id": "gateway-a", "alerts": [_event("evt-conflict", tool="read_file")]},
+    )
+    assert initial.status_code == 200, initial.text
+
+    conflicting = _event("evt-conflict", tool="write_file")
+    valid = [_event(f"evt-valid-{index}", tool=f"tool-{index}") for index in range(5)]
+    batch = client.post(
+        "/v1/proxy/audit",
+        headers=_headers(tenant_id, role="admin"),
+        json={"source_id": "gateway-b", "alerts": [conflicting, *valid]},
+    )
+
+    assert batch.status_code == 200, batch.text
+    body = batch.json()
+    assert body["durable_accepted_count"] == 5
+    assert body["durable_conflict_count"] == 1
+    assert body["durable_conflict_event_ids"] == ["evt-conflict"]
+    feed = client.get("/v1/gateway/feed", headers=_headers(tenant_id), params={"limit": 20}).json()
+    by_id = {row["event_id"]: row for row in feed["events"]}
+    assert set(by_id) == {"evt-conflict", *(f"evt-valid-{index}" for index in range(5))}
+    assert by_id["evt-conflict"]["target"] == "read_file"

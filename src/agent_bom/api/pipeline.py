@@ -282,6 +282,43 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _record_graph_persistence(
+    job: ScanJob,
+    *,
+    status: str,
+    scan_id: str | None = None,
+    nodes: int | None = None,
+    edges: int | None = None,
+    lock: threading.Lock | None = None,
+) -> None:
+    """Expose graph persistence truth without leaking backend exceptions."""
+
+    def _record() -> None:
+        result = getattr(job, "result", None)
+        if not isinstance(result, dict):
+            return
+        current = result.get("graph_persistence")
+        # Delivery or post-persist bookkeeping can fail after the snapshot has
+        # committed. Never overwrite durable evidence with a false failure.
+        if status == "failed" and isinstance(current, dict) and current.get("status") == "persisted":
+            return
+        evidence: dict[str, Any] = {
+            "status": status,
+            "scan_id": scan_id or job.job_id,
+        }
+        if nodes is not None:
+            evidence["nodes"] = nodes
+        if edges is not None:
+            evidence["edges"] = edges
+        result["graph_persistence"] = evidence
+
+    if lock is None:
+        _record()
+    else:
+        with lock:
+            _record()
+
+
 def iter_pipeline_dag_event_records(
     progress_lines: Iterable[str],
     *,
@@ -607,6 +644,14 @@ def _persist_graph_snapshot(
 
         node_count = counts.get("nodes", len(graph.nodes))
         edge_count = counts.get("edges", len(graph.edges))
+        _record_graph_persistence(
+            job,
+            status="persisted",
+            scan_id=scan_id,
+            nodes=node_count,
+            edges=edge_count,
+            lock=lock,
+        )
         alerts = compute_delta_alerts_from_digest(prior_digest, graph)
         delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
         _logger.info(
@@ -1348,9 +1393,10 @@ def _run_scan_sync(job: ScanJob) -> None:
                         pipeline.update_step("output", "Persisting unified graph...")
                         _persist_graph_snapshot(job, report_json, lock=lock)
                     except Exception as graph_exc:  # noqa: BLE001
-                        _logger.warning("Unified graph persistence failed: %s", graph_exc)
+                        _logger.warning("Unified graph persistence failed: %s", sanitize_error(graph_exc, generic=True))
+                        _record_graph_persistence(job, status="failed", lock=lock)
                         with lock:
-                            job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
+                            job.progress.append("Graph persistence failed; scan evidence remains available")
                 pipeline.complete_step("output", "Report ready")
                 return
 
@@ -1638,9 +1684,10 @@ def _run_scan_sync(job: ScanJob) -> None:
                 pipeline.update_step("output", "Persisting unified graph...")
                 _persist_graph_snapshot(job, report_json, lock=lock)
             except Exception as graph_exc:  # noqa: BLE001
-                _logger.warning("Unified graph persistence failed: %s", graph_exc)
+                _logger.warning("Unified graph persistence failed: %s", sanitize_error(graph_exc, generic=True))
+                _record_graph_persistence(job, status="failed", lock=lock)
                 with lock:
-                    job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
+                    job.progress.append("Graph persistence failed; scan evidence remains available")
 
             try:
                 from agent_bom.asset_tracker import AssetTracker

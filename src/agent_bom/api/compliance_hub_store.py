@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, Protocol
 
@@ -90,6 +91,8 @@ _REACH_SORT_KEY = "__reach_sort__"
 # cursor until it has ``page_limit + 1`` matches or the stream is exhausted.
 _SCOPE_FILTER_MIN_BATCH = 200
 _SCOPE_FILTER_MAX_BATCH = 1000
+_SCOPE_FILTER_SCAN_BUDGET = 20_000
+_SCOPE_FILTER_DEADLINE_SECONDS = 1.5
 
 
 def scope_filter_batch_size(page_limit: int) -> int:
@@ -161,6 +164,9 @@ def collect_scope_filtered_page(
     start_cursor: str | None,
     sort: str,
     batch_size: int,
+    scan_budget: int = _SCOPE_FILTER_SCAN_BUDGET,
+    deadline_monotonic: float | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Collect one scope-filtered keyset page without materializing the table.
 
@@ -185,22 +191,52 @@ def collect_scope_filtered_page(
         return [], None
     matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
     batch_cursor = start_cursor
+    scanned_rows = 0
+    bounded = False
+    bound_reason = ""
+    deadline = deadline_monotonic or (time.monotonic() + _SCOPE_FILTER_DEADLINE_SECONDS)
+    last_scanned: dict[str, Any] | None = None
     while len(matches) <= page_limit:
-        items, batch_next = fetch_batch(batch_cursor, batch_size)
+        if scanned_rows >= scan_budget:
+            bounded = True
+            bound_reason = "scan_budget"
+            break
+        if time.monotonic() >= deadline:
+            bounded = True
+            bound_reason = "deadline"
+            break
+        items, batch_next = fetch_batch(batch_cursor, min(batch_size, scan_budget - scanned_rows))
         for current_row, enriched in items:
+            if scanned_rows >= scan_budget or time.monotonic() >= deadline:
+                bounded = True
+                bound_reason = "scan_budget" if scanned_rows >= scan_budget else "deadline"
+                break
+            scanned_rows += 1
+            last_scanned = current_row
             if predicate(enriched):
                 matches.append((current_row, enriched))
                 if len(matches) > page_limit:
                     break
-        if len(matches) > page_limit or batch_next is None:
+        if bounded or len(matches) > page_limit or batch_next is None:
             break
         batch_cursor = batch_next
-    has_more = len(matches) > page_limit
+    has_more = len(matches) > page_limit or bounded
     emitted = matches[:page_limit]
     payloads = [enriched for (_current, enriched) in emitted]
     next_cursor = None
-    if has_more and emitted:
-        next_cursor = cursor_from_current_row(emitted[-1][0], sort=sort)
+    if has_more:
+        cursor_row = emitted[-1][0] if emitted else last_scanned
+        if cursor_row is not None:
+            next_cursor = cursor_from_current_row(cursor_row, sort=sort)
+    if metadata is not None:
+        metadata.update(
+            {
+                "scanned_rows": scanned_rows,
+                "scan_budget": scan_budget,
+                "truncated": bounded,
+                "reason": bound_reason,
+            }
+        )
     return payloads, next_cursor
 
 

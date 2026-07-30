@@ -2227,7 +2227,7 @@ class TestGraphStoreBackendSelection:
             lambda token: tenant_context.append(("reset", token)),
         )
 
-        job = SimpleNamespace(job_id="job-123", tenant_id="default", progress=[])
+        job = SimpleNamespace(job_id="job-123", tenant_id="default", progress=[], result={})
         _persist_graph_snapshot(job, {"scan_id": "job-123"})
 
         # Write path now streams node/edge iterables into the store instead of
@@ -2238,6 +2238,26 @@ class TestGraphStoreBackendSelection:
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
         assert ("prior_delta_digest", "default", "store-scan") in recording_graph_store.calls
         assert tenant_context == [("set", "default"), ("reset", "tenant-token")]
+        assert job.result["graph_persistence"] == {
+            "status": "persisted",
+            "scan_id": "job-123",
+            "nodes": 1,
+            "edges": 0,
+        }
+
+    def test_graph_persistence_failure_is_visible_without_backend_details(self):
+        from agent_bom.api.pipeline import _record_graph_persistence
+
+        job = SimpleNamespace(job_id="job-failed", result={})
+
+        _record_graph_persistence(job, status="failed")
+
+        assert job.result == {
+            "graph_persistence": {
+                "status": "failed",
+                "scan_id": "job-failed",
+            }
+        }
 
     def test_graph_search_uses_store_native_query(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a", entity_type=EntityType.SERVER, label="agent-a server"))

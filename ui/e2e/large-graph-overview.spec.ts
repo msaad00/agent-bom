@@ -1,4 +1,4 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 const scanId = "scan-large-overview";
 const createdAt = "2026-05-08T16:00:00Z";
@@ -311,6 +311,18 @@ async function expectSigmaCanvases(page: Page) {
   expect(canvasSummary.drawable).toBeGreaterThan(0);
 }
 
+async function captureRenderedRegion(page: Page, region: Locator, path: string) {
+  const box = await region.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  await page.screenshot({
+    path,
+    animations: "disabled",
+    clip: box,
+    timeout: 15_000,
+  });
+}
+
 test("large graph overview renders above threshold", async ({ page }, testInfo: TestInfo) => {
   test.setTimeout(60_000);
   const failedGraphResponses: string[] = [];
@@ -330,10 +342,13 @@ test("large graph overview renders above threshold", async ({ page }, testInfo: 
   await expect(page.getByText(/Draw budget:/)).toBeVisible();
   await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
   await expectCanvasHasPixels(page);
-  await page.screenshot({ path: testInfo.outputPath("large-graph-overview.png"), fullPage: true });
-
   await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled({ timeout: 15_000 });
   expect(failedGraphResponses).toEqual([]);
+  await captureRenderedRegion(
+    page,
+    page.getByTestId("large-graph-overview"),
+    testInfo.outputPath("large-graph-overview.png"),
+  );
 });
 
 test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {
@@ -349,5 +364,5 @@ test("sigma webgl overview renders when explicitly requested", async ({ page }, 
   await expect(sigma.getByText("WebGL graph overview")).toBeVisible();
   await expect(sigma.getByText(/Sigma\.js renderer for broad estate scans/)).toBeVisible();
   await expectSigmaCanvases(page);
-  await page.screenshot({ path: testInfo.outputPath("sigma-webgl-overview.png"), fullPage: true });
+  await captureRenderedRegion(page, sigma, testInfo.outputPath("sigma-webgl-overview.png"));
 });

@@ -88,7 +88,8 @@ inflating trend queries (#3484).
 
 ## Why keep OCSF at all
 
-AWS Security Lake, Google Chronicle, and Microsoft Sentinel all
-standardize on OCSF. Dropping it eliminates a real enterprise-buyer
-checkbox for ~130 lines of optional code. Keeping it as an opt-in
-peripheral costs effectively zero and preserves integration upside.
+AWS Security Lake stores supported and custom-source security events in OCSF,
+and Google Security Operations can ingest OCSF JSON through its OCSF parser.
+Other SIEM paths remain connector-specific. Keeping OCSF as an optional
+projection preserves those interoperability paths without making it an
+internal dependency or implying that every destination standardizes on it.

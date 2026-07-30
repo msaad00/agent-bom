@@ -193,6 +193,47 @@ def test_facets_exclude_only_their_own_active_dimension() -> None:
     assert body["facets"]["domain"]["aspm"] == 1
 
 
+def test_facet_walk_is_single_pass_and_marks_scan_budget_partial(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.routes.scan import _finding_facets_bounded
+
+    calls = 0
+
+    def _rows(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        for index in range(10):
+            yield {
+                "id": f"finding-{index}",
+                "finding_type": "CVE",
+                "source": "SBOM",
+                "severity": "high",
+            }
+
+    monkeypatch.setattr("agent_bom.export.runner.iter_current_findings", _rows)
+
+    facets, total, metadata = _finding_facets_bounded(
+        "tenant-bounded-facets",
+        severity=None,
+        scan_id=None,
+        since=None,
+        scope={},
+        status="open",
+        scan_budget=3,
+        deadline_seconds=60,
+    )
+
+    assert calls == 1
+    assert total == 3
+    assert facets["severity"]["high"] == 3
+    assert metadata == {
+        "status": "partial",
+        "reason": "scan_budget",
+        "scanned_rows": 3,
+        "scan_budget": 3,
+        "deadline_ms": 60_000,
+    }
+
+
 def test_async_export_uses_the_same_finding_predicates(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -36,6 +36,7 @@ from agent_bom.api.export_destination_store import (
 )
 from agent_bom.api.export_schedule_store import ExportSchedule, get_export_schedule_store
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenant_worker import submit_tenant_bound
 from agent_bom.export.destinations import SUPPORTED_EXPORT_KINDS, ExportPublicationIndeterminateError
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
@@ -167,7 +168,7 @@ async def run_export_destination(request: Request, destination_id: str, _role: A
     from agent_bom.api.pipeline import get_executor
 
     run_id = uuid.uuid4().hex
-    get_executor().submit(_run_export_sync, tenant_id, destination_id, run_id)
+    submit_tenant_bound(get_executor(), tenant_id, _run_export_sync, tenant_id, destination_id, run_id)
     log_action(
         "export_destination.run", actor=_actor(request), resource=f"export-destination/{destination_id}", tenant_id=tenant_id, run_id=run_id
     )

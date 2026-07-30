@@ -42,6 +42,43 @@ def _small_graph(scan_id: str = "scale-scan") -> UnifiedGraph:
     return g
 
 
+@pytest.mark.parametrize("edge_count", [10_000, 50_000])
+def test_two_large_sqlite_snapshots_persist_without_silent_second_write_loss(tmp_path, edge_count):
+    """Keep a permanent reproduction for the reported ~7k-edge second-write loss."""
+    store = SQLiteGraphStore(tmp_path / f"sequential-{edge_count}.db")
+    node_count = 225
+    graph = UnifiedGraph(scan_id="large-first", tenant_id="tenant-scale")
+    for index in range(node_count):
+        graph.add_node(UnifiedNode(id=f"agent:{index}", entity_type=EntityType.AGENT, label=f"Agent {index}"))
+    created = 0
+    for source in range(node_count):
+        for target in range(node_count):
+            if source == target:
+                continue
+            graph.add_edge(
+                UnifiedEdge(
+                    source=f"agent:{source}",
+                    target=f"agent:{target}",
+                    relationship=RelationshipType.DELEGATED_TO,
+                )
+            )
+            created += 1
+            if created == edge_count:
+                break
+        if created == edge_count:
+            break
+
+    store.save_graph(graph)
+    graph.scan_id = "large-second"
+    store.save_graph(graph)
+
+    first = store.snapshot_stats(tenant_id="tenant-scale", scan_id="large-first")
+    second = store.snapshot_stats(tenant_id="tenant-scale", scan_id="large-second")
+    assert first["total_edges"] == edge_count
+    assert second["total_edges"] == edge_count
+    assert second["total_nodes"] == node_count
+
+
 # ── FIX 1: snapshot_stats reads the materialised snapshot counts ──────────────
 
 

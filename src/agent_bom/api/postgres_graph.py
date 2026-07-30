@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.api.graph_store import (
+    _DYNAMIC_RELATIONSHIP_VALUES,
     MAX_NODE_PAGE_OFFSET,
     _escape_like_query,
     _node_search_text,
@@ -1239,6 +1240,242 @@ class PostgresGraphStore:
             ).fetchall()
         return [self._node_from_row(row) for row in rows]
 
+    @staticmethod
+    def _edge_from_row(row: Sequence[Any]) -> Any:
+        from agent_bom.graph import RelationshipType, UnifiedEdge
+
+        return UnifiedEdge(
+            source=row[0],
+            target=row[1],
+            relationship=RelationshipType(row[2]),
+            direction=row[3],
+            weight=row[4],
+            traversable=bool(row[5]),
+            first_seen=row[6],
+            last_seen=row[7],
+            valid_from=row[8] or row[6],
+            valid_to=row[9],
+            confidence=row[10],
+            provenance=_decode_json_object(row[11], field="edge provenance"),
+            source_scan_id=row[12] or row[16],
+            source_run_id=row[13] or "",
+            evidence=_decode_json_object(row[14], field="edge evidence"),
+            activity_id=row[15],
+        )
+
+    @staticmethod
+    def _reverse_edge(edge: Any) -> Any:
+        from agent_bom.graph import UnifiedEdge
+
+        return UnifiedEdge(
+            source=edge.target,
+            target=edge.source,
+            relationship=edge.relationship,
+            direction=edge.direction,
+            weight=edge.weight,
+            traversable=edge.traversable,
+            first_seen=edge.first_seen,
+            last_seen=edge.last_seen,
+            valid_from=edge.valid_from,
+            valid_to=edge.valid_to,
+            confidence=edge.confidence,
+            provenance=edge.provenance,
+            source_scan_id=edge.source_scan_id,
+            source_run_id=edge.source_run_id,
+            evidence=edge.evidence,
+            activity_id=edge.activity_id,
+        )
+
+    def _filtered_edge_rows(
+        self,
+        conn: Any,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        frontier: set[str],
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+        limit: int = 25_001,
+    ) -> list[Sequence[Any]]:
+        if not frontier:
+            return []
+        placeholders = ",".join("%s" for _ in frontier)
+        where = [
+            "tenant_id = %s",
+            "scan_id = %s",
+            f"(source_id IN ({placeholders}) OR target_id IN ({placeholders}))",
+        ]
+        params: list[Any] = [tenant_id, scan_id, *sorted(frontier), *sorted(frontier)]
+        if traversable_only:
+            where.append("traversable = 1")
+        if relationship_types:
+            values = sorted(rel.value if hasattr(rel, "value") else str(rel) for rel in relationship_types)
+            rel_placeholders = ",".join("%s" for _ in values)
+            where.append(f"relationship IN ({rel_placeholders})")
+            params.extend(values)
+        if static_only:
+            dynamic_placeholders = ",".join("%s" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
+            where.append(f"relationship NOT IN ({dynamic_placeholders})")
+            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        if dynamic_only:
+            dynamic_placeholders = ",".join("%s" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
+            where.append(f"relationship IN ({dynamic_placeholders})")
+            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        params.append(max(1, int(limit)))
+        return cast(
+            "list[Sequence[Any]]",
+            conn.execute(
+                f"""
+                SELECT source_id, target_id, relationship, direction, weight, traversable,
+                       first_seen, last_seen, valid_from, valid_to, confidence, provenance,
+                       source_scan_id, source_run_id, evidence, activity_id, scan_id
+                FROM graph_edges
+                WHERE {" AND ".join(where)}
+                ORDER BY source_id, target_id, relationship
+                LIMIT %s
+                """,  # nosec B608 - clauses and placeholders are generated internally
+                params,
+            ).fetchall(),
+        )
+
+    def _walk_graph(
+        self,
+        conn: Any,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        roots: list[str],
+        direction: str,
+        max_depth: int,
+        max_nodes: int,
+        max_edges: int,
+        deadline_monotonic: float | None,
+        traversable_only: bool,
+        relationship_types: set[RelationshipType] | None,
+        static_only: bool,
+        dynamic_only: bool,
+        include_roots: bool,
+    ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], Any], dict[str, str], list[str], bool]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        effective_scan_id = scan_id
+        if not effective_scan_id:
+            latest = conn.execute(
+                """
+                SELECT scan_id
+                FROM graph_snapshots
+                WHERE tenant_id = %s
+                ORDER BY created_at DESC, scan_id DESC
+                LIMIT 1
+                """,
+                (tenant_id,),
+            ).fetchone()
+            effective_scan_id = str(latest[0]) if latest else ""
+        if not effective_scan_id:
+            return scan_id, "", set(), {}, {}, {}, [], False
+        snapshot = conn.execute(
+            "SELECT created_at FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+            (tenant_id, effective_scan_id),
+        ).fetchone()
+        placeholders = ",".join("%s" for _ in roots)
+        existing_roots: set[str] = set()
+        if roots:
+            existing_roots = {
+                str(row[0])
+                for row in conn.execute(
+                    f"SELECT id FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s AND id IN ({placeholders})",  # nosec B608
+                    [tenant_id, effective_scan_id, *roots],
+                ).fetchall()
+            }
+
+        visited: set[str] = set()
+        depth_by_node: dict[str, int] = {}
+        traversed_edges: dict[tuple[str, str, str], Any] = {}
+        parent_by_node: dict[str, str] = {}
+        discovery_order: list[str] = []
+        queue: list[tuple[str, int]] = []
+        for root in roots:
+            if root not in existing_roots:
+                continue
+            queue.append((root, 0))
+            depth_by_node[root] = 0
+            if include_roots:
+                visited.add(root)
+
+        truncated = False
+        edge_count = 0
+        index = 0
+        while index < len(queue):
+            if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+                truncated = True
+                break
+            current, depth = queue[index]
+            index += 1
+            if depth >= max_depth:
+                continue
+            rows = self._filtered_edge_rows(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                frontier={current},
+                traversable_only=traversable_only,
+                relationship_types=relationship_types,
+                static_only=static_only,
+                dynamic_only=dynamic_only,
+                limit=max_edges - edge_count + 1,
+            )
+            for row in rows:
+                edge = self._edge_from_row(row)
+                candidates: list[str] = []
+                if direction in {"forward", "both"}:
+                    if edge.source == current:
+                        candidates.append(edge.target)
+                    elif edge.is_bidirectional and edge.target == current:
+                        candidates.append(edge.source)
+                if direction in {"reverse", "both"}:
+                    if edge.target == current:
+                        candidates.append(edge.source)
+                    elif edge.is_bidirectional and edge.source == current:
+                        candidates.append(edge.target)
+                if not candidates:
+                    continue
+                edge_count += 1
+                if edge_count > max_edges:
+                    truncated = True
+                    break
+                relationship = edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
+                traversed_edges.setdefault((edge.source, edge.target, relationship), edge)
+                for neighbor in candidates:
+                    if neighbor in visited:
+                        continue
+                    if len(visited) >= max_nodes:
+                        truncated = True
+                        continue
+                    visited.add(neighbor)
+                    depth_by_node[neighbor] = depth + 1
+                    parent_by_node.setdefault(neighbor, current)
+                    discovery_order.append(neighbor)
+                    queue.append((neighbor, depth + 1))
+            if truncated and (
+                edge_count > max_edges
+                or (deadline_monotonic is not None and time.monotonic() >= deadline_monotonic)
+            ):
+                break
+
+        if include_roots:
+            visited.update(existing_roots)
+        return (
+            effective_scan_id,
+            str(snapshot[0]) if snapshot else "",
+            visited,
+            depth_by_node,
+            traversed_edges,
+            parent_by_node,
+            discovery_order,
+            truncated,
+        )
+
     def bfs_paths(
         self,
         *,
@@ -1249,17 +1486,40 @@ class PostgresGraphStore:
         traversable_only: bool = True,
     ) -> tuple[list[list[str]], set[str]]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
-        if not graph.has_node(source):
+        timeout_ms = _graph_search_timeout_ms()
+        deadline = time.monotonic() + (timeout_ms / 1000) if timeout_ms else None
+        with _tenant_connection(self._pool) as conn:
+            _apply_graph_search_timeout(conn)
+            _, _, visited, _, _, parents, order, _ = self._walk_graph(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                roots=[source],
+                direction="forward",
+                max_depth=max_depth,
+                max_nodes=5000,
+                max_edges=25_000,
+                deadline_monotonic=deadline,
+                traversable_only=traversable_only,
+                relationship_types=None,
+                static_only=False,
+                dynamic_only=False,
+                include_roots=True,
+            )
+        if source not in visited:
             return [], set()
-        paths = graph.bfs(source, max_depth=max_depth, traversable_only=traversable_only)
-        reachable = graph.reachable_from(
-            source,
-            max_depth=max_depth,
-            traversable_only=traversable_only,
-            include_source=False,
-        )
-        return paths, reachable
+        paths: list[list[str]] = []
+        for node_id in order:
+            path = [node_id]
+            current = node_id
+            while current in parents:
+                current = parents[current]
+                path.append(current)
+            path.reverse()
+            if path and path[0] == source:
+                paths.append(path)
+        visited.discard(source)
+        return paths, visited
 
     def impact_of(
         self,
@@ -1270,10 +1530,42 @@ class PostgresGraphStore:
         max_depth: int = 4,
     ) -> dict[str, Any] | None:
         tenant_id = normalize_graph_tenant_id(tenant_id)
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
-        if not graph.has_node(node_id):
+        timeout_ms = _graph_search_timeout_ms()
+        deadline = time.monotonic() + (timeout_ms / 1000) if timeout_ms else None
+        with _tenant_connection(self._pool) as conn:
+            _apply_graph_search_timeout(conn)
+            effective_scan_id, _, visited, depths, _, _, _, truncated = self._walk_graph(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                roots=[node_id],
+                direction="reverse",
+                max_depth=max_depth,
+                max_nodes=5000,
+                max_edges=25_000,
+                deadline_monotonic=deadline,
+                traversable_only=False,
+                relationship_types=None,
+                static_only=False,
+                dynamic_only=False,
+                include_roots=True,
+            )
+        if node_id not in visited:
             return None
-        return graph.impact_of(node_id, max_depth=max_depth)
+        affected = sorted(visited - {node_id})
+        rows = self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=set(affected))
+        by_type: dict[str, int] = {}
+        for node in rows:
+            entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+            by_type[entity_type] = by_type.get(entity_type, 0) + 1
+        return {
+            "node_id": node_id,
+            "affected_nodes": affected,
+            "affected_by_type": by_type,
+            "affected_count": len(affected),
+            "max_depth_reached": max((depths.get(value, 0) for value in affected), default=0),
+            "completeness": "partial" if truncated else "complete",
+        }
 
     def traverse_subgraph(
         self,
@@ -1293,20 +1585,37 @@ class PostgresGraphStore:
         include_roots: bool = True,
     ) -> tuple[Any, dict[str, int], bool]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
-        return graph.traverse_subgraph(
-            roots,
-            direction=direction,
-            max_depth=max_depth,
-            max_nodes=max_nodes,
-            max_edges=max_edges,
-            deadline_monotonic=deadline_monotonic,
-            traversable_only=traversable_only,
-            relationship_types=relationship_types,
-            static_only=static_only,
-            dynamic_only=dynamic_only,
-            include_roots=include_roots,
-        )
+        timeout_ms = _graph_search_timeout_ms()
+        query_deadline = time.monotonic() + (timeout_ms / 1000) if timeout_ms else None
+        if deadline_monotonic is not None:
+            query_deadline = min(query_deadline, deadline_monotonic) if query_deadline is not None else deadline_monotonic
+        with _tenant_connection(self._pool) as conn:
+            _apply_graph_search_timeout(conn)
+            effective_scan_id, created_at, visited, depths, edges, _, _, truncated = self._walk_graph(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                roots=roots,
+                direction=direction,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                max_edges=max_edges,
+                deadline_monotonic=query_deadline,
+                traversable_only=traversable_only,
+                relationship_types=relationship_types,
+                static_only=static_only,
+                dynamic_only=dynamic_only,
+                include_roots=include_roots,
+            )
+        from agent_bom.graph import UnifiedGraph
+
+        graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
+        for node in self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=visited):
+            graph.add_node(node)
+        for edge in edges.values():
+            if edge.source in graph.nodes and edge.target in graph.nodes:
+                graph.add_edge(edge)
+        return graph, depths, truncated
 
     def attack_paths_for_sources(
         self,
@@ -1417,17 +1726,57 @@ class PostgresGraphStore:
         node_id: str,
     ) -> dict[str, Any] | None:
         tenant_id = normalize_graph_tenant_id(tenant_id)
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
-        node = graph.get_node(node_id)
-        if not node:
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
             return None
+        nodes = self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids={node_id})
+        if not nodes:
+            return None
+        with _tenant_connection(self._pool) as conn:
+            _apply_graph_search_timeout(conn)
+            rows = conn.execute(
+                """
+                SELECT source_id, target_id, relationship, direction, weight, traversable,
+                       first_seen, last_seen, valid_from, valid_to, confidence, provenance,
+                       source_scan_id, source_run_id, evidence, activity_id, scan_id
+                FROM graph_edges
+                WHERE tenant_id = %s AND scan_id = %s AND (source_id = %s OR target_id = %s)
+                ORDER BY source_id, target_id, relationship
+                LIMIT 10001
+                """,
+                (tenant_id, effective_scan_id, node_id, node_id),
+            ).fetchall()
+        truncated = len(rows) > 10_000
+        edges_out: list[Any] = []
+        edges_in: list[Any] = []
+        neighbors: list[str] = []
+        sources: list[str] = []
+        for row in rows[:10_000]:
+            edge = self._edge_from_row(row)
+            if edge.source == node_id:
+                edges_out.append(edge)
+                neighbors.append(edge.target)
+                if edge.is_bidirectional:
+                    edges_in.append(self._reverse_edge(edge))
+                    sources.append(edge.target)
+            if edge.target == node_id:
+                edges_in.append(edge)
+                sources.append(edge.source)
+                if edge.is_bidirectional:
+                    edges_out.append(self._reverse_edge(edge))
+                    neighbors.append(edge.source)
         return {
-            "node": node,
-            "edges_out": graph.edges_from(node_id),
-            "edges_in": graph.edges_to(node_id),
-            "neighbors": graph.neighbors(node_id),
-            "sources": graph.sources_of(node_id),
-            "impact": graph.impact_of(node_id),
+            "node": nodes[0],
+            "edges_out": edges_out,
+            "edges_in": edges_in,
+            "neighbors": neighbors,
+            "sources": sources,
+            "impact": self.impact_of(tenant_id=tenant_id, scan_id=effective_scan_id, node_id=node_id),
+            "completeness": {
+                "status": "partial" if truncated else "complete",
+                "reason": "edge_budget" if truncated else "",
+                "edge_budget": 10_000,
+            },
         }
 
     def compliance_summary(
@@ -1440,7 +1789,35 @@ class PostgresGraphStore:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         from collections import defaultdict
 
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return {
+                "scan_id": scan_id,
+                "framework_count": 0,
+                "total_tagged_findings": 0,
+                "frameworks": {},
+                "completeness": {
+                    "status": "complete",
+                    "reason": "",
+                    "node_budget": 50_000,
+                },
+            }
+        compliance_node_budget = 50_000
+        with _tenant_connection(self._pool) as conn:
+            _apply_graph_search_timeout(conn)
+            rows = conn.execute(
+                """
+                SELECT id, entity_type, severity, compliance_tags
+                FROM graph_nodes
+                WHERE tenant_id = %s AND scan_id = %s
+                  AND compliance_tags IS NOT NULL
+                  AND compliance_tags <> '[]'
+                ORDER BY id
+                LIMIT %s
+                """,
+                (tenant_id, effective_scan_id, compliance_node_budget + 1),
+            ).fetchall()
+        truncated = len(rows) > compliance_node_budget
         framework_stats: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "total_findings": 0,
@@ -1451,21 +1828,22 @@ class PostgresGraphStore:
             }
         )
 
-        for node in graph.nodes.values():
-            if not node.compliance_tags:
+        for row in rows[:compliance_node_budget]:
+            tags = _decode_json_array(row[3], field="node compliance tags")
+            if not tags:
                 continue
-            for tag in node.compliance_tags:
+            for tag_value in tags:
+                tag = str(tag_value)
                 prefix = tag.split("-")[0].upper() if "-" in tag else tag.upper()
                 if framework and framework.upper() != prefix:
                     continue
                 stats = framework_stats[prefix]
                 stats["total_findings"] += 1
-                stats["by_severity"][node.severity or "unknown"] += 1
-                entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
-                stats["by_entity_type"][entity_type] += 1
+                stats["by_severity"][row[2] or "unknown"] += 1
+                stats["by_entity_type"][str(row[1])] += 1
                 stats["tags"].add(tag)
-                if node.id not in stats["node_ids"]:
-                    stats["node_ids"].append(node.id)
+                if row[0] not in stats["node_ids"]:
+                    stats["node_ids"].append(row[0])
 
         frameworks: dict[str, Any] = {}
         for name, stats in sorted(framework_stats.items()):
@@ -1479,10 +1857,15 @@ class PostgresGraphStore:
             }
 
         return {
-            "scan_id": graph.scan_id,
+            "scan_id": effective_scan_id,
             "framework_count": len(frameworks),
             "total_tagged_findings": sum(stats["total_findings"] for stats in frameworks.values()),
             "frameworks": frameworks,
+            "completeness": {
+                "status": "partial" if truncated else "complete",
+                "reason": "node_budget" if truncated else "",
+                "node_budget": compliance_node_budget,
+            },
         }
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:

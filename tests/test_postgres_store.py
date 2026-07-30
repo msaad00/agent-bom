@@ -1710,6 +1710,32 @@ def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, mock_maintenance_po
     assert "id IN" in select_sql
 
 
+def test_graph_hot_paths_never_materialize_the_full_postgres_snapshot(mock_pool, mock_maintenance_pool, monkeypatch):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+    store = PostgresGraphStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    graph = UnifiedGraph(scan_id="scan-hot-path", tenant_id="tenant-alpha")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+    store.save_graph(graph)
+
+    def _fail_load_graph(**_kwargs):
+        raise AssertionError("Postgres graph hot paths must use bounded table queries")
+
+    monkeypatch.setattr(store, "load_graph", _fail_load_graph)
+
+    store.bfs_paths(tenant_id="tenant-alpha", scan_id="scan-hot-path", source="agent:a")
+    store.impact_of(tenant_id="tenant-alpha", scan_id="scan-hot-path", node_id="agent:a")
+    store.traverse_subgraph(tenant_id="tenant-alpha", scan_id="scan-hot-path", roots=["agent:a"])
+    store.node_context(tenant_id="tenant-alpha", scan_id="scan-hot-path", node_id="agent:a")
+    store.compliance_summary(tenant_id="tenant-alpha", scan_id="scan-hot-path")
+
+    sql = "\n".join(statement for statement, _params in mock_pool._conn.executed)
+    assert "FROM graph_edges" in sql
+    assert "FROM graph_nodes" in sql
+    assert "statement_timeout" in sql
+
+
 def test_graph_store_save_graph_batches_postgres_writes(mock_pool, mock_maintenance_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode

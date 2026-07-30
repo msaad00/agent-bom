@@ -1762,6 +1762,8 @@ _DEFAULT_FINDING_STATUS = "open"
 _ALLOWED_FINDING_SEVERITIES = FINDING_SEVERITY_FILTERS
 
 _FRESHNESS_BUCKETS = ("last_24_hours", "last_7_days", "last_30_days", "older", "unavailable")
+_FACET_SCAN_BUDGET = 50_000
+_FACET_DEADLINE_SECONDS = 1.5
 
 
 def _freshness_bucket(row: Mapping[str, Any], *, now: datetime | None = None) -> str:
@@ -1795,12 +1797,36 @@ def _finding_facets(
     scope: Mapping[str, str],
     status: str,
 ) -> tuple[dict[str, dict[str, int]], int]:
-    """Compute exact, self-excluding facets from the canonical finding stream.
+    facets, total, _metadata = _finding_facets_bounded(
+        tenant_id,
+        severity=severity,
+        scan_id=scan_id,
+        since=since,
+        scope=scope,
+        status=status,
+    )
+    return facets, total
 
-    This is intentionally opt-in at the route: each dimension needs its own
-    bounded keyset walk so selecting one value does not erase alternative values
-    in that dimension. The same iterator and predicates power async export.
+
+def _finding_facets_bounded(
+    tenant_id: str,
+    *,
+    severity: str | None,
+    scan_id: str | None,
+    since: str | None,
+    scope: Mapping[str, str],
+    status: str,
+    scan_budget: int = _FACET_SCAN_BUDGET,
+    deadline_seconds: float = _FACET_DEADLINE_SECONDS,
+) -> tuple[dict[str, dict[str, int]], int, dict[str, Any]]:
+    """Compute self-excluding facets in one bounded canonical-stream pass.
+
+    A row is tested against every dimension's self-excluding predicate while it
+    is resident, avoiding four full tenant walks. When the row/deadline budget
+    is reached the counts remain useful lower-bound evidence and are explicitly
+    marked approximate by the caller.
     """
+    from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.export.runner import iter_current_findings
     from agent_bom.finding_scope import FINDING_CLASSES, SECURITY_DOMAINS, finding_class_for_row, lenses_for_row
 
@@ -1813,69 +1839,73 @@ def _finding_facets(
     freshness_counts: dict[str, int] = {key: 0 for key in _FRESHNESS_BUCKETS}
 
     class_scope = dict(scope)
-    active_class = class_scope.pop("finding_class", None)
+    class_scope.pop("finding_class", None)
+    domain_scope = dict(scope)
+    domain_scope.pop("domain", None)
+    full_scope = dict(scope)
+    base_scope = dict(full_scope)
+    base_scope.pop("finding_class", None)
+    base_scope.pop("domain", None)
     total = 0
-    for row in iter_current_findings(
-        tenant_id,
-        severity=severity,
-        since=since,
-        scan_id=scan_id,
-        scope=class_scope,
-        status=status,
-    ):
-        finding_class = finding_class_for_row(row)
-        class_counts[finding_class] += 1
-        if active_class is None or finding_class == active_class:
-            total += 1
-            freshness_counts[_freshness_bucket(row)] += 1
-
+    scanned_rows = 0
+    truncated = False
+    reason = ""
+    deadline = time.monotonic() + max(0.001, deadline_seconds)
     for row in iter_current_findings(
         tenant_id,
         severity=None,
         since=since,
         scan_id=scan_id,
-        scope=scope,
-        status=status,
-    ):
-        value = str(row.get("severity") or "unknown").strip().lower()
-        if value == "informational":
-            value = "info"
-        if value not in severity_counts:
-            value = "unknown"
-        severity_counts[value] += 1
-
-    for row in iter_current_findings(
-        tenant_id,
-        severity=severity,
-        since=since,
-        scan_id=scan_id,
-        scope=scope,
+        scope=base_scope,
         status="all",
     ):
-        value = "resolved" if str(row.get("status") or "").strip().lower() == "resolved" else "open"
-        status_counts[value] += 1
+        if scanned_rows >= scan_budget or time.monotonic() >= deadline:
+            truncated = True
+            reason = "scan_budget" if scanned_rows >= scan_budget else "deadline"
+            break
+        scanned_rows += 1
+        finding_class = finding_class_for_row(row)
+        row_severity = str(row.get("severity") or "unknown").strip().lower()
+        if row_severity == "informational":
+            row_severity = "info"
+        if row_severity not in severity_counts:
+            row_severity = "unknown"
+        severity_matches = severity is None or row_severity == severity.lower()
+        status_matches_active = status_matches(row, status)
+        full_scope_matches = _row_matches_scope(row, full_scope)
 
-    domain_scope = dict(scope)
-    domain_scope.pop("domain", None)
-    for row in iter_current_findings(
-        tenant_id,
-        severity=severity,
-        since=since,
-        scan_id=scan_id,
-        scope=domain_scope,
-        status=status,
-    ):
-        for value in lenses_for_row(row):
-            if value in domain_counts:
-                domain_counts[value] += 1
+        if severity_matches and status_matches_active and _row_matches_scope(row, class_scope):
+            class_counts[finding_class] += 1
+        if status_matches_active and full_scope_matches:
+            severity_counts[row_severity] += 1
+        if severity_matches and full_scope_matches:
+            row_status = "resolved" if str(row.get("status") or "").strip().lower() == "resolved" else "open"
+            status_counts[row_status] += 1
+        if severity_matches and status_matches_active and _row_matches_scope(row, domain_scope):
+            for value in lenses_for_row(row):
+                if value in domain_counts:
+                    domain_counts[value] += 1
+        if severity_matches and status_matches_active and full_scope_matches:
+            total += 1
+            freshness_counts[_freshness_bucket(row)] += 1
 
-    return {
-        "finding_class": class_counts,
-        "severity": severity_counts,
-        "status": status_counts,
-        "domain": domain_counts,
-        "freshness": freshness_counts,
-    }, total
+    return (
+        {
+            "finding_class": class_counts,
+            "severity": severity_counts,
+            "status": status_counts,
+            "domain": domain_counts,
+            "freshness": freshness_counts,
+        },
+        total,
+        {
+            "status": "partial" if truncated else "complete",
+            "reason": reason,
+            "scanned_rows": scanned_rows,
+            "scan_budget": scan_budget,
+            "deadline_ms": int(deadline_seconds * 1000),
+        },
+    )
 
 
 def _canonical_scope_filters(
@@ -2567,8 +2597,9 @@ def _list_findings_impl(
             next_cursor = encode_merged_scan_cursor(sort=sort_key, scan_index=end, bulk_cursor="")
 
     facets: dict[str, dict[str, int]] | None = None
+    facet_completeness: dict[str, Any] | None = None
     if include_facets:
-        facets, total = _finding_facets(
+        facets, total, facet_completeness = _finding_facets_bounded(
             tenant_id,
             severity=severity,
             scan_id=scan_id,
@@ -2576,7 +2607,7 @@ def _list_findings_impl(
             scope=scope_filters,
             status=status_key,
         )
-        total_approximate = False
+        total_approximate = facet_completeness["status"] != "complete"
 
     try:
         reachability = project_persisted_graph_reachability(
@@ -2621,13 +2652,14 @@ def _list_findings_impl(
     envelope["window"] = time_window.window_metadata(resolved_window)
     if facets is not None:
         envelope["facets"] = facets
-        envelope["facets_approximate"] = False
+        envelope["facets_approximate"] = bool(facet_completeness and facet_completeness["status"] != "complete")
         envelope["facet_metadata"] = {
             "freshness": {
                 "basis": ["last_observed", "last_seen"],
                 "thresholds_hours": [24, 168, 720],
                 "missing_or_invalid": "unavailable",
-            }
+            },
+            "completeness": facet_completeness,
         }
     return envelope
 

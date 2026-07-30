@@ -40,6 +40,12 @@ BLOCKING_MODULE_ROOTS = {"requests", "urllib", "socket", "httpx"}
 # Exact dotted callables that block.
 BLOCKING_DOTTED = {"time.sleep"}
 
+# Imported functions whose implementation is known to perform blocking IO.
+BLOCKING_IMPORTED_CALLS = {"agent_bom.intel_lookup.list_intel_sources"}
+
+# Heavy sync helpers defined in the route module itself.
+BLOCKING_LOCAL_CALLS = {"_build_agents_response"}
+
 # Any ``<obj>.health_check()`` is a sync connector probe (SIEM, ticketing, …).
 BLOCKING_ATTR_CALLS = {"health_check"}
 
@@ -73,9 +79,29 @@ def _callable_name(node: ast.AST) -> str:
     return ""
 
 
+def _import_aliases(tree: ast.Module) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                if alias.name != "*":
+                    aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                aliases[alias.asname or alias.name.split(".", 1)[0]] = alias.name
+    return aliases
+
+
+def _resolve_dotted(dotted: str, aliases: dict[str, str]) -> str:
+    root, separator, remainder = dotted.partition(".")
+    resolved_root = aliases.get(root, root)
+    return f"{resolved_root}.{remainder}" if separator else resolved_root
+
+
 class _BlockingCallFinder(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, aliases: dict[str, str]) -> None:
         self.violations: list[tuple[int, str]] = []
+        self.aliases = aliases
 
     # Nested sync defs are the offload bodies handed to to_thread — worker-thread code.
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -87,11 +113,14 @@ class _BlockingCallFinder(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         dotted = _dotted(func)
-        root = dotted.split(".", 1)[0]
+        resolved = _resolve_dotted(dotted, self.aliases)
+        root = resolved.split(".", 1)[0]
         if root in BLOCKING_MODULE_ROOTS:
-            self.violations.append((node.lineno, dotted))
-        if dotted in BLOCKING_DOTTED:
-            self.violations.append((node.lineno, dotted))
+            self.violations.append((node.lineno, resolved))
+        if resolved in BLOCKING_DOTTED or resolved in BLOCKING_IMPORTED_CALLS:
+            self.violations.append((node.lineno, resolved))
+        if isinstance(func, ast.Name) and func.id in BLOCKING_LOCAL_CALLS:
+            self.violations.append((node.lineno, func.id))
         if isinstance(func, ast.Attribute):
             if func.attr in BLOCKING_ATTR_CALLS:
                 self.violations.append((node.lineno, f"{dotted}()"))
@@ -116,8 +145,9 @@ def test_async_route_handlers_never_call_blocking_work_on_the_loop():
     violations: list[str] = []
     for path in sorted(ROUTES_DIR.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        aliases = _import_aliases(tree)
         for handler in _iter_route_handlers(tree):
-            finder = _BlockingCallFinder()
+            finder = _BlockingCallFinder(aliases)
             for stmt in handler.body:
                 finder.visit(stmt)
             violations.extend(f"{path.name}:{lineno} {handler.name}: {what}" for lineno, what in finder.violations)
@@ -125,6 +155,22 @@ def test_async_route_handlers_never_call_blocking_work_on_the_loop():
         "Blocking call(s) running directly on the event loop in async route handlers "
         "(offload via anyio.to_thread.run_sync / asyncio.to_thread):\n" + "\n".join(violations)
     )
+
+
+def test_imported_blocking_callable_alias_is_detected() -> None:
+    tree = ast.parse(
+        """
+from agent_bom.intel_lookup import list_intel_sources as sources
+
+async def handler():
+    return sources()
+"""
+    )
+    handler = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef))
+    finder = _BlockingCallFinder(_import_aliases(tree))
+    for statement in handler.body:
+        finder.visit(statement)
+    assert finder.violations == [(5, "agent_bom.intel_lookup.list_intel_sources")]
 
 
 async def _trivial() -> str:
@@ -162,3 +208,47 @@ async def test_slow_siem_health_check_keeps_event_loop_responsive(monkeypatch):
 
     result = await task
     assert result == {"siem_type": "splunk", "healthy": True}
+
+
+@pytest.mark.asyncio
+async def test_slow_intel_source_listing_keeps_event_loop_responsive(monkeypatch):
+    from agent_bom.api.routes import intel
+
+    block_seconds = 0.5
+
+    def _slow_sources() -> dict[str, object]:
+        time.sleep(block_seconds)
+        return {"sources": []}
+
+    monkeypatch.setattr(intel, "list_intel_sources", _slow_sources)
+    task = asyncio.create_task(intel.get_intel_sources())
+    await asyncio.sleep(0.05)
+    assert not task.done(), "source listing should still be in flight"
+
+    started = asyncio.get_running_loop().time()
+    assert await asyncio.wait_for(_trivial(), timeout=0.15) == "responsive"
+    assert asyncio.get_running_loop().time() - started < block_seconds / 2
+    assert await task == {"sources": []}
+
+
+@pytest.mark.asyncio
+async def test_slow_agent_discovery_keeps_event_loop_responsive(monkeypatch):
+    from agent_bom.api.routes import discovery
+
+    block_seconds = 0.5
+
+    def _slow_agents(_tenant_id: str) -> dict[str, object]:
+        time.sleep(block_seconds)
+        return {"agents": [], "count": 0}
+
+    discovery._clear_agents_response_cache_for_tests()
+    monkeypatch.setattr(discovery, "_tenant_id", lambda _request: "tenant-agents")
+    monkeypatch.setattr(discovery, "_build_agents_response", _slow_agents)
+    task = asyncio.create_task(discovery.list_agents(SimpleNamespace(), refresh=True))
+    await asyncio.sleep(0.05)
+    assert not task.done(), "agent discovery should still be in flight"
+
+    started = asyncio.get_running_loop().time()
+    assert await asyncio.wait_for(_trivial(), timeout=0.15) == "responsive"
+    assert asyncio.get_running_loop().time() - started < block_seconds / 2
+    assert await task == {"agents": [], "count": 0}

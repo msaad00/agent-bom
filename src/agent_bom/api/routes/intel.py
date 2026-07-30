@@ -40,8 +40,12 @@ class IntelDailyBriefRequest(BaseModel):
 async def get_intel_sources() -> dict[str, Any]:
     """Return canonical threat-intel source and feed-run metadata."""
 
-    result: dict[str, Any] = list_intel_sources()
-    return result
+    try:
+        async with adaptive_backpressure("intel"):
+            result: dict[str, Any] = await anyio.to_thread.run_sync(list_intel_sources)
+            return result
+    except BackpressureRejectedError as exc:
+        raise _backpressure_429(exc) from exc
 
 
 def _backpressure_429(exc: BackpressureRejectedError) -> HTTPException:

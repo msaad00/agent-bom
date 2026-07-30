@@ -24,6 +24,7 @@ from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
     sanitize_command_args,
@@ -492,12 +493,19 @@ async def list_agents(
         if not refresh and cached is not None and now - cached[0] <= _AGENTS_RESPONSE_CACHE_TTL_SECONDS:
             return deepcopy(cached[1])
 
-        response = _build_agents_response(tenant_id)
+        async with adaptive_backpressure("discovery"):
+            response = await anyio.to_thread.run_sync(_build_agents_response, tenant_id)
         _agents_response_cache[tenant_id] = (now, deepcopy(response))
         return response
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("Agent discovery failed")
-        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+        _logger.warning("Agent discovery failed: %s", sanitize_error(exc, generic=True))
+        raise HTTPException(status_code=500, detail=sanitize_error(exc, generic=True)) from exc
 
 
 @router.get("/discovery/providers", tags=["discovery"])

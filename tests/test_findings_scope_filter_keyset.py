@@ -340,6 +340,44 @@ def test_collect_scope_filtered_page_helper_no_dup_no_drop() -> None:
     assert len(seen) == len(set(seen))
 
 
+def test_collect_scope_filtered_page_stops_at_scan_budget_with_resume_cursor() -> None:
+    rows = [
+        {
+            "canonical_id": f"c{idx:03d}",
+            "effective_reach_score": float(100 - idx),
+            "last_seen": "2026-07-18T00:00:00Z",
+            "payload": {"id": f"r{idx:03d}"},
+        }
+        for idx in range(20)
+    ]
+
+    def fetch(_cursor, limit):
+        window = rows[:limit]
+        return [(row, row["payload"]) for row in window], cursor_from_current_row(window[-1], sort="effective_reach")
+
+    metadata: dict[str, object] = {}
+    payloads, next_cursor = collect_scope_filtered_page(
+        fetch,
+        predicate=lambda _payload: False,
+        page_limit=5,
+        start_cursor=None,
+        sort="effective_reach",
+        batch_size=10,
+        scan_budget=3,
+        deadline_monotonic=float("inf"),
+        metadata=metadata,
+    )
+
+    assert payloads == []
+    assert next_cursor is not None
+    assert metadata == {
+        "scanned_rows": 3,
+        "scan_budget": 3,
+        "truncated": True,
+        "reason": "scan_budget",
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Focused Postgres backend coverage (no live DB): a fake connection returns
 # fixture current-rows in keyset order, honoring the keyset WHERE + LIMIT the

@@ -104,6 +104,7 @@ class Destination:
     auth_token: str = ""
     auth_header: str = "Authorization"
     headers: dict[str, str] = field(default_factory=dict)
+    accepted_statuses: frozenset[int] = field(default_factory=frozenset)
     allow_private_networks: bool = False
     timeout: float = 30.0
 
@@ -115,6 +116,8 @@ class Destination:
         scheme = self.auth_scheme.strip().lower()
         if scheme and scheme not in {"bearer", "token", "header"}:
             raise DeliveryError(f"unsupported auth_scheme: {self.auth_scheme!r}")
+        if any(isinstance(status, bool) or not isinstance(status, int) or not 200 <= status < 300 for status in self.accepted_statuses):
+            raise DeliveryError("accepted_statuses must contain only HTTP 2xx integers")
 
     @property
     def secret_fingerprint(self) -> str:
@@ -137,14 +140,14 @@ class Delivery:
     """
 
     destination_id: str
-    payload: dict[str, Any]
+    payload: dict[str, Any] | list[dict[str, Any]]
     event_type: str = "delivery"
     idempotency_key: str = ""
     created_at: float = field(default_factory=_wall_now)
 
     def __post_init__(self) -> None:
         clean = sanitize_sensitive_payload(self.payload)
-        if not isinstance(clean, dict):
+        if not isinstance(clean, dict | list):
             clean = {"value": clean}
         object.__setattr__(self, "payload", clean)
         if not self.idempotency_key:
@@ -473,7 +476,7 @@ def default_delivery_store_path() -> Path:
 _PREVIEW_MAX = 512
 
 
-def redacted_preview(payload: dict[str, Any]) -> str:
+def redacted_preview(payload: dict[str, Any] | list[dict[str, Any]]) -> str:
     """A short, secret-free preview of a payload for the audit log."""
     safe = sanitize_sensitive_payload(payload)
     text = _canonical_json(safe)
@@ -673,7 +676,10 @@ class DeliveryClient:
             last_http = outcome.http_status
             last_error = outcome.error
 
-            if outcome.is_success:
+            accepted = outcome.is_success and (
+                not destination.accepted_statuses or outcome.http_status in destination.accepted_statuses
+            )
+            if accepted:
                 self.store.log_attempt(
                     idempotency_key=key,
                     destination_id=destination.destination_id,

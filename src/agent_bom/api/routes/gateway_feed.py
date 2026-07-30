@@ -741,6 +741,7 @@ async def _gather_durable_feed_inputs_async(
             and (
                 str(alert.get("event_type") or "") not in _EVENT_TYPES
                 or not str(alert.get("event_id") or "")
+                or alert.get("gateway_activity_durable") is False
             )
         ]
         llm_records, observability_available = _load_llm()
@@ -863,8 +864,10 @@ async def _gather_kpi_inputs_async(
             alert
             for alert in _load_tenant_alerts(tenant_id)
             if (
-                str(alert.get("event_type") or "") not in _EVENT_TYPES
+                not ledger_available
+                or str(alert.get("event_type") or "") not in _EVENT_TYPES
                 or not str(alert.get("event_id") or "")
+                or alert.get("gateway_activity_durable") is False
             )
             and _timestamp_in_window(_alert_timestamp(alert), start=start, end=end)
         ]

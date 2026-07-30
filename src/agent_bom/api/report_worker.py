@@ -14,6 +14,7 @@ from agent_bom.api.models import JobStatus, ReportJob
 from agent_bom.api.pipeline import get_executor
 from agent_bom.api.report_artifact_store import publish_report_artifact
 from agent_bom.api.report_job_store import get_report_job_store
+from agent_bom.api.tenant_worker import submit_tenant_bound
 from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def _artifact_path(tenant_id: str, job_id: str) -> Path:
 
 def submit_report_job(job_id: str, tenant_id: str) -> None:
     """Queue a report export on the shared scan worker pool."""
-    get_executor().submit(_run_report_job_sync, job_id, tenant_id)
+    submit_tenant_bound(get_executor(), tenant_id, _run_report_job_sync, job_id, tenant_id)
 
 
 def _run_report_job_sync(job_id: str, tenant_id: str) -> None:

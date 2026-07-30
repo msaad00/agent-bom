@@ -18,6 +18,7 @@ from agent_bom.api.export_destination_store import (
 )
 from agent_bom.api.export_schedule_store import ExportSchedule, InMemoryExportScheduleStore
 from agent_bom.api.export_scheduler import claim_due_schedules, run_due_exports_once
+from agent_bom.api.postgres_common import _current_tenant
 from agent_bom.export.destinations import ExportPublicationIndeterminateError
 
 
@@ -118,6 +119,7 @@ def test_run_due_exports_streams_to_destination_using_stored_secret(monkeypatch)
 
     def fake_run(**kwargs):
         captured.update(kwargs)
+        captured["context_tenant"] = _current_tenant.get()
         from agent_bom.export.destinations import ExportResult
 
         return ExportResult(kind="clickhouse", destination_uri="clickhouse://agent_bom/findings_feed", row_count=7)
@@ -137,6 +139,7 @@ def test_run_due_exports_streams_to_destination_using_stored_secret(monkeypatch)
     assert decrypted == ["enc-token"]
     assert captured["secret"] == "plain-token"
     assert captured["tenant_id"] == "tenant-a"
+    assert captured["context_tenant"] == "tenant-a"
     assert captured["kind"] == "clickhouse"
 
     # Schedule run metadata + destination status persisted.

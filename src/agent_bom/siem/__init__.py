@@ -12,6 +12,7 @@ in the _CONNECTORS dict for dynamic dispatch.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -21,6 +22,65 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
+
+
+def _delivery_identity(kind: str, url: str, index: str) -> str:
+    material = json.dumps([kind, url, index], separators=(",", ":"), ensure_ascii=True)
+    return f"siem-{kind}-{hashlib.sha256(material.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _event_identity(kind: str, destination_id: str, event: dict[str, Any]) -> str:
+    material = json.dumps(
+        {"destination_id": destination_id, "event": event, "kind": kind},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _deliver_event(
+    *,
+    kind: str,
+    config: "SIEMConfig",
+    url: str,
+    payload: dict[str, Any] | list[dict[str, Any]],
+    source_event: dict[str, Any],
+    auth_scheme: str,
+    auth_header: str,
+    auth_token: str,
+    accepted_statuses: frozenset[int],
+) -> bool:
+    """Send one SIEM payload through the governed delivery foundation."""
+
+    from agent_bom.delivery import Delivery, Destination, get_delivery_client
+    from agent_bom.security import sanitize_error, sanitize_text
+
+    destination_id = _delivery_identity(kind, url, config.index)
+    destination = Destination(
+        destination_id=destination_id,
+        url=url,
+        kind=f"siem.{kind}",
+        auth_scheme=auth_scheme,
+        auth_header=auth_header,
+        auth_token=auth_token,
+        headers={"Content-Type": "application/json"},
+        accepted_statuses=accepted_statuses,
+        timeout=10.0,
+    )
+    delivery = Delivery(
+        destination_id=destination_id,
+        payload=payload,
+        event_type=f"siem.{kind}",
+        idempotency_key=_event_identity(kind, destination_id, source_event),
+    )
+    try:
+        return get_delivery_client().deliver(destination, delivery).delivered
+    except Exception as exc:  # noqa: BLE001 - preserve connector boolean contract
+        safe = sanitize_error(exc, generic=True)
+        logger.warning("SIEM delivery setup failed for %s: %s", kind, sanitize_text(safe))
+        return False
 
 
 class SIEMConnector(Protocol):
@@ -52,8 +112,6 @@ class SplunkHEC:
         self.url = config.url.rstrip("/")
 
     def send_event(self, event: dict) -> bool:
-        import httpx
-
         payload = {
             "event": event,
             "sourcetype": self.config.source_type,
@@ -62,18 +120,17 @@ class SplunkHEC:
         if self.config.index:
             payload["index"] = self.config.index
 
-        try:
-            resp = httpx.post(
-                f"{self.url}/services/collector/event",
-                json=payload,
-                headers={"Authorization": f"Splunk {self.config.token}"},
-                verify=self.config.verify_ssl,
-                timeout=10,
-            )
-            return resp.status_code == 200
-        except Exception:
-            logger.exception("Splunk HEC send failed")
-            return False
+        return _deliver_event(
+            kind="splunk",
+            config=self.config,
+            url=f"{self.url}/services/collector/event",
+            payload=payload,
+            source_event=event,
+            auth_scheme="header",
+            auth_header="Authorization",
+            auth_token=f"Splunk {self.config.token}",
+            accepted_statuses=frozenset({200}),
+        )
 
     def send_batch(self, events: list[dict]) -> int:
         return sum(1 for e in events if self.send_event(e))
@@ -101,8 +158,6 @@ class DatadogLogs:
         self.url = config.url or "https://http-intake.logs.datadoghq.com"
 
     def send_event(self, event: dict) -> bool:
-        import httpx
-
         payload = {
             "ddsource": "agent-bom",
             "ddtags": f"source:agent-bom,type:{event.get('type', 'scan_alert')}",
@@ -110,20 +165,17 @@ class DatadogLogs:
             "message": json.dumps(event),
         }
 
-        try:
-            resp = httpx.post(
-                f"{self.url}/api/v2/logs",
-                json=[payload],
-                headers={
-                    "DD-API-KEY": self.config.token,
-                    "Content-Type": "application/json",
-                },
-                timeout=10,
-            )
-            return resp.status_code in (200, 202)
-        except Exception:
-            logger.exception("Datadog send failed")
-            return False
+        return _deliver_event(
+            kind="datadog",
+            config=self.config,
+            url=f"{self.url}/api/v2/logs",
+            payload=[payload],
+            source_event=event,
+            auth_scheme="header",
+            auth_header="DD-API-KEY",
+            auth_token=self.config.token,
+            accepted_statuses=frozenset({200, 202}),
+        )
 
     def send_batch(self, events: list[dict]) -> int:
         return sum(1 for e in events if self.send_event(e))
@@ -151,29 +203,22 @@ class ElasticsearchConnector:
         self.index = config.index or "agent-bom-alerts"
 
     def send_event(self, event: dict) -> bool:
-        import httpx
-
         doc = {
             **event,
             "@timestamp": datetime.now(timezone.utc).isoformat(),
             "source": "agent-bom",
         }
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self.config.token:
-            headers["Authorization"] = f"Bearer {self.config.token}"
-
-        try:
-            resp = httpx.post(
-                f"{self.url}/{self.index}/_doc",
-                json=doc,
-                headers=headers,
-                verify=self.config.verify_ssl,
-                timeout=10,
-            )
-            return resp.status_code in (200, 201)
-        except Exception:
-            logger.exception("Elasticsearch send failed")
-            return False
+        return _deliver_event(
+            kind="elasticsearch",
+            config=self.config,
+            url=f"{self.url}/{self.index}/_doc",
+            payload=doc,
+            source_event=event,
+            auth_scheme="bearer" if self.config.token else "",
+            auth_header="Authorization",
+            auth_token=self.config.token,
+            accepted_statuses=frozenset({200, 201}),
+        )
 
     def send_batch(self, events: list[dict]) -> int:
         return sum(1 for e in events if self.send_event(e))

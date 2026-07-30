@@ -67,6 +67,7 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "decision_id",
         "event_type",
         "event_timestamp",
+        "gateway_activity_durable",
         "data_action",
         # Host / network identifiers
         "hostname",
@@ -99,6 +100,7 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "first_seen",
         "last_seen",
         "ingested_at",
+        "received_at",
         "not_after",
         "captured_at",
         # Status / response codes (no body)

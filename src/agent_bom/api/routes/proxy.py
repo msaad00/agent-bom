@@ -177,16 +177,24 @@ def _gateway_activity_record_from_alert(
 ) -> GatewayActivityRecord | None:
     """Project one gateway-shaped alert onto the strict metadata-only ledger.
 
-    Historical audit envelopes contain extra proxy fields and some omit fields
-    that the standalone gateway now emits. Only canonical gateway event types
-    enter the durable ledger; the projection allowlists metadata and fills old
-    transport omissions from server-owned context. Raw arguments, prompts,
-    responses, previews, and free-text messages are never copied.
+    Historical audit envelopes contain extra proxy fields and may omit the
+    event timestamp emitted by the standalone gateway. Only canonical gateway
+    events with caller-observed time enter the durable ledger; inventing an
+    ingestion timestamp would change the event digest on every retry. Older
+    timestamp-free records remain an explicitly degraded ring-buffer event.
     """
 
     event_type = str(alert.get("event_type") or "")
     event_id = str(alert.get("event_id") or "").strip()
     if event_type not in _CANONICAL_GATEWAY_EVENT_TYPES or not event_id:
+        return None
+    event_timestamp = alert.get("event_timestamp") or alert.get("timestamp")
+    if isinstance(event_timestamp, int | float) and not isinstance(event_timestamp, bool):
+        try:
+            event_timestamp = datetime.fromtimestamp(float(event_timestamp), tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    if not isinstance(event_timestamp, str) or not event_timestamp.strip():
         return None
     expected_decision = "deny" if event_type in GATEWAY_BLOCKED_EVENT_TYPES else "allow"
     agent_id = str(
@@ -201,7 +209,7 @@ def _gateway_activity_record_from_alert(
         "event_id": event_id,
         "decision_id": str(alert.get("decision_id") or event_id),
         "event_type": event_type,
-        "event_timestamp": str(alert.get("event_timestamp") or received_at.isoformat()),
+        "event_timestamp": event_timestamp,
         "agent_id": agent_id,
         "upstream": str(alert.get("upstream") or alert.get("target") or "unknown"),
         "tool": str(alert.get("tool") or alert.get("tool_name") or "unknown"),
@@ -237,6 +245,30 @@ def _gateway_activity_record_from_alert(
         session_id=session_id,
         received_at=received_at,
     )
+
+
+def _append_gateway_activity_resilient(
+    records: list[GatewayActivityRecord],
+) -> tuple[set[str], set[str], set[str]]:
+    """Append a batch, isolating conflicting IDs without losing valid peers."""
+
+    store = get_gateway_activity_store()
+    try:
+        result = store.append_batch(records)
+        return set(result.inserted_event_ids), set(result.duplicate_event_ids), set()
+    except GatewayActivityConflictError:
+        inserted: set[str] = set()
+        duplicates: set[str] = set()
+        conflicts: set[str] = set()
+        for record in records:
+            try:
+                result = store.append_batch([record])
+            except GatewayActivityConflictError:
+                conflicts.add(record.event_id)
+                continue
+            inserted.update(result.inserted_event_ids)
+            duplicates.update(result.duplicate_event_ids)
+        return inserted, duplicates, conflicts
 
 
 @router.post("/proxy/audit", tags=["proxy"])
@@ -280,6 +312,9 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched.setdefault("session_id", session_id)
         enriched.setdefault("request_id", request_id)
         enriched.setdefault("trace_id", trace_id)
+        # Receipt time is transport metadata owned by this API process. Never
+        # accept a caller-supplied future value into degraded feed ordering.
+        enriched["received_at"] = received_at.isoformat()
         enriched.setdefault("event_type", enriched.get("action") or enriched.get("type", "runtime_alert"))
         enriched["tenant_id"] = tenant_id
         prepared_alerts.append(enriched)
@@ -296,25 +331,24 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             raise HTTPException(status_code=422, detail="Invalid canonical gateway activity event") from exc
         if record is not None:
             activity_records.append(record)
+    activity_candidate_ids = {record.event_id for record in activity_records}
 
     durable_inserted_ids: set[str] = set()
     durable_duplicate_ids: set[str] = set()
+    durable_conflict_ids: set[str] = set()
     if activity_records:
         try:
-            activity_result = await anyio.to_thread.run_sync(
-                partial(get_gateway_activity_store().append_batch, activity_records)
+            inserted_ids, duplicate_ids, conflict_ids = await anyio.to_thread.run_sync(
+                _append_gateway_activity_resilient,
+                activity_records,
             )
-        except GatewayActivityConflictError as exc:
-            raise HTTPException(
-                status_code=409,
-                detail="Gateway activity event conflicts with durable history",
-            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid canonical gateway activity batch") from exc
         except Exception as exc:  # noqa: BLE001 - storage failure is a safe 503
             raise HTTPException(status_code=503, detail="Gateway activity storage unavailable") from exc
-        durable_inserted_ids.update(activity_result.inserted_event_ids)
-        durable_duplicate_ids.update(activity_result.duplicate_event_ids)
+        durable_inserted_ids.update(inserted_ids)
+        durable_duplicate_ids.update(duplicate_ids)
+        durable_conflict_ids.update(conflict_ids)
 
     duplicate_event_ids: list[str] = []
     accepted_alerts: list[dict] = []
@@ -324,8 +358,10 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         # cannot replay credential_leak alerts and inflate per-detector
         # tallies. Empty event_id falls through to keep legacy callers working.
         event_id = str(enriched.get("event_id") or "")
-        canonical_gateway = str(enriched.get("event_type") or "") in _CANONICAL_GATEWAY_EVENT_TYPES and bool(event_id)
+        canonical_gateway = event_id in activity_candidate_ids
         if canonical_gateway:
+            if event_id in durable_conflict_ids:
+                continue
             if event_id in durable_duplicate_ids or event_id in consumed_durable_ids:
                 duplicate_event_ids.append(event_id)
                 continue
@@ -333,9 +369,12 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
                 duplicate_event_ids.append(event_id)
                 continue
             consumed_durable_ids.add(event_id)
+            enriched["gateway_activity_durable"] = True
         elif event_id and not _claim_audit_event(tenant_id, event_id):
             duplicate_event_ids.append(event_id)
             continue
+        elif str(enriched.get("event_type") or "") in _CANONICAL_GATEWAY_EVENT_TYPES:
+            enriched["gateway_activity_durable"] = False
         accepted_alerts.append(enriched)
         push_proxy_alert(enriched)
         # Tally inter-agent firewall decisions for the runtime-tab dashboard
@@ -418,6 +457,8 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         "duplicate_event_ids": duplicate_event_ids,
         "durable_accepted_count": len(durable_inserted_ids),
         "durable_duplicate_count": len(durable_duplicate_ids),
+        "durable_conflict_count": len(durable_conflict_ids),
+        "durable_conflict_event_ids": sorted(durable_conflict_ids),
         "has_summary": body.summary is not None,
     }
     if body.idempotency_key:

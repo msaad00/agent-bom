@@ -37,6 +37,7 @@ from agent_bom.api.export_schedule_store import (
     get_export_schedule_store,
 )
 from agent_bom.api.scheduler import parse_cron_next
+from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.export.destinations import ExportPublicationIndeterminateError, ExportResult
 from agent_bom.export.runner import run_findings_export
 
@@ -168,7 +169,15 @@ async def run_due_exports_once(
 
     async def _guarded(schedule: ExportSchedule) -> None:
         async with semaphore:
-            await asyncio.to_thread(execute_export, schedule, store, destination_store, now)
+            await asyncio.to_thread(
+                run_tenant_bound,
+                schedule.tenant_id,
+                execute_export,
+                schedule,
+                store,
+                destination_store,
+                now,
+            )
 
     await asyncio.gather(*(_guarded(schedule) for schedule in claimed))
     return len(claimed)

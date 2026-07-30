@@ -11,10 +11,19 @@ Tests cover:
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from agent_bom.delivery import (
+    DeliveryClient,
+    DeliveryResult,
+    DeliveryStore,
+    RetryPolicy,
+    SendOutcome,
+    set_delivery_client,
+)
 from agent_bom.siem import (
     DatadogLogs,
     ElasticsearchConnector,
@@ -28,6 +37,33 @@ from agent_bom.siem import (
 )
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _governed_delivery_client(tmp_path):
+    def _sender(url, headers, body, timeout):
+        import httpx
+
+        try:
+            response = httpx.post(
+                url,
+                json=json.loads(body),
+                headers=headers,
+                timeout=timeout,
+            )
+            return SendOutcome(http_status=response.status_code)
+        except Exception:
+            return SendOutcome(http_status=None, error="transport failure")
+
+    set_delivery_client(
+        DeliveryClient(
+            DeliveryStore(tmp_path / "delivery.db"),
+            sender=_sender,
+            retry=RetryPolicy(max_attempts=1),
+        )
+    )
+    yield
+    set_delivery_client(None)
 
 
 @pytest.fixture()
@@ -337,3 +373,60 @@ def test_siem_config_custom_values():
     assert config.token == "tok"
     assert config.index == "idx"
     assert config.verify_ssl is False
+
+
+@pytest.mark.parametrize(
+    ("connector_type", "config"),
+    [
+        (SplunkHEC, SIEMConfig(name="splunk", url="https://splunk.test:8088", token="splunk-token", index="main")),
+        (DatadogLogs, SIEMConfig(name="datadog", url="https://logs.datadog.test", token="dd-token")),
+        (
+            ElasticsearchConnector,
+            SIEMConfig(name="elasticsearch", url="https://elastic.test:9200", token="es-token", index="findings"),
+        ),
+    ],
+)
+def test_siem_send_uses_governed_delivery_client(connector_type, config, sample_event):
+    captured: dict[str, object] = {}
+    client = MagicMock()
+
+    def _deliver(destination, delivery):
+        captured["destination"] = destination
+        captured["delivery"] = delivery
+        return DeliveryResult(
+            idempotency_key=delivery.idempotency_key,
+            destination_id=destination.destination_id,
+            status="delivered",
+            http_status=200,
+            attempts=1,
+            delivered=True,
+        )
+
+    client.deliver.side_effect = _deliver
+    with (
+        patch("agent_bom.delivery.get_delivery_client", return_value=client),
+        patch("httpx.post", side_effect=AssertionError("raw SIEM POST bypassed DeliveryClient")),
+    ):
+        assert connector_type(config).send_event(sample_event) is True
+
+    destination = captured["destination"]
+    delivery = captured["delivery"]
+    assert destination.kind.startswith("siem.")
+    assert destination.auth_token
+    assert config.token not in destination.destination_id
+    assert delivery.destination_id == destination.destination_id
+    assert delivery.idempotency_key
+
+
+def test_siem_delivery_failure_preserves_boolean_contract(splunk_config, sample_event):
+    client = MagicMock()
+    client.deliver.return_value = DeliveryResult(
+        idempotency_key="delivery-key",
+        destination_id="siem-splunk",
+        status="dead_letter",
+        attempts=3,
+        delivered=False,
+        warning="sanitized failure",
+    )
+    with patch("agent_bom.delivery.get_delivery_client", return_value=client):
+        assert SplunkHEC(splunk_config).send_event(sample_event) is False

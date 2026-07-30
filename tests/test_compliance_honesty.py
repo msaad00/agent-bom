@@ -1,6 +1,6 @@
 """Compliance honesty contract — the scorecard must assert only what it evidenced.
 
-Three properties of the scorecard read path, each previously violated:
+Five properties, each of which the product previously violated:
 
 1. ``pass`` is REACHABLE, so ``overall_score`` can move. Before, every
    tag-mapped control could only resolve to fail / warning / not_evaluated, so
@@ -13,10 +13,15 @@ Three properties of the scorecard read path, each previously violated:
    never asserted at all.
 3. MITRE ATT&CK is an APPLICABILITY OVERLAY, never a pass/fail framework, and
    never folded into ``overall_status`` / ``overall_score``.
+4. The auditor evidence pack counts control-to-finding mapping ROWS and
+   DISTINCT findings under separate, honestly-named keys.
+5. A saved evidence bundle carries its own signature, so an artifact that
+   advertises ``signature_algorithm`` is actually verifiable off-line.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from starlette.testclient import TestClient
@@ -405,3 +410,113 @@ def test_attack_tagging_drops_technique_synthesis_with_no_evidencing_signal() ->
         exposed_credentials=["AWS_SECRET_ACCESS_KEY"],
     )
     assert tag_blast_radius(br) == []
+
+
+# ── Finding 4: the evidence pack counts rows and findings separately ─────────
+
+
+def test_pack_scope_separates_evidence_rows_from_distinct_findings() -> None:
+    _clear_jobs()
+    _add_done_job(
+        [
+            _blast(severity="high", vuln_id="CVE-2026-1001", package="alpha@1.0.0"),
+            _blast(severity="low", vuln_id="CVE-2026-1002", package="beta@2.0.0"),
+        ]
+    )
+    with TestClient(app) as client:
+        pack = client.get("/v1/compliance/report/pack", headers=_AUTH_HEADERS).json()
+
+    scope = pack["scope"]
+    assert "finding_count" not in scope, "ambiguous key must be renamed"
+    distinct_ids = {row["finding_id"] for fw in pack["frameworks"] for control in fw["controls"] for row in control["evidence"]}
+    assert scope["distinct_finding_count"] == len(distinct_ids) == 2
+    assert scope["evidence_row_count"] >= scope["distinct_finding_count"]
+
+
+# ── Finding 5: a saved bundle is verifiable ──────────────────────────────────
+
+
+def _verify(body: dict, signature_hex: str) -> bool:
+    from agent_bom.api.compliance_signing import verify_compliance_signature
+
+    unsigned = {k: v for k, v in body.items() if k != "signature"}
+    return verify_compliance_signature(json.dumps(unsigned, sort_keys=True).encode(), signature_hex)
+
+
+def test_saved_bundle_carries_its_own_verifiable_signature() -> None:
+    _clear_jobs()
+    _add_done_job([_blast(severity="high")])
+    with TestClient(app) as client:
+        response = client.get("/v1/compliance/soc2/report", headers=_AUTH_HEADERS)
+    body = response.json()
+
+    assert body["signature"], "bundle advertises signature_algorithm but ships no signature"
+    assert body["signature"] == response.headers["X-Agent-Bom-Compliance-Report-Signature"]
+    assert _verify(body, body["signature"])
+
+
+def test_saved_pack_carries_its_own_verifiable_signature() -> None:
+    _clear_jobs()
+    _add_done_job([_blast(severity="high")])
+    with TestClient(app) as client:
+        response = client.get("/v1/compliance/report/pack", headers=_AUTH_HEADERS)
+    body = response.json()
+
+    assert body["signature"]
+    assert body["signature"] == response.headers["X-Agent-Bom-Compliance-Report-Signature"]
+    assert _verify(body, body["signature"])
+
+
+def test_renamed_export_counters_survive_the_durable_audit_chain() -> None:
+    """Renaming an audited field must not silently drop it from tier-A.
+
+    ``TIER_A_FIELDS`` is a whitelist: anything absent is REPLAY_ONLY and is
+    redacted out of durable persistence. The compliance export audit entry
+    stopped logging ``finding_count`` in favour of two precise counters, so both
+    new names have to be classified alongside the counters they replaced.
+    """
+    from agent_bom.evidence.policy import EvidenceTier, classify_field
+
+    for field in ("evidence_row_count", "distinct_finding_count"):
+        assert classify_field(field) is EvidenceTier.SAFE_TO_STORE, f"{field} would be redacted from the audit chain"
+
+
+def test_saved_jsonl_bundle_verifies_by_reassembly_not_byte_layout() -> None:
+    """The jsonl rendering must verify against the SAME canonical body as json.
+
+    The old contract signed the exact streamed bytes, so verifying a saved
+    ``.jsonl`` meant reproducing the stream's byte layout. Both renderings now
+    carry the same embedded signature over the same canonical body, so a
+    consumer reassembles the records and verifies.
+    """
+    _clear_jobs()
+    _add_done_job([_blast(severity="high")])
+    with TestClient(app) as client:
+        response = client.get("/v1/compliance/soc2/report?format=jsonl", headers=_AUTH_HEADERS)
+    raw = response.text
+
+    records = [json.loads(line) for line in raw.split("\n") if line]
+    meta = next(r["meta"] for r in records if "meta" in r)
+    reassembled = {
+        **meta,
+        "controls": [r["control"] for r in records if "control" in r],
+        "audit_events": [r["audit"] for r in records if "audit" in r],
+    }
+
+    assert reassembled["audit_events"], "expected audit evidence to survive reassembly"
+    assert meta["signature"], "jsonl meta ships no signature to verify with"
+    # Verified by the same recipe the json rendering uses: canonical body minus
+    # the signature field. No dependence on the stream's byte layout.
+    assert _verify(reassembled, reassembled["signature"])
+    assert reassembled["signature"] == response.headers["X-Agent-Bom-Compliance-Report-Signature"]
+
+
+def test_tampering_with_a_saved_bundle_invalidates_its_embedded_signature() -> None:
+    _clear_jobs()
+    _add_done_job([_blast(severity="high")])
+    with TestClient(app) as client:
+        body = client.get("/v1/compliance/soc2/report", headers=_AUTH_HEADERS).json()
+
+    assert _verify(body, body["signature"])
+    body["tenant_id"] = "some-other-tenant"
+    assert not _verify(body, body["signature"])

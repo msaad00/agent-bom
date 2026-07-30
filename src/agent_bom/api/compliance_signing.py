@@ -29,11 +29,17 @@ use.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +85,10 @@ class _Ed25519Signer:
             key_id=self._key_id,
             public_key_pem=self._public_pem,
         )
+
+    @property
+    def public_key(self) -> Ed25519PublicKey:
+        return self._private_key.public_key()
 
     @property
     def public_key_pem(self) -> str:
@@ -240,6 +250,59 @@ def sign_compliance_bundle(payload: bytes) -> SignatureResult:
         key_id=None,
         public_key_pem=None,
     )
+
+
+SIGNATURE_FIELD: Final[str] = "signature"
+
+
+def canonical_bundle_payload(body: Mapping[str, object]) -> bytes:
+    """Return the exact bytes a compliance bundle's signature covers.
+
+    The bundle EMBEDS its signature in ``body["signature"]`` so a saved file is
+    verifiable on its own — the header alone is lost the moment an operator runs
+    ``curl -o bundle.json``. The signature obviously cannot cover itself, so the
+    canonical form is the body with that one field removed, serialized as
+    ``json.dumps(..., sort_keys=True)``. This is the canonical form for BOTH the
+    ``json`` and ``jsonl`` renderings, so either saved artifact verifies the same
+    way.
+    """
+    unsigned = {key: value for key, value in body.items() if key != SIGNATURE_FIELD}
+    return json.dumps(unsigned, sort_keys=True).encode()
+
+
+def verify_compliance_signature(payload: bytes, signature_hex: str) -> bool:
+    """Verify ``signature_hex`` over ``payload`` with the active signer.
+
+    Returns False for a malformed signature rather than raising, so callers can
+    treat "unverifiable" and "tampered" alike. HMAC comparison is constant-time.
+    """
+    if not signature_hex:
+        return False
+    signer = _load_ed25519_signer()
+    if signer is not None:
+        from cryptography.exceptions import InvalidSignature
+
+        try:
+            raw = bytes.fromhex(signature_hex)
+        except ValueError:
+            return False
+        try:
+            signer.public_key.verify(raw, payload)
+        except InvalidSignature:
+            return False
+        return True
+
+    from agent_bom.api.audit_log import sign_export_payload
+
+    return hmac.compare_digest(sign_export_payload(payload), signature_hex)
+
+
+def verify_compliance_bundle(body: Mapping[str, object]) -> bool:
+    """Verify a bundle against the signature it carries in its own body."""
+    signature = body.get(SIGNATURE_FIELD)
+    if not isinstance(signature, str):
+        return False
+    return verify_compliance_signature(canonical_bundle_payload(body), signature)
 
 
 def current_public_key_pem() -> str | None:

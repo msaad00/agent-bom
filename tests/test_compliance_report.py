@@ -324,7 +324,10 @@ def test_report_json_signature_matches_canonical_body() -> None:
     assert body["framework_label"] == "OWASP LLM Top 10"
     assert body["tenant_id"] == "tenant-alpha"
     assert body["scope"]["control_count"] == 3
-    assert body["scope"]["finding_count"] == 2
+    # One finding maps to many controls, so mapping ROWS and distinct FINDINGS
+    # are reported under separate names rather than one ambiguous finding_count.
+    assert body["scope"]["evidence_row_count"] == 2
+    assert body["scope"]["distinct_finding_count"] == 2
 
     # Pass/warning/fail summary
     assert body["summary"]["fail"] == 1
@@ -342,9 +345,12 @@ def test_report_json_signature_matches_canonical_body() -> None:
     assert by_id["LLM03"]["status"] == "incomplete"
     assert by_id["LLM03"]["evidence_state"] == "missing_control_evidence"
 
-    # HMAC signature header matches canonical body
+    # HMAC signature header matches canonical body. The bundle now EMBEDS its
+    # signature so a saved file verifies off-line, and a signature cannot cover
+    # itself — the canonical form is the body with `signature` removed.
     sig = resp.headers["X-Agent-Bom-Compliance-Report-Signature"]
-    canonical = json.dumps(body, sort_keys=True).encode()
+    assert body["signature"] == sig, "the saved document must carry the signature, not just the header"
+    canonical = json.dumps({k: v for k, v in body.items() if k != "signature"}, sort_keys=True).encode()
     from agent_bom.api.audit_log import _HMAC_KEY  # noqa: PLC0415
 
     expected = hmac.new(_HMAC_KEY, canonical, hashlib.sha256).hexdigest()
@@ -411,7 +417,7 @@ def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
 
         body = resp.json()
         assert body["tenant_id"] == "tenant-alpha"
-        assert body["scope"]["finding_count"] == 2
+        assert body["scope"]["distinct_finding_count"] == 2
         llm01 = next(control for control in body["controls"] if control["control_id"] == "LLM01")
         assert llm01["finding_count"] == 1
         assert llm01["evidence"]
@@ -612,11 +618,23 @@ def test_report_jsonl_streams_one_record_per_line() -> None:
     # First line is meta; followed by one control line; followed by the audit entry
     assert json.loads(lines[0])["meta"]["framework_key"] == "soc2"
     assert json.loads(lines[1])["control"]["control_id"] == "CC6.1"
-    # The signature is over the canonical jsonl payload, not the json one
+    # The signature covers the canonical JSON body (minus the `signature` field)
+    # for BOTH renderings, so a consumer reassembles meta + control + audit
+    # records and verifies without reproducing the stream's byte layout. It used
+    # to sign the exact streamed bytes, which no saved-file consumer could
+    # reproduce reliably.
     sig = resp.headers["X-Agent-Bom-Compliance-Report-Signature"]
+    records = [json.loads(ln) for ln in lines]
+    meta = next(r["meta"] for r in records if "meta" in r)
+    assert meta["signature"] == sig, "the streamed meta record must carry the signature"
+    reassembled = {
+        **{k: v for k, v in meta.items() if k != "signature"},
+        "controls": [r["control"] for r in records if "control" in r],
+        "audit_events": [r["audit"] for r in records if "audit" in r],
+    }
     from agent_bom.api.audit_log import _HMAC_KEY  # noqa: PLC0415
 
-    expected = hmac.new(_HMAC_KEY, raw.encode(), hashlib.sha256).hexdigest()
+    expected = hmac.new(_HMAC_KEY, json.dumps(reassembled, sort_keys=True).encode(), hashlib.sha256).hexdigest()
     assert sig == expected
 
 

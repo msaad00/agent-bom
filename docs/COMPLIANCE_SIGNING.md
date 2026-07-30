@@ -73,28 +73,28 @@ echoes the `key_id` so you know which key to use.
 ### 2. Fetch an evidence bundle
 
 ```bash
-curl -s -D headers.txt -o bundle.json \
+curl -s -o bundle.json \
      https://agent-bom.example.com/v1/compliance/soc2/report \
      -H "Authorization: Bearer $TOKEN"
-
-grep -iE 'signature-algorithm|keyid|signature:' headers.txt
-# X-Agent-Bom-Compliance-Signature-Algorithm: Ed25519
-# X-Agent-Bom-Compliance-Signature-KeyId: 3f9a2c8d1b4e7f02
-# X-Agent-Bom-Compliance-Report-Signature: 8f4b... (hex)
 ```
+
+The bundle **embeds its own signature** in the `signature` field, so the saved
+file is verifiable on its own — no headers needed. The same value is mirrored
+into `X-Agent-Bom-Compliance-Report-Signature` for streaming consumers that
+verify before buffering the body.
 
 ### 3. Verify offline
 
 Python:
 
 ```python
-import json, sys
+import json
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 body = json.load(open("bundle.json"))
-sig_hex = body.get("_signature_header") or sys.argv[1]  # or pass from curl -D
-canonical = json.dumps(body, sort_keys=True).encode()
+sig_hex = body["signature"]
+canonical = json.dumps({k: v for k, v in body.items() if k != "signature"}, sort_keys=True).encode()
 pub = serialization.load_pem_public_key(open("pinned.pem").read().encode())
 assert isinstance(pub, Ed25519PublicKey)
 pub.verify(bytes.fromhex(sig_hex), canonical)
@@ -102,7 +102,32 @@ print("bundle verified against pinned key")
 ```
 
 The canonical form is `json.dumps(body, sort_keys=True).encode()` of the
-full response body. Tampering with any byte invalidates the signature.
+response body **with the `signature` field removed** — a signature cannot cover
+itself. Tampering with any other byte invalidates the signature.
+
+> **Breaking change.** Bundles previously carried no `signature` field, and the
+> canonical form was the *entire* body. A verifier written against the old
+> contract must now drop the `signature` key before hashing. Bundles archived
+> before this change verify with the old recipe (no `signature` field is
+> present to remove), so both are distinguishable by whether the field exists.
+
+### Verifying the `jsonl` rendering
+
+`?format=jsonl` streams one record per line. Reassemble and verify with the
+**same** canonical form — the signature no longer depends on the stream's byte
+layout:
+
+```python
+records = [json.loads(line) for line in open("bundle.jsonl") if line.strip()]
+meta = next(r["meta"] for r in records if "meta" in r)
+body = {
+    **meta,
+    "controls": [r["control"] for r in records if "control" in r],
+    "audit_events": [r["audit"] for r in records if "audit" in r],
+}
+canonical = json.dumps({k: v for k, v in body.items() if k != "signature"}, sort_keys=True).encode()
+pub.verify(bytes.fromhex(meta["signature"]), canonical)
+```
 
 ---
 

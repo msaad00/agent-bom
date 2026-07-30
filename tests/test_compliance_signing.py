@@ -198,8 +198,12 @@ def test_bundle_roundtrip_verifies_with_verification_key_endpoint(monkeypatch: p
         assert body["signature_algorithm"] == "Ed25519"
         assert body["signature_key_id"] == key_body["key_id"]
         assert "signature_public_key_pem" in body
-        # Auditor reconstructs the canonical body and verifies against pinned public key.
-        canonical = json.dumps(body, sort_keys=True).encode()
+        # Auditor reconstructs the canonical body and verifies against pinned
+        # public key. The bundle now EMBEDS its signature so a saved file is
+        # verifiable off-line; a signature cannot cover itself, so the canonical
+        # form is the body with the `signature` field removed.
+        assert body["signature"] == resp.headers["X-Agent-Bom-Compliance-Report-Signature"]
+        canonical = json.dumps({k: v for k, v in body.items() if k != "signature"}, sort_keys=True).encode()
         sig_hex = resp.headers["X-Agent-Bom-Compliance-Report-Signature"]
         pinned_public_key.verify(bytes.fromhex(sig_hex), canonical)
     finally:

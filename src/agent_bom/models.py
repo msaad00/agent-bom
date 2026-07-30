@@ -1556,7 +1556,8 @@ class AIBOMReport:
                 continue
             for check in data.get("checks", []) or []:
                 if isinstance(check, dict) and str(check.get("status", "")).upper() in {"FAIL", "ERROR"}:
-                    findings.append(cloud_cis_check_to_finding(check, provider))
+                    check_with_version = {**check, "benchmark_version": data.get("benchmark_version")}
+                    findings.append(cloud_cis_check_to_finding(check_with_version, provider))
         return findings
 
     def cve_findings(self) -> "list[Finding]":

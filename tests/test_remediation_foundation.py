@@ -29,7 +29,7 @@ from agent_bom.remediation import (
 
 
 def _cis_finding() -> Finding:
-    """A CIS finding mirroring the AWS 2.1.1 (S3 public access) override."""
+    """A legacy CIS finding whose incomplete identity must fail closed."""
     return cloud_cis_check_to_finding(
         {
             "check_id": "2.1.1",
@@ -58,21 +58,20 @@ def test_build_remediation_cis_returns_fix_privilege_and_artifact() -> None:
     assert isinstance(rem.required_privilege, RequiredPrivilege)
     assert isinstance(rem.artifact, RemediationArtifact)
 
-    # fix carries the exact action from the CIS catalog override
-    assert rem.fix.cli is not None
-    assert "put-public-access-block" in rem.fix.cli
+    # A finding without benchmark provenance cannot receive a mutation.
+    assert rem.fix.cli is None
     assert rem.fix.console
     assert rem.fix.summary
 
-    # required_privilege names the least-privilege action to APPLY, not request
-    assert rem.required_privilege.actions == ["s3:PutBucketPublicAccessBlock"]
+    # Manual guidance does not invent an apply permission.
+    assert rem.required_privilege.actions == []
     assert "apply" in rem.required_privilege.description.lower()
-    assert "read-only" in rem.required_privilege.scope_note.lower()
+    assert "never requests" in rem.required_privilege.scope_note.lower()
 
     # artifact is a generated runbook (text only)
     assert rem.artifact.kind == "runbook"
-    assert "put-public-access-block" in rem.artifact.content
-    assert "s3:PutBucketPublicAccessBlock" in rem.artifact.content
+    assert "Console:" in rem.artifact.content
+    assert "Advisory only" in rem.artifact.content
 
 
 def test_cis_error_uses_review_guidance_not_control_fix() -> None:
@@ -94,6 +93,26 @@ def test_cis_error_uses_review_guidance_not_control_fix() -> None:
     assert "rerun" in remediation.fix.summary.lower()
 
 
+def test_versioned_cis_finding_uses_exact_advisory_metadata() -> None:
+    finding = cloud_cis_check_to_finding(
+        {
+            "check_id": "2.1.1",
+            "title": "S3 account-level public access block configured",
+            "status": "FAIL",
+            "severity": "high",
+            "recommendation": "Enable all four account-level settings.",
+            "cis_section": "2 - Storage",
+            "benchmark_version": "3.0",
+        },
+        provider="aws",
+    )
+
+    assert finding.remediation is not None
+    assert finding.remediation.fix.cli is None
+    assert "Block Public Access settings for this account" in (finding.remediation.fix.console or "")
+    assert "network-exposure" in finding.remediation.guardrails
+
+
 def test_advisory_flags_always_set() -> None:
     rem = build_remediation(_cis_finding())
     assert rem.applied is False
@@ -104,7 +123,8 @@ def test_cis_finding_populates_remediation_field() -> None:
     finding = _cis_finding()
     assert finding.remediation is not None
     assert finding.remediation.applied is False
-    assert finding.remediation.required_privilege.actions
+    assert finding.remediation.fix.cli is None
+    assert finding.remediation.required_privilege.actions == []
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +227,8 @@ def test_finding_to_dict_includes_remediation_when_present() -> None:
     rem = payload["remediation"]
     assert rem["applied"] is False
     assert rem["auto_remediation"] is False
-    assert rem["fix"]["cli"]
-    assert rem["required_privilege"]["actions"] == ["s3:PutBucketPublicAccessBlock"]
+    assert rem["fix"]["cli"] is None
+    assert rem["required_privilege"]["actions"] == []
     assert rem["artifact"]["kind"] == "runbook"
 
 

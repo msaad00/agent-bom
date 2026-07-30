@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import JobStatus, _get_store, app
@@ -617,6 +619,66 @@ def test_cis_foundations_reconciles_with_cis_checks():
     assert scorecard["fail"] == tally["fail"]
     assert scorecard["error"] == tally["error"]
     _clear_jobs()
+
+
+def test_cis_checks_fail_closed_for_legacy_remediation_rows():
+    _clear_jobs()
+    _add_done_job(
+        [],
+        result_extra=_cis_benchmark_result(
+            [
+                {
+                    "check_id": "3.5",
+                    "title": "CloudTrail records management events in all regions",
+                    "status": "FAIL",
+                    "severity": "high",
+                    "remediation": {
+                        "fix_cli": "aws kms enable-key-rotation --key-id <KMS_KEY_ID>",
+                        "fix_console": "AWS Console → CloudTrail → Trails → Event selectors",
+                        "effort": "low",
+                        "requires_human_review": False,
+                    },
+                }
+            ]
+        ),
+    )
+
+    row = TestClient(app).get("/v1/cis/checks", headers=_AUTH_HEADERS).json()["checks"][0]
+    assert row["fix_cli"] == ""
+    assert row["effort"] == "manual"
+    assert row["requires_human_review"] is True
+    assert row["remediation"]["fix_cli"] is None
+    assert row["remediation"]["requires_human_review"] is True
+    assert "Event selectors" in row["fix_console"]
+    _clear_jobs()
+
+
+def test_persisted_cis_rows_are_canonicalized_fail_closed():
+    from agent_bom.api.routes.compliance import _coerce_cis_row
+
+    row = _coerce_cis_row(
+        {
+            "fix_cli": "aws kms enable-key-rotation --key-id <KMS_KEY_ID>",
+            "fix_console": "",
+            "effort": "low",
+            "requires_human_review": False,
+            "remediation": json.dumps(
+                {
+                    "fix_cli": "aws kms enable-key-rotation --key-id <KMS_KEY_ID>",
+                    "fix_console": "AWS Console → CloudTrail → Trails → Event selectors",
+                    "effort": "low",
+                    "requires_human_review": False,
+                }
+            ),
+        }
+    )
+
+    assert row["fix_cli"] == ""
+    assert row["effort"] == "manual"
+    assert row["requires_human_review"] is True
+    assert row["remediation"]["fix_cli"] is None
+    assert row["remediation"]["requires_human_review"] is True
+    assert "Event selectors" in row["fix_console"]
 
 
 # ─── PR3: NIST 800-53 catalog-backed scoring line ────────────────────────────

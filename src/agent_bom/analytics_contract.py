@@ -261,12 +261,14 @@ def _build_cis_benchmark_checks(report: AIBOMReport, data: dict[str, Any], scan_
 
 
 def _cis_rows_for_cloud(cloud: str, benchmark: dict[str, Any], scan_id: str, measured_at: str) -> list[dict[str, Any]]:
+    from agent_bom.cloud.cis_remediation import fail_closed_remediation_payload
+
     rows: list[dict[str, Any]] = []
     for check in benchmark.get("checks", []) or []:
         if not isinstance(check, dict):
             continue
         raw_remediation = check.get("remediation")
-        remediation: dict[str, Any] = dict(raw_remediation) if isinstance(raw_remediation, dict) else {}
+        remediation = fail_closed_remediation_payload(raw_remediation)
         priority = remediation.get("priority", check.get("priority", 0))
         try:
             priority_int = int(priority or 0)
@@ -290,7 +292,7 @@ def _cis_rows_for_cloud(cloud: str, benchmark: dict[str, Any], scan_id: str, mea
                 "effort": str(remediation.get("effort") or ""),
                 "priority": priority_int,
                 "guardrails": [str(item) for item in remediation.get("guardrails", []) or []],
-                "requires_human_review": bool(remediation.get("requires_human_review", False)),
+                "requires_human_review": True,
             }
         )
     return rows

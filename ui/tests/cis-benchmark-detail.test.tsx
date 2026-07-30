@@ -98,15 +98,18 @@ describe("CISBenchmarkDetail", () => {
     expect(screen.getByRole("button", { name: "Error" })).toBeInTheDocument();
   });
 
-  it("copies fix_cli and warns when the check requires human review", async () => {
+  it("copies a reviewed fix_cli and warns before use", async () => {
     apiMock.listCisBenchmarkChecks.mockResolvedValue({
       checks: [
         makeCheck({
-          check_id: "1.4",
-          title: "Eliminate root access keys",
-          fix_cli: "aws iam delete-access-key --user-name root",
+          check_id: "3.2",
+          title: "Enable CloudTrail log file validation",
+          fix_cli: "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
           requires_human_review: true,
-          remediation: { fix_cli: "aws iam delete-access-key --user-name root", requires_human_review: true },
+          remediation: {
+            fix_cli: "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
+            requires_human_review: true,
+          },
         }),
       ],
       count: 1,
@@ -114,14 +117,40 @@ describe("CISBenchmarkDetail", () => {
     });
     render(<CISBenchmarkDetail />);
 
-    await screen.findByText("Eliminate root access keys");
+    await screen.findByText("Enable CloudTrail log file validation");
     // Human-review badge is visible on a check that can break production.
     expect(screen.getByTestId("human-review-badge")).toBeInTheDocument();
 
     const copyButton = screen.getByRole("button", { name: /copy fix command/i });
     fireEvent.click(copyButton);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("aws iam delete-access-key --user-name root"));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
+      ),
+    );
     expect(await screen.findByText(/review carefully before running/i)).toBeInTheDocument();
+  });
+
+  it("renders fail-closed remediation as manual guidance", async () => {
+    apiMock.listCisBenchmarkChecks.mockResolvedValue({
+      checks: [
+        makeCheck({
+          check_id: "1.4",
+          title: "No root account access keys",
+          fix_cli: "",
+          fix_console: "AWS Console → IAM → Security credentials (root) → Delete access key",
+          effort: "manual",
+          requires_human_review: true,
+        }),
+      ],
+      count: 1,
+      source: "scan_jobs",
+    });
+    render(<CISBenchmarkDetail />);
+
+    expect(await screen.findByText(/no copy-pasteable cli fix/i)).toBeInTheDocument();
+    expect(screen.getByText(/security credentials \(root\)/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy fix command/i })).not.toBeInTheDocument();
   });
 
   it("filters across all fetched checks by guardrail", async () => {

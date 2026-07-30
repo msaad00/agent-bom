@@ -44,12 +44,12 @@ def _cis_check(
         "evidence": "synthetic fixture",
         "resource_ids": [f"arn:{cloud}:resource:test"],
         "remediation": {"summary": "tighten config"},
-        "fix_cli": "noop",
+        "fix_cli": "",
         "fix_console": "see console",
-        "effort": "low",
+        "effort": "manual",
         "priority": priority,
         "guardrails": [],
-        "requires_human_review": False,
+        "requires_human_review": True,
         "measured_at": measured,
     }
 

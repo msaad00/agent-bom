@@ -121,9 +121,11 @@ def _report(*, cve_summary: str = _CVE_SUMMARY) -> AIBOMReport:
                 "resource_ids": ["arn:aws:iam::123456789012:root"],
                 "remediation": {
                     "docs": "https://docs.aws.amazon.com/iam",
-                    "fix_cli": "aws iam delete-access-key --user-name root",
-                    "effort": "low",
+                    "fix_cli": None,
+                    "fix_console": "AWS Console → IAM → Security credentials (root) → Delete access key",
+                    "effort": "manual",
                     "priority": 1,
+                    "requires_human_review": True,
                 },
             }
         ]
@@ -220,10 +222,10 @@ def test_cve_rule_help_carries_description_and_remediation(rules: dict[str, dict
     assert "https://osv.dev/vulnerability/CVE-2020-14343" in help_obj["markdown"]
 
 
-def test_cis_rule_help_carries_remediation_command(rules: dict[str, dict]) -> None:
+def test_cis_rule_help_carries_manual_remediation_guidance(rules: dict[str, dict]) -> None:
     help_obj = rules["cis/aws/1.4"]["help"]
     assert _CIS_RECOMMENDATION in help_obj["text"]
-    assert "aws iam delete-access-key --user-name root" in help_obj["text"]
+    assert "Security credentials" in help_obj["text"]
 
 
 def test_help_reference_link_cannot_be_broken_out_of() -> None:

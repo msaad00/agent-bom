@@ -864,6 +864,7 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
         str(t) for t in (check.get("compliance_tags") or []) if str(t).strip()
     ]
     cis_section = sanitize_text(str(check.get("cis_section", "") or ""), max_len=200)
+    benchmark_version = sanitize_text(str(check.get("benchmark_version", "") or ""), max_len=40)
     status = str(check.get("status", "FAIL") or "FAIL").upper()
     if is_vendor_best_practice:
         finding_type = FindingType.CLOUD_BEST_PRACTICE_ERROR if status == "ERROR" else FindingType.CLOUD_BEST_PRACTICE_FAIL
@@ -912,8 +913,10 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
         evidence={
             "provider": provider,
             "check_id": check_id,
+            "control_title": title,
             "status": status,
             "cis_section": cis_section,
+            "benchmark_version": benchmark_version,
             "resource_ids": resource_ids,
             "benchmark": "Databricks Security Best Practices" if is_vendor_best_practice else "CIS",
         },

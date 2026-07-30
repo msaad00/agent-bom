@@ -22,8 +22,8 @@ null for ``fix_cli``):
 
 Population order (``build_remediation`` walks these in turn):
 
-    1. Hand-authored override keyed by (cloud, check_id) — takes precedence
-       for checks where the CLI form is unambiguous.
+    1. Hand-authored override keyed by exact cloud, benchmark version, check
+       ID, title, and section identity.
     2. Auto-derivation from the result's ``recommendation`` +
        ``severity`` + ``cis_section`` — produces a useful structured form
        even when no override exists.
@@ -31,15 +31,14 @@ Population order (``build_remediation`` walks these in turn):
        ``requires_human_review=True``, pointing the operator to the
        vendor docs.
 
-The overrides intentionally skew toward the highest-frequency checks
-(IAM root/MFA, CloudTrail/logging, storage encryption-at-rest, public
-bucket access) where a single command is both safe and well-documented
-by CIS. Other checks fall back to the auto-derived form rather than
-shipping commands that might break production.
+Overrides provide control-specific risk and console guidance. CLI mutations
+remain absent unless their exact identity is present in the separately reviewed
+allowlist; every other check falls back to manual advice.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 # Guardrail principle tags. Kept explicit so the HTML / MCP output can
@@ -177,243 +176,202 @@ def _derived_why(title: str, recommendation: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Hand-authored overrides — only for checks where the CLI is safe and
-# unambiguous. Every entry below was cross-checked against CIS v3 (AWS /
-# Azure / GCP) or the Snowflake CIS benchmark. Commands intentionally use
-# placeholders (``<ARN>``, ``<RG>``, ``<PROJECT>``, etc.) so operators
-# must substitute before running — this is the human-in-loop surface.
+# Hand-authored overrides are bound to an exact benchmark identity. A check ID
+# is not stable across benchmark revisions, so matching only ``(cloud,
+# check_id)`` can attach a valid command to the wrong control. Unknown,
+# incomplete, and drifted identities deliberately fall back to manual advice.
 # ---------------------------------------------------------------------------
 
-_OVERRIDES: dict[tuple[str, str], dict[str, Any]] = {
+
+@dataclass(frozen=True, slots=True)
+class CISControlIdentity:
+    cloud: str
+    benchmark_version: str
+    check_id: str
+    title: str
+    cis_section: str
+
+
+@dataclass(frozen=True, slots=True)
+class CISRemediationOverride:
+    why: str
+    fix_console: str
+    guardrails: tuple[str, ...]
+    fix_cli: str | None = None
+    docs: str | None = None
+    effort: str = "manual"
+    requires_human_review: bool = True
+
+
+_OVERRIDES: dict[CISControlIdentity, CISRemediationOverride] = {
     # ── AWS ────────────────────────────────────────────────────────────
-    ("aws", "1.4"): {
-        "why": "Root account access keys allow full account takeover with no MFA and no per-user audit trail.",
-        "fix_cli": "aws iam delete-access-key --user-name root --access-key-id <ROOT_KEY_ID>",
-        "fix_console": "AWS Console → IAM → Security credentials (root) → Delete access key",
-        "effort": "low",
-        "guardrails": ["identity", "least-privilege", "priv-escalation", "zero-trust"],
-        "requires_human_review": True,
-    },
-    ("aws", "1.5"): {
-        "why": "Root user without MFA is a single-password path to full account compromise.",
-        "fix_cli": None,  # MFA enablement requires device enrollment — not a pure CLI fix
-        "fix_console": "AWS Console → IAM → Security credentials (root) → Assign MFA device",
-        "effort": "medium",
-        "guardrails": ["identity", "zero-trust", "priv-escalation", "human-in-loop"],
-        "requires_human_review": True,
-    },
-    ("aws", "1.6"): {
-        "why": "Root user without hardware MFA is still usable via phishing or SIM-swap.",
-        "fix_cli": None,
-        "fix_console": "AWS Console → IAM → Security credentials (root) → Assign hardware MFA device",
-        "effort": "medium",
-        "guardrails": ["identity", "zero-trust", "priv-escalation", "human-in-loop"],
-        "requires_human_review": True,
-    },
-    ("aws", "1.7"): {
-        "why": "Using the root user for daily operations bypasses least-privilege and audit boundaries.",
-        "fix_cli": None,
-        "fix_console": "AWS Console → IAM → Users → create admin user; stop using root for daily ops",
-        "effort": "medium",
-        "guardrails": ["identity", "least-privilege", "zero-trust"],
-        "requires_human_review": True,
-    },
-    ("aws", "1.8"): {
-        "why": "A weak password policy enables credential stuffing and brute-force against IAM users.",
-        "fix_cli": (
-            "aws iam update-account-password-policy --minimum-password-length 14 "
-            "--require-symbols --require-numbers --require-uppercase-characters "
-            "--require-lowercase-characters --allow-users-to-change-password "
-            "--max-password-age 90 --password-reuse-prevention 24"
-        ),
-        "fix_console": "AWS Console → IAM → Account settings → Password policy",
-        "effort": "low",
-        "guardrails": ["identity", "defense-in-depth"],
-        "requires_human_review": False,
-    },
-    ("aws", "1.14"): {
-        "why": "Access keys older than 90 days increase blast radius of leaked credentials.",
-        "fix_cli": "aws iam update-access-key --access-key-id <KEY_ID> --status Inactive --user-name <USER>",
-        "fix_console": "AWS Console → IAM → Users → <user> → Security credentials → Make inactive",
-        "effort": "low",
-        "guardrails": ["identity", "least-privilege", "human-in-loop"],
-        "requires_human_review": True,
-    },
-    ("aws", "2.1.1"): {
-        "why": "S3 bucket without Block Public Access can be made internet-reachable by any bucket policy edit.",
-        "fix_cli": (
-            "aws s3api put-public-access-block --bucket <BUCKET> "
-            "--public-access-block-configuration "
-            "BlockPublicAcls=true,IgnorePublicAcls=true,"
-            "BlockPublicPolicy=true,RestrictPublicBuckets=true"
-        ),
-        "fix_console": "AWS Console → S3 → <bucket> → Permissions → Block public access",
-        "effort": "low",
-        "guardrails": ["network-exposure", "defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("aws", "2.1.2"): {
-        "why": "Account-level Block Public Access is the backstop against any per-bucket misconfig.",
-        "fix_cli": (
-            "aws s3control put-public-access-block --account-id <ACCOUNT_ID> "
-            "--public-access-block-configuration "
-            "BlockPublicAcls=true,IgnorePublicAcls=true,"
-            "BlockPublicPolicy=true,RestrictPublicBuckets=true"
-        ),
-        "fix_console": "AWS Console → S3 → Block Public Access settings for this account",
-        "effort": "low",
-        "guardrails": ["network-exposure", "defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("aws", "3.1"): {
-        "why": "Without a multi-region CloudTrail, API activity can go unlogged in unused regions.",
-        "fix_cli": (
-            "aws cloudtrail create-trail --name org-trail --s3-bucket-name <LOG_BUCKET> "
-            "--is-multi-region-trail --include-global-service-events && "
-            "aws cloudtrail start-logging --name org-trail"
-        ),
-        "fix_console": "AWS Console → CloudTrail → Create trail → Apply trail to all regions",
-        "effort": "low",
-        "guardrails": ["logging-and-audit", "defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("aws", "3.2"): {
-        "why": "CloudTrail without log file validation cannot prove log integrity after the fact.",
-        "fix_cli": "aws cloudtrail update-trail --name <TRAIL> --enable-log-file-validation",
-        "fix_console": "AWS Console → CloudTrail → Trails → <trail> → Edit → Enable log file validation",
-        "effort": "low",
-        "guardrails": ["logging-and-audit", "defense-in-depth"],
-        "requires_human_review": False,
-    },
-    ("aws", "3.5"): {
-        "why": "CloudTrail KMS key rotation limits exposure if a key is ever compromised.",
-        "fix_cli": "aws kms enable-key-rotation --key-id <CLOUDTRAIL_KMS_KEY_ID>",
-        "fix_console": "AWS Console → KMS → Keys → <key> → Key rotation → Enable",
-        "effort": "low",
-        "guardrails": ["encryption", "secrets-handling"],
-        "requires_human_review": False,
-    },
+    CISControlIdentity("aws", "3.0", "1.4", "No root account access keys", "1 - Identity and Access Management"): CISRemediationOverride(
+        why="Root account access keys allow full account takeover with no MFA and no per-user audit trail.",
+        fix_console="AWS Console → IAM → Security credentials (root) → Delete access key",
+        guardrails=("identity", "least-privilege", "priv-escalation", "zero-trust"),
+    ),
+    CISControlIdentity("aws", "3.0", "1.5", "Root account MFA enabled", "1 - Identity and Access Management"): CISRemediationOverride(
+        why="Root user without MFA is a single-password path to full account compromise.",
+        fix_console="AWS Console → IAM → Security credentials (root) → Assign MFA device",
+        guardrails=("identity", "zero-trust", "priv-escalation", "human-in-loop"),
+    ),
+    CISControlIdentity("aws", "3.0", "1.6", "Hardware MFA for root account", "1 - Identity and Access Management"): CISRemediationOverride(
+        why="Root user without hardware MFA is still usable via phishing or SIM-swap.",
+        fix_console="AWS Console → IAM → Security credentials (root) → Assign hardware MFA device",
+        guardrails=("identity", "zero-trust", "priv-escalation", "human-in-loop"),
+    ),
+    CISControlIdentity(
+        "aws", "3.0", "1.7", "Root user not used for daily tasks", "1 - Identity and Access Management"
+    ): CISRemediationOverride(
+        why="Using the root user for daily operations bypasses least-privilege and audit boundaries.",
+        fix_console="AWS Console → IAM → Users → create admin user; stop using root for daily ops",
+        guardrails=("identity", "least-privilege", "zero-trust"),
+    ),
+    CISControlIdentity(
+        "aws", "3.0", "1.8", "IAM password policy minimum length >= 14", "1 - Identity and Access Management"
+    ): CISRemediationOverride(
+        why="A weak password policy enables credential stuffing and brute-force against IAM users.",
+        fix_console="AWS Console → IAM → Account settings → Password policy",
+        guardrails=("identity", "defense-in-depth"),
+    ),
+    CISControlIdentity(
+        "aws", "3.0", "1.14", "Access keys rotated within 90 days", "1 - Identity and Access Management"
+    ): CISRemediationOverride(
+        why="Access keys older than 90 days increase blast radius of leaked credentials.",
+        fix_console="AWS Console → IAM → Users → <user> → Security credentials → Make inactive",
+        guardrails=("identity", "least-privilege", "human-in-loop"),
+    ),
+    CISControlIdentity("aws", "3.0", "2.1.1", "S3 account-level public access block configured", "2 - Storage"): CISRemediationOverride(
+        why="Missing account-level Block Public Access permits bucket policies or ACLs to expose data publicly.",
+        fix_console="AWS Console → S3 → Block Public Access settings for this account",
+        guardrails=("network-exposure", "defense-in-depth"),
+    ),
+    CISControlIdentity("aws", "3.0", "2.1.2", "S3 bucket server-side encryption enabled", "2 - Storage"): CISRemediationOverride(
+        why="Buckets without default server-side encryption can persist new objects without encryption at rest.",
+        fix_console="AWS Console → S3 → <bucket> → Properties → Default encryption",
+        guardrails=("encryption", "defense-in-depth"),
+    ),
+    CISControlIdentity("aws", "3.0", "3.1", "CloudTrail enabled in all regions", "3 - Logging"): CISRemediationOverride(
+        why="Without a multi-region CloudTrail, API activity can go unlogged in unused regions.",
+        fix_console="AWS Console → CloudTrail → Create trail → Apply trail to all regions",
+        guardrails=("logging-and-audit", "defense-in-depth"),
+    ),
+    CISControlIdentity("aws", "3.0", "3.2", "CloudTrail log file validation enabled", "3 - Logging"): CISRemediationOverride(
+        why="CloudTrail without log file validation cannot prove log integrity after the fact.",
+        fix_console="AWS Console → CloudTrail → Trails → <trail> → Edit → Enable log file validation",
+        guardrails=("logging-and-audit", "defense-in-depth"),
+    ),
+    CISControlIdentity("aws", "3.0", "3.5", "CloudTrail records management events in all regions", "3 - Logging"): CISRemediationOverride(
+        why="Excluding management events from CloudTrail leaves control-plane changes unavailable for investigation.",
+        fix_console="AWS Console → CloudTrail → Trails → <trail> → Event selectors → Management events",
+        guardrails=("logging-and-audit", "defense-in-depth"),
+    ),
     # ── Azure ──────────────────────────────────────────────────────────
-    ("azure", "2.1.1"): {
-        "why": "Microsoft Defender for Servers off means hosts lack EDR-grade detection.",
-        "fix_cli": "az security pricing create --name VirtualMachines --tier Standard",
-        "fix_console": "Azure Portal → Microsoft Defender for Cloud → Environment settings → <subscription> → Defender plans",
-        "effort": "low",
-        "guardrails": ["defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("azure", "3.1"): {
-        "why": "Storage account without 'Secure transfer required' accepts plaintext HTTP traffic.",
-        "fix_cli": "az storage account update --name <SA_NAME> --resource-group <RG> --https-only true",
-        "fix_console": "Azure Portal → Storage accounts → <sa> → Configuration → Secure transfer required",
-        "effort": "low",
-        "guardrails": ["encryption", "network-exposure"],
-        "requires_human_review": False,
-    },
-    ("azure", "3.7"): {
-        "why": "Public blob access enables unauthenticated data read over the internet.",
-        "fix_cli": "az storage account update --name <SA_NAME> --resource-group <RG> --allow-blob-public-access false",
-        "fix_console": "Azure Portal → Storage accounts → <sa> → Configuration → Allow Blob public access: Disabled",
-        "effort": "low",
-        "guardrails": ["network-exposure", "defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("azure", "5.1.1"): {
-        "why": "Diagnostic settings off means control-plane activity is not centrally captured.",
-        "fix_cli": None,
-        "fix_console": "Azure Portal → Monitor → Activity log → Export activity logs → Add diagnostic setting",
-        "effort": "medium",
-        "guardrails": ["logging-and-audit", "defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("azure", "8.1"): {
-        "why": "Key Vault keys without expiration linger past their rotation window.",
-        "fix_cli": None,
-        "fix_console": "Azure Portal → Key vaults → <vault> → Keys → <key> → Set expiration",
-        "effort": "medium",
-        "guardrails": ["encryption", "secrets-handling", "human-in-loop"],
-        "requires_human_review": True,
-    },
+    CISControlIdentity(
+        "azure", "3.0", "3.1", "Secure transfer required on storage accounts", "3 - Storage Accounts"
+    ): CISRemediationOverride(
+        why="Storage accounts without secure transfer accept plaintext HTTP traffic.",
+        fix_console="Azure Portal → Storage accounts → <account> → Configuration → Secure transfer required",
+        guardrails=("encryption", "network-exposure"),
+    ),
+    CISControlIdentity("azure", "3.0", "3.7", "Blob containers set to private access", "3 - Storage Accounts"): CISRemediationOverride(
+        why="Public blob access enables unauthenticated data reads over the internet.",
+        fix_console="Azure Portal → Storage accounts → <account> → Containers → Change access level to Private",
+        guardrails=("network-exposure", "defense-in-depth"),
+    ),
+    CISControlIdentity(
+        "azure", "3.0", "5.1.1", "Diagnostic setting captures Activity Log", "5 - Logging and Monitoring"
+    ): CISRemediationOverride(
+        why="Missing diagnostic settings prevent centralized capture of control-plane activity.",
+        fix_console="Azure Portal → Monitor → Activity log → Export activity logs → Add diagnostic setting",
+        guardrails=("logging-and-audit", "defense-in-depth"),
+    ),
+    CISControlIdentity("azure", "3.0", "8.1", "Expiration date set on Key Vault keys", "8 - Key Vault"): CISRemediationOverride(
+        why="Key Vault keys without expiration can remain usable beyond their intended rotation window.",
+        fix_console="Azure Portal → Key vaults → <vault> → Keys → <key> → Set expiration",
+        guardrails=("encryption", "secrets-handling", "human-in-loop"),
+    ),
     # ── GCP ────────────────────────────────────────────────────────────
-    ("gcp", "1.4"): {
-        "why": "Service account keys are long-lived credentials; rotation and minimization reduce exposure.",
-        "fix_cli": "gcloud iam service-accounts keys delete <KEY_ID> --iam-account=<SA_EMAIL>",
-        "fix_console": "GCP Console → IAM & Admin → Service Accounts → <sa> → Keys",
-        "effort": "low",
-        "guardrails": ["identity", "least-privilege", "secrets-handling", "human-in-loop"],
-        "requires_human_review": True,
-    },
-    ("gcp", "2.1"): {
-        "why": "Without Cloud Audit Logs, sensitive API activity is not recoverable for investigations.",
-        "fix_cli": None,  # Requires full policy IAM bindings mutation — console-safer
-        "fix_console": "GCP Console → IAM & Admin → Audit Logs → Enable Data Read / Data Write / Admin Read for all services",
-        "effort": "medium",
-        "guardrails": ["logging-and-audit", "defense-in-depth"],
-        "requires_human_review": True,
-    },
-    ("gcp", "3.1"): {
-        "why": "Default VPC permits east-west traffic across legacy defaults that predate firewall best practices.",
-        "fix_cli": None,
-        "fix_console": "GCP Console → VPC network → Delete default network; create scoped VPCs per environment",
-        "effort": "high",
-        "guardrails": ["network-exposure", "segmentation", "zero-trust"],
-        "requires_human_review": True,
-    },
-    ("gcp", "5.1"): {
-        "why": "Storage buckets with uniform bucket-level access off still allow ACL-based public read.",
-        "fix_cli": "gcloud storage buckets update gs://<BUCKET> --uniform-bucket-level-access",
-        "fix_console": "GCP Console → Cloud Storage → <bucket> → Permissions → Uniform access control",
-        "effort": "low",
-        "guardrails": ["network-exposure", "defense-in-depth"],
-        "requires_human_review": False,
-    },
-    ("gcp", "5.2"): {
-        "why": "Buckets with public allUsers/allAuthenticatedUsers binding leak data over the internet.",
-        "fix_cli": "gsutil iam ch -d allUsers:objectViewer gs://<BUCKET> && gsutil iam ch -d allAuthenticatedUsers:objectViewer gs://<BUCKET>",
-        "fix_console": "GCP Console → Cloud Storage → <bucket> → Permissions → remove allUsers / allAuthenticatedUsers",
-        "effort": "low",
-        "guardrails": ["network-exposure", "least-privilege"],
-        "requires_human_review": True,
-    },
+    CISControlIdentity(
+        "gcp", "3.0", "1.4", "No user-managed service account keys", "1 - Identity and Access Management"
+    ): CISRemediationOverride(
+        why="User-managed service account keys are long-lived credentials that increase exposure when copied or leaked.",
+        fix_console="GCP Console → IAM & Admin → Service Accounts → <account> → Keys",
+        guardrails=("identity", "least-privilege", "secrets-handling", "human-in-loop"),
+    ),
+    CISControlIdentity("gcp", "3.0", "2.1", "Cloud Audit Logs configured for all services", "2 - Logging"): CISRemediationOverride(
+        why="Without Cloud Audit Logs, sensitive API activity is unavailable for investigations.",
+        fix_console="GCP Console → IAM & Admin → Audit Logs → Configure Data Read, Data Write, and Admin Read",
+        guardrails=("logging-and-audit", "defense-in-depth"),
+    ),
+    CISControlIdentity("gcp", "3.0", "3.1", "No default VPC network in the project", "3 - Networking"): CISRemediationOverride(
+        why="The default VPC carries broad legacy firewall defaults that weaken environment segmentation.",
+        fix_console="GCP Console → VPC network → Review default network and create scoped environment VPCs",
+        guardrails=("network-exposure", "segmentation", "zero-trust"),
+    ),
+    CISControlIdentity("gcp", "3.0", "5.1", "Cloud Storage buckets not publicly accessible", "5 - Cloud Storage"): CISRemediationOverride(
+        why="Public allUsers or allAuthenticatedUsers IAM bindings can expose bucket data to the internet.",
+        fix_console="GCP Console → Cloud Storage → <bucket> → Permissions → Review public principals",
+        guardrails=("network-exposure", "least-privilege"),
+    ),
+    CISControlIdentity("gcp", "3.0", "5.2", "Uniform bucket-level access enabled on buckets", "5 - Cloud Storage"): CISRemediationOverride(
+        why="Buckets without uniform access retain ACL-based authorization paths outside centralized IAM policy.",
+        fix_console="GCP Console → Cloud Storage → <bucket> → Permissions → Uniform access control",
+        guardrails=("identity", "least-privilege", "defense-in-depth"),
+    ),
     # ── Snowflake ──────────────────────────────────────────────────────
-    ("snowflake", "1.1"): {
-        "why": "SCIM / SSO disabled means identity lifecycle is not tied to the corporate IdP.",
-        "fix_cli": None,
-        "fix_console": "Snowsight → Admin → Security → SCIM / SSO integrations",
-        "effort": "high",
-        "guardrails": ["identity", "zero-trust", "human-in-loop"],
-        "requires_human_review": True,
-    },
-    ("snowflake", "1.2"): {
-        "why": "Users without MFA are a single-password path to tenant compromise.",
-        "fix_cli": "ALTER USER <USER> SET MINS_TO_BYPASS_MFA=0;  -- enforce MFA",
-        "fix_console": "Snowsight → Admin → Users & Roles → <user> → Require MFA",
-        "effort": "low",
-        "guardrails": ["identity", "zero-trust", "priv-escalation"],
-        "requires_human_review": True,
-    },
-    ("snowflake", "1.4"): {
-        "why": "ACCOUNTADMIN used for day-to-day operations breaks separation of duties.",
-        "fix_cli": None,
-        "fix_console": "Snowsight → Admin → Users & Roles → rotate admin role assignments",
-        "effort": "medium",
-        "guardrails": ["identity", "least-privilege", "priv-escalation"],
-        "requires_human_review": True,
-    },
-    ("snowflake", "2.1"): {
-        "why": "Network policies off means the account accepts traffic from any source IP.",
-        "fix_cli": "CREATE NETWORK POLICY corp_only ALLOWED_IP_LIST=('<CORP_CIDR>'); ALTER ACCOUNT SET NETWORK_POLICY=corp_only;",
-        "fix_console": "Snowsight → Admin → Security → Network policies",
-        "effort": "low",
-        "guardrails": ["network-exposure", "segmentation", "zero-trust"],
-        "requires_human_review": True,
-    },
+    CISControlIdentity(
+        "snowflake", "1.0", "1.1", "MFA enabled for password-auth users", "1 - Account and Authentication"
+    ): CISRemediationOverride(
+        why="Password-authenticated users without MFA remain exposed to single-factor account compromise.",
+        fix_console="Snowsight → Admin → Users & Roles → Review MFA enrollment and authentication policy",
+        guardrails=("identity", "zero-trust", "human-in-loop"),
+    ),
+    CISControlIdentity(
+        "snowflake", "1.0", "1.2", "Minimum password length 14 or greater", "1 - Account and Authentication"
+    ): CISRemediationOverride(
+        why="A password policy below 14 characters weakens resistance to password guessing and credential attacks.",
+        fix_console="Snowsight → Admin → Security → Password policies",
+        guardrails=("identity", "defense-in-depth", "human-in-loop"),
+    ),
+    CISControlIdentity(
+        "snowflake", "1.0", "1.4", "ACCOUNTADMIN granted to at most 2 users", "1 - Account and Authentication"
+    ): CISRemediationOverride(
+        why="Broad ACCOUNTADMIN assignment weakens separation of duties and expands privileged access.",
+        fix_console="Snowsight → Admin → Users & Roles → Review ACCOUNTADMIN grants",
+        guardrails=("identity", "least-privilege", "priv-escalation"),
+    ),
+    CISControlIdentity(
+        "snowflake", "1.0", "2.1", "Account-level network policies configured", "2 - Network Security"
+    ): CISRemediationOverride(
+        why="Without an account network policy, Snowflake access is not restricted to approved network locations.",
+        fix_console="Snowsight → Admin → Security → Network policies",
+        guardrails=("network-exposure", "segmentation", "zero-trust", "human-in-loop"),
+    ),
 }
+
+# PR 1 deliberately contains no verified commands. PR 2 may add an identity to
+# this set only with provider-doc evidence and exact command-contract tests.
+_VERIFIED_CLI_CONTROLS: frozenset[CISControlIdentity] = frozenset()
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def fail_closed_remediation_payload(value: Any) -> dict[str, Any]:
+    """Return a copy safe to expose while the verified CLI set is empty.
+
+    Historical scan jobs and analytics rows can contain commands written by an
+    older release. Canonicalizing at projection boundaries prevents those rows
+    from replaying stale mutations after an upgrade without rewriting evidence.
+    """
+    remediation = dict(value) if isinstance(value, dict) else {}
+    remediation["fix_cli"] = None
+    remediation["effort"] = "manual"
+    remediation["requires_human_review"] = True
+    return remediation
 
 
 def build_remediation(
@@ -424,6 +382,7 @@ def build_remediation(
     severity: str,
     recommendation: str,
     cis_section: str,
+    benchmark_version: str | None = None,
 ) -> dict[str, Any]:
     """Build a fully-populated remediation dict for a CIS check.
 
@@ -447,24 +406,33 @@ def build_remediation(
         "requires_human_review": True,
     }
 
-    override = _OVERRIDES.get((cloud, check_id))
+    identity = CISControlIdentity(
+        cloud=cloud,
+        benchmark_version=benchmark_version or "",
+        check_id=check_id,
+        title=title,
+        cis_section=cis_section,
+    )
+    override = _OVERRIDES.get(identity)
     if override:
-        # Overrides only need to provide the fields they want to set; the
-        # auto-derived values fill in the rest. This keeps override
-        # authoring terse while guaranteeing schema completeness.
-        merged = {**base, **override}
-        # Preserve priority from override if it set one explicitly; otherwise
-        # inherit severity-derived priority.
-        merged.setdefault("priority", priority)
-        # Preserve guardrails union if the override supplied its own list.
-        if "guardrails" not in override:
-            merged["guardrails"] = guardrails
+        fix_cli = override.fix_cli if identity in _VERIFIED_CLI_CONTROLS else None
+        merged = {
+            **base,
+            "why": override.why,
+            "fix_cli": fix_cli,
+            "fix_console": override.fix_console,
+            "effort": override.effort if fix_cli else "manual",
+            "guardrails": list(override.guardrails),
+            "requires_human_review": True,
+        }
+        if override.docs:
+            merged["docs"] = override.docs
         return merged
 
     return base
 
 
-def attach_remediation(result: Any, *, cloud: str) -> None:
+def attach_remediation(result: Any, *, cloud: str, benchmark_version: str | None = None) -> None:
     """Populate ``result.remediation`` in-place.
 
     Idempotent: calling twice produces the same dict. Safe to call on
@@ -478,10 +446,11 @@ def attach_remediation(result: Any, *, cloud: str) -> None:
         severity=result.severity,
         recommendation=result.recommendation,
         cis_section=result.cis_section,
+        benchmark_version=benchmark_version,
     )
 
 
 def attach_all(report: Any, *, cloud: str) -> None:
     """Attach remediation to every check in a CIS benchmark report."""
     for check in report.checks:
-        attach_remediation(check, cloud=cloud)
+        attach_remediation(check, cloud=cloud, benchmark_version=getattr(report, "benchmark_version", None))

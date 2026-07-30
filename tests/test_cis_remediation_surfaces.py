@@ -31,17 +31,17 @@ def _bundle_with_remediation(cloud: str = "aws") -> dict:
         "checks": [
             {
                 "check_id": "1.4",
-                "title": "Ensure no root user account access key exists",
+                "title": "No root account access keys",
                 "status": "fail",
                 "severity": "high",
                 "evidence": "Root access key present.",
                 "resource_ids": ["root"],
                 "recommendation": "Remove root access keys.",
                 "remediation": {
-                    "why": "Failure indicates: ensure no root user account access key exists.",
-                    "fix_cli": "aws iam delete-access-key --user-name root --access-key-id <ROOT_KEY_ID>",
+                    "why": "Root account access keys allow full account takeover with no per-user audit trail.",
+                    "fix_cli": None,
                     "fix_console": "AWS Console → IAM → Security credentials (root) → Delete access key",
-                    "effort": "low",
+                    "effort": "manual",
                     "priority": 1,
                     "docs": "https://example/docs",
                     "guardrails": ["identity", "least-privilege", "priv-escalation", "zero-trust"],
@@ -103,7 +103,7 @@ def test_cli_compact_cis_posture_renders_remediation():
     assert "Cloud Security Posture" in out
     assert "AWS" in out
     assert "1.4" in out  # check_id
-    assert "delete-access-key" in out  # fix_cli surfaced
+    assert "Security credentials" in out  # manual console path surfaced
     assert "priv-escalation" in out or "least-privilege" in out  # guardrails surfaced
     assert "review" in out  # requires_human_review flag shown
 
@@ -180,7 +180,7 @@ def test_html_cis_section_emits_remediation():
     assert 'id="cisbenchmarks"' in html
     assert "AWS" in html
     assert "1.4" in html
-    assert "delete-access-key" in html  # fix_cli
+    assert "Security credentials" in html  # manual console path
     assert "priv-escalation" in html or "least-privilege" in html
     assert "review" in html  # human-review flag rendered
 
@@ -240,10 +240,11 @@ def test_sarif_includes_cis_result_with_remediation_properties():
     assert len(cis_results) == 1
     props = cis_results[0].get("properties", {})
     # Structured remediation is preserved as a nested dict.
-    assert props["remediation"]["fix_cli"].startswith("aws iam delete-access-key")
+    assert props["remediation"]["fix_cli"] is None
     # Flat convenience keys are also present for SARIF consumers that
     # don't parse nested dicts.
-    assert props["fix_cli"].startswith("aws iam delete-access-key")
+    assert props["fix_cli"] is None
+    assert "Security credentials" in props["fix_console"]
     assert props["priority"] == 1
     assert "priv-escalation" in props["guardrails"]
     assert props["requires_human_review"] is True

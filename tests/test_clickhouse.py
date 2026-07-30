@@ -359,8 +359,16 @@ class TestClickHouseAnalyticsStore:
                         "check_id": "1.5",
                         "status": "fail",
                         "priority": 1,
-                        "remediation": {"fix_console": "AWS Console", "priority": 1},
-                        "requires_human_review": True,
+                        "remediation": {
+                            "fix_cli": "aws kms enable-key-rotation --key-id <KMS_KEY_ID>",
+                            "fix_console": "AWS Console",
+                            "effort": "low",
+                            "priority": 1,
+                            "requires_human_review": False,
+                        },
+                        "fix_cli": "aws kms enable-key-rotation --key-id <KMS_KEY_ID>",
+                        "effort": "low",
+                        "requires_human_review": False,
                     }
                 ],
                 tenant_id="tenant-alpha",
@@ -370,7 +378,13 @@ class TestClickHouseAnalyticsStore:
         row = inserted["rows"][0]
         assert row["tenant_id"] == "tenant-alpha"
         assert row["priority"] == 1
-        assert json.loads(row["remediation"])["priority"] == 1
+        remediation = json.loads(row["remediation"])
+        assert remediation["priority"] == 1
+        assert remediation["fix_cli"] is None
+        assert remediation["effort"] == "manual"
+        assert remediation["requires_human_review"] is True
+        assert row["fix_cli"] == ""
+        assert row["effort"] == "manual"
         assert row["requires_human_review"] == 1
 
     def test_buffered_store_flushes_before_query(self):

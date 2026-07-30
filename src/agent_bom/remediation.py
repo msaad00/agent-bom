@@ -285,16 +285,19 @@ def _build_cis_remediation(finding: "Finding") -> Remediation:
     evidence = finding.evidence or {}
     provider = _provider_from_finding(finding)
     check_id = str(evidence.get("check_id", "") or "")
+    control_title = str(evidence.get("control_title", "") or finding.title)
     cis_section = str(evidence.get("cis_section", "") or "")
+    benchmark_version = str(evidence.get("benchmark_version", "") or "") or None
     recommendation = finding.remediation_guidance or ""
 
     catalog = build_cis_catalog(
         cloud=provider,
         check_id=check_id,
-        title=finding.title,
+        title=control_title,
         severity=finding.effective_severity(),
         recommendation=recommendation,
         cis_section=cis_section,
+        benchmark_version=benchmark_version,
     )
 
     cli = catalog.get("fix_cli")

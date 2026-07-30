@@ -153,7 +153,7 @@ cis_benchmark(provider="aws", region="us-east-1")
   FINDING: Root account has access keys
   ──────────────────────────────────────
   WHY:     Root keys = unlimited blast radius. Compromised root = full account takeover.
-  FIX:     aws iam delete-access-key --user-name root --access-key-id AKIA...
+  FIX:     Sign in as the root user, open IAM > Security credentials, and delete the root access key.
   VERIFY:  agent-bom scan --aws --aws-cis-benchmark | grep "root_access_keys"
 ```
 

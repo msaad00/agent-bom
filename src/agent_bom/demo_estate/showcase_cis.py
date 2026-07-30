@@ -38,13 +38,13 @@ def _check(
 
 
 def _rem(
-    fix_cli: str,
+    fix_cli: str | None,
     fix_console: str,
     effort: str,
     priority: int,
     *,
     guardrails: list[str] | None = None,
-    requires_human_review: bool = False,
+    requires_human_review: bool = True,
 ) -> dict[str, Any]:
     return {
         "fix_cli": fix_cli,
@@ -61,7 +61,7 @@ _AWS_CHECKS: list[dict[str, Any]] = [
         "1.4", "Ensure no root user account access key exists", "pass", "high",
         "1 Identity and Access Management",
         "No access keys attached to the root account.", ["root"],
-        _rem("aws iam delete-access-key --user-name root", "IAM > Security credentials", "low", 3),
+        _rem(None, "IAM > Security credentials (root) > Delete access key", "manual", 3),
     ),
     _check(
         "1.12", "Ensure credentials unused for 45 days are disabled", "fail", "medium",

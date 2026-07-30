@@ -44,7 +44,7 @@ function normalizeCheck(check: CISBenchmarkCheck): CISBenchmarkCheck {
     resource_ids: Array.isArray(check.resource_ids) ? check.resource_ids : [],
     fix_cli: typeof check.fix_cli === "string" ? check.fix_cli : "",
     fix_console: typeof check.fix_console === "string" ? check.fix_console : "",
-    requires_human_review: Boolean(check.requires_human_review),
+    requires_human_review: check.requires_human_review !== false,
     priority: typeof check.priority === "number" ? check.priority : Number(check.priority) || 0,
     remediation: check.remediation ?? {},
   };
@@ -274,8 +274,9 @@ function FilterPills<T extends string | number>({
  * Cloud CIS benchmark drill-down. Fetches tenant-scoped checks from
  * `GET /v1/cis/checks`, then filters client-side by cloud, status, priority,
  * and guardrail so every fetched check participates in the guardrails filter.
- * Each failed check exposes a copy-pasteable `fix_cli` (with a human-review
- * warning when applicable) or a console path, plus a remediation docs link.
+ * Each failed check exposes a console path and remediation docs. A CLI command
+ * appears only for an explicitly verified control and always carries a review
+ * warning.
  */
 export function CISBenchmarkDetail() {
   const [checks, setChecks] = useState<CISBenchmarkCheck[] | null>(null);

@@ -474,10 +474,13 @@ class ClickHouseAnalyticsStore:
         }
 
     def _cis_check_row(self, check: dict, *, tenant_id: str = "default") -> dict[str, Any]:
+        from agent_bom.cloud.cis_remediation import fail_closed_remediation_payload
+
         resolved_tenant = str(check.get("tenant_id") or tenant_id or "default")
         scan_id = check.get("scan_id", "")
         cloud = check.get("cloud", "")
         check_id = check.get("check_id", "")
+        remediation = fail_closed_remediation_payload(check.get("remediation"))
         return {
             "measured_at": _coerce_clickhouse_timestamp(check.get("measured_at")),
             "scan_id": scan_id,
@@ -492,13 +495,13 @@ class ClickHouseAnalyticsStore:
             "cis_section": check.get("cis_section", ""),
             "evidence": check.get("evidence", ""),
             "resource_ids": list(check.get("resource_ids", []) or []),
-            "remediation": json.dumps(check.get("remediation", {}) or {}, sort_keys=True),
-            "fix_cli": check.get("fix_cli", ""),
+            "remediation": json.dumps(remediation, sort_keys=True),
+            "fix_cli": "",
             "fix_console": check.get("fix_console", ""),
-            "effort": check.get("effort", ""),
+            "effort": "manual",
             "priority": int(check.get("priority", 0) or 0),
             "guardrails": list(check.get("guardrails", []) or []),
-            "requires_human_review": int(bool(check.get("requires_human_review", False))),
+            "requires_human_review": 1,
         }
 
     def record_audit_event(self, event: dict) -> None:

@@ -435,7 +435,12 @@ async def get_compliance(
 
     tenant_jobs = _tenant_jobs(request)
     if scan_id:
-        tenant_jobs = [job for job in tenant_jobs if job.job_id == scan_id or (job.result and str(job.result.get("scan_id") or "") == scan_id)]
+        matching_jobs = []
+        for job in tenant_jobs:
+            result_scan_id = str(job.result.get("scan_id") or "") if job.result else ""
+            if job.job_id == scan_id or result_scan_id == scan_id:
+                matching_jobs.append(job)
+        tenant_jobs = matching_jobs
 
     # Collect blast_radius entries from all completed scans
     all_blast: list[dict] = []

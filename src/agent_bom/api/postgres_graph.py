@@ -847,7 +847,7 @@ class PostgresGraphStore:
                     incoming.provenance,
                     incoming.source_scan_id,
                     incoming.source_run_id,
-                    incoming.evidence,
+                    incoming.evidence::jsonb,
                     incoming.activity_id,
                     incoming.scan_id,
                     incoming.tenant_id

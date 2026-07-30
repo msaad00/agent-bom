@@ -334,6 +334,7 @@ def test_prior_edge_continuity_is_resolved_during_insert_before_retirement(monke
     retirement_sql = next(sql for sql in conn.sql_calls if "update graph_edges as previous" in sql)
     assert continuity_sql.startswith("insert into graph_edges")
     assert "coalesce(nullif(previous.first_seen, ''), incoming.first_seen)" in continuity_sql
+    assert "incoming.evidence::jsonb" in continuity_sql
     assert "left join graph_edges as previous" in continuity_sql
     assert "previous.scan_id = %s" in continuity_sql
     assert "update graph_edges as current" not in continuity_sql

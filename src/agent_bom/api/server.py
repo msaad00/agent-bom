@@ -108,6 +108,8 @@ except ImportError as exc:  # pragma: no cover
     raise ImportError(_api_extra_import_error_message(exc)) from exc
 
 if TYPE_CHECKING:
+    import datetime as _datetime
+
     from fastapi.responses import HTMLResponse
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -1044,142 +1046,167 @@ async def _cleanup_loop() -> None:
     """
     while True:
         await asyncio.sleep(60)
-        store = _get_store()
-        store.cleanup_expired(_JOB_TTL_SECONDS)
-        # Public demo self-heal: if AGENT_BOM_DEMO_ESTATE is on and the curated
-        # scan job is missing/empty (TTL wipe, partial boot, operator reset),
-        # reseed without waiting for a container restart. Cheap no-op when a
-        # usable demo job is already present.
-        try:
-            from agent_bom.demo_estate.bootstrap import (
-                demo_estate_enabled,
-                maybe_bootstrap_demo_estate,
+        await _cleanup_tick()
+
+
+async def _cleanup_tick() -> None:
+    """One maintenance pass: TTL purges, partition retention, job reconcile.
+
+    EVERY work item is synchronous store/DB work and is offloaded to a worker
+    thread. Left inline it ran on the event loop once a minute; on Postgres at
+    volume the partition DDL alone freezes the whole control plane for the
+    duration of the tick. Each hook stays fail-open so a backend hiccup skips
+    one item instead of killing the loop.
+    """
+    store = _get_store()
+    await asyncio.to_thread(store.cleanup_expired, _JOB_TTL_SECONDS)
+    # Public demo self-heal: if AGENT_BOM_DEMO_ESTATE is on and the curated
+    # scan job is missing/empty (TTL wipe, partial boot, operator reset),
+    # reseed without waiting for a container restart. Cheap no-op when a
+    # usable demo job is already present.
+    try:
+        from agent_bom.demo_estate.bootstrap import (
+            demo_estate_enabled,
+            maybe_bootstrap_demo_estate,
+        )
+
+        if demo_estate_enabled():
+            await asyncio.to_thread(maybe_bootstrap_demo_estate)
+    except Exception:  # noqa: BLE001
+        _logger.warning("demo estate cleanup-loop reseed skipped", exc_info=True)
+    # Tier-B replay-log TTL purge (#2261). Wrapped so a backend hiccup
+    # never takes down the whole cleanup loop.
+    try:
+        from agent_bom.api.proxy_replay_store import get_proxy_replay_store
+
+        removed = await asyncio.to_thread(lambda: get_proxy_replay_store().cleanup_expired())
+        if removed:
+            _logger.info("proxy_replay_log cleanup removed %d expired rows", removed)
+    except Exception:  # noqa: BLE001
+        _logger.debug("proxy_replay_log cleanup skipped", exc_info=True)
+    # Hub observations partition retention (#3463). Postgres-only; no-op on
+    # SQLite and legacy unpartitioned tables. Fail-open like other cleanup
+    # hooks so a backend hiccup never stops the loop.
+    try:
+        from agent_bom.api.hub_observations_partition import run_hub_observations_retention
+
+        dropped_partitions = await asyncio.to_thread(run_hub_observations_retention)
+        if dropped_partitions:
+            _logger.info(
+                "hub_findings_current_observations retention dropped %d partition(s)",
+                dropped_partitions,
             )
+    except Exception:  # noqa: BLE001
+        _logger.debug("hub observations retention skipped", exc_info=True)
+    # Generic partition maintenance for the other append-only tables (#3463):
+    # ensure next partitions exist and roll over expired ones. Postgres-only;
+    # a strict no-op on SQLite and on any table an operator has not converted
+    # to declarative partitioning. Fail-open like the hooks above.
+    try:
+        from agent_bom.api.partition_maintenance import run_partition_retention
 
-            if demo_estate_enabled():
-                await asyncio.to_thread(maybe_bootstrap_demo_estate)
-        except Exception:  # noqa: BLE001
-            _logger.warning("demo estate cleanup-loop reseed skipped", exc_info=True)
-        # Tier-B replay-log TTL purge (#2261). Wrapped so a backend hiccup
-        # never takes down the whole cleanup loop.
-        try:
-            from agent_bom.api.proxy_replay_store import get_proxy_replay_store
+        partition_results = await asyncio.to_thread(run_partition_retention)
+        for table, (partitions_created, partitions_dropped) in partition_results.items():
+            _logger.info(
+                "%s partition maintenance: %d created, %d dropped",
+                table,
+                partitions_created,
+                partitions_dropped,
+            )
+    except Exception:  # noqa: BLE001
+        _logger.debug("partition maintenance skipped", exc_info=True)
+    # NHI lifecycle enforcement (#nhi): expire lingering JIT grants, opt-in
+    # dormant-identity deprovision, advisory token rotation-due flagging.
+    # Backend-agnostic and fail-open — a store error logs and is skipped so
+    # the loop survives. Timestamp injected for deterministic, replica-safe
+    # transitions.
+    try:
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
 
-            removed = get_proxy_replay_store().cleanup_expired()
-            if removed:
-                _logger.info("proxy_replay_log cleanup removed %d expired rows", removed)
-        except Exception:  # noqa: BLE001
-            _logger.debug("proxy_replay_log cleanup skipped", exc_info=True)
-        # Hub observations partition retention (#3463). Postgres-only; no-op on
-        # SQLite and legacy unpartitioned tables. Fail-open like other cleanup
-        # hooks so a backend hiccup never stops the loop.
-        try:
-            from agent_bom.api.hub_observations_partition import run_hub_observations_retention
+        from agent_bom.api.agent_identity_store import get_agent_identity_store, run_nhi_lifecycle_cleanup
+        from agent_bom.api.governance_audit_log import get_governance_audit_log
 
-            dropped_partitions = run_hub_observations_retention()
-            if dropped_partitions:
-                _logger.info(
-                    "hub_findings_current_observations retention dropped %d partition(s)",
-                    dropped_partitions,
-                )
-        except Exception:  # noqa: BLE001
-            _logger.debug("hub observations retention skipped", exc_info=True)
-        # Generic partition maintenance for the other append-only tables (#3463):
-        # ensure next partitions exist and roll over expired ones. Postgres-only;
-        # a strict no-op on SQLite and on any table an operator has not converted
-        # to declarative partitioning. Fail-open like the hooks above.
-        try:
-            from agent_bom.api.partition_maintenance import run_partition_retention
-
-            partition_results = run_partition_retention()
-            for table, (partitions_created, partitions_dropped) in partition_results.items():
-                _logger.info(
-                    "%s partition maintenance: %d created, %d dropped",
-                    table,
-                    partitions_created,
-                    partitions_dropped,
-                )
-        except Exception:  # noqa: BLE001
-            _logger.debug("partition maintenance skipped", exc_info=True)
-        # NHI lifecycle enforcement (#nhi): expire lingering JIT grants, opt-in
-        # dormant-identity deprovision, advisory token rotation-due flagging.
-        # Backend-agnostic and fail-open — a store error logs and is skipped so
-        # the loop survives. Timestamp injected for deterministic, replica-safe
-        # transitions.
-        try:
-            from datetime import datetime as _dt
-            from datetime import timezone as _tz
-
-            from agent_bom.api.agent_identity_store import get_agent_identity_store, run_nhi_lifecycle_cleanup
-            from agent_bom.api.governance_audit_log import get_governance_audit_log
-
-            nhi_now = _dt.now(_tz.utc)
-            nhi_result = run_nhi_lifecycle_cleanup(
+        nhi_now = _dt.now(_tz.utc)
+        nhi_result = await asyncio.to_thread(
+            lambda: run_nhi_lifecycle_cleanup(
                 get_agent_identity_store(),
                 now=nhi_now,
                 audit_log=get_governance_audit_log(),
             )
-            grants = nhi_result.get("grants", {})
-            dormant = nhi_result.get("dormant", {})
-            rotation = nhi_result.get("rotation", {})
-            acted = grants.get("expired", 0) + grants.get("pruned", 0) + dormant.get("revoked", 0) + rotation.get("flagged", 0)
-            if acted:
+        )
+        grants = nhi_result.get("grants", {})
+        dormant = nhi_result.get("dormant", {})
+        rotation = nhi_result.get("rotation", {})
+        acted = grants.get("expired", 0) + grants.get("pruned", 0) + dormant.get("revoked", 0) + rotation.get("flagged", 0)
+        if acted:
+            _logger.info(
+                "nhi lifecycle cleanup: %d grants expired, %d denied pruned, %d dormant revoked, %d rotation-due",
+                grants.get("expired", 0),
+                grants.get("pruned", 0),
+                dormant.get("revoked", 0),
+                rotation.get("flagged", 0),
+            )
+    except Exception:  # noqa: BLE001 — cleanup must never crash the loop
+        _logger.warning(
+            "nhi lifecycle cleanup skipped this tick; check the agent-identity store and governance audit-log backend connectivity",
+            exc_info=True,
+        )
+    # Managed-trial lifecycle: access is revoked at expiry, while data is
+    # deleted only after the configured grace period. This hook is opt-in
+    # and never runs in ordinary self-hosted deployments.
+    try:
+        from agent_bom.api.managed_trial import managed_trial_enabled
+
+        if managed_trial_enabled():
+            from agent_bom.api.tenant_lifecycle import run_managed_trial_lifecycle_tick
+
+            lifecycle_result = await asyncio.to_thread(run_managed_trial_lifecycle_tick)
+            if lifecycle_result["expired"] or lifecycle_result["deleted"]:
                 _logger.info(
-                    "nhi lifecycle cleanup: %d grants expired, %d denied pruned, %d dormant revoked, %d rotation-due",
-                    grants.get("expired", 0),
-                    grants.get("pruned", 0),
-                    dormant.get("revoked", 0),
-                    rotation.get("flagged", 0),
+                    "managed-trial lifecycle: %d expired, %d deleted",
+                    lifecycle_result["expired"],
+                    lifecycle_result["deleted"],
                 )
-        except Exception:  # noqa: BLE001 — cleanup must never crash the loop
-            _logger.warning(
-                "nhi lifecycle cleanup skipped this tick; check the agent-identity store and governance audit-log backend connectivity",
-                exc_info=True,
-            )
-        # Managed-trial lifecycle: access is revoked at expiry, while data is
-        # deleted only after the configured grace period. This hook is opt-in
-        # and never runs in ordinary self-hosted deployments.
-        try:
-            from agent_bom.api.managed_trial import managed_trial_enabled
+    except Exception:  # noqa: BLE001 — lifecycle cleanup remains retryable
+        _logger.warning(
+            "managed-trial lifecycle cleanup skipped this tick; check the lifecycle and tenant stores",
+            exc_info=True,
+        )
+    # Unstick jobs that have been RUNNING for too long
+    try:
+        from datetime import datetime, timezone
 
-            if managed_trial_enabled():
-                from agent_bom.api.tenant_lifecycle import run_managed_trial_lifecycle_tick
+        from agent_bom.api.scan_job_reconciliation import fail_stale_active_scan_jobs, reconcile_scan_jobs_active
 
-                lifecycle_result = await asyncio.to_thread(run_managed_trial_lifecycle_tick)
-                if lifecycle_result["expired"] or lifecycle_result["deleted"]:
-                    _logger.info(
-                        "managed-trial lifecycle: %d expired, %d deleted",
-                        lifecycle_result["expired"],
-                        lifecycle_result["deleted"],
-                    )
-        except Exception:  # noqa: BLE001 — lifecycle cleanup remains retryable
-            _logger.warning(
-                "managed-trial lifecycle cleanup skipped this tick; check the lifecycle and tenant stores",
-                exc_info=True,
-            )
-        # Unstick jobs that have been RUNNING for too long
-        try:
-            from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        await asyncio.to_thread(_fail_stuck_running_jobs, store, now)
+        await asyncio.to_thread(fail_stale_active_scan_jobs, store, timeout_seconds=_STUCK_JOB_TIMEOUT, now=now)
+        await asyncio.to_thread(reconcile_scan_jobs_active, store)
+    except Exception:  # noqa: BLE001
+        pass
 
-            from agent_bom.api.scan_job_reconciliation import fail_stale_active_scan_jobs, reconcile_scan_jobs_active
 
-            now = datetime.now(timezone.utc)
-            with _jobs_lock:
-                for job in list(_jobs.values()):
-                    if job.status == JobStatus.RUNNING and job.created_at:
-                        try:
-                            job_created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
-                            if (now - job_created).total_seconds() > _STUCK_JOB_TIMEOUT:
-                                job.status = JobStatus.FAILED
-                                job.error = "Timed out (stuck in RUNNING state)"
-                                job.completed_at = now.isoformat()
-                                store.put(job)
-                        except (ValueError, TypeError):
-                            pass
-            fail_stale_active_scan_jobs(store, timeout_seconds=_STUCK_JOB_TIMEOUT, now=now)
-            reconcile_scan_jobs_active(store)
-        except Exception:  # noqa: BLE001
-            pass
+def _fail_stuck_running_jobs(store: Any, now: _datetime.datetime) -> None:
+    """Mark in-process jobs stuck in RUNNING past the timeout as FAILED.
+
+    Synchronous by design — ``store.put`` is a DB write, so the caller runs
+    this in a worker thread.
+    """
+    from datetime import datetime
+
+    with _jobs_lock:
+        for job in list(_jobs.values()):
+            if job.status == JobStatus.RUNNING and job.created_at:
+                try:
+                    job_created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+                if (now - job_created).total_seconds() > _STUCK_JOB_TIMEOUT:
+                    job.status = JobStatus.FAILED
+                    job.error = "Timed out (stuck in RUNNING state)"
+                    job.completed_at = now.isoformat()
+                    store.put(job)
 
 
 # ─── Meta Routes ─────────────────────────────────────────────────────────────

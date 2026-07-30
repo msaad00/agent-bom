@@ -9,7 +9,7 @@ supply chain.
 
 Only CORRECTIVE / PREVENTIVE controls are tagged here — controls an open
 finding is evidence AGAINST. Two other classes are deliberately excluded (see
-:mod:`agent_bom.compliance_control_modes`):
+:mod:`agent_bom.evidence.control_modes`):
 
 * **Detective** controls — RA-5 "Monitor and scan for vulnerabilities in the
   system and hosted applications" and CM-8 "Develop and document an inventory
@@ -28,9 +28,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.compliance_control_modes import finding_taggable_controls
 from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
 from agent_bom.constants import high_risk_severities
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:

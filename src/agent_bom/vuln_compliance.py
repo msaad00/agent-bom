@@ -9,14 +9,14 @@ level in each framework's ``tag_blast_radius()`` function.
 Like those taggers, this one emits only CORRECTIVE / PREVENTIVE controls: a
 finding is evidence AGAINST them. Detective controls (the scan itself is the
 evidence) and unevaluable controls (a package scan cannot observe them) are
-filtered out through :func:`~agent_bom.compliance_control_modes.finding_taggable_controls`
+filtered out through :func:`~agent_bom.evidence.control_modes.finding_taggable_controls`
 so both taggers agree by construction.
 """
 
 from __future__ import annotations
 
-from agent_bom.compliance_control_modes import finding_taggable_controls
 from agent_bom.constants import AI_PACKAGES, TRAINING_DATA_PACKAGES
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.framework_mapping import controls_for_cwes
 from agent_bom.models import Package, Severity, Vulnerability
 

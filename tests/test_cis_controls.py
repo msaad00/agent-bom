@@ -57,7 +57,7 @@ def test_detective_safeguards_are_never_tagged_onto_a_finding():
     Tagging a finding onto them made every CVE fail the inventory and
     vulnerability-management safeguards that producing the finding proves are
     operating. They are scored from scan freshness instead
-    (see agent_bom.compliance_control_modes).
+    (see agent_bom.evidence.control_modes).
     """
     tags = tag_blast_radius(_br())
     assert "CIS-02.1" not in tags

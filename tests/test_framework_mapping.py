@@ -91,7 +91,7 @@ def _representative_br() -> BlastRadius:
 
 def test_cis_tags_unchanged():
     # CIS-02.1 / 07.1 / 07.5 are DETECTIVE safeguards implemented by this scan,
-    # so a finding no longer fails them (agent_bom.compliance_control_modes).
+    # so a finding no longer fails them (agent_bom.evidence.control_modes).
     assert cis_controls.tag_blast_radius(_representative_br()) == [
         "CIS-02.3",
         "CIS-02.7",
@@ -161,7 +161,7 @@ def test_soc2_tags_unchanged():
 def test_nist_csf_tags_unchanged():
     # DE.CM-09 / ID.RA-01 / ID.RA-02 are DETECTIVE — implemented by this scan and
     # its KEV/EPSS enrichment, so a finding no longer fails them. They are scored
-    # from scan freshness (agent_bom.compliance_control_modes) instead.
+    # from scan freshness (agent_bom.evidence.control_modes) instead.
     assert nist_csf.tag_blast_radius(_representative_br()) == [
         "GV.SC-05",
         "GV.SC-07",

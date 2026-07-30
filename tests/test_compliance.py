@@ -60,7 +60,7 @@ def _add_done_job(
     # Detective controls ("monitor and scan for vulnerabilities", "maintain a
     # component inventory") are scored from scan FRESHNESS, so a fixture with a
     # hard-coded past timestamp would read as lapsed monitoring as wall-clock
-    # time advances. See agent_bom.compliance_control_modes.
+    # time advances. See agent_bom.evidence.control_modes.
     job.completed_at = _recent_iso()
     job.result = {
         "agents": [],

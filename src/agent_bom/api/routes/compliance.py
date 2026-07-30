@@ -43,12 +43,6 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.compliance_control_modes import (
-    DETECTIVE_CONTROLS,
-    MODE_CORRECTIVE,
-    MODE_DETECTIVE,
-    detective_control_status,
-)
 from agent_bom.compliance_nist_catalog import (
     build_nist_800_53_catalog_line,
     build_nist_800_53_drill,
@@ -57,6 +51,12 @@ from agent_bom.compliance_nist_catalog import (
     evaluated_control_status as _evaluated_control_status,
 )
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.evidence.control_modes import (
+    DETECTIVE_CONTROLS,
+    MODE_CORRECTIVE,
+    MODE_DETECTIVE,
+    detective_control_status,
+)
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -482,7 +482,7 @@ async def get_compliance(
         """Build per-control compliance entries from blast_radius data.
 
         Three evaluation modes decide what a scan result means for a control
-        (see :mod:`agent_bom.compliance_control_modes`):
+        (see :mod:`agent_bom.evidence.control_modes`):
 
         * ``detective`` — the scan IS the control operating. A fresh completed
           scan is ``pass``; stale evidence is ``fail``; no scan is

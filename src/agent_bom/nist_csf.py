@@ -12,7 +12,7 @@ DE.CM-09 "Computing hardware and software are monitored for vulnerabilities" —
 are IMPLEMENTED BY this scan and its KEV/EPSS enrichment. Tagging a finding
 onto them would fail the control the finding proves is working, so they are
 scored from scan freshness instead
-(see :mod:`agent_bom.compliance_control_modes`).
+(see :mod:`agent_bom.evidence.control_modes`).
 
 Reference: https://www.nist.gov/cyberframework
 """
@@ -21,9 +21,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.compliance_control_modes import finding_taggable_controls
 from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
 from agent_bom.constants import high_risk_severities
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:

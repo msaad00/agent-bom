@@ -326,7 +326,7 @@ RETENTION_DAYS = _int("AGENT_BOM_RETENTION_DAYS", 90)
 # stop reading as implemented. Inside the window a completed scan IS the
 # evidence the control operates (``pass``); past it, continuous monitoring has
 # lapsed (``fail``). ``<= 0`` disables the staleness check entirely.
-# See ``agent_bom.compliance_control_modes``.
+# See ``agent_bom.evidence.control_modes``.
 
 COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS = _int("AGENT_BOM_COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS", 90)
 

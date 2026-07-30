@@ -35,6 +35,7 @@ from agent_bom.api.stores import (
     _job_lock,
     _jobs_put,
 )
+from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
 from agent_bom.security import sanitize_error
 
@@ -142,14 +143,20 @@ def _observe_scan_future(done_future: Future | Any) -> None:
 
 
 def submit_scan_job(job: ScanJob) -> None:
-    """Submit a scan job to the bounded worker pool and observe completion."""
+    """Submit a scan job to the bounded worker pool and observe completion.
+
+    The worker thread carries no tenant contextvar of its own, so the binding
+    comes from the job — otherwise the pipeline's durable persistence
+    (``PostgresJobStore.put``) writes as the default tenant and against the RLS
+    ``WITH CHECK`` contract. Same requirement the claimed-job path documents.
+    """
     global _executor_active_jobs  # noqa: PLW0603
 
     with _executor_lock:
         executor = _executor_for_submission_locked()
         _executor_active_jobs += 1
         try:
-            future = executor.submit(_run_scan_sync, job)
+            future = executor.submit(run_tenant_bound, job.tenant_id or "default", _run_scan_sync, job)
         except Exception:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
             raise
@@ -164,6 +171,9 @@ def submit_scheduled_scan_job(loop: Any, job: ScanJob) -> None:
     ``loop.run_in_executor()`` separately, because API shutdown can close the
     pool between those operations. This helper keeps the lookup and submission
     under the same lifecycle lock used by HTTP-triggered scans.
+
+    Like ``submit_scan_job``, the worker runs bound to the job's tenant: the
+    scheduler runs outside any HTTP request, so nothing else would set it.
     """
 
     global _executor_active_jobs  # noqa: PLW0603
@@ -172,7 +182,7 @@ def submit_scheduled_scan_job(loop: Any, job: ScanJob) -> None:
         executor = _executor_for_submission_locked()
         _executor_active_jobs += 1
         try:
-            future = loop.run_in_executor(executor, _run_scan_sync, job)
+            future = loop.run_in_executor(executor, run_tenant_bound, job.tenant_id or "default", _run_scan_sync, job)
         except Exception:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
             raise

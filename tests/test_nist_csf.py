@@ -54,22 +54,25 @@ def test_catalog_has_14_controls():
 
 
 def test_always_applied_tags():
+    """Only the CORRECTIVE categories an open finding is evidence against."""
     tags = tag_blast_radius(_br())
     assert "GV.SC-05" in tags
     assert "GV.SC-07" in tags
-    assert "ID.RA-01" in tags
-    assert "DE.CM-09" in tags
 
 
-def test_kev_triggers_threat_intel_and_containment():
+def test_detective_categories_are_never_tagged_onto_a_finding():
+    """ID.RA-01 / ID.RA-02 / DE.CM-09 are implemented BY this scan and its
+    KEV/EPSS enrichment. A finding mapped there failed the very category the
+    finding proves is operating; they are scored from scan freshness instead."""
+    tags = tag_blast_radius(_br(is_kev=True, epss_score=0.5))
+    assert "ID.RA-01" not in tags
+    assert "ID.RA-02" not in tags
+    assert "DE.CM-09" not in tags
+
+
+def test_kev_triggers_containment():
     tags = tag_blast_radius(_br(is_kev=True))
-    assert "ID.RA-02" in tags
     assert "RS.MI-02" in tags
-
-
-def test_epss_triggers_threat_intel():
-    tags = tag_blast_radius(_br(epss_score=0.5))
-    assert "ID.RA-02" in tags
 
 
 def test_high_severity_triggers_risk_assessment():
@@ -132,7 +135,4 @@ def test_label_functions():
 
 def test_minimal_finding_gets_base_tags_only():
     tags = tag_blast_radius(_br(severity=Severity.LOW, pkg_name="requests"))
-    assert "GV.SC-05" in tags
-    assert "ID.RA-01" in tags
-    assert "PR.AA-01" not in tags
-    assert "RS.MI-02" not in tags
+    assert tags == ["GV.SC-05", "GV.SC-07"]

@@ -210,6 +210,8 @@ describe("OverviewCockpit", () => {
         compliance={{
           overallScore: 72,
           overallStatus: "warning",
+          evaluatedControls: 20,
+          totalControls: 40,
           frameworks: [
             { id: "owasp-llm", label: "OWASP LLM Top 10", pass: 8, warn: 1, fail: 1, total: 10 },
             { id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 },
@@ -330,6 +332,8 @@ describe("OverviewCockpit", () => {
         compliance={{
           overallScore: 0,
           overallStatus: "pass",
+          evaluatedControls: 0,
+          totalControls: 10,
           frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
         }}
       />,
@@ -346,6 +350,8 @@ describe("OverviewCockpit", () => {
         compliance={{
           overallScore: 0,
           overallStatus: "warning",
+          evaluatedControls: 0,
+          totalControls: 10,
           frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 0, warn: 0, fail: 0, total: 10 }],
         }}
       />,
@@ -363,6 +369,8 @@ describe("OverviewCockpit", () => {
         compliance={{
           overallScore: 0,
           overallStatus: "fail",
+          evaluatedControls: 10,
+          totalControls: 10,
           frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 0, warn: 0, fail: 10, total: 10 }],
         }}
       />,
@@ -370,7 +378,8 @@ describe("OverviewCockpit", () => {
 
     expect(screen.getByText("Compliance 0%")).toBeInTheDocument();
     expect(screen.getByText("CIS Controls v8")).toBeInTheDocument();
-    expect(screen.getByText(/0% overall · 1 framework need attention/i)).toBeInTheDocument();
+    // The percentage always carries the denominator it was computed over.
+    expect(screen.getByText(/0% of 10 evaluated controls · 1 framework need attention/i)).toBeInTheDocument();
     expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
   });
 
@@ -381,6 +390,8 @@ describe("OverviewCockpit", () => {
         compliance={{
           overallScore: 100,
           overallStatus: "pass",
+          evaluatedControls: 10,
+          totalControls: 20,
           frameworks: [
             // Evaluated (some findings mapped) — legitimately shows.
             { id: "cis", label: "CIS Controls v8", pass: 8, warn: 1, fail: 1, total: 10 },
@@ -444,6 +455,8 @@ describe("OverviewCockpit", () => {
         compliance={{
           overallScore: 90,
           overallStatus: "pass",
+          evaluatedControls: 10,
+          totalControls: 10,
           frameworks: [{ id: "cis", label: "CIS Controls v8", pass: 10, warn: 0, fail: 0, total: 10 }],
         }}
       />,

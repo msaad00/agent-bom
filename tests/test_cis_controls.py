@@ -51,11 +51,18 @@ def test_catalog_has_ten_safeguards():
     assert len(CIS_CONTROLS) == 10
 
 
-def test_always_applied_tags():
+def test_detective_safeguards_are_never_tagged_onto_a_finding():
+    """CIS-02.1 / 07.1 / 07.5 are implemented BY this scan, not failed by it.
+
+    Tagging a finding onto them made every CVE fail the inventory and
+    vulnerability-management safeguards that producing the finding proves are
+    operating. They are scored from scan freshness instead
+    (see agent_bom.compliance_control_modes).
+    """
     tags = tag_blast_radius(_br())
-    assert "CIS-02.1" in tags
-    assert "CIS-07.1" in tags
-    assert "CIS-07.5" in tags
+    assert "CIS-02.1" not in tags
+    assert "CIS-07.1" not in tags
+    assert "CIS-07.5" not in tags
 
 
 def test_high_severity_triggers_unauthorized_software():
@@ -113,6 +120,11 @@ def test_label_functions():
     assert len(labels) == 2
 
 
-def test_minimal_finding_gets_base_tags_only():
+def test_minimal_finding_tags_no_safeguard():
+    """A LOW CVE in an ordinary package is evidence against no CIS safeguard.
+
+    It used to emit the three detective safeguards unconditionally, which is
+    what made every finding look like three extra control failures.
+    """
     tags = tag_blast_radius(_br(severity=Severity.LOW, pkg_name="requests"))
-    assert tags == ["CIS-02.1", "CIS-07.1", "CIS-07.5"]
+    assert tags == []

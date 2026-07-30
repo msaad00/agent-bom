@@ -502,6 +502,8 @@ function buildComplianceSnapshot(
   return {
     overallScore: compliance.overall_score,
     overallStatus: compliance.overall_status,
+    evaluatedControls: compliance.evaluated_controls,
+    totalControls: compliance.total_controls,
     frameworks,
   };
 }

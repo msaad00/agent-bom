@@ -255,17 +255,23 @@ def tag_provenance_finding(finding: dict) -> list[str]:
 
 
 def tag_blast_radius(br: BlastRadius) -> list[str]:
-    """Return MITRE ATT&CK Enterprise technique IDs for a CVE blast radius.
+    """Return MITRE ATT&CK Enterprise technique IDs a CVE blast radius makes
+    APPLICABLE — an overlay, never a set of failing controls.
 
-    Combines two signal sources — all resolved against the shipped MITRE
-    ATT&CK catalog and STIX-derived mappings bundled with agent-bom:
+    The only signal used is MITRE's own data: each CWE weakness ID on the
+    vulnerability resolved through the official CAPEC bridge
+    (CWE → CAPEC → ATT&CK, derived from MITRE's STIX data). A technique appears
+    here because MITRE associates it with a weakness actually present in the
+    estate.
 
-    1. **CWE-based**: maps each CWE weakness ID on the vulnerability to
-       ATT&CK techniques via the official CAPEC bridge
-       (CWE → CAPEC → ATT&CK, derived from MITRE's STIX data).
-    2. **Context-based**: maps blast-radius characteristics (exposed credentials,
-       reachable exec tools, CISA KEV status, severity) to tactic phases, then
-       resolves those phases to catalog techniques.
+    Broad *context* signals — "credentials are exposed", "high severity with no
+    CWE" — used to be expanded into a representative technique set via
+    :func:`_bounded_techniques_for_tactics`. That synthesized concrete technique
+    assertions (``T1110 Brute Force`` from the mere presence of a credential,
+    ``T1195 Supply Chain Compromise`` from an unclassified high-severity CVE)
+    off no evidencing signal, so it is gone. Those tactic expansions remain for
+    :func:`tag_cis_check` and :func:`tag_provenance_finding`, where a specific
+    failed check or risk flag is the evidence.
 
     The scan path does not fetch framework catalogs at runtime. Catalog refreshes
     happen out of band so scans remain deterministic and offline-friendly.
@@ -278,57 +284,20 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     Returns:
         Sorted list of ATT&CK technique IDs from the pinned local catalog.
-        Empty list when no CWE or context signals apply.
+        Empty list when the vulnerability carries no CAPEC-mapped CWE.
     """
-    from agent_bom.constants import high_risk_severities
     from agent_bom.mitre_fetch import get_cwe_to_attack
-    from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
     cwe_map = get_cwe_to_attack()
     techniques: set[str] = set()
-    mapped_from_cwe = False
 
-    # 1. CWE → ATT&CK via CAPEC official data
+    # CWE → ATT&CK via CAPEC official data
     for cwe in br.vulnerability.cwe_ids:
         # Normalise: accept "CWE-78", "78", "cwe-78"
         cwe_norm = cwe.strip().upper()
         if not cwe_norm.startswith("CWE-"):
             cwe_norm = f"CWE-{cwe_norm}"
-        direct_mappings = cwe_map.get(cwe_norm, [])
-        if direct_mappings:
-            mapped_from_cwe = True
-        for tech in direct_mappings:
-            techniques.add(tech)
-
-    # 2. Context-based signals → tactic phases → catalog techniques
-    high_risk = high_risk_severities()
-    is_high = br.vulnerability.severity in high_risk
-
-    tactic_phases: set[str] = set()
-
-    # Exposed credentials → credential-access tactic
-    if br.exposed_credentials:
-        tactic_phases.add("credential-access")
-
-    # CISA KEV or CRITICAL severity → direct exploitation (initial-access)
-    if br.vulnerability.is_kev or br.vulnerability.severity.value == "critical":
-        tactic_phases.add("initial-access")
-
-    # Reachable exec tools → execution tactic
-    for tool in br.exposed_tools:
-        caps = classify_mcp_tool(tool)
-        if ToolCapability.EXECUTE in caps:
-            tactic_phases.add("execution")
-            break
-
-    # HIGH+ with no CWE IDs → initial-access is the baseline tactic
-    if is_high and not mapped_from_cwe:
-        tactic_phases.add("initial-access")
-
-    # Resolve broad context signals to a bounded representative set. Direct
-    # CWE->ATT&CK mappings above remain per-finding and are not tactic-expanded.
-    for tech in _bounded_techniques_for_tactics(list(tactic_phases)):
-        techniques.add(tech)
+        techniques.update(cwe_map.get(cwe_norm, []))
 
     return sorted(techniques)
 

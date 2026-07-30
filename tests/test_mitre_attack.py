@@ -374,10 +374,15 @@ def test_unknown_cwe_no_error():
     assert isinstance(tags, list)
 
 
-def test_high_severity_without_direct_cwe_mapping_falls_back_to_initial_access():
+def test_unmapped_cwe_synthesizes_no_technique():
+    """An unrecognized CWE is not evidence for any technique.
+
+    This used to fall back to a representative "initial-access" set, asserting
+    concrete adversary techniques off nothing but a severity label.
+    """
     with _mock_catalog():
         tags = tag_blast_radius(_br(cwe_ids=["CWE-99999"], severity=Severity.HIGH))
-    assert len(tags) > 0
+    assert tags == []
 
 
 def test_heap_overflow_cwe_does_not_broadcast_unrelated_attack_tactics():
@@ -390,32 +395,47 @@ def test_heap_overflow_cwe_does_not_broadcast_unrelated_attack_tactics():
     assert "T1040" not in tags
 
 
-# ─── tag_blast_radius — context-based signals ─────────────────────────────────
+# ─── tag_blast_radius — context signals no longer synthesize techniques ──────
+#
+# A blast radius is tagged ONLY from MITRE's own CWE → CAPEC → ATT&CK data. The
+# broad context signals below (a credential exists, the CVE is severe, the CVE
+# is in KEV, an exec-capable tool is reachable) each used to be expanded into a
+# representative technique set. That asserted specific adversary behaviour —
+# "T1110 Brute Force", "T1195 Supply Chain Compromise" — off no evidence that
+# the behaviour occurred, and it fanned every such CVE out across dozens of
+# ATT&CK rows.
 
 
-def test_exposed_credentials_adds_credential_access_techniques():
+def test_exposed_credentials_synthesize_no_technique():
     with _mock_catalog():
         tags = tag_blast_radius(_br(creds=["OPENAI_API_KEY"]))
-    assert "T1552" in tags or "T1556" in tags
+    assert tags == []
 
 
-def test_critical_severity_adds_initial_access_techniques():
+def test_critical_severity_synthesizes_no_technique():
     with _mock_catalog():
         tags = tag_blast_radius(_br(severity=Severity.CRITICAL))
-    assert any(t in tags for t in ("T1190", "T1078", "T1195", "T1195.002"))
+    assert tags == []
 
 
-def test_kev_adds_initial_access_techniques():
+def test_kev_status_synthesizes_no_technique():
     with _mock_catalog():
         tags = tag_blast_radius(_br(is_kev=True, severity=Severity.MEDIUM))
-    assert len(tags) > 0
+    assert tags == []
 
 
-def test_exec_tool_adds_execution_techniques():
+def test_exec_tool_synthesizes_no_technique():
     exec_tool = MCPTool(name="run_shell", description="Execute shell commands on the server")
     with _mock_catalog():
         tags = tag_blast_radius(_br(tools=[exec_tool]))
-    assert "T1059" in tags or "T1059.004" in tags
+    assert tags == []
+
+
+def test_cwe_mapped_techniques_still_resolve():
+    """The evidenced path is untouched: a real CWE still yields its techniques."""
+    with _mock_catalog():
+        tags = tag_blast_radius(_br(cwe_ids=["CWE-787"], severity=Severity.CRITICAL))
+    assert "T1203" in tags
 
 
 def test_non_exec_tool_does_not_add_execution():

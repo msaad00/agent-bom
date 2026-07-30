@@ -150,6 +150,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_SERVICENOW_INSTANCE` | `str` | `''` | — |
 | `AGENT_BOM_VAULT_ADDR` | `str` | `''` | — |
 
+## Detective-control Evidence Freshness
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS` | `int` | `90` | How old the newest completed scan may be before DETECTIVE compliance controls ("monitor and scan for vulnerabilities", "maintain a component inventory") stop reading as implemented. Inside the window a completed scan IS the evidence the con |
+
 ## EPSS Thresholds
 | Env var | Type | Default | Description |
 |---|---|---|---|

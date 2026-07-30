@@ -43,6 +43,12 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.compliance_control_modes import (
+    DETECTIVE_CONTROLS,
+    MODE_CORRECTIVE,
+    MODE_DETECTIVE,
+    detective_control_status,
+)
 from agent_bom.compliance_nist_catalog import (
     build_nist_800_53_catalog_line,
     build_nist_800_53_drill,
@@ -470,8 +476,24 @@ async def get_compliance(
         catalog: dict[str, str],
         tag_field: str,
         id_key: str,
+        *,
+        scored: bool = True,
     ) -> list[dict]:
-        """Build per-control compliance entries from blast_radius data."""
+        """Build per-control compliance entries from blast_radius data.
+
+        Three evaluation modes decide what a scan result means for a control
+        (see :mod:`agent_bom.compliance_control_modes`):
+
+        * ``detective`` — the scan IS the control operating. A fresh completed
+          scan is ``pass``; stale evidence is ``fail``; no scan is
+          ``not_assessed``. Findings never fail a detective control.
+        * ``corrective`` — attested by the ABSENCE of an open finding. An open
+          finding fails/warns by worst severity; no mapped finding stays
+          ``not_evaluated`` (absence of a CVE is not proof of implementation).
+        * ``overlay`` (``scored=False``) — not a control at all. Entries are
+          ``applicable`` / ``not_applicable`` and never touch the score.
+        """
+        detective_ids = DETECTIVE_CONTROLS.get(tag_field, frozenset())
         controls = []
         for code, name in sorted(catalog.items()):
             sev_breakdown = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -492,21 +514,42 @@ async def get_compliance(
                     for agent in br.get("affected_agents", []):
                         affected_agents.add(agent)
 
-            if scan_count == 0:
+            if not scored:
+                # Applicability overlay (MITRE ATT&CK): a technique is made
+                # applicable by an observed weakness, or it is not. It is never
+                # a control the estate passed or failed, so it never enters the
+                # score. Presenting it as "fail" asserted dozens of unevidenced
+                # control failures per CVE.
+                mode = "overlay"
+                reason = "technique_observed" if findings else "no_observed_signal"
+                status = "applicable" if findings else "not_applicable"
+            elif code in detective_ids:
+                # The scan itself is the evidence this control operates —
+                # producing this scan and this SBOM IS the implementation of
+                # "monitor and scan for vulnerabilities" / "maintain a component
+                # inventory". Findings mapped here would be proof it works, so
+                # the status comes from evidence freshness, not from findings.
+                mode = MODE_DETECTIVE
+                status, reason = detective_control_status(scan_count=scan_count, latest_scan=latest_scan)
+            elif scan_count == 0:
                 # No completed scans means no evidence was gathered for this
                 # control. Rendering "pass" here reads as a clean audit when in
                 # fact nothing was measured, so surface an explicit not_assessed
                 # status per control (mirrors the aggregate no_data top-line).
-                status = "not_assessed"
+                mode = MODE_CORRECTIVE
+                status, reason = "not_assessed", "no_completed_scan"
             elif findings == 0:
                 # Scan ran but nothing maps to this control — no
                 # vulnerability-derived evidence, so it is not_evaluated, never a
                 # silent pass. Counting these as pass inflated overall_score
                 # toward 100 and contradicted the narrative + CLI export; all
                 # three surfaces now agree.
-                status = "not_evaluated"
+                mode = MODE_CORRECTIVE
+                status, reason = "not_evaluated", "no_mapped_finding"
             else:
+                mode = MODE_CORRECTIVE
                 status = _evaluated_control_status(sev_breakdown)
+                reason = "open_finding" if status != "not_evaluated" else "unrated_severity_finding"
 
             controls.append(
                 {
@@ -516,6 +559,8 @@ async def get_compliance(
                     "tags": [code],
                     "findings": findings,
                     "status": status,
+                    "evaluation_mode": mode,
+                    "evidence_reason": reason,
                     "severity_breakdown": sev_breakdown,
                     "affected_packages": sorted(affected_pkgs),
                     "affected_agents": sorted(affected_agents),
@@ -524,7 +569,13 @@ async def get_compliance(
         return controls
 
     framework_controls = {
-        metadata.output_key: _build_controls(dict(metadata.catalog), metadata.tag_field, "code") for metadata in TAG_MAPPED_FRAMEWORKS
+        metadata.output_key: _build_controls(
+            dict(metadata.catalog),
+            metadata.tag_field,
+            "code",
+            scored=metadata.scored,
+        )
+        for metadata in TAG_MAPPED_FRAMEWORKS
     }
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
@@ -533,7 +584,9 @@ async def get_compliance(
         f = sum(1 for c in controls if c["status"] == "fail")
         return p, w, f
 
-    all_frameworks = list(framework_controls.values())
+    # Overlay frameworks are excluded from every aggregate: they carry no
+    # pass/warning/fail at all, so folding them in would only ever add noise.
+    all_frameworks = [framework_controls[m.output_key] for m in TAG_MAPPED_FRAMEWORKS if m.scored]
     status_totals = [_count_statuses(fw) for fw in all_frameworks]
     total_pass = sum(s[0] for s in status_totals)
     total_warn = sum(s[1] for s in status_totals)
@@ -549,9 +602,20 @@ async def get_compliance(
     # toward the evaluated denominator (drags the score down) but never the
     # numerator.
     cis_foundations_agg = _aggregate_cis_foundations_checks(tenant_jobs)
-    bench_pass = int(cis_foundations_agg["counts"]["pass"])
-    bench_fail = int(cis_foundations_agg["counts"]["fail"])
-    bench_error = int(cis_foundations_agg["counts"]["error"])
+    aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
+    aisvs_summary = aisvs["summary"]
+
+    # AISVS folds in on exactly the same grounds as CIS Foundations: both are
+    # DIRECTLY EVALUATED checks, not CVE-tag inferences, so both are real
+    # evidence about the estate. Leaving AISVS out was invisible only while
+    # ``pass`` was unreachable and every such estate read ``no_data`` anyway;
+    # once a scan can legitimately pass its detective controls, an excluded
+    # failing AISVS check buys a "100% Compliant" headline over a known
+    # failure. AISVS is not in TAG_MAPPED_FRAMEWORKS, so this cannot
+    # double-count.
+    bench_pass = int(cis_foundations_agg["counts"]["pass"]) + int(aisvs_summary["pass"])
+    bench_fail = int(cis_foundations_agg["counts"]["fail"]) + int(aisvs_summary["fail"])
+    bench_error = int(cis_foundations_agg["counts"]["error"]) + int(aisvs_summary["error"])
 
     # Score over EVALUATED controls/checks only (CVE controls with mapped
     # findings + benchmark pass/fail/error). A CVE control with no findings is
@@ -563,12 +627,40 @@ async def get_compliance(
     evaluated_controls = aggregate_pass + total_warn + aggregate_fail + bench_error
     overall_score = round((aggregate_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
 
+    # A score over EVALUATED controls is only honest next to its coverage: a
+    # scan that touched 8 of 931 controls and passed all 8 is "100%" of a very
+    # small denominator, and a bare percentage hides that. Every surface that
+    # renders overall_score MUST render these alongside it.
+    total_controls = (
+        sum(m.control_count for m in TAG_MAPPED_FRAMEWORKS if m.scored)
+        + int(
+            cis_foundations_agg["counts"]["pass"]
+            + cis_foundations_agg["counts"]["fail"]
+            + cis_foundations_agg["counts"]["error"]
+            + cis_foundations_agg["counts"].get("not_applicable", 0)
+        )
+        + int(aisvs_summary["total"])
+    )
+    coverage_pct = round((evaluated_controls / total_controls) * 100, 2) if total_controls > 0 else 0.0
+
+    # A detective pass only establishes that we scan — it is evidence about the
+    # monitoring program, not about whether the estate meets a framework. An
+    # estate whose ONLY passing evidence is "a scan ran" has not been shown to
+    # be compliant, so it reports no_data rather than a green headline. Without
+    # this, a fresh scan over an estate with nothing gradeable rendered
+    # "100% / Compliant" — the same false green that pinning the score at 0 was
+    # originally (wrongly) papering over.
+    detective_passes = sum(
+        1 for controls_list in all_frameworks for c in controls_list if c.get("evaluation_mode") == MODE_DETECTIVE and c["status"] == "pass"
+    )
+    substantive_evaluated = evaluated_controls - detective_passes
+
     if aggregate_fail > 0:
         overall_status = "fail"
     elif total_warn > 0 or bench_error > 0:
         # A benchmark ERROR (unevaluable control) is not a clean pass either.
         overall_status = "warning"
-    elif evaluated_controls > 0:
+    elif substantive_evaluated > 0:
         overall_status = "pass"
     else:
         overall_status = "no_data"
@@ -583,11 +675,17 @@ async def get_compliance(
         overall_status = "no_data"
         overall_score = 0.0
 
-    aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
-    aisvs_summary = aisvs["summary"]
     summary: dict[str, int | float] = {}
     for metadata in TAG_MAPPED_FRAMEWORKS:
         controls_list = framework_controls[metadata.output_key]
+        if not metadata.scored:
+            # An overlay has no pass/warn/fail to report. Emitting zeroed
+            # ``*_pass``/``*_fail`` keys would read as "0 passing controls" for
+            # something that has no controls at all, so report applicability.
+            applicable = sum(1 for c in controls_list if c["status"] == "applicable")
+            summary[f"{metadata.summary_prefix}_applicable"] = applicable
+            summary[f"{metadata.summary_prefix}_not_applicable"] = len(controls_list) - applicable
+            continue
         passed, warned, failed = _count_statuses(controls_list)
         summary[f"{metadata.summary_prefix}_pass"] = passed
         summary[f"{metadata.summary_prefix}_warn"] = warned
@@ -631,6 +729,11 @@ async def get_compliance(
     response: dict[str, Any] = {
         "overall_score": overall_score,
         "overall_status": overall_status,
+        # Denominator context for overall_score — never render the percentage
+        # without it (see the comment where these are computed).
+        "evaluated_controls": evaluated_controls,
+        "total_controls": total_controls,
+        "coverage_pct": coverage_pct,
         "scan_count": scan_count,
         "latest_scan": latest_scan,
         "has_mcp_context": has_mcp_context,
@@ -1235,6 +1338,10 @@ async def get_compliance_summary(request: Request) -> dict:
     # "no_data" — so mirror it here and report not_evaluated instead of pass.
     no_data = int(full.get("scan_count") or 0) == 0
 
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+    overlay_keys = {metadata.output_key for metadata in TAG_MAPPED_FRAMEWORKS if not metadata.scored}
+
     def _control_status_counts(value: list[object]) -> tuple[int, int, int, int] | None:
         controls = [item for item in value if isinstance(item, dict) and isinstance(item.get("status"), str)]
         if not controls:
@@ -1244,17 +1351,29 @@ async def get_compliance_summary(request: Request) -> dict:
         fail_count = sum(1 for item in controls if item.get("status") == "fail")
         return len(controls), pass_count, warn_count, fail_count
 
-    framework_summary: dict[str, dict[str, int]] = {}
+    framework_summary: dict[str, dict[str, int | None]] = {}
     for key, value in full.items():
         if isinstance(value, list):
             counts = _control_status_counts(value)
             if counts is None:
                 continue
             controls, pass_count, warn_count, fail_count = counts
+            if key in overlay_keys:
+                # An applicability overlay has no pass/warn/fail. Emitting zeros
+                # would read as "0 of N passing"; report applicability instead.
+                applicable = sum(1 for item in value if isinstance(item, dict) and item.get("status") == "applicable")
+                framework_summary[key] = {
+                    "controls": controls,
+                    "scored": False,
+                    "applicable": 0 if no_data else applicable,
+                    "not_applicable": controls if no_data else controls - applicable,
+                }
+                continue
             if no_data:
                 pass_count = warn_count = fail_count = 0
             framework_summary[key] = {
                 "controls": controls,
+                "scored": True,
                 "pass": pass_count,
                 "warning": warn_count,
                 "fail": fail_count,

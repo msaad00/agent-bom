@@ -59,17 +59,19 @@ class TestModelDefault:
 
 class TestAlwaysOnTags:
     def test_nist_csf_base_tags(self):
+        """Only the CORRECTIVE categories — the detective ones are evidenced by
+        the scan itself, not failed by a finding it produced."""
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
-        assert "DE.CM-09" in tags["nist_csf"]
         assert "GV.SC-05" in tags["nist_csf"]
         assert "GV.SC-07" in tags["nist_csf"]
-        assert "ID.RA-01" in tags["nist_csf"]
+        assert "DE.CM-09" not in tags["nist_csf"]
+        assert "ID.RA-01" not in tags["nist_csf"]
 
     def test_cis_base_tags(self):
+        """No CIS safeguard is asserted by a bare LOW CVE. The inventory and
+        vulnerability-management safeguards are implemented BY this scan."""
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
-        assert "CIS-02.1" in tags["cis"]
-        assert "CIS-07.1" in tags["cis"]
-        assert "CIS-07.5" in tags["cis"]
+        assert tags["cis"] == []
 
     def test_iso_27001_base_tags(self):
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
@@ -156,7 +158,9 @@ class TestKevTags:
     def test_kev_triggers_response_tags(self):
         tags = tag_vulnerability(_vuln(is_kev=True, fixed_version=None), _pkg())
         assert "RS.MI-02" in tags["nist_csf"]
-        assert "ID.RA-02" in tags["nist_csf"]
+        # ID.RA-02 ("threat intelligence is received") is DETECTIVE — the KEV/EPSS
+        # enrichment on this very finding is the evidence it operates.
+        assert "ID.RA-02" not in tags["nist_csf"]
         assert "CIS-16.12" in tags["cis"]
         assert "A.5.28" in tags["iso_27001"]
         assert "CC7.4" in tags["soc2"]
@@ -169,9 +173,10 @@ class TestKevTags:
         assert "A.5.28" not in tags["iso_27001"]
         assert "CC7.4" not in tags["soc2"]
 
-    def test_epss_triggers_ra02(self):
+    def test_epss_does_not_assert_the_detective_threat_intel_category(self):
+        """EPSS enrichment PROVES ID.RA-02 operates — it cannot also fail it."""
         tags = tag_vulnerability(_vuln(epss_score=0.5, fixed_version=None), _pkg())
-        assert "ID.RA-02" in tags["nist_csf"]
+        assert "ID.RA-02" not in tags["nist_csf"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

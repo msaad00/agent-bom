@@ -50,8 +50,12 @@ export type OverviewComplianceFramework = {
 };
 
 export type OverviewComplianceSnapshot = {
+  /** Percentage of EVALUATED controls passing — always render it next to
+   *  `evaluatedControls` / `totalControls` so a small denominator is visible. */
   overallScore: number;
   overallStatus: "pass" | "warning" | "fail" | "no_data";
+  evaluatedControls: number;
+  totalControls: number;
   frameworks: OverviewComplianceFramework[];
 };
 
@@ -628,7 +632,7 @@ function ComplianceSnapshotPanel({
       defaultOpen={defaultOpen}
       subtitle={
         evidenceReady
-          ? `${Math.round(compliance.overallScore)}% overall · ${failing} framework${failing === 1 ? "" : "s"} need attention`
+          ? `${Math.round(compliance.overallScore)}% of ${compliance.evaluatedControls} evaluated control${compliance.evaluatedControls === 1 ? "" : "s"} · ${failing} framework${failing === 1 ? "" : "s"} need attention`
           : hasScanEvidence
             ? "No evaluated framework coverage is available for completed scans"
             : "Framework coverage appears after the first completed scan"

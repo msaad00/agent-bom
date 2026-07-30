@@ -90,13 +90,12 @@ def _representative_br() -> BlastRadius:
 
 
 def test_cis_tags_unchanged():
+    # CIS-02.1 / 07.1 / 07.5 are DETECTIVE safeguards implemented by this scan,
+    # so a finding no longer fails them (agent_bom.compliance_control_modes).
     assert cis_controls.tag_blast_radius(_representative_br()) == [
-        "CIS-02.1",
         "CIS-02.3",
         "CIS-02.7",
-        "CIS-07.1",
         "CIS-07.4",
-        "CIS-07.5",
         "CIS-16.1",
         "CIS-16.12",
     ]
@@ -104,15 +103,13 @@ def test_cis_tags_unchanged():
 
 def test_nist_800_53_tags_unchanged():
     assert nist_800_53.tag_blast_radius(_representative_br()) == [
+        # CM-8 / RA-5 are DETECTIVE (implemented by this scan); RA-7 / IR-5 are
+        # UNEVALUABLE organizational process a package scan cannot observe.
         "AC-3",
         "AC-6",
         "CM-6",
-        "CM-8",
         "IA-5",
-        "IR-5",
         "IR-6",
-        "RA-5",
-        "RA-7",
         "SC-28",
         "SI-10",
         "SI-2",
@@ -162,13 +159,13 @@ def test_soc2_tags_unchanged():
 
 
 def test_nist_csf_tags_unchanged():
+    # DE.CM-09 / ID.RA-01 / ID.RA-02 are DETECTIVE — implemented by this scan and
+    # its KEV/EPSS enrichment, so a finding no longer fails them. They are scored
+    # from scan freshness (agent_bom.compliance_control_modes) instead.
     assert nist_csf.tag_blast_radius(_representative_br()) == [
-        "DE.CM-09",
         "GV.SC-05",
         "GV.SC-07",
         "ID.AM-05",
-        "ID.RA-01",
-        "ID.RA-02",
         "ID.RA-05",
         "PR.AA-01",
         "PR.DS-01",
@@ -225,26 +222,23 @@ def test_vuln_compliance_tags_unchanged():
         "owasp_llm": ["LLM02", "LLM04", "LLM05"],
         "atlas": ["AML.T0010", "AML.T0043"],
         "nist_ai_rmf": ["GOVERN-1.7", "MANAGE-1.3", "MAP-3.5", "MEASURE-2.5", "MEASURE-2.9"],
+        # The CVE-intrinsic tagger agrees with the blast-radius taggers by
+        # construction: both drop the DETECTIVE controls (evidenced by the scan)
+        # and the UNEVALUABLE ones (RA-7 / IR-5), and FedRAMP is derived from the
+        # filtered 800-53 set so it inherits the same exclusions.
         "nist_csf": [
-            "DE.CM-09",
             "GV.SC-05",
             "GV.SC-07",
             "ID.AM-05",
-            "ID.RA-01",
-            "ID.RA-02",
             "ID.RA-05",
             "PR.DS-01",
             "RS.AN-03",
             "RS.MI-02",
         ],
-        "nist_800_53": ["CM-6", "CM-8", "IR-5", "IR-6", "RA-5", "RA-7", "SI-10", "SI-2", "SI-3", "SI-4", "SI-5", "SR-11", "SR-3", "SR-4"],
+        "nist_800_53": ["CM-6", "IR-6", "SI-10", "SI-2", "SI-3", "SI-4", "SI-5", "SR-11", "SR-3", "SR-4"],
         "fedramp": [
             "FedRAMP-CM-6",
-            "FedRAMP-CM-8",
-            "FedRAMP-IR-5",
             "FedRAMP-IR-6",
-            "FedRAMP-RA-5",
-            "FedRAMP-RA-7",
             "FedRAMP-SI-10",
             "FedRAMP-SI-2",
             "FedRAMP-SI-3",
@@ -252,7 +246,7 @@ def test_vuln_compliance_tags_unchanged():
             "FedRAMP-SI-5",
             "FedRAMP-SR-3",
         ],
-        "cis": ["CIS-02.1", "CIS-02.3", "CIS-02.7", "CIS-07.1", "CIS-07.4", "CIS-07.5", "CIS-16.1", "CIS-16.12"],
+        "cis": ["CIS-02.3", "CIS-02.7", "CIS-07.4", "CIS-16.1", "CIS-16.12"],
         "iso_27001": ["A.5.19", "A.5.20", "A.5.21", "A.5.23", "A.5.28", "A.8.28", "A.8.8"],
         "soc2": ["CC6.8", "CC7.1", "CC7.2", "CC7.4", "CC8.1", "CC9.1", "CC9.2"],
         "eu_ai_act": ["ART-15", "ART-17", "ART-6", "ART-9"],

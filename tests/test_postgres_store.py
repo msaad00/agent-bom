@@ -1578,6 +1578,30 @@ def test_graph_store_init_adds_query_indexes(mock_pool, mock_maintenance_pool):
     assert any("idx_pg_graph_node_search_lower_trgm" in sql for sql, _ in mock_pool._conn.executed)
 
 
+def test_graph_snapshot_stats_uses_bounded_unfiltered_edge_aggregation():
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    class SnapshotStatsConnection(MockConnection):
+        def execute(self, sql, params=None):
+            if "coalesce(max" in sql.lower():
+                self.executed.append((sql, params))
+                return MockCursor([(0, 0.0)])
+            return super().execute(sql, params)
+
+    pool = MockPool()
+    pool._conn = SnapshotStatsConnection()
+    store = PostgresGraphStore(pool=pool, maintenance_pool=pool)
+    store.snapshot_stats(tenant_id="tenant-a", scan_id="scan-a")
+
+    relationship_sql = next(
+        " ".join(sql.strip().lower().split())
+        for sql, _ in pool._conn.executed
+        if "group by relationship" in sql.lower()
+    )
+    assert "from graph_edges" in relationship_sql
+    assert "from graph_nodes" not in relationship_sql
+
+
 def test_graph_store_init_tolerates_restricted_pg_trgm_extension():
     from agent_bom.api.postgres_store import PostgresGraphStore
 

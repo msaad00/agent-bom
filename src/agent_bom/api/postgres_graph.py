@@ -2389,17 +2389,32 @@ class PostgresGraphStore:
                     [tenant_id, effective_scan_id, *params, *params],
                 ).fetchone()
                 total_edges = int((total_edges_row[0] if total_edges_row else 0) or 0)
-            rel_rows = conn.execute(
-                f"""
-                SELECT relationship, COUNT(*)
-                FROM graph_edges
-                WHERE tenant_id = %s AND scan_id = %s
-                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                GROUP BY relationship
-                """,  # nosec B608 - where_sql is built from static clause fragments
-                [tenant_id, effective_scan_id, *params, *params],
-            ).fetchall()
+            if not filters_active:
+                # Persisted snapshots already validate their topology while
+                # writing. Avoid two redundant graph_nodes membership scans on
+                # the common unfiltered stats path; the snapshot-key index can
+                # serve this bounded edge aggregation directly.
+                rel_rows = conn.execute(
+                    """
+                    SELECT relationship, COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                    GROUP BY relationship
+                    """,
+                    (tenant_id, effective_scan_id),
+                ).fetchall()
+            else:
+                rel_rows = conn.execute(
+                    f"""
+                    SELECT relationship, COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                    GROUP BY relationship
+                    """,  # nosec B608 - where_sql is built from static clause fragments
+                    [tenant_id, effective_scan_id, *params, *params],
+                ).fetchall()
             attack_row = conn.execute(
                 "SELECT COUNT(*), COALESCE(MAX(composite_risk), 0.0) FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",
                 (tenant_id, effective_scan_id),

@@ -22,6 +22,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 BASELINE_REVISION = "20260416_01"
@@ -36,6 +37,29 @@ def _normalize_sqlalchemy_url(url: str) -> str:
         if url.startswith(prefix):
             return "postgresql+psycopg://" + url[len(prefix) :]
     return url
+
+
+def top_up_observation_partition_runway(connection: Any) -> int:
+    """Extend the hub observations partition runway; run after every upgrade.
+
+    ``hub_findings_current_observations`` is monthly RANGE-partitioned and both
+    runtime roles are DML-only (``init.sql`` revokes CREATE on schema
+    ``public``), so only the migration owner can create a child. Provisioning a
+    fixed window once would simply move the ingest cliff, so every Alembic
+    upgrade tops the runway back up to a full year ahead.
+
+    Deliberately not swallowed: a migration owner that cannot provision must
+    fail the deploy loudly rather than ship a database that will stop accepting
+    current-dated ingest on a date certain.
+    """
+    src = Path(__file__).resolve().parents[3] / "src"
+    if src.is_dir() and str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    from agent_bom.api.hub_observations_partition import provision_observation_partition_runway
+
+    # The shared helper speaks psycopg's ``execute(sql, tuple)`` contract, so
+    # unwrap the DBAPI connection while retaining Alembic's transaction.
+    return provision_observation_partition_runway(connection.connection.driver_connection)
 
 
 def _repo_root() -> Path:

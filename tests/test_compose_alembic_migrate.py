@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -71,6 +72,51 @@ def test_alembic_env_normalizes_driverless_postgres_urls() -> None:
     env_source = (Path(__file__).parents[1] / "deploy/supabase/postgres/alembic/env.py").read_text(encoding="utf-8")
     assert "from deploy.supabase.postgres.compose_migrate import _normalize_sqlalchemy_url" in env_source
     assert "url = _normalize_sqlalchemy_url(url)" in env_source
+
+
+def test_partition_runway_top_up_runs_on_every_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Partition provisioning is migration-owned, so each deploy must top it up.
+
+    A one-shot migration would fix the runway once and let it lapse again; the
+    top-up has to ride every ``alembic upgrade``.
+    """
+    from agent_bom.api import hub_observations_partition as partitions
+
+    driver_connection = object()
+    connection = SimpleNamespace(connection=SimpleNamespace(driver_connection=driver_connection))
+    seen: list[tuple[object, int]] = []
+
+    monkeypatch.setattr(
+        partitions,
+        "provision_observation_partition_runway",
+        lambda conn, **kwargs: seen.append((conn, kwargs.get("months_ahead", partitions.OBSERVATION_PARTITION_RUNWAY_MONTHS))) or 0,
+    )
+
+    cm.top_up_observation_partition_runway(connection)
+
+    assert seen == [(driver_connection, partitions.OBSERVATION_PARTITION_RUNWAY_MONTHS)]
+
+
+def test_partition_runway_top_up_failure_fails_the_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loud and early: a migration owner that cannot provision must not ship."""
+    from agent_bom.api import hub_observations_partition as partitions
+
+    def _boom(_conn: object, **_kwargs: object) -> int:
+        raise RuntimeError("permission denied for schema public")
+
+    monkeypatch.setattr(partitions, "provision_observation_partition_runway", _boom)
+    connection = SimpleNamespace(connection=SimpleNamespace(driver_connection=object()))
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        cm.top_up_observation_partition_runway(connection)
+
+
+def test_alembic_env_tops_up_the_partition_runway_after_migrations() -> None:
+    env_source = (Path(__file__).parents[1] / "deploy/supabase/postgres/alembic/env.py").read_text(encoding="utf-8")
+    assert "top_up_observation_partition_runway" in env_source
+    run_at = env_source.index("context.run_migrations()")
+    top_up_at = env_source.index("top_up_observation_partition_runway(connection)")
+    assert top_up_at > run_at, "the runway top-up must run after the migrations, not before"
 
 
 def test_alembic_env_never_falls_back_to_the_runtime_app_url() -> None:

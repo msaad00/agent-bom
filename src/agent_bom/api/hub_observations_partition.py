@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -26,6 +27,27 @@ logger = logging.getLogger(__name__)
 
 OBSERVATIONS_TABLE = "hub_findings_current_observations"
 _PARTITION_NAME_RE = re.compile(r"^hub_findings_current_observations_y(\d{4})m(\d{2})$")
+
+# How far ahead the migration owner provisions child partitions. Partition DDL
+# is deliberately migration-owned: ``agent_bom_app`` is DML-only (init.sql
+# revokes CREATE on schema ``public``) and ``agent_bom_maintenance`` is too, so
+# no runtime code path can create a child. The runway must therefore outlast a
+# long gap between deploys — a year of not upgrading must not break ingest.
+OBSERVATION_PARTITION_RUNWAY_MONTHS = 12
+
+# Alert an operator once the remaining runway drops below this many months, so
+# a silent cliff becomes months of actionable warning.
+OBSERVATION_PARTITION_RUNWAY_ALERT_MONTHS = 3
+
+# The cleanup loop ticks every 60s; re-emit the same runway alert at most hourly
+# so the warning stays visible without drowning the log.
+_RUNWAY_ALERT_MIN_INTERVAL_SECONDS = 3600.0
+_runway_alert_state: tuple[str, float] | None = None
+
+
+def _utc_now() -> datetime:
+    """Single clock seam so runway guards can freeze time instead of drifting."""
+    return datetime.now(timezone.utc)
 
 
 # SQLSTATEs raised when a concurrent worker already created the child partition
@@ -179,7 +201,7 @@ def ensure_observation_partitions(
     """Create missing monthly child partitions around *now*. Returns partitions created."""
     if not is_observations_partitioned(conn):
         return 0
-    anchor = (now or datetime.now(timezone.utc)).date()
+    anchor = (now or _utc_now()).date()
     created = 0
     for year, month in _iter_months(anchor, behind=months_behind, ahead=months_ahead):
         child = partition_table_name(year, month)
@@ -199,6 +221,46 @@ def ensure_observation_partitions(
         _create_observation_partition(conn, year, month)
         created += 1
     return created
+
+
+def provision_observation_partition_runway(
+    conn: Any,
+    *,
+    now: datetime | None = None,
+    months_ahead: int = OBSERVATION_PARTITION_RUNWAY_MONTHS,
+) -> int:
+    """Top the partition runway up to *months_ahead* months past *now*.
+
+    The deploy-time entry point, run by the migration owner (the only principal
+    that may create a child and force RLS on it). Idempotent: re-running in the
+    same month creates nothing, and a later run fills only the new gap, so it is
+    safe to call on every ``alembic upgrade``.
+
+    ``months_behind=0`` so a top-up never resurrects a month that retention has
+    already detached and dropped.
+    """
+    return ensure_observation_partitions(conn, now=now, months_ahead=months_ahead, months_behind=0)
+
+
+def observation_runway_end(conn: Any) -> date | None:
+    """Exclusive upper bound of the provisioned runway (``None`` if unprovisioned).
+
+    A plain ``pg_catalog`` read, so the DML-only runtime roles can always answer
+    it even when they are denied the DDL that would extend it.
+    """
+    ends = [end for end in (_partition_end_date(name) for name in list_observation_partition_names(conn)) if end is not None]
+    return max(ends) if ends else None
+
+
+def observation_runway_months_remaining(conn: Any, *, now: datetime | None = None) -> int | None:
+    """Whole months of runway left after the current month; negative once lapsed."""
+    runway_end = observation_runway_end(conn)
+    if runway_end is None:
+        return None
+    # ``runway_end`` is exclusive, so the last covered month is the month before it.
+    last_covered = runway_end - timedelta(days=1)
+    anchor = (now or _utc_now()).date()
+    return _month_index(last_covered) - _month_index(anchor)
 
 
 # Guard against absurd backdating (bad data / clock skew) creating unbounded
@@ -263,7 +325,7 @@ def ensure_observation_partition_for(
     month = _parse_observed_at_month(observed_at)
     if month is None:
         return False
-    anchor = (now or datetime.now(timezone.utc)).date().replace(day=1)
+    anchor = (now or _utc_now()).date().replace(day=1)
     delta_months = _month_index(month) - _month_index(anchor)
     if delta_months > months_ahead or delta_months < -months_behind:
         raise ObservationPartitionRangeError(observed_at, months_ahead=months_ahead, months_behind=months_behind)
@@ -320,7 +382,7 @@ def rollover_observation_partitions(
     """Detach and drop monthly partitions wholly older than *retention_days*."""
     if retention_days <= 0 or not is_observations_partitioned(conn):
         return 0
-    anchor = now or datetime.now(timezone.utc)
+    anchor = now or _utc_now()
     cutoff = (anchor - timedelta(days=retention_days)).date()
     dropped = 0
     for partition_name in list_observation_partition_names(conn):
@@ -374,7 +436,7 @@ def migrate_observations_to_partitioned(conn: Any) -> bool:
         else:
             cursor = date(cursor.year, cursor.month + 1, 1)
 
-    ensure_observation_partitions(conn, now=datetime.now(timezone.utc), months_ahead=2, months_behind=0)
+    provision_observation_partition_runway(conn)
     ensure_observation_partition_children_rls(conn)
 
     conn.execute(
@@ -389,8 +451,76 @@ def migrate_observations_to_partitioned(conn: Any) -> bool:
     return True
 
 
+def _should_emit_runway_alert(key: str) -> bool:
+    """Throttle a repeated runway alert to once an hour per distinct state."""
+    global _runway_alert_state
+    monotonic = time.monotonic()
+    if _runway_alert_state is not None:
+        last_key, last_at = _runway_alert_state
+        if last_key == key and monotonic - last_at < _RUNWAY_ALERT_MIN_INTERVAL_SECONDS:
+            return False
+    _runway_alert_state = (key, monotonic)
+    return True
+
+
+def _describe_runway(runway_end: date | None, *, now: datetime | None = None) -> tuple[str, int | None]:
+    """Render the last covered day plus the whole months of runway remaining."""
+    if runway_end is None:
+        return "unprovisioned", None
+    last_covered = runway_end - timedelta(days=1)
+    anchor = (now or _utc_now()).date()
+    return last_covered.isoformat(), _month_index(last_covered) - _month_index(anchor)
+
+
+def _alert_observation_partition_runway(
+    runway_end: date | None,
+    *,
+    provisioning_failed: bool,
+    now: datetime | None = None,
+) -> None:
+    """Report the runway, naming the date current-dated ingest starts failing.
+
+    Severity follows urgency rather than the immediate cause. A denied top-up is
+    the *expected* steady state — provisioning is migration-owned and both
+    runtime roles are DML-only — so reporting it at ERROR on every healthy
+    deployment would train operators to filter the one message that matters near
+    the cliff. It stays visible at WARNING and escalates to ERROR once the runway
+    falls below the alert threshold or has already lapsed. It is never silent.
+    """
+    last_covered, months_left = _describe_runway(runway_end, now=now)
+    urgent = months_left is None or months_left < OBSERVATION_PARTITION_RUNWAY_ALERT_MONTHS
+    if not provisioning_failed and not urgent:
+        return
+    key = f"{'denied' if provisioning_failed else 'low'}:{last_covered}"
+    if not _should_emit_runway_alert(key):
+        return
+    if provisioning_failed:
+        reason = "the runtime database role was denied the DDL that extends it"
+    else:
+        reason = "it is not being topped up by deploys"
+    logger.log(
+        logging.ERROR if urgent else logging.WARNING,
+        "%s partition runway ends %s (%s month(s) left) and %s. Partition provisioning is "
+        "migration-owned: run the Alembic migrations (deploy/supabase/postgres/compose_migrate.py) "
+        "to extend it. Once the runway lapses, every current-dated hub ingest fails with HTTP 500 "
+        "until a migration runs.",
+        OBSERVATIONS_TABLE,
+        last_covered,
+        "unknown" if months_left is None else months_left,
+        reason,
+        exc_info=provisioning_failed,
+    )
+
+
 def run_hub_observations_retention(*, retention_days: int | None = None) -> int:
-    """Postgres-only retention rollover; no-op for SQLite and legacy tables."""
+    """Postgres-only retention rollover; no-op for SQLite and legacy tables.
+
+    Also re-attempts the partition top-up so a deployment whose runtime role
+    *does* own the tables self-heals. Under the shipped DML-only role model that
+    attempt is denied, which is exactly why the failure is reported at ERROR
+    naming the runway end instead of being swallowed at DEBUG: provisioning is
+    migration-owned and an operator needs months of warning, not a silent cliff.
+    """
     days = HUB_OBSERVATIONS_RETENTION_DAYS if retention_days is None else retention_days
     if days <= 0:
         return 0
@@ -400,13 +530,34 @@ def run_hub_observations_retention(*, retention_days: int | None = None) -> int:
         from agent_bom.api.postgres_common import _maintenance_connection, bypass_tenant_rls
 
         with bypass_tenant_rls(audit=False), _maintenance_connection() as conn:
-            ensure_observation_partitions(conn)
-            ensure_observation_partition_children_rls(conn)
-            dropped = rollover_observation_partitions(conn, retention_days=days)
-            conn.commit()
+            # A legacy single-table install has no runway to report on.
+            partitioned = is_observations_partitioned(conn)
+            # Read the runway before touching DDL: a catalog SELECT the DML-only
+            # role can always run, so the alert can name a real date even when
+            # every write below is denied.
+            runway_end = observation_runway_end(conn) if partitioned else None
+            try:
+                ensure_observation_partitions(conn)
+                ensure_observation_partition_children_rls(conn)
+                dropped = rollover_observation_partitions(conn, retention_days=days)
+                conn.commit()
+            except Exception:  # noqa: BLE001 — cleanup loop must stay fail-open
+                conn.rollback()
+                if partitioned:
+                    _alert_observation_partition_runway(runway_end, provisioning_failed=True)
+                else:
+                    logger.error("hub observations retention failed on a legacy unpartitioned table", exc_info=True)
+                return 0
+            if partitioned:
+                _alert_observation_partition_runway(observation_runway_end(conn), provisioning_failed=False)
             return dropped
     except Exception:  # noqa: BLE001 — cleanup loop must stay fail-open
-        logger.debug("hub observations retention skipped", exc_info=True)
+        logger.error(
+            "hub observations partition maintenance could not open a maintenance connection; "
+            "the %s partition runway cannot be checked or extended",
+            OBSERVATIONS_TABLE,
+            exc_info=True,
+        )
         return 0
 
 

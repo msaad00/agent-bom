@@ -333,6 +333,185 @@ def test_scanning_alone_is_not_compliance() -> None:
     modes = {c["control_id"]: c for c in payload["nist_800_53"]}
     assert modes["RA-5"]["status"] == "pass", "the detective control itself is legitimately evidenced"
     assert payload["overall_status"] == "no_data", "scanning alone read as a compliant estate"
+    # The STATUS alone is not the guard: asserting only the status let the score
+    # keep the 100.0 that ``aggregate_pass / evaluated_controls`` produced when
+    # every passing control was detective. Score and status are asserted
+    # together, because that is the pair a user reads.
+    assert payload["overall_score"] == 0.0, "no_data estate still reported a compliant score"
+
+
+def test_summary_endpoint_agrees_with_the_aggregate_on_a_scanned_clean_estate() -> None:
+    """/v1/compliance/summary must not restate a score the aggregate disowned.
+
+    The summary is what the landing Overview reads, so a score there that the
+    Trust Center hides is the same false "Compliance 100%" headline in a
+    different pane.
+    """
+    _clear_jobs()
+    _add_done_job([])
+    with TestClient(app) as client:
+        full = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+        summary = client.get("/v1/compliance/summary", headers=_AUTH_HEADERS).json()
+
+    assert summary["overall_status"] == "no_data"
+    assert summary["overall_score"] == 0.0
+    assert summary["overall_score"] == full["overall_score"]
+    # A score is only honest beside its denominator (see the comment where
+    # evaluated_controls/total_controls are computed) — the summary renders
+    # overall_score, so it must ship them too.
+    assert summary["evaluated_controls"] == full["evaluated_controls"]
+    assert summary["total_controls"] == full["total_controls"]
+    assert summary["total_controls"] > 0
+
+
+def test_no_framework_reports_a_pass_it_did_not_evaluate() -> None:
+    """Per-framework drill: 0 pass / 0 warn / 0 fail is not a passing framework.
+
+    ``"fail" if fail_count else "warning" if warn_count else "pass"`` fell
+    through to ``pass`` for a framework with nothing evaluated, so SOC 2 read
+    "pass" with summary {pass: 0, warning: 0, fail: 0} on an estate where SOC 2
+    was never assessed. Detective-only frameworks (CSF, CIS) reported a pass
+    with a real score for the same reason.
+    """
+    _clear_jobs()
+    _add_done_job([])
+    from agent_bom.compliance_coverage import framework_output_key_by_slug
+
+    with TestClient(app) as client:
+        for slug in framework_output_key_by_slug():
+            payload = client.get(f"/v1/compliance/{slug}", headers=_AUTH_HEADERS).json()
+            summary = payload["summary"]
+            substantive = summary["pass"] + summary["warning"] + summary["fail"]
+            assert payload["status"] != "pass", f"{slug} reported a pass over an unevaluated estate"
+            if payload["status"] == "no_data":
+                assert payload["score"] == 0.0, f"{slug} scored a no_data framework"
+            assert not (substantive == 0 and payload["score"] > 0), f"{slug} scored {payload['score']} over 0 evaluated controls"
+
+
+def test_the_bundle_reports_the_same_control_statuses_as_the_api() -> None:
+    """The signed bundle is the auditor's copy — it cannot contradict the API.
+
+    Two divergences: a DETECTIVE control passes because a scan ran and by design
+    carries no finding evidence (the taggers exclude it), yet the bundle
+    demanded finding evidence and downgraded it to ``incomplete`` — so the
+    bundle said ``pass: 0`` where the API said ``pass: 2``. And ATT&CK's
+    applicability statuses had no mapping at all, so its counters were
+    permanently 0 while every technique fell into ``not_evaluated``.
+    """
+    _clear_jobs()
+    # CWE-200 gives the finding a real ATT&CK technique, so the overlay has
+    # something applicable to report.
+    _add_done_job([_blast(severity="critical", cwe_ids=["CWE-200"])])
+    with TestClient(app) as client:
+        api = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+        bundle = client.get("/v1/compliance/nist-800-53/report", headers=_AUTH_HEADERS).json()
+        attack = client.get("/v1/compliance/attack/report", headers=_AUTH_HEADERS).json()
+
+    body = bundle.get("body", bundle)
+    api_nist_pass = sum(1 for c in api["nist_800_53"] if c["status"] == "pass")
+    assert api_nist_pass > 0, "fixture no longer produces a detective pass"
+    assert body["summary"]["pass"] == api_nist_pass, "the bundle disagreed with the API on passing controls"
+    detective = {c["control_id"]: c for c in body["controls"]}
+    assert detective["RA-5"]["status"] == "pass"
+    assert detective["RA-5"]["evidence_state"] == "scan_evidence"
+
+    attack_body = attack.get("body", attack)
+    api_applicable = sum(1 for c in api["mitre_attack"] if c["status"] == "applicable")
+    assert attack_body["summary"]["applicable"] == api_applicable > 0, "ATT&CK applicability never reached the bundle"
+    # An overlay cannot pass, so it has no score to report.
+    assert attack_body["summary"]["score"] is None
+
+
+def test_no_data_never_carries_a_score_on_any_estate() -> None:
+    """The invariant, not one instance: no_data implies a zero score.
+
+    ``overall_status`` and ``overall_score`` are derived from the same evidence
+    and must never disagree. Each fixture below is an estate shape that has
+    produced ``no_data`` at some point in this code's history.
+    """
+    estates = {
+        "zero scans": lambda: None,
+        "scanned, nothing gradeable": lambda: _add_done_job([]),
+        "another tenant's scan only": lambda: _add_done_job([_blast(severity="low")], job_id="n", tenant_id="other"),
+        "stale scan evidence": lambda: _add_done_job([], completed_at=_iso(400)),
+    }
+    for label, seed in estates.items():
+        _clear_jobs()
+        seed()
+        with TestClient(app) as client:
+            payload = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+            summary = client.get("/v1/compliance/summary", headers=_AUTH_HEADERS).json()
+        for surface, body in (("aggregate", payload), ("summary", summary)):
+            if body["overall_status"] == "no_data":
+                assert body["overall_score"] == 0.0, f"{surface} scored a no_data estate ({label})"
+
+
+def test_no_surface_claims_compliance_for_the_zero_finding_estate() -> None:
+    """The cross-surface guard: one estate, every surface, one assertion.
+
+    ``test_scanning_alone_is_not_compliance`` asserted only
+    ``payload["overall_status"]`` on ONE endpoint. That is exactly how the same
+    P0 survived on five others — the REST aggregate was fixed while the
+    per-framework route, the MCP tool, the HTML report, the evidence bundle and
+    the Overview cockpit each kept their own copy of "no findings means pass".
+    Assert the property across the surfaces, not the instance on one of them.
+    """
+    import asyncio
+
+    from agent_bom.compliance_coverage import framework_output_key_by_slug
+    from agent_bom.models import Agent, AgentType
+    from agent_bom.output.html.sections import _compliance_section
+
+    _clear_jobs()
+    _add_done_job([])
+
+    passing = {"pass", "compliant"}
+    with TestClient(app) as client:
+        aggregate = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+        summary = client.get("/v1/compliance/summary", headers=_AUTH_HEADERS).json()
+        narrative = client.get("/v1/compliance/narrative", headers=_AUTH_HEADERS).json()
+        pack = client.get("/v1/compliance/report/pack", headers=_AUTH_HEADERS).json()
+
+        # 1 + 2: REST aggregate and summary.
+        for name, body in (("aggregate", aggregate), ("summary", summary)):
+            assert body["overall_status"] not in passing, f"{name} claimed a pass"
+            assert body["overall_score"] == 0.0, f"{name} scored an unevidenced estate"
+
+        # 3: every framework slug, including the ones with only detective passes.
+        for slug in framework_output_key_by_slug():
+            drill = client.get(f"/v1/compliance/{slug}", headers=_AUTH_HEADERS).json()
+            assert drill["status"] not in passing, f"framework {slug} claimed a pass"
+            assert drill["score"] == 0.0, f"framework {slug} scored an unevidenced estate"
+
+            # 4: the signed evidence bundle for that framework.
+            bundle = client.get(f"/v1/compliance/{slug}/report", headers=_AUTH_HEADERS).json()
+            bundle_summary = bundle.get("body", bundle)["summary"]
+            assert bundle_summary["fail"] == 0
+            assert not bundle_summary["score"], f"bundle {slug} scored an unevidenced estate"
+
+    # 5: the multi-framework evidence pack.
+    assert pack.get("body", pack)["summary"]["score"] == 0.0
+
+    # 6: the narrative handed to a reader in prose.
+    prose = " ".join(str(v) for v in narrative.values()).lower()
+    assert "fully compliant" not in prose
+    assert "100%" not in prose
+
+    # 7: the HTML report an auditor receives.
+    html = _compliance_section([])
+    assert "Score: 0.0%" in html
+    assert "PASS</span>" not in html
+
+    # 8: the MCP tool, the primary agent-facing surface.
+    from agent_bom.mcp_tools.compliance import compliance_impl
+
+    async def _pipeline(_config=None, _image=None):
+        return [Agent(name="a", agent_type=AgentType.CUSTOM, config_path="/tmp/a")], [], [], ["local"]
+
+    mcp_raw = asyncio.run(compliance_impl(config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=lambda s: s))
+    mcp = json.loads(mcp_raw)
+    assert mcp["overall_status"] not in passing, "the MCP tool claimed a pass"
+    assert mcp["overall_score"] == 0.0
 
 
 def test_one_tenants_scan_never_evidences_another_tenants_controls() -> None:

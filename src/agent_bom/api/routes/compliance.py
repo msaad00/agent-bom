@@ -57,6 +57,7 @@ from agent_bom.evidence.control_modes import (
     MODE_DETECTIVE,
     detective_control_status,
 )
+from agent_bom.evidence.scoring import score_compliance
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -624,8 +625,6 @@ async def get_compliance(
     # benign/empty estate can't read as "fully compliant".
     aggregate_pass = total_pass + bench_pass
     aggregate_fail = total_fail + bench_fail
-    evaluated_controls = aggregate_pass + total_warn + aggregate_fail + bench_error
-    overall_score = round((aggregate_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
 
     # A score over EVALUATED controls is only honest next to its coverage: a
     # scan that touched 8 of 931 controls and passed all 8 is "100%" of a very
@@ -641,8 +640,6 @@ async def get_compliance(
         )
         + int(aisvs_summary["total"])
     )
-    coverage_pct = round((evaluated_controls / total_controls) * 100, 2) if total_controls > 0 else 0.0
-
     # A detective pass only establishes that we scan — it is evidence about the
     # monitoring program, not about whether the estate meets a framework. An
     # estate whose ONLY passing evidence is "a scan ran" has not been shown to
@@ -653,27 +650,26 @@ async def get_compliance(
     detective_passes = sum(
         1 for controls_list in all_frameworks for c in controls_list if c.get("evaluation_mode") == MODE_DETECTIVE and c["status"] == "pass"
     )
-    substantive_evaluated = evaluated_controls - detective_passes
 
-    if aggregate_fail > 0:
-        overall_status = "fail"
-    elif total_warn > 0 or bench_error > 0:
-        # A benchmark ERROR (unevaluable control) is not a clean pass either.
-        overall_status = "warning"
-    elif substantive_evaluated > 0:
-        overall_status = "pass"
-    else:
-        overall_status = "no_data"
-
-    # With zero completed scans there is nothing to measure — every control
-    # trivially "passes" because no findings map to it. Reporting
-    # overall_status="pass"/score=100 in that state reads as "fully compliant"
-    # when in fact no evidence exists. Surface an explicit no-data status
-    # (mirrors the Overview "idle" pattern) so consumers don't mistake an
-    # empty tenant for a clean audit.
-    if scan_count == 0:
-        overall_status = "no_data"
-        overall_score = 0.0
+    # ONE derivation of status + score, shared with the per-framework route, the
+    # MCP tool, the HTML report and the evidence bundle. Deriving the two
+    # separately here is exactly how overall_status="no_data" came to sit beside
+    # overall_score=100.0: the score was aggregate_pass/evaluated (all detective
+    # passes) while only the status consulted substantive_evaluated. With zero
+    # completed scans nothing is measurable at all, which ``has_evidence``
+    # carries.
+    verdict = score_compliance(
+        passed=aggregate_pass,
+        warned=total_warn,
+        failed=aggregate_fail,
+        errored=bench_error,
+        detective_passes=detective_passes,
+        has_evidence=scan_count > 0,
+    )
+    overall_status = verdict.status
+    overall_score = verdict.score
+    evaluated_controls = verdict.evaluated
+    coverage_pct = round((evaluated_controls / total_controls) * 100, 2) if total_controls > 0 else 0.0
 
     summary: dict[str, int | float] = {}
     for metadata in TAG_MAPPED_FRAMEWORKS:
@@ -1322,6 +1318,13 @@ async def get_compliance_summary(request: Request) -> dict:
     summary_keys = {
         "overall_score",
         "overall_status",
+        # overall_score is a percentage of EVALUATED controls, so its
+        # denominator travels with it on every surface that renders it (see the
+        # comment where these are computed in get_compliance). Omitting them
+        # here left the Overview rendering a bare percentage it could not
+        # qualify.
+        "evaluated_controls",
+        "total_controls",
         "scan_count",
         "latest_scan",
         "has_mcp_context",
@@ -1456,19 +1459,33 @@ async def get_compliance_by_framework(request: Request, framework: str) -> dict:
     fail_count = sum(1 for c in controls if c["status"] == "fail")
 
     if no_data or not controls:
-        status = "no_data"
-        score = 0.0
         pass_count = warn_count = fail_count = 0
-    else:
-        status = "fail" if fail_count else "warning" if warn_count else "pass"
-        score = round((pass_count / len(controls)) * 100, 1)
+
+    # Same scorer as the aggregate. The hand-rolled chain this replaces —
+    # ``"fail" if fail_count else "warning" if warn_count else "pass"`` — fell
+    # through to "pass" whenever all three counts were 0, so a framework that
+    # was never evaluated (SOC 2 on a zero-finding estate: pass 0, warning 0,
+    # fail 0) reported a passing status, and a framework whose only passes were
+    # detective (CSF, CIS) reported a pass with a real score.
+    detective_passes = sum(1 for c in controls if c.get("evaluation_mode") == MODE_DETECTIVE and c["status"] == "pass")
+    verdict = score_compliance(
+        passed=pass_count,
+        warned=warn_count,
+        failed=fail_count,
+        detective_passes=0 if no_data or not controls else detective_passes,
+        has_evidence=not no_data and bool(controls),
+    )
 
     return {
         "framework": framework,
-        "status": status,
+        "status": verdict.status,
         "controls": controls,
         "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
-        "score": score,
+        "score": verdict.score,
+        # The score is a percentage of EVALUATED controls, never of the whole
+        # catalogue — it does not travel without its denominator.
+        "evaluated_controls": verdict.evaluated,
+        "total_controls": len(controls),
     }
 
 
@@ -1568,17 +1585,55 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
     return by_tag
 
 
-def _bundle_control_status(source_status: str, evidence: list[dict], *, has_completed_scans: bool) -> tuple[str, str]:
+def _bundle_control_status(
+    source_status: str,
+    evidence: list[dict],
+    *,
+    has_completed_scans: bool,
+    evaluation_mode: str | None = None,
+) -> tuple[str, str]:
+    """Map an API control status onto its bundle status + evidence state.
+
+    The bundle is the auditor's copy of what the API reports, so it must not
+    invent a different verdict. Two statuses previously had no mapping and fell
+    through to ``not_evaluated``/``incomplete``, making the signed artifact
+    contradict the live API:
+
+    * A **detective** control (RA-5, CM-8, CIS-07.1 …) passes because a
+      completed, in-window scan IS the control operating. The taggers
+      deliberately never map findings onto it, so demanding finding evidence
+      downgraded every detective pass to ``incomplete`` — a bar it could not
+      ever clear. Its evidence is the scan, recorded as ``scan_evidence``.
+    * **Applicability-overlay** statuses (MITRE ATT&CK ``applicable`` /
+      ``not_applicable``) are not pass/fail claims at all and pass through
+      unchanged, so the overlay's counters stop reading 0.
+    """
     status = (source_status or "unknown").lower()
     if not has_completed_scans:
         return "not_evaluated", "missing_scan"
+    if status in {"applicable", "not_applicable"}:
+        return status, "complete" if evidence else status
+    if status == "pass" and evaluation_mode == MODE_DETECTIVE:
+        return "pass", "scan_evidence"
     if status in {"pass", "warning", "fail"} and not evidence:
         return "incomplete", "missing_control_evidence"
     if evidence:
         return status, "complete"
-    if status in {"not_evaluated", "incomplete"}:
+    if status in {"not_evaluated", "incomplete", "not_assessed"}:
         return status, status
     return "not_evaluated", "missing_control_evidence"
+
+
+def _detective_pass_count(controls: list[dict], ceiling: int | None = None) -> int:
+    """How many of ``controls`` pass ONLY because a scan ran.
+
+    ``score_compliance`` subtracts these to decide whether anything substantive
+    was measured. ``ceiling`` clamps the result to the caller's own pass count,
+    which can be lower when a control's bundle status differs from its API
+    status (an overlay entry, or a pass without finding evidence).
+    """
+    count = sum(1 for c in controls if c.get("evaluation_mode") == MODE_DETECTIVE and str(c.get("status", "")).lower() == "pass")
+    return min(count, ceiling) if ceiling is not None else count
 
 
 def _verify_audit_entries(entries: list) -> tuple[int, int]:
@@ -1622,6 +1677,7 @@ def _enrich_controls_with_evidence(
             source_status,
             evidence,
             has_completed_scans=completed_scan_count > 0,
+            evaluation_mode=control.get("evaluation_mode"),
         )
         enriched_controls.append(
             {
@@ -1744,6 +1800,23 @@ async def export_compliance_report(
     incomplete_count = status_counts["incomplete"]
     not_evaluated_count = status_counts["not_evaluated"]
 
+    # An applicability overlay (ATT&CK) has no pass rate: a score would read as
+    # "0% of ATT&CK passing" for something that cannot pass. Null says so — the
+    # applicable counters carry the signal. Matches the evidence pack, which
+    # already nulls the score for a scored=False framework.
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+    bundle_scored = next((m.scored for m in TAG_MAPPED_FRAMEWORKS if m.output_key == framework_key), True)
+    # Same scorer as every other surface; the detective passes it discounts are
+    # the ones the bundle now preserves rather than downgrading to incomplete.
+    bundle_verdict = score_compliance(
+        passed=pass_count,
+        warned=warn_count,
+        failed=fail_count,
+        detective_passes=_detective_pass_count(controls, pass_count),
+        has_evidence=completed_scan_count > 0,
+    )
+
     # Replay-protection envelope: every bundle carries a fresh 128-bit nonce
     # and an explicit expiry. The signature is computed over the canonical
     # body that includes both, so tampering with either invalidates the
@@ -1795,7 +1868,10 @@ async def export_compliance_report(
             "not_evaluated": not_evaluated_count,
             "applicable": status_counts["applicable"],
             "not_applicable": status_counts["not_applicable"],
-            "score": round((pass_count / len(controls)) * 100, 1) if controls else 0.0,
+            "score": bundle_verdict.score if bundle_scored else None,
+            "status": bundle_verdict.status if bundle_scored else "not_scored",
+            # The score is over EVALUATED controls; it never travels alone.
+            "evaluated": bundle_verdict.evaluated,
         },
         "controls": enriched_controls,
         "audit_events": [entry.to_dict() for entry in audit_in_window],
@@ -1985,6 +2061,7 @@ async def export_compliance_pack(
         "applicable": 0,
         "not_applicable": 0,
     }
+    combined_detective_passes = 0
     for slug, (framework_key, framework_label) in framework_map.items():
         controls = full.get(framework_key, [])
         scored = scored_by_slug.get(slug, True)
@@ -1999,6 +2076,8 @@ async def export_compliance_pack(
             total_controls += len(controls)
         for key in combined_summary:
             combined_summary[key] += status_counts[key]
+        if scored:
+            combined_detective_passes += _detective_pass_count(controls, status_counts["pass"])
         framework_bundles.append(
             {
                 "framework": slug,
@@ -2010,7 +2089,17 @@ async def export_compliance_pack(
                 "scored": scored,
                 "summary": {
                     **status_counts,
-                    "score": (round((status_counts["pass"] / len(controls)) * 100, 1) if controls else 0.0) if scored else None,
+                    "score": (
+                        score_compliance(
+                            passed=status_counts["pass"],
+                            warned=status_counts["warning"],
+                            failed=status_counts["fail"],
+                            detective_passes=_detective_pass_count(controls, status_counts["pass"]),
+                            has_evidence=completed_scan_count > 0,
+                        ).score
+                        if scored
+                        else None
+                    ),
                 },
                 "control_count": len(controls),
                 "evidence_row_count": framework_rows,
@@ -2060,7 +2149,17 @@ async def export_compliance_pack(
         },
         "summary": {
             **combined_summary,
-            "score": round((combined_summary["pass"] / total_controls) * 100, 1) if total_controls else 0.0,
+            # Same scorer as every other surface. Scoring pass/total_controls
+            # here let the pack disagree with the aggregate: once detective
+            # passes were preserved (rather than downgraded to `incomplete`),
+            # this reported 3.3% over an estate the aggregate calls no_data.
+            "score": score_compliance(
+                passed=combined_summary["pass"],
+                warned=combined_summary["warning"],
+                failed=combined_summary["fail"],
+                detective_passes=min(combined_detective_passes, combined_summary["pass"]),
+                has_evidence=completed_scan_count > 0,
+            ).score,
         },
         "frameworks": framework_bundles,
         "audit_events": [entry.to_dict() for entry in audit_in_window],

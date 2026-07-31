@@ -92,3 +92,74 @@ def test_the_gate_detects_a_window_collapse_regression(entries: list[dict]) -> N
 
     restored = harness.score(entries)
     assert restored.false_negative == 0, "harness left mutated state behind"
+
+
+# ---------------------------------------------------------------------------
+# The oracle itself has a failure mode: a GIT range enumerates git TAGS
+#
+# When an advisory carries a GIT range starting at ``introduced: 0``, OSV's
+# importer walks the repository and writes every tag reachable before the fix
+# commit into ``versions[]`` — including releases the ECOSYSTEM range explicitly
+# excludes. PYSEC-2015-17 lists ``requests v0.2.0`` next to an ECOSYSTEM range
+# introduced at 2.1.0, while NVD scopes CVE-2015-2296 to "2.1.0 through 2.5.3".
+# Such a block states two different lower bounds, so it cannot label anything:
+# scoring it would require a FALSE POSITIVE to reach 100% recall.
+# ---------------------------------------------------------------------------
+
+
+def _contradictory_advisory() -> dict:
+    return {
+        "id": "TEST-GIT-TAG-CONTAMINATION",
+        "affected": [
+            {
+                "package": {"name": "requests", "ecosystem": "PyPI"},
+                "ranges": [
+                    {
+                        "type": "GIT",
+                        "repo": "https://example.invalid/r",
+                        "events": [{"introduced": "0"}, {"fixed": "3bd8afbff29e50b38f889b2f688785a669b9aafc"}],
+                    },
+                    {"type": "ECOSYSTEM", "events": [{"introduced": "2.1.0"}, {"fixed": "2.6.0"}]},
+                ],
+                "versions": ["v0.2.0", "2.1.0", "2.5.3"],
+            }
+        ],
+    }
+
+
+def test_git_tag_enumeration_is_not_accepted_as_ground_truth() -> None:
+    """The contaminated block is skipped and counted, not scored."""
+    harness = _load_harness()
+    out = harness.score([{"advisory": _contradictory_advisory()}])
+
+    assert out.skipped_unsound_oracle == 1
+    assert out.evaluated == 0
+    assert out.true_positive == 0
+    assert out.false_negative == 0, f"a self-contradictory advisory produced labels: {out.misses}"
+
+
+def test_a_git_range_alone_does_not_disqualify_an_advisory() -> None:
+    """Only the CONTRADICTION disqualifies — a GIT range agreeing at 0 is fine."""
+    harness = _load_harness()
+    advisory = _contradictory_advisory()
+    advisory["affected"][0]["ranges"][1]["events"] = [{"introduced": "0"}, {"fixed": "2.6.0"}]
+    advisory["affected"][0]["versions"] = ["2.1.0", "2.5.3"]
+
+    out = harness.score([{"advisory": advisory}])
+    assert out.skipped_unsound_oracle == 0
+    assert out.evaluated == 1
+    assert out.true_positive == 2
+
+
+def test_the_corpus_skip_is_bounded_and_reported(entries: list[dict]) -> None:
+    """Skipping must stay a rounding error and must be visible in the payload."""
+    harness = _load_harness()
+    result = harness.score(entries)
+    payload = result.to_dict()
+
+    assert payload["skipped_unsound_oracle"] == 6, "the contaminated set changed — re-derive before trusting the score"
+    accounted = result.evaluated + payload["skipped_unsound_oracle"] + payload["skipped_no_ranges"] + payload["skipped_uncomparable"]
+    assert accounted >= payload["advisories"]
+    # Dropping the contaminated blocks must not cost the corpus its ability to
+    # detect a window collapse (the defect this gate exists for).
+    assert payload["multi_window_advisories"] >= 10

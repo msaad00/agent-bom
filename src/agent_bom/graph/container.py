@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
+from agent_bom.graph.bottleneck import BottleneckAnalysis, compute_bottlenecks
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
@@ -780,31 +781,36 @@ class UnifiedGraph:
     # ── Centrality ───────────────────────────────────────────────────────
 
     def degree_centrality(self) -> dict[str, float]:
+        """Distinct neighbours in EITHER direction, normalised.
+
+        Out-degree alone scored a node that 50,000 identities point at as 0 —
+        the single most-referenced node in an estate read as unconnected.
+        Counting distinct neighbours (rather than edges) keeps a bidirectional
+        edge, which is indexed both ways, from counting twice.
+        """
         if not self.nodes:
             return {}
         max_possible = max(len(self.nodes) - 1, 1)
-        return {nid: len(self.adjacency.get(nid, [])) / max_possible for nid in self.nodes}
+
+        def degree(node_id: str) -> int:
+            out = {edge.target for edge in self.adjacency.get(node_id, ())}
+            incoming = {edge.source for edge in self.reverse_adjacency.get(node_id, ())}
+            return len(out | incoming)
+
+        return {nid: degree(nid) / max_possible for nid in self.nodes}
+
+    def bottleneck_analysis(self, top_n: int = 5) -> BottleneckAnalysis:
+        """Ranked bottlenecks with the source sample they were derived from."""
+        return compute_bottlenecks(
+            list(self.nodes),
+            lambda node_id: (edge.target for edge in self.adjacency.get(node_id, ())),
+            top_n=top_n,
+        )
 
     def bottleneck_nodes(self, top_n: int = 5) -> list[tuple[str, float]]:
-        if not self.nodes:
-            return []
-        scores: dict[str, float] = {nid: 0.0 for nid in self.nodes}
-        sample = list(self.nodes.keys())[: min(50, len(self.nodes))]
-        for src in sample:
-            visited: dict[str, list[str]] = {src: [src]}
-            queue: deque[str] = deque([src])
-            while queue:
-                current = queue.popleft()
-                for edge in self.adjacency.get(current, []):
-                    if edge.target not in visited:
-                        visited[edge.target] = visited[current] + [edge.target]
-                        queue.append(edge.target)
-            for path in visited.values():
-                for node in path[1:-1]:
-                    scores[node] += 1.0
-        total = sum(scores.values()) or 1.0
-        normalised = {nid: score / total for nid, score in scores.items()}
-        return sorted(normalised.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        """Ranked bottlenecks only. Prefer :meth:`bottleneck_analysis` — any
+        surface that PRESENTS this ranking has to disclose that it is a sample."""
+        return self.bottleneck_analysis(top_n).nodes
 
     # ── Stats ────────────────────────────────────────────────────────────
 
@@ -822,6 +828,11 @@ class UnifiedGraph:
             rel_counts[rel] += 1
         return {
             "total_nodes": len(self.nodes),
+            # Estate size BEFORE any load-time bound. `total_nodes` counts what
+            # this graph holds; without the source total beside it a bounded
+            # load reads as the whole estate, and contradicts the `completeness`
+            # block shipped in the same response.
+            "total_nodes_source": max(self.completeness.total_nodes, len(self.nodes)),
             "total_edges": len(self.edges),
             "node_types": dict(type_counts),
             "severity_counts": dict(severity_counts),
@@ -903,7 +914,7 @@ class UnifiedGraph:
     # ── Graph views (subgraphs) ──────────────────────────────────────────
 
     def inventory_view(self) -> UnifiedGraph:
-        return self._subgraph(
+        sub = self._subgraph(
             node_filter=lambda n: (
                 n.status == NodeStatus.ACTIVE
                 and n.entity_type
@@ -926,9 +937,10 @@ class UnifiedGraph:
                 )
             ),
         )
+        return self._inherit_completeness(sub)
 
     def attack_path_view(self) -> UnifiedGraph:
-        return self._subgraph(edge_filter=lambda e: e.traversable)
+        return self._inherit_completeness(self._subgraph(edge_filter=lambda e: e.traversable))
 
     def lateral_movement_view(self) -> UnifiedGraph:
         lateral_rels = {
@@ -941,7 +953,7 @@ class UnifiedGraph:
             RelationshipType.REACHES_TOOL,
             RelationshipType.VULNERABLE_TO,
         }
-        return self._subgraph(edge_filter=lambda e: e.relationship in lateral_rels)
+        return self._inherit_completeness(self._subgraph(edge_filter=lambda e: e.relationship in lateral_rels))
 
     def compliance_view(self, framework: str = "") -> UnifiedGraph:
         def node_filter(n: UnifiedNode) -> bool:
@@ -951,7 +963,7 @@ class UnifiedGraph:
                 return any(framework.upper() in t.upper() for t in n.compliance_tags)
             return True
 
-        return self._subgraph(node_filter=node_filter)
+        return self._inherit_completeness(self._subgraph(node_filter=node_filter))
 
     def runtime_view(self) -> UnifiedGraph:
         runtime_rels = {
@@ -959,7 +971,7 @@ class UnifiedGraph:
             RelationshipType.ACCESSED,
             RelationshipType.DELEGATED_TO,
         }
-        return self._subgraph(edge_filter=lambda e: e.relationship in runtime_rels)
+        return self._inherit_completeness(self._subgraph(edge_filter=lambda e: e.relationship in runtime_rels))
 
     def filtered_view(self, filters: GraphFilterOptions) -> UnifiedGraph:
         """Build a subgraph from user-controlled filter options."""
@@ -1020,11 +1032,18 @@ class UnifiedGraph:
         unchanged, ``returned_nodes`` is recomputed for what this view actually
         holds, and ``total_nodes`` stays the upstream total so ``omitted_nodes``
         keeps meaning "how much of the estate we never saw".
+
+        Every derived view goes through here — the five typed views as much as
+        ``filtered_view`` — so no projection can report completeness its source
+        does not have.
         """
         view.completeness.truncated = self.completeness.truncated
         view.completeness.node_budget = self.completeness.node_budget
         view.completeness.reason = self.completeness.reason
-        view.completeness.total_nodes = self.completeness.total_nodes
+        # An untruncated graph built by hand never populates total_nodes; falling
+        # back to the source's own size keeps `total` from reading as 0 next to a
+        # non-empty `returned`.
+        view.completeness.total_nodes = self.completeness.total_nodes or len(self.nodes)
         view.completeness.returned_nodes = len(view.nodes)
         return view
 

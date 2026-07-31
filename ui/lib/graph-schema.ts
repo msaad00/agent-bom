@@ -434,6 +434,9 @@ export interface GraphAnalysisStatus {
 
 export interface GraphStats {
   total_nodes: number;
+  /** Estate node count before any load-time node budget. Equals `total_nodes`
+   * on an unbounded load; reconciles with `completeness.total` when truncated. */
+  total_nodes_source?: number;
   total_edges: number;
   node_types: Record<string, number>;
   severity_counts: Record<string, number>;

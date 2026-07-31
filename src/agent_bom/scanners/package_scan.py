@@ -499,28 +499,23 @@ def _version_in_window(
     window: tuple[str | None, str | None, str | None],
     ecosystem: str,
 ) -> bool:
-    """Return whether *version* falls inside one vulnerable window."""
-    from agent_bom.version_utils import compare_version_order
+    """Return whether *version* falls inside one vulnerable window.
+
+    Delegates to :func:`version_utils.version_in_range` so the OSV walker and
+    the DB/GHSA read paths share ONE range engine with ONE policy. This module
+    used to carry its own copy that skipped any bound it could not compare
+    (``if fixed_cmp is not None and fixed_cmp >= 0``) — failing OPEN, so the
+    same package got opposite verdicts depending on which engine served the
+    query. ``version_in_range`` fails CLOSED and records the dropped bound.
+    """
+    from agent_bom.version_utils import version_in_range
 
     introduced, fixed, last_affected = window
-
-    if introduced is not None and introduced != "0":
-        intro_cmp = compare_version_order(version, introduced, ecosystem)
-        # An uncomparable lower bound cannot rule the version out.
-        if intro_cmp is not None and intro_cmp < 0:
-            return False
-
-    if fixed is not None:
-        fixed_cmp = compare_version_order(version, fixed, ecosystem)
-        if fixed_cmp is not None and fixed_cmp >= 0:
-            return False
-
-    if last_affected is not None:
-        last_cmp = compare_version_order(version, last_affected, ecosystem)
-        if last_cmp is not None and last_cmp > 0:
-            return False
-
-    return True
+    # ``introduced: 0`` is not a real bound — it means "vulnerable from the
+    # beginning", so package identity alone establishes the match and no
+    # comparison should be required to confirm it.
+    lower = None if introduced == "0" else introduced
+    return version_in_range(version, lower, fixed, last_affected, ecosystem)
 
 
 def _is_version_affected(
@@ -836,6 +831,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         epss_percentile=lv.epss_percentile,
         is_kev=lv.is_kev,
         kev_date_added=lv.kev_date_added,
+        kev_due_date=getattr(lv, "kev_due_date", None),
         published_at=getattr(lv, "published_at", None),
         modified_at=getattr(lv, "modified_at", None),
         cwe_ids=getattr(lv, "cwe_ids", []),

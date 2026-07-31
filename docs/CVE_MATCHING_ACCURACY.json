@@ -1,14 +1,15 @@
 {
   "advisories": 127,
-  "evaluated": 127,
+  "evaluated": 121,
   "skipped_no_ranges": 0,
   "skipped_uncomparable": 0,
+  "skipped_unsound_oracle": 6,
   "multi_window_advisories": 22,
-  "true_positive": 10875,
+  "true_positive": 10622,
   "false_negative": 0,
-  "true_negative": 198,
-  "false_positive": 28,
+  "true_negative": 205,
+  "false_positive": 0,
   "recall": 1.0,
-  "precision": 0.9974,
-  "f1": 0.9987
+  "precision": 1.0,
+  "f1": 1.0
 }

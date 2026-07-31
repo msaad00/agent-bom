@@ -7,13 +7,33 @@ import uuid
 
 from starlette.testclient import TestClient
 
-from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
+from agent_bom.api.compliance_hub_store import (
+    InMemoryComplianceHubStore,
+    get_compliance_hub_store,
+    set_compliance_hub_store,
+)
 from agent_bom.api.server import app
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _FINDINGS_COUNT = 2000
 _PAGE_LIMIT = 50
-_MAX_ELAPSED_MS = 500.0
+
+# The property worth guarding is that first-page cost does not scale with the
+# size of the tenant's table — i.e. nobody reintroduced a full scan on the read
+# path. A wall-clock ceiling cannot measure that on shared CI hardware: the same
+# unchanged code measured 622ms on a contended runner and ~30ms on an idle one,
+# so the threshold only ever recorded how busy the machine was.
+#
+# Compare the small table against a 4x larger one in the same process instead.
+# Indexed/keyset reads stay roughly flat; a full scan grows with the row count.
+# The allowance is deliberately loose because both samples share whatever noise
+# the runner has — it still catches the 4x-and-worse growth of a real scan.
+_SCALE_FACTOR = 4
+_MAX_GROWTH_RATIO = 2.5
+
+# Retained only as a catastrophic-regression backstop, far above any plausible
+# scheduling noise. It is not the assertion that does the work.
+_ABSURD_ELAPSED_MS = 10_000.0
 
 
 def _synthetic_findings(count: int, *, batch_id: str) -> list[dict]:
@@ -51,12 +71,12 @@ def setup_function() -> None:
     reset_findings_count_cache()
 
 
-def test_findings_list_page_under_500ms_at_2k_rows() -> None:
+def _seed_tenant(count: int) -> str:
+    """Seed one tenant with ``count`` findings and return its id."""
     tenant_id = f"findings-scale-{uuid.uuid4().hex}"
     batch_id = f"batch-{uuid.uuid4().hex}"
-    store = InMemoryComplianceHubStore()
-    set_compliance_hub_store(store)
-    findings = _synthetic_findings(_FINDINGS_COUNT, batch_id=batch_id)
+    findings = _synthetic_findings(count, batch_id=batch_id)
+    store = get_compliance_hub_store()
     store.add(tenant_id, findings)
     store.upsert_current_batch(
         tenant_id,
@@ -65,24 +85,50 @@ def test_findings_list_page_under_500ms_at_2k_rows() -> None:
         batch_id=batch_id,
         source="test_findings_read_scale",
     )
+    return tenant_id
 
-    client = TestClient(app)
+
+def _time_first_page(client: TestClient, tenant_id: str, expected_total: int) -> float:
+    """Return the steady-state milliseconds for one first-page read."""
     headers = proxy_headers(role="viewer", tenant=tenant_id)
+    params = {"limit": _PAGE_LIMIT, "offset": 0}
 
-    # Warm the route once so the timed sample reflects steady-state list cost.
-    warmup = client.get("/v1/findings", params={"limit": _PAGE_LIMIT, "offset": 0}, headers=headers)
+    # Warm the route so the timed samples reflect steady-state list cost.
+    warmup = client.get("/v1/findings", params=params, headers=headers)
     assert warmup.status_code == 200, warmup.text
 
-    started = time.perf_counter()
-    response = client.get("/v1/findings", params={"limit": _PAGE_LIMIT, "offset": 0}, headers=headers)
-    elapsed_ms = (time.perf_counter() - started) * 1000
+    # Take the best of three: a scheduling stall inflates a sample but can never
+    # make a genuinely slow read look fast, so the minimum is the honest figure.
+    samples = []
+    for _ in range(3):
+        started = time.perf_counter()
+        response = client.get("/v1/findings", params=params, headers=headers)
+        samples.append((time.perf_counter() - started) * 1000)
+        assert response.status_code == 200, response.text
 
-    assert response.status_code == 200, response.text
     body = response.json()
-    assert body["total"] == _FINDINGS_COUNT
+    assert body["total"] == expected_total
     assert body["count"] == _PAGE_LIMIT
     assert len(body["findings"]) == _PAGE_LIMIT
-    assert elapsed_ms < _MAX_ELAPSED_MS, f"GET /v1/findings took {elapsed_ms:.1f}ms (limit {_MAX_ELAPSED_MS}ms)"
+    return min(samples)
+
+
+def test_findings_first_page_cost_does_not_scale_with_table_size() -> None:
+    """A first-page read must stay flat as the tenant's table grows."""
+    set_compliance_hub_store(InMemoryComplianceHubStore())
+    client = TestClient(app)
+
+    small = _time_first_page(client, _seed_tenant(_FINDINGS_COUNT), _FINDINGS_COUNT)
+    large_count = _FINDINGS_COUNT * _SCALE_FACTOR
+    large = _time_first_page(client, _seed_tenant(large_count), large_count)
+
+    ratio = large / small if small > 0 else 0.0
+    assert ratio < _MAX_GROWTH_RATIO, (
+        f"first-page cost grew {ratio:.1f}x for a {_SCALE_FACTOR}x larger table "
+        f"({small:.1f}ms at {_FINDINGS_COUNT} rows -> {large:.1f}ms at {large_count}); "
+        "the read path is scanning rather than paging"
+    )
+    assert large < _ABSURD_ELAPSED_MS, f"GET /v1/findings took {large:.1f}ms at {large_count} rows"
 
 
 def test_findings_approximate_total_skips_count_on_deep_page() -> None:

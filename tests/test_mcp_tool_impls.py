@@ -551,9 +551,7 @@ async def test_compliance_impl_surfaces_nist_catalog_line():
     async def _pipeline(_config=None, _image=None):
         return [agent], [br], [], []
 
-    result = await compliance_impl(
-        config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc
-    )
+    result = await compliance_impl(config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc)
     data = json.loads(result)
     catalog = data["nist_800_53_catalog"]
     assert catalog["framework_key"] == "nist_800_53_catalog"
@@ -565,15 +563,44 @@ async def test_compliance_impl_surfaces_nist_catalog_line():
 
 
 @pytest.mark.asyncio
+async def test_compliance_impl_never_passes_controls_it_did_not_evaluate():
+    """A scanned estate with zero findings is not a 100% compliant estate.
+
+    The MCP tool is the primary agent-facing compliance surface, and it scored
+    every catalogue control with no mapped finding as ``pass`` — so a clean scan
+    returned ``overall_score 100.0 / overall_status "pass"`` over 99 controls,
+    including all 65 MITRE ATLAS techniques. Absence of a CVE is not evidence a
+    control is implemented; it is ``not_evaluated``, exactly as /v1/compliance
+    has reported it since #4562.
+    """
+    from agent_bom.mcp_tools.compliance import compliance_impl
+    from agent_bom.models import Agent, AgentType
+
+    agent = Agent(name="claude", agent_type=AgentType.CUSTOM, config_path="/tmp")
+
+    async def _pipeline(_config=None, _image=None):
+        return [agent], [], [], ["local"]
+
+    result = await compliance_impl(config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc)
+    data = json.loads(result)
+
+    assert data["overall_status"] == "no_data", "a clean scan read as a compliant estate"
+    assert data["overall_score"] == 0.0, "no_data still carried a score"
+    assert data["evaluated_controls"] == 0
+    assert data["not_evaluated_controls"] == data["total_controls"]
+    for line in ("owasp_llm_top10", "mitre_atlas", "nist_ai_rmf", "owasp_mcp_top10"):
+        statuses = {c["status"] for c in data[line]}
+        assert statuses == {"not_evaluated"}, f"{line} asserted a status it never evaluated: {statuses}"
+
+
+@pytest.mark.asyncio
 async def test_compliance_impl_nist_catalog_no_data_without_agents():
     from agent_bom.mcp_tools.compliance import compliance_impl
 
     async def _pipeline(_config=None, _image=None):
         return [], [], [], []
 
-    result = await compliance_impl(
-        config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc
-    )
+    result = await compliance_impl(config_path=None, image=None, _run_scan_pipeline=_pipeline, _truncate_response=_trunc)
     catalog = json.loads(result)["nist_800_53_catalog"]
     assert catalog["status"] == "no_data"
     assert catalog["summary"]["evaluated"] == 0

@@ -32,7 +32,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
 
+from agent_bom import config
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS, FRAMEWORK_SLUG_ALIASES, normalize_framework_slug
+from agent_bom.evidence.control_modes import DETECTIVE_CONTROLS, detective_control_status
 
 # ─── Catalogue lookups ────────────────────────────────────────────────────────
 # Imported lazily where needed to keep top-level import cost low.
@@ -211,6 +213,39 @@ def _control_narrative(
     )
 
 
+def _detective_control_narrative(control_id: str, control_name: str, status: str) -> str:
+    """Explain a detective control's status in scan-evidence terms.
+
+    A detective control is *implemented by* the scan (see
+    :mod:`agent_bom.evidence.control_modes`), so its story is about evidence
+    freshness, never about which findings mapped to it.
+    """
+    if status == "pass":
+        return (
+            f"Control {control_id} ({control_name}) is evidenced by this scan itself: "
+            "the run completed inside the evidence-freshness window, which is what "
+            "this control requires. Findings surfaced by the scan are proof the "
+            "control operates, not proof it failed."
+        )
+    return (
+        f"Control {control_id} ({control_name}) has no scan evidence inside the "
+        f"freshness window ({config.COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS} days) — "
+        "the evidence backing it is stale, so continuous monitoring has lapsed. "
+        "This control fails on evidence age, independently of any finding."
+    )
+
+
+def _detective_remediation_steps(control_id: str, control_name: str) -> list[str]:
+    """Remediation for a detective control is to resume scanning, not to patch."""
+    return [
+        f"Re-run agent-bom so {control_id} is backed by evidence inside the "
+        f"{config.COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS}-day freshness window.",
+        "Schedule the scan continuously (CI or a recurring job) — this control attests "
+        "to ongoing monitoring, so a one-off run only restores it until the window lapses.",
+        f"Record the scan cadence for {control_name} in your compliance evidence package.",
+    ]
+
+
 def _control_remediation_steps(
     control_id: str,
     control_name: str,
@@ -316,9 +351,18 @@ def _framework_recommendations(
 def _build_framework_narrative(
     slug: str,
     blast_radii_dicts: list[dict],
+    *,
+    scan_count: int = 0,
+    latest_scan: str | None = None,
 ) -> FrameworkNarrative:
-    """Build a FrameworkNarrative for a single framework from pre-serialised blast radius data."""
+    """Build a FrameworkNarrative for a single framework from pre-serialised blast radius data.
+
+    ``scan_count``/``latest_scan`` carry the scan-evidence freshness that
+    detective controls are scored from — see :func:`_build_framework_narrative`'s
+    detective branch and :mod:`agent_bom.evidence.control_modes`.
+    """
     catalog, tag_field, display_name = _get_catalog(slug)
+    detective_ids = DETECTIVE_CONTROLS.get(tag_field, frozenset())
 
     control_data: dict[str, dict] = {}
     for code, name in catalog.items():
@@ -356,6 +400,34 @@ def _build_framework_narrative(
     critical_failing_ids: list[str] = []
 
     for code, data in sorted(control_data.items()):
+        if code in detective_ids:
+            # The scan IS this control operating ("monitor and scan for
+            # vulnerabilities", "maintain a component inventory"). Findings are
+            # never tagged onto it, so the zero-mapped-findings skip below
+            # dropped it from the narrative entirely instead of reporting the
+            # pass it earned. Score it from evidence freshness, like the API.
+            status, _reason = detective_control_status(scan_count=scan_count, latest_scan=latest_scan)
+            if status == "not_assessed":
+                # No completed scan: nothing was measured, so the control is not
+                # asserted in either direction.
+                continue
+            evaluated_count += 1
+            if status == "pass":
+                pass_count += 1
+                continue
+            fail_count += 1
+            critical_failing_ids.append(code)
+            failing_controls.append(
+                ControlNarrative(
+                    control_id=code,
+                    title=data["name"],
+                    status=status,
+                    narrative=_detective_control_narrative(code, data["name"], status),
+                    remediation_steps=_detective_remediation_steps(code, data["name"]),
+                )
+            )
+            continue
+
         # A control is only "evaluated" when at least one finding maps to it.
         # Controls with zero mapped findings carry no vulnerability-derived
         # evidence, so they are not-evaluated — never counted as a silent pass.
@@ -702,7 +774,21 @@ def generate_compliance_narrative(
 
     slugs = [framework] if framework is not None else ALL_FRAMEWORK_SLUGS
 
-    framework_narratives: list[FrameworkNarrative] = [_build_framework_narrative(slug, blast_dicts) for slug in slugs]
+    # Scan-evidence freshness for detective controls. ``scan_count`` uses the
+    # same conservative derivation as the nist_800_53_catalog line below — a
+    # report carrying no findings is treated as no evidence, so an unmapped or
+    # unscanned estate reads not_evaluated rather than a fabricated pass, and
+    # the two representations in one narrative cannot contradict each other.
+    # ``generated_at`` may be absent on the lightweight shim the CLI rebuilds
+    # from a saved artifact; an unknown age is reported as unknown, never
+    # silently assumed fresh (see ``detective_control_status``).
+    _scan_count = 1 if blast_dicts else 0
+    _report_generated_at = getattr(report, "generated_at", None)
+    _latest_scan = _report_generated_at.isoformat() if isinstance(_report_generated_at, datetime) else None
+
+    framework_narratives: list[FrameworkNarrative] = [
+        _build_framework_narrative(slug, blast_dicts, scan_count=_scan_count, latest_scan=_latest_scan) for slug in slugs
+    ]
 
     remediation_impact = _build_remediation_impact(blast_dicts, framework)
 

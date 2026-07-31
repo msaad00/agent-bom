@@ -16,6 +16,8 @@ from agent_bom.output import print_diff
 from agent_bom.output.compliance_narrative import ACCEPTED_FRAMEWORK_SLUGS
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from agent_bom.models import Agent, AIBOMReport, BlastRadius
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,10 @@ class _NarrativeReport:
     blast_radii: list["BlastRadius"]
     summary_total_agents: int
     summary_total_packages: int
+    # When the saved scan actually ran. Detective controls are scored from
+    # evidence freshness, so a narrative regenerated from an old artifact must
+    # report them stale rather than inheriting today's date.
+    generated_at: "datetime | None" = None
 
     @property
     def total_agents(self) -> int:
@@ -133,7 +139,21 @@ def _report_from_json(data: dict) -> "_NarrativeReport":
         blast_radii=blast_radii,
         summary_total_agents=int(summary.get("total_agents") or 0),
         summary_total_packages=int(summary.get("total_packages") or 0),
+        generated_at=_parse_generated_at(data.get("generated_at")),
     )
+
+
+def _parse_generated_at(value: object) -> "datetime | None":
+    """Parse the saved report's scan time; ``None`` when absent or malformed."""
+    from datetime import datetime, timezone
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _write_cli_output(payload: dict, output_path: str | None) -> None:

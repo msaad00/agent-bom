@@ -284,9 +284,13 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         tag_field="pci_dss_tags",
         catalog=PCI_DSS_REQUIREMENTS,
         report_label="PCI DSS",
-        bundled_unit="requirements",
-        source_standard_size="12",
-        coverage="Requirements 2/3/4/5/6/7/8/10/11/12 for vulnerable-package and evidence risk",
+        # The bundled IDs are sub-requirements (6.2.4, 11.3.1, …), not the 12
+        # top-level requirements. Labelling them "12 requirements" against a
+        # source size of "12" read as complete PCI coverage, which it is not:
+        # they touch requirements 2, 6, 8, 11 and 12 only.
+        bundled_unit="sub-requirements",
+        source_standard_size="12 top-level requirements",
+        coverage="Requirements 2, 6, 8, 11, 12 for vulnerable-package and evidence risk",
     ),
 )
 

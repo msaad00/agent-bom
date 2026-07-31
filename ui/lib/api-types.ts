@@ -496,6 +496,9 @@ export interface GraphRollupContainer {
 
 export interface GraphRollupSummary {
   total_nodes?: number;
+  /** Estate node count before the loader bounded the snapshot. Equals
+   * `total_nodes` on an unbounded load; larger when the load was truncated. */
+  total_nodes_source?: number;
   total_edges?: number;
   top_level_count?: number;
   container_count?: number;
@@ -1149,6 +1152,20 @@ export interface FindingListEnvelope<T> {
       missing_or_invalid: "unavailable";
     };
   } | undefined;
+  /**
+   * Completeness of the server-side scope walk. Present only when a scope
+   * filter (`provider` / `account` / `environment` / `domain` / `q`) is
+   * applied. `partial` means the walk hit its row budget or deadline: the page
+   * is a prefix, not the whole matching set — continue with `next_cursor`.
+   */
+  scope_completeness?: ScopeCompleteness | undefined;
+}
+
+export interface ScopeCompleteness {
+  status: "complete" | "partial";
+  reason: string;
+  scanned_rows: number;
+  scan_budget: number;
 }
 
 export interface FindingFacets {

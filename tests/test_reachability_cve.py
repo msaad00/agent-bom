@@ -80,14 +80,18 @@ def test_extract_returns_empty_without_symbol_data() -> None:
 
 
 def test_extract_symbols_from_ghsa_vulnerable_functions() -> None:
+    """The advisory's token set is exactly what the advisory named.
+
+    It must NOT be widened to the bare ``axios`` head: the advisory named the
+    method ``axios.get``, and indexing the head here made any use of ``axios``
+    satisfy it — an over-claimed ``function_reachable``.
+    """
     advisory = {
         "id": "GHSA-xxxx-yyyy-zzzz",
         "database_specific": {"vulnerable_functions": ["axios.get", "request"]},
     }
     tokens = extract_affected_symbols(advisory)
-    assert "axios.get" in tokens
-    assert "axios" in tokens
-    assert "request" in tokens
+    assert tokens == {"axios.get", "request"}
 
 
 def test_extract_symbols_from_ghsa_rest_top_level_vulnerable_functions() -> None:
@@ -96,9 +100,7 @@ def test_extract_symbols_from_ghsa_rest_top_level_vulnerable_functions() -> None
         "vulnerable_functions": ["express.static", "send"],
     }
     tokens = extract_affected_symbols(advisory)
-    assert "express.static" in tokens
-    assert "express" in tokens
-    assert "send" in tokens
+    assert tokens == {"express.static", "send"}
 
 
 def test_extract_symbols_from_vulnerability_affected_symbols_field() -> None:
@@ -708,3 +710,80 @@ def test_npm_package_from_module() -> None:
     assert _npm_package_from_module("@scope/pkg/subpath") == "@scope/pkg"
     assert _npm_package_from_module("./relative") is None
     assert _npm_package_from_module("node:fs") is None
+
+
+# ---------------------------------------------------------------------------
+# Head-token expansion must be ASYMMETRIC
+#
+# The module docstring promises "we *cannot prove* function reachability, so we
+# never claim it". Expanding the leading dotted component on BOTH sides broke
+# that promise: an advisory naming ``Environment.from_string`` was satisfied by
+# any use of the bare ``Environment`` class. The head token may only be added on
+# the REACHED side (a reached ``Environment.from_string`` does satisfy an
+# advisory naming ``Environment``), never on the advisory side.
+# ---------------------------------------------------------------------------
+
+
+def test_bare_class_token_does_not_satisfy_a_method_level_advisory() -> None:
+    """Constructing ``Environment`` is not proof that ``from_string`` is reached."""
+    index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2", "Environment")])
+    signal = classify_reachability(
+        package="jinja2",
+        advisory=_osv_with_symbols(["Environment.from_string"], path="jinja2"),
+        index=index,
+    )
+    assert signal.state == PACKAGE_REACHABLE
+    assert signal.matched_symbols == ()
+    assert "no affected symbol is reached" in signal.reason
+
+
+def test_reached_method_still_satisfies_a_class_level_advisory() -> None:
+    """The other direction must keep working — no new false negatives."""
+    index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2", "Environment.from_string")])
+    signal = classify_reachability(
+        package="jinja2",
+        advisory=_osv_with_symbols(["Environment"], path="jinja2"),
+        index=index,
+    )
+    assert signal.state == FUNCTION_REACHABLE
+    assert "Environment" in signal.matched_symbols
+
+
+def test_exact_symbol_match_still_classifies_function_reachable() -> None:
+    index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2", "Environment.from_string")])
+    signal = classify_reachability(
+        package="jinja2",
+        advisory=_osv_with_symbols(["Environment.from_string"], path="jinja2"),
+        index=index,
+    )
+    assert signal.state == FUNCTION_REACHABLE
+
+
+def test_sibling_method_does_not_satisfy_a_method_level_advisory() -> None:
+    """Calling ``Environment.get_template`` is not reaching ``from_string``."""
+    index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2", "Environment.get_template")])
+    signal = classify_reachability(
+        package="jinja2",
+        advisory=_osv_with_symbols(["Environment.from_string"], path="jinja2"),
+        index=index,
+    )
+    assert signal.state == PACKAGE_REACHABLE
+
+
+def test_dynamic_dispatch_is_never_upgraded_to_function_reachable(tmp_path: Path) -> None:
+    """``getattr(env, name)()`` carries no symbol proof — package level at most."""
+    (tmp_path / "app.py").write_text(
+        "from jinja2 import Environment\n"
+        "\n"
+        "def tool_dynamic(name, meth):\n"
+        '    """A tool."""\n'
+        "    env = Environment()\n"
+        "    return getattr(env, meth)(name)\n"
+    )
+    index = SymbolReachIndex.from_ast_result(analyze_project(tmp_path))
+    signal = classify_reachability(
+        package="jinja2",
+        advisory=_osv_with_symbols(["Environment.from_string"], path="jinja2"),
+        index=index,
+    )
+    assert signal.state != FUNCTION_REACHABLE

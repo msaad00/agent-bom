@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 
 import httpx
@@ -168,7 +169,10 @@ def _get_vulnerable_range_for_package(advisory: dict, package_name: str, ecosyst
     return ranges[0] if ranges else None
 
 
-def _installed_version_is_affected(installed: str, vuln_range: str) -> bool:
+_GHSA_RANGE_CLAUSE = re.compile(r"^\s*(>=|<=|==|=|>|<)?\s*(.+?)\s*$")
+
+
+def _installed_version_is_affected(installed: str, vuln_range: str, ecosystem: str = "") -> bool:
     """Return True if *installed* falls within the GHSA vulnerable_version_range.
 
     Range format examples::
@@ -177,18 +181,52 @@ def _installed_version_is_affected(installed: str, vuln_range: str) -> bool:
         '< 4.5.2'              → affected if version < 4.5.2
         '>= 22.0.0, < 26.0.0'  → affected if 22.0.0 <= version < 26.0.0
 
-    Uses ``packaging.specifiers.SpecifierSet`` for full PEP 440 compliance
-    (handles pre-release versions, epochs, and complex specifier combinations).
-    Returns ``True`` on parse error (conservative: assume affected).
-    """
-    try:
-        from packaging.specifiers import SpecifierSet
-        from packaging.version import Version
+    Every clause is evaluated with the ECOSYSTEM's own ordering via
+    ``compare_version_order``. The previous implementation parsed every
+    ecosystem through PEP 440 ``SpecifierSet``/``Version`` and returned ``True``
+    on any parse error, so npm/Maven/Go ranges — which PEP 440 rejects — failed
+    OPEN into false positives.
 
-        spec = SpecifierSet(vuln_range, prereleases=True)
-        return Version(installed) in spec
-    except Exception:
-        return True  # unknown — conservatively assume affected
+    Fails CLOSED: a clause that cannot be compared cannot establish a match, and
+    the dropped bound is logged so the reason is recorded rather than silent.
+    """
+    from agent_bom.version_utils import compare_version_order
+
+    clauses = [clause for clause in (vuln_range or "").split(",") if clause.strip()]
+    if not clauses:
+        logger.warning(
+            "GHSA vulnerable_version_range %r (%s) is empty; failing closed — no match can be established",
+            vuln_range,
+            ecosystem or "unknown ecosystem",
+        )
+        return False
+
+    for clause in clauses:
+        match = _GHSA_RANGE_CLAUSE.match(clause)
+        if match is None:
+            logger.warning("GHSA range clause %r (%s) is unparseable; failing closed", clause, ecosystem or "unknown ecosystem")
+            return False
+        operator, bound = match.group(1) or "==", match.group(2)
+        order = compare_version_order(installed, bound, ecosystem)
+        if order is None:
+            logger.warning(
+                "GHSA range bound %r (%s) cannot be compared to %r; failing closed — affected-range accuracy may be reduced",
+                bound,
+                ecosystem or "unknown ecosystem",
+                installed,
+            )
+            return False
+        satisfied = {
+            ">=": order >= 0,
+            ">": order > 0,
+            "<=": order <= 0,
+            "<": order < 0,
+            "==": order == 0,
+            "=": order == 0,
+        }[operator]
+        if not satisfied:
+            return False
+    return True
 
 
 def _parse_patched_range(patched: str) -> str | None:
@@ -400,24 +438,28 @@ async def check_github_advisories(
 
                         fixed = _extract_fixed_version(advisory, target_pkg.name, target_pkg.ecosystem)
 
-                        # Skip if the installed version is already at or beyond the fix.
                         if target_pkg.version:
+                            # Skip if the installed version is already at or beyond
+                            # the fix. ``compare_versions`` returns True only when
+                            # fix > current (upgrade needed); False = already
+                            # patched. This is a short-circuit ONLY — it can never
+                            # stand in for the advisory's own range, because a fix
+                            # bound says nothing about the range's LOWER bound
+                            # (jackson-databind 2.9.10 is below the fix 2.18.8 but
+                            # also below the ">= 2.13.0" the advisory introduces).
                             if fixed:
-                                # compare_versions returns True only when fix > current
-                                # (upgrade needed).  False = already patched → skip.
                                 from agent_bom.version_utils import compare_versions
 
                                 if not compare_versions(target_pkg.version, fixed, target_pkg.ecosystem):
                                     continue
-                            else:
-                                # patched_versions is null in current GHSA API responses.
-                                # Use vulnerable_version_range to check whether the
-                                # installed version actually falls in the affected range.
-                                # An advisory may list MULTIPLE disjoint ranges for the same
-                                # package — version is affected if it matches ANY of them.
-                                vuln_ranges = _get_vulnerable_ranges_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
-                                if vuln_ranges and not any(_installed_version_is_affected(target_pkg.version, r) for r in vuln_ranges):
-                                    continue
+                            # Always evaluate vulnerable_version_range when present.
+                            # An advisory may list MULTIPLE disjoint ranges for the
+                            # same package — affected if it matches ANY of them.
+                            vuln_ranges = _get_vulnerable_ranges_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
+                            if vuln_ranges and not any(
+                                _installed_version_is_affected(target_pkg.version, r, target_pkg.ecosystem) for r in vuln_ranges
+                            ):
+                                continue
 
                         vuln = Vulnerability(
                             id=vuln_id,

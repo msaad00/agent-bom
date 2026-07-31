@@ -298,7 +298,12 @@ def test_version_in_range_go_pseudo_vs_tagged_bounds():
     assert validate_version(unprefixed, "go") is True
     assert compare_version_order(unprefixed, "v1.5.0", "go") == -1
     assert version_in_range(unprefixed, "v1.5.0", None, None, "go") is False
-    assert version_in_range(unprefixed, None, "v1.2.3", None, "go") is False
+    # A pseudo-version is a PRE-RELEASE of its base tag, so it sorts strictly
+    # below it: a fix released at v1.2.3 does not cover a build that predates
+    # v1.2.3. Collapsing the two to equality here reported the package as
+    # already patched and hid the vulnerability.
+    assert compare_version_order(unprefixed, "v1.2.3", "go") == -1
+    assert version_in_range(unprefixed, None, "v1.2.3", None, "go") is True
     assert version_in_range(unprefixed, None, None, "v1.2.0", "go") is False
 
     # Pseudo-vs-pseudo bounds still resolve by timestamp.
@@ -503,3 +508,108 @@ def test_version_in_range_fails_closed_on_unparseable_bounds():
     # Unparseable introduced and NO other bound: the only comparison failed,
     # so no match may be claimed.
     assert version_in_range("1.5.0", "!!garbage!!", None, None, "pypi") is False
+
+
+# ---------------------------------------------------------------------------
+# Maven version order
+#
+# Pinned to the Apache Maven POM Reference "Version Order Specification":
+# tokens split on '.', '-', '_' and digit<->character transitions; trailing
+# "null" values (0, "", final, ga) trimmed; qualifier order
+#   alpha < beta < milestone < rc = cr < snapshot < "" = final = ga = release < sp
+# Comparison is case-insensitive.
+# ---------------------------------------------------------------------------
+
+
+def test_maven_spec_trimming_examples():
+    """The trimming examples given verbatim in the Maven spec."""
+    for equivalent in ("1.0.0", "1.ga", "1.final", "1.0", "1.", "1-", "1_", "1.RELEASE"):
+        assert compare_version_order(equivalent, "1", "maven") == 0, equivalent
+    assert compare_version_order("1.0.0-foo.0.0", "1-foo", "maven") == 0
+    assert compare_version_order("1.0.0-0.0.0", "1", "maven") == 0
+
+
+def test_maven_spec_qualifier_ordering():
+    ordered = [
+        "1-alpha",
+        "1-a1",
+        "1-beta",
+        "1-b1",
+        "1-milestone",
+        "1-m1",
+        "1-rc",
+        "1-snapshot",
+        "1",
+        "1-sp",
+    ]
+    for lower, higher in zip(ordered, ordered[1:]):
+        assert compare_version_order(lower, higher, "maven") == -1, f"{lower} !< {higher}"
+        assert compare_version_order(higher, lower, "maven") == 1, f"{higher} !> {lower}"
+
+
+def test_maven_rc_equals_cr_and_is_case_insensitive():
+    assert compare_version_order("1-rc1", "1-cr1", "maven") == 0
+    assert compare_version_order("3.2-ALPHA1", "3.2-alpha1", "maven") == 0
+
+
+def test_maven_numeric_ordering():
+    assert compare_version_order("1.10", "1.9", "maven") == 1
+    assert compare_version_order("5.3.20", "5.3.9", "maven") == 1
+    assert compare_version_order("2.0", "10.0", "maven") == -1
+
+
+def test_maven_unknown_qualifier_sorts_above_release():
+    """Unknown qualifiers compare lexically and sort after the known set."""
+    assert compare_version_order("2.5.6.SEC03", "2.5.6", "maven") == 1
+    assert compare_version_order("2.5.7.SR023", "2.5.7.SR0", "maven") == 1
+    assert compare_version_order("2.5.7.SR2", "2.5.7.SR10", "maven") == -1
+
+
+def test_maven_alphabetic_token_sorts_below_numeric_token():
+    assert compare_version_order("1-alpha", "1-1", "maven") == -1
+
+
+def test_go_pseudo_version_all_three_documented_forms_are_recognised():
+    """The Go modules reference documents THREE pseudo-version forms.
+
+    Only ``vX.0.0-<ts>-<sha>`` was recognised; the ``-0.<ts>-`` and
+    ``-<pre>.0.<ts>-`` forms fell through as uncomparable, so an advisory bound
+    written in either form could not rule a version out.
+    """
+    from agent_bom.version_utils import _go_pseudo_timestamp
+
+    assert _go_pseudo_timestamp("v0.0.0-20220524220425-1d687d428aca") == "20220524220425"
+    assert _go_pseudo_timestamp("v1.2.4-0.20191109021931-daa7c04131f5") == "20191109021931"
+    assert _go_pseudo_timestamp("v1.2.3-pre.0.20191109021931-daa7c04131f5") == "20191109021931"
+    # Not pseudo-versions.
+    assert _go_pseudo_timestamp("v1.2.3") is None
+    assert _go_pseudo_timestamp("v1.2.3-rc1") is None
+
+
+def test_go_pseudo_version_orders_against_a_tagged_version():
+    """CVE-2022-41721 / GO-2023-1495: fixed at ``0.1.1-0.20221104162952-702349b0e862``.
+
+    Live OSV does NOT report it for golang.org/x/net@0.16.0 — 0.16.0 is far past
+    the fix. The bound being uncomparable made it a fail-open false positive.
+    """
+    fixed = "0.1.1-0.20221104162952-702349b0e862"
+    assert compare_version_order("0.16.0", fixed, "go") == 1
+    assert version_in_range("0.16.0", "0.0.0-20220524220425-1d687d428aca", fixed, None, "go") is False
+    # Other direction — a version genuinely inside the window still matches.
+    assert version_in_range("0.1.0", "0.0.0-20220524220425-1d687d428aca", fixed, None, "go") is True
+
+
+def test_go_pseudo_version_sorts_below_its_base_tag():
+    """A pseudo-version is a pre-release of its base: ``v1.2.4-0.…`` < ``v1.2.4``."""
+    assert compare_version_order("v1.2.4-0.20191109021931-daa7c04131f5", "v1.2.4", "go") == -1
+    assert compare_version_order("v1.2.4", "v1.2.4-0.20191109021931-daa7c04131f5", "go") == 1
+    assert compare_version_order("v1.2.4-0.20191109021931-daa7c04131f5", "v1.2.3", "go") == 1
+
+
+def test_version_in_range_maven_release_qualifier_bounds():
+    # CVE-2009-1190 (GHSA-wjjr-h4wh-w6vv): introduced 1.1.0, fixed 3.0.0.RELEASE.
+    assert version_in_range("5.3.20", "1.1.0", "3.0.0.RELEASE", None, "maven") is False
+    assert version_in_range("2.5.0", "1.1.0", "3.0.0.RELEASE", None, "maven") is True
+    # GHSA-cxrj-66c5-9fmh: introduced 5.0.5.RELEASE, fixed 5.0.6.RELEASE.
+    assert version_in_range("5.0.5.RELEASE", "5.0.5.RELEASE", "5.0.6.RELEASE", None, "maven") is True
+    assert version_in_range("5.0.6.RELEASE", "5.0.5.RELEASE", "5.0.6.RELEASE", None, "maven") is False

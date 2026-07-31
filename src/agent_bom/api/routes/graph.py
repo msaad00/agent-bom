@@ -2075,7 +2075,14 @@ async def get_graph(
     """Load the unified graph with filters and pagination.
 
     Nodes are paginated (offset/limit). Edges are filtered to only include
-    edges between returned nodes. Stats reflect the full (unpaginated) graph.
+    edges between returned nodes.
+
+    ``stats`` describe the graph this response was computed from, NOT the page:
+    ``stats.total_nodes`` is every node that survived loading, and
+    ``stats.total_nodes_source`` is the estate total before any load-time node
+    budget applied. The two are equal on an unbounded load. Read
+    ``completeness`` for whether the load was bounded and why —
+    ``completeness.total`` always reconciles with ``stats.total_nodes_source``.
     """
     from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions
 
@@ -2160,6 +2167,21 @@ async def get_graph(
         node_ids=attack_path_hop_ids - paged_ids,
     )
     nodes_by_id = {node.id: node for node in [*paged_nodes, *attack_path_nodes]}
+    snapshot_stats = await _graph_store_call(
+        graph_store.snapshot_stats,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        entity_types=et_set,
+        min_severity_rank=min_rank,
+    )
+    # This branch pages a fully-counted snapshot rather than loading it under a
+    # budget, so the estate total IS the stats total. Emitting the field anyway
+    # keeps one stats shape across both branches — clients never have to know
+    # which path answered them.
+    snapshot_stats = {
+        **snapshot_stats,
+        "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
+    }
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
@@ -2170,13 +2192,7 @@ async def get_graph(
             _serialize_attack_path(path, paged_edges, nodes_by_id=nodes_by_id, scan_id=effective_scan_id) for path in source_attack_paths
         ],
         "interaction_risks": [],
-        "stats": await _graph_store_call(
-            graph_store.snapshot_stats,
-            scan_id=effective_scan_id,
-            tenant_id=tenant,
-            entity_types=et_set,
-            min_severity_rank=min_rank,
-        ),
+        "stats": snapshot_stats,
         "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
         "completeness": graph_completeness(
             returned=len(paged_nodes),

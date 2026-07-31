@@ -140,6 +140,23 @@ _DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000, "findings": 12_000
 _GENERIC_P99_THRESHOLD_MS = 2500
 
 
+def _default_concurrency() -> int:
+    """Default concurrency ceiling: the process's worker-thread capacity.
+
+    Read handlers offload their synchronous store work to the AnyIO worker
+    pool, so that pool — not a magic number — is what the process can actually
+    serve in parallel. A hardcoded 8 shed 92% of reads at 50 concurrent clients
+    (4 successful reads/sec) while 20 worker threads sat idle: backpressure was
+    firing at single-analyst load rather than at overload. Deriving it from
+    ``WORKER_THREAD_LIMIT`` keeps the two from drifting; the per-path
+    ``AGENT_BOM_BACKPRESSURE_<PATH>_CONCURRENCY`` override still wins, and the
+    shedding behaviour past the ceiling is unchanged.
+    """
+    from agent_bom.config import WORKER_THREAD_LIMIT
+
+    return max(1, int(WORKER_THREAD_LIMIT))
+
+
 def _percentile(values: list[float], percentile: float) -> float:
     if not values:
         return 0.0
@@ -178,7 +195,7 @@ def _controller_for(path: str) -> BackpressureController:
             return controller
         controller = BackpressureController(
             path=path,
-            max_concurrency=_env_int(_path_env_key(path, "CONCURRENCY"), 8, minimum=1, maximum=1024),
+            max_concurrency=_env_int(_path_env_key(path, "CONCURRENCY"), _default_concurrency(), minimum=1, maximum=1024),
             p99_threshold_ms=float(
                 _env_int(
                     _path_env_key(path, "P99_MS"),

@@ -336,6 +336,38 @@ describe("FindingsPage", () => {
     expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
   });
 
+  it("labels a budget-bounded scope walk partial instead of showing a silent empty page", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [],
+      total: null,
+      total_approximate: true,
+      has_more: true,
+      next_cursor: "cursor-next",
+      scope_completeness: { status: "partial", reason: "scan_budget", scanned_rows: 20000, scan_budget: 20000 },
+    });
+
+    render(<FindingsPage />);
+
+    const notice = await screen.findByTestId("findings-scope-partial");
+    expect(notice).toHaveTextContent(/Partial results/i);
+    expect(notice).toHaveTextContent("20,000");
+  });
+
+  it("shows no partial-results notice when the scope walk completed", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [canonicalFinding],
+      total: 1,
+      scope_completeness: { status: "complete", reason: "", scanned_rows: 300, scan_budget: 20000 },
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
+    expect(screen.queryByTestId("findings-scope-partial")).not.toBeInTheDocument();
+  });
+
   it("renders persisted graph reachability without inventing evidence for non-overlapping findings", async () => {
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",

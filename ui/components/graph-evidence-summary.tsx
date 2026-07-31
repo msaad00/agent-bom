@@ -33,8 +33,14 @@ function completenessDetail(status: string | null, reason: string | null): strin
   if (status === "complete") return "Complete for current scope";
   const value = reason || status;
   if (!value) return "Unavailable";
-  const normalized = value.replaceAll("_", " ");
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  // A response can be cut more than once (load budget AND a view limit); the
+  // API sends every reason so neither is hidden behind the other.
+  return value
+    .split(",")
+    .map((part) => part.trim().replaceAll("_", " "))
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" · ");
 }
 
 export function GraphEvidenceSummary({

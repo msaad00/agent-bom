@@ -2065,6 +2065,7 @@ def _merged_scan_bulk_page(
     since: str | None = None,
     scope: Mapping[str, str] | None = None,
     status: str | None = None,
+    scope_metadata: dict[str, Any] | None = None,
 ) -> MergedScanBulkPage:
     """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
 
@@ -2099,6 +2100,10 @@ def _merged_scan_bulk_page(
         extra_kwargs["status"] = status
     if scope:
         extra_kwargs["scope"] = dict(scope)
+        if scope_metadata is not None:
+            # One dict across every refill: ``collect_scope_filtered_page``
+            # accumulates, so the merged page reports the combined walk.
+            extra_kwargs["scope_metadata"] = scope_metadata
 
     def _refill_bulk() -> bool:
         nonlocal bulk_buf, bulk_i, fetch_cursor, bulk_exhausted
@@ -2459,6 +2464,11 @@ def _list_findings_impl(
     # a single SQL predicate). This keeps the fast keyset path — a scoped page
     # never materializes the whole tenant and ``next_cursor`` is emitted — while
     # ``total`` is honestly approximate (no O(table) COUNT under a scope filter).
+    # Completeness of the store-internal scope walk. The walk is bounded by a
+    # row budget + wall-clock deadline, so a sparse filter can return an empty
+    # page with a resume cursor; that must be labelled partial, never presented
+    # as an honest "no results".
+    scope_metadata: dict[str, Any] = {}
     if scope_filters and has_current_page and callable(bulk_list):
         scope_arg = dict(scope_filters)
         if use_merged:
@@ -2478,6 +2488,7 @@ def _list_findings_impl(
                 since=window_since,
                 scope=scope_arg,
                 status=status_key,
+                scope_metadata=scope_metadata,
             )
             page_rows = merged.rows
             next_cursor = _encode_merged_next(merged)
@@ -2495,6 +2506,7 @@ def _list_findings_impl(
                 since=window_since,
                 scope=scope_arg,
                 status=status_key,
+                scope_metadata=scope_metadata,
             )
             page_rows = bulk_result[0]
             next_cursor = bulk_result[2] if len(bulk_result) > 2 else None
@@ -2640,6 +2652,22 @@ def _list_findings_impl(
         _logger.warning("Finding graph reachability projection skipped: %s", sanitize_error(exc))
         warnings.append("Graph reachability evidence is unavailable for this page; unmatched findings remain unassessed.")
 
+    scope_completeness: dict[str, Any] | None = None
+    if scope_filters and scope_metadata:
+        scope_truncated = bool(scope_metadata.get("truncated"))
+        scope_completeness = {
+            "status": "partial" if scope_truncated else "complete",
+            "reason": str(scope_metadata.get("reason") or ""),
+            "scanned_rows": int(scope_metadata.get("scanned_rows") or 0),
+            "scan_budget": int(scope_metadata.get("scan_budget") or 0),
+        }
+        if scope_truncated:
+            warnings.append(
+                "Scope filter matching stopped after "
+                f"{scope_completeness['scanned_rows']} scanned rows ({scope_completeness['reason']}); "
+                "this page is partial — continue with next_cursor for the rest."
+            )
+
     page = _redact_finding_page(page_rows)
     envelope = finding_list_envelope(
         findings=page,
@@ -2664,6 +2692,8 @@ def _list_findings_impl(
     # Echo the applied read-window so clients label counts honestly as
     # "last Nd" rather than "all" (#4009).
     envelope["window"] = time_window.window_metadata(resolved_window)
+    if scope_completeness is not None:
+        envelope["scope_completeness"] = scope_completeness
     if facets is not None:
         envelope["facets"] = facets
         envelope["facets_approximate"] = bool(facet_completeness and facet_completeness["status"] != "complete")

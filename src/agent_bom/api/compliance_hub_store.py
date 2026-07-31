@@ -22,6 +22,7 @@ with ``ingested_at`` so future expiry / TTL work has a key.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -100,6 +101,33 @@ def scope_filter_batch_size(page_limit: int) -> int:
     return min(_SCOPE_FILTER_MAX_BATCH, max(_SCOPE_FILTER_MIN_BATCH, int(page_limit) + 1))
 
 
+def scope_filter_scan_budget() -> int:
+    """Rows one scope-filtered page walk may examine before it stops.
+
+    Operator-tunable so a deployment with a very sparse scope filter can trade
+    latency for completeness. Resolved per call (not bound at import) so the
+    knob applies without a restart and stays testable.
+    """
+    raw = os.environ.get("AGENT_BOM_SCOPE_FILTER_SCAN_BUDGET")
+    if raw is None:
+        return _SCOPE_FILTER_SCAN_BUDGET
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _SCOPE_FILTER_SCAN_BUDGET
+
+
+def scope_filter_deadline_seconds() -> float:
+    """Wall-clock ceiling for one scope-filtered page walk."""
+    raw = os.environ.get("AGENT_BOM_SCOPE_FILTER_DEADLINE_SECONDS")
+    if raw is None:
+        return _SCOPE_FILTER_DEADLINE_SECONDS
+    try:
+        return max(0.001, float(raw))
+    except ValueError:
+        return _SCOPE_FILTER_DEADLINE_SECONDS
+
+
 # Lifecycle-status filter — a single source of truth shared by every read
 # surface (list_current_page + current_severity_breakdown, all backends) and the
 # route. ``status`` is a real, sargable column on ``hub_findings_current``
@@ -164,7 +192,7 @@ def collect_scope_filtered_page(
     start_cursor: str | None,
     sort: str,
     batch_size: int,
-    scan_budget: int = _SCOPE_FILTER_SCAN_BUDGET,
+    scan_budget: int | None = None,
     deadline_monotonic: float | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
@@ -180,7 +208,15 @@ def collect_scope_filtered_page(
 
     The loop applies ``predicate`` to each ``enriched_payload``, collecting
     matches until it holds ``page_limit + 1`` (enough to know a further page
-    exists) or the stream ends. ``next_cursor`` is derived from the LAST EMITTED
+    exists), the stream ends, or the walk exhausts its row budget / wall-clock
+    deadline. A bounded walk is NOT silent: ``metadata`` (when supplied) records
+    ``scanned_rows`` / ``scan_budget`` / ``truncated`` / ``reason`` so the caller
+    can label the page partial, and a resume cursor is still emitted so the rest
+    of the stream stays retrievable. ``metadata`` accumulates across calls, so a
+    caller that drives several walks for one response (the merged scan+bulk page)
+    can pass one dict and get the combined verdict.
+
+    ``next_cursor`` is derived from the LAST EMITTED
     match's ``current_row`` — never a discarded probe row — so the next page
     resumes strictly after it: 0 duplicates, 0 dropped rows across pages, and the
     filtered order matches the unfiltered keyset order restricted to the matching
@@ -189,12 +225,13 @@ def collect_scope_filtered_page(
     page_limit = max(0, int(page_limit))
     if page_limit == 0:
         return [], None
+    scan_budget = scope_filter_scan_budget() if scan_budget is None else max(1, int(scan_budget))
     matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
     batch_cursor = start_cursor
     scanned_rows = 0
     bounded = False
     bound_reason = ""
-    deadline = deadline_monotonic or (time.monotonic() + _SCOPE_FILTER_DEADLINE_SECONDS)
+    deadline = deadline_monotonic or (time.monotonic() + scope_filter_deadline_seconds())
     last_scanned: dict[str, Any] | None = None
     while len(matches) <= page_limit:
         if scanned_rows >= scan_budget:
@@ -229,14 +266,11 @@ def collect_scope_filtered_page(
         if cursor_row is not None:
             next_cursor = cursor_from_current_row(cursor_row, sort=sort)
     if metadata is not None:
-        metadata.update(
-            {
-                "scanned_rows": scanned_rows,
-                "scan_budget": scan_budget,
-                "truncated": bounded,
-                "reason": bound_reason,
-            }
-        )
+        # Accumulate: one response may drive several walks (merged scan+bulk).
+        metadata["scanned_rows"] = int(metadata.get("scanned_rows") or 0) + scanned_rows
+        metadata["scan_budget"] = scan_budget
+        metadata["truncated"] = bool(metadata.get("truncated")) or bounded
+        metadata["reason"] = bound_reason or str(metadata.get("reason") or "")
     return payloads, next_cursor
 
 
@@ -570,6 +604,7 @@ class ComplianceHubStore(Protocol):
         since: str | None = None,
         scope: Mapping[str, str] | None = None,
         status: str | None = None,
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         """Return a page from ``hub_findings_current`` with lifecycle fields merged.
 
@@ -588,6 +623,11 @@ class ComplianceHubStore(Protocol):
         the whole tenant. When ``scope`` is set the exact O(table) ``COUNT(*)`` is
         skipped and ``total`` is ``None`` (the route flags it approximate); when
         ``scope`` is falsy behavior is unchanged.
+
+        ``scope_metadata``, when supplied alongside ``scope``, is filled in place
+        with the scope walk's completeness (``scanned_rows`` / ``scan_budget`` /
+        ``truncated`` / ``reason``) so the caller can label a budget-bounded page
+        partial instead of presenting it as an honest empty result.
         """
         ...
 
@@ -1321,6 +1361,7 @@ class InMemoryComplianceHubStore:
         since: str | None = None,
         scope: Mapping[str, str] | None = None,
         status: str | None = None,
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
@@ -1337,6 +1378,7 @@ class InMemoryComplianceHubStore:
                 since=since,
                 scope=scope,
                 status=status,
+                scope_metadata=scope_metadata,
             )
         with self._lock:
             rows = list(self._current.get(tenant_id, {}).values())
@@ -1386,6 +1428,7 @@ class InMemoryComplianceHubStore:
         since: str | None,
         scope: Mapping[str, str],
         status: str | None = None,
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
         from agent_bom.finding_scope import row_matches_scope
@@ -1418,6 +1461,7 @@ class InMemoryComplianceHubStore:
             start_cursor=cursor,
             sort=sort,
             batch_size=scope_filter_batch_size(page_limit),
+            metadata=scope_metadata,
         )
         return payloads, None, next_cursor
 
@@ -1951,7 +1995,11 @@ class SQLiteComplianceHubStore:
                 )
             )
         existing_ids = self._existing_finding_ids(tenant_id, finding_ids)
-        new_rows = sum(1 for row in rows if str(row[1]) not in existing_ids)
+        # Count DISTINCT ids: ``ON CONFLICT … DO UPDATE`` collapses ids repeated
+        # WITHIN the batch into one row, so counting per-row overstated the
+        # tenant total permanently (the cached total then disagreed with
+        # ``COUNT(*)`` forever).
+        new_rows = len({str(row[1]) for row in rows} - existing_ids)
         # Idempotent ingest: a repeat of the same (tenant_id, finding_id)
         # refreshes the stored payload/metadata in place and keeps the original
         # ``ordinal`` (ingest order) instead of appending a duplicate row.
@@ -2337,6 +2385,7 @@ class SQLiteComplianceHubStore:
         since: str | None = None,
         scope: Mapping[str, str] | None = None,
         status: str | None = None,
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
@@ -2392,6 +2441,7 @@ class SQLiteComplianceHubStore:
                 limit=limit,
                 cursor=cursor,
                 scope=scope,
+                scope_metadata=scope_metadata,
             )
         if cursor:
             keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, cursor)
@@ -2453,6 +2503,7 @@ class SQLiteComplianceHubStore:
         limit: int,
         cursor: str | None,
         scope: Mapping[str, str],
+        scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
         from agent_bom.finding_scope import row_matches_scope
@@ -2497,6 +2548,7 @@ class SQLiteComplianceHubStore:
             start_cursor=cursor,
             sort=normalized_sort,
             batch_size=scope_filter_batch_size(page_limit),
+            metadata=scope_metadata,
         )
         return payloads, None, next_cursor
 

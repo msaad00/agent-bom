@@ -19879,7 +19879,7 @@
     },
     "/v1/graph": {
       "get": {
-        "description": "Load the unified graph with filters and pagination.\n\nNodes are paginated (offset/limit). Edges are filtered to only include\nedges between returned nodes. Stats reflect the full (unpaginated) graph.",
+        "description": "Load the unified graph with filters and pagination.\n\nNodes are paginated (offset/limit). Edges are filtered to only include\nedges between returned nodes.\n\n``stats`` describe the graph this response was computed from, NOT the page:\n``stats.total_nodes`` is every node that survived loading, and\n``stats.total_nodes_source`` is the estate total before any load-time node\nbudget applied. The two are equal on an unbounded load. Read\n``completeness`` for whether the load was bounded and why \u2014\n``completeness.total`` always reconciles with ``stats.total_nodes_source``.",
         "operationId": "get_graph_v1_graph_get",
         "parameters": [
           {

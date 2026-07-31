@@ -59,7 +59,7 @@ from agent_bom.graph.build_workspace import (
     _normalize_tenant,
     open_workspace_backend,
 )
-from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.container import GraphCompleteness, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.severity import SEVERITY_RANK
@@ -247,6 +247,10 @@ class StoreBackedUnifiedGraph(UnifiedGraph):
         self.scan_id = scan_id
         self.tenant_id = tenant_id
         self.created_at = created_at or _now_iso()
+        # Mirrored like every other graph-level field: this subclass skips the
+        # dataclass __init__, so a default the base class declares only exists
+        # here if it is repeated. `stats()` and the view derivations read it.
+        self.completeness = GraphCompleteness()
 
     # ── Store-backed views (shadow the dataclass fields) ─────────────────────
 

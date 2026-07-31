@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Mapping
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.evidence.scan_run import vulnerability_coverage_incomplete
 from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.scorecard import summarize_scorecard_coverage
 from agent_bom.vex import active_blast_radii
@@ -482,6 +483,23 @@ def compute_posture_scorecard(
             score=0.0,
             dimensions=dimensions,
             summary="No artifacts scanned — posture grade unavailable. Connect a surface or run a scan to grade posture.",
+            policy_source=resolved.source,
+            no_data=True,
+        )
+
+    # ── Could-we-evaluate guard ──
+    # The guard above measures DISCOVERY. A scan can discover packages and still
+    # have had no vulnerability data to grade them against — the vuln DB was
+    # unavailable, a required scanner failed. Every dimension then falls back to
+    # its empty default and the headline reads "No vulnerabilities found …(A)",
+    # which is a false all-clear, not a missing one. Grade only what we could
+    # actually evaluate.
+    if vulnerability_coverage_incomplete(report):
+        return PostureScorecard(
+            grade="N/A",
+            score=0.0,
+            dimensions=dimensions,
+            summary="Vulnerability coverage incomplete — posture grade unavailable. Re-run once vulnerability data is available.",
             policy_source=resolved.source,
             no_data=True,
         )

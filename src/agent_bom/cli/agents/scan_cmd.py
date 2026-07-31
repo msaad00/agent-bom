@@ -2164,18 +2164,32 @@ def scan(
 
         _gb = _from_cg(report.context_graph_data, backend=graph_backend)
         _centrality = _gb.centrality_scores()
-        _bottlenecks = _gb.bottleneck_nodes(top_n=5)
+        _bottleneck_analysis = _gb.bottleneck_analysis(top_n=5)
+        _bottlenecks = _bottleneck_analysis.nodes
         if report.context_graph_data is not None:
             report.context_graph_data["centrality"] = _centrality
             report.context_graph_data["bottleneck_nodes"] = [{"id": nid, "score": score} for nid, score in _bottlenecks]
+            # Betweenness over an estate graph is approximated from a bounded
+            # source sample; ship the sample size with the ranking so no
+            # downstream reader mistakes it for an exhaustive traversal.
+            report.context_graph_data["bottleneck_provenance"] = {
+                "sampled": _bottleneck_analysis.sampled,
+                "sampled_sources": _bottleneck_analysis.sampled_sources,
+                "total_nodes": _bottleneck_analysis.total_nodes,
+            }
             report.context_graph_data["stats"]["graph_backend"] = type(_gb).__name__
 
         _n_paths = len(_all_paths)
         _n_risks = len(_cg_risks)
         _n_bottlenecks = len(_bottlenecks)
+        _bottleneck_qualifier = (
+            f" (sampled {_bottleneck_analysis.sampled_sources} of {_bottleneck_analysis.total_nodes} sources)"
+            if _bottleneck_analysis.sampled
+            else ""
+        )
         con.print(
             f"  [green]✓[/green] Context graph: {len(_cg.nodes)} nodes, {_n_paths} lateral path(s), "
-            f"{_n_risks} risk pattern(s), {_n_bottlenecks} bottleneck(s)"
+            f"{_n_risks} risk pattern(s), {_n_bottlenecks} bottleneck(s){_bottleneck_qualifier}"
         )
 
         # ── Persist full unified graph (all entity types) ────────────

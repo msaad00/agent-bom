@@ -38,6 +38,7 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import urlencode
 
@@ -64,6 +65,25 @@ _logger = logging.getLogger(__name__)
 _OVERVIEW_CACHE_TTL_SECONDS_DEFAULT = 15.0
 _overview_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
 _overview_cache_lock = threading.Lock()
+
+# Single-flight. The cache alone is a plain read-compute-write, so every reader
+# that arrives while the fold is running misses and folds the estate itself: a
+# 2.4s solo read measured 29.2s at 8 concurrent readers, and during ingest the
+# fingerprint invalidates continuously so the cache is permanently cold. One
+# in-flight computation per tenant; the rest wait on its Event and reuse the
+# result. A leader that fails or overruns never strands a follower — the
+# follower recomputes rather than serving a missing payload.
+_OVERVIEW_SINGLEFLIGHT_TIMEOUT_SECONDS = 30.0
+
+
+@dataclass
+class _OverviewFlight:
+    fingerprint: str
+    event: threading.Event = field(default_factory=threading.Event)
+    payload: dict[str, Any] | None = None
+
+
+_overview_inflight: dict[str, _OverviewFlight] = {}
 
 
 def _overview_cache_ttl() -> float:
@@ -123,6 +143,19 @@ def _reset_overview_cache() -> None:
     """Test hook: drop all cached overview payloads."""
     with _overview_cache_lock:
         _overview_cache.clear()
+        for flight in _overview_inflight.values():
+            flight.event.set()
+        _overview_inflight.clear()
+
+
+def _overview_singleflight_timeout() -> float:
+    raw = os.environ.get("AGENT_BOM_OVERVIEW_SINGLEFLIGHT_TIMEOUT_SECONDS")
+    if raw is None:
+        return _OVERVIEW_SINGLEFLIGHT_TIMEOUT_SECONDS
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _OVERVIEW_SINGLEFLIGHT_TIMEOUT_SECONDS
 
 
 _SEVERITY_KEYS = ("critical", "high", "medium", "low")
@@ -1014,7 +1047,9 @@ def _build_overview(request: Request) -> dict[str, Any]:
     Serves a cached payload when the tenant's job-metadata fingerprint is
     unchanged within the TTL, so repeated landing-page reads don't refold the
     whole estate (#3963 follow-up). Cache misses (new/changed scan data or an
-    expired entry) recompute and refresh the cache.
+    expired entry) recompute and refresh the cache — but only ONCE per tenant
+    per fingerprint: concurrent misses join the in-flight fold instead of
+    stampeding it.
     """
     tenant_id = _tenant_id(request)
     jobs = _get_store().list_all(tenant_id=tenant_id)
@@ -1025,9 +1060,33 @@ def _build_overview(request: Request) -> dict[str, Any]:
     if cached is not None:
         return cached
 
-    payload = _compose_overview(request, tenant_id, jobs, hub_severity)
-    _overview_cache_put(tenant_id, fingerprint, payload)
-    return payload
+    with _overview_cache_lock:
+        flight = _overview_inflight.get(tenant_id)
+        leader = flight is None or flight.fingerprint != fingerprint
+        if leader:
+            flight = _OverviewFlight(fingerprint=fingerprint)
+            _overview_inflight[tenant_id] = flight
+
+    assert flight is not None  # nosec B101 — narrowing; set on both branches
+    if not leader:
+        if flight.event.wait(timeout=_overview_singleflight_timeout()) and flight.payload is not None:
+            return flight.payload
+        # The leader failed or overran its budget. Recompute rather than serve
+        # nothing — correctness beats de-duplication.
+        payload = _compose_overview(request, tenant_id, jobs, hub_severity)
+        _overview_cache_put(tenant_id, fingerprint, payload)
+        return payload
+
+    try:
+        payload = _compose_overview(request, tenant_id, jobs, hub_severity)
+        _overview_cache_put(tenant_id, fingerprint, payload)
+        flight.payload = payload
+        return payload
+    finally:
+        with _overview_cache_lock:
+            if _overview_inflight.get(tenant_id) is flight:
+                del _overview_inflight[tenant_id]
+        flight.event.set()
 
 
 def _compose_overview(request: Request, tenant_id: str, jobs: list[Any], hub_severity: dict[str, int]) -> dict[str, Any]:

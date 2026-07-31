@@ -1609,7 +1609,6 @@ def scan(
                         posture=posture,
                     )
             _scan_warnings = consume_scan_warnings()
-            _coverage_warnings = consume_coverage_warnings()
             if _scan_warnings:
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(_scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
@@ -1947,6 +1946,15 @@ def scan(
     )
     from agent_bom.advisory_sources import summarize_advisory_coverage
 
+    # Drain here, at the single point every branch reaches. A manifest that
+    # cannot be read parses to zero packages, and the zero-package branch skips
+    # the vulnerability-scan block entirely — so draining inside that block
+    # dropped the warning in precisely the runs whose coverage was most
+    # degraded. Accumulate rather than assign so an earlier drain elsewhere in
+    # the command cannot silently replace what it already collected.
+    for _warning in consume_coverage_warnings():
+        if str(_warning.get("release", "")) not in {str(w.get("release", "")) for w in _coverage_warnings}:
+            _coverage_warnings.append(_warning)
     if _coverage_warnings:
         report.coverage_warnings = _coverage_warnings
 

@@ -84,10 +84,16 @@ async def compliance_impl(
                             pkgs.add(br["package"])
                         for a in br.get("affected_agents", []):
                             ags.add(a)
+                # A control with no mapped finding is NOT a pass. These
+                # catalogues (OWASP LLM/MCP, ATLAS, NIST AI RMF) are all
+                # corrective/preventive: they are attested by the absence of an
+                # open weakness, and absence of a CVE is not proof the control
+                # is implemented. Scoring them as passes made a clean scan
+                # return "100% / pass" over 99 never-evaluated controls — the
+                # same false green /v1/compliance removed. Mirrors the API's
+                # not_evaluated semantics (see evidence/control_modes.py).
                 status = (
-                    "not_evaluated"
-                    if not has_evidence
-                    else ("pass" if findings == 0 else ("fail" if sev_bk["critical"] > 0 or sev_bk["high"] > 0 else "warning"))
+                    "fail" if findings and (sev_bk["critical"] > 0 or sev_bk["high"] > 0) else "warning" if findings else "not_evaluated"
                 )
                 controls.append(
                     {
@@ -109,12 +115,20 @@ async def compliance_impl(
 
         all_controls = owasp + atlas + nist + owasp_mcp
         total = len(all_controls)
-        total_pass = sum(1 for c in all_controls if c["status"] == "pass")
-        evaluated_controls = sum(1 for c in all_controls if c["status"] != "not_evaluated")
+        # Same scorer as /v1/compliance, the per-framework route, the HTML
+        # report and the evidence bundle. None of these catalogues carry
+        # detective controls, so every evaluated control here is substantive.
+        from agent_bom.evidence.scoring import score_compliance
+
+        verdict = score_compliance(
+            passed=sum(1 for c in all_controls if c["status"] == "pass"),
+            warned=sum(1 for c in all_controls if c["status"] == "warning"),
+            failed=sum(1 for c in all_controls if c["status"] == "fail"),
+            has_evidence=has_evidence,
+        )
+        evaluated_controls = verdict.evaluated
         not_evaluated_controls = total - evaluated_controls
-        score = round((total_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
-        has_fail = any(c["status"] == "fail" for c in all_controls)
-        has_warn = any(c["status"] == "warning" for c in all_controls)
+        score = verdict.score
 
         # Catalog-backed NIST SP 800-53 Rev 5 line (vendor-asserted), scored
         # INDEPENDENTLY over evaluated controls only via the shared scorer — the
@@ -132,9 +146,7 @@ async def compliance_impl(
             json.dumps(
                 {
                     "overall_score": score,
-                    "overall_status": (
-                        "no_data" if evaluated_controls == 0 else ("fail" if has_fail else ("warning" if has_warn else "pass"))
-                    ),
+                    "overall_status": verdict.status,
                     "total_controls": total,
                     "evaluated_controls": evaluated_controls,
                     "not_evaluated_controls": not_evaluated_controls,

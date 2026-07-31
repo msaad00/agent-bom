@@ -22,6 +22,7 @@ import type {
   ServiceId,
 } from "@/lib/api-types";
 import { Collapsible } from "@/components/collapsible";
+import { isNotEvaluated } from "@/components/compliance-status";
 import { FrameworkIcon } from "@/components/framework-icon";
 import type { SeverityCounts } from "@/lib/dashboard-data";
 import {
@@ -66,8 +67,19 @@ function frameworkEvaluated(framework: OverviewComplianceFramework): number {
   return framework.pass + framework.warn + framework.fail;
 }
 
+/** Is `overallScore` a number worth rendering?
+ *
+ *  Framework pass/warn/fail counts alone are NOT the answer. A completed scan
+ *  over an estate with nothing gradeable passes only its DETECTIVE controls
+ *  ("we scan") — real pass counts that make this predicate true — while the
+ *  backend correctly reports `overallStatus: "no_data"`. Reading the counts and
+ *  ignoring the status rendered "Compliance 100%" over an unmeasured estate.
+ *  The status is the backend's own verdict on whether the score means anything,
+ *  so it is authoritative here, and `isNotEvaluated` is the SAME predicate the
+ *  Trust Center uses — one implementation, not two. */
 function hasEvaluatedCompliance(compliance: OverviewComplianceSnapshot | null | undefined): boolean {
-  return Boolean(compliance?.frameworks.some((framework) => frameworkEvaluated(framework) > 0));
+  if (!compliance || isNotEvaluated(compliance.overallStatus)) return false;
+  return compliance.frameworks.some((framework) => frameworkEvaluated(framework) > 0);
 }
 
 // Shared class for the collapsible section headers (Command center, Cross-lane
@@ -219,9 +231,16 @@ export function OverviewCockpit({
   services = null,
 }: OverviewCockpitProps) {
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
-  const complianceScore =
-    hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance)
-      ? `${Math.round(compliance.overallScore)}%`
+  // Once scans exist the chip always renders, but an unevidenced score reads as
+  // an em dash — the SAME treatment the Trust Center gives this status. Hiding
+  // the chip instead would leave the reader unable to tell "not measured" from
+  // "not loaded"; printing the raw percentage claimed compliance we never
+  // evidenced.
+  const complianceEvaluated = hasScanEvidence && compliance != null && hasEvaluatedCompliance(compliance);
+  const complianceScore = complianceEvaluated
+    ? `${Math.round(compliance.overallScore)}%`
+    : hasScanEvidence && compliance != null
+      ? "—"
       : undefined;
 
   return (
@@ -1238,7 +1257,11 @@ function SeverityIssueStrip({
                 icon={ShieldCheck}
                 label="Compliance"
                 value={complianceScore}
-                title="Overall compliance score across evaluated frameworks"
+                title={
+                  complianceScore === "—"
+                    ? "No framework was substantively evaluated — nothing to score"
+                    : "Overall compliance score across evaluated frameworks"
+                }
               />
             ) : null}
           </div>

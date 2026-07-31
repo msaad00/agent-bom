@@ -12,6 +12,7 @@ from __future__ import annotations
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpcore
 import httpx
 import pytest
 
@@ -79,9 +80,16 @@ def test_no_proxy_exclusions_are_still_honoured(proxy_server, monkeypatch) -> No
     monkeypatch.setenv("HTTP_PROXY", proxy_server)
     monkeypatch.setenv("NO_PROXY", "blocked.example")
 
+    # The proxy answers every absolute-URI request with 418, so reaching it at
+    # all would mean NO_PROXY was ignored. Going direct is what must happen,
+    # and the host does not resolve — but the exact exception depends on the
+    # resolver: httpx wraps httpcore's error on some paths and lets it through
+    # on others, so a CI runner and a laptop raise different types for the same
+    # correct behaviour. Assert the property, not the type.
     with create_sync_client(timeout=5) as client:
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises((httpx.TransportError, httpcore.NetworkError)) as excinfo:
             client.get("http://blocked.example/resource")
+    assert not isinstance(excinfo.value, httpx.HTTPStatusError)
 
 
 def test_connection_retries_stay_enabled_without_a_proxy(monkeypatch) -> None:

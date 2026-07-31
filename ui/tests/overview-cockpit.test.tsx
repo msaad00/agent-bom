@@ -383,6 +383,38 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/coverage appears after the first completed scan/i)).not.toBeInTheDocument();
   });
 
+  it("never renders a compliance percentage when the API says no_data", () => {
+    // The live shape of a completed scan over an estate with nothing gradeable:
+    // every passing control is detective ("we scan"), so the backend reports
+    // overall_status "no_data". The frameworks DO carry real pass counts, so a
+    // pass/warn/fail test alone reads this as evaluated and renders
+    // "Compliance 100%" over an unmeasured estate.
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        compliance={{
+          overallScore: 100,
+          overallStatus: "no_data",
+          evaluatedControls: 8,
+          totalControls: 240,
+          frameworks: [
+            { id: "nist-csf", label: "NIST CSF", pass: 3, warn: 0, fail: 0, total: 14 },
+            { id: "nist-800-53", label: "NIST 800-53", pass: 2, warn: 0, fail: 0, total: 29 },
+            { id: "cis", label: "CIS Controls v8", pass: 3, warn: 0, fail: 0, total: 10 },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Compliance 100%")).not.toBeInTheDocument();
+    expect(screen.queryByText(/100% of 8 evaluated controls/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 frameworks need attention/i)).not.toBeInTheDocument();
+    // Same treatment the Trust Center already uses for this status: an explicit
+    // em dash, not a hidden chip that leaves the reader guessing.
+    expect(screen.getByText("Compliance —")).toBeInTheDocument();
+    expect(screen.getByText(/No evaluated framework coverage is available for completed scans/i)).toBeInTheDocument();
+  });
+
   it("never renders a green PASS for a framework with zero evaluated controls (#3889)", () => {
     render(
       <OverviewCockpit

@@ -9,6 +9,97 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Behaviour changes staged for the next release move numbers you may already be reporting.
+Read "Changed" before upgrading.
+
+### Breaking
+
+- The compliance evidence bundle's canonical signing form changed: the
+  `signature` key is now embedded in the document body and excluded from the
+  hash. External verifiers must drop that key before hashing. Bundles archived
+  before this release remain distinguishable by the field's absence.
+- `summary.attack_pass`, `summary.attack_warn` and `summary.attack_fail` are
+  removed, replaced by `attack_applicable` and `attack_not_applicable`. MITRE
+  ATT&CK is now an applicability overlay and no longer contributes to any score.
+- `observed_at` is required on `POST /v1/cloud/runtime-evidence/ingest`.
+  Collectors that omitted it now receive a 422.
+
+### Fixed — evidence the product detected but did not report
+
+- A scanned estate with nothing gradeable reported a compliance score of 100
+  across six surfaces — the REST aggregate, per-framework routes, the MCP tool,
+  the HTML report handed to auditors, the evidence bundle, and the Overview
+  landing page. The score is now derived from the status through one shared
+  scorer, so the two can no longer disagree.
+- Detective controls (RA-5, CM-8, ID.RA-01, ID.RA-02, DE.CM-09, CIS-02.1/07.1/07.5)
+  were failed by the very scan that evidences them. They now pass on fresh
+  evidence and fail on stale. RA-7 and IR-5, which a scanner cannot observe, are
+  reported as not evaluated rather than failed.
+- Undateable and future-dated scan evidence scored as fresh; both now fail closed.
+- Malicious model artifacts were shown in the console but never became findings,
+  so every CI gate passed a pickle implant. They are now `MALICIOUS_MODEL`
+  findings and gate correctly.
+- Prompt-injection audits of instruction-only files were skipped unless the file
+  also referenced a package, so `agent-bom scan .` missed a malicious `CLAUDE.md`.
+- A degraded scan reported `coverage_warnings: []` and exited 0. Warnings now
+  reach the written report, and a partial scan exits non-zero.
+- CISA KEV, EPSS and `kev_due_date` enrichment reached the report; an unavailable
+  KEV feed no longer reads as "not exploited".
+
+### Fixed — accuracy
+
+- Version ranges now fail closed when a bound cannot be compared. Maven
+  qualifier ordering (`.RELEASE`, `.GA`, `SNAPSHOT`) and all three Go
+  pseudo-version forms are implemented, and the GHSA path evaluates the
+  advisory's lower bound rather than only its fix version.
+- Reachability no longer claims function-level reach from a bare class token.
+- The posture grade is withheld when vulnerability coverage is incomplete,
+  instead of grading an unscanned estate an A.
+- Conflicting advisory severities resolve upward rather than by sort order.
+
+### Fixed — graph
+
+- Roll-ups, drill-downs and every derived view inherit the snapshot's truncation
+  instead of reporting a bounded result as complete.
+- Credential identity is scoped per server; a shared environment-variable *name*
+  no longer fabricates lateral-movement edges between unrelated agents.
+- Bottleneck rankings are sampled deterministically and declare their sample,
+  rather than presenting the first 50 nodes in insertion order as fact.
+- Postgres edge reconciliation is bounded, so a second scan no longer fails to
+  persist and silently freeze the graph.
+
+### Fixed — control plane and tenancy
+
+- Row-level security is forced on the `teams` table and on auto-created monthly
+  partition children, closing a cross-tenant read and delete path.
+- HTTP- and scheduler-triggered scans run bound to the job's tenant.
+- Compliance-hub observation partitions are provisioned a year ahead and topped
+  up on every deploy. The previous three-month window could not be extended at
+  runtime and would have broken all current-dated hub ingest permanently.
+- Malformed requests return a 4xx envelope instead of a bare 500, and validation
+  errors no longer reflect the submitted body.
+- An unreadable or non-UTF8 manifest degrades with a named coverage warning
+  instead of aborting the scan with no artifact.
+- `HTTP(S)_PROXY` is honoured; it was silently ignored, so pinned egress was not
+  actually pinned.
+- SIEM delivery rides the hardened delivery client: credentials are redacted,
+  URLs validated, and failures retried into a dead-letter queue.
+
+### Changed
+
+- Compliance scores can now move off zero, because controls the scan actually
+  evidenced can pass. An unchanged estate may therefore report a different
+  number than it did on 0.98.2.
+- Detective-control evidence older than 90 days fails
+  (`AGENT_BOM_COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS`).
+- Scope-filtered and free-text findings queries are bounded and report
+  `scope_completeness` when partial, rather than walking the whole tenant.
+- Read concurrency scales with the worker pool instead of a fixed limit of 8.
+- The PCI DSS coverage table now reports 12 *sub-requirements* across
+  requirements 2, 6, 8, 11 and 12. It previously read "12 requirements / 12",
+  which implied complete PCI coverage.
+
+
 ## [0.98.2] - 2026-07-27
 
 ### Changed

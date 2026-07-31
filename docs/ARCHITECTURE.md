@@ -420,7 +420,7 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 | Regulatory | SOC 2 TSC | 9 criteria | ~64 | Common Criteria 6.x / 7.x / 8.x / 9.x (access, monitoring, change mgmt, vendor risk) |
 | Regulatory | CIS Controls v8 | 10 safeguards | 153 | Software inventory, vulnerability mgmt, secure-dev (CIS 02 / 07 / 16) |
 | Regulatory | CMMC 2.0 Level 2 | 17 practices | 110 | RA / SI / SC / CM / AC / IA practices most relevant to vulnerable-package risk |
-| Regulatory | PCI DSS v4.0 | 12 requirements | 12 | Requirements 2/3/4/5/6/7/8/10/11/12 for vulnerable-package and evidence risk |
+| Regulatory | PCI DSS v4.0 | 12 sub-requirements | 12 top-level requirements | Requirements 2, 6, 8, 11, 12 for vulnerable-package and evidence risk |
 <!-- compliance-coverage:end -->
 
 The bundled list is editable: see `src/agent_bom/compliance_coverage.py` for the framework metadata and `src/agent_bom/compliance_utils.py` for the `BlastRadius` field map. The UI consumes the same API response shape, so product coverage and dashboard controls should stay aligned with these catalogs.

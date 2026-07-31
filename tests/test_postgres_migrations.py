@@ -28,6 +28,7 @@ GATEWAY_ACTIVITY_WINDOW_INDEX = VERSIONS_DIR / "20260729_02_gateway_activity_win
 PARTITION_CHILD_RLS = VERSIONS_DIR / "20260729_03_partition_child_rls.py"
 GRAPH_EDGE_SNAPSHOT_KEY_INDEX = VERSIONS_DIR / "20260730_01_graph_edge_snapshot_key_index.py"
 TEAMS_TENANT_RLS = VERSIONS_DIR / "20260730_02_teams_tenant_rls.py"
+OBSERVATION_PARTITION_RUNWAY = VERSIONS_DIR / "20260731_01_observation_partition_runway.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -434,7 +435,7 @@ def test_teams_tenant_rls_is_chained_idempotent_and_irreversible() -> None:
     assert "NO FORCE ROW LEVEL SECURITY" not in sql
 
 
-def test_teams_tenant_rls_is_the_alembic_head() -> None:
+def test_observation_partition_runway_is_the_alembic_head() -> None:
     """Nothing may chain past the new revision without being noticed."""
     revisions = {
         path.name: re.search(r'down_revision\s*=\s*"([^"]+)"', path.read_text())
@@ -442,7 +443,47 @@ def test_teams_tenant_rls_is_the_alembic_head() -> None:
         if path.name != "__init__.py"
     }
     parents = {match.group(1) for match in revisions.values() if match}
-    assert "20260730_02" not in parents
+    assert "20260731_01" not in parents
+    # And exactly one head: every other revision is some revision's parent.
+    all_revisions = {
+        match.group(1)
+        for match in (re.search(r'^revision\s*=\s*"([^"]+)"', path.read_text(), re.M) for path in VERSIONS_DIR.glob("*.py"))
+        if match
+    }
+    assert all_revisions - parents == {"20260731_01"}
+
+
+def test_observation_partition_runway_migration_provisions_a_year_ahead() -> None:
+    """The migration must extend the runway, not just create 'a' partition."""
+    from agent_bom.api.hub_observations_partition import OBSERVATION_PARTITION_RUNWAY_MONTHS
+
+    sql = OBSERVATION_PARTITION_RUNWAY.read_text()
+    assert re.search(r'revision\s*=\s*"20260731_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260730_02"', sql)
+    assert "provision_observation_partition_runway" in sql
+    # Reuses the shared helper (which forces RLS on each new child) rather than
+    # hand-rolling CREATE TABLE ... PARTITION OF without tenant isolation.
+    assert "CREATE TABLE" not in sql
+    assert OBSERVATION_PARTITION_RUNWAY_MONTHS >= 12
+    # Forward-only: dropping provisioned partitions would discard observations.
+    assert "DROP TABLE" not in sql
+    assert "DETACH PARTITION" not in sql
+
+
+def test_observation_partition_runway_migration_uses_the_psycopg_driver_connection(monkeypatch) -> None:
+    """Same psycopg ``%s`` execute contract unwrap as 20260705_01."""
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace(get_bind=lambda: None)))
+    module = _load_module(OBSERVATION_PARTITION_RUNWAY, "abom_observation_partition_runway")
+    driver_connection = object()
+    bind = SimpleNamespace(connection=SimpleNamespace(driver_connection=driver_connection))
+    seen: list[object] = []
+
+    monkeypatch.setattr(module.op, "get_bind", lambda: bind)
+    monkeypatch.setattr(module, "provision_observation_partition_runway", lambda conn: seen.append(conn))
+
+    module.upgrade()
+
+    assert seen == [driver_connection]
 
 
 def test_graph_edge_snapshot_key_index_is_chained_and_matches_bootstrap() -> None:

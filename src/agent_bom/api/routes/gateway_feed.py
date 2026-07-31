@@ -653,9 +653,9 @@ def _load_tenant_alerts(tenant_id: str) -> list[dict[str, Any]]:
 
     Synchronous by design — route callers offload the complete evidence read.
     """
-    from agent_bom.api.routes.proxy import _load_proxy_alerts
+    from agent_bom.api.routes.proxy import _MAX_FEED_LOG_LINES, _load_proxy_alerts
 
-    return _load_proxy_alerts(tenant_id)
+    return _load_proxy_alerts(tenant_id, limit=_MAX_FEED_LOG_LINES)
 
 
 def _load_gateway_activity_page(

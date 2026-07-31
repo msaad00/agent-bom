@@ -502,7 +502,17 @@ def _get_configured_log_path() -> _Path | None:
     return path
 
 
-_MAX_LOG_LINES = 1_000
+# How much of the JSONL audit log a caller reads. The two callers have
+# genuinely different jobs, so one shared cap cannot serve both:
+#
+# * evidence readers (finding runtime evidence, the runtime production index,
+#   the showcase gateway, ``/v1/proxy/alerts``, and the compliance ``has_proxy``
+#   summary) need the complete bounded evidence set, and none of them carries a
+#   "partial" signal — quietly handing them 1,000 records understated every one.
+# * the gateway activity feed renders one bounded page from a degraded fallback
+#   and never wants more.
+_MAX_EVIDENCE_LOG_LINES = 50_000
+_MAX_FEED_LOG_LINES = 1_000
 _LOG_TAIL_BLOCK_BYTES = 64 * 1024
 
 
@@ -527,13 +537,13 @@ def _read_newest_log_lines(path: _Path, *, limit: int) -> list[bytes]:
     return data.splitlines()[-limit:]
 
 
-def _read_alerts_from_log(path: _Path) -> list[dict]:
-    """Read the newest bounded runtime alerts from a JSONL audit log."""
+def _read_alerts_from_log(path: _Path, *, limit: int) -> list[dict]:
+    """Read the newest ``limit`` runtime alerts from a JSONL audit log."""
     import json as _json
 
     alerts: list[dict] = []
     try:
-        for raw_line in _read_newest_log_lines(path, limit=_MAX_LOG_LINES):
+        for raw_line in _read_newest_log_lines(path, limit=limit):
             line = raw_line.strip()
             if not line:
                 continue
@@ -552,11 +562,16 @@ def _read_alerts_from_log(path: _Path) -> list[dict]:
     return alerts
 
 
-def _load_proxy_alerts(tenant_id: str = "default") -> list[dict]:
-    """Return in-memory alerts, or fall back to the configured audit log."""
+def _load_proxy_alerts(tenant_id: str = "default", *, limit: int | None = None) -> list[dict]:
+    """Return in-memory alerts, or fall back to the configured audit log.
+
+    ``limit`` bounds the JSONL fallback read and defaults to
+    :data:`_MAX_EVIDENCE_LOG_LINES`. The feed passes the smaller
+    :data:`_MAX_FEED_LOG_LINES`; evidence callers take the default.
+    """
     log_path = _get_configured_log_path()
     if log_path and not _proxy_alerts:
-        alerts = _read_alerts_from_log(log_path)
+        alerts = _read_alerts_from_log(log_path, limit=_MAX_EVIDENCE_LOG_LINES if limit is None else limit)
     else:
         alerts = list(_proxy_alerts)
     return [alert for alert in alerts if _alert_visible_to_tenant(alert, tenant_id)]
@@ -830,7 +845,7 @@ def _read_metrics_from_log(path: _Path, tenant_id: str = "default") -> dict | No
     try:
         with open(path) as f:
             for i, raw_line in enumerate(f):
-                if i >= _MAX_LOG_LINES:
+                if i >= _MAX_EVIDENCE_LOG_LINES:
                     break
                 line = raw_line.strip()
                 if not line:

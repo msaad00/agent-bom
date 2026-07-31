@@ -537,7 +537,7 @@ def _read_newest_log_lines(path: _Path, *, limit: int) -> list[bytes]:
     return data.splitlines()[-limit:]
 
 
-def _read_alerts_from_log(path: _Path, *, limit: int) -> list[dict]:
+def _read_alerts_from_log(path: _Path, *, limit: int = _MAX_EVIDENCE_LOG_LINES) -> list[dict]:
     """Read the newest ``limit`` runtime alerts from a JSONL audit log."""
     import json as _json
 

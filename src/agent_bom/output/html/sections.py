@@ -170,9 +170,9 @@ def _scan_outcome_banner(report: "AIBOMReport") -> str:
     issues = "".join(f"<li>{_esc(issue.source)}: {_esc(issue.message)}</li>" for issue in run.issues)
     return (
         f'<div style="background:{color}18;border:1px solid {color};border-radius:8px;'
-        'padding:10px 16px;margin-bottom:12px;font-size:.85rem;'
+        "padding:10px 16px;margin-bottom:12px;font-size:.85rem;"
         f'color:{color}">&#x26a0;&#xfe0f; <b>{label}</b>: this report does not represent complete '
-        f'coverage. A low or zero finding count is not a clean bill of health.'
+        f"coverage. A low or zero finding count is not a clean bill of health."
         f'<ul style="margin:6px 0 0 18px">{issues}</ul></div>'
     )
 
@@ -1328,10 +1328,18 @@ def _inventory_cards(report: "AIBOMReport") -> str:
 
 # ─── Compliance section ──────────────────────────────────────────────────────
 
+_BADGE_STYLE = "color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem"
 _STATUS_BADGE = {
-    "pass": '<span style="background:#16a34a;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem">PASS</span>',
-    "warning": '<span style="background:#d97706;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem">WARN</span>',
-    "fail": '<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem">FAIL</span>',
+    "pass": f'<span style="background:#16a34a;{_BADGE_STYLE}">PASS</span>',
+    "warning": f'<span style="background:#d97706;{_BADGE_STYLE}">WARN</span>',
+    "fail": f'<span style="background:#dc2626;{_BADGE_STYLE}">FAIL</span>',
+    # A control with no mapped finding was NEVER evaluated. Rendering it green
+    # turned a clean scan into hundreds of PASS badges and a "100.0% PASS"
+    # headline in the document customers hand to auditors.
+    "not_evaluated": f'<span style="background:#64748b;{_BADGE_STYLE}">NOT EVALUATED</span>',
+    "no_data": f'<span style="background:#64748b;{_BADGE_STYLE}">NOT EVALUATED</span>',
+    "applicable": f'<span style="background:#475569;{_BADGE_STYLE}">APPLICABLE</span>',
+    "not_applicable": f'<span style="background:#64748b;{_BADGE_STYLE}">NOT APPLICABLE</span>',
 }
 
 
@@ -1349,9 +1357,23 @@ def _compliance_section(findings: list["Finding"]) -> str:
 
     br_dicts = [compliance_row_dict(finding) for finding in findings]
 
-    def _build_rows(catalog: dict[str, str], tag_field: str) -> tuple[str, int, int, int]:
+    def _build_rows(catalog: dict[str, str], tag_field: str, *, overlay: bool = False) -> tuple[str, dict[str, int]]:
+        """Render one framework table and its status counts.
+
+        These catalogues are all corrective/preventive — attested by the ABSENCE
+        of an open weakness — so a control with no mapped finding is
+        ``not_evaluated``, never a pass. Absence of a CVE is not proof a control
+        is implemented; scoring it as one produced "100.0% PASS" over an estate
+        nothing had been measured on. Mirrors evidence/control_modes.py and the
+        /v1/compliance semantics.
+
+        ``overlay`` marks an APPLICABILITY framework (MITRE ATT&CK): its
+        techniques describe adversary behaviour the estate is exposed to, and
+        can never "pass". It reports applicable / not_applicable and is excluded
+        from the score entirely.
+        """
         rows = []
-        pass_count = fail_count = warn_count = 0
+        counts = {"pass": 0, "warning": 0, "fail": 0, "not_evaluated": 0, "applicable": 0, "not_applicable": 0}
         for code, name in sorted(catalog.items()):
             findings = sum(1 for b in br_dicts if code in b.get(tag_field, []))
             sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -1360,43 +1382,69 @@ def _compliance_section(findings: list["Finding"]) -> str:
                     s = b.get("severity", "").lower()
                     if s in sev_counts:
                         sev_counts[s] += 1
-            if findings == 0:
-                status = "pass"
-                pass_count += 1
+            if overlay:
+                status = "applicable" if findings else "not_applicable"
+            elif findings == 0:
+                status = "not_evaluated"
             elif sev_counts["critical"] > 0 or sev_counts["high"] > 0:
                 status = "fail"
-                fail_count += 1
             else:
                 status = "warning"
-                warn_count += 1
+            counts[status] += 1
             badge = _STATUS_BADGE[status]
             rows.append(
                 f"<tr><td><code>{_esc(code)}</code></td><td>{_esc(name)}</td>"
                 f"<td style='text-align:center'>{findings}</td><td style='text-align:center'>{badge}</td></tr>"
             )
-        return "\n".join(rows), pass_count, fail_count, warn_count
+        return "\n".join(rows), counts
 
-    owasp_rows, op, of, ow = _build_rows(OWASP_LLM_TOP10, "owasp_tags")
-    atlas_rows, ap, af, aw = _build_rows(ATLAS_TECHNIQUES, "atlas_tags")
-    attack_rows, atp, atf, atw = _build_rows(dict(ATTACK_TECHNIQUES), "attack_tags")
-    nist_rows, np_, nf, nw = _build_rows(NIST_AI_RMF, "nist_ai_rmf_tags")
-    agentic_rows, oap, oaf, oaw = _build_rows(OWASP_AGENTIC_TOP10, "owasp_agentic_tags")
-    eu_rows, ep, ef_, ew = _build_rows(EU_AI_ACT, "eu_ai_act_tags")
+    owasp_rows, owasp_counts = _build_rows(OWASP_LLM_TOP10, "owasp_tags")
+    atlas_rows, atlas_counts = _build_rows(ATLAS_TECHNIQUES, "atlas_tags")
+    attack_rows, attack_counts = _build_rows(dict(ATTACK_TECHNIQUES), "attack_tags", overlay=True)
+    nist_rows, nist_counts = _build_rows(NIST_AI_RMF, "nist_ai_rmf_tags")
+    agentic_rows, agentic_counts = _build_rows(OWASP_AGENTIC_TOP10, "owasp_agentic_tags")
+    eu_rows, eu_counts = _build_rows(EU_AI_ACT, "eu_ai_act_tags")
 
-    total = (op + of + ow) + (ap + af + aw) + (atp + atf + atw) + (np_ + nf + nw) + (oap + oaf + oaw) + (ep + ef_ + ew)
-    total_pass = op + ap + atp + np_ + oap + ep
-    score = round((total_pass / total) * 100, 1) if total > 0 else 0.0
-    has_fail = (of + af + atf + nf + oaf + ef_) > 0
-    has_warn = (ow + aw + atw + nw + oaw + ew) > 0
-    overall = "fail" if has_fail else ("warning" if has_warn else "pass")
-    overall_badge = _STATUS_BADGE[overall]
+    # ATT&CK is deliberately absent: an applicability overlay has no pass rate,
+    # and folding its 413 techniques in as passes both faked a green headline and
+    # drowned every real framework in the denominator.
+    scored_counts = [owasp_counts, atlas_counts, nist_counts, agentic_counts, eu_counts]
 
-    def _framework_table(title: str, rows: str, p: int, f: int, w: int) -> str:
-        sub_total = p + f + w
+    # Same scorer as /v1/compliance, the per-framework route, the MCP tool and
+    # the evidence bundle — one derivation of status + score. None of these
+    # catalogues carry detective controls, so every evaluated control is
+    # substantive.
+    from agent_bom.evidence.scoring import score_compliance
+
+    verdict = score_compliance(
+        passed=sum(c["pass"] for c in scored_counts),
+        warned=sum(c["warning"] for c in scored_counts),
+        failed=sum(c["fail"] for c in scored_counts),
+    )
+    score = verdict.score
+    overall_badge = _STATUS_BADGE[verdict.status]
+    evaluated_note = (
+        f"{verdict.evaluated} of {sum(sum(c.values()) for c in scored_counts)} controls evaluated"
+        if verdict.is_evaluated
+        else "no control was evaluated"
+    )
+
+    def _framework_table(title: str, rows: str, counts: dict[str, int], *, overlay: bool = False) -> str:
+        """Header caption states what was EVALUATED, never `n/total pass`.
+
+        `(p/total pass)` counted never-evaluated controls in the denominator, so
+        a framework nothing touched read as "0/65 pass" — indistinguishable from
+        65 real failures.
+        """
+        if overlay:
+            caption = f"{counts['applicable']} applicable / {counts['applicable'] + counts['not_applicable']} techniques"
+        else:
+            evaluated = counts["pass"] + counts["warning"] + counts["fail"]
+            caption = f"{counts['pass']}/{evaluated} pass of {evaluated} evaluated" if evaluated else "not evaluated"
         return (
-            f'<details style="margin-bottom:12px" {"open" if f > 0 else ""}>'
+            f'<details style="margin-bottom:12px" {"open" if counts["fail"] > 0 else ""}>'
             f'<summary style="cursor:pointer;font-weight:600;padding:6px 0">'
-            f'{title} <span style="font-size:.8rem;color:#94a3b8">({p}/{sub_total} pass)</span></summary>'
+            f'{title} <span style="font-size:.8rem;color:#94a3b8">({caption})</span></summary>'
             f'<table class="vtable" style="margin-top:8px"><thead><tr>'
             f"<th>Code</th><th>Control</th><th>Findings</th><th>Status</th></tr></thead>"
             f"<tbody>{rows}</tbody></table></details>"
@@ -1406,13 +1454,13 @@ def _compliance_section(findings: list["Finding"]) -> str:
         f'<section id="compliance">'
         f'<div class="sec-title">&#x1f6e1;&#xfe0f; Compliance Posture'
         f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">'
-        f"Score: {score}% {overall_badge}</sup></div>"
+        f"Score: {score}% {overall_badge} &middot; {_esc(evaluated_note)}</sup></div>"
         f'<div class="panel">'
-        f"{_framework_table('OWASP LLM Top 10', owasp_rows, op, of, ow)}"
-        f"{_framework_table('OWASP Agentic Top 10', agentic_rows, oap, oaf, oaw)}"
-        f"{_framework_table('MITRE ATT&CK Enterprise', attack_rows, atp, atf, atw)}"
-        f"{_framework_table('MITRE ATLAS (AI/ML)', atlas_rows, ap, af, aw)}"
-        f"{_framework_table('NIST AI RMF', nist_rows, np_, nf, nw)}"
-        f"{_framework_table('EU AI Act', eu_rows, ep, ef_, ew)}"
+        f"{_framework_table('OWASP LLM Top 10', owasp_rows, owasp_counts)}"
+        f"{_framework_table('OWASP Agentic Top 10', agentic_rows, agentic_counts)}"
+        f"{_framework_table('MITRE ATT&CK Enterprise', attack_rows, attack_counts, overlay=True)}"
+        f"{_framework_table('MITRE ATLAS (AI/ML)', atlas_rows, atlas_counts)}"
+        f"{_framework_table('NIST AI RMF', nist_rows, nist_counts)}"
+        f"{_framework_table('EU AI Act', eu_rows, eu_counts)}"
         f"</div></section>"
     )

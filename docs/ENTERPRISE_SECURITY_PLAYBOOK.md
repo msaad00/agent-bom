@@ -523,8 +523,8 @@ For the central gateway itself, runtime throttling is now a separate deploy-time
 curl -s https://agent-bom.example.com/v1/compliance/verification-key \
   -H "Authorization: Bearer $AUDITOR_TOKEN" | jq -r .public_key_pem > pinned-pub.pem
 
-# Pull a signed evidence bundle any time
-curl -sD headers.txt -o soc2-q1.json \
+# Pull a signed evidence bundle any time — the signature travels INSIDE the file
+curl -s -o soc2-q1.json \
   "https://agent-bom.example.com/v1/compliance/soc2/report?since=2026-01-01" \
   -H "Authorization: Bearer $AUDITOR_TOKEN"
 
@@ -534,9 +534,9 @@ import json
 from cryptography.hazmat.primitives import serialization
 body = json.load(open("soc2-q1.json"))
 pub = serialization.load_pem_public_key(open("pinned-pub.pem").read().encode())
-sig = [l.split(": ",1)[1].strip() for l in open("headers.txt")
-       if l.lower().startswith("x-agent-bom-compliance-report-signature")][0]
-pub.verify(bytes.fromhex(sig), json.dumps(body, sort_keys=True).encode())
+# The signature cannot cover itself, so it is removed to rebuild the canonical form.
+canonical = json.dumps({k: v for k, v in body.items() if k != "signature"}, sort_keys=True).encode()
+pub.verify(bytes.fromhex(body["signature"]), canonical)
 print("verified ✓  key_id:", body["signature_key_id"])
 PY
 ```

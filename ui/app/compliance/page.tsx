@@ -356,7 +356,13 @@ function CompliancePageContent() {
       label: "Overall",
       value: overallNotEvaluated ? "—" : `${Math.round(data.overall_score)}%`,
       accent: statusToAccent(data.overall_status),
-      hint: postureLabel(data.overall_status),
+      // The score is a percentage of EVALUATED controls, so it always ships its
+      // denominator. Without it, passing the handful of controls a scan can
+      // actually evaluate renders as a bare "100% / Compliant" over an estate
+      // that was almost entirely unmeasured.
+      hint: overallNotEvaluated
+        ? postureLabel(data.overall_status)
+        : `${postureLabel(data.overall_status)} · ${data.evaluated_controls} of ${data.total_controls} controls evaluated`,
     },
     {
       label: "Frameworks",

@@ -58,10 +58,13 @@ def test_tags_are_fedramp_prefixed():
 
 def test_universal_tags_present_moderate():
     tags = tag_blast_radius(_br(severity=Severity.LOW))
-    # RA-5, SI-2, CM-8 are in LOW baseline (and moderate), always tagged
-    assert "FedRAMP-RA-5" in tags
+    # SI-2 (flaw remediation) is in the LOW baseline and is CORRECTIVE, so an
+    # open finding is evidence against it and it is always tagged.
     assert "FedRAMP-SI-2" in tags
-    assert "FedRAMP-CM-8" in tags
+    # RA-5 and CM-8 are DETECTIVE — implemented by this scan, so they are no
+    # longer tagged onto (and failed by) the findings the scan produced.
+    assert "FedRAMP-RA-5" not in tags
+    assert "FedRAMP-CM-8" not in tags
 
 
 def test_moderate_includes_sr3():
@@ -96,12 +99,12 @@ def test_credentials_trigger_fedramp_access_controls():
 
 
 def test_low_baseline_filters_out_moderate_controls():
-    # IR-5 is in moderate, not low
-    tags = tag_blast_radius(_br(severity=Severity.CRITICAL), baseline="low")
-    assert "FedRAMP-IR-5" not in tags
+    # SI-5 (security alerts) is in moderate, not low, and a KEV finding emits it.
+    tags = tag_blast_radius(_br(severity=Severity.CRITICAL, is_kev=True), baseline="low")
+    assert "FedRAMP-SI-5" not in tags
 
-    tags_mod = tag_blast_radius(_br(severity=Severity.CRITICAL), baseline="moderate")
-    assert "FedRAMP-IR-5" in tags_mod
+    tags_mod = tag_blast_radius(_br(severity=Severity.CRITICAL, is_kev=True), baseline="moderate")
+    assert "FedRAMP-SI-5" in tags_mod
 
 
 def test_default_baseline_is_moderate():

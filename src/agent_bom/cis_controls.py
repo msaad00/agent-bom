@@ -1,9 +1,15 @@
 """CIS Controls v8 — map findings to applicable safeguards.
 
 Maps agent-bom blast radius findings to the Center for Internet Security (CIS)
-Controls v8 safeguards relevant to software supply chain security.  Every
-finding triggers at minimum CIS-02 (Software Asset Inventory) and CIS-07
-(Vulnerability Management) since any CVE requires both.
+Controls v8 safeguards relevant to software supply chain security.
+
+Only CORRECTIVE / PREVENTIVE safeguards are tagged here. The DETECTIVE
+safeguards — CIS-02.1 (software asset inventory), CIS-07.1
+(vulnerability-management program) and CIS-07.5 (internal-asset vulnerability
+scanning) — are IMPLEMENTED BY this scan: producing this SBOM and this scan is
+the evidence they operate. Tagging a finding onto them would fail the safeguard
+the finding proves is working, so they are scored from scan freshness instead
+(see :mod:`agent_bom.evidence.control_modes`).
 
 NOTE: These are the generic CIS Controls v8 (cross-platform).  CIS also
 publishes platform-specific Benchmarks (e.g., CIS AWS Foundations, CIS GCP,
@@ -19,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
 from agent_bom.constants import high_risk_severities
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:
@@ -57,9 +64,6 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return sorted CIS Controls v8 safeguard IDs applicable to this blast radius.
 
     Rules:
-    - CIS-02.1: Always — software inventory (package tracked in BOM).
-    - CIS-07.1: Always — vulnerability management process.
-    - CIS-07.5: Always — automated vulnerability scanning performed.
     - CIS-02.3: HIGH+ severity (unauthorized/risky software).
     - CIS-02.7: AI framework package (library allowlisting relevant).
     - CIS-07.4: Fixable vulnerability (patch management needed).
@@ -68,11 +72,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - CIS-16.11: EXECUTE-capable tools (hardening needed).
     - CIS-16.12: KEV vulnerability (code-level security check urgency).
     """
-    tags: set[str] = {
-        "CIS-02.1",  # always — software inventory
-        "CIS-07.1",  # always — vulnerability management
-        "CIS-07.5",  # always — automated scanning
-    }
+    tags: set[str] = set()
 
     is_high = br.vulnerability.severity in _HIGH_RISK
 
@@ -116,7 +116,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
         tags.update(controls_for_cwes(br.vulnerability.cwe_ids, "cis"))
 
-    return sorted(tags)
+    return sorted(finding_taggable_controls("cis_tags", tags))
 
 
 def cis_label(code: str) -> str:

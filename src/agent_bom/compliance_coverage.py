@@ -39,6 +39,14 @@ class ComplianceFrameworkMetadata:
     source_standard_size: str
     coverage: str
     full_catalog_size: int | None = None
+    scored: bool = True
+    """Whether this framework contributes pass/warning/fail to the compliance score.
+
+    ``False`` marks an APPLICABILITY OVERLAY: its entries are not controls an
+    estate can pass or fail, they are techniques a finding makes *applicable*.
+    Overlay entries carry ``applicable`` / ``not_applicable`` statuses and are
+    excluded from ``overall_score`` / ``overall_status`` on every surface.
+    """
 
     @property
     def control_count(self) -> int:
@@ -190,7 +198,14 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         report_label="MITRE ATT&CK",
         bundled_unit="techniques",
         source_standard_size="~700",
-        coverage="Adversary techniques tagged via CWE → CAPEC → ATT&CK on every blast-radius finding",
+        coverage=(
+            "Applicability overlay (not scored): techniques MITRE's CWE → CAPEC → ATT&CK data "
+            "associates with the weaknesses observed in the estate"
+        ),
+        # ATT&CK describes adversary behaviour, not controls an estate implements.
+        # A technique is APPLICABLE or not; it cannot pass or fail, and scoring it
+        # as a failing control asserted dozens of unevidenced failures per CVE.
+        scored=False,
     ),
     ComplianceFrameworkMetadata(
         family="Regulatory",

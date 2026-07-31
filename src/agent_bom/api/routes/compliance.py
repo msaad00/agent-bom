@@ -51,6 +51,12 @@ from agent_bom.compliance_nist_catalog import (
     evaluated_control_status as _evaluated_control_status,
 )
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.evidence.control_modes import (
+    DETECTIVE_CONTROLS,
+    MODE_CORRECTIVE,
+    MODE_DETECTIVE,
+    detective_control_status,
+)
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -470,8 +476,24 @@ async def get_compliance(
         catalog: dict[str, str],
         tag_field: str,
         id_key: str,
+        *,
+        scored: bool = True,
     ) -> list[dict]:
-        """Build per-control compliance entries from blast_radius data."""
+        """Build per-control compliance entries from blast_radius data.
+
+        Three evaluation modes decide what a scan result means for a control
+        (see :mod:`agent_bom.evidence.control_modes`):
+
+        * ``detective`` — the scan IS the control operating. A fresh completed
+          scan is ``pass``; stale evidence is ``fail``; no scan is
+          ``not_assessed``. Findings never fail a detective control.
+        * ``corrective`` — attested by the ABSENCE of an open finding. An open
+          finding fails/warns by worst severity; no mapped finding stays
+          ``not_evaluated`` (absence of a CVE is not proof of implementation).
+        * ``overlay`` (``scored=False``) — not a control at all. Entries are
+          ``applicable`` / ``not_applicable`` and never touch the score.
+        """
+        detective_ids = DETECTIVE_CONTROLS.get(tag_field, frozenset())
         controls = []
         for code, name in sorted(catalog.items()):
             sev_breakdown = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -492,21 +514,42 @@ async def get_compliance(
                     for agent in br.get("affected_agents", []):
                         affected_agents.add(agent)
 
-            if scan_count == 0:
+            if not scored:
+                # Applicability overlay (MITRE ATT&CK): a technique is made
+                # applicable by an observed weakness, or it is not. It is never
+                # a control the estate passed or failed, so it never enters the
+                # score. Presenting it as "fail" asserted dozens of unevidenced
+                # control failures per CVE.
+                mode = "overlay"
+                reason = "technique_observed" if findings else "no_observed_signal"
+                status = "applicable" if findings else "not_applicable"
+            elif code in detective_ids:
+                # The scan itself is the evidence this control operates —
+                # producing this scan and this SBOM IS the implementation of
+                # "monitor and scan for vulnerabilities" / "maintain a component
+                # inventory". Findings mapped here would be proof it works, so
+                # the status comes from evidence freshness, not from findings.
+                mode = MODE_DETECTIVE
+                status, reason = detective_control_status(scan_count=scan_count, latest_scan=latest_scan)
+            elif scan_count == 0:
                 # No completed scans means no evidence was gathered for this
                 # control. Rendering "pass" here reads as a clean audit when in
                 # fact nothing was measured, so surface an explicit not_assessed
                 # status per control (mirrors the aggregate no_data top-line).
-                status = "not_assessed"
+                mode = MODE_CORRECTIVE
+                status, reason = "not_assessed", "no_completed_scan"
             elif findings == 0:
                 # Scan ran but nothing maps to this control — no
                 # vulnerability-derived evidence, so it is not_evaluated, never a
                 # silent pass. Counting these as pass inflated overall_score
                 # toward 100 and contradicted the narrative + CLI export; all
                 # three surfaces now agree.
-                status = "not_evaluated"
+                mode = MODE_CORRECTIVE
+                status, reason = "not_evaluated", "no_mapped_finding"
             else:
+                mode = MODE_CORRECTIVE
                 status = _evaluated_control_status(sev_breakdown)
+                reason = "open_finding" if status != "not_evaluated" else "unrated_severity_finding"
 
             controls.append(
                 {
@@ -516,6 +559,8 @@ async def get_compliance(
                     "tags": [code],
                     "findings": findings,
                     "status": status,
+                    "evaluation_mode": mode,
+                    "evidence_reason": reason,
                     "severity_breakdown": sev_breakdown,
                     "affected_packages": sorted(affected_pkgs),
                     "affected_agents": sorted(affected_agents),
@@ -524,7 +569,13 @@ async def get_compliance(
         return controls
 
     framework_controls = {
-        metadata.output_key: _build_controls(dict(metadata.catalog), metadata.tag_field, "code") for metadata in TAG_MAPPED_FRAMEWORKS
+        metadata.output_key: _build_controls(
+            dict(metadata.catalog),
+            metadata.tag_field,
+            "code",
+            scored=metadata.scored,
+        )
+        for metadata in TAG_MAPPED_FRAMEWORKS
     }
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
@@ -533,7 +584,9 @@ async def get_compliance(
         f = sum(1 for c in controls if c["status"] == "fail")
         return p, w, f
 
-    all_frameworks = list(framework_controls.values())
+    # Overlay frameworks are excluded from every aggregate: they carry no
+    # pass/warning/fail at all, so folding them in would only ever add noise.
+    all_frameworks = [framework_controls[m.output_key] for m in TAG_MAPPED_FRAMEWORKS if m.scored]
     status_totals = [_count_statuses(fw) for fw in all_frameworks]
     total_pass = sum(s[0] for s in status_totals)
     total_warn = sum(s[1] for s in status_totals)
@@ -549,9 +602,20 @@ async def get_compliance(
     # toward the evaluated denominator (drags the score down) but never the
     # numerator.
     cis_foundations_agg = _aggregate_cis_foundations_checks(tenant_jobs)
-    bench_pass = int(cis_foundations_agg["counts"]["pass"])
-    bench_fail = int(cis_foundations_agg["counts"]["fail"])
-    bench_error = int(cis_foundations_agg["counts"]["error"])
+    aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
+    aisvs_summary = aisvs["summary"]
+
+    # AISVS folds in on exactly the same grounds as CIS Foundations: both are
+    # DIRECTLY EVALUATED checks, not CVE-tag inferences, so both are real
+    # evidence about the estate. Leaving AISVS out was invisible only while
+    # ``pass`` was unreachable and every such estate read ``no_data`` anyway;
+    # once a scan can legitimately pass its detective controls, an excluded
+    # failing AISVS check buys a "100% Compliant" headline over a known
+    # failure. AISVS is not in TAG_MAPPED_FRAMEWORKS, so this cannot
+    # double-count.
+    bench_pass = int(cis_foundations_agg["counts"]["pass"]) + int(aisvs_summary["pass"])
+    bench_fail = int(cis_foundations_agg["counts"]["fail"]) + int(aisvs_summary["fail"])
+    bench_error = int(cis_foundations_agg["counts"]["error"]) + int(aisvs_summary["error"])
 
     # Score over EVALUATED controls/checks only (CVE controls with mapped
     # findings + benchmark pass/fail/error). A CVE control with no findings is
@@ -563,12 +627,40 @@ async def get_compliance(
     evaluated_controls = aggregate_pass + total_warn + aggregate_fail + bench_error
     overall_score = round((aggregate_pass / evaluated_controls) * 100, 1) if evaluated_controls > 0 else 0.0
 
+    # A score over EVALUATED controls is only honest next to its coverage: a
+    # scan that touched 8 of 931 controls and passed all 8 is "100%" of a very
+    # small denominator, and a bare percentage hides that. Every surface that
+    # renders overall_score MUST render these alongside it.
+    total_controls = (
+        sum(m.control_count for m in TAG_MAPPED_FRAMEWORKS if m.scored)
+        + int(
+            cis_foundations_agg["counts"]["pass"]
+            + cis_foundations_agg["counts"]["fail"]
+            + cis_foundations_agg["counts"]["error"]
+            + cis_foundations_agg["counts"].get("not_applicable", 0)
+        )
+        + int(aisvs_summary["total"])
+    )
+    coverage_pct = round((evaluated_controls / total_controls) * 100, 2) if total_controls > 0 else 0.0
+
+    # A detective pass only establishes that we scan — it is evidence about the
+    # monitoring program, not about whether the estate meets a framework. An
+    # estate whose ONLY passing evidence is "a scan ran" has not been shown to
+    # be compliant, so it reports no_data rather than a green headline. Without
+    # this, a fresh scan over an estate with nothing gradeable rendered
+    # "100% / Compliant" — the same false green that pinning the score at 0 was
+    # originally (wrongly) papering over.
+    detective_passes = sum(
+        1 for controls_list in all_frameworks for c in controls_list if c.get("evaluation_mode") == MODE_DETECTIVE and c["status"] == "pass"
+    )
+    substantive_evaluated = evaluated_controls - detective_passes
+
     if aggregate_fail > 0:
         overall_status = "fail"
     elif total_warn > 0 or bench_error > 0:
         # A benchmark ERROR (unevaluable control) is not a clean pass either.
         overall_status = "warning"
-    elif evaluated_controls > 0:
+    elif substantive_evaluated > 0:
         overall_status = "pass"
     else:
         overall_status = "no_data"
@@ -583,11 +675,17 @@ async def get_compliance(
         overall_status = "no_data"
         overall_score = 0.0
 
-    aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
-    aisvs_summary = aisvs["summary"]
     summary: dict[str, int | float] = {}
     for metadata in TAG_MAPPED_FRAMEWORKS:
         controls_list = framework_controls[metadata.output_key]
+        if not metadata.scored:
+            # An overlay has no pass/warn/fail to report. Emitting zeroed
+            # ``*_pass``/``*_fail`` keys would read as "0 passing controls" for
+            # something that has no controls at all, so report applicability.
+            applicable = sum(1 for c in controls_list if c["status"] == "applicable")
+            summary[f"{metadata.summary_prefix}_applicable"] = applicable
+            summary[f"{metadata.summary_prefix}_not_applicable"] = len(controls_list) - applicable
+            continue
         passed, warned, failed = _count_statuses(controls_list)
         summary[f"{metadata.summary_prefix}_pass"] = passed
         summary[f"{metadata.summary_prefix}_warn"] = warned
@@ -631,6 +729,11 @@ async def get_compliance(
     response: dict[str, Any] = {
         "overall_score": overall_score,
         "overall_status": overall_status,
+        # Denominator context for overall_score — never render the percentage
+        # without it (see the comment where these are computed).
+        "evaluated_controls": evaluated_controls,
+        "total_controls": total_controls,
+        "coverage_pct": coverage_pct,
         "scan_count": scan_count,
         "latest_scan": latest_scan,
         "has_mcp_context": has_mcp_context,
@@ -1235,6 +1338,10 @@ async def get_compliance_summary(request: Request) -> dict:
     # "no_data" — so mirror it here and report not_evaluated instead of pass.
     no_data = int(full.get("scan_count") or 0) == 0
 
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+    overlay_keys = {metadata.output_key for metadata in TAG_MAPPED_FRAMEWORKS if not metadata.scored}
+
     def _control_status_counts(value: list[object]) -> tuple[int, int, int, int] | None:
         controls = [item for item in value if isinstance(item, dict) and isinstance(item.get("status"), str)]
         if not controls:
@@ -1244,17 +1351,29 @@ async def get_compliance_summary(request: Request) -> dict:
         fail_count = sum(1 for item in controls if item.get("status") == "fail")
         return len(controls), pass_count, warn_count, fail_count
 
-    framework_summary: dict[str, dict[str, int]] = {}
+    framework_summary: dict[str, dict[str, int | None]] = {}
     for key, value in full.items():
         if isinstance(value, list):
             counts = _control_status_counts(value)
             if counts is None:
                 continue
             controls, pass_count, warn_count, fail_count = counts
+            if key in overlay_keys:
+                # An applicability overlay has no pass/warn/fail. Emitting zeros
+                # would read as "0 of N passing"; report applicability instead.
+                applicable = sum(1 for item in value if isinstance(item, dict) and item.get("status") == "applicable")
+                framework_summary[key] = {
+                    "controls": controls,
+                    "scored": False,
+                    "applicable": 0 if no_data else applicable,
+                    "not_applicable": controls if no_data else controls - applicable,
+                }
+                continue
             if no_data:
                 pass_count = warn_count = fail_count = 0
             framework_summary[key] = {
                 "controls": controls,
+                "scored": True,
                 "pass": pass_count,
                 "warning": warn_count,
                 "fail": fail_count,
@@ -1479,17 +1598,25 @@ def _enrich_controls_with_evidence(
     blast_by_tag: dict[str, list[dict]],
     *,
     completed_scan_count: int,
-) -> tuple[list[dict], int, dict[str, int]]:
+) -> tuple[list[dict], int, set[str], dict[str, int]]:
     """Pair each control with its blast-radius evidence and roll up bundle-status counts.
 
     Shared by the single-framework report bundle and the multi-framework
     evidence pack so both surfaces map controls to findings identically.
+
+    Returns ``(controls, evidence_row_count, distinct_finding_ids, status_counts)``.
+    A finding maps to many controls, so the row count is always >= the number of
+    distinct findings. Reporting rows as a "finding count" made a 25-finding
+    tenant read as 1342 findings in a document handed to an auditor; the two are
+    now counted and named separately.
     """
     enriched_controls: list[dict] = []
-    total_findings = 0
+    evidence_row_count = 0
+    distinct_finding_ids: set[str] = set()
     for control in controls:
         evidence = _evidence_for_control(control, blast_by_tag)
-        total_findings += len(evidence)
+        evidence_row_count += len(evidence)
+        distinct_finding_ids.update(str(row.get("finding_id")) for row in evidence if row.get("finding_id"))
         source_status = str(control.get("status", "unknown")).lower()
         bundle_status, evidence_state = _bundle_control_status(
             source_status,
@@ -1513,8 +1640,12 @@ def _enrich_controls_with_evidence(
         "fail": sum(1 for c in enriched_controls if c.get("status") == "fail"),
         "incomplete": sum(1 for c in enriched_controls if c.get("status") == "incomplete"),
         "not_evaluated": sum(1 for c in enriched_controls if c.get("status") == "not_evaluated"),
+        # Applicability-overlay entries (MITRE ATT&CK) are not controls the
+        # estate passed or failed; they are counted, never scored.
+        "applicable": sum(1 for c in enriched_controls if c.get("status") == "applicable"),
+        "not_applicable": sum(1 for c in enriched_controls if c.get("status") == "not_applicable"),
     }
-    return enriched_controls, total_findings, counts
+    return enriched_controls, evidence_row_count, distinct_finding_ids, counts
 
 
 @router.get("/compliance/{framework}/report", tags=["compliance"], response_model=ComplianceReportBundle)
@@ -1602,7 +1733,7 @@ async def export_compliance_report(
     verified, tampered = _verify_audit_entries(audit_in_window)
 
     completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
-    enriched_controls, total_findings, status_counts = _enrich_controls_with_evidence(
+    enriched_controls, evidence_row_count, distinct_finding_ids, status_counts = _enrich_controls_with_evidence(
         controls,
         blast_by_tag,
         completed_scan_count=completed_scan_count,
@@ -1626,6 +1757,7 @@ async def export_compliance_report(
     # are part of the canonical body that gets signed — verifiers read the
     # same fields and reconstruct the exact canonical form.
     from agent_bom.api.compliance_signing import (
+        canonical_bundle_payload,
         describe_current_signer,
         sign_compliance_bundle,
     )
@@ -1645,7 +1777,11 @@ async def export_compliance_report(
             "since": since_dt.isoformat(),
             "until": until_dt.isoformat(),
             "control_count": len(controls),
-            "finding_count": total_findings,
+            # One finding maps to many controls. ``evidence_row_count`` counts
+            # control-to-finding mapping rows; ``distinct_finding_count`` counts
+            # the findings themselves and reconciles with /v1/findings.
+            "evidence_row_count": evidence_row_count,
+            "distinct_finding_count": len(distinct_finding_ids),
             "audit_event_count": len(audit_in_window),
             "audit_events_truncated": audit_truncated,
             "audit_event_limit": audit_fetch_limit,
@@ -1657,6 +1793,8 @@ async def export_compliance_report(
             "fail": fail_count,
             "incomplete": incomplete_count,
             "not_evaluated": not_evaluated_count,
+            "applicable": status_counts["applicable"],
+            "not_applicable": status_counts["not_applicable"],
             "score": round((pass_count / len(controls)) * 100, 1) if controls else 0.0,
         },
         "controls": enriched_controls,
@@ -1697,6 +1835,17 @@ async def export_compliance_report(
     if signing_public_key_pem is not None:
         body["signature_public_key_pem"] = signing_public_key_pem
 
+    # Embed the signature IN the document. Shipping it only as a response header
+    # meant `curl -o bundle.json` produced a file that advertised
+    # signature_algorithm and carried nothing to verify. The signature covers the
+    # canonical body with the `signature` field itself removed
+    # (compliance_signing.canonical_bundle_payload) — the same canonical form for
+    # both the json and jsonl renderings, so either saved artifact verifies
+    # identically and byte-preserving the HTTP stream is no longer required.
+    canonical = canonical_bundle_payload(body)
+    bundle_signature = sign_compliance_bundle(canonical)
+    body["signature"] = bundle_signature.signature_hex
+
     log_action(
         "compliance.report_exported",
         actor=actor,
@@ -1706,7 +1855,8 @@ async def export_compliance_report(
         since=since_dt.isoformat(),
         until=until_dt.isoformat(),
         control_count=len(controls),
-        finding_count=total_findings,
+        evidence_row_count=evidence_row_count,
+        distinct_finding_count=len(distinct_finding_ids),
         audit_event_count=len(audit_in_window),
         nonce=nonce,
         expires_at=expires_at.isoformat(),
@@ -1714,24 +1864,25 @@ async def export_compliance_report(
 
     filename = f"agent-bom-compliance-{framework_key.replace('_', '-')}.{'jsonl' if fmt == 'jsonl' else 'json'}"
 
-    def _signing_headers(payload: bytes) -> dict[str, str]:
-        sig_result = sign_compliance_bundle(payload)
+    def _signing_headers() -> dict[str, str]:
+        """Mirror the embedded signature into headers for streaming consumers."""
         headers = {
-            "X-Agent-Bom-Compliance-Report-Signature": sig_result.signature_hex,
-            "X-Agent-Bom-Compliance-Signature-Algorithm": sig_result.algorithm,
+            "X-Agent-Bom-Compliance-Report-Signature": bundle_signature.signature_hex,
+            "X-Agent-Bom-Compliance-Signature-Algorithm": bundle_signature.algorithm,
         }
-        if sig_result.key_id is not None:
-            headers["X-Agent-Bom-Compliance-Signature-KeyId"] = sig_result.key_id
+        if bundle_signature.key_id is not None:
+            headers["X-Agent-Bom-Compliance-Signature-KeyId"] = bundle_signature.key_id
         return headers
 
     from agent_bom.api.metrics import record_compliance_export
 
     if fmt == "jsonl":
         # jsonl streams one control per line so SIEM and security-lake
-        # consumers can ingest without loading the whole bundle. We build
-        # the full payload once (signing requires the complete canonical
-        # bytes), then stream it in 64 KB chunks so very large exports
-        # don't pin a whole copy in the ASGI write buffer.
+        # consumers can ingest without loading the whole bundle. The meta line
+        # carries the same embedded `signature` as the json rendering, and it
+        # covers the same canonical JSON body — a consumer reassembles
+        # meta + controls + audit_events and verifies without depending on the
+        # stream's byte layout.
         lines = [json.dumps({"meta": {k: v for k, v in body.items() if k not in {"controls", "audit_events"}}}, sort_keys=True)]
         for control in body["controls"]:
             lines.append(json.dumps({"control": control}, sort_keys=True))
@@ -1750,17 +1901,16 @@ async def export_compliance_report(
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
                 "Content-Length": str(len(payload)),
-                **_signing_headers(payload),
+                **_signing_headers(),
             },
         )
 
-    payload = json.dumps(body, sort_keys=True).encode()
-    record_compliance_export(signing_algorithm, framework_key, len(payload))
+    record_compliance_export(signing_algorithm, framework_key, len(json.dumps(body, sort_keys=True).encode()))
     return JSONResponse(
         content=body,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
-            **_signing_headers(payload),
+            **_signing_headers(),
         },
     )
 
@@ -1818,19 +1968,35 @@ async def export_compliance_pack(
     audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
     verified, tampered = _verify_audit_entries(audit_in_window)
 
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+    scored_by_slug = {metadata.slug: metadata.scored for metadata in TAG_MAPPED_FRAMEWORKS}
+
     framework_bundles: list[dict[str, Any]] = []
-    total_findings = 0
+    total_evidence_rows = 0
+    all_finding_ids: set[str] = set()
     total_controls = 0
-    combined_summary = {"pass": 0, "warning": 0, "fail": 0, "incomplete": 0, "not_evaluated": 0}
+    combined_summary = {
+        "pass": 0,
+        "warning": 0,
+        "fail": 0,
+        "incomplete": 0,
+        "not_evaluated": 0,
+        "applicable": 0,
+        "not_applicable": 0,
+    }
     for slug, (framework_key, framework_label) in framework_map.items():
         controls = full.get(framework_key, [])
-        enriched_controls, framework_findings, status_counts = _enrich_controls_with_evidence(
+        scored = scored_by_slug.get(slug, True)
+        enriched_controls, framework_rows, framework_finding_ids, status_counts = _enrich_controls_with_evidence(
             controls,
             blast_by_tag,
             completed_scan_count=completed_scan_count,
         )
-        total_findings += framework_findings
-        total_controls += len(controls)
+        total_evidence_rows += framework_rows
+        all_finding_ids |= framework_finding_ids
+        if scored:
+            total_controls += len(controls)
         for key in combined_summary:
             combined_summary[key] += status_counts[key]
         framework_bundles.append(
@@ -1838,12 +2004,17 @@ async def export_compliance_pack(
                 "framework": slug,
                 "framework_key": framework_key,
                 "framework_label": framework_label,
+                # An applicability overlay has no pass rate to report — a score
+                # would read as "0% of ATT&CK passing" for something that cannot
+                # pass. Null says so; the applicable counts carry the signal.
+                "scored": scored,
                 "summary": {
                     **status_counts,
-                    "score": round((status_counts["pass"] / len(controls)) * 100, 1) if controls else 0.0,
+                    "score": (round((status_counts["pass"] / len(controls)) * 100, 1) if controls else 0.0) if scored else None,
                 },
                 "control_count": len(controls),
-                "finding_count": framework_findings,
+                "evidence_row_count": framework_rows,
+                "distinct_finding_count": len(framework_finding_ids),
                 "controls": enriched_controls,
             }
         )
@@ -1854,6 +2025,7 @@ async def export_compliance_pack(
     expires_at = now + timedelta(seconds=bundle_ttl_seconds)
 
     from agent_bom.api.compliance_signing import (
+        canonical_bundle_payload,
         describe_current_signer,
         sign_compliance_bundle,
     )
@@ -1871,8 +2043,16 @@ async def export_compliance_pack(
             "since": since_dt.isoformat(),
             "until": until_dt.isoformat(),
             "framework_count": len(framework_bundles),
+            # Scored controls only — an applicability overlay has no controls to
+            # count toward a control total.
             "control_count": total_controls,
-            "finding_count": total_findings,
+            # A single finding maps to many controls across many frameworks, so
+            # summing per-framework counts yields MAPPING ROWS, not findings.
+            # Reporting rows as `finding_count` made a 25-finding tenant read as
+            # 1342 findings in a document handed to an auditor.
+            # `distinct_finding_count` reconciles with the findings spine.
+            "evidence_row_count": total_evidence_rows,
+            "distinct_finding_count": len(all_finding_ids),
             "audit_event_count": len(audit_in_window),
             "audit_events_truncated": audit_truncated,
             "audit_event_limit": audit_fetch_limit,
@@ -1897,6 +2077,11 @@ async def export_compliance_pack(
     if signing_public_key_pem is not None:
         body["signature_public_key_pem"] = signing_public_key_pem
 
+    # Same embedded-signature contract as the single-framework bundle: the pack
+    # carries its own signature so a saved file is verifiable off-line.
+    sig_result = sign_compliance_bundle(canonical_bundle_payload(body))
+    body["signature"] = sig_result.signature_hex
+
     log_action(
         "compliance.pack_exported",
         actor=actor,
@@ -1906,7 +2091,8 @@ async def export_compliance_pack(
         until=until_dt.isoformat(),
         framework_count=len(framework_bundles),
         control_count=total_controls,
-        finding_count=total_findings,
+        evidence_row_count=total_evidence_rows,
+        distinct_finding_count=len(all_finding_ids),
         audit_event_count=len(audit_in_window),
         nonce=nonce,
         expires_at=expires_at.isoformat(),
@@ -1914,9 +2100,7 @@ async def export_compliance_pack(
 
     from agent_bom.api.metrics import record_compliance_export
 
-    payload = json.dumps(body, sort_keys=True).encode()
-    record_compliance_export(signing_algorithm, "pack", len(payload))
-    sig_result = sign_compliance_bundle(payload)
+    record_compliance_export(signing_algorithm, "pack", len(json.dumps(body, sort_keys=True).encode()))
     headers = {
         "Content-Disposition": 'attachment; filename="agent-bom-compliance-pack.json"',
         "X-Agent-Bom-Compliance-Report-Signature": sig_result.signature_hex,

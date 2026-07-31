@@ -2,10 +2,24 @@
 
 Maps agent-bom blast radius findings to NIST SP 800-53 Rev 5 controls
 relevant to vulnerability management, supply chain security, and AI
-infrastructure protection.  Every finding triggers at minimum RA-5
-(vulnerability scanning), SI-2 (flaw remediation), SR-3 (supply chain
-controls), and CM-8 (component inventory) since any package CVE in an AI
-agent dependency tree represents all four concerns.
+infrastructure protection.  Every finding triggers at minimum SI-2 (flaw
+remediation) and SR-3 (supply chain controls) since any package CVE in an AI
+agent dependency tree is an unremediated flaw reaching the estate through the
+supply chain.
+
+Only CORRECTIVE / PREVENTIVE controls are tagged here — controls an open
+finding is evidence AGAINST. Two other classes are deliberately excluded (see
+:mod:`agent_bom.evidence.control_modes`):
+
+* **Detective** controls — RA-5 "Monitor and scan for vulnerabilities in the
+  system and hosted applications" and CM-8 "Develop and document an inventory
+  of system components" — are IMPLEMENTED BY this scan. Producing this scan and
+  this SBOM is evidence they operate, so tagging a finding onto them (and
+  therefore failing them) inverts the evidence. They are scored from scan
+  freshness instead.
+* **Unevaluable** controls — RA-7 "Risk Response" and IR-5 "Incident
+  Monitoring" — describe an organizational process a package scan cannot
+  observe in either direction, so they are never asserted from finding data.
 
 Reference: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
 """
@@ -16,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
 from agent_bom.constants import high_risk_severities
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:
@@ -74,13 +89,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return sorted NIST 800-53 Rev 5 control IDs applicable to this blast radius.
 
     Rules:
-    - RA-5:  Always — vulnerability scanning triggered.
     - SI-2:  Always — flaw remediation applies to every CVE.
     - SR-3:  Always — supply chain controls (dependency CVE).
-    - CM-8:  Always — component inventory (SBOM context).
-    - RA-7:  HIGH+ severity — risk response needed.
     - SI-4:  HIGH+ severity or >1 agent — system monitoring.
-    - IR-5:  HIGH+ severity — incident monitoring.
     - SI-5:  KEV — security alert/advisory applies.
     - IR-6:  KEV — incident reporting required.
     - AC-3:  Credentials exposed — access enforcement.
@@ -95,10 +106,8 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - CWE-based: lookup from CWE_COMPLIANCE_MAP["nist_800_53"].
     """
     tags: set[str] = {
-        "RA-5",  # always — vulnerability scanning
         "SI-2",  # always — flaw remediation
         "SR-3",  # always — supply chain controls
-        "CM-8",  # always — component inventory
     }
 
     is_high = br.vulnerability.severity in _HIGH_RISK
@@ -114,17 +123,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
 
-    # RA-7 — risk response for high-severity findings
-    if is_high:
-        tags.add("RA-7")
-
     # SI-4 — system monitoring for high-severity or multi-agent
     if is_high or len(br.affected_agents) > 1:
         tags.add("SI-4")
-
-    # IR-5 — incident monitoring for high-severity
-    if is_high:
-        tags.add("IR-5")
 
     # SI-5 — security alerts for actively exploited vulns (KEV)
     if br.vulnerability.is_kev:
@@ -172,7 +173,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
         tags.update(controls_for_cwes(br.vulnerability.cwe_ids, "nist_800_53"))
 
-    return sorted(tags)
+    return sorted(finding_taggable_controls("nist_800_53_tags", tags))
 
 
 def nist_800_53_label(code: str) -> str:

@@ -56,24 +56,34 @@ def test_catalog_has_expected_controls():
 
 
 def test_always_applied_tags():
+    """Only the CORRECTIVE controls an open finding is evidence against."""
     tags = tag_blast_radius(_br(severity=Severity.LOW, pkg_name="requests"))
-    assert "RA-5" in tags
-    assert "SI-2" in tags
-    assert "SR-3" in tags
-    assert "CM-8" in tags
+    assert "SI-2" in tags  # flaw remediation
+    assert "SR-3" in tags  # supply chain controls
 
 
-def test_high_severity_triggers_risk_response_and_monitoring():
+def test_detective_controls_are_never_tagged_onto_a_finding():
+    """RA-5 (vuln scanning) and CM-8 (component inventory) are implemented BY
+    this scan. Tagging a finding onto them failed the very controls the finding
+    proves are operating; they are scored from scan freshness instead."""
     tags = tag_blast_radius(_br(severity=Severity.CRITICAL))
-    assert "RA-7" in tags
+    assert "RA-5" not in tags
+    assert "CM-8" not in tags
+
+
+def test_high_severity_triggers_monitoring():
+    tags = tag_blast_radius(_br(severity=Severity.CRITICAL))
     assert "SI-4" in tags
-    assert "IR-5" in tags
 
 
-def test_low_severity_no_risk_response():
-    tags = tag_blast_radius(_br(severity=Severity.LOW))
-    assert "RA-7" not in tags
-    assert "IR-5" not in tags
+def test_unevaluable_controls_are_never_asserted():
+    """RA-7 (risk response) and IR-5 (incident monitoring) describe an
+    organizational process a package scan cannot observe in either direction,
+    so severity alone must never assert them."""
+    for severity in (Severity.LOW, Severity.CRITICAL):
+        tags = tag_blast_radius(_br(severity=severity))
+        assert "RA-7" not in tags
+        assert "IR-5" not in tags
 
 
 def test_kev_triggers_alert_and_reporting():
@@ -144,10 +154,4 @@ def test_label_functions():
 
 def test_minimal_finding_gets_base_tags_only():
     tags = tag_blast_radius(_br(severity=Severity.LOW, pkg_name="requests"))
-    assert "RA-5" in tags
-    assert "SI-2" in tags
-    assert "SR-3" in tags
-    assert "CM-8" in tags
-    assert "AC-3" not in tags
-    assert "IR-6" not in tags
-    assert "SR-4" not in tags
+    assert tags == ["SI-2", "SR-3"]

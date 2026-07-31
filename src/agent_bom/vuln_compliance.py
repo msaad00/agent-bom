@@ -5,11 +5,18 @@ properties (severity, is_kev, epss_score, cwe_ids, fixed_version, package type).
 
 Context-dependent tags (credentials, tools, agents) remain at the BlastRadius
 level in each framework's ``tag_blast_radius()`` function.
+
+Like those taggers, this one emits only CORRECTIVE / PREVENTIVE controls: a
+finding is evidence AGAINST them. Detective controls (the scan itself is the
+evidence) and unevaluable controls (a package scan cannot observe them) are
+filtered out through :func:`~agent_bom.evidence.control_modes.finding_taggable_controls`
+so both taggers agree by construction.
 """
 
 from __future__ import annotations
 
 from agent_bom.constants import AI_PACKAGES, TRAINING_DATA_PACKAGES
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.framework_mapping import controls_for_cwes
 from agent_bom.models import Package, Severity, Vulnerability
 
@@ -71,13 +78,11 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     tags["nist_ai_rmf"] = sorted(set(nist_rmf))
 
     # ── NIST CSF 2.0 ───────────────────────────────────────────────────
-    nist_csf: list[str] = ["DE.CM-09", "GV.SC-05", "GV.SC-07", "ID.RA-01"]
+    nist_csf: list[str] = ["GV.SC-05", "GV.SC-07"]
     if is_high:
         nist_csf.append("ID.RA-05")
     if is_ai:
         nist_csf.append("ID.AM-05")
-    if is_kev or (vuln.epss_score is not None and vuln.epss_score > 0):
-        nist_csf.append("ID.RA-02")
     if has_fix:
         nist_csf.append("RS.AN-03")
     if is_kev:
@@ -86,12 +91,12 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         for t in controls_for_cwes(cwe_ids, "nist_csf", normalize=False):
             if t not in nist_csf:
                 nist_csf.append(t)
-    tags["nist_csf"] = sorted(set(nist_csf))
+    tags["nist_csf"] = sorted(finding_taggable_controls("nist_csf_tags", nist_csf))
 
     # ── NIST 800-53 Rev 5 ───────────────────────────────────────────────
-    nist_53: list[str] = ["CM-8", "RA-5", "SI-2", "SR-3"]
+    nist_53: list[str] = ["SI-2", "SR-3"]
     if is_high:
-        nist_53.extend(["IR-5", "RA-7", "SI-4"])
+        nist_53.append("SI-4")
     if is_ai:
         nist_53.extend(["SR-11", "SR-4"])
     if is_kev:
@@ -102,7 +107,7 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         for t in controls_for_cwes(cwe_ids, "nist_800_53", normalize=False):
             if t not in nist_53:
                 nist_53.append(t)
-    tags["nist_800_53"] = sorted(set(nist_53))
+    tags["nist_800_53"] = sorted(finding_taggable_controls("nist_800_53_tags", nist_53))
 
     # ── FedRAMP (Moderate baseline) ──────────────────────────────────
     from agent_bom.fedramp import FEDRAMP_MODERATE
@@ -110,7 +115,7 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     tags["fedramp"] = sorted(f"FedRAMP-{t}" for t in tags["nist_800_53"] if t in FEDRAMP_MODERATE)
 
     # ── CIS Controls v8 ────────────────────────────────────────────────
-    cis: list[str] = ["CIS-02.1", "CIS-07.1", "CIS-07.5"]
+    cis: list[str] = []
     if is_high:
         cis.append("CIS-02.3")
     if is_ai:
@@ -123,7 +128,7 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         for t in controls_for_cwes(cwe_ids, "cis", normalize=False):
             if t not in cis:
                 cis.append(t)
-    tags["cis"] = sorted(set(cis))
+    tags["cis"] = sorted(finding_taggable_controls("cis_tags", cis))
 
     # ── ISO 27001:2022 ──────────────────────────────────────────────────
     iso: list[str] = ["A.5.19", "A.5.21", "A.8.8"]

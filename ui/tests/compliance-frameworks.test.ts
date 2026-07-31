@@ -24,6 +24,9 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
   return {
     overall_score: 32,
     overall_status: "fail",
+    evaluated_controls: 25,
+    total_controls: 931,
+    coverage_pct: 2.69,
     scan_count: 1,
     latest_scan: "2026-07-09T22:45:07Z",
     has_mcp_context: true,

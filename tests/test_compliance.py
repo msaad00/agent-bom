@@ -26,6 +26,13 @@ def teardown_module() -> None:
     disable_trusted_proxy_env()
 
 
+def _recent_iso(hours: float = 0.0) -> str:
+    """A timestamp inside the detective-control evidence-freshness window."""
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+
 def _clear_jobs():
     """Reset the job store to a fresh in-memory store."""
     from agent_bom.api.server import set_job_store
@@ -46,11 +53,15 @@ def _add_done_job(
     job = ScanJob(
         job_id=job_id,
         tenant_id=tenant_id,
-        created_at="2026-02-22T10:00:00Z",
+        created_at=_recent_iso(hours=1),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-02-22T10:05:00Z"
+    # Detective controls ("monitor and scan for vulnerabilities", "maintain a
+    # component inventory") are scored from scan FRESHNESS, so a fixture with a
+    # hard-coded past timestamp would read as lapsed monitoring as wall-clock
+    # time advances. See agent_bom.evidence.control_modes.
+    job.completed_at = _recent_iso()
     job.result = {
         "agents": [],
         "blast_radius": blast_radius,
@@ -143,6 +154,12 @@ def test_compliance_no_scans():
         assert c["findings"] == 0
     for metadata in TAG_MAPPED_FRAMEWORKS:
         assert len(data[metadata.output_key]) == metadata.control_count
+        if not metadata.scored:
+            # An applicability overlay has no pass/warn/fail to report at all —
+            # zeroed control counters would imply controls it does not have.
+            assert data["summary"][f"{metadata.summary_prefix}_applicable"] == 0
+            assert data["summary"][f"{metadata.summary_prefix}_not_applicable"] == metadata.control_count
+            continue
         assert data["summary"][f"{metadata.summary_prefix}_pass"] == 0
         assert data["summary"][f"{metadata.summary_prefix}_warn"] == 0
         assert data["summary"][f"{metadata.summary_prefix}_fail"] == 0
@@ -250,11 +267,20 @@ def test_compliance_includes_latest_aisvs_benchmark():
     assert data["summary"]["aisvs_pass"] == 1
     assert data["summary"]["aisvs_fail"] == 1
     assert data["summary"]["aisvs_not_applicable"] == 1
-    # This scan produced only AISVS-benchmark results, no tag-mapped-framework
-    # findings, so the tag-mapped frameworks are not_evaluated — overall_score is
-    # 0.0 / no_data (AISVS results are surfaced separately in aisvs_benchmark).
-    assert data["overall_score"] == 0.0
-    assert data["overall_status"] == "no_data"
+    # This scan produced only AISVS-benchmark results and no CVE findings, so
+    # every CORRECTIVE control stays not_evaluated. Two things are still real
+    # evidence and are scored:
+    #   * the 8 DETECTIVE controls — a completed, in-window scan IS the evidence
+    #     "we monitor / inventory" operates (pass);
+    #   * the AISVS benchmark's directly-evaluated checks (1 pass / 1 fail).
+    # 9 pass over 10 evaluated = 90.0, and the failing AISVS check drives the
+    # top line to "fail" — a directly-evaluated failure can never read compliant.
+    assert data["overall_score"] == 90.0
+    assert data["overall_status"] == "fail"
+    # The percentage always ships its denominator: 10 evaluated of a much larger
+    # catalog, so 90% cannot be misread as "90% of the estate is compliant".
+    assert data["evaluated_controls"] == 10
+    assert data["total_controls"] > data["evaluated_controls"]
 
     _clear_jobs()
 
@@ -477,10 +503,17 @@ def test_compliance_summary_no_scans_reports_not_evaluated():
     assert data["overall_score"] == 0.0
 
     for metadata in TAG_MAPPED_FRAMEWORKS:
+        if not metadata.scored:
+            assert data["summary"][f"{metadata.summary_prefix}_applicable"] == 0
+            continue
         assert data["summary"][f"{metadata.summary_prefix}_pass"] == 0
         assert data["summary"][f"{metadata.summary_prefix}_not_evaluated"] == metadata.control_count
 
     for fw in data["frameworks"].values():
+        if not fw["scored"]:
+            assert fw["applicable"] == 0
+            assert fw["not_applicable"] == fw["controls"]
+            continue
         assert fw["pass"] == 0
         assert fw["warning"] == 0
         assert fw["fail"] == 0
@@ -948,7 +981,12 @@ def test_nist_catalog_line_is_independent_and_does_not_move_overall():
         "score": 25.0,
     }
     assert data["overall_status"] == "fail"
-    assert data["overall_score"] == 25.0  # NOT dragged further by the NIST line
+    # CIS Foundations contributes pass=1 / fail=2 / error=1; the 8 DETECTIVE
+    # controls also pass because a completed in-window scan evidences them.
+    # 9 pass over 12 evaluated = 75.0. The NIST catalog line's own failures are
+    # still NOT folded in — if they were, aggregate_fail would exceed 2 and the
+    # score would drop below 75.
+    assert data["overall_score"] == 75.0
 
     # The NIST catalog line still reports its own (independent) failing controls.
     nist_line = data["nist_800_53_catalog"]

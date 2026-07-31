@@ -262,6 +262,11 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "expires_at",
         "control_count",
         "finding_count",
+        # Compliance exports log these two instead of the ambiguous
+        # finding_count: one finding maps to many controls, so mapping ROWS and
+        # DISTINCT findings are counted separately.
+        "evidence_row_count",
+        "distinct_finding_count",
         "audit_event_count",
         "batch_size",
         "class_counts",

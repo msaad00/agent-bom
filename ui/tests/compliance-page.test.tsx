@@ -60,6 +60,9 @@ const { compliance } = vi.hoisted(() => {
     compliance: {
       overall_score: 72,
       overall_status: "warning" as const,
+      evaluated_controls: 25,
+      total_controls: 931,
+      coverage_pct: 2.69,
       scan_count: 3,
       latest_scan: "2026-07-14T00:00:00Z",
       has_mcp_context: true,
@@ -118,6 +121,10 @@ describe("CompliancePage (dense restyle)", () => {
     expect(within(strip).getByText("Overall")).toBeInTheDocument();
     expect(within(strip).getByText("Passing")).toBeInTheDocument();
     expect(within(strip).getByText("Failing")).toBeInTheDocument();
+
+    // The headline percentage must never ship without its denominator: 72% of
+    // 25 evaluated controls is not "72% of the estate is compliant".
+    expect(within(strip).getByText(/25 of 931 controls evaluated/i)).toBeInTheDocument();
 
     const disclaimer = screen.getByTestId("compliance-helper-disclaimer");
     expect(disclaimer).toHaveTextContent(/not a certification/i);

@@ -2260,8 +2260,20 @@ export interface NistCatalogDrill extends NistCatalogLine {
 }
 
 export interface ComplianceResponse {
+  /**
+   * Percentage of EVALUATED controls that pass — not of the whole catalog.
+   * Never render this without `evaluated_controls` / `total_controls`: a scan
+   * that evaluated 8 of 931 controls and passed all 8 is "100%" of a very small
+   * denominator, and a bare percentage reads as "the estate is 100% compliant".
+   */
   overall_score: number;
   overall_status: "pass" | "warning" | "fail" | "no_data";
+  /** Controls that produced a pass/warning/fail — the `overall_score` denominator. */
+  evaluated_controls: number;
+  /** Every control in every scored framework, evaluated or not. */
+  total_controls: number;
+  /** `evaluated_controls` / `total_controls`, as a percentage. */
+  coverage_pct: number;
   scan_count: number;
   latest_scan: string | null;
   has_mcp_context?: boolean | undefined;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import random
 import threading
 import time
@@ -124,6 +125,36 @@ def check_offline() -> None:
         raise OfflineModeError("Network request blocked: --offline mode is active")
 
 
+# The standard proxy environment variables httpx reads under ``trust_env``.
+_PROXY_ENV_VARS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+
+
+def _env_proxy_configured() -> bool:
+    """True when the operator has pinned egress through a proxy.
+
+    httpx builds its environment proxy mounts only when ``transport`` is left
+    unset — ``allow_env_proxies = trust_env and transport is None`` in
+    ``httpx._client`` (0.28.1). Handing it our retrying transport therefore
+    emptied every proxy mount and traffic escaped the operator's proxy
+    silently, with no error and no way to tell: an egress-policy bypass that
+    fails open.
+
+    Egress policy outranks connection-level retries, so when a proxy is
+    configured the retrying transport stands down and httpx builds the env
+    mounts itself (including ``NO_PROXY`` exclusions, which are easy to get
+    subtly wrong by hand). ``request_with_retry`` / ``sync_request_with_retry``
+    still retry at the application level either way.
+    """
+    return any((os.environ.get(name) or "").strip() for name in _PROXY_ENV_VARS)
+
+
 def _sanitize_for_log(value: object) -> str:
     """Sanitize a value for safe inclusion in log messages.
 
@@ -198,7 +229,7 @@ def create_client(
 
     if timeout is None:
         timeout = HTTP_DEFAULT_TIMEOUT
-    transport = httpx.AsyncHTTPTransport(retries=2)
+    transport = None if _env_proxy_configured() else httpx.AsyncHTTPTransport(retries=2)
     return httpx.AsyncClient(
         timeout=timeout,
         transport=transport,
@@ -345,7 +376,7 @@ def create_sync_client(timeout: float | None = None, max_redirects: int = 0) -> 
 
     if timeout is None:
         timeout = HTTP_DEFAULT_TIMEOUT
-    transport = httpx.HTTPTransport(retries=2)
+    transport = None if _env_proxy_configured() else httpx.HTTPTransport(retries=2)
     return httpx.Client(
         timeout=timeout,
         transport=transport,

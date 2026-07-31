@@ -211,16 +211,20 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                         checksums=checksums,
                     )
                 )
-        except (json.JSONDecodeError, KeyError) as exc:
+        # OSError covers unreadable/oversize manifests (PermissionError and
+        # ManifestTooLargeError, which subclasses OSError); UnicodeDecodeError
+        # covers a binary/non-UTF8 manifest. Letting either escape aborted the
+        # whole scan with no artifact written, so one bad file in a repo could
+        # deny the scanner. Degrade with a named coverage warning instead.
+        except (json.JSONDecodeError, KeyError, OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to parse package-lock.json in %s: %s", directory, exc)
-            if isinstance(exc, json.JSONDecodeError):
-                from agent_bom.coverage import record_manifest_parse_warning
+            from agent_bom.coverage import record_manifest_parse_warning
 
-                record_manifest_parse_warning(
-                    ecosystem="npm",
-                    path=str(lock_file),
-                    detail=f"package-lock.json failed to parse ({exc}); npm dependencies were not scanned",
-                )
+            record_manifest_parse_warning(
+                ecosystem="npm",
+                path=str(lock_file),
+                detail=f"package-lock.json could not be read or parsed ({exc}); npm dependencies were not scanned",
+            )
 
     # Fallback to package.json only
     elif (directory / "package.json").exists():
@@ -267,16 +271,18 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                             version_evidence=version_evidence,
                         )
                     )
-        except (json.JSONDecodeError, KeyError) as exc:
+        # Same graceful-degradation contract as the package-lock.json branch
+        # above: an unreadable, oversize, or non-UTF8 manifest is a coverage
+        # gap to report, never a scan-aborting exception.
+        except (json.JSONDecodeError, KeyError, OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to parse package.json in %s: %s", directory, exc)
-            if isinstance(exc, json.JSONDecodeError):
-                from agent_bom.coverage import record_manifest_parse_warning
+            from agent_bom.coverage import record_manifest_parse_warning
 
-                record_manifest_parse_warning(
-                    ecosystem="npm",
-                    path=str(directory / "package.json"),
-                    detail=f"package.json failed to parse ({exc}); npm dependencies were not scanned",
-                )
+            record_manifest_parse_warning(
+                ecosystem="npm",
+                path=str(directory / "package.json"),
+                detail=f"package.json could not be read or parsed ({exc}); npm dependencies were not scanned",
+            )
 
     return packages
 

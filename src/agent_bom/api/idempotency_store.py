@@ -57,6 +57,16 @@ class IdempotencyConflictError(RuntimeError):
     """Raised when a key is reused for a different request payload."""
 
 
+class IdempotencyPayloadError(ValueError):
+    """Raised when a request payload cannot be fingerprinted.
+
+    Pydantic's serializer aborts with ``ValueError: Circular reference detected
+    (depth exceeded)`` on a deeply nested body, and ``json.dumps`` can hit the
+    interpreter recursion limit on the same input. Both are caller-controlled,
+    so they must land as a 422 instead of escaping as an unhandled 500.
+    """
+
+
 class IdempotencyStore(Protocol):
     def get(
         self,
@@ -98,9 +108,17 @@ def _normalize_request_payload(value: Any) -> Any:
 
 
 def idempotency_request_fingerprint(payload: Any) -> str:
-    """Return a stable fingerprint for comparing idempotent write retries."""
-    normalized = _normalize_request_payload(payload or {})
-    encoded = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
+    """Return a stable fingerprint for comparing idempotent write retries.
+
+    Raises:
+        IdempotencyPayloadError: when the caller's payload is too deeply nested
+            (or otherwise cyclic) to normalize. Callers surface this as 422.
+    """
+    try:
+        normalized = _normalize_request_payload(payload or {})
+        encoded = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise IdempotencyPayloadError("Request payload is too deeply nested to process") from exc
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 

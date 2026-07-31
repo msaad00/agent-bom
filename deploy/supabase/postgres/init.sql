@@ -847,6 +847,14 @@ AS $$
        AND pg_has_role(session_user, 'agent_bom_rls_maintenance', 'MEMBER')
 $$;
 
+-- teams is the FK root every tenant table references ON DELETE CASCADE, and
+-- agent_bom_app holds DML on it. Without RLS an app-role session bound to one
+-- tenant can enumerate every tenant and delete another tenant's root row,
+-- cascading that tenant's whole dataset away. The maintenance purge in
+-- api/tenant_lifecycle runs under the RLS-bypass role, so it is unaffected.
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE gateway_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gateway_policies FORCE ROW LEVEL SECURITY;
 
@@ -867,6 +875,21 @@ ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE cis_benchmark_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cis_benchmark_checks FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'teams'
+          AND policyname = 'teams_tenant_isolation'
+    ) THEN
+        CREATE POLICY teams_tenant_isolation ON teams
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
 
 DO $$
 BEGIN

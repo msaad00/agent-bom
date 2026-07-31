@@ -44,7 +44,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message
 
 from agent_bom.api.dashboard_csp import dashboard_csp_header, describe_dashboard_csp_posture
-from agent_bom.security import sanitize_text
+from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
@@ -858,6 +858,17 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         trace_meta = make_request_trace(dict(request.headers))
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
+        # A percent-encoded NUL in a path parameter is decoded before routing and
+        # then handed to psycopg as a text value, which raises `DataError:
+        # PostgreSQL text fields cannot contain NUL (0x00) bytes` deep inside a
+        # store and surfaces as a bare 500. Reject the whole request here so the
+        # class is closed for every route rather than one path id at a time.
+        if "\x00" in request.url.path:
+            return _build_error_envelope(
+                status_code=400,
+                detail="Request path contains a NUL (0x00) byte",
+                correlation_id=request_id,
+            )
         request.state.trace_id = trace_meta["trace_id"]
         request.state.span_id = trace_meta["span_id"]
         request.state.parent_span_id = trace_meta["parent_span_id"]
@@ -1007,6 +1018,55 @@ async def run_resolver_chain(resolvers: Iterable[Callable[[], Awaitable[Resoluti
     return None
 
 
+# Public SPA routes, derived at startup from the dashboard files the server
+# actually ships. A hand-maintained list drifted from ``ui/app/`` and left real
+# pages (``/overview``, ``/inventory``, ``/reports``, …) 401-ing on a cold
+# deep-link while non-existent routes stayed allowlisted. Empty means no
+# dashboard is mounted, so there is no SPA route to make public.
+#
+# BEHAVIOUR CHANGE: on a REST-only deployment (``serve --no-ui`` /
+# ``AGENT_BOM_NO_UI``, or a wheel built without ``ui_dist``) SPA paths now
+# answer 401 rather than 404. Nothing is being withheld — there is no SPA to
+# serve in that mode — and the previous 404 came from the router only after
+# auth had already waved the path through. Deliberate: it keeps the allowlist
+# honest instead of re-introducing a hardcoded fallback that would drift again.
+_DASHBOARD_SPA_ROUTES: frozenset[str] = frozenset()
+
+
+def dashboard_spa_routes_from_files(relative_paths: Iterable[str]) -> frozenset[str]:
+    """Derive the public SPA first-segment allowlist from exported file paths.
+
+    ``relative_paths`` are the dashboard-relative keys the SPA catch-all
+    resolves against (``overview/index.html``, ``findings.html``, …).
+    """
+    routes: set[str] = set()
+    for relative in relative_paths:
+        normalized = relative.strip("/")
+        if not normalized or normalized.startswith("_next"):
+            continue
+        first_segment, separator, _ = normalized.partition("/")
+        if separator:
+            routes.add(first_segment)
+        elif first_segment.lower().endswith(".html"):
+            routes.add(first_segment.rsplit(".", 1)[0])
+    if "index" in routes:
+        # ``index.html`` is the SPA shell: it backs both ``/`` and every
+        # client-side route the export did not pre-render as its own file.
+        routes.add("")
+    return frozenset(routes)
+
+
+def register_dashboard_spa_routes(relative_paths: Iterable[str]) -> None:
+    """Publish the SPA route allowlist discovered while mounting the dashboard."""
+    global _DASHBOARD_SPA_ROUTES  # noqa: PLW0603 — process-wide startup registry
+    _DASHBOARD_SPA_ROUTES = dashboard_spa_routes_from_files(relative_paths)
+
+
+def dashboard_spa_routes() -> frozenset[str]:
+    """Return the currently registered public SPA first-segment allowlist."""
+    return _DASHBOARD_SPA_ROUTES
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """Optional API key authentication via Bearer token or X-API-Key header.
 
@@ -1084,40 +1144,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return True
         if path.startswith("/brand/"):
             return True
-        dashboard_routes = {
-            "",
-            "activity",
-            "agents",
-            "audit",
-            "compliance",
-            "context",
-            "dashboard",
-            "findings",
-            "connections",
-            "cost",
-            "drift",
-            "fleet",
-            "gateway",
-            "governance",
-            "graph",
-            "help",
-            "identity",
-            "index",
-            "insights",
-            "jobs",
-            "login",
-            "manifest",
-            "mesh",
-            "proxy",
-            "registry",
-            "remediation",
-            "scan",
-            "security-graph",
-            "settings",
-            "sources",
-            "traces",
-            "vulns",
-        }
+        dashboard_routes = _DASHBOARD_SPA_ROUTES
         normalized = path.strip("/")
         first_segment = normalized.split("/", 1)[0] if normalized else ""
         public_suffixes = (
@@ -1138,9 +1165,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         )
         if path.lower().endswith(public_suffixes):
             return first_segment in dashboard_routes or ("/" not in normalized and normalized.rsplit(".", 1)[0] in dashboard_routes)
-        # Client-side dashboard routes are served by the SPA fallback. Keep
-        # this whitelist tight so arbitrary application routes cannot bypass
-        # OIDC/API-key/SCIM authentication just because they are GET requests.
+        # Client-side dashboard routes are served by the SPA fallback. The set
+        # is derived from the shipped dashboard files (see
+        # ``register_dashboard_spa_routes``) so it can neither drift from the
+        # real pages nor allowlist a route the SPA does not serve.
         return first_segment in dashboard_routes
 
     # Ordered route rules so narrower enterprise paths win over broad prefixes.
@@ -2005,7 +2033,14 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
 
 DEFAULT_SCAN_RATE_LIMIT_RPM = 600
+# Anonymous / unidentified read budget. Kept where it was so raising the
+# authenticated budget below does not widen the pre-auth abuse surface.
 DEFAULT_READ_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM * 5
+# Reads on a bucket we resolved to a tenant or API key. A cursor walk of a
+# large tenant is thousands of requests, so a connector or SIEM doing a full
+# sync through the public API was being 429'd partway through a legitimate
+# paginated read. Still bounded, and still under the coarse per-IP ceiling.
+DEFAULT_AUTHENTICATED_READ_RATE_LIMIT_RPM = DEFAULT_READ_RATE_LIMIT_RPM * 2
 MAX_RATE_LIMIT_RPM = 60_000
 # Coarse per-client-IP ceiling enforced OUTERMOST (before authentication) so an
 # unauthenticated flood is capped regardless of auth outcome. Deliberately much
@@ -2089,10 +2124,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         scan_rpm: int = DEFAULT_SCAN_RATE_LIMIT_RPM,
         read_rpm: int = DEFAULT_READ_RATE_LIMIT_RPM,
+        authenticated_read_rpm: int = DEFAULT_AUTHENTICATED_READ_RATE_LIMIT_RPM,
     ):
         super().__init__(app)
         self._scan_rpm = _validate_rate_limit("scan_rpm", scan_rpm, max_rpm=MAX_RATE_LIMIT_RPM)
         self._read_rpm = _validate_rate_limit("read_rpm", read_rpm, max_rpm=MAX_RATE_LIMIT_RPM * 5)
+        self._authenticated_read_rpm = _validate_rate_limit(
+            "authenticated_read_rpm", authenticated_read_rpm, max_rpm=MAX_RATE_LIMIT_RPM * 10
+        )
         self._window = 60
         self._store = self._build_store()
 
@@ -2162,9 +2201,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
 
         is_scan = self._is_write_rate_limited(request.url.path, request.method)
-        limit = self._scan_rpm if is_scan else self._read_rpm
-
         key = await self._bucket_key(request, is_scan)
+        if is_scan:
+            limit = self._scan_rpm
+        elif key.startswith("ip:"):
+            # No tenant and no API key resolved — the anonymous budget, which
+            # is deliberately tighter than the authenticated one below.
+            limit = self._read_rpm
+        else:
+            limit = self._authenticated_read_rpm
+
         hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
         remaining = max(0, limit - hit_count)
 
@@ -2572,21 +2618,43 @@ def _error_message_for(status_code: int, detail: object) -> str:
 
 
 def _json_safe_validation_errors(errors: Sequence[object]) -> list[dict[str, object]]:
-    """Make Pydantic validation errors JSON-serializable.
+    """Make Pydantic validation errors JSON-serializable and value-free.
 
-    ``model_validator`` failures embed a live ``ValueError`` in ``ctx['error']``;
-    serializing that verbatim blows up the 422 envelope and surfaces as 500.
+    Two failure modes are handled here:
+
+    * ``model_validator`` failures embed a live ``ValueError`` in
+      ``ctx['error']``, and a non-JSON request body (``text/plain``, form
+      encoding, or no ``Content-Type`` at all) makes Pydantic report the raw
+      ``bytes`` in ``input``. Serializing either verbatim raises *inside* the
+      validation handler, so the caller got a bare 500 with no ``error.code``
+      and no ``correlation_id`` — on every POST/PUT/PATCH.
+    * ``input`` reflected the submitted value back verbatim, so a
+      credential-shaped field ended up in CI logs, proxies, and error trackers.
+
+    Dropping ``input`` fixes both; ``jsonable_encoder`` is the backstop for any
+    remaining non-JSON value elsewhere in the error record.
     """
+    from fastapi.encoders import jsonable_encoder
+
     safe: list[dict[str, object]] = []
     for err in errors:
         if not isinstance(err, dict):
             safe.append({"error": str(err)})
             continue
-        item = dict(err)
+        item = {key: value for key, value in err.items() if key != "input"}
         ctx = item.get("ctx")
         if isinstance(ctx, dict):
             item["ctx"] = {key: str(value) if isinstance(value, BaseException) else value for key, value in ctx.items()}
-        safe.append(item)
+        try:
+            safe.append(cast(dict[str, object], jsonable_encoder(item)))
+        except Exception:  # noqa: BLE001 — the error envelope must never fail to serialize
+            safe.append(
+                {
+                    "type": str(item.get("type", "value_error")),
+                    "loc": [str(part) for part in cast(Sequence[object], item.get("loc") or ())],
+                    "msg": str(item.get("msg", "Validation error")),
+                }
+            )
     return safe
 
 
@@ -2626,6 +2694,8 @@ def install_error_envelope(application: object) -> None:
     from fastapi import HTTPException
     from fastapi.exceptions import RequestValidationError
     from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    from agent_bom.api.idempotency_store import IdempotencyPayloadError
 
     def _correlation_id(request: StarletteRequest) -> str:
         return getattr(request.state, "request_id", "") or request.headers.get("x-request-id") or str(uuid.uuid4())
@@ -2667,6 +2737,16 @@ def install_error_envelope(application: object) -> None:
             correlation_id=_correlation_id(request),
         )
 
+    async def idempotency_payload_exception_handler(request: StarletteRequest, exc: Exception) -> JSONResponse:
+        # The payload that could not be fingerprinted is caller-controlled, so
+        # this is a client error — not an unhandled 500 that poisons 5xx alerting.
+        return _build_error_envelope(
+            status_code=422,
+            detail=sanitize_error(exc) or "Request payload could not be processed",
+            correlation_id=_correlation_id(request),
+        )
+
     application.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[attr-defined]
     application.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)  # type: ignore[attr-defined]
     application.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[attr-defined]
+    application.add_exception_handler(IdempotencyPayloadError, idempotency_payload_exception_handler)  # type: ignore[attr-defined]

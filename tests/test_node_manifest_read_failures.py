@@ -103,3 +103,70 @@ def test_readable_manifest_still_parses(tmp_path: Path) -> None:
 
     assert [(pkg.name, pkg.version) for pkg in packages] == [("left-pad", "1.3.0")]
     assert _warning_paths() == []
+
+
+# ── The warning has to reach the artifact, not just the log ──────────────────
+
+
+def _scan_dir_to_json(directory: Path, output: Path) -> dict:
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "scan",
+            str(directory),
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ],
+        catch_exceptions=False,
+    )
+    assert output.exists(), result.output
+    return json.loads(output.read_text(encoding="utf-8"))
+
+
+def test_unreadable_manifest_warning_reaches_the_written_report(tmp_path: Path) -> None:
+    """A degraded scan must declare the gap in the artifact, not only on stderr.
+
+    An unreadable manifest extracts zero packages, and the zero-package branch
+    is exactly the one that never drained the coverage-warning buffer — so the
+    single case where coverage is most degraded shipped ``coverage_warnings:
+    []``. Assert on the written JSON: the log line is not the contract.
+    """
+    _skip_if_root()
+    project = tmp_path / "proj"
+    project.mkdir()
+    manifest = project / "package.json"
+    manifest.write_text(json.dumps({"dependencies": {"left-pad": "1.3.0"}}))
+    manifest.chmod(0o000)
+    try:
+        payload = _scan_dir_to_json(project, tmp_path / "report.json")
+    finally:
+        manifest.chmod(0o644)
+
+    warnings = payload["coverage_warnings"]
+    parse_errors = [w for w in warnings if w.get("reason") == "manifest_parse_error"]
+    assert parse_errors, warnings
+    # ``release`` is entropy-redacted for random paths; ``detail`` names the
+    # manifest the operator has to go look at.
+    assert all(w["ecosystem"] == "npm" for w in parse_errors), parse_errors
+    assert any("package.json" in str(w.get("detail", "")) for w in parse_errors), parse_errors
+    # The canonical execution contract has to agree with the raw list.
+    assert payload["scan_run"]["outcome"] == "partial", payload["scan_run"]
+
+
+def test_clean_scan_still_reports_no_coverage_warnings(tmp_path: Path) -> None:
+    """The fix must not manufacture a warning where coverage was complete."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "package.json").write_text(json.dumps({"dependencies": {"left-pad": "1.3.0"}}))
+
+    payload = _scan_dir_to_json(project, tmp_path / "report.json")
+
+    assert payload["coverage_warnings"] == []

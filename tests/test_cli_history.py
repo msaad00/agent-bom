@@ -553,3 +553,66 @@ def test_compliance_narrative_uses_saved_summary_totals(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert "covers 4 AI agents and 12 packages" in payload["executive_summary"]
+
+
+def _detective_report(tmp_path, generated_at):
+    """A saved artifact with one corrective finding, stamped at ``generated_at``."""
+    report = tmp_path / "report.json"
+    payload = {
+        "summary": {"total_agents": 1, "total_packages": 1, "total_vulnerabilities": 1},
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-2025-9000",
+                "severity": "high",
+                "package": "flask@1.0.0",
+                "ecosystem": "pypi",
+                "affected_agents": ["claude"],
+                "affected_servers": ["filesystem"],
+                "owasp_tags": [],
+                "nist_800_53_tags": ["SI-10"],
+            }
+        ],
+    }
+    if generated_at is not None:
+        payload["generated_at"] = generated_at
+    report.write_text(json.dumps(payload))
+    return report
+
+
+def _nist_narrative(report):
+    result = CliRunner().invoke(compliance_narrative_cmd, [str(report), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    return next(fn for fn in payload["framework_narratives"] if fn["slug"] == "nist-800-53")
+
+
+def test_narrative_from_a_stale_artifact_fails_detective_controls(tmp_path):
+    """A narrative rebuilt from an old scan must not inherit today's freshness.
+
+    The saved report carries its own ``generated_at``; regenerating the
+    narrative a year later means continuous monitoring has lapsed, and RA-5 /
+    CM-8 have to say so.
+    """
+    fw = _nist_narrative(_detective_report(tmp_path, "2020-01-01T00:00:00+00:00"))
+
+    stale = {c["control_id"] for c in fw["failing_controls"] if c["status"] == "fail"}
+    assert {"RA-5", "CM-8"} <= stale, fw["failing_controls"]
+
+
+def test_narrative_from_a_fresh_artifact_passes_detective_controls(tmp_path):
+    from datetime import datetime, timezone
+
+    fw = _nist_narrative(_detective_report(tmp_path, datetime.now(timezone.utc).isoformat()))
+
+    failing = {c["control_id"] for c in fw["failing_controls"]}
+    assert failing == {"SI-10"}, fw["failing_controls"]
+
+
+def test_narrative_from_an_undated_artifact_still_renders(tmp_path):
+    """A saved report with no ``generated_at`` must not crash the narrative."""
+    fw = _nist_narrative(_detective_report(tmp_path, None))
+
+    assert fw["slug"] == "nist-800-53"
+    # Age unknown is reported as a pass with an explicit unknown-age reason,
+    # never a fabricated stale-evidence failure.
+    assert {c["control_id"] for c in fw["failing_controls"]} == {"SI-10"}

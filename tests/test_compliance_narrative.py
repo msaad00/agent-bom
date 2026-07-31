@@ -475,9 +475,14 @@ def test_all_framework_slugs_covered():
 
 
 def test_same_control_id_does_not_bleed_between_frameworks():
+    # SI-10 is a *corrective* control carried by both the NIST 800-53 and
+    # FedRAMP catalogs, so it exercises cross-framework bleed on the branch that
+    # findings actually drive. (This previously used RA-5, which findings are
+    # never tagged onto — ``finding_taggable_controls`` drops detective controls
+    # — and which is now scored from scan-evidence freshness instead.)
     br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=[])
     br.owasp_tags = []
-    br.nist_800_53_tags = ["RA-5"]
+    br.nist_800_53_tags = ["SI-10"]
     br.fedramp_tags = []
     report = _make_report(blast_radii=[br])
 
@@ -535,3 +540,107 @@ def test_narrative_single_framework_filter_scopes_catalog_line():
     assert owasp.nist_800_53_catalog == {}
     nist = generate_compliance_narrative(report, framework="nist-800-53")
     assert nist.nist_800_53_catalog["framework_key"] == "nist_800_53_catalog"
+
+
+# ─── Detective controls in the CLI narrative ─────────────────────────────────
+
+
+def _fw(result: ComplianceNarrative, slug: str):
+    return next(fn for fn in result.framework_narratives if fn.slug == slug)
+
+
+_DETECTIVE_BY_SLUG = [
+    ("nist-800-53", {"RA-5", "CM-8"}),
+    ("nist-csf", {"ID.RA-01", "ID.RA-02", "DE.CM-09"}),
+    ("cis", {"CIS-02.1", "CIS-07.1", "CIS-07.5"}),
+]
+
+
+@pytest.mark.parametrize(("slug", "detective_ids"), _DETECTIVE_BY_SLUG)
+def test_detective_controls_pass_on_a_fresh_scan(slug, detective_ids):
+    """A detective control is implemented BY the scan, so a fresh scan passes it.
+
+    Detective controls are never tagged with findings (``finding_taggable_controls``
+    drops them), so the zero-mapped-findings skip made them vanish from the
+    narrative entirely instead of being reported as the passes they are.
+    """
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=["LLM05"])
+    report = _make_report(blast_radii=[br])
+
+    fw = _fw(generate_compliance_narrative(report), slug)
+
+    # Nothing failed, so the framework reads as passing off the scan evidence.
+    assert fw.status == "passing", fw.narrative
+    assert fw.score == 100, fw.narrative
+    # The evaluated denominator has to grow by exactly the detective controls.
+    assert f"{len(detective_ids)} evaluated" in fw.narrative, fw.narrative
+    # A passing control is not a failing control.
+    assert [c.control_id for c in fw.failing_controls] == []
+
+
+@pytest.mark.parametrize(("slug", "detective_ids"), _DETECTIVE_BY_SLUG)
+def test_detective_controls_fail_once_evidence_is_stale(slug, detective_ids, monkeypatch):
+    """Past the freshness window, continuous monitoring has lapsed — that is a fail."""
+    from datetime import datetime, timedelta, timezone
+
+    from agent_bom import config
+
+    monkeypatch.setattr(config, "COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS", 90)
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=["LLM05"])
+    report = _make_report(blast_radii=[br])
+    report.generated_at = datetime.now(timezone.utc) - timedelta(days=200)
+
+    fw = _fw(generate_compliance_narrative(report), slug)
+
+    assert fw.status == "failing", fw.narrative
+    stale = {c.control_id for c in fw.failing_controls if c.status == "fail"}
+    assert stale == detective_ids, [c.control_id for c in fw.failing_controls]
+    for control in fw.failing_controls:
+        assert "stale" in control.narrative.lower(), control.narrative
+        assert control.remediation_steps
+
+
+def test_detective_controls_are_not_asserted_without_a_scan():
+    """No findings means no evidence a scan ran — never a fabricated pass.
+
+    Mirrors the ``nist_800_53_catalog`` line on the same payload so the two
+    representations in one narrative cannot contradict each other.
+    """
+    report = _make_report(blast_radii=[])
+
+    result = generate_compliance_narrative(report)
+
+    for slug in ("nist-800-53", "nist-csf", "cis"):
+        fw = _fw(result, slug)
+        assert fw.status == "not_evaluated", (slug, fw.narrative)
+        assert fw.score == 0, (slug, fw.narrative)
+    assert result.nist_800_53_catalog["status"] == "no_data"
+
+
+def test_detective_pass_coexists_with_a_corrective_failure():
+    """Detective passes must not paper over a real corrective failure."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.CRITICAL), owasp_tags=[])
+    br.owasp_tags = []
+    br.nist_800_53_tags = ["SI-10"]
+    report = _make_report(blast_radii=[br])
+
+    fw = _fw(generate_compliance_narrative(report), "nist-800-53")
+
+    assert fw.status == "failing", fw.narrative
+    assert [c.control_id for c in fw.failing_controls] == ["SI-10"]
+    # RA-5 + CM-8 pass, SI-10 fails -> 2/3.
+    assert "3 evaluated" in fw.narrative, fw.narrative
+    assert fw.score == 67, fw.narrative
+
+
+def test_a_finding_tagged_onto_a_detective_control_never_fails_it():
+    """Findings mapped to a detective control prove it works; they never fail it."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.CRITICAL), owasp_tags=[])
+    br.owasp_tags = []
+    br.nist_800_53_tags = ["RA-5"]
+    report = _make_report(blast_radii=[br])
+
+    fw = _fw(generate_compliance_narrative(report), "nist-800-53")
+
+    assert fw.status == "passing", fw.narrative
+    assert fw.failing_controls == []

@@ -38,7 +38,7 @@ def _write_log(path, lines: int) -> None:
 
 
 def test_jsonl_fallback_reads_the_newest_bounded_records(tmp_path) -> None:
-    from agent_bom.api.routes.proxy import _read_alerts_from_log
+    from agent_bom.api.routes.proxy import _MAX_FEED_LOG_LINES, _read_alerts_from_log
 
     log = tmp_path / "runtime.jsonl"
     with open(log, "w") as handle:
@@ -54,7 +54,8 @@ def test_jsonl_fallback_reads_the_newest_bounded_records(tmp_path) -> None:
                 + "\n"
             )
 
-    alerts = _read_alerts_from_log(log)
+    # The bound is now per caller; this asserts the feed's cap specifically.
+    alerts = _read_alerts_from_log(log, limit=_MAX_FEED_LOG_LINES)
 
     assert len(alerts) == 1_000
     assert alerts[0]["event_id"] == "evt-250"

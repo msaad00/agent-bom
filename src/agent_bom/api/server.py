@@ -34,6 +34,7 @@ from agent_bom.api.middleware import (
     TrustHeadersMiddleware,
     global_ip_rate_limit_rpm,
     install_error_envelope,
+    register_dashboard_spa_routes,
 )
 
 # ─── Extracted modules ────────────────────────────────────────────────────────
@@ -856,7 +857,15 @@ def configure_api(
     # the front; this call order keeps the coarse per-IP limiter outermost
     # (capping unauthenticated floods before auth), then body-size, then auth
     # before the tenant-scoped rate limiter, which needs tenant/auth state.
-    _replace_middleware(RateLimitMiddleware, scan_rpm=_rate_limit_rpm, read_rpm=_rate_limit_rpm * 5)
+    # The authenticated read budget keeps the same 2x relationship to the
+    # anonymous one that the defaults have, so an operator override of
+    # rate_limit_rpm still controls both.
+    _replace_middleware(
+        RateLimitMiddleware,
+        scan_rpm=_rate_limit_rpm,
+        read_rpm=_rate_limit_rpm * 5,
+        authenticated_read_rpm=_rate_limit_rpm * 10,
+    )
     # Authentication can be optional; authorization cannot.  Keep the
     # principal resolver installed in pure no-auth mode so credential-less
     # callers receive the configured NO_AUTH_ROLE and traverse the same route
@@ -1493,6 +1502,11 @@ def _mount_dashboard(application: FastAPI) -> None:
     _index_html = _validated_dashboard_file(ui_dist, "index.html")
     if _index_html is None:
         return
+
+    # Auth's public-SPA allowlist is derived from exactly the files the
+    # catch-all below can resolve, so a cold deep-link to a real page never
+    # 401s and a route the SPA does not serve is never allowlisted.
+    register_dashboard_spa_routes(_static_file_map)
 
     # SPA catch-all for client-side routing
     @application.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)

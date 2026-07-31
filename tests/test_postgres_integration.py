@@ -261,7 +261,27 @@ def test_postgres_invitation_provisions_team_and_key_atomically_under_new_tenant
 
     from agent_bom.api.auth import Role, create_api_key
     from agent_bom.api.postgres_access import PostgresKeyStore
-    from agent_bom.api.postgres_common import _get_pool, reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_common import (
+        _get_pool,
+        _tenant_connection,
+        reset_current_tenant,
+        set_current_tenant,
+    )
+
+    def _read_team(tenant_id: str, team_id: str) -> tuple | None:
+        """Read ``teams`` the way production does: on a tenant-bound session.
+
+        ``teams`` now FORCEs RLS, so a raw ``_get_pool().connection()`` never
+        runs ``_apply_tenant_session`` and reads as the ``'default'`` tenant —
+        it would report ``None`` for every tenant's root row and make these
+        assertions vacuous. Binding the session is what the policy is for.
+        """
+        token = set_current_tenant(tenant_id)
+        try:
+            with _tenant_connection(_get_pool()) as conn:
+                return conn.execute("SELECT team_id, name, slug FROM teams WHERE team_id = %s", (team_id,)).fetchone()
+        finally:
+            reset_current_tenant(token)
 
     suffix = uuid4().hex
     tenant_id = f"invite-{suffix}"
@@ -280,12 +300,14 @@ def test_postgres_invitation_provisions_team_and_key_atomically_under_new_tenant
         stored = store.get(api_key.key_id)
         assert stored is not None
         assert stored.tenant_id == tenant_id
-        with _get_pool().connection() as conn:
-            team = conn.execute("SELECT team_id, name, slug FROM teams WHERE team_id = %s", (tenant_id,)).fetchone()
     finally:
         reset_current_tenant(invited_token)
 
-    assert team == (tenant_id, "Example Organization", tenant_id)
+    assert _read_team(tenant_id, tenant_id) == (tenant_id, "Example Organization", tenant_id)
+
+    # The FK root is the cascade root for every tenant table, so no other
+    # tenant's app-role session may see (and therefore delete) it.
+    assert _read_team(f"operator-{suffix}", tenant_id) is None
 
     # Reusing an existing key id must fail closed and roll back the team row;
     # otherwise a partial invitation leaves an orphan tenant behind.
@@ -298,9 +320,76 @@ def test_postgres_invitation_provisions_team_and_key_atomically_under_new_tenant
     finally:
         reset_current_tenant(operator_token)
 
-    with _get_pool().connection() as conn:
-        rejected_team = conn.execute("SELECT team_id FROM teams WHERE team_id = %s", (rejected_tenant_id,)).fetchone()
-    assert rejected_team is None
+    assert _read_team(rejected_tenant_id, rejected_tenant_id) is None
+
+
+def test_postgres_teams_fk_root_is_tenant_isolated_but_still_purgeable_by_maintenance():
+    """``teams`` RLS must block a cross-tenant purge without breaking the real one.
+
+    ``teams`` is the FK root every tenant table references ``ON DELETE
+    CASCADE``, and ``agent_bom_app`` holds ``DELETE`` on it, so one tenant
+    reaching another tenant's root row destroys that tenant's whole dataset.
+    The isolation is only safe to ship if the legitimate purge in
+    ``tenant_lifecycle`` — ``bypass_tenant_rls()`` + ``_maintenance_connection()``
+    — still deletes the row; otherwise cleanup silently reports
+    ``tenant_root: 0`` and leaks orphan tenants forever.
+    """
+    from agent_bom.api.auth import Role, create_api_key
+    from agent_bom.api.postgres_access import PostgresKeyStore
+    from agent_bom.api.postgres_common import (
+        _get_pool,
+        _maintenance_connection,
+        _tenant_connection,
+        bypass_tenant_rls,
+        reset_current_tenant,
+        set_current_tenant,
+    )
+
+    suffix = uuid4().hex
+    victim = f"teams-victim-{suffix}"
+    attacker = f"teams-attacker-{suffix}"
+    _, victim_key = create_api_key("victim-owner", Role.ADMIN, tenant_id=victim)
+    store = PostgresKeyStore()
+    store.provision_tenant_key(victim_key, team_name="Victim Organization")
+
+    # An ordinary app-role session bound to another tenant can neither see nor
+    # delete the victim's root row, so the cascade cannot be triggered.
+    attacker_token = set_current_tenant(attacker)
+    try:
+        with _tenant_connection(_get_pool()) as conn:
+            assert conn.execute("SELECT team_id FROM teams WHERE team_id = %s", (victim,)).fetchone() is None
+            cursor = conn.execute("DELETE FROM teams WHERE team_id = %s", (victim,))
+            assert cursor.rowcount == 0
+            conn.commit()
+    finally:
+        reset_current_tenant(attacker_token)
+
+    victim_token = set_current_tenant(victim)
+    try:
+        with _tenant_connection(_get_pool()) as conn:
+            assert conn.execute("SELECT team_id FROM teams WHERE team_id = %s", (victim,)).fetchone() == (victim,)
+    finally:
+        reset_current_tenant(victim_token)
+
+    # The maintenance purge path still reaches the row.
+    purge_token = set_current_tenant(victim)
+    try:
+        with bypass_tenant_rls():
+            with _maintenance_connection() as conn:
+                assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (True,)
+                conn.execute("DELETE FROM api_keys WHERE team_id = %s", (victim,))
+                cursor = conn.execute("DELETE FROM teams WHERE team_id = %s", (victim,))
+                assert cursor.rowcount == 1
+                conn.commit()
+    finally:
+        reset_current_tenant(purge_token)
+
+    verify_token = set_current_tenant(victim)
+    try:
+        with _tenant_connection(_get_pool()) as conn:
+            assert conn.execute("SELECT team_id FROM teams WHERE team_id = %s", (victim,)).fetchone() is None
+    finally:
+        reset_current_tenant(verify_token)
 
 
 def test_postgres_managed_trial_invitation_is_digest_only_email_bound_and_single_use():

@@ -27,6 +27,7 @@ TRUSTED_MAINTENANCE_RLS = VERSIONS_DIR / "20260728_03_trusted_maintenance_rls.py
 GATEWAY_ACTIVITY_WINDOW_INDEX = VERSIONS_DIR / "20260729_02_gateway_activity_window_index.py"
 PARTITION_CHILD_RLS = VERSIONS_DIR / "20260729_03_partition_child_rls.py"
 GRAPH_EDGE_SNAPSHOT_KEY_INDEX = VERSIONS_DIR / "20260730_01_graph_edge_snapshot_key_index.py"
+TEAMS_TENANT_RLS = VERSIONS_DIR / "20260730_02_teams_tenant_rls.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -408,6 +409,40 @@ def test_partition_child_rls_is_chained_idempotent_and_irreversible() -> None:
     assert "CREATE POLICY" in sql
     assert "DROP POLICY" not in sql
     assert "DISABLE ROW LEVEL SECURITY" not in sql
+
+
+def test_teams_tenant_rls_is_chained_idempotent_and_irreversible() -> None:
+    """The FK root gets the same tenant-isolation contract as every other table.
+
+    Modelled on ``20260729_03_partition_child_rls``: idempotent (guarded
+    ``CREATE POLICY``), forward-only, and expressed with the shared
+    ``abom_rls_bypass()`` / ``abom_current_tenant()`` helpers so the
+    maintenance-role purge in ``tenant_lifecycle`` still works.
+    """
+    sql = TEAMS_TENANT_RLS.read_text()
+    assert re.search(r'revision\s*=\s*"20260730_02"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260730_01"', sql)
+    assert "ALTER TABLE teams ENABLE ROW LEVEL SECURITY" in sql
+    assert "ALTER TABLE teams FORCE ROW LEVEL SECURITY" in sql
+    assert "teams_tenant_isolation" in sql
+    assert "team_id = public.abom_current_tenant()" in sql
+    assert "public.abom_rls_bypass()" in sql
+    # Idempotent, and never weakens isolation on replay or rollback.
+    assert "IF NOT EXISTS" in sql
+    assert "DROP POLICY" not in sql
+    assert "DISABLE ROW LEVEL SECURITY" not in sql
+    assert "NO FORCE ROW LEVEL SECURITY" not in sql
+
+
+def test_teams_tenant_rls_is_the_alembic_head() -> None:
+    """Nothing may chain past the new revision without being noticed."""
+    revisions = {
+        path.name: re.search(r'down_revision\s*=\s*"([^"]+)"', path.read_text())
+        for path in VERSIONS_DIR.glob("*.py")
+        if path.name != "__init__.py"
+    }
+    parents = {match.group(1) for match in revisions.values() if match}
+    assert "20260730_02" not in parents
 
 
 def test_graph_edge_snapshot_key_index_is_chained_and_matches_bootstrap() -> None:

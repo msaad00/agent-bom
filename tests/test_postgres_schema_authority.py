@@ -306,6 +306,56 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
     assert migration_sql.rfind("INSERT INTO control_plane_schema_versions") > migration_sql.rfind("CREATE TABLE")
 
 
+def _rls_forced_tables(sql: str) -> set[str]:
+    return {name.lower() for name in re.findall(r"ALTER TABLE\s+([a-z_]+)\s+FORCE ROW LEVEL SECURITY", sql, re.IGNORECASE)}
+
+
+def _tenant_isolation_policied_tables(sql: str) -> set[str]:
+    return {name.lower() for name in re.findall(r"CREATE POLICY\s+([a-z_]+)_tenant_isolation", sql, re.IGNORECASE)}
+
+
+def _schema_authority_sql() -> str:
+    """Every DDL source a configured (migration-owned) deployment actually runs."""
+    sources = [POSTGRES_DIR / "init.sql", POSTGRES_DIR / "runtime-schema.sql"]
+    sources.extend(sorted((POSTGRES_DIR / "alembic" / "versions").glob("*.py")))
+    return "\n".join(_read_sql_source(path) for path in sources)
+
+
+def test_every_tenant_columned_relation_forces_row_level_security() -> None:
+    """No tenant-scoped table may ship without a DB-level isolation backstop.
+
+    ``teams`` was the one gap: it is the FK root that every tenant table
+    references ``ON DELETE CASCADE``, it carries ``team_id``, and
+    ``agent_bom_app`` holds ``DELETE,INSERT,SELECT,UPDATE`` on it — so an
+    ordinary app-role session bound to one tenant could enumerate every tenant
+    and ``DELETE FROM teams WHERE team_id = '<other>'``, cascading that
+    tenant's entire dataset away. The API layer 403s both paths, so this is
+    defense-in-depth, but ``tenant_lifecycle.delete_tenant_records`` runs that
+    exact DELETE with those exact credentials: one tenant-binding bug would
+    otherwise become total destruction of another tenant with no DB backstop.
+
+    This guard is deliberately derived, not a list, so the class cannot recur
+    when a new tenant-scoped table lands.
+    """
+    authority_sql = _schema_authority_sql()
+    baseline_tables = _columns_by_table(_read_sql_source(POSTGRES_DIR / "init.sql"))
+    tenant_tables = {table for table, columns in baseline_tables.items() if {"tenant_id", "team_id"} & columns}
+    assert tenant_tables, "no tenant-columned tables discovered — this guard would pass vacuously"
+
+    forced = _rls_forced_tables(authority_sql)
+    policied = _tenant_isolation_policied_tables(authority_sql)
+    assert sorted(tenant_tables - forced) == []
+    assert sorted(tenant_tables - policied) == []
+
+
+def test_teams_isolation_policy_is_keyed_on_team_id() -> None:
+    """The FK root's policy must compare ``team_id``, not a ``tenant_id`` column."""
+    sql = _read_sql_source(POSTGRES_DIR / "init.sql")
+    policy = sql.split("CREATE POLICY teams_tenant_isolation", 1)[1].split(";", 1)[0]
+    assert "team_id = public.abom_current_tenant()" in policy
+    assert policy.count("public.abom_rls_bypass()") == 2, policy
+
+
 def test_migration_schema_uses_the_runtime_rls_contract_and_exact_dml_columns() -> None:
     sql = (ROOT / "deploy" / "supabase" / "postgres" / "runtime-schema.sql").read_text()
 

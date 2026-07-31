@@ -111,6 +111,11 @@ def finding_taggable_controls(tag_field: str, control_ids: Iterable[str]) -> set
     return {control_id for control_id in control_ids if control_id not in excluded}
 
 
+# Forward clock drift between a scanner host and the control plane that is
+# ordinary NTP skew rather than an untrustworthy timestamp.
+_MAX_FORWARD_CLOCK_SKEW = timedelta(minutes=5)
+
+
 def _parse_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -139,9 +144,17 @@ def detective_control_status(
       ``("pass", "fresh_scan_evidence")``. The scan IS the control operating.
     * A completed scan older than the window —
       ``("fail", "stale_scan_evidence")``. Continuous monitoring has lapsed.
-    * A completed scan with no usable timestamp —
-      ``("pass", "scan_evidence_age_unknown")``. The scan demonstrably ran; its
-      age is reported as unknown rather than silently assumed fresh or stale.
+    * A completed scan with no usable timestamp (missing, empty, or
+      unparseable) — ``("not_assessed", "scan_evidence_age_unknown")``. The
+      whole claim a detective pass makes is that monitoring is CURRENT, and that
+      rests entirely on the timestamp. Evidence we cannot date is not evidence
+      that the control operates now, so it is not asserted in either direction.
+      This previously returned ``pass``, which meant a DONE job with
+      ``completed_at=None`` produced a fully green scorecard.
+    * A completed scan dated in the FUTURE beyond ordinary clock skew —
+      ``("fail", "future_scan_evidence")``. ``reference - completed`` is
+      negative for a future timestamp and so can never exceed the window: a scan
+      dated +10 years read as fresh on every subsequent request, permanently.
     """
     from agent_bom import config
 
@@ -154,11 +167,16 @@ def detective_control_status(
 
     completed = _parse_timestamp(latest_scan)
     if completed is None:
-        return "pass", "scan_evidence_age_unknown"
+        return "not_assessed", "scan_evidence_age_unknown"
 
     reference = now or datetime.now(timezone.utc)
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=timezone.utc)
-    if reference - completed > timedelta(days=window_days):
+    age = reference - completed
+    if age > timedelta(days=window_days):
         return "fail", "stale_scan_evidence"
+    # Tolerate ordinary NTP drift between a scanner and the control plane; a
+    # timestamp further ahead than that is not a datable scan.
+    if -age > _MAX_FORWARD_CLOCK_SKEW:
+        return "fail", "future_scan_evidence"
     return "pass", "fresh_scan_evidence"

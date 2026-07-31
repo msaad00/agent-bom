@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-07-30",
+  "generated_on": "2026-07-31",
   "version": "0.98.2",
   "metrics": [
     {
@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 1072,
+      "value": 1075,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 816,
+      "value": 817,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

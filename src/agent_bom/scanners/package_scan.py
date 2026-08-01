@@ -562,16 +562,30 @@ def _is_version_affected(
         # here). Compare version-normalized so "2.2.0" matches an enumerated
         # "2.2" — a raw string ``in`` check drops trailing-zero equivalents.
         versions_list = affected.get("versions", [])
-        if versions_list:
-            if _version_matches_list(package_version, versions_list, ecosystem):
-                return True
-            # If explicit list exists and our version isn't in it, not affected
-            continue
+        if versions_list and _version_matches_list(package_version, versions_list, ecosystem):
+            return True
 
-        # If no ranges AND no versions, assume affected (incomplete advisory data)
         ranges = affected.get("ranges", [])
         if not ranges:
+            # No ranges. With an explicit list, that list is the block's whole
+            # version statement and this version is not in it. Without one the
+            # advisory carries no version scoping at all — stay conservative.
+            if versions_list:
+                continue
             return True
+
+        if versions_list:
+            # ``versions`` enumerates the releases that EXISTED when the
+            # advisory was imported; it is not a bound. Treating it as
+            # exhaustive dropped every advisory for a release published later
+            # than the import (typo3/cms-core 10.4.35 lost all 29 of them) and
+            # for any release the importer spelled differently (``v10.4.9``).
+            # Fall through to the ranges — but only the ecosystem-typed ones: a
+            # GIT tag walk cannot place an ecosystem version string, and its
+            # ``introduced: 0`` would match everything.
+            ranges = [rng for rng in ranges if (rng.get("type") or "ECOSYSTEM") in ("SEMVER", "ECOSYSTEM")]
+            if not ranges:
+                continue
 
         # Check ranges
         for rng in ranges:

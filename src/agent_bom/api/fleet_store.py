@@ -131,6 +131,33 @@ def match_discovered_fleet_agent(
     return legacy[0] if len(legacy) == 1 else None
 
 
+def _fleet_agent_identifiers(agent: Any) -> tuple[str, ...]:
+    """The names a relay caller may legitimately be known by, case-folded."""
+    return tuple(
+        (getattr(agent, field_name, "") or "").strip().lower() for field_name in ("name", "agent_id", "canonical_id")
+    )
+
+
+def find_fleet_agent(store: Any, tenant_id: str, identifier: str) -> Any | None:
+    """Resolve one relay caller to its fleet row without paging the roster.
+
+    Quarantine is enforced in the relay's hot path, so this must cost a bounded
+    indexed read rather than materializing every agent in the tenant. A store
+    that predates ``find_by_identifier`` keeps working through the roster scan.
+    """
+    finder = getattr(store, "find_by_identifier", None)
+    if finder is not None:
+        agent: Any | None = finder(tenant_id, identifier)
+        return agent
+    key = (identifier or "").strip().lower()
+    if not key:
+        return None
+    for candidate in store.list_by_tenant(tenant_id):
+        if key in _fleet_agent_identifiers(candidate):
+            return candidate
+    return None
+
+
 # ─── Protocol ────────────────────────────────────────────────────────────────
 
 
@@ -145,6 +172,7 @@ class FleetStore(Protocol):
     def list_all(self) -> list[FleetAgent]: ...
     def list_summary(self) -> list[dict[str, Any]]: ...
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]: ...
+    def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None: ...
     def query_by_tenant(
         self,
         tenant_id: str,
@@ -234,6 +262,18 @@ class InMemoryFleetStore:
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]:
         with self._lock:
             return [a for a in self._agents.values() if a.tenant_id == tenant_id]
+
+    def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None:
+        key = (identifier or "").strip().lower()
+        if not key:
+            return None
+        with self._lock:
+            for agent in self._agents.values():
+                if agent.tenant_id != tenant_id:
+                    continue
+                if key in _fleet_agent_identifiers(agent):
+                    return agent
+            return None
 
     def query_by_tenant(
         self,
@@ -344,6 +384,12 @@ class SQLiteFleetStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_device_fingerprint ON fleet_agents(device_fingerprint)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state_trust_name ON fleet_agents(lifecycle_state, trust_score DESC, name)")
+        # Case-insensitive single-agent resolution for the gateway relay. The
+        # match has always been case-insensitive; these keep it that way without
+        # reading the roster on every call.
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name_lower ON fleet_agents(lower(name))")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_agent_id_lower ON fleet_agents(lower(agent_id))")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id_lower ON fleet_agents(lower(canonical_id))")
         self._conn.commit()
 
     def _backfill_canonical_ids(self) -> None:
@@ -457,6 +503,21 @@ class SQLiteFleetStore:
             (tenant_id,),
         ).fetchall()
         return [FleetAgent.model_validate_json(r[0]) for r in rows]
+
+    def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None:
+        key = (identifier or "").strip().lower()
+        if not key:
+            return None
+        for column in ("name", "agent_id", "canonical_id"):
+            row = self._conn.execute(  # nosec B608 - column is from a fixed literal tuple
+                f"SELECT data FROM fleet_agents WHERE lower({column}) = ? "
+                "AND json_extract(data, '$.tenant_id') = ? LIMIT 1",
+                (key, tenant_id),
+            ).fetchone()
+            if row is not None:
+                agent: FleetAgent = FleetAgent.model_validate_json(row[0])
+                return agent
+        return None
 
     def query_by_tenant(
         self,

@@ -68,7 +68,7 @@ from agent_bom.firewall import (
 from agent_bom.firewall import evaluate as evaluate_firewall_policy
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
-from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
+from agent_bom.proxy import check_policy, extract_tool_name, is_tools_call, parse_jsonrpc, policy_subject_from_message
 from agent_bom.proxy_policy import (
     DecisionContext,
     GatewayDecision,
@@ -336,55 +336,74 @@ def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
     return False, ""
 
 
+def _message_tool_label(message: dict[str, Any]) -> str:
+    """Best-effort tool label for audit/event records.
+
+    ``params`` and ``params.name`` are caller-controlled and need not be the
+    declared types. An ill-typed call must still be labelled and recorded, not
+    dropped as an unhandled AttributeError with no audit trail.
+    """
+    params = message.get("params")
+    name = params.get("name") if isinstance(params, dict) else None
+    if isinstance(name, str) and name:
+        return name
+    method = message.get("method")
+    return method if isinstance(method, str) else ""
+
+
 def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
     """Return True when ``source_agent`` is quarantined in this tenant's fleet.
 
+    Resolves one agent through an indexed lookup rather than paging the roster:
+    this runs on every relay call, so its cost must not scale with fleet size.
     Fail-open: fleet-store errors are logged and never block the relay.
+
+    Blocking I/O — call it off the event loop.
     """
     if not source_agent:
         return False
     try:
-        from agent_bom.api.fleet_store import FleetLifecycleState
+        from agent_bom.api.fleet_store import FleetLifecycleState, find_fleet_agent
         from agent_bom.api.stores import _get_fleet_store
 
-        agents = _get_fleet_store().list_by_tenant(tenant_id)
+        agent = find_fleet_agent(_get_fleet_store(), tenant_id, source_agent)
     except Exception as exc:  # noqa: BLE001
         logger.warning("gateway fleet check failed: %s", _sanitize_for_log(exc))
         return False
-    key = source_agent.strip().lower()
-    for agent in agents:
-        identifiers = (
-            (getattr(agent, "name", "") or "").strip().lower(),
-            (getattr(agent, "agent_id", "") or "").strip().lower(),
-            (getattr(agent, "canonical_id", "") or "").strip().lower(),
-        )
-        if key in identifiers:
-            return getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED
-    return False
+    if agent is None:
+        return False
+    return bool(getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED)
 
 
-def _agent_identity_revoked(tenant_id: str, source_agent: str) -> tuple[bool, bool]:
-    """Return ``(revoked, lookup_unavailable)`` for a caller with no managed token.
+def _agent_identity_revoked(tenant_id: str, source_agent: str) -> tuple[bool, bool, bool]:
+    """Return ``(revoked, lookup_incomplete, lookup_failed)`` for a caller with
+    no managed token.
 
     ``identity_for_token`` only matches an agent-bom-issued ``abi_`` token, so a
     JWKS/OIDC JWT or an opaque ``policy.agent_tokens`` caller previously bypassed
-    identity revocation entirely. Fail-open on store errors — the caller decides
-    whether its posture warrants failing closed — so an identity-store outage can
-    never become a fleet-wide outage.
+    identity revocation entirely.
+
+    The two failure signals are deliberately distinct because they warrant
+    different verdicts:
+
+    * ``lookup_incomplete`` — the store answered, but with a result it knows is
+      partial. A revoked row may be sitting in the untraversed tail, so the
+      answer is unusable and the relay denies unconditionally.
+    * ``lookup_failed`` — the store did not answer at all. Fail-open, gated on
+      posture, so an identity-store outage never becomes a fleet-wide outage.
+
+    Blocking I/O — call it off the event loop.
     """
     if not source_agent or source_agent == ANONYMOUS:
-        return False, False
+        return False, False, False
     try:
         from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
 
-        # The store returns its own "lookup incomplete" signal when the roster
-        # exceeded the scan cap: absence of a matching identity is then unproven
-        # and must not be read as "authorized".
         revoked, lookup_incomplete = agent_identity_revoked(get_agent_identity_store(), tenant_id, source_agent)
-        return revoked, lookup_incomplete
+        return revoked, lookup_incomplete, False
     except Exception as exc:  # noqa: BLE001
         logger.warning("gateway agent identity revocation check failed: %s", _sanitize_for_log(exc))
-        return False, True
+        return False, False, True
 
 
 # Upper bound on open incidents fetched per drift enforcement check. When a
@@ -1709,7 +1728,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             fc_ctx = context_from_now(
                 tenant_id=tenant_id,
                 source_agent=ANONYMOUS,
-                tool_name=str((message.get("params") or {}).get("name") or message.get("method") or ""),
+                tool_name=_message_tool_label(message),
                 now=time.time(),
                 environment=_request_environment(request),
                 source_ip=_request_source_ip(request),
@@ -1827,10 +1846,17 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # It also has to precede the JIT-grant path, which can override a
         # per-tool deny: a revoked identity must never be JIT-grantable.
         if scoped_identity is None and identity_invalid_reason is None and source_agent != ANONYMOUS:
-            agent_revoked, revocation_lookup_unavailable = _agent_identity_revoked(tenant_id, source_agent)
+            agent_revoked, revocation_lookup_incomplete, revocation_lookup_failed = await asyncio.to_thread(
+                _agent_identity_revoked, tenant_id, source_agent
+            )
             if agent_revoked:
                 identity_invalid_reason = "agent identity revoked"
-            elif revocation_lookup_unavailable and (
+            elif revocation_lookup_incomplete:
+                # A knowingly partial answer is not a negative. Revocation is an
+                # emergency control, so this denies on every listener — the
+                # loopback anonymous-agent allowance does not govern it.
+                identity_invalid_reason = "agent identity revocation status unavailable"
+            elif revocation_lookup_failed and (
                 current_policy.get("require_agent_identity") or not _gateway_allows_anonymous_agents(settings)
             ):
                 identity_invalid_reason = "agent identity revocation status unavailable"
@@ -1855,7 +1881,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         blueprint_revision = 0
         profile_policy_ids: tuple[str, ...] = ()
         profile_identity_id = ""
-        event_tool = str((message.get("params") or {}).get("name") or message.get("method") or "")
+        event_tool = _message_tool_label(message)
 
         def _typed_runtime_event(
             event_type: GatewayRuntimeEventType,
@@ -2456,7 +2482,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # Fleet-state enforcement: a quarantined agent is isolated — every call
         # blocked/flagged regardless of tool — before the upstream is touched.
         # Off by default; fails open on a fleet-store error.
-        if settings.fleet_enforcement_mode in ("warn", "enforce") and _agent_is_quarantined(tenant_id, source_agent):
+        if settings.fleet_enforcement_mode in ("warn", "enforce") and await asyncio.to_thread(
+            _agent_is_quarantined, tenant_id, source_agent
+        ):
             if settings.fleet_enforcement_mode == "enforce":
                 record_gateway_relay(upstream.name, "blocked")
                 if settings.audit_sink is not None:
@@ -3226,7 +3254,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "upstream": upstream.name,
                 "tenant_id": tenant_id,
                 "method": message.get("method"),
-                "tool": message.get("params", {}).get("name") if _forward_is_tool_call else None,
+                "tool": extract_tool_name(message) if _forward_is_tool_call else None,
             }
             # Only an actual tools/call is an authorized tool invocation. JSON-RPC
             # handshake / discovery traffic (initialize, tools/list, notifications)
@@ -3239,7 +3267,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
                         decision="allow",
                         policy_source=resolved_policy_source,
-                        tool=str(message.get("params", {}).get("name") or ""),
+                        tool=extract_tool_name(message) or "",
                     )
                 )
             await settings.audit_sink(forward_audit_event)

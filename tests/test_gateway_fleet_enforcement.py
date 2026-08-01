@@ -476,3 +476,98 @@ def test_small_roster_reports_a_clean_negative():
 
     _seed_identities(_identity("agent-b", "active"))
     assert agent_identity_revoked(get_agent_identity_store(), "default", "agent-zzz") == (False, False)
+
+
+# ── Tenant scoping of the new indexed lookups ────────────────────────────────
+#
+# Both revocation and quarantine now resolve one agent through an index rather
+# than filtering a tenant-scoped list in Python. A new index and a new WHERE
+# clause are exactly where tenant scoping gets dropped, and two tenants naming
+# an agent the same way is ordinary — "assistant", "ci-bot", "claude-code".
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_revocation_does_not_leak_across_tenants_sharing_an_agent_id(store_kind, tmp_path):
+    """One tenant revoking its agent must not revoke another tenant's."""
+    from agent_bom.api.agent_identity_store import (
+        InMemoryAgentIdentityStore,
+        SQLiteAgentIdentityStore,
+        agent_identity_revoked,
+    )
+
+    store = InMemoryAgentIdentityStore() if store_kind == "memory" else SQLiteAgentIdentityStore(db_path=str(tmp_path / "identity.db"))
+    revoked = _identity("shared-agent", "revoked")
+    revoked.tenant_id = "tenant-a"
+    live = _identity("shared-agent", "active")
+    live.tenant_id = "tenant-b"
+    live.identity_id = "id-shared-agent-active-b"
+    live.token_hash = "hash-shared-agent-active-b"
+    store.put(revoked)
+    store.put(live)
+
+    assert agent_identity_revoked(store, "tenant-a", "shared-agent") == (True, False)
+    assert agent_identity_revoked(store, "tenant-b", "shared-agent") == (False, False)
+    # And neither tenant sees the other's row at all.
+    assert [i.tenant_id for i in store.list_by_agent("tenant-a", "shared-agent")] == ["tenant-a"]
+    assert [i.tenant_id for i in store.list_by_agent("tenant-b", "shared-agent")] == ["tenant-b"]
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_quarantine_does_not_leak_across_tenants_sharing_an_agent_name(store_kind, tmp_path):
+    """Quarantining one tenant's agent must not isolate another tenant's."""
+    from agent_bom.api.fleet_store import SQLiteFleetStore, find_fleet_agent
+
+    store = InMemoryFleetStore() if store_kind == "memory" else SQLiteFleetStore(db_path=str(tmp_path / "fleet.db"))
+    store.put(
+        FleetAgent(
+            agent_id="agent-a-1",
+            name="shared-name",
+            agent_type="custom",
+            tenant_id="tenant-a",
+            lifecycle_state=FleetLifecycleState.QUARANTINED,
+        )
+    )
+    store.put(
+        FleetAgent(
+            agent_id="agent-b-1",
+            name="shared-name",
+            agent_type="custom",
+            tenant_id="tenant-b",
+            lifecycle_state=FleetLifecycleState.APPROVED,
+        )
+    )
+
+    found_a = find_fleet_agent(store, "tenant-a", "shared-name")
+    found_b = find_fleet_agent(store, "tenant-b", "shared-name")
+
+    assert found_a is not None and found_a.tenant_id == "tenant-a"
+    assert found_a.lifecycle_state == FleetLifecycleState.QUARANTINED
+    assert found_b is not None and found_b.tenant_id == "tenant-b"
+    assert found_b.lifecycle_state == FleetLifecycleState.APPROVED
+    assert find_fleet_agent(store, "tenant-c", "shared-name") is None
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_quarantine_lookup_stays_case_insensitive(store_kind, tmp_path):
+    """The roster scan matched case-insensitively; the indexed lookup must too.
+
+    An exact-match index would have quietly turned a case mismatch into a
+    missed quarantine — a fail-open regression hidden inside a perf fix.
+    """
+    from agent_bom.api.fleet_store import SQLiteFleetStore, find_fleet_agent
+
+    store = InMemoryFleetStore() if store_kind == "memory" else SQLiteFleetStore(db_path=str(tmp_path / "fleet.db"))
+    store.put(
+        FleetAgent(
+            agent_id="Agent-Mixed-Case",
+            name="Agent-Mixed-Case",
+            agent_type="custom",
+            tenant_id="default",
+            lifecycle_state=FleetLifecycleState.QUARANTINED,
+        )
+    )
+
+    for identifier in ("agent-mixed-case", "AGENT-MIXED-CASE", "Agent-Mixed-Case", "  agent-mixed-case  "):
+        found = find_fleet_agent(store, "default", identifier)
+        assert found is not None, f"{identifier!r} did not resolve"
+        assert found.lifecycle_state == FleetLifecycleState.QUARANTINED

@@ -360,6 +360,45 @@ def _db_ecosystems_for_package(pkg: Package) -> list[str]:
     return [eco.lower() for eco in _resolve_osv_ecosystems(pkg, for_local_db=True)]
 
 
+def _flag_remote_lookup_gap(osv_targets: list[Package]) -> None:
+    """Flag packages that NOTHING could answer for: no local data, failed remote.
+
+    A remote lookup error already surfaces as a scan warning, but on its own it
+    does not say whether the answer was lost. When the local advisory DB also
+    holds nothing for the package's ecosystem, a zero-vulnerability result is
+    not a clean bill of health — nothing was consulted at all. Record it in the
+    structured channel so `check` and `scan` can fail closed deterministically
+    instead of reporting a confident ``clean``.
+    """
+    from agent_bom.scanners.state import peek_coverage_warnings
+
+    if not any(warning.get("kind") == "remote_lookup_error" for warning in peek_coverage_warnings()):
+        return
+    covered_ecos = _scanners_patchable("_db_covered_ecosystems")()
+    uncovered = [pkg for pkg in osv_targets if not any(eco in covered_ecos for eco in _db_ecosystems_for_package(pkg))]
+    if not uncovered:
+        return
+    gap_ecos = sorted({eco for pkg in uncovered for eco in _db_ecosystems_for_package(pkg)})
+    eco_clause = f" ({', '.join(gap_ecos)})" if gap_ecos else ""
+    _logger.warning(
+        "Remote lookup failed for %d package(s) the local DB has no advisories for%s; results are incomplete",
+        len(uncovered),
+        eco_clause,
+    )
+    _emit_scan_warning(
+        f"remote lookup failed for {len(uncovered)} package(s) in ecosystem(s)"
+        f"{eco_clause} the local vulnerability DB has no advisories for; results are incomplete"
+    )
+    record_coverage_warning(
+        {
+            "kind": "remote_lookup_gap",
+            "release": f"remote-gap:{','.join(gap_ecos)}",
+            "ecosystems": gap_ecos,
+            "package_count": len(uncovered),
+        }
+    )
+
+
 def _db_covered_ecosystems() -> set[str]:
     """Return the lowercased ecosystems the local vulnerability DB has advisories for.
 
@@ -1384,6 +1423,9 @@ async def scan_packages(
         results = await _scanners_patchable("query_osv_batch")(osv_targets)
     else:
         results = {}
+
+    if not scan_offline and osv_targets:
+        _flag_remote_lookup_gap(osv_targets)
 
     total_vulns = local_count
     for pkg in osv_targets:

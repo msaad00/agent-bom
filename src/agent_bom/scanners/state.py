@@ -90,6 +90,16 @@ def record_coverage_warning(warning: dict) -> None:
     warnings.append(warning)
 
 
+def peek_coverage_warnings() -> list[dict]:
+    """Read the structured coverage warnings without draining them.
+
+    The scanner needs to see what a sub-step recorded (e.g. an OSV lookup
+    failure) while leaving the channel intact for the command boundary that
+    actually consumes it.
+    """
+    return list(_coverage_warnings_state())
+
+
 def consume_coverage_warnings() -> list[dict]:
     warnings_state = _coverage_warnings_state()
     warnings = list(warnings_state)

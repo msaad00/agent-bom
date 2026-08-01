@@ -3,8 +3,12 @@
 Ensures accurate package version handling across ecosystems, including
 OS package managers where lexicographic or PEP 440 comparison is wrong:
 
-- npm / Cargo / NuGet: semver
+- npm / Cargo: semver
+- NuGet: NuGetVersion (semver plus a 4th Revision segment, case-insensitive
+  release labels)
 - PyPI: PEP 440
+- Packagist / Composer: PHP ``version_compare``
+- RubyGems: ``Gem::Version``
 - Go: v-prefixed semver and pseudo-versions
 - Maven: flexible dotted versions
 - Debian / Alpine / RPM: distro-native ordering
@@ -1142,18 +1146,47 @@ def _compare_with_local_suffix_strip(left: str, right: str, ecosystem: str) -> i
     return 0
 
 
+def _dropped_bound_message(bound: str, ecosystem: str) -> str:
+    return (
+        f"advisory version bound {bound!r} ({ecosystem}) could not be compared; the affected range was dropped, so results may under-report"
+    )
+
+
 @lru_cache(maxsize=4096)
-def _warn_unparseable_bound(bound: str, ecosystem: str) -> None:
-    """Log (once per distinct bound) that a range comparison was dropped."""
+def _log_unparseable_bound(bound: str, ecosystem: str) -> None:
+    """Log (once per distinct bound) that a range comparison was dropped.
+
+    Either side of the comparison can be at fault — the bound itself, or an
+    installed/candidate version the ecosystem's ordering cannot place (a git
+    SHA leaking out of a ``GIT`` range, say) — so the wording blames neither.
+    """
     _logger.warning(
-        "Advisory version bound %r (%s) is unparseable; failing closed — the bound "
+        "Advisory version bound %r (%s) could not be compared; failing closed — the bound "
         "cannot establish a match, so affected-range accuracy may be reduced",
         bound,
         ecosystem,
     )
 
 
-@lru_cache(maxsize=65536)
+def _warn_unparseable_bound(bound: str, ecosystem: str) -> None:
+    """Report a dropped advisory bound to the log AND to ``scan_warnings``.
+
+    Failing closed on a bound we cannot compare is the right policy; dropping
+    the EVIDENCE of it is not. A log line reaches nobody downstream — the JSON
+    and SARIF payloads, the console summary and the exit code all saw a result
+    indistinguishable from a genuinely clean one.
+
+    The log side stays memoised so a corpus-wide sweep does not print the same
+    line thousands of times, but the scan-warning side must fire on EVERY scan:
+    ``record_scan_warning`` already dedupes within one scan's boundary, and a
+    second scan in the same process has its own boundary.
+    """
+    _log_unparseable_bound(bound, ecosystem)
+    from agent_bom.scanners.state import record_scan_warning
+
+    record_scan_warning(_dropped_bound_message(bound, ecosystem))
+
+
 def version_in_range(
     version: str,
     introduced: str | None,
@@ -1161,7 +1194,27 @@ def version_in_range(
     last_affected: str | None,
     ecosystem: str,
 ) -> bool:
-    """Return whether ``version`` is affected by the supplied advisory bounds."""
+    """Return whether ``version`` is affected by the supplied advisory bounds.
+
+    The decision itself is memoised; the reporting of any bound it had to drop
+    is not, so a cache hit can never swallow the warning.
+    """
+    affected, dropped = _resolve_version_range(version, introduced, fixed, last_affected, ecosystem)
+    for bound in dropped:
+        _warn_unparseable_bound(bound, ecosystem)
+    return affected
+
+
+@lru_cache(maxsize=65536)
+def _resolve_version_range(
+    version: str,
+    introduced: str | None,
+    fixed: str | None,
+    last_affected: str | None,
+    ecosystem: str,
+) -> tuple[bool, tuple[str, ...]]:
+    """Return ``(affected, dropped_bounds)`` for the supplied advisory bounds."""
+    dropped: list[str] = []
     intro = introduced or None
     fix = fixed or None
     last = last_affected or None
@@ -1170,7 +1223,7 @@ def version_in_range(
     # establish semver range membership — compare_version_order returns None
     # and falling through would mark every version as affected.
     if any(boundary and _looks_like_commit_sha(boundary) for boundary in (intro, fix, last)):
-        return False
+        return False, ()
 
     if ecosystem.lower() == "go":
         ver_ts = _go_pseudo_timestamp(version)
@@ -1190,11 +1243,11 @@ def version_in_range(
                 if cmp is None:
                     continue
                 if is_lower and cmp < 0:
-                    return False
+                    return False, ()
                 if not is_lower and boundary == fix and cmp >= 0:
-                    return False
+                    return False, ()
                 if not is_lower and boundary == last and cmp > 0:
-                    return False
+                    return False, ()
 
     # Fail CLOSED per bound: a comparison that cannot be performed is never
     # grounds for a match. An unparseable UPPER bound (fixed / last_affected)
@@ -1206,27 +1259,27 @@ def version_in_range(
     if intro:
         intro_cmp = compare_version_order(version, intro, ecosystem)
         if intro_cmp is not None and intro_cmp < 0:
-            return False
+            return False, tuple(dropped)
         if intro_cmp is None:
-            _warn_unparseable_bound(intro, ecosystem)
+            dropped.append(intro)
             intro_unperformed = True
     if fix:
         fix_cmp = compare_version_order(version, fix, ecosystem)
         if fix_cmp is None:
-            _warn_unparseable_bound(fix, ecosystem)
-            return False
+            dropped.append(fix)
+            return False, tuple(dropped)
         if fix_cmp >= 0:
-            return False
+            return False, tuple(dropped)
     if last:
         last_cmp = compare_version_order(version, last, ecosystem)
         if last_cmp is None:
-            _warn_unparseable_bound(last, ecosystem)
-            return False
+            dropped.append(last)
+            return False, tuple(dropped)
         if last_cmp > 0:
-            return False
+            return False, tuple(dropped)
     if intro_unperformed and not fix and not last:
-        return False
-    return True
+        return False, tuple(dropped)
+    return True, tuple(dropped)
 
 
 # ---------------------------------------------------------------------------

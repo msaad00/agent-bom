@@ -174,14 +174,18 @@ CREATE INDEX IF NOT EXISTS idx_cis_checks_team_check
 
 -- ── Tables: Fleet Agents ──────────────────────────────────────────────────────
 
+-- Keyed by (tenant_id, agent_id): agent IDs are derived from agent content with
+-- no tenant component, so a global key lets the first tenant to register a stock
+-- agent lock every other tenant out of its own.
 CREATE TABLE IF NOT EXISTS fleet_agents (
-    agent_id        TEXT PRIMARY KEY,
+    agent_id        TEXT NOT NULL,
     name            TEXT NOT NULL,
     lifecycle_state TEXT NOT NULL,
     trust_score     REAL DEFAULT 0.0,
-    tenant_id       TEXT DEFAULT 'default',
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
     updated_at      TEXT NOT NULL,
-    data            JSONB NOT NULL
+    data            JSONB NOT NULL,
+    PRIMARY KEY (tenant_id, agent_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name);

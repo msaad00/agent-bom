@@ -36,16 +36,22 @@ class PostgresFleetStore:
         with self._pool.connection() as conn:
             if not ensure_postgres_schema_version(conn, "fleet"):
                 return
+            # The key is (tenant_id, agent_id): agent IDs are derived from agent
+            # content with no tenant component, so a global key lets the first
+            # tenant to register a stock agent lock every other tenant out of
+            # its own — the ON CONFLICT below resolves through the unique index,
+            # which RLS does not filter.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS fleet_agents (
-                    agent_id TEXT PRIMARY KEY,
+                    agent_id TEXT NOT NULL,
                     canonical_id TEXT NOT NULL DEFAULT '',
                     name TEXT NOT NULL,
                     lifecycle_state TEXT NOT NULL,
                     trust_score REAL DEFAULT 0.0,
-                    tenant_id TEXT DEFAULT 'default',
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
                     updated_at TEXT NOT NULL,
-                    data JSONB NOT NULL
+                    data JSONB NOT NULL,
+                    PRIMARY KEY (tenant_id, agent_id)
                 )
             """)
             conn.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id TEXT NOT NULL DEFAULT ''")
@@ -74,12 +80,11 @@ class PostgresFleetStore:
             conn.execute(
                 """INSERT INTO fleet_agents (agent_id, canonical_id, name, lifecycle_state, trust_score, tenant_id, updated_at, data)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (agent_id) DO UPDATE SET
+                   ON CONFLICT (tenant_id, agent_id) DO UPDATE SET
                      canonical_id = EXCLUDED.canonical_id,
                      name = EXCLUDED.name,
                      lifecycle_state = EXCLUDED.lifecycle_state,
                      trust_score = EXCLUDED.trust_score,
-                     tenant_id = EXCLUDED.tenant_id,
                      updated_at = EXCLUDED.updated_at,
                      data = EXCLUDED.data""",
                 (
@@ -226,20 +231,27 @@ class PostgresFleetStore:
             return [{"tenant_id": r[0], "agent_count": r[1]} for r in rows]
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
+        # agent_id is unique only WITHIN a tenant, so every predicate on it must
+        # carry the tenant too. Leaning on RLS alone would let a maintenance
+        # connection — which may bypass RLS — quarantine every tenant's copy of
+        # a shared agent ID in one statement.
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
-                "UPDATE fleet_agents SET lifecycle_state = %s WHERE agent_id = %s",
+                "UPDATE fleet_agents SET lifecycle_state = %s WHERE agent_id = %s AND tenant_id = abom_current_tenant()",
                 (state.value, agent_id),
             )
             if cursor.rowcount > 0:
                 # Also update the JSON data
-                row = conn.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,)).fetchone()
+                row = conn.execute(
+                    "SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = abom_current_tenant()",
+                    (agent_id,),
+                ).fetchone()
                 if row:
                     raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
                     data = json.loads(raw)
                     data["lifecycle_state"] = state.value
                     conn.execute(
-                        "UPDATE fleet_agents SET data = %s WHERE agent_id = %s",
+                        "UPDATE fleet_agents SET data = %s WHERE agent_id = %s AND tenant_id = abom_current_tenant()",
                         (json.dumps(data), agent_id),
                     )
             conn.commit()

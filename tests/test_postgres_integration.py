@@ -772,7 +772,11 @@ _AUDITED_GLOBAL_TENANT_INDEXES = {
     ("credential_refs", "credential_refs_pkey"),
     ("exceptions", "exceptions_pkey"),
     ("findings", "findings_pkey"),
-    ("fleet_agents", "fleet_agents_pkey"),
+    # fleet_agents deliberately absent: its agent_id is derived from agent
+    # CONTENT with no tenant component (canonical_ids.canonical_agent_id), so a
+    # bare key let the first tenant to register a stock agent deny every other
+    # tenant its own. Re-keyed to (tenant_id, agent_id) by 20260801_01; adding
+    # it back here would re-admit the cross-tenant denial.
     ("gateway_policies", "gateway_policies_pkey"),
     ("job_queue", "job_queue_pkey"),
     ("managed_trial_invitations", "managed_trial_invitations_pkey"),

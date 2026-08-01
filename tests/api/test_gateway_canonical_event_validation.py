@@ -156,3 +156,73 @@ def test_legacy_non_canonical_alert_without_event_id_still_accepted() -> None:
     assert body["accepted_alert_count"] == 1, body
     # Legacy envelopes are explicitly a degraded, ring-only path.
     assert body["durable_accepted_count"] == 0, body
+
+
+# ── event_timestamp: the sibling required field ───────────────────────────────
+#
+# ``event_id`` was hardened above; ``event_timestamp`` kept returning ``None``,
+# which drops the event onto the legacy ring-only path and answers 200. The
+# caller is told its gateway decision was accepted while nothing was committed —
+# the exact silent downgrade the docstring rules out. A malformed value already
+# 422s, so absent/blank was the one shape that still slipped through.
+
+
+@pytest.mark.parametrize("event_type", CANONICAL_EVENT_TYPES)
+@pytest.mark.parametrize("missing", ["", "   ", None])
+def test_canonical_event_without_event_timestamp_is_rejected(event_type: str, missing: object) -> None:
+    client = TestClient(app)
+    tenant_id = "tenant-canonical-ts-reject"
+
+    response = _ingest(client, tenant_id, _event(event_type, event_timestamp=missing))
+
+    assert response.status_code == 422, response.text
+    feed = client.get("/v1/gateway/feed", headers=_headers(tenant_id, role="viewer"), params={"limit": 20})
+    assert feed.json()["events"] == [], feed.text
+
+
+def test_canonical_event_missing_event_timestamp_key_entirely_is_rejected() -> None:
+    client = TestClient(app)
+    alert = _event()
+    del alert["event_timestamp"]
+
+    response = _ingest(client, "tenant-canonical-ts-missing-key", alert)
+
+    assert response.status_code == 422, response.text
+
+
+def test_canonical_event_with_an_unrepresentable_numeric_timestamp_is_rejected() -> None:
+    """An epoch value no calendar can hold is not a timestamp either.
+
+    ``datetime.fromtimestamp`` raises, and that branch also answered 200 with
+    the event committed nowhere.
+    """
+    client = TestClient(app)
+
+    response = _ingest(client, "tenant-canonical-ts-overflow", _event(event_timestamp=10**30))
+
+    assert response.status_code == 422, response.text
+
+
+def test_a_numeric_event_timestamp_is_still_accepted() -> None:
+    """Epoch seconds remain a supported wire shape — do not over-reject."""
+    client = TestClient(app)
+    tenant_id = "tenant-canonical-ts-epoch"
+
+    response = _ingest(client, tenant_id, _event(event_timestamp=1_785_000_000))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["durable_accepted_count"] == 1, response.text
+
+
+def test_timestamp_fallback_field_still_satisfies_the_requirement() -> None:
+    """Callers that send ``timestamp`` instead of ``event_timestamp`` still work."""
+    client = TestClient(app)
+    tenant_id = "tenant-canonical-ts-fallback"
+    alert = _event()
+    del alert["event_timestamp"]
+    alert["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+    response = _ingest(client, tenant_id, alert)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["durable_accepted_count"] == 1, response.text

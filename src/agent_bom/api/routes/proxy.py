@@ -184,11 +184,13 @@ def _gateway_activity_record_from_alert(
     timestamp-free records remain an explicitly degraded ring-buffer event.
 
     Raises:
-        ValueError: when a canonical gateway event omits ``event_id``. That id
-            is the ledger's dedupe key, so without it the event can only reach
-            the process-local ring — and answering ``2xx`` would acknowledge a
-            gateway decision that was never committed. A canonical event is
-            durably stored or rejected; it is never silently downgraded.
+        ValueError: when a canonical gateway event omits ``event_id`` or
+            ``event_timestamp``. The id is the ledger's dedupe key and the
+            timestamp is the caller-observed time the ledger orders by; without
+            either the event can only reach the process-local ring — and
+            answering ``2xx`` would acknowledge a gateway decision that was
+            never committed. A canonical event is durably stored or rejected;
+            it is never silently downgraded.
     """
 
     event_type = str(alert.get("event_type") or "")
@@ -203,10 +205,10 @@ def _gateway_activity_record_from_alert(
     if isinstance(event_timestamp, int | float) and not isinstance(event_timestamp, bool):
         try:
             event_timestamp = datetime.fromtimestamp(float(event_timestamp), tz=timezone.utc).isoformat()
-        except (OverflowError, OSError, ValueError):
-            return None
+        except (OverflowError, OSError, ValueError) as exc:
+            raise ValueError("canonical gateway event requires a representable event_timestamp") from exc
     if not isinstance(event_timestamp, str) or not event_timestamp.strip():
-        return None
+        raise ValueError("canonical gateway event requires event_timestamp")
     expected_decision = "deny" if event_type in GATEWAY_BLOCKED_EVENT_TYPES else "allow"
     agent_id = str(
         alert.get("agent_id")

@@ -407,3 +407,34 @@ def test_window_summary_counts_canonical_events_without_materializing_payloads(s
     assert summary.data_filters == 1
     assert summary.retention_floor_ordinal == 1
     assert summary.latest_ordinal == 4
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_cursor_ordinal_beyond_the_storage_range_is_a_bad_cursor_not_an_outage(store_kind: str, tmp_path) -> None:
+    """A read client must not be able to make the ledger report itself down.
+
+    ``_decode_cursor`` bounded the ordinal below (>= 0) but not above, so a
+    hand-made cursor carrying 2**80 was accepted as valid and handed to the
+    storage layer. SQLite cannot bind an integer that large: the OverflowError
+    escaped the cursor-error path and the feed answered
+    503 "Gateway activity storage unavailable" — the control plane declaring
+    its own ledger unavailable on request, from any caller with read access.
+    """
+    store = (
+        InMemoryGatewayActivityStore(max_events_per_tenant=10)
+        if store_kind == "memory"
+        else SQLiteGatewayActivityStore(str(tmp_path / "activity.db"), max_events_per_tenant=10)
+    )
+    store.append_batch([_record("evt-1")])
+
+    for ordinal in (2**63, 2**80):
+        with pytest.raises(GatewayActivityCursorError):
+            store.list_activity("tenant-a", cursor=store.encode_cursor("tenant-a", ordinal))
+
+
+def test_the_largest_storable_cursor_ordinal_is_still_accepted() -> None:
+    """The bound must reject only what storage cannot hold."""
+    from agent_bom.api.gateway_activity_store import _decode_cursor, _encode_cursor
+
+    largest = 2**63 - 1
+    assert _decode_cursor(_encode_cursor("tenant-a", largest), "tenant-a") == largest

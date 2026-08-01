@@ -172,15 +172,31 @@ def is_tools_list_response(msg: dict, request_id: Optional[int | str] = None) ->
 
 
 def extract_tool_name(msg: dict) -> Optional[str]:
-    """Extract the tool name from a tools/call request."""
+    """Extract the tool name from a tools/call request.
+
+    A caller controls these types. A non-dict ``params`` or a non-string
+    ``name`` used to raise ``AttributeError`` out of the relay: a 500 with no
+    policy decision, no audit event, and no ledger record. Ill-typed is not
+    unnameable — it resolves to no name, and the caller is still governed.
+    """
     params = msg.get("params", {})
-    return params.get("name")
+    if not isinstance(params, dict):
+        return None
+    name = params.get("name")
+    return name if isinstance(name, str) else None
 
 
 def extract_tool_arguments(msg: dict) -> dict:
-    """Extract tool arguments from a tools/call request."""
+    """Extract tool arguments from a tools/call request.
+
+    Coerces a caller-supplied non-dict to an empty mapping for the same reason
+    as :func:`extract_tool_name`.
+    """
     params = msg.get("params", {})
-    return params.get("arguments", {})
+    if not isinstance(params, dict):
+        return {}
+    arguments = params.get("arguments", {})
+    return arguments if isinstance(arguments, dict) else {}
 
 
 def extract_declared_tools(msg: dict) -> list[str]:

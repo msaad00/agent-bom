@@ -510,6 +510,14 @@ def _encode_cursor(tenant_id: str, ordinal: int) -> str:
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
+# Largest ordinal any backing store can hold (SQLite's signed 64-bit INTEGER).
+# Without an upper bound a hand-made cursor carrying a bigger integer was
+# accepted as valid, then raised OverflowError deep in the storage layer — which
+# the feed reports as "storage unavailable". A read client must not be able to
+# make the control plane declare its own ledger down.
+_MAX_CURSOR_ORDINAL = 2**63 - 1
+
+
 def _decode_cursor(cursor: str, tenant_id: str) -> int:
     if not cursor or len(cursor) > 1000:
         raise GatewayActivityCursorError("Invalid gateway activity cursor")
@@ -523,7 +531,7 @@ def _decode_cursor(cursor: str, tenant_id: str) -> int:
     if payload.get("tenant_id") != tenant_id:
         raise GatewayActivityCursorError("Invalid gateway activity cursor")
     ordinal = payload.get("ordinal")
-    if isinstance(ordinal, bool) or not isinstance(ordinal, int) or ordinal < 0:
+    if isinstance(ordinal, bool) or not isinstance(ordinal, int) or ordinal < 0 or ordinal > _MAX_CURSOR_ORDINAL:
         raise GatewayActivityCursorError("Invalid gateway activity cursor")
     return ordinal
 

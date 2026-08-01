@@ -450,6 +450,21 @@ def _cve_ids_for_finding(finding: Finding) -> list[str]:
     return sorted({cid for cid in candidates if isinstance(cid, str) and cid.upper().startswith("CVE-")})
 
 
+def _kev_date_properties(finding: Finding) -> dict[str, str]:
+    """CISA KEV catalog dates for a finding, omitted entirely when absent.
+
+    ``kev_due_date`` is the BOD 22-01 remediation deadline and ``kev_date_added``
+    the catalog entry date; both are already carried by CSV/JSON/CycloneDX/SPDX,
+    so SARIF emitting only the boolean was a per-format enrichment drop.
+    """
+    props: dict[str, str] = {}
+    for key in ("kev_date_added", "kev_due_date"):
+        value = evidence(finding, key, "")
+        if isinstance(value, str) and value.strip():
+            props[key] = value.strip()
+    return props
+
+
 def _ensure_cve_sarif_rule(
     finding: Finding,
     *,
@@ -470,6 +485,10 @@ def _ensure_cve_sarif_rule(
         rule_props["epss-score"] = round(finding.epss_score, 5)
     if finding.is_kev:
         rule_props["kev"] = True
+        # BOD 22-01 binds federal agencies to a dated remediation deadline. A
+        # bare ``kev: true`` in the GitHub Code Scanning payload strips the only
+        # part of the KEV record that carries an obligation.
+        rule_props.update(_kev_date_properties(finding))
     if finding.cvss_vector:
         rule_props["cvss_vector"] = finding.cvss_vector
     rule_props["attack_vector"] = finding.attack_vector
@@ -579,6 +598,7 @@ def _cve_sarif_result(
         "exposure_chain": exposure_chain or None,
         "epss_score": finding.epss_score,
         "is_kev": finding.is_kev,
+        **({} if not finding.is_kev else _kev_date_properties(finding)),
         "cvss_vector": finding.cvss_vector,
         "attack_vector": finding.attack_vector,
         "attack_complexity": finding.attack_complexity,

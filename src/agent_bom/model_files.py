@@ -296,13 +296,161 @@ def scan_model_files(
     return results, warnings
 
 
-def model_file_findings(model_files: list[dict]) -> list["Finding"]:
-    """Convert content-confirmed malicious model flags to unified findings.
+# ── Model security flag → finding promotion ──────────────────────────────
+#
+# Every ``security_flags`` type the model scanners can attach to a model-file
+# entry MUST appear in exactly one of the two tables below. A flag that is in
+# neither reaches no user-visible surface — the defect class this file has
+# shipped three times (``--require-model-signatures`` silently a no-op, a
+# CRITICAL ``HASH_MISMATCH`` promoted to nothing). ``tests/test_model_files.py``
+# reads the emitters' source and fails when a new type is left unclassified.
+#
+# ``severity`` is always taken from the emitted flag; ``default_severity`` is
+# only the fallback used when a flag arrives without one.
 
-    Extension-only warnings such as ``PICKLE_DESERIALIZATION`` describe an
-    unsafe format, not a proven malicious payload, and intentionally remain
-    inventory metadata. Only ``MALICIOUS_PICKLE`` flags emitted by bounded
-    static opcode disassembly are promoted to fail-closed findings.
+_MALICIOUS_REMEDIATION = (
+    "Quarantine the artifact, verify its publisher and digest, and replace it with a trusted "
+    "safetensors or ONNX artifact. Do not deserialize the flagged file."
+)
+_INTEGRITY_REMEDIATION = (
+    "Re-fetch the artifact from its authoritative source, verify the publisher digest and signature, "
+    "and prefer signed safetensors/ONNX distributions before loading it."
+)
+
+MODEL_FLAG_PROMOTIONS: dict[str, dict] = {
+    "MALICIOUS_PICKLE": {
+        "detector": "pickletools-static-disassembly",
+        "finding_type": "MALICIOUS_MODEL",
+        "default_severity": "CRITICAL",
+        "title": "Malicious model payload",
+        "is_malicious": True,
+        "malicious_reason": "Content-confirmed executable pickle payload",
+        "cwe_ids": ["CWE-502"],
+        "risk_score": 10.0,
+        "remediation": _MALICIOUS_REMEDIATION,
+        "requires_signature_policy": False,
+    },
+    "SUSPICIOUS_PICKLE": {
+        "detector": "pickletools-static-disassembly",
+        "finding_type": "MALICIOUS_MODEL",
+        "default_severity": "HIGH",
+        "title": "Suspicious model payload",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-502"],
+        "risk_score": 7.0,
+        "remediation": _MALICIOUS_REMEDIATION,
+        "requires_signature_policy": False,
+    },
+    "HASH_MISMATCH": {
+        "detector": "sha256-digest-verification",
+        "finding_type": "MODEL_INTEGRITY",
+        "default_severity": "CRITICAL",
+        "title": "Model digest mismatch",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-345"],
+        "risk_score": 9.0,
+        "remediation": _INTEGRITY_REMEDIATION,
+        "requires_signature_policy": False,
+    },
+    "OVERSIZE_PICKLE_UNSCANNED": {
+        "detector": "pickletools-static-disassembly",
+        "finding_type": "MODEL_INTEGRITY",
+        "default_severity": "HIGH",
+        "title": "Model artifact not fully scanned",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-502"],
+        "risk_score": 6.5,
+        "remediation": (
+            "The artifact exceeds the pickle scan byte cap, so part of it is unverified — padding past the cap "
+            "is a known evasion. Raise AGENT_BOM_PICKLE_MAX_BYTES to scan it fully, or replace it with "
+            "safetensors/ONNX."
+        ),
+        "requires_signature_policy": False,
+    },
+    "PICKLE_SCAN_ERROR": {
+        "detector": "pickletools-static-disassembly",
+        "finding_type": "MODEL_INTEGRITY",
+        "default_severity": "LOW",
+        "title": "Model artifact could not be scanned",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-502"],
+        "risk_score": 3.0,
+        "remediation": (
+            "The static pickle scan could not complete, so this artifact carries NO malicious-payload verdict. "
+            "Treat it as unverified: re-fetch it from its authoritative source and re-scan."
+        ),
+        "requires_signature_policy": False,
+    },
+    "HASH_ERROR": {
+        "detector": "sha256-digest-verification",
+        "finding_type": "MODEL_INTEGRITY",
+        "default_severity": "MEDIUM",
+        "title": "Model digest could not be computed",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-345"],
+        "risk_score": 4.0,
+        "remediation": (
+            "The artifact could not be read for hashing, so its integrity is unverified. Check file permissions "
+            "and storage health, then re-run the scan."
+        ),
+        "requires_signature_policy": False,
+    },
+    "UNSIGNED": {
+        "detector": "sigstore-signature-presence",
+        "finding_type": "MODEL_INTEGRITY",
+        "default_severity": "MEDIUM",
+        "title": "Unsigned model artifact",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-347"],
+        "risk_score": 5.0,
+        "remediation": (
+            "No Sigstore/cosign signature was found next to the artifact. Publish and verify a signature, or "
+            "source the model from a signed distribution."
+        ),
+        # Absence of a signature is a policy violation only when the operator
+        # asked for signatures; otherwise it stays inventory metadata.
+        "requires_signature_policy": True,
+    },
+}
+
+INVENTORY_ONLY_MODEL_FLAGS: dict[str, str] = {
+    "PICKLE_DESERIALIZATION": (
+        "Describes the FORMAT of every .pkl file, not a property of this artifact. Promoting it would emit a "
+        "finding for every pickle in the estate regardless of content; the content verdict comes from "
+        "MALICIOUS_PICKLE / SUSPICIOUS_PICKLE instead."
+    ),
+    "JOBLIB_DESERIALIZATION": (
+        "Same format-shape warning as PICKLE_DESERIALIZATION, for joblib artifacts. Content verdicts come from "
+        "the opcode scan, not from the extension."
+    ),
+    "FILE_NOT_FOUND": (
+        "A scan-input error (the caller named a path that does not exist), not a property of a discovered "
+        "artifact. Surfaced to the caller as a scan warning; there is no asset to hang a finding on."
+    ),
+}
+
+
+def model_file_findings(
+    model_files: list[dict],
+    *,
+    require_model_signatures: bool = False,
+) -> list["Finding"]:
+    """Convert model artifact security flags to unified findings.
+
+    Promotion is driven by :data:`MODEL_FLAG_PROMOTIONS`; anything listed in
+    :data:`INVENTORY_ONLY_MODEL_FLAGS` stays inventory metadata with a
+    documented reason. Severity is read off the emitted flag so the scanner
+    that produced it remains the single source of truth.
+
+    ``require_model_signatures`` promotes signature-policy flags (``UNSIGNED``)
+    that are otherwise inventory-only, so ``--require-model-signatures``
+    actually gates a scan.
     """
     from agent_bom.compliance_hub import apply_hub_classification
     from agent_bom.finding import Asset, Finding, FindingSource, FindingType
@@ -316,10 +464,16 @@ def model_file_findings(model_files: list[dict]) -> list["Finding"]:
         path = sanitize_text(model_file.get("path", "") or "", max_len=1000)
         filename = sanitize_text(model_file.get("filename", "") or Path(path).name or "model artifact", max_len=255)
         for raw_flag in model_file.get("security_flags", []) or []:
-            if not isinstance(raw_flag, dict) or raw_flag.get("type") != "MALICIOUS_PICKLE":
+            if not isinstance(raw_flag, dict):
+                continue
+            flag_type = raw_flag.get("type")
+            spec = MODEL_FLAG_PROMOTIONS.get(flag_type) if isinstance(flag_type, str) else None
+            if spec is None:
+                continue
+            if spec["requires_signature_policy"] and not require_model_signatures:
                 continue
             description = sanitize_text(
-                raw_flag.get("description", "") or "Static pickle analysis found an executable payload.",
+                raw_flag.get("description", "") or f"Model artifact scan reported {flag_type}.",
                 max_len=2000,
             )
             dangerous_imports = [
@@ -334,7 +488,7 @@ def model_file_findings(model_files: list[dict]) -> list["Finding"]:
             ][:32]
             finding = apply_hub_classification(
                 Finding(
-                    finding_type=FindingType.MALICIOUS_MODEL,
+                    finding_type=FindingType(spec["finding_type"]),
                     source=FindingSource.MODEL_SCAN,
                     asset=Asset(
                         name=filename,
@@ -342,21 +496,18 @@ def model_file_findings(model_files: list[dict]) -> list["Finding"]:
                         identifier=path or filename,
                         location=path or None,
                     ),
-                    severity=str(raw_flag.get("severity") or "critical"),
-                    title=f"Malicious model payload: {filename}",
+                    severity=str(raw_flag.get("severity") or spec["default_severity"]),
+                    title=f"{spec['title']}: {filename}",
                     description=description,
-                    cwe_ids=["CWE-502"],
-                    is_malicious=True,
-                    malicious_reason="Content-confirmed executable pickle payload",
-                    remediation_guidance=(
-                        "Quarantine the artifact, verify its publisher and digest, and replace it with a trusted "
-                        "safetensors or ONNX artifact. Do not deserialize the flagged file."
-                    ),
+                    cwe_ids=list(spec["cwe_ids"]),
+                    is_malicious=spec["is_malicious"],
+                    malicious_reason=spec["malicious_reason"],
+                    remediation_guidance=spec["remediation"],
                     is_actionable=True,
-                    risk_score=10.0,
+                    risk_score=spec["risk_score"],
                     evidence={
-                        "detector": "pickletools-static-disassembly",
-                        "detection_type": "MALICIOUS_PICKLE",
+                        "detector": spec["detector"],
+                        "detection_type": flag_type,
                         "format": sanitize_text(model_file.get("format", "") or "", max_len=120),
                         "extension": sanitize_text(model_file.get("extension", "") or "", max_len=40),
                         "size_bytes": model_file.get("size_bytes") if isinstance(model_file.get("size_bytes"), int) else None,

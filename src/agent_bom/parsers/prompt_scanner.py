@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_bom.runtime.text_normalize import HOMOGLYPHS
 from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
@@ -37,35 +38,10 @@ logger = logging.getLogger(__name__)
 
 # Zero-width / invisible separators an attacker inserts between letters.
 _ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠⁡⁢⁣⁤﻿­͏᠎"), None)
-# Common Cyrillic/Greek homoglyphs → Latin (NFKC misses these script confusables).
-_HOMOGLYPHS = {
-    ord(src): dst
-    for src, dst in {
-        "а": "a",
-        "е": "e",
-        "о": "o",
-        "р": "p",
-        "с": "c",
-        "х": "x",
-        "у": "y",
-        "ѕ": "s",
-        "і": "i",
-        "ј": "j",
-        "ԁ": "d",
-        "ո": "n",
-        "һ": "h",
-        "ɡ": "g",
-        "ⅼ": "l",
-        "α": "a",
-        "ε": "e",
-        "ο": "o",
-        "ρ": "p",
-        "ι": "i",
-        "κ": "k",
-        "ν": "v",
-        "τ": "t",
-    }.items()
-}
+# Common Cyrillic/Greek homoglyphs → Latin (NFKC misses these script
+# confusables). Shared with the policy engine so detection and enforcement
+# cannot drift apart on what counts as a look-alike.
+_HOMOGLYPHS = HOMOGLYPHS
 # Leetspeak substitutions (applied to a separate projection to limit false positives).
 _LEET = str.maketrans({"4": "a", "3": "e", "1": "i", "0": "o", "5": "s", "7": "t", "@": "a", "$": "s"})
 _B64_RUN = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")

@@ -16,20 +16,17 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
 from agent_bom.graph.severity import severity_at_or_above
 from agent_bom.models import MCPServer, Severity
+from agent_bom.runtime.text_normalize import normalize_text as _normalize_text
 
 if TYPE_CHECKING:
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
 
 logger = logging.getLogger(__name__)
-
-# Zero-width and invisible Unicode characters commonly used for evasion
-_INVISIBLE_RE = re.compile(r"[\u200b\u200c\u200d\u200e\u200f\u2060\u2061\u2062\u2063\u2064\ufeff\u00ad\u034f\u115f\u1160\u17b4\u17b5]")
 
 
 @dataclass
@@ -82,15 +79,6 @@ class EnforcementReport:
                 for f in self.findings
             ],
         }
-
-
-def _normalize_text(text: str) -> str:
-    """Normalize text for pattern matching: strip invisible chars, normalize Unicode."""
-    # Strip zero-width and invisible characters
-    text = _INVISIBLE_RE.sub("", text)
-    # NFKD normalization: decomposes ligatures, converts fullwidth chars, etc.
-    text = unicodedata.normalize("NFKD", text)
-    return text
 
 
 def _extract_schema_descriptions(input_schema: dict | None) -> list[str]:

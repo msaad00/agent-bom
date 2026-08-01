@@ -16,6 +16,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from agent_bom.permissions import classify_tool
+from agent_bom.runtime.text_normalize import normalize_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,13 @@ def _matches_secret_path(path: str) -> bool:
 
 
 def _classify_tool_classes(tool_name: str, arguments: dict) -> set[str]:
-    classes = {classify_tool(tool_name)}
-    combined = f"{tool_name} " + " ".join(str(v) for _, v in _iter_argument_strings(arguments))
+    # Classification drives DENY rules only (deny_tool_classes, read_only), so
+    # folding the name can only ever widen a block. A tool renamed with a
+    # homoglyph, a zero-width space, or fullwidth letters classifies as the
+    # tool it is imitating.
+    normalized_name = normalize_identifier(tool_name)
+    classes = {classify_tool(tool_name), classify_tool(normalized_name)}
+    combined = f"{tool_name} {normalized_name} " + " ".join(str(v) for _, v in _iter_argument_strings(arguments))
     lowered = combined.lower()
     if any(keyword in lowered for keyword in _NETWORK_KEYWORDS) or _extract_argument_hosts(arguments):
         classes.add("network")
@@ -137,7 +143,7 @@ def _classify_tool_classes(tool_name: str, arguments: dict) -> set[str]:
     # ``deny_tool_classes: ["screen_capture"]`` when an MCP has no business
     # producing pixels in the pilot environment (see issue #1568).
     if any(
-        term in tool_name.lower()
+        term in normalized_name
         for term in ("screenshot", "screen_capture", "screencap", "capture_screen", "take_screenshot", "page_screenshot")
     ):
         classes.add("screen_capture")
@@ -248,8 +254,14 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
     the tool is allowed). Used by the gateway audit logger so every block
     is traceable to a specific rule even when the reason string only
     references a regex pattern (tool_name_pattern / arg_pattern).
+
+    Deny rules match the tool name in its normalized form as well as verbatim,
+    so a homoglyph / zero-width / fullwidth rename cannot walk past them. An
+    allowlist deliberately stays an exact match: normalizing there would turn a
+    look-alike into a key for the tool the operator allowed.
     """
     rules = policy.get("rules", [])
+    normalized_tool = normalize_identifier(tool_name)
     tool_classes = _classify_tool_classes(tool_name, arguments)
     argument_paths = _extract_argument_paths(arguments)
     argument_hosts = _extract_argument_hosts(arguments)
@@ -275,7 +287,9 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
         rule_id = str(rule.get("id", "?"))
 
         blocked = rule.get("block_tools", [])
-        if blocked and ("*" in blocked or tool_name in blocked):
+        if blocked and (
+            "*" in blocked or tool_name in blocked or normalized_tool in {normalize_identifier(str(entry)) for entry in blocked}
+        ):
             return False, f"Tool '{tool_name}' is blocked by rule '{rule_id}'", rule_id
 
         denied_classes = {str(item).lower() for item in rule.get("deny_tool_classes", [])}
@@ -312,7 +326,7 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
                 )
 
         rule_tool = rule.get("tool_name")
-        if rule_tool and rule_tool == tool_name:
+        if rule_tool and (rule_tool == tool_name or normalize_identifier(str(rule_tool)) == normalized_tool):
             return False, f"Tool '{tool_name}' blocked by rule '{rule_id}'", rule_id
 
         pattern = rule.get("tool_name_pattern")
@@ -320,7 +334,7 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
             try:
                 if len(pattern) > 500:
                     logger.warning("Skipping oversized tool_name_pattern (%d chars)", len(pattern))
-                elif _safe_regex_match(pattern, tool_name):
+                elif _safe_regex_match(pattern, tool_name) or _safe_regex_match(pattern, normalized_tool):
                     return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'", rule_id
             except re.error:
                 pass

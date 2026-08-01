@@ -688,6 +688,227 @@ def _compare_maven_versions(left: str, right: str) -> int:
     return _maven_compare_items(_maven_parse(left), _maven_parse(right))
 
 
+# ---------------------------------------------------------------------------
+# Packagist / Composer version order
+#
+# Composer compares versions with PHP's ``version_compare`` — composer/semver's
+# ``Constraint::versionCompare`` calls it directly — documented at
+# https://www.php.net/manual/en/function.version-compare.php: ``_``, ``-`` and
+# ``+`` become ``.``, a ``.`` is inserted between a digit and a non-digit, and
+# the resulting parts are ordered
+#
+#   any string not found in this list < dev < alpha = a < beta = b < RC = rc
+#                                     < # < pl = p
+#
+# where ``#`` stands for "this side has no further part". api.osv.dev resolves
+# Packagist ranges the same way, so this is also the ordering behind the live
+# OSV answers the matcher is measured against.
+#
+# Routing Packagist through PEP 440 instead made ``packaging`` reject every
+# patch-suffixed release (``2.4.5-p1``); the pre-release-strip fallback then
+# removed the suffix from BOTH sides and declared them EQUAL, so an installed
+# version inside ``[2.4.5-p1, 2.4.5-p2)`` read as already patched and the
+# advisory was dropped.
+# ---------------------------------------------------------------------------
+
+_PHP_PART_ORDER = {
+    "dev": 0,
+    "alpha": 1,
+    "a": 1,
+    "beta": 2,
+    "b": 2,
+    "RC": 3,
+    "rc": 3,
+    "#": 4,
+    "pl": 5,
+    "p": 5,
+}
+# "any string not found in this list" sorts below every listed part.
+_PHP_UNLISTED_PART = -1
+
+
+def _php_canonicalize_version(version: str) -> str:
+    """Apply PHP's documented version canonicalization."""
+    if version[:1] in ("v", "V"):
+        version = version[1:]
+    version = re.sub(r"[-_+.]+", ".", version)
+    version = re.sub(r"([^\d.])(\d)", r"\1.\2", version)
+    return re.sub(r"(\d)([^\d.])", r"\1.\2", version)
+
+
+def _php_compare_parts(left: str, right: str) -> int:
+    left_rank = _PHP_PART_ORDER.get(left, _PHP_UNLISTED_PART)
+    right_rank = _PHP_PART_ORDER.get(right, _PHP_UNLISTED_PART)
+    return (left_rank > right_rank) - (left_rank < right_rank)
+
+
+def _php_compare_slices(left: list[str], right: list[str]) -> int:
+    for left_part, right_part in zip(left, right):
+        left_numeric = left_part.isdecimal()
+        right_numeric = right_part.isdecimal()
+        if left_numeric and right_numeric:
+            result = (int(left_part) > int(right_part)) - (int(left_part) < int(right_part))
+        elif not left_numeric and not right_numeric:
+            result = _php_compare_parts(left_part, right_part)
+        elif left_numeric:
+            # A numeric part on one side is compared as the "no further part"
+            # sentinel against the other side's qualifier.
+            result = _php_compare_parts("#", right_part)
+        else:
+            result = _php_compare_parts(left_part, "#")
+        if result:
+            return result
+
+    # One side ran out of parts: a trailing NUMERIC part outranks the sentinel
+    # (1.0.1 > 1.0), a trailing qualifier is ranked against it (1.0-rc < 1.0).
+    if len(left) > len(right):
+        tail = left[len(right) :]
+        return 1 if tail[0].isdecimal() else _php_compare_slices(tail, ["#"])
+    if len(left) < len(right):
+        tail = right[len(left) :]
+        return -1 if tail[0].isdecimal() else _php_compare_slices(["#"], tail)
+    return 0
+
+
+def _compare_php_versions(left: str, right: str) -> int:
+    """Compare two Packagist/Composer versions per PHP ``version_compare``."""
+    return _php_compare_slices(
+        _php_canonicalize_version(left).split("."),
+        _php_canonicalize_version(right).split("."),
+    )
+
+
+# ---------------------------------------------------------------------------
+# NuGet version order
+#
+# NuGet is SemVer 2.0 with the divergences its own reference lists
+# (https://learn.microsoft.com/nuget/concepts/package-versioning —
+# "Where NuGetVersion diverges from Semantic Versioning"):
+#   * a 4th ``Revision`` segment (``Major.Minor.Patch.Revision``);
+#   * only ``Major`` is required, missing segments are zero, so ``1``, ``1.0``,
+#     ``1.0.0`` and ``1.0.0.0`` are all equal;
+#   * pre-release labels compare CASE-INSENSITIVELY;
+#   * leading zeros are removed and build metadata is stripped.
+# ``NuGet.Versioning.VersionComparer`` compares Major/Minor/Patch/Revision
+# first and the release labels only on a tie, which is what this reproduces.
+#
+# A strict-SemVer comparator gets all four divergences wrong, so NuGet is
+# implemented here rather than routed at npm's SemVer branch.
+# ---------------------------------------------------------------------------
+
+_NUGET_VERSION_RE = re.compile(r"^(?P<numbers>\d+(?:\.\d+){0,3})(?:-(?P<pre>[0-9A-Za-z.\-]+))?(?:\+(?P<build>[0-9A-Za-z.\-]+))?$")
+
+
+def _parse_nuget_version(version: str) -> tuple[tuple[int, int, int, int], tuple[str, ...]] | None:
+    """Return ``((major, minor, patch, revision), release_labels)`` or ``None``."""
+    candidate = version.strip()
+    if candidate[:1] in ("v", "V"):
+        candidate = candidate[1:]
+    match = _NUGET_VERSION_RE.match(candidate)
+    if match is None:
+        return None
+    numbers = [int(part) for part in match.group("numbers").split(".")]
+    numbers.extend([0] * (4 - len(numbers)))
+    prerelease = match.group("pre")
+    labels = tuple(label.lower() for label in prerelease.split(".")) if prerelease else ()
+    return (numbers[0], numbers[1], numbers[2], numbers[3]), labels
+
+
+def _compare_nuget_label(left: str, right: str) -> int:
+    left_numeric = left.isdigit()
+    right_numeric = right.isdigit()
+    if left_numeric and right_numeric:
+        return (int(left) > int(right)) - (int(left) < int(right))
+    if left_numeric != right_numeric:
+        # Numeric identifiers always have lower precedence than alphanumeric.
+        return -1 if left_numeric else 1
+    return (left > right) - (left < right)
+
+
+def _compare_nuget_labels(left: tuple[str, ...], right: tuple[str, ...]) -> int:
+    if not left or not right:
+        if left == right:
+            return 0
+        # A release outranks any pre-release of the same numeric version.
+        return 1 if not left else -1
+    for left_label, right_label in zip(left, right):
+        result = _compare_nuget_label(left_label, right_label)
+        if result:
+            return result
+    return (len(left) > len(right)) - (len(left) < len(right))
+
+
+def _compare_nuget_versions(left: str, right: str) -> int | None:
+    left_parsed = _parse_nuget_version(left)
+    right_parsed = _parse_nuget_version(right)
+    if left_parsed is None or right_parsed is None:
+        return None
+    if left_parsed[0] != right_parsed[0]:
+        return 1 if left_parsed[0] > right_parsed[0] else -1
+    return _compare_nuget_labels(left_parsed[1], right_parsed[1])
+
+
+# ---------------------------------------------------------------------------
+# RubyGems version order (``Gem::Version``)
+#
+# Gem versions are "a series of digits or ASCII letters separated by dots".
+# ``Gem::Version`` rewrites ``-`` to ``.pre.``, splits the string into runs of
+# digits or letters, then drops trailing zero segments from the numeric run and
+# from the prerelease run independently (``canonical_segments``). Comparison
+# pads the shorter side with ``0`` and orders a STRING segment BELOW a numeric
+# one, so ``5.0.0.beta1 < 5.0.0``.
+#
+# PEP 440 rejects Gem's ``X.Y.Z.beta1.1`` form outright, which left every such
+# advisory bound uncomparable and — because ``version_in_range`` fails closed —
+# unreportable.
+# ---------------------------------------------------------------------------
+
+_GEM_VERSION_RE = re.compile(r"^\s*(?:[0-9]+(?:\.[0-9a-zA-Z]+)*(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)?\s*$")
+_GEM_SEGMENT_RE = re.compile(r"[0-9]+|[a-z]+", re.IGNORECASE)
+
+
+def _gem_canonical_segments(version: str) -> list[int | str] | None:
+    """Return ``Gem::Version#canonical_segments``, or ``None`` if Gem rejects it."""
+    if _GEM_VERSION_RE.match(version) is None:
+        return None
+    expanded = version.strip().replace("-", ".pre.")
+    segments: list[int | str] = [int(segment) if segment.isdigit() else segment for segment in _GEM_SEGMENT_RE.findall(expanded)]
+    # Everything from the first letter segment onwards is the prerelease run.
+    split_at = next((index for index, segment in enumerate(segments) if isinstance(segment, str)), len(segments))
+    canonical: list[int | str] = []
+    for group in (segments[:split_at], segments[split_at:]):
+        end = len(group)
+        while end and group[end - 1] == 0:
+            end -= 1
+        canonical.extend(group[:end])
+    return canonical
+
+
+def _compare_gem_versions(left: str, right: str) -> int | None:
+    left_segments = _gem_canonical_segments(left)
+    right_segments = _gem_canonical_segments(right)
+    if left_segments is None or right_segments is None:
+        return None
+    if left_segments == right_segments:
+        return 0
+    for index in range(max(len(left_segments), len(right_segments))):
+        left_segment: int | str = left_segments[index] if index < len(left_segments) else 0
+        right_segment: int | str = right_segments[index] if index < len(right_segments) else 0
+        if left_segment == right_segment:
+            continue
+        if isinstance(left_segment, str) and isinstance(right_segment, int):
+            return -1
+        if isinstance(left_segment, int) and isinstance(right_segment, str):
+            return 1
+        return 1 if left_segment > right_segment else -1  # type: ignore[operator]
+    return 0
+
+
+_PACKAGIST_ECOSYSTEMS = frozenset({"packagist", "composer", "php"})
+_NUGET_ECOSYSTEMS = frozenset({"nuget"})
+_RUBYGEMS_ECOSYSTEMS = frozenset({"rubygems", "gem", "gems"})
+
+
 @lru_cache(maxsize=65536)
 def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
     """Compare two versions using ecosystem-specific semantics.
@@ -720,6 +941,12 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
         return _compare_go_versions(left, right)
     if eco == "maven":
         return _compare_maven_versions(left, right)
+    if eco in _PACKAGIST_ECOSYSTEMS:
+        return _compare_php_versions(left, right)
+    if eco in _NUGET_ECOSYSTEMS:
+        return _compare_nuget_versions(left, right)
+    if eco in _RUBYGEMS_ECOSYSTEMS:
+        return _compare_gem_versions(left, right)
 
     # npm-style ecosystems use SemVer precedence, including arbitrary
     # prerelease identifiers (not only the common canary/beta/rc tags).  The

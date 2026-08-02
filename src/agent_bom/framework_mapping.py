@@ -335,6 +335,7 @@ _FINDING_TYPE_ADDITIONS: dict[FindingType, tuple[str, ...]] = {
     FindingType.INJECTION: _AI_FRAMEWORKS,
     FindingType.EXFILTRATION: _AI_FRAMEWORKS + (FRAMEWORK_SOC2,),
     FindingType.MALICIOUS_MODEL: _AI_FRAMEWORKS,
+    FindingType.MODEL_INTEGRITY: _AI_FRAMEWORKS,
     FindingType.CIS_FAIL: (FRAMEWORK_CIS,),
     FindingType.CIS_ERROR: (FRAMEWORK_CIS,),
     FindingType.CLOUD_BEST_PRACTICE_FAIL: (),

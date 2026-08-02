@@ -56,6 +56,7 @@ class FindingType(str, Enum):
     COMBINATION = "COMBINATION"  # Toxic combination — multiple signals chained into one exploitable path
     MALICIOUS_PACKAGE = "MALICIOUS_PACKAGE"  # Known-malicious / typosquat package with no CVE row
     MALICIOUS_MODEL = "MALICIOUS_MODEL"  # Content-confirmed executable payload in a model artifact
+    MODEL_INTEGRITY = "MODEL_INTEGRITY"  # Model artifact provenance/integrity gap (tampered, unsigned, unscanned)
     CIEM_OVER_PRIVILEGE = "CIEM_OVER_PRIVILEGE"  # Cloud identity granted permissions it never uses (right-sizing)
     SENSITIVE_DATA = "SENSITIVE_DATA"  # Content-confirmed sensitive data at rest (DSPM object/database sampling)
 

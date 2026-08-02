@@ -142,14 +142,19 @@ CREATE INDEX IF NOT EXISTS idx_ge_rel ON graph_edges(relationship);
 CREATE INDEX IF NOT EXISTS idx_ge_scan ON graph_edges(scan_id);
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id);
 -- Frontier lookup for every incremental walk (traverse_subgraph, bfs_paths,
--- impact_of): "the edges touching these node ids, in this snapshot". The
--- single-column idx_ge_source/idx_ge_target cannot serve it — they carry no
--- tenant/scan prefix, so the planner fell back to idx_ge_tenant_scan and read
--- EVERY edge of the snapshot on EVERY hop. A walk that materialises 21 nodes
--- was still linear in estate size. With both composite indexes SQLite picks a
--- MULTI-INDEX OR over the two: 7,127us -> 26us per hop on an 80,181-node
--- snapshot. Created here rather than in a migration block because _init_db
--- replays this script on every open, so existing stores pick them up too.
+-- impact_of): "which edges touch these node ids, in this snapshot?", asked
+-- once per visited node. The single-column idx_ge_source/idx_ge_target cannot
+-- serve it -- they carry no tenant/scan prefix, so the planner fell back to
+-- idx_ge_tenant_scan and read EVERY edge of the snapshot on EVERY hop, making
+-- the walk cost visited x snapshot_edges. These mirror the Postgres store's
+-- idx_pg_graph_edges_scan_source / _scan_target.
+--
+-- The indexes are necessary but NOT sufficient: SQLite will not drive them
+-- from a single (source_id IN ... OR target_id IN ...) disjunction, which is
+-- why the query is written as a UNION of two endpoint-anchored branches.
+-- Together: 7,127us -> 26us per hop on an 80,181-node snapshot. Created here
+-- rather than in a migration block because _init_db replays this script on
+-- every open, so existing stores pick them up too.
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id);
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_target ON graph_edges(tenant_id, scan_id, target_id);
 
@@ -334,6 +339,9 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
     conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to)")
+    # Backfill the per-hop traversal indexes onto stores created before them.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
     # Materialise the per-snapshot entity-type breakdown so inventory/summary
     # reads a cached count instead of a per-request GROUP BY over every node.
     # NULL marks pre-migration snapshots, which fall back to the live GROUP BY.
@@ -710,6 +718,7 @@ def save_graph_streaming(
     edge_count = 0
     severity_counts: dict[str, int] = defaultdict(int)
     type_counts: dict[str, int] = defaultdict(int)
+
     # ── Nodes ──
     def node_rows() -> Iterator[tuple[Any, ...]]:
         nonlocal node_count

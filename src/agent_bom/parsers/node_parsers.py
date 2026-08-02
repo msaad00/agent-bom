@@ -172,6 +172,117 @@ def _resolve_workspace_dependency(directory: Path, name: str, version_spec: obje
     return None
 
 
+_DEPENDENCY_SECTION_SCOPES: tuple[tuple[str, str], ...] = (
+    ("dependencies", "runtime"),
+    ("optionalDependencies", "optional"),
+    ("peerDependencies", "peer"),
+    ("devDependencies", "dev"),
+)
+
+
+def _npm_lock_entry_name(lock_path: str) -> str:
+    """Package name for a lockfile install path.
+
+    ``node_modules/b/node_modules/shared`` installs *shared*, not
+    ``b/shared`` — a blanket ``replace("node_modules/", "")`` mangled every
+    nested (version-conflicting) install into a name no advisory feed knows.
+    """
+    marker = "node_modules/"
+    idx = lock_path.rfind(marker)
+    if idx >= 0:
+        return lock_path[idx + len(marker) :]
+    return lock_path.lstrip("/")
+
+
+def _npm_resolve_install_path(entries: dict, from_path: str, dep_name: str) -> str | None:
+    """Resolve ``dep_name`` from ``from_path`` the way node does.
+
+    Node walks up the enclosing ``node_modules`` directories and takes the first
+    copy it finds, so a nested install shadows the hoisted one for its own
+    subtree. Reproducing that is what makes the introducing path correct rather
+    than merely plausible.
+    """
+    prefix = from_path
+    while True:
+        candidate = f"{prefix}/node_modules/{dep_name}" if prefix else f"node_modules/{dep_name}"
+        if candidate in entries:
+            return candidate
+        if not prefix:
+            return None
+        idx = prefix.rfind("/node_modules/")
+        prefix = prefix[:idx] if idx >= 0 else ""
+
+
+def _npm_entry_edges(info: dict) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for section, scope in _DEPENDENCY_SECTION_SCOPES:
+        declared = info.get(section)
+        if not isinstance(declared, dict):
+            continue
+        edges.extend((str(dep_name), scope) for dep_name in declared)
+    return edges
+
+
+def _npm_introducing_paths(entries: dict, root_edges: list[tuple[str, str]]) -> dict[str, tuple[int, str | None, str]]:
+    """Walk the lockfile's dependency edges from the root.
+
+    Returns ``{install_path: (depth, parent_name, scope)}``. Breadth-first, so
+    the first (shortest) path to a package wins — that is the one an engineer
+    would act on. Runtime edges are enumerated before dev edges at every node,
+    so a package reachable both ways is reported as runtime.
+    """
+    resolved: dict[str, tuple[int, str | None, str]] = {}
+    queue: list[tuple[str, int, str | None, str]] = []
+
+    for dep_name, scope in root_edges:
+        target = _npm_resolve_install_path(entries, "", dep_name)
+        if target is not None and target not in resolved:
+            resolved[target] = (0, None, scope)
+            queue.append((target, 0, None, scope))
+
+    head = 0
+    while head < len(queue):
+        path, depth, _parent, scope = queue[head]
+        head += 1
+        info = entries.get(path) or {}
+        if info.get("link") and isinstance(info.get("resolved"), str):
+            # Workspace symlink: the real dependency edges live at the target.
+            info = entries.get(info["resolved"]) or info
+        parent_name = _npm_lock_entry_name(path)
+        for dep_name, edge_scope in _npm_entry_edges(info):
+            target = _npm_resolve_install_path(entries, path, dep_name)
+            if target is None or target in resolved:
+                continue  # already reached by a shorter path, or not installed
+            child_scope = "dev" if scope == "dev" else edge_scope
+            resolved[target] = (depth + 1, parent_name, child_scope)
+            queue.append((target, depth + 1, parent_name, child_scope))
+    return resolved
+
+
+def _npm_v1_introducing_paths(entries: dict, root_names: list[tuple[str, str]]) -> dict[str, tuple[int, str | None, str]]:
+    """Same walk for a lockfileVersion 1 tree, whose edges live in ``requires``."""
+    resolved: dict[str, tuple[int, str | None, str]] = {}
+    queue: list[tuple[str, int, str | None, str]] = []
+    for name, scope in root_names:
+        if name in entries and name not in resolved:
+            resolved[name] = (0, None, scope)
+            queue.append((name, 0, None, scope))
+
+    head = 0
+    while head < len(queue):
+        name, depth, _parent, scope = queue[head]
+        head += 1
+        requires = (entries.get(name) or {}).get("requires")
+        if not isinstance(requires, dict):
+            continue
+        for dep_name in requires:
+            if dep_name not in entries or dep_name in resolved:
+                continue
+            resolved[dep_name] = (depth + 1, name, scope)
+            queue.append((dep_name, depth + 1, name, scope))
+    return resolved
+
+
 def parse_npm_packages(directory: Path) -> list[Package]:
     """Parse packages from package-lock.json or node_modules."""
     packages = []
@@ -181,33 +292,48 @@ def parse_npm_packages(directory: Path) -> list[Package]:
     if lock_file.exists():
         try:
             lock_data = read_json_limited(lock_file)
+            has_packages_map = isinstance(lock_data.get("packages"), dict)
             lock_packages = lock_data.get("packages", lock_data.get("dependencies", {}))
 
             # Get direct dependencies from package.json
             pkg_json = directory / "package.json"
             direct_deps = set()
+            manifest_edges: list[tuple[str, str]] = []
             if pkg_json.exists():
                 pkg_data = read_json_limited(pkg_json)
                 direct_deps = set(pkg_data.get("dependencies", {}).keys())
                 direct_deps.update(pkg_data.get("devDependencies", {}).keys())
+                manifest_edges = _npm_entry_edges(pkg_data)
+
+            # Reconstruct which dependency introduced each transitive package.
+            # Without it a lockfile finding reads "qs is vulnerable" and cannot
+            # say "because express depends on it" — the actionable half.
+            if has_packages_map:
+                root_edges = _npm_entry_edges(lock_packages.get("", {}) or {}) or manifest_edges
+                introduced_by = _npm_introducing_paths(lock_packages, root_edges)
+            else:
+                introduced_by = _npm_v1_introducing_paths(lock_packages, manifest_edges)
 
             for name, info in lock_packages.items():
                 if not isinstance(info, dict):
                     continue
-                # Clean package name (remove node_modules/ prefix)
-                clean_name = name.replace("node_modules/", "").lstrip("/")
+                clean_name = _npm_lock_entry_name(name)
                 if not clean_name:
                     continue
 
                 version = info.get("version", "unknown")
                 checksums = parse_sri(str(info.get("integrity") or ""))
+                depth, parent_package, scope = introduced_by.get(name, (0, None, "runtime"))
                 packages.append(
                     Package(
                         name=clean_name,
                         version=version,
                         ecosystem="npm",
                         purl=_npm_purl(clean_name, version),
-                        is_direct=clean_name in direct_deps,
+                        is_direct=(depth == 0 and name in introduced_by) or clean_name in direct_deps,
+                        parent_package=parent_package,
+                        dependency_depth=depth,
+                        dependency_scope=scope,
                         checksums=checksums,
                     )
                 )

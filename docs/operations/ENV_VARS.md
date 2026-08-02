@@ -182,6 +182,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH` | `bool` | `False` | — |
 | `AGENT_BOM_GRAPH_BACKEND` | `str` | `''` | SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL. Neptune is experimental and requires explicit opt-in plus endpoint config. SQLite and Postgres remain the supported graph backends. |
 | `AGENT_BOM_GRAPH_INVESTIGATION_NODE_BUDGET` | `int` | `25000` | Ceiling on nodes materialized for one investigation read. The relationship / static / dynamic filters load a whole snapshot into memory; at 200k nodes that measured ~783 MB and 8.3s per request, and the read path permits several concurrentl |
+| `AGENT_BOM_GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET` | `int` | `2000` | Subtree size up to which a roll-up drill-down is answered by walking the containment tree instead of loading the whole snapshot. A dispatch threshold, NOT a cap on the answer: a subtree larger than this falls back to the full load, so the r |
 | `AGENT_BOM_NEPTUNE_ENDPOINT` | `str` | `''` | — |
 | `AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE` | `str` | `'g'` | — |
 

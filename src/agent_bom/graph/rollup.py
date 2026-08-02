@@ -52,6 +52,15 @@ _ACCOUNT_RESOURCE_CONTAINMENT_RELS: frozenset[str] = frozenset(
 _ACCOUNT_RESOURCE_CONTAINMENT_SOURCES: frozenset[str] = frozenset({EntityType.ACCOUNT.value})
 _ACCOUNT_RESOURCE_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CLOUD_RESOURCE.value})
 
+# The relationships a caller must fetch to answer a roll-up. Derived from the
+# two sets above rather than restated, so a containment relationship added here
+# cannot leave the loader/traversal fetching a narrower set and silently
+# dropping children out of every drill-down.
+ROLLUP_CONTAINMENT_RELATIONSHIPS: frozenset[str] = _CONTAINMENT_RELS | _ACCOUNT_RESOURCE_CONTAINMENT_RELS
+ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES: frozenset[RelationshipType] = frozenset(
+    RelationshipType(value) for value in ROLLUP_CONTAINMENT_RELATIONSHIPS
+)
+
 # Container entity types form the readable top-level scaffold of the estate.
 # A node of one of these types is a candidate roll-up container; everything else
 # is a leaf that aggregates into its nearest container ancestor.
@@ -672,6 +681,8 @@ def _filters_dict(filters: Optional[RollupFilters]) -> dict[str, Any]:
 
 # Re-exported for callers that want the OCSF display name of a rolled-up bucket.
 __all__ = [
+    "ROLLUP_CONTAINMENT_RELATIONSHIPS",
+    "ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES",
     "RollupAggregate",
     "RollupContainer",
     "RollupFilters",

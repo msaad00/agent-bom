@@ -104,7 +104,7 @@ attack paths, compliance tags, and runtime audit chain.
 
 ## Not shipped / honest boundaries
 
-- No managed multi-tenant SaaS (`agent-bom Cloud` is roadmap-only).
+- No managed multi-tenant SaaS.
 - No 1,000+ verified MCP app connectors — govern **your** upstream MCP servers via proxy/gateway.
 - No Cedar policy engine — YAML/conditional rules + firewall plugins (see `docs/archive/ROADMAP_QUICK_WINS.md`).
 - No turnkey CrowdStrike/SIEM tiles — OCSF/OTLP export hooks; operator wires SIEM.

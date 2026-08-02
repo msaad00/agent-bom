@@ -1,0 +1,180 @@
+name: Demo deploy (Cloud Run)
+
+# Publishes the public anonymous demo to Cloud Run.
+#
+# Why Cloud Run rather than a VM: the demo is a stateless container. It seeds
+# its estate in-process from `agent_bom.demo_estate` (~250 KB of Python), bakes
+# no advisory database, and keeps nothing worth preserving between boots -- the
+# curated scan job is TTL-wiped and reseeded by the API's own cleanup loop. A
+# always-on VM therefore bills 24/7 to serve traffic that arrives in bursts.
+# `--min-instances=0` scales to zero, so an idle demo costs nothing.
+#
+# The tradeoff, stated plainly: the first visitor after an idle period pays a
+# cold start (image pull, boot, demo seed). If that becomes unacceptable, set
+# vars.DEMO_MIN_INSTANCES=1 -- it is wired below and costs roughly a always-on
+# small instance.
+#
+# Auth is Workload Identity Federation via OIDC. No service-account key is
+# stored in this repository.
+#
+# The workflow stays inert until the owner configures the `demo` environment,
+# so a fork or an unconfigured clone never attempts a deployment.
+
+on:
+  # Deploy only after the Release workflow succeeds. A direct release trigger
+  # can race the still-running release and would duplicate the deployment.
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "Image tag to deploy (defaults to the released version)"
+        type: string
+        required: false
+
+permissions: {} # all permissions denied by default; the job declares only what it needs
+
+concurrency:
+  # Never let two deploys race on the same Cloud Run service.
+  group: demo-deploy-cloudrun
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy hosted demo to Cloud Run
+    # Skip failed Release runs; keep protected manual dispatch eligible.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Protected environment: this repo is public, so gate every run behind a
+    # required-reviewer approval on the `demo` environment. The GCP trust policy
+    # is scoped to this environment's OIDC subject.
+    environment: demo
+    permissions:
+      id-token: write # OIDC token for Workload Identity Federation
+      contents: read
+    steps:
+      - name: Guard — require Cloud Run configuration
+        id: guard
+        env:
+          SERVICE: ${{ vars.DEMO_CLOUD_RUN_SERVICE }}
+          PROJECT: ${{ vars.DEMO_GCP_PROJECT }}
+          PROVIDER: ${{ secrets.DEMO_GCP_WIF_PROVIDER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SERVICE}" ] || [ -z "${PROJECT}" ] || [ -z "${PROVIDER}" ]; then
+            {
+              echo "### Demo deploy skipped"
+              echo ""
+              echo "The hosted-demo Cloud Run deploy is inert until the \`demo\` environment is configured."
+              echo ""
+              echo "Required:"
+              echo "- **vars.DEMO_GCP_PROJECT** — GCP project id hosting the demo"
+              echo "- **vars.DEMO_CLOUD_RUN_SERVICE** — Cloud Run service name (e.g. \`agent-bom-demo\`)"
+              echo "- **secrets.DEMO_GCP_WIF_PROVIDER** — Workload Identity provider resource name"
+              echo "- **secrets.DEMO_GCP_SERVICE_ACCOUNT** — service account the workflow impersonates"
+              echo ""
+              echo "Optional:"
+              echo "- **vars.DEMO_GCP_REGION** — defaults to \`us-central1\`"
+              echo "- **vars.DEMO_MIN_INSTANCES** — defaults to \`0\` (scale to zero; set \`1\` to remove cold starts)"
+              echo ""
+              echo "See docs/HOSTED_POC.md → Demo redeploy."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Cloud Run demo deploy is inert — see job summary for the vars/secrets to configure."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve image tag
+        id: image
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          REQUESTED: ${{ inputs.image_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUESTED}" ]; then
+            TAG="${REQUESTED}"
+          else
+            # workflow_run carries the Release run's head branch; for a tag push
+            # that is the tag itself. Fall back to `latest` so a manual run
+            # without an explicit ref still resolves to something published.
+            TAG="${{ github.event.workflow_run.head_branch }}"
+            TAG="${TAG:-latest}"
+          fi
+          # Container tags never carry a leading `v`; releases do.
+          TAG="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Deploying image tag: ${TAG}"
+
+      - name: Authenticate to Google Cloud (OIDC)
+        if: steps.guard.outputs.configured == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.DEMO_GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.DEMO_GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        if: steps.guard.outputs.configured == 'true'
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3
+        with:
+          service: ${{ vars.DEMO_CLOUD_RUN_SERVICE }}
+          project_id: ${{ vars.DEMO_GCP_PROJECT }}
+          region: ${{ vars.DEMO_GCP_REGION || 'us-central1' }}
+          image: ghcr.io/${{ github.repository_owner }}/agent-bom:${{ steps.image.outputs.tag }}
+          # The published image is the CLI: ENTRYPOINT is `agent-bom` and its
+          # default CMD is `--help`, which would exit immediately. Override the
+          # args to start the API, mirroring how docker-compose.platform.yml
+          # runs it, and listen on 8080 because that is the port Cloud Run
+          # routes to by default.
+          flags: >-
+            --allow-unauthenticated
+            --min-instances=${{ vars.DEMO_MIN_INSTANCES || '0' }}
+            --max-instances=4
+            --memory=1Gi
+            --cpu=1
+            --port=8080
+            --args=api,--host,0.0.0.0,--port,8080
+          env_vars: |-
+            AGENT_BOM_DEMO_ESTATE=1
+            AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1
+            AGENT_BOM_NO_AUTH_ROLE=viewer
+
+      - name: Verify the deployed demo serves the expected version
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          EXPECTED: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A deploy that returns 200 but serves the previous revision is the
+          # failure mode this whole workflow exists to prevent, so assert the
+          # version rather than mere reachability. Cold start can exceed a
+          # single request timeout, so allow the service to wake first.
+          for attempt in 1 2 3 4 5 6; do
+            BODY="$(curl -fsS --max-time 30 "${URL}/health" || true)"
+            if [ -n "${BODY}" ]; then break; fi
+            echo "attempt ${attempt}: demo not answering yet, waiting for cold start"
+            sleep 10
+          done
+          if [ -z "${BODY}" ]; then
+            echo "::error::demo did not answer ${URL}/health after 6 attempts"
+            exit 1
+          fi
+          SERVED="$(printf '%s' "${BODY}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' || true)"
+          echo "served=${SERVED} expected=${EXPECTED}"
+          if [ "${SERVED}" != "${EXPECTED}" ]; then
+            echo "::error::demo serves ${SERVED}, expected ${EXPECTED}"
+            exit 1
+          fi
+          {
+            echo "### Demo deployed"
+            echo ""
+            echo "- URL: ${URL}"
+            echo "- Version: ${SERVED}"
+            echo "- Min instances: ${{ vars.DEMO_MIN_INSTANCES || '0' }} (0 = scales to zero, no idle cost)"
+          } >> "$GITHUB_STEP_SUMMARY"

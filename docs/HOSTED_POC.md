@@ -285,9 +285,50 @@ If any item fails, treat the POC as not ready for external users.
 
 ### Demo redeploy
 
-Redeploying by hand (SSH in, `git pull`, `docker compose up`, rerun preflight +
-smoke) is easy to forget after a release. The `.github/workflows/demo-redeploy.yml`
-workflow automates it without any stored SSH keys or long-lived AWS credentials:
+The public demo deploys to **Cloud Run** via
+`.github/workflows/demo-deploy-cloudrun.yml`.
+
+**Why not a VM.** The demo is a stateless container: it seeds its estate
+in-process from `agent_bom.demo_estate`, bakes no advisory database, and keeps
+nothing worth preserving between boots — the curated scan job is TTL-wiped and
+reseeded by the API's own cleanup loop. An always-on VM therefore bills around
+the clock to serve traffic that arrives in bursts. `--min-instances=0` scales to
+zero, so an idle demo costs nothing.
+
+**The tradeoff.** The first visitor after an idle period pays a cold start
+(image pull, boot, demo seed). If that becomes unacceptable, set
+`vars.DEMO_MIN_INSTANCES=1`; it is wired into the workflow and costs roughly one
+always-on small instance.
+
+**Configuration** (all on the protected `demo` environment; the workflow stays
+inert until these exist, so forks never attempt a deploy):
+
+| Setting | Purpose |
+| --- | --- |
+| `vars.DEMO_GCP_PROJECT` | GCP project id hosting the demo |
+| `vars.DEMO_CLOUD_RUN_SERVICE` | Cloud Run service name (e.g. `agent-bom-demo`) |
+| `secrets.DEMO_GCP_WIF_PROVIDER` | Workload Identity provider resource name |
+| `secrets.DEMO_GCP_SERVICE_ACCOUNT` | Service account the workflow impersonates |
+| `vars.DEMO_GCP_REGION` | Optional; defaults to `us-central1` |
+| `vars.DEMO_MIN_INSTANCES` | Optional; defaults to `0` (scale to zero) |
+
+Auth is Workload Identity Federation over OIDC — no service-account key is
+stored in this repository.
+
+The published image is the CLI (`ENTRYPOINT agent-bom`, default `CMD --help`),
+so the workflow overrides the args to `api --host 0.0.0.0 --port 8080`, matching
+how `docker-compose.platform.yml` starts it. 8080 is the port Cloud Run routes
+to by default.
+
+After deploying, the workflow asserts `/health` reports the expected version
+rather than merely returning 200 — a deploy that succeeds while still serving
+the previous revision is the exact failure this automation exists to prevent.
+
+#### Legacy: AWS VM redeploy (retired)
+
+The former `.github/workflows/demo-redeploy.yml` drove a single always-on EC2
+instance over SSM. It is superseded by the Cloud Run workflow above and is kept
+only for reference:
 
 - **Triggers:** successful completion of the `Release` workflow (`workflow_run`,
   so redeploy still fires when Release publishes with the default

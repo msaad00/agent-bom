@@ -1788,6 +1788,94 @@ def _freshness_bucket(row: Mapping[str, Any], *, now: datetime | None = None) ->
     return "older"
 
 
+def _normalize_facet_severity(raw: Any) -> str:
+    """Fold a stored severity string into the facet histogram's bands."""
+    value = str(raw or "unknown").strip().lower()
+    if value == "informational":
+        value = "info"
+    if value not in ("critical", "high", "medium", "low", "info", "unknown"):
+        value = "unknown"
+    return value
+
+
+# Scope keys that live in the finding payload (or are computed from it) and so
+# cannot be expressed as a predicate on the current-state table's materialised
+# columns. Their presence disables the severity aggregate below.
+_FACET_PAYLOAD_SCOPE_KEYS = ("provider", "account_ref", "environment", "domain", "finding_class", "q")
+
+# Bands whose filter value equals the persisted string exactly, so the store's
+# ``LOWER(severity) = %s`` predicate selects the same rows the Python walk keeps.
+# ``info`` is excluded because it also folds the persisted ``informational``
+# alias, and ``unknown`` because it also absorbs blank/unrecognised severities —
+# for those two the store predicate is narrower than the walk, so pushing them
+# down would silently drop rows.
+_FACET_LITERAL_SEVERITY_BANDS = frozenset({"critical", "high", "medium", "low"})
+
+
+def _facet_severity_histogram(
+    tenant_id: str,
+    *,
+    severity: str | None,
+    scan_id: str | None,
+    since: str | None,
+    scope: Mapping[str, str],
+    status: str,
+) -> dict[str, int] | None:
+    """Serve the self-excluding severity histogram from the store's aggregate.
+
+    Every other facet dimension is gated on ``severity_matches``, so a
+    ``?severity=`` request only needs severity-matching rows resident — except
+    this histogram, which by contract excludes its own filter and therefore
+    needs every band. Answering it with the store's indexed ``GROUP BY`` (the
+    same one the overview headline reconciles against) lets the caller push
+    ``severity`` into the store query and stop walking the non-matching
+    remainder in Python.
+
+    Returns ``None`` when the request is not expressible as that aggregate — no
+    active severity filter (the walk is already minimal), a payload-side scope
+    filter, a ``scan_id`` the aggregate does not carry, or a store without the
+    capability — in which case the caller keeps the unfiltered walk unchanged.
+    """
+    if severity is None or scan_id is not None:
+        return None
+    if severity.strip().lower() not in _FACET_LITERAL_SEVERITY_BANDS:
+        return None
+    if any(key in scope for key in _FACET_PAYLOAD_SCOPE_KEYS):
+        return None
+
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store, status_matches
+    from agent_bom.export.runner import iter_scan_spine_findings
+
+    breakdown = getattr(get_compliance_hub_store(), "current_severity_breakdown", None)
+    if not callable(breakdown):
+        return None
+    try:
+        raw = breakdown(tenant_id, since=since, status=status)
+    except TypeError:
+        # A store whose aggregate cannot honour the active predicates would
+        # silently answer a different question; keep the exact walk instead.
+        return None
+
+    counts = {key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")}
+    for band, value in dict(raw).items():
+        counts[_normalize_facet_severity(band)] += int(value)
+
+    # The aggregate covers the hub's current state only. The read path also
+    # unions the resident scan spine, so fold its (bounded, in-memory) rows in
+    # under the same predicates or the histogram would undercount a scan estate.
+    for row in iter_scan_spine_findings(
+        tenant_id,
+        severity=None,
+        since=since,
+        scan_id=scan_id,
+        scope=scope,
+        status="all",
+    ):
+        if status_matches(row, status):
+            counts[_normalize_facet_severity(row.get("severity"))] += 1
+    return counts
+
+
 def _finding_facets(
     tenant_id: str,
     *,
@@ -1851,9 +1939,23 @@ def _finding_facets_bounded(
     truncated = False
     reason = ""
     deadline: float | None = None
+
+    # The severity histogram is the only dimension that excludes its own filter;
+    # when the store can answer it directly, ``severity`` becomes a store-side
+    # predicate and the walk stops paying for non-matching rows (#4588 follow-up).
+    pushed_severity_counts = _facet_severity_histogram(
+        tenant_id,
+        severity=severity,
+        scan_id=scan_id,
+        since=since,
+        scope=full_scope,
+        status=status,
+    )
+    walk_severity = severity if pushed_severity_counts is not None else None
+
     for row in iter_current_findings(
         tenant_id,
-        severity=None,
+        severity=walk_severity,
         since=since,
         scan_id=scan_id,
         scope=base_scope,
@@ -1874,18 +1976,18 @@ def _finding_facets_bounded(
             break
         scanned_rows += 1
         finding_class = finding_class_for_row(row)
-        row_severity = str(row.get("severity") or "unknown").strip().lower()
-        if row_severity == "informational":
-            row_severity = "info"
-        if row_severity not in severity_counts:
-            row_severity = "unknown"
+        row_severity = _normalize_facet_severity(row.get("severity"))
+        # Re-checked in Python even when the predicate was pushed down, so a
+        # store that ignores the kwarg degrades to slow, never to wrong.
         severity_matches = severity is None or row_severity == severity.lower()
         status_matches_active = status_matches(row, status)
         full_scope_matches = _row_matches_scope(row, full_scope)
 
         if severity_matches and status_matches_active and _row_matches_scope(row, class_scope):
             class_counts[finding_class] += 1
-        if status_matches_active and full_scope_matches:
+        if pushed_severity_counts is None and status_matches_active and full_scope_matches:
+            # Only meaningful on the unfiltered walk: once ``severity`` is a
+            # store-side predicate this stream no longer carries the other bands.
             severity_counts[row_severity] += 1
         if severity_matches and full_scope_matches:
             row_status = "resolved" if str(row.get("status") or "").strip().lower() == "resolved" else "open"
@@ -1901,7 +2003,7 @@ def _finding_facets_bounded(
     return (
         {
             "finding_class": class_counts,
-            "severity": severity_counts,
+            "severity": pushed_severity_counts if pushed_severity_counts is not None else severity_counts,
             "status": status_counts,
             "domain": domain_counts,
             "freshness": freshness_counts,

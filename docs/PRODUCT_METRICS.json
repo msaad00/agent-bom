@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 1084,
+      "value": 1086,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },

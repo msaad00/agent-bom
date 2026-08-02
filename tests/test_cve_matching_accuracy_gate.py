@@ -151,13 +151,45 @@ def test_a_git_range_alone_does_not_disqualify_an_advisory() -> None:
     assert out.true_positive == 2
 
 
+# Every advisory the corpus cannot label, named rather than counted, so a new
+# skip is visible as an identity and not just as a number moving. All of them
+# are PYSEC records whose GIT range from ``introduced: 0`` enumerates git tags
+# their own ECOSYSTEM range excludes.
+CONTAMINATED_ADVISORIES = frozenset(
+    {
+        "PYSEC-2012-7",
+        "PYSEC-2013-21",
+        "PYSEC-2014-10",
+        "PYSEC-2014-7",
+        "PYSEC-2015-11",
+        "PYSEC-2015-17",
+        "PYSEC-2023-11",
+        "PYSEC-2023-254",
+        "PYSEC-2023-62",
+        "PYSEC-2023-74",
+        "PYSEC-2024-225",
+    }
+)
+
+
 def test_the_corpus_skip_is_bounded_and_reported(entries: list[dict]) -> None:
     """Skipping must stay a rounding error and must be visible in the payload."""
     harness = _load_harness()
     result = harness.score(entries)
     payload = result.to_dict()
 
-    assert payload["skipped_unsound_oracle"] == 6, "the contaminated set changed — re-derive before trusting the score"
+    contaminated = {
+        entry["advisory"]["id"]
+        for entry in entries
+        for block in entry["advisory"].get("affected") or []
+        if harness._git_tag_contaminated(block)
+    }
+    assert contaminated == CONTAMINATED_ADVISORIES, "the contaminated set changed — re-derive before trusting the score"
+    assert payload["skipped_unsound_oracle"] == len(CONTAMINATED_ADVISORIES)
+    # A rounding error, not a hiding place: the unlabelled remainder must stay
+    # a small fraction of the corpus however much the corpus grows.
+    assert payload["skipped_unsound_oracle"] < payload["advisories"] * 0.1
+
     accounted = result.evaluated + payload["skipped_unsound_oracle"] + payload["skipped_no_ranges"] + payload["skipped_uncomparable"]
     assert accounted >= payload["advisories"]
     # Dropping the contaminated blocks must not cost the corpus its ability to

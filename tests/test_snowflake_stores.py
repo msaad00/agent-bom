@@ -565,7 +565,7 @@ class TestSnowflakeFleetStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.update_state("a1", FleetLifecycleState.APPROVED) is True
+        assert store.update_state("a1", FleetLifecycleState.APPROVED, tenant_id="tenant-alpha") is True
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_update_state_not_found(self, mock_connect):
@@ -575,7 +575,7 @@ class TestSnowflakeFleetStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.update_state("missing", FleetLifecycleState.APPROVED) is False
+        assert store.update_state("missing", FleetLifecycleState.APPROVED, tenant_id="tenant-alpha") is False
 
 
 # ─── SnowflakePolicyStore ────────────────────────────────────────────────────

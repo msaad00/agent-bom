@@ -35,6 +35,7 @@ from agent_bom.graph import (
     technique_mappings_from_json,
 )
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
+from agent_bom.graph.completeness import bounded_walk_reason, impact_completeness
 from agent_bom.graph.container import apply_node_budget
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
@@ -271,7 +272,18 @@ class GraphStoreProtocol(Protocol):
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str]]: ...
+    ) -> tuple[list[list[str]], set[str], bool, bool]:
+        """Paths and reachable set from ``source``, plus how the walk was bounded.
+
+        The last two elements are part of the answer, not diagnostics. Without
+        them a caller cannot tell "these are all the reachable nodes" from
+        "these are the first ``max_nodes`` we got to" (third element,
+        budget-bounded) or "these are the ones within ``max_depth``" (fourth,
+        depth-bounded, and only ever true when the frontier still had unwalked
+        neighbours). Either way the surface downstream must not report the
+        bound as the total.
+        """
+        ...
 
     def impact_of(
         self,
@@ -338,6 +350,108 @@ class GraphStoreProtocol(Protocol):
     def list_presets(self, *, tenant_id: str) -> list[dict[str, Any]]: ...
 
     def delete_preset(self, *, tenant_id: str, name: str) -> bool: ...
+
+
+def containment_drilldown_graph(
+    store: GraphStoreProtocol,
+    *,
+    node_id: str,
+    tenant_id: str = "",
+    scan_id: str = "",
+    node_budget: int | None = None,
+) -> UnifiedGraph:
+    """Fetch only the containment subtree a roll-up drill-down reads.
+
+    ``drill_down`` answers one container's direct children, but its aggregates
+    (descendant counts, severity histogram, exposure flags) cover each child's
+    whole subtree. The subtree under ``node_id`` is therefore the exact part of
+    the estate the answer depends on — and the only part worth fetching.
+
+    Loading the full snapshot instead made a twenty-row answer cost time linear
+    in estate size. Measured on SQLite, drilling into one application whose
+    answer is twenty children either way:
+
+        snapshot     full load        containment walk
+         5,065 nodes    55.1 ms          1.2 ms  (21 nodes read)
+        20,046 nodes   270.2 ms          1.4 ms  (21 nodes read)
+        40,091 nodes   580.5 ms          1.2 ms  (21 nodes read)
+        80,181 nodes 1,141.6 ms          1.2 ms  (21 nodes read)
+
+    The walk is ``traverse_subgraph``, the incremental primitive that already
+    made ``impact_of`` sublinear, rather than a new store method — every backend
+    that can traverse gets this without a protocol change.
+
+    **The budget is a dispatch threshold, not a cap on the answer.** A container
+    whose subtree does not fit falls back to the full load and returns exactly
+    what it would have returned before. Truncating instead would have been both
+    dishonest-looking and pointless: at the root of the tree the subtree *is* the
+    estate, so the walk is strictly more expensive than one bulk read, and every
+    ``descendant_count`` in the response would silently become a floor. The cost
+    of that choice is the wasted partial walk before a fallback — measured at
+    +44 ms on an 80,181-node root drill that already took 1,189 ms. The fast path
+    is for the drill targets below the top, which is where drill-down goes.
+
+    This is why ``traverse_subgraph`` reporting its own truncation matters here:
+    the flag is what selects the fallback. A walk that under-reported itself as
+    complete would ship bounded aggregates as if they were totals.
+
+    ``max_depth`` is set to the node budget deliberately: a walk of depth *d*
+    visits at least *d + 1* distinct nodes, so the node budget — which reports
+    itself as truncation — always binds first. ``max_depth`` cuts a walk
+    *without* setting that flag, so a depth-bound walk would return a short
+    subtree that looks complete, and the fallback would never fire.
+
+    A backend that cannot traverse incrementally (the experimental Neptune
+    adapter implements only part of the protocol) takes the same fallback, so
+    its answer is unchanged rather than a 501.
+    """
+    from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES, ROLLUP_CONTAINMENT_RELATIONSHIPS
+
+    def _full_load() -> UnifiedGraph:
+        return store.load_graph(
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            relationship_types=ROLLUP_CONTAINMENT_RELATIONSHIPS,
+        )
+
+    budget = node_budget if node_budget is not None else _drilldown_subtree_budget()
+    try:
+        graph, _depths, truncated = store.traverse_subgraph(
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            roots=[node_id],
+            direction="forward",
+            max_depth=budget,
+            max_nodes=budget,
+            # Every visited node also matches on the edge that reached it, so the
+            # edge budget must clear the node budget or it, not the node budget,
+            # becomes the binding limit.
+            max_edges=budget * 4,
+            relationship_types=set(ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES),
+            include_roots=True,
+        )
+    except _unsupported_traversal_errors():
+        return _full_load()
+    if truncated:
+        return _full_load()
+    return graph
+
+
+def _drilldown_subtree_budget() -> int:
+    from agent_bom.config import GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET
+
+    return GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET
+
+
+def _unsupported_traversal_errors() -> tuple[type[BaseException], ...]:
+    """Backends that implement only part of the protocol, resolved lazily.
+
+    Imported inside the call so selecting SQLite or Postgres never pulls the
+    optional Neptune adapter into the import graph.
+    """
+    from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
+
+    return (NeptuneGraphStoreUnsupportedOperationError,)
 
 
 class SQLiteGraphStore:
@@ -569,6 +683,88 @@ class SQLiteGraphStore:
             activity_id=edge.activity_id,
         )
 
+    def _frontier_edge_query(
+        self,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        frontier: set[str],
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+    ) -> tuple[str, list[Any]]:
+        """Build the per-hop "edges touching these nodes" query, and its parameters.
+
+        Written as a UNION of two endpoint-anchored branches rather than the
+        obvious ``source_id IN (...) OR target_id IN (...)`` disjunction. SQLite
+        cannot drive a single index from that disjunction: it settles on
+        ``idx_ge_tenant_scan`` and reads every edge in the snapshot, once per
+        node the walk visits, making traversal cost visited x snapshot_edges.
+        Split into two branches, each is an index seek against
+        ``idx_ge_tenant_scan_source`` / ``idx_ge_tenant_scan_target``, so a hop
+        costs its own degree.
+
+        Both halves are load-bearing: the disjunction ignores those indexes even
+        when they exist, and the UNION falls back to a full snapshot scan when
+        they do not. Neither relies on ``sqlite_stat1``, which a freshly written
+        customer database does not have.
+
+        ``ORDER BY rowid`` reproduces the row order the scan happened to yield
+        (index entries for one snapshot are ordered by rowid, i.e. insertion
+        order), so ``discovery_order``, ``parent_by_node`` and every path built
+        from them are unchanged — and are now pinned to insertion order outright
+        instead of inherited from whichever plan the query planner picked.
+        """
+        placeholders = ",".join("?" for _ in frontier)
+        # Sorted so the emitted SQL and parameters are deterministic across runs.
+        ordered_frontier = sorted(frontier)
+        shared: list[str] = []
+        shared_params: list[Any] = []
+        if traversable_only:
+            shared.append("traversable = 1")
+        if relationship_types:
+            rel_values = sorted(rel.value if isinstance(rel, RelationshipType) else str(rel) for rel in relationship_types)
+            shared.append(f"relationship IN ({','.join('?' for _ in rel_values)})")
+            shared_params.extend(rel_values)
+        if static_only:
+            shared.append(f"relationship NOT IN ({','.join('?' for _ in _DYNAMIC_RELATIONSHIP_VALUES)})")
+            shared_params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        if dynamic_only:
+            shared.append(f"relationship IN ({','.join('?' for _ in _DYNAMIC_RELATIONSHIP_VALUES)})")
+            shared_params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        shared_sql = ("".join(f" AND {clause}" for clause in shared)) if shared else ""
+
+        def branch(column: str) -> str:
+            # nosec B608 - every interpolated fragment is built in this function
+            # and none is caller-supplied: ``column`` is one of two string
+            # literals at the call sites below, and ``placeholders``/
+            # ``shared_sql`` contribute only ``?`` markers. Values travel in
+            # ``params``.
+            return f"SELECT rowid FROM graph_edges WHERE tenant_id = ? AND scan_id = ? AND {column} IN ({placeholders}){shared_sql}"  # nosec B608
+
+        params: list[Any] = [
+            tenant_id,
+            scan_id,
+            *ordered_frontier,
+            *shared_params,
+            tenant_id,
+            scan_id,
+            *ordered_frontier,
+            *shared_params,
+        ]
+        sql = f"""
+            SELECT *
+            FROM graph_edges
+            WHERE rowid IN (
+                {branch("source_id")}
+                UNION
+                {branch("target_id")}
+            )
+            ORDER BY rowid
+            """  # nosec B608 - clause fragments and placeholders are generated internally
+        return sql, params
+
     def _filtered_edge_rows(
         self,
         conn: sqlite3.Connection,
@@ -581,38 +777,36 @@ class SQLiteGraphStore:
         static_only: bool = False,
         dynamic_only: bool = False,
     ) -> list[sqlite3.Row]:
+        """Edges touching the frontier, as two index-anchored reads.
+
+        This is the inner loop of every incremental walk, run once per frontier
+        node. It used to be one query with ``(source_id IN (...) OR target_id IN
+        (...))``, which SQLite can only serve from the composite indexes as a
+        MULTI-INDEX OR — and it only chooses that plan when ``sqlite_stat1`` has
+        been populated. On a freshly written store, which has never been
+        ``ANALYZE``d, the planner instead prefix-scanned ``(tenant_id, scan_id)``
+        and read EVERY edge in the snapshot on EVERY hop: 12,876us per hop on an
+        80,181-node snapshot, so a walk that materialised 21 nodes still cost
+        time linear in estate size.
+
+        Splitting the OR into a UNION of two single-column lookups makes each
+        branch independently index-anchored, so the plan does not depend on
+        whether statistics happen to exist: 33us per hop, stats or no stats.
+        ``UNION`` (not ``UNION ALL``) because an edge whose both endpoints are in
+        the frontier matches both branches.
+        """
         if not frontier:
             return []
-        placeholders = ",".join("?" for _ in frontier)
-        where = [
-            "tenant_id = ?",
-            "scan_id = ?",
-            f"(source_id IN ({placeholders}) OR target_id IN ({placeholders}))",
-        ]
-        params: list[Any] = [tenant_id, scan_id, *frontier, *frontier]
-        if traversable_only:
-            where.append("traversable = 1")
-        if relationship_types:
-            rel_values = sorted(rel.value if isinstance(rel, RelationshipType) else str(rel) for rel in relationship_types)
-            rel_placeholders = ",".join("?" for _ in rel_values)
-            where.append(f"relationship IN ({rel_placeholders})")
-            params.extend(rel_values)
-        if static_only:
-            dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
-            where.append(f"relationship NOT IN ({dynamic_placeholders})")
-            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
-        if dynamic_only:
-            dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
-            where.append(f"relationship IN ({dynamic_placeholders})")
-            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
-        return conn.execute(
-            f"""
-            SELECT *
-            FROM graph_edges
-            WHERE {" AND ".join(where)}
-            """,  # nosec B608 - clause fragments and placeholders are generated internally
-            params,
-        ).fetchall()
+        sql, params = self._frontier_edge_query(
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            frontier=frontier,
+            traversable_only=traversable_only,
+            relationship_types=relationship_types,
+            static_only=static_only,
+            dynamic_only=dynamic_only,
+        )
+        return conn.execute(sql, params).fetchall()
 
     def nodes_by_ids(
         self,
@@ -664,11 +858,11 @@ class SQLiteGraphStore:
         static_only: bool,
         dynamic_only: bool,
         include_roots: bool,
-    ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], UnifiedEdge], dict[str, str], list[str], bool]:
+    ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], UnifiedEdge], dict[str, str], list[str], bool, bool]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
         if not effective_scan_id:
-            return scan_id, "", set(), {}, {}, {}, [], False
+            return scan_id, "", set(), {}, {}, {}, [], False, False
 
         existing_roots = {node.id for node in self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=set(roots))}
         visited: set[str] = set()
@@ -677,7 +871,33 @@ class SQLiteGraphStore:
         parent_by_node: dict[str, str] = {}
         discovery_order: list[str] = []
         truncated = False
+        depth_limited = False
         edge_count = 0
+
+        def _neighbors(node_id: str) -> list[str]:
+            found: list[str] = []
+            for row in self._filtered_edge_rows(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                frontier={node_id},
+                traversable_only=traversable_only,
+                relationship_types=relationship_types,
+                static_only=static_only,
+                dynamic_only=dynamic_only,
+            ):
+                edge = self._edge_from_row(row)
+                if direction in {"forward", "both"}:
+                    if edge.source == node_id:
+                        found.append(edge.target)
+                    elif edge.is_bidirectional and edge.target == node_id:
+                        found.append(edge.source)
+                if direction in {"reverse", "both"}:
+                    if edge.target == node_id:
+                        found.append(edge.source)
+                    elif edge.is_bidirectional and edge.source == node_id:
+                        found.append(edge.target)
+            return found
 
         queue: list[tuple[str, int]] = []
         for root in roots:
@@ -696,6 +916,11 @@ class SQLiteGraphStore:
             current, depth = queue[index]
             index += 1
             if depth >= max_depth:
+                # Frontier node: only a *demonstrably* unwalked neighbour makes
+                # this an incomplete answer. Costs one edge lookup per frontier
+                # node, and only until the first one that leaves work behind.
+                if not depth_limited and any(neighbor not in visited for neighbor in _neighbors(current)):
+                    depth_limited = True
                 continue
             for row in self._filtered_edge_rows(
                 conn,
@@ -747,7 +972,17 @@ class SQLiteGraphStore:
         if include_roots:
             visited.update(existing_roots)
 
-        return effective_scan_id, created_at, visited, depth_by_node, traversed_edges, parent_by_node, discovery_order, truncated
+        return (
+            effective_scan_id,
+            created_at,
+            visited,
+            depth_by_node,
+            traversed_edges,
+            parent_by_node,
+            discovery_order,
+            truncated,
+            depth_limited,
+        )
 
     def bfs_paths(
         self,
@@ -757,10 +992,10 @@ class SQLiteGraphStore:
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str]]:
+    ) -> tuple[list[list[str]], set[str], bool, bool]:
         conn = self._open_ro_conn()
         if conn is None:
-            return [], set()
+            return [], set(), False, False
         try:
             (
                 _effective_scan_id,
@@ -770,7 +1005,8 @@ class SQLiteGraphStore:
                 _edges,
                 parent_by_node,
                 discovery_order,
-                _truncated,
+                truncated,
+                depth_limited,
             ) = self._walk_graph(
                 conn,
                 tenant_id=tenant_id,
@@ -788,7 +1024,7 @@ class SQLiteGraphStore:
                 include_roots=True,
             )
             if source not in visited:
-                return [], set()
+                return [], set(), truncated, depth_limited
 
             paths: list[list[str]] = []
             for node_id in discovery_order:
@@ -804,7 +1040,7 @@ class SQLiteGraphStore:
                     paths.append(path)
             reachable = set(visited)
             reachable.discard(source)
-            return paths, reachable
+            return paths, reachable, truncated, depth_limited
         finally:
             conn.close()
 
@@ -820,7 +1056,7 @@ class SQLiteGraphStore:
         if conn is None:
             return None
         try:
-            effective_scan_id, _created_at, visited, depth_by_node, _edges, _parents, _order, _truncated = self._walk_graph(
+            effective_scan_id, _created_at, visited, depth_by_node, _edges, _parents, _order, truncated, depth_limited = self._walk_graph(
                 conn,
                 tenant_id=tenant_id,
                 scan_id=scan_id,
@@ -852,6 +1088,11 @@ class SQLiteGraphStore:
                 "affected_by_type": affected_by_type,
                 "affected_count": len(affected_nodes),
                 "max_depth_reached": max((depth_by_node.get(node, 0) for node in affected_nodes), default=0),
+                "completeness": impact_completeness(
+                    affected_count=len(affected_nodes),
+                    truncated=truncated,
+                    depth_limited=depth_limited,
+                ),
             }
         finally:
             conn.close()
@@ -873,25 +1114,32 @@ class SQLiteGraphStore:
         dynamic_only: bool = False,
         include_roots: bool = True,
     ) -> tuple[UnifiedGraph, dict[str, int], bool]:
+        # Resolve the tenant up front so the returned graph is labelled with the
+        # tenant it was actually read under. `_walk_graph` normalized a local
+        # copy while the graph kept the caller's raw string, so a default-tenant
+        # traversal came back labelled "" where every other read says "default".
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id), {}, False
         try:
-            effective_scan_id, created_at, visited, depth_by_node, traversed_edges, _parents, _order, truncated = self._walk_graph(
-                conn,
-                tenant_id=tenant_id,
-                scan_id=scan_id,
-                roots=roots,
-                direction=direction,
-                max_depth=max_depth,
-                max_nodes=max_nodes,
-                max_edges=max_edges,
-                deadline_monotonic=deadline_monotonic,
-                traversable_only=traversable_only,
-                relationship_types=relationship_types,
-                static_only=static_only,
-                dynamic_only=dynamic_only,
-                include_roots=include_roots,
+            effective_scan_id, created_at, visited, depth_by_node, traversed_edges, _parents, _order, truncated, depth_limited = (
+                self._walk_graph(
+                    conn,
+                    tenant_id=tenant_id,
+                    scan_id=scan_id,
+                    roots=roots,
+                    direction=direction,
+                    max_depth=max_depth,
+                    max_nodes=max_nodes,
+                    max_edges=max_edges,
+                    deadline_monotonic=deadline_monotonic,
+                    traversable_only=traversable_only,
+                    relationship_types=relationship_types,
+                    static_only=static_only,
+                    dynamic_only=dynamic_only,
+                    include_roots=include_roots,
+                )
             )
             graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
             if not effective_scan_id:
@@ -902,6 +1150,28 @@ class SQLiteGraphStore:
             for edge in traversed_edges.values():
                 if edge.source in graph.nodes and edge.target in graph.nodes:
                     graph.add_edge(edge)
+            # A bounded walk must say so. #4595 gave the in-memory container and
+            # the Postgres store this shape; the default backend was left
+            # returning a fresh GraphCompleteness that reads "complete,
+            # returned: 0" over a non-empty result. Now that drill-down answers
+            # from a traversal, that laundering is reachable from a shipped
+            # endpoint. The denominator is the snapshot's recorded node_count --
+            # a single-row primary-key lookup, never a COUNT over graph_nodes.
+            #
+            # Two bounds are reported independently: the node budget and the
+            # depth cap. Collapsing them would leave a caller unable to tell
+            # whether raising max_depth could recover the missing nodes.
+            snapshot_row = conn.execute(
+                "SELECT node_count FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            snapshot_nodes = int(snapshot_row["node_count"] or 0) if snapshot_row is not None else 0
+            graph.completeness.truncated = truncated
+            graph.completeness.depth_limited = depth_limited
+            graph.completeness.node_budget = max_nodes if truncated else None
+            graph.completeness.reason = bounded_walk_reason(truncated=truncated, depth_limited=depth_limited)
+            graph.completeness.total_nodes = snapshot_nodes or len(graph.nodes)
+            graph.completeness.returned_nodes = len(graph.nodes)
             return graph, depth_by_node, truncated
         finally:
             conn.close()

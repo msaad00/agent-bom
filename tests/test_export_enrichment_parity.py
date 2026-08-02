@@ -292,3 +292,190 @@ def test_markdown_findings_table_reachability_unknown_when_absent() -> None:
     md = to_markdown(report, report.blast_radii)
     assert "Reach" in md
     assert "Unknown" in md
+
+
+# ── Instance 4: the KEV remediation deadline survives into EVERY format ──────
+#
+# ``kev_due_date`` is the CISA BOD 22-01 remediation deadline — the one KEV
+# field that carries an obligation. Pinned to the live CISA catalog entry for
+# CVE-2023-4863 (added 2023-09-13, due 2023-10-04). SARIF is what lands in
+# GitHub Code Scanning, so dropping it there is the costliest omission.
+
+
+def _kev_vuln(severity: Severity = Severity.CRITICAL) -> Vulnerability:
+    """CVE-2023-4863 as CISA actually catalogs it."""
+    return Vulnerability(
+        id="CVE-2023-4863",
+        summary="Heap buffer overflow in libwebp",
+        severity=severity,
+        cvss_score=8.8,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+        fixed_version="10.0.1",
+        epss_score=0.99735,
+        epss_percentile=99.953,
+        is_kev=True,
+        kev_date_added="2023-09-13",
+        kev_due_date="2023-10-04",
+        cwe_ids=["CWE-787"],
+    )
+
+
+@pytest.mark.parametrize("severity", [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW])
+def test_sarif_carries_kev_due_date_at_every_severity(severity: Severity) -> None:
+    """SARIF must not reduce a dated BOD 22-01 obligation to ``kev: true``."""
+    report = _report_with_vuln(_kev_vuln(severity))
+    sarif = to_sarif(report)
+    run = sarif["runs"][0]
+    rule = next(r for r in run["tool"]["driver"]["rules"] if r["id"] == "CVE-2023-4863")
+    result = next(r for r in run["results"] if r["ruleId"] == "CVE-2023-4863")
+    assert rule["properties"].get("kev") is True
+    assert rule["properties"].get("kev_due_date") == "2023-10-04"
+    assert rule["properties"].get("kev_date_added") == "2023-09-13"
+    assert result["properties"].get("kev_due_date") == "2023-10-04"
+    assert result["properties"].get("kev_date_added") == "2023-09-13"
+
+
+def test_sarif_omits_kev_dates_when_not_kev() -> None:
+    """Non-vacuous: the dates appear only because the finding really is KEV."""
+    plain = Vulnerability(id="CVE-2026-0001", summary="plain", severity=Severity.HIGH, cvss_score=7.0)
+    sarif = to_sarif(_report_with_vuln(plain))
+    run = sarif["runs"][0]
+    rule = next(r for r in run["tool"]["driver"]["rules"] if r["id"] == "CVE-2026-0001")
+    result = next(r for r in run["results"] if r["ruleId"] == "CVE-2026-0001")
+    assert "kev_due_date" not in rule["properties"]
+    assert "kev_date_added" not in rule["properties"]
+    assert result["properties"].get("kev_due_date") is None
+
+
+@pytest.mark.parametrize("severity", [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW])
+def test_markdown_carries_kev_due_date_at_every_severity(severity: Severity) -> None:
+    """A MEDIUM KEV has the same deadline as a CRITICAL one.
+
+    The detail block only renders for critical/high findings, so the findings
+    table itself has to carry the date or a medium/low KEV loses it entirely.
+    """
+    md = to_markdown(_report_with_vuln(_kev_vuln(severity)))
+    assert "2023-10-04" in md, "KEV remediation deadline dropped from Markdown"
+
+
+def test_markdown_kev_column_is_plain_dash_when_not_kev() -> None:
+    """Non-vacuous: the deadline text appears only for a real KEV finding."""
+    from agent_bom.output.finding_views import cve_findings
+    from agent_bom.output.markdown import _kev_cell
+
+    plain = Vulnerability(id="CVE-2026-0001", summary="plain", severity=Severity.MEDIUM)
+    report = _report_with_vuln(plain)
+    md = to_markdown(report)
+    assert "2023-10-04" not in md
+    assert "Yes (due" not in md
+    assert _kev_cell(cve_findings(report)[0]) == "-"
+
+
+def test_markdown_kev_cell_without_a_due_date_still_says_yes() -> None:
+    """CISA has catalogued entries with no due date; KEV status must survive."""
+    from agent_bom.output.finding_views import cve_findings
+    from agent_bom.output.markdown import _kev_cell
+
+    vuln = _kev_vuln()
+    vuln.kev_due_date = None
+    report = _report_with_vuln(vuln)
+    assert _kev_cell(cve_findings(report)[0]) == "Yes"
+
+
+@pytest.mark.parametrize("severity", [Severity.CRITICAL, Severity.MEDIUM])
+def test_html_vuln_table_carries_kev_due_date(severity: Severity) -> None:
+    report = _report_with_vuln(_kev_vuln(severity))
+    html = _vuln_table(report, report.blast_radii)
+    assert 'data-kev-due="2023-10-04"' in html
+    assert "2023-10-04" in html
+
+
+def test_html_vuln_table_has_no_kev_due_attribute_when_not_kev() -> None:
+    plain = Vulnerability(id="CVE-2026-0001", summary="plain", severity=Severity.MEDIUM)
+    report = _report_with_vuln(plain)
+    html = _vuln_table(report, report.blast_radii)
+    assert "data-kev-due=" not in html
+
+
+def test_cyclonedx_carries_kev_due_date() -> None:
+    cdx = to_cyclonedx(_report_with_vuln(_kev_vuln()))
+    entry = next(v for v in cdx["vulnerabilities"] if v["id"] == "CVE-2023-4863")
+    props = {p["name"]: p["value"] for p in entry.get("properties", [])}
+    assert props.get("agent-bom:kev_due_date") == "2023-10-04"
+
+
+def test_cyclonedx_rating_carries_the_cvss_vector() -> None:
+    """CDX 1.7 ``ratings[].vector`` exists; emitting a bare score loses the
+    attack metrics every downstream triage tool re-derives from the vector."""
+    cdx = to_cyclonedx(_report_with_vuln(_kev_vuln()))
+    entry = next(v for v in cdx["vulnerabilities"] if v["id"] == "CVE-2023-4863")
+    cvss = next(r for r in entry["ratings"] if str(r.get("method", "")).startswith("CVSS"))
+    assert cvss.get("vector") == "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+    # A CVSS:3.1 vector is method CVSSv31 — CVSSv3 means 3.0 in the CDX enum.
+    assert cvss.get("method") == "CVSSv31"
+
+
+@pytest.mark.parametrize(
+    ("vector", "expected_method"),
+    [
+        ("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H", "CVSSv31"),
+        ("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "CVSSv3"),
+        ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N", "CVSSv4"),
+        ("AV:N/AC:L/Au:N/C:P/I:P/A:P", "CVSSv2"),
+        (None, "CVSSv3"),
+    ],
+)
+def test_cyclonedx_rating_method_follows_the_vector(vector: str | None, expected_method: str) -> None:
+    vuln = _kev_vuln()
+    vuln.cvss_vector = vector
+    cdx = to_cyclonedx(_report_with_vuln(vuln))
+    entry = next(v for v in cdx["vulnerabilities"] if v["id"] == "CVE-2023-4863")
+    cvss = next(r for r in entry["ratings"] if str(r.get("method", "")).startswith("CVSS"))
+    assert cvss["method"] == expected_method
+    assert cvss.get("vector") == vector
+
+
+def test_cyclonedx_with_vector_stays_schema_valid() -> None:
+    pytest.importorskip("jsonschema")
+    from jsonschema import Draft7Validator
+
+    schema_path = _FIXTURES / "cyclonedx-1.7.schema.json"
+    if not schema_path.exists():
+        pytest.skip("vendored CycloneDX 1.7 schema unavailable")
+    cdx = to_cyclonedx(_report_with_vuln(_kev_vuln()))
+    validator = Draft7Validator(json.loads(schema_path.read_text()), registry=_cyclonedx_registry())
+    errors = sorted(validator.iter_errors(cdx), key=lambda e: list(e.path))
+    assert not errors, "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
+
+
+def test_sarif_with_kev_dates_stays_schema_valid() -> None:
+    pytest.importorskip("jsonschema")
+    from jsonschema import Draft7Validator
+
+    schema_path = _FIXTURES / "sarif-schema-2.1.0.json"
+    if not schema_path.exists():
+        pytest.skip("vendored SARIF 2.1.0 schema unavailable")
+    sarif = to_sarif(_report_with_vuln(_kev_vuln()))
+    validator = Draft7Validator(json.loads(schema_path.read_text()))
+    errors = sorted(validator.iter_errors(sarif), key=lambda e: list(e.path))
+    assert not errors, "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
+
+
+def test_kev_due_date_reaches_every_serializing_format() -> None:
+    """One assertion per format so a future exporter cannot drop it in silence."""
+    from agent_bom.output.csv_fmt import to_csv
+    from agent_bom.output.json_fmt import to_json
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    report = _report_with_vuln(_kev_vuln())
+    rendered = {
+        "json": json.dumps(to_json(report)),
+        "csv": to_csv(report),
+        "markdown": to_markdown(report),
+        "sarif": json.dumps(to_sarif(report)),
+        "cyclonedx": json.dumps(to_cyclonedx(report)),
+        "spdx": json.dumps(to_spdx(report)),
+        "html": _vuln_table(report, report.blast_radii),
+    }
+    missing = sorted(name for name, text in rendered.items() if "2023-10-04" not in text)
+    assert not missing, f"kev_due_date dropped by: {missing}"

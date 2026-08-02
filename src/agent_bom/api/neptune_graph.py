@@ -520,7 +520,7 @@ class NeptuneGraphStore:
     def nodes_by_ids(self, **_kwargs: Any) -> list[UnifiedNode]:
         self._unsupported("nodes_by_ids")
 
-    def bfs_paths(self, **_kwargs: Any) -> tuple[list[list[str]], set[str]]:
+    def bfs_paths(self, **_kwargs: Any) -> tuple[list[list[str]], set[str], bool, bool]:
         self._unsupported("bfs_paths")
 
     def impact_of(self, **_kwargs: Any) -> dict[str, Any] | None:

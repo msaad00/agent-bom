@@ -28,14 +28,20 @@ CREATE TABLE IF NOT EXISTS core.scan_jobs (
 CREATE INDEX IF NOT EXISTS idx_scan_jobs_tenant_status
     ON core.scan_jobs(tenant_id, status);
 
+-- Keyed by (tenant_id, agent_id): agent IDs are derived from agent content with
+-- no tenant component, so a bare agent_id key let one tenant's registration
+-- overwrite another's. Snowflake does not enforce PRIMARY KEY on standard
+-- tables, so the MERGE predicates in snowflake_store.py are what keep the
+-- tenants apart; this declaration documents the intended key.
 CREATE TABLE IF NOT EXISTS core.fleet_agents (
-    agent_id        VARCHAR PRIMARY KEY,
+    agent_id        VARCHAR NOT NULL,
     tenant_id       VARCHAR NOT NULL DEFAULT 'default',
     name            VARCHAR NOT NULL,
     lifecycle_state VARCHAR NOT NULL,
     trust_score     FLOAT DEFAULT 0.0,
     updated_at      TIMESTAMP_TZ NOT NULL,
-    data            VARIANT NOT NULL
+    data            VARIANT NOT NULL,
+    PRIMARY KEY (tenant_id, agent_id)
 );
 
 -- ─── 3. Compliance Hub tables (matches PostgresComplianceHubStore schema) ────

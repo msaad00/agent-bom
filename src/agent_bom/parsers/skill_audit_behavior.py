@@ -492,12 +492,24 @@ _JS_IMPORTABLE_FILE_MUTATION_CALLS = {
 # Instruction files legitimately *enumerate* dangerous flags and commands in
 # order to forbid them ("## Never — `git push --force`, `--no-verify`, …",
 # "Do not disable the sandbox"). Matching the literal token there flags the
-# repository's own governance docs as malicious. A behavioral match is treated
-# as policy prose — and skipped — when it sits under a prohibition heading or a
-# prohibition cue ("never", "do not", "without explicit approval", …) governs it
-# nearby. The cue must be *proximate* to the match (same list item / paragraph),
-# so a real dangerous instruction elsewhere in the file is still detected and an
-# attacker cannot neutralise an injection by dropping a stray "never" far away.
+# repository's own governance docs as malicious. A behavioral match is read as
+# policy prose when it sits under a prohibition heading, or when a prohibition
+# cue ("never", "do not", "without explicit approval", …) governs it nearby.
+# The cue must be *proximate* to the match (same list item / paragraph), so a
+# real dangerous instruction elsewhere in the file is still detected.
+#
+# Prose context is authored by whoever wrote the file — i.e. by the attacker —
+# so it can never *delete* evidence. Two rules bound it:
+#
+#   1. A suppressed match is DOWNGRADED, not dropped: it is emitted at low
+#      severity with ``context="possibly_documentation"`` so the evidence still
+#      reaches the report and the operator decides. Low + low-confidence
+#      findings do not move the trust verdict (see ``trust_assessment``).
+#   2. Suppression does not apply at all when the match is a runnable fenced
+#      code block, or when the governing scope carries a line-anchored
+#      agent-directed imperative ("Always …", "Before answering …",
+#      "Auto-approve …"). Prose that *tells the agent to do the thing* is a
+#      directive no matter what the heading above it claims.
 
 _PROHIBITION_HEADING_RE = re.compile(
     r"^\s{0,3}#{1,6}\s+.*\b(?:never|don'?ts?|do\s+not|avoid|prohibit\w*|"
@@ -520,17 +532,68 @@ _PROHIBITION_CUE_RE = re.compile(
 
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
 
+# A markdown code fence. Text inside one is a runnable command, not prose about
+# a command, so a prohibition heading above it cannot excuse it.
+_CODE_FENCE_RE = re.compile(r"^\s{0,3}(?:```|~~~)", re.MULTILINE)
+
+# Agent-directed imperatives. Anchored to the start of a line (optionally after
+# a list marker or bold run) so that policy prose which merely *contains* the
+# word — "Do not run codex with --yolo; always require confirmation." — is not
+# mistaken for a directive.
+_AGENT_IMPERATIVE_RE = re.compile(
+    r"""
+    ^ \s{0,3} (?:[-*+]\s+ | \d+[.)]\s+)? (?:\*\*|__)? \s*
+    (?:
+        always \b                                     # "Always begin every session…"
+      | first ,? \s+ (?:run|execute|read|do) \b        # "First, run …"
+      | (?:start|begin) \s+ (?:by|every|each) \b       # "Begin every session by …"
+      | before \s+ (?:answering | responding |         # "Before answering anything…"
+                      any \s+ response |
+                      doing \s+ anything |
+                      you \s+ (?:answer|respond)) \b
+      | auto [-\s]? approve \b                         # "Auto-approve every tool call"
+      | you \s+ must (?! \s+ (?:not|never)) \b         # "You must run …"
+      | (?:run|execute) \s+ (?:the \s+)?
+            (?:bootstrap|setup|following|script|command) \b
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE | re.MULTILINE,
+)
+
 # How far (characters) from a match a prohibition cue may sit and still be read
 # as governing it, clamped to the match's own list item / paragraph.
 _PROHIBITION_PROXIMITY = 90
 
 
-def _nearest_heading_is_prohibition(lines: list[str], line_idx: int) -> bool:
-    """Return True when the closest preceding markdown heading forbids behavior."""
+def _nearest_heading_index(lines: list[str], line_idx: int) -> int | None:
+    """Return the index of the closest markdown heading at or above ``line_idx``."""
     for j in range(min(line_idx, len(lines) - 1), -1, -1):
         if lines[j].lstrip().startswith("#"):
-            return bool(_PROHIBITION_HEADING_RE.match(lines[j]))
-    return False
+            return j
+    return None
+
+
+def _nearest_heading_is_prohibition(lines: list[str], line_idx: int) -> bool:
+    """Return True when the closest preceding markdown heading forbids behavior."""
+    heading = _nearest_heading_index(lines, line_idx)
+    return heading is not None and bool(_PROHIBITION_HEADING_RE.match(lines[heading]))
+
+
+def _section_bounds(lines: list[str], line_idx: int) -> tuple[int, int]:
+    """Return the (start, end) line indices of the markdown section holding a line."""
+    heading = _nearest_heading_index(lines, line_idx)
+    start = 0 if heading is None else heading
+    end = len(lines) - 1
+    for j in range(start + 1, len(lines)):
+        if lines[j].lstrip().startswith("#"):
+            end = j - 1
+            break
+    return start, end
+
+
+def _inside_fenced_code_block(content: str, offset: int) -> bool:
+    """Return True when ``offset`` sits inside a ``` / ~~~ fenced code block."""
+    return len(_CODE_FENCE_RE.findall(content, 0, offset)) % 2 == 1
 
 
 def _block_bounds(lines: list[str], line_idx: int) -> tuple[int, int]:
@@ -554,82 +617,157 @@ def _block_bounds(lines: list[str], line_idx: int) -> tuple[int, int]:
     return start, end
 
 
+def _span_text(lines: list[str], start_line: int, end_line: int) -> tuple[int, int]:
+    """Return the (start, end) character offsets of an inclusive line range."""
+    start = sum(len(line) + 1 for line in lines[:start_line])
+    end = start + sum(len(lines[i]) + 1 for i in range(start_line, end_line + 1))
+    return start, end
+
+
 def _is_prohibition_context(content: str, match_start: int, match_end: int) -> bool:
-    """Return True when a behavioral match is forbidden/policy prose, not a directive."""
+    """Return True when a behavioral match reads as forbidden/policy prose.
+
+    Prose context alone never deletes a finding — see ``_scan_behavioral_risks``,
+    which downgrades rather than drops. Two signals outrank the prose entirely:
+    a runnable fenced code block, and a line-anchored agent-directed imperative
+    inside the scope that supplied the suppression.
+    """
     lines = content.split("\n")
     line_idx = content.count("\n", 0, match_start)
+
+    if _inside_fenced_code_block(content, match_start):
+        return False
+
     if _nearest_heading_is_prohibition(lines, line_idx):
-        return True
+        section_start, section_end = _span_text(lines, *_section_bounds(lines, line_idx))
+        return not _AGENT_IMPERATIVE_RE.search(content[section_start:section_end])
+
     start_line, end_line = _block_bounds(lines, line_idx)
-    block_start = sum(len(line) + 1 for line in lines[:start_line])
-    block_end = block_start + sum(len(lines[i]) + 1 for i in range(start_line, end_line + 1))
+    block_start, block_end = _span_text(lines, start_line, end_line)
+    if _AGENT_IMPERATIVE_RE.search(content[block_start:block_end]):
+        return False
     lo = max(block_start, match_start - _PROHIBITION_PROXIMITY)
     hi = min(block_end, match_end + _PROHIBITION_PROXIMITY)
     return bool(_PROHIBITION_CUE_RE.search(content[lo:hi]))
 
 
-def _first_actionable_match(pattern: re.Pattern, content: str) -> re.Match | None:
-    """Return the first pattern match that is not forbidden/policy prose."""
+def _first_actionable_match(pattern: re.Pattern, content: str) -> tuple[re.Match | None, bool]:
+    """Return the first match plus whether it only survives as policy prose.
+
+    Prefers a directive match. Falls back to the first suppressed match so the
+    evidence is still reported (downgraded) rather than silently discarded.
+    """
+    demoted: re.Match | None = None
     for candidate in pattern.finditer(content):
         if _is_prohibition_context(content, candidate.start(), candidate.end()):
+            if demoted is None:
+                demoted = candidate
             continue
-        return candidate
-    return None
+        return candidate, False
+    return demoted, demoted is not None
 
 
 def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
     """Scan full skill file text for behavioral risk patterns.
 
+    Each file is matched against its raw bytes and against the obfuscation-
+    resistant projection shared with the prompt-template scanner
+    (:func:`agent_bom.parsers.prompt_scanner.normalize_for_matching` — NFKC,
+    homoglyph folding, zero-width stripping, de-leeting, base64 decoding), so
+    a homoglyph- or zero-width-obfuscated injection in ``CLAUDE.md`` is caught
+    by the same rules that already catch it in ``system_prompt.md``. The raw
+    pass runs first and wins, keeping real line numbers on plain text.
+
     Args:
         raw_content: Mapping of filename → full text content.
 
     Returns:
-        List of SkillFinding with context="behavioral".
+        List of SkillFinding with context="behavioral" (a directive) or
+        "possibly_documentation" (evidence that reads as policy prose, demoted
+        to low severity so the operator, not the file's author, decides).
     """
+    from agent_bom.parsers.prompt_scanner import normalize_for_matching
+
     findings: list[SkillFinding] = []
 
     for filename, content in raw_content.items():
         seen_categories: set[str] = set()
+        passes: list[tuple[str, str]] = [(content, "static_text")]
+        normalized = normalize_for_matching(content)
+        if normalized != content:
+            passes.append((normalized, "normalized_text"))
 
         for bp in _BEHAVIORAL_PATTERNS:
             if bp.category in seen_categories:
                 continue
 
-            match = _first_actionable_match(bp.pattern, content)
-            severity = bp.severity
-            confidence = "high" if bp.severity in {"critical", "high"} else "medium"
+            candidates: list[tuple[re.Match, bool, str, str, str]] = []
+            for text, evidence_source in passes:
+                found, demoted = _first_actionable_match(bp.pattern, text)
+                severity = bp.severity
+                confidence = "high" if bp.severity in {"critical", "high"} else "medium"
 
-            if match is None and bp.weak_pattern is not None:
-                # Only a low-confidence keyword/heuristic matched. Keep the
-                # finding visible but demote it so a lone descriptive keyword
-                # cannot dominate the file's trust verdict.
-                match = _first_actionable_match(bp.weak_pattern, content)
-                if match is not None:
-                    severity = bp.weak_severity
+                if found is None and bp.weak_pattern is not None:
+                    # Only a low-confidence keyword/heuristic matched. Keep the
+                    # finding visible but demote it so a lone descriptive keyword
+                    # cannot dominate the file's trust verdict.
+                    found, demoted = _first_actionable_match(bp.weak_pattern, text)
+                    if found is not None:
+                        severity = bp.weak_severity
+                        confidence = "low"
+
+                if found is not None:
+                    candidates.append((found, demoted, evidence_source, severity, confidence))
+                    if not demoted:
+                        break
+
+            # A directive beats policy prose; a raw-text hit beats a de-obfuscated
+            # one (it carries real line numbers).
+            for match, demoted, evidence_source, severity, confidence in sorted(candidates, key=lambda c: c[1]):
+                lines_are_real = evidence_source == "static_text"
+                text = content if lines_are_real else normalized
+                context = "behavioral"
+                if demoted:
+                    # Suppression must never delete evidence: report it at a
+                    # severity that cannot drive the verdict and say why.
+                    severity = "low"
                     confidence = "low"
+                    context = "possibly_documentation"
 
-            if match:
                 seen_categories.add(bp.category)
                 snippet = match.group(0).strip()
                 if len(snippet) > 120:
                     snippet = snippet[:117] + "..."
-                line, column = _line_column(content, match.start())
+                line, column = _line_column(text, match.start()) if lines_are_real else (None, None)
+
+                detail = f'Detected in {filename}: "{snippet}". {bp.description}'
+                if not lines_are_real:
+                    detail = (
+                        f"Detected in {filename} after de-obfuscation (homoglyph / zero-width / "
+                        f'leetspeak / base64): "{snippet}". {bp.description}'
+                    )
+                if demoted:
+                    detail += (
+                        " Reported at reduced severity: the surrounding prose reads as policy or "
+                        "documentation rather than an instruction. Confirm before dismissing."
+                    )
 
                 findings.append(
                     SkillFinding(
                         severity=severity,
                         category=bp.category,
                         title=bp.title,
-                        detail=(f'Detected in {filename}: "{snippet}". {bp.description}'),
+                        detail=detail,
                         source_file=filename,
                         recommendation=bp.description,
-                        context="behavioral",
-                        evidence_source="static_text",
+                        context=context,
+                        evidence_source=evidence_source,
                         confidence=confidence,
                         source_line=line,
                         source_column=column,
                     )
                 )
+                break
 
     return findings
 
@@ -1080,14 +1218,23 @@ _BEHAVIOR_FAMILIES: dict[str, str] = {
 
 
 def _summarize_behavioral_findings(findings: list[SkillFinding]) -> dict[str, object]:
-    """Summarize findings into stable review-oriented behavior families."""
+    """Summarize findings into stable review-oriented behavior families.
+
+    Evidence demoted to ``context="possibly_documentation"`` is counted on its
+    own key rather than folded into the risk families: it is retained so an
+    operator can review it, not asserted as directed behavior.
+    """
     family_counts: dict[str, int] = {}
     category_counts: dict[str, int] = {}
     high_or_critical = 0
+    possibly_documentation = 0
 
     for finding in findings:
         family = _BEHAVIOR_FAMILIES.get(finding.category)
         if not family:
+            continue
+        if finding.context == "possibly_documentation":
+            possibly_documentation += 1
             continue
         family_counts[family] = family_counts.get(family, 0) + 1
         category_counts[finding.category] = category_counts.get(finding.category, 0) + 1
@@ -1099,4 +1246,5 @@ def _summarize_behavioral_findings(findings: list[SkillFinding]) -> dict[str, ob
         "families": family_counts,
         "top_categories": top_categories,
         "high_or_critical": high_or_critical,
+        "possibly_documentation": possibly_documentation,
     }

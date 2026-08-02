@@ -47,7 +47,7 @@ _LEET = str.maketrans({"4": "a", "3": "e", "1": "i", "0": "o", "5": "s", "7": "t
 _B64_RUN = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
 
 
-def _normalize_for_matching(text: str) -> str:
+def normalize_for_matching(text: str) -> str:
     """Return a normalized projection of ``text`` for obfuscation-resistant matching.
 
     Folds Unicode (NFKC + homoglyphs), strips zero-width separators, de-leets, and
@@ -516,7 +516,7 @@ def _analyze_content(
     # decoded) so an attack hidden by encoding is still caught. Findings whose
     # title was already raised in the raw pass are skipped.
     seen_titles = {f.title for f in findings}
-    normalized = _normalize_for_matching(content)
+    normalized = normalize_for_matching(content)
     if normalized != content:
         for pattern, title in (*_INJECTION_PATTERNS, *_UNSAFE_INSTRUCTION_PATTERNS):
             nmatch = pattern.search(normalized)

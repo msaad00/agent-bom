@@ -186,7 +186,9 @@ class FleetStore(Protocol):
         offset: int = 0,
     ) -> tuple[list[FleetAgent], int]: ...
     def list_tenants(self) -> list[dict[str, Any]]: ...
-    def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool: ...
+    # ``agent_id`` is unique only WITHIN a tenant, so the tenant is a required
+    # keyword: an unscoped state change is a cross-tenant write.
+    def update_state(self, agent_id: str, state: FleetLifecycleState, *, tenant_id: str) -> bool: ...
     def batch_put(self, agents: list[FleetAgent]) -> int: ...
 
 
@@ -194,32 +196,34 @@ class FleetStore(Protocol):
 
 
 class InMemoryFleetStore:
-    """Dict-based in-memory fleet store. Thread-safe via lock."""
+    """Dict-based in-memory fleet store. Thread-safe via lock.
+
+    Keyed by ``(tenant_id, agent_id)``: ``canonical_agent_id`` is derived from
+    agent content with no tenant component, so keying on ``agent_id`` alone let
+    the second tenant to register a stock agent silently replace the first
+    tenant's row.
+    """
 
     def __init__(self) -> None:
-        self._agents: dict[str, FleetAgent] = {}
+        self._agents: dict[tuple[str, str], FleetAgent] = {}
         self._lock = threading.Lock()
 
     def put(self, agent: FleetAgent) -> None:
         normalized = FleetAgent.model_validate(agent.model_dump())
         with self._lock:
-            self._agents[normalized.agent_id] = normalized
+            self._agents[(normalized.tenant_id, normalized.agent_id)] = normalized
 
     def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None:
         with self._lock:
-            agent = self._agents.get(agent_id)
-            if agent is None:
-                return None
-            if agent.tenant_id != tenant_id:
-                return None
-            return agent
+            return self._agents.get((normalize_tenant_id(tenant_id), agent_id))
 
     def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+        wanted = normalize_tenant_id(tenant_id) if tenant_id is not None else None
         with self._lock:
             for agent in self._agents.values():
                 if agent.canonical_id != canonical_id:
                     continue
-                if tenant_id is not None and agent.tenant_id != tenant_id:
+                if wanted is not None and agent.tenant_id != wanted:
                     continue
                 return agent
             return None
@@ -233,13 +237,7 @@ class InMemoryFleetStore:
 
     def delete(self, agent_id: str, *, tenant_id: str) -> bool:
         with self._lock:
-            agent = self._agents.get(agent_id)
-            if agent is None:
-                return False
-            if agent.tenant_id != tenant_id:
-                return False
-            del self._agents[agent_id]
-            return True
+            return self._agents.pop((normalize_tenant_id(tenant_id), agent_id), None) is not None
 
     def list_all(self) -> list[FleetAgent]:
         with self._lock:
@@ -317,9 +315,9 @@ class InMemoryFleetStore:
                 counts[a.tenant_id] = counts.get(a.tenant_id, 0) + 1
             return [{"tenant_id": tid, "agent_count": cnt} for tid, cnt in sorted(counts.items())]
 
-    def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
+    def update_state(self, agent_id: str, state: FleetLifecycleState, *, tenant_id: str) -> bool:
         with self._lock:
-            agent = self._agents.get(agent_id)
+            agent = self._agents.get((normalize_tenant_id(tenant_id), agent_id))
             if agent is None:
                 return False
             agent.lifecycle_state = state
@@ -331,11 +329,48 @@ class InMemoryFleetStore:
         with self._lock:
             for agent in agents:
                 normalized = FleetAgent.model_validate(agent.model_dump())
-                self._agents[normalized.agent_id] = normalized
+                self._agents[(normalized.tenant_id, normalized.agent_id)] = normalized
             return len(agents)
 
 
 # ─── SQLite ──────────────────────────────────────────────────────────────────
+
+_FLEET_MIGRATION_TABLE = "fleet_agents_tenant_key_migration"
+
+# Keyed by (tenant_id, agent_id): agent IDs are derived from agent content with
+# no tenant component (``canonical_ids.canonical_agent_id``), so a bare
+# ``agent_id`` key let one tenant's INSERT OR REPLACE silently delete another
+# tenant's row. Mirrors the Postgres and Snowflake fleet_agents keys.
+_CREATE_FLEET_AGENTS_SQL = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        agent_id TEXT NOT NULL,
+        canonical_id TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL,
+        lifecycle_state TEXT NOT NULL,
+        trust_score REAL DEFAULT 0.0,
+        updated_at TEXT NOT NULL,
+        device_fingerprint TEXT NOT NULL DEFAULT '',
+        tenant_id TEXT NOT NULL DEFAULT 'default',
+        data TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, agent_id)
+    )
+"""
+
+_FLEET_COLUMNS = "agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, tenant_id, data"
+
+
+def _fleet_row(agent: FleetAgent) -> tuple[Any, ...]:
+    return (
+        agent.agent_id,
+        agent.canonical_id,
+        agent.name,
+        agent.lifecycle_state.value,
+        agent.trust_score,
+        agent.updated_at,
+        agent.device_fingerprint,
+        agent.tenant_id,
+        agent.model_dump_json(),
+    )
 
 
 class SQLiteFleetStore:
@@ -361,26 +396,17 @@ class SQLiteFleetStore:
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "fleet")
-        self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS fleet_agents (
-                agent_id TEXT PRIMARY KEY,
-                canonical_id TEXT NOT NULL DEFAULT '',
-                name TEXT NOT NULL,
-                lifecycle_state TEXT NOT NULL,
-                trust_score REAL DEFAULT 0.0,
-                updated_at TEXT NOT NULL,
-                device_fingerprint TEXT NOT NULL DEFAULT '',
-                data TEXT NOT NULL
-            )
-        """)
+        self._conn.execute(_CREATE_FLEET_AGENTS_SQL.format(table="fleet_agents"))
         if "canonical_id" not in _table_columns(self._conn, "fleet_agents"):
             self._conn.execute("ALTER TABLE fleet_agents ADD COLUMN canonical_id TEXT NOT NULL DEFAULT ''")
         if "device_fingerprint" not in _table_columns(self._conn, "fleet_agents"):
             self._conn.execute("ALTER TABLE fleet_agents ADD COLUMN device_fingerprint TEXT NOT NULL DEFAULT ''")
         self._backfill_canonical_ids()
         self._backfill_device_fingerprints()
+        self._migrate_to_tenant_scoped_key()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id ON fleet_agents(canonical_id)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant_canonical_id ON fleet_agents(tenant_id, canonical_id)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_device_fingerprint ON fleet_agents(device_fingerprint)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state_trust_name ON fleet_agents(lifecycle_state, trust_score DESC, name)")
@@ -390,6 +416,43 @@ class SQLiteFleetStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name_lower ON fleet_agents(lower(name))")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_agent_id_lower ON fleet_agents(lower(agent_id))")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id_lower ON fleet_agents(lower(canonical_id))")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant_name ON fleet_agents(tenant_id, name)")
+        self._conn.commit()
+
+    def _migrate_to_tenant_scoped_key(self) -> None:
+        """Rebuild ``fleet_agents`` onto ``PRIMARY KEY (tenant_id, agent_id)``.
+
+        The shipped table was keyed ``agent_id`` alone with no tenant column, so
+        ``INSERT OR REPLACE`` let the second tenant to register a stock agent
+        silently delete the first tenant's row. SQLite cannot re-key a table in
+        place, so this copies into the new shape and swaps.
+
+        Pre-existing rows keep the tenant recorded in their own ``data``
+        payload; rows written before ``tenant_id`` existed at all belong to
+        ``default``, the documented system tenant such a deployment ran as.
+        Nothing is dropped: the old key permits at most one row per
+        ``agent_id``, so the new wider key can never collide.
+        """
+        if _primary_key_columns(self._conn, "fleet_agents") == ["tenant_id", "agent_id"]:
+            return
+
+        legacy_columns = _table_columns(self._conn, "fleet_agents")
+        # A previous interrupted run may have left the scratch table behind.
+        self._conn.execute(f"DROP TABLE IF EXISTS {_FLEET_MIGRATION_TABLE}")
+        self._conn.execute(_CREATE_FLEET_AGENTS_SQL.format(table=_FLEET_MIGRATION_TABLE))
+        tenant_expr = (
+            "COALESCE(NULLIF(TRIM(tenant_id), ''), 'default')"
+            if "tenant_id" in legacy_columns
+            else "COALESCE(NULLIF(TRIM(json_extract(data, '$.tenant_id')), ''), 'default')"
+        )
+        self._conn.execute(
+            f"INSERT INTO {_FLEET_MIGRATION_TABLE} "  # nosec B608 - table and expression are static
+            "(tenant_id, agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, data) "
+            f"SELECT {tenant_expr}, agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, data "
+            "FROM fleet_agents"
+        )
+        self._conn.execute("DROP TABLE fleet_agents")
+        self._conn.execute(f"ALTER TABLE {_FLEET_MIGRATION_TABLE} RENAME TO fleet_agents")
         self._conn.commit()
 
     def _backfill_canonical_ids(self) -> None:
@@ -423,26 +486,15 @@ class SQLiteFleetStore:
     def put(self, agent: FleetAgent) -> None:
         normalized = FleetAgent.model_validate(agent.model_dump())
         self._conn.execute(
-            """INSERT OR REPLACE INTO fleet_agents
-               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, data)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                normalized.agent_id,
-                normalized.canonical_id,
-                normalized.name,
-                normalized.lifecycle_state.value,
-                normalized.trust_score,
-                normalized.updated_at,
-                normalized.device_fingerprint,
-                normalized.model_dump_json(),
-            ),
+            f"INSERT OR REPLACE INTO fleet_agents ({_FLEET_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",  # nosec B608 - static column list
+            _fleet_row(normalized),
         )
         self._conn.commit()
 
     def get(self, agent_id: str, *, tenant_id: str) -> FleetAgent | None:
         row = self._conn.execute(
-            "SELECT data FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
-            (agent_id, tenant_id),
+            "SELECT data FROM fleet_agents WHERE agent_id = ? AND tenant_id = ?",
+            (agent_id, normalize_tenant_id(tenant_id)),
         ).fetchone()
         if row is None:
             return None
@@ -454,8 +506,8 @@ class SQLiteFleetStore:
             row = self._conn.execute("SELECT data FROM fleet_agents WHERE canonical_id = ?", (canonical_id,)).fetchone()
         else:
             row = self._conn.execute(
-                "SELECT data FROM fleet_agents WHERE canonical_id = ? AND json_extract(data, '$.tenant_id') = ?",
-                (canonical_id, tenant_id),
+                "SELECT data FROM fleet_agents WHERE canonical_id = ? AND tenant_id = ?",
+                (canonical_id, normalize_tenant_id(tenant_id)),
             ).fetchone()
         if row is None:
             return None
@@ -471,8 +523,8 @@ class SQLiteFleetStore:
 
     def delete(self, agent_id: str, *, tenant_id: str) -> bool:
         cursor = self._conn.execute(
-            "DELETE FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
-            (agent_id, tenant_id),
+            "DELETE FROM fleet_agents WHERE agent_id = ? AND tenant_id = ?",
+            (agent_id, normalize_tenant_id(tenant_id)),
         )
         self._conn.commit()
         return cursor.rowcount > 0
@@ -499,8 +551,8 @@ class SQLiteFleetStore:
 
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]:
         rows = self._conn.execute(
-            "SELECT data FROM fleet_agents WHERE json_extract(data, '$.tenant_id') = ? ORDER BY name",
-            (tenant_id,),
+            "SELECT data FROM fleet_agents WHERE tenant_id = ? ORDER BY name",
+            (normalize_tenant_id(tenant_id),),
         ).fetchall()
         return [FleetAgent.model_validate_json(r[0]) for r in rows]
 
@@ -555,22 +607,22 @@ class SQLiteFleetStore:
         return agents[offset : offset + limit], total
 
     def list_tenants(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            """SELECT COALESCE(json_extract(data, '$.tenant_id'), 'default') as tid,
-                      COUNT(*) as cnt
-               FROM fleet_agents
-               GROUP BY tid ORDER BY tid"""
-        ).fetchall()
+        rows = self._conn.execute("SELECT tenant_id, COUNT(*) FROM fleet_agents GROUP BY tenant_id ORDER BY tenant_id").fetchall()
         return [{"tenant_id": r[0], "agent_count": r[1]} for r in rows]
 
-    def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
-        now = now_utc_iso()
-        row = self._conn.execute("SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+    def update_state(self, agent_id: str, state: FleetLifecycleState, *, tenant_id: str) -> bool:
+        # agent_id is unique only WITHIN a tenant, so the predicate must carry
+        # the tenant: an unscoped UPDATE would quarantine every tenant's copy of
+        # a shared stock agent ID in one statement.
+        row = self._conn.execute(
+            "SELECT data FROM fleet_agents WHERE agent_id = ? AND tenant_id = ?",
+            (agent_id, normalize_tenant_id(tenant_id)),
+        ).fetchone()
         if row is None:
             return False
         agent = FleetAgent.model_validate_json(row[0])
         agent.lifecycle_state = state
-        agent.updated_at = now
+        agent.updated_at = now_utc_iso()
         self.put(agent)
         return True
 
@@ -579,22 +631,8 @@ class SQLiteFleetStore:
         if not agents:
             return 0
         self._conn.executemany(
-            """INSERT OR REPLACE INTO fleet_agents
-               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, data)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            [
-                (
-                    normalized.agent_id,
-                    normalized.canonical_id,
-                    normalized.name,
-                    normalized.lifecycle_state.value,
-                    normalized.trust_score,
-                    normalized.updated_at,
-                    normalized.device_fingerprint,
-                    normalized.model_dump_json(),
-                )
-                for normalized in (FleetAgent.model_validate(agent.model_dump()) for agent in agents)
-            ],
+            f"INSERT OR REPLACE INTO fleet_agents ({_FLEET_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",  # nosec B608 - static column list
+            [_fleet_row(FleetAgent.model_validate(agent.model_dump())) for agent in agents],
         )
         self._conn.commit()
         return len(agents)
@@ -602,3 +640,9 @@ class SQLiteFleetStore:
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # nosec B608 - table is static
+
+
+def _primary_key_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Return the table's primary-key columns in key order."""
+    rows = [row for row in conn.execute(f"PRAGMA table_info({table})").fetchall() if row[5]]  # nosec B608 - table is static
+    return [str(row[1]) for row in sorted(rows, key=lambda row: row[5])]

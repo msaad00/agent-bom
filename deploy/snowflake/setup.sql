@@ -18,13 +18,20 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
     data VARIANT NOT NULL
 );
 
+-- Keyed by (tenant_id, agent_id): agent IDs are derived from agent content with
+-- no tenant component, so a bare agent_id key let one tenant's registration
+-- overwrite another's. Snowflake does not enforce PRIMARY KEY on standard
+-- tables, so the MERGE predicates in snowflake_store.py are what keep the
+-- tenants apart; this declaration documents the intended key.
 CREATE TABLE IF NOT EXISTS fleet_agents (
-    agent_id VARCHAR PRIMARY KEY,
+    agent_id VARCHAR NOT NULL,
+    tenant_id VARCHAR NOT NULL DEFAULT 'default',
     name VARCHAR NOT NULL,
     lifecycle_state VARCHAR NOT NULL,
     trust_score FLOAT DEFAULT 0.0,
     updated_at TIMESTAMP_TZ NOT NULL,
-    data VARIANT NOT NULL
+    data VARIANT NOT NULL,
+    PRIMARY KEY (tenant_id, agent_id)
 );
 
 CREATE TABLE IF NOT EXISTS gateway_policies (

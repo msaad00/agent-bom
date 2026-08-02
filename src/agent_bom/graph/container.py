@@ -293,6 +293,16 @@ class GraphCompleteness:
     total_nodes: int = 0
     returned_nodes: int = 0
     reason: str = ""
+    depth_limited: bool = False
+    """The walk stopped at ``max_depth`` with reachable neighbours still unwalked.
+
+    Distinct from ``truncated``, which is a *budget* overrun: widening the node
+    budget recovers different nodes than widening the depth. Both mean the
+    result is not exhaustive, so both surface as ``truncated`` in ``to_dict``;
+    the reason names which one. Set only when the frontier was demonstrably
+    non-empty, so a walk that really did exhaust the graph inside its depth cap
+    still reports ``complete``.
+    """
 
     @property
     def omitted_nodes(self) -> int:
@@ -309,8 +319,8 @@ class GraphCompleteness:
         return graph_completeness(
             returned=self.returned_nodes,
             total=self.total_nodes,
-            truncated=self.truncated,
-            reason=self.reason,
+            truncated=self.truncated or self.depth_limited,
+            reason=self.reason or ("depth_limit" if self.depth_limited else ""),
         )
 
 
@@ -699,7 +709,7 @@ class UnifiedGraph:
             analysis_status=dict(self.analysis_status),
         )
         if not roots:
-            return sub, {}, False
+            return self._inherit_completeness(sub), {}, False
 
         visited: set[str] = set()
         depth_by_node: dict[str, int] = {}
@@ -715,6 +725,7 @@ class UnifiedGraph:
             depth_by_node[root] = 0
 
         truncated = False
+        depth_limited = False
         edge_count = 0
 
         def _edge_allowed(edge: UnifiedEdge) -> bool:
@@ -733,14 +744,23 @@ class UnifiedGraph:
                 truncated = True
                 break
             current, depth = queue.popleft()
-            if depth >= max_depth:
-                continue
 
             candidates: list[tuple[str, UnifiedEdge]] = []
             if direction in {"forward", "both"}:
                 candidates.extend((edge.target, edge) for edge in self.adjacency.get(current, []))
             if direction in {"reverse", "both"}:
                 candidates.extend((edge.source, edge) for edge in self.reverse_adjacency.get(current, []))
+
+            if depth >= max_depth:
+                # The walk stops here. Say so only if it actually left something
+                # behind: a frontier node whose neighbours were all visited
+                # anyway cost the caller nothing, and flagging it would make
+                # `truncated` meaningless on every bounded query.
+                if not depth_limited and any(
+                    neighbor not in visited and neighbor in self.nodes and _edge_allowed(edge) for neighbor, edge in candidates
+                ):
+                    depth_limited = True
+                continue
 
             for neighbor, edge in candidates:
                 if not _edge_allowed(edge):
@@ -776,6 +796,13 @@ class UnifiedGraph:
             if edge.source in sub.nodes and edge.target in sub.nodes:
                 sub.add_edge(edge)
 
+        self._inherit_completeness(
+            sub,
+            truncated=truncated,
+            reason="traversal_budget",
+            node_budget=max_nodes if truncated else None,
+            depth_limited=depth_limited,
+        )
         return sub, depth_by_node, truncated
 
     # ── Centrality ───────────────────────────────────────────────────────
@@ -1023,7 +1050,15 @@ class UnifiedGraph:
                 pruned.add_edge(edge)
         return self._inherit_completeness(pruned)
 
-    def _inherit_completeness(self, view: "UnifiedGraph") -> "UnifiedGraph":
+    def _inherit_completeness(
+        self,
+        view: "UnifiedGraph",
+        *,
+        truncated: bool = False,
+        reason: str = "",
+        node_budget: int | None = None,
+        depth_limited: bool = False,
+    ) -> "UnifiedGraph":
         """Carry the source's truncation onto a derived view.
 
         Truncation is a property of the SOURCE snapshot. Filtering cannot make
@@ -1033,13 +1068,20 @@ class UnifiedGraph:
         holds, and ``total_nodes`` stays the upstream total so ``omitted_nodes``
         keeps meaning "how much of the estate we never saw".
 
-        Every derived view goes through here — the five typed views as much as
-        ``filtered_view`` — so no projection can report completeness its source
-        does not have.
+        ``truncated`` lets a derivation that bounded itself — a traversal that
+        exhausted its node/edge/time budget — OR its own loss in. The source's
+        reason wins when both are truncated: it describes the deeper loss, and
+        a caller that widens the traversal budget still would not see the nodes
+        the loader never fetched.
+
+        Every derived view goes through here — the typed views as much as
+        ``filtered_view`` and ``traverse_subgraph`` — so no projection can
+        report completeness its source does not have.
         """
-        view.completeness.truncated = self.completeness.truncated
-        view.completeness.node_budget = self.completeness.node_budget
-        view.completeness.reason = self.completeness.reason
+        view.completeness.truncated = self.completeness.truncated or truncated
+        view.completeness.depth_limited = self.completeness.depth_limited or depth_limited
+        view.completeness.node_budget = self.completeness.node_budget if self.completeness.node_budget is not None else node_budget
+        view.completeness.reason = self.completeness.reason or (reason if truncated else "")
         # An untruncated graph built by hand never populates total_nodes; falling
         # back to the source's own size keeps `total` from reading as 0 next to a
         # non-empty `returned`.

@@ -538,7 +538,7 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     was_quarantined = agent.lifecycle_state == FleetLifecycleState.QUARANTINED
-    store.update_state(agent_id, new_state)
+    store.update_state(agent_id, new_state, tenant_id=tenant_id)
     log_action(
         "fleet.state_update",
         actor=actor,
@@ -615,7 +615,7 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
         raise HTTPException(status_code=404, detail="Fleet agent not found")
 
     # 1) Quarantine the fleet agent (fail-closed lifecycle state).
-    fleet_store.update_state(agent_id, FleetLifecycleState.QUARANTINED)
+    fleet_store.update_state(agent_id, FleetLifecycleState.QUARANTINED, tenant_id=tenant_id)
     log_action(
         "fleet.quarantine",
         actor=actor,

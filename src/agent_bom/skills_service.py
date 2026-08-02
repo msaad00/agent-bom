@@ -16,7 +16,6 @@ from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
 from agent_bom.parsers.skills import (
     SKILL_DISCOVERY_SKIP_DIRS,
     SkillScanResult,
-    discover_skill_files,
     looks_like_instruction_surface,
     parse_skill_file,
 )
@@ -194,8 +193,9 @@ class SkillsRescanReport:
 def _discover_explicit_skill_files(directory: Path) -> list[Path]:
     """Discover skill-like files inside a directory explicitly requested by the user.
 
-    Unlike project auto-discovery, explicit paths may intentionally target
-    ``tests/fixtures`` release samples — do not skip those trees here.
+    Test material is skipped relative to ``directory``: walking a project root
+    does not pull in its ``tests`` tree, while pointing the scan *at* a fixture
+    tree (``skills scan tests/fixtures/skills/…``) still resolves its files.
     """
     found: list[Path] = []
     seen: set[Path] = set()
@@ -204,7 +204,7 @@ def _discover_explicit_skill_files(directory: Path) -> list[Path]:
         if not looks_like_instruction_surface(
             path,
             allow_docs_skills=allow_docs_skills,
-            skip_test_fixtures=False,
+            scan_root=directory,
         ):
             continue
         resolved = path.resolve()
@@ -217,8 +217,11 @@ def _discover_explicit_skill_files(directory: Path) -> list[Path]:
 def resolve_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Path | None = None) -> list[Path]:
     """Resolve files/directories to concrete skill/instruction files."""
     base_dir = cwd or Path.cwd()
-    requested = list(paths) if paths is not None else [base_dir]
-    explicit_paths = bool(requested)
+    # Click hands `()` (never `None`) for a `nargs=-1` argument, so "no targets
+    # given" and "explicitly asked for nothing" are the same value. Both mean
+    # `agent-bom skills scan` — the command's own first help example — and must
+    # resolve to the working directory, not to zero files.
+    requested = [Path(raw) for raw in paths] if paths else [base_dir]
     resolved: list[Path] = []
     seen: set[Path] = set()
 
@@ -229,7 +232,7 @@ def resolve_skill_targets(paths: Iterable[str | Path] | None = None, *, cwd: Pat
 
         discovered: list[Path]
         if candidate.is_dir():
-            discovered = _discover_explicit_skill_files(candidate) if explicit_paths else discover_skill_files(candidate)
+            discovered = _discover_explicit_skill_files(candidate)
         elif candidate.is_file():
             discovered = [candidate]
         else:

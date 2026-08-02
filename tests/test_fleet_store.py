@@ -86,13 +86,13 @@ def test_list_summary():
 def test_update_state():
     store = InMemoryFleetStore()
     store.put(_make())
-    assert store.update_state("a-1", FleetLifecycleState.APPROVED) is True
+    assert store.update_state("a-1", FleetLifecycleState.APPROVED, tenant_id="default") is True
     assert store.get("a-1", tenant_id="default").lifecycle_state == FleetLifecycleState.APPROVED
 
 
 def test_update_state_missing():
     store = InMemoryFleetStore()
-    assert store.update_state("nope", FleetLifecycleState.APPROVED) is False
+    assert store.update_state("nope", FleetLifecycleState.APPROVED, tenant_id="default") is False
 
 
 def test_fleet_agent_normalizes_tenant_and_timestamps():
@@ -180,9 +180,9 @@ def test_sqlite_update_state():
     store, path = _sqlite_store()
     try:
         store.put(_make())
-        assert store.update_state("a-1", FleetLifecycleState.QUARANTINED) is True
+        assert store.update_state("a-1", FleetLifecycleState.QUARANTINED, tenant_id="default") is True
         assert store.get("a-1", tenant_id="default").lifecycle_state == FleetLifecycleState.QUARANTINED
-        assert store.update_state("nope", FleetLifecycleState.APPROVED) is False
+        assert store.update_state("nope", FleetLifecycleState.APPROVED, tenant_id="default") is False
     finally:
         path.unlink(missing_ok=True)
 

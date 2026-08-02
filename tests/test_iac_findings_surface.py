@@ -90,3 +90,71 @@ def test_iac_not_in_cyclonedx():
     cdx = to_cyclonedx(report)
     vulns = cdx.get("vulnerabilities", []) or []
     assert not any("AVD-AWS-0088" in str(v) for v in vulns)
+
+
+# ── Default `scan` must actually run the IaC rules it reports ─────────────
+# ``scan -p`` auto-detected terraform recursively and listed ``terraform`` in
+# ``scan_sources`` with empty ``warnings``/``coverage_warnings`` — while the
+# IaC rules stayed gated behind a top-level-only glob, so a repo with
+# ``infra/main.tf`` was reported as scanned and produced zero misconfigurations.
+
+
+def _write_nested_iac(root):
+    infra = root / "infra"
+    infra.mkdir(parents=True, exist_ok=True)
+    (infra / "main.tf").write_text(
+        'resource "aws_s3_bucket" "training_data" {\n  bucket = "public-training-data"\n  acl    = "public-read"\n}\n',
+        encoding="utf-8",
+    )
+
+
+def _run_scan(project, output, *extra):
+    import json as _json
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = CliRunner().invoke(
+            main,
+            ["scan", "-p", str(project), "--no-scan", "--no-auto-update-db", "--format", "json", "--output", str(output), *extra],
+            catch_exceptions=False,
+        )
+    return result, _json.loads(output.read_text(encoding="utf-8"))
+
+
+def test_default_scan_runs_iac_rules_on_nested_files(tmp_path):
+    """A default scan must find the same misconfigurations as an explicit --iac."""
+    _write_nested_iac(tmp_path)
+
+    _, default_payload = _run_scan(tmp_path, tmp_path / "default.json")
+    _, explicit_payload = _run_scan(tmp_path, tmp_path / "explicit.json", "--iac", str(tmp_path))
+
+    default_iac = (default_payload.get("iac_findings") or {}).get("findings", [])
+    explicit_iac = (explicit_payload.get("iac_findings") or {}).get("findings", [])
+
+    assert explicit_iac, "fixture produced no IaC findings even with --iac — test is vacuous"
+    assert default_iac, "default scan ran zero IaC rules on an auto-detected IaC tree"
+    assert {f["rule_id"] for f in default_iac} == {f["rule_id"] for f in explicit_iac}
+    assert any(f["severity"] == "critical" for f in default_iac)
+
+
+def test_scan_sources_names_iac_only_when_its_rules_ran(tmp_path):
+    """``scan_sources`` is a claim about work performed, not files noticed."""
+    _write_nested_iac(tmp_path)
+    _, payload = _run_scan(tmp_path, tmp_path / "report.json")
+
+    assert "terraform" in payload["scan_sources"]
+    assert "iac" in payload["scan_sources"], "IaC rules ran but the report does not say so"
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "app.py").write_text("print('hi')\n", encoding="utf-8")
+    _, plain_payload = _run_scan(plain, tmp_path / "plain.json")
+    assert "iac" not in plain_payload["scan_sources"], "IaC claimed on a tree with no IaC files"

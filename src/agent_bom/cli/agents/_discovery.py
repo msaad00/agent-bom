@@ -406,6 +406,14 @@ def run_local_discovery(
             con.print(f"\n[bold blue]Auto-detected lockfiles in {cwd}[/bold blue]")
 
     if not iac_paths and not inventory and (not no_discover and not skill_only and not images and not image_tars and not sbom_file):
+        # Fallback for a bare ``agent-bom scan`` with no ``--project``: the scan
+        # root is the ambient cwd, which may be an arbitrarily large tree (a
+        # home directory), so detection stays a cheap top-level glob here.
+        #
+        # When the operator NAMES a root with ``--project``/``--repo``, the
+        # recursive detector in ``expand_project_scan_targets`` has already
+        # filled ``iac_paths`` with that root, so nested IaC under infra/,
+        # deploy/ or charts/ is covered there.
         cwd = Path(project) if project else Path.cwd()
         _auto_iac: list[str] = []
         for name in ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]:

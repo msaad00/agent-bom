@@ -80,6 +80,7 @@ jobs:
               echo "Optional:"
               echo "- **vars.DEMO_GCP_REGION** — defaults to \`us-central1\`"
               echo "- **vars.DEMO_MIN_INSTANCES** — defaults to \`0\` (scale to zero; set \`1\` to remove cold starts)"
+              echo "- **vars.DEMO_MAX_INSTANCES** — defaults to \`2\` (hard ceiling on concurrent instances)"
               echo ""
               echo "See docs/HOSTED_POC.md → Demo redeploy."
             } >> "$GITHUB_STEP_SUMMARY"
@@ -131,10 +132,19 @@ jobs:
           # args to start the API, mirroring how docker-compose.platform.yml
           # runs it, and listen on 8080 because that is the port Cloud Run
           # routes to by default.
+          # Cost ceiling, not just sizing. Idle is free because CPU is billed
+          # only while a request executes, so the exposure is a crawler
+          # hammering the URL rather than steady-state hosting:
+          #   --max-instances  caps how much can ever run at once
+          #   --concurrency    packs more requests per instance, so load costs
+          #                    fewer instances rather than more
+          #   --timeout        bounds what a single abusive request can spend
           flags: >-
             --allow-unauthenticated
             --min-instances=${{ vars.DEMO_MIN_INSTANCES || '0' }}
-            --max-instances=4
+            --max-instances=${{ vars.DEMO_MAX_INSTANCES || '2' }}
+            --concurrency=80
+            --timeout=60
             --memory=1Gi
             --cpu=1
             --port=8080

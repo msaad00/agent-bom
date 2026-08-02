@@ -6,8 +6,11 @@ and proves the product loop with operator-controlled access.
 
 ## Recommended path
 
-Use an AWS VM first for the public demo URL, then keep Snowflake Native App as
-the enterprise distribution lane. Recommended domain split:
+The **public seeded demo** runs on Cloud Run (stateless, scales to zero — see
+[Demo redeploy](#demo-redeploy)). A **gated customer-0 POC**, which does hold
+state and needs Postgres, still runs on a VM as described below. Snowflake
+Native App remains the warehouse-native distribution lane. Recommended domain
+split:
 
 - `agentbom.io` — primary product/brand site.
 - `demo.agent-bom.com` — public seeded demo.
@@ -20,7 +23,8 @@ is ready.
 
 | Need | Use | Why |
 |---|---|---|
-| Public demo link | AWS VM + Caddy + platform compose | Fastest custom URL, simple TLS, works for any tester |
+| Public seeded demo | Cloud Run | Stateless and seeded in-process, so it scales to zero and costs nothing idle |
+| Gated customer-0 POC | VM + Caddy + platform compose | Holds real connections and state, so it needs a persistent Postgres |
 | Customer-owned warehouse install | Snowflake Native App | Runs inside the customer's Snowflake account with Snowflake auth and SPCS |
 
 ## Customer-0 AWS VM
@@ -311,6 +315,23 @@ inert until these exist, so forks never attempt a deploy):
 | `secrets.DEMO_GCP_SERVICE_ACCOUNT` | Service account the workflow impersonates |
 | `vars.DEMO_GCP_REGION` | Optional; defaults to `us-central1` |
 | `vars.DEMO_MIN_INSTANCES` | Optional; defaults to `0` (scale to zero) |
+| `vars.DEMO_MAX_INSTANCES` | Optional; defaults to `2` (hard ceiling on concurrent instances) |
+
+#### Cost posture
+
+Cloud Run bills CPU only while a request is executing, so a demo sitting at
+`--min-instances=0` costs **nothing** when nobody is looking at it. The free
+tier is 2M requests, 400,000 vCPU-seconds and 1M GiB-seconds per month, which a
+demo does not realistically exceed on organic traffic.
+
+The exposure is therefore not steady-state hosting — it is a crawler hammering
+the URL. Three settings bound that, and all are in the workflow:
+`--max-instances` caps how much can ever run at once, `--concurrency=80` packs
+more requests onto each instance so load costs fewer instances rather than more,
+and `--timeout=60` bounds what any single abusive request can spend.
+
+Set a GCP **budget alert** on the project as the backstop; it is free, and it is
+the only mechanism that tells you about a surprise before the invoice does.
 
 Auth is Workload Identity Federation over OIDC — no service-account key is
 stored in this repository.

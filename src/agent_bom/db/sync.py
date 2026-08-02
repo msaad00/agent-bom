@@ -308,6 +308,19 @@ def _now_utc() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _is_commit_bound(bound: str | None) -> bool:
+    """Whether an advisory range bound is a git commit rather than a version.
+
+    Shares ``version_utils``' heuristic so the sync and match paths agree on
+    what counts as unorderable. ``"0"`` is OSV's "from the beginning" sentinel.
+    """
+    if not bound or bound == "0":
+        return False
+    from agent_bom.version_utils import _looks_like_commit_sha
+
+    return _looks_like_commit_sha(bound)
+
+
 def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     """Parse one OSV JSON entry into (vuln_row, affected_rows).
 
@@ -448,7 +461,10 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
                     window_open = True
                 if "fixed" in event:
                     fixed = event["fixed"]
-                    if fixed_version is None:
+                    # A GIT range's ``fixed`` is a commit SHA. Left unguarded it
+                    # became the advisory's ``fixed_version`` — the string
+                    # rendered to users as "upgrade to <sha>".
+                    if fixed_version is None and not _is_commit_bound(fixed):
                         fixed_version = fixed
                     windows.append((introduced or "", fixed, ""))
                     introduced = None
@@ -464,6 +480,13 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
                 windows.append(("", "", ""))
 
             for win_introduced, win_fixed, win_last_affected in windows:
+                # A commit SHA carries no order against a release version, so a
+                # window bounded by one can never be matched — storing it only
+                # adds a row that reads as real coverage. Worse, a commit window
+                # whose fix event is absent degenerates to "vulnerable through
+                # latest" and matches every version.
+                if any(_is_commit_bound(bound) for bound in (win_introduced, win_fixed, win_last_affected)):
+                    continue
                 affected_rows.append(
                     {
                         "vuln_id": vuln_id,

@@ -125,7 +125,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
             sev_badge = _severity_text(severity_value(finding))
             cvss = f"{finding.cvss_score}" if finding.cvss_score is not None else "-"
             epss = f"{finding.epss_score:.4f}" if finding.epss_score is not None else "-"
-            kev = "Yes" if finding.is_kev else "-"
+            kev = _kev_cell(finding)
             reach = reachability_label(finding)[0]
             cwe = _md_cell(", ".join(finding.cwe_ids) if finding.cwe_ids else "-")
             tags = _md_cell(", ".join(framework_qualified_finding_tags(finding)) or "-")
@@ -229,6 +229,19 @@ def _trust_assessment_section(report: AIBOMReport) -> list[str]:
         lines.append(f"| Source | `{_md_cell(data['source_file'])}` |")
     lines.append("")
     return lines
+
+
+def _kev_cell(finding: Finding) -> str:
+    """KEV column text, carrying the BOD 22-01 deadline when CISA set one.
+
+    The per-finding detail block below the table only renders for critical/high
+    findings, so a medium or low KEV entry lost its remediation deadline
+    entirely when the table said no more than "Yes".
+    """
+    if not finding.is_kev:
+        return "-"
+    due = evidence(finding, "kev_due_date", "")
+    return f"Yes (due {due})" if due else "Yes"
 
 
 def _finding_sev_order(sev: str) -> int:

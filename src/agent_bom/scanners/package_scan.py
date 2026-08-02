@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Optional, cast
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from agent_bom.advisory_ids import MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
 from agent_bom.cmmc import tag_blast_radius as tag_cmmc
@@ -228,6 +229,11 @@ def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
     fix / end-of-life (open) verdicts, which mainstream scanners suppress by
     default. Application-ecosystem advisories (PyPI, npm, …) are never touched —
     an unfixed app CVE is still actionable (pin, remove, or mitigate).
+
+    A finding whose release is ambiguous is exempt: its fix was withheld by us
+    because it would name another branch's version, which is not the same claim
+    as "the distro will not fix this". Without the exemption every such finding
+    would be filtered out and an unspecified-release scan would report clean.
     """
     if _include_unfixed_enabled():
         return 0
@@ -238,7 +244,11 @@ def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
         vulns = getattr(pkg, "vulnerabilities", None)
         if not vulns:
             continue
-        kept = [v for v in vulns if (v.fixed_version or "").strip()]
+        kept = [
+            v
+            for v in vulns
+            if (v.fixed_version or "").strip() or v.match_confidence_tier == MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE
+        ]
         removed += len(vulns) - len(kept)
         pkg.vulnerabilities = kept
     return removed
@@ -348,6 +358,67 @@ def _resolve_osv_ecosystems(pkg: Package, *, for_local_db: bool) -> list[str]:
 
     osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)
     return [osv_ecosystem] if osv_ecosystem else []
+
+
+def ambiguous_distro_releases(pkg: Any) -> tuple[str, list[str]] | None:
+    """Release branches a distro package is being matched against blindly.
+
+    An apk/deb package with no usable release metadata is queried against EVERY
+    supported release branch. That union is deliberate — picking one branch would
+    silently drop true positives for all the others, and under-reporting is the
+    worse failure for a scanner. But the union cannot distinguish "vulnerable on
+    your release" from "vulnerable on some release", and the fix version it
+    resolves belongs to whichever branch happened to match. Returns
+    ``(distro_label, branches)`` when that is the situation, else ``None``.
+    """
+    # ``merge_local_vulns`` accepts any package-shaped object, so read
+    # defensively rather than assuming the full Package dataclass.
+    eco_key = str(getattr(pkg, "ecosystem", "") or "").lower()
+    distro_name = getattr(pkg, "distro_name", None)
+    distro_version = str(getattr(pkg, "distro_version", "") or "").strip()
+    if eco_key == "deb":
+        if str(distro_name or "").lower() in {"debian", "ubuntu"} and distro_version:
+            return None
+        return "Debian/Ubuntu", list(_DEBIAN_OSV_FALLBACKS)
+    if eco_key == "apk":
+        if apk_advisory_ecosystems(distro_name):
+            # Wolfi/Chainguard are undated rolling repos: one version-less
+            # ecosystem, so there is no release to be ambiguous about.
+            return None
+        if distro_version:
+            return None
+        return "Alpine", list(_ALPINE_OSV_FALLBACKS)
+    return None
+
+
+def _apply_distro_release_ambiguity(pkg: Any, vulns: list[Vulnerability]) -> None:
+    """Mark findings produced by a blind multi-release match, in place.
+
+    Three things the union previously left unsaid:
+
+    * ``match_confidence_tier`` claimed ``osv_range`` confidence for a match
+      whose release is unknown,
+    * ``fixed_version`` recommended a branch-specific upgrade target that can
+      belong to a different release branch than the installed package
+      (``openssl@3.0.11-r0`` was told to upgrade to the v3.23 branch's
+      ``3.5.7-r0``), and
+    * nothing reached ``scan_warnings``, so the ambiguity was invisible.
+    """
+    ambiguity = ambiguous_distro_releases(pkg)
+    if not ambiguity or not vulns:
+        return
+    distro_label, branches = ambiguity
+    branch_names = [branch.split(":", 1)[-1] for branch in branches]
+    for vuln in vulns:
+        vuln.match_confidence_tier = MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE
+        vuln.fixed_version = None
+    label = f"{getattr(pkg, 'name', '?')}@{getattr(pkg, 'version', '?')}"
+    _emit_scan_warning(
+        f"{label}: no {distro_label} release was specified, so it was matched against all "
+        f"{len(branch_names)} release branches ({', '.join(branch_names)}). Findings may not apply "
+        f"to your release and fix recommendations are withheld — re-run with the distro release to "
+        f"resolve both."
+    )
 
 
 def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
@@ -557,6 +628,34 @@ def _version_in_window(
     return version_in_range(version, lower, fixed, last_affected, ecosystem)
 
 
+def _window_has_commit_bound(window: tuple[str | None, str | None, str | None]) -> bool:
+    """Whether any bound in a vulnerable window is a git commit rather than a version.
+
+    ``introduced: "0"`` is OSV's "from the beginning" sentinel, not a commit, so
+    a window bounded only by it stays decidable.
+
+    Reuses ``version_utils``' heuristic rather than restating it: the two range
+    engines already share one comparison policy, and a second copy of "is this a
+    SHA?" is exactly how they drifted apart before.
+    """
+    from agent_bom.version_utils import _looks_like_commit_sha
+
+    return any(bound and bound != "0" and _looks_like_commit_sha(bound) for bound in window)
+
+
+def _warn_unresolvable_git_bounds(advisory_id: str, package_name: str, package_version: str) -> None:
+    """Record that an advisory was skipped because only commit bounds exist.
+
+    ``record_scan_warning`` dedupes by message, so a corpus with many such
+    advisories yields one line per advisory/package pair rather than a flood.
+    """
+    _emit_scan_warning(
+        f"{advisory_id}: {package_name}@{package_version} could not be evaluated — the advisory bounds this "
+        f"package only by git commit, which carries no order against a release version. The package may be "
+        f"affected; check the advisory directly."
+    )
+
+
 def _is_version_affected(
     vuln_data: dict,
     package_name: str,
@@ -627,9 +726,10 @@ def _is_version_affected(
                 continue
 
         # Check ranges
+        comparable_windows = 0
         for rng in ranges:
             rng_type = rng.get("type", "")
-            # Accept SEMVER, ECOSYSTEM, or missing type (common in OSV data)
+            # Accept SEMVER, ECOSYSTEM, or missing type (common in OSV data).
             if rng_type and rng_type not in ("SEMVER", "ECOSYSTEM", "GIT"):
                 continue
 
@@ -638,9 +738,25 @@ def _is_version_affected(
             # introduced/fixed events. Collect them first, then test each on its
             # own: treating a later ``introduced`` as a reset of the running
             # verdict discards an earlier window the version already matched.
-            windows = _range_windows(events)
-            if any(_version_in_window(package_version, window, ecosystem) for window in windows):
-                return True
+            for window in _range_windows(events):
+                # A commit SHA carries no order relative to a release version:
+                # placing one inside such a window needs the repository's commit
+                # graph, which the scanner does not have. Drop the window here
+                # so the guess never reaches the comparator. A commit range
+                # bounded only by ``introduced: 0`` is still decidable — it
+                # means "vulnerable from the first commit, unfixed" — so it is
+                # kept rather than treated as unresolvable.
+                if _window_has_commit_bound(window):
+                    continue
+                comparable_windows += 1
+                if _version_in_window(package_version, window, ecosystem):
+                    return True
+
+        if not comparable_windows:
+            # Every window for this package was commit-bounded. The advisory is
+            # real but unresolvable here — surface it instead of letting it look
+            # like a clean result.
+            _warn_unresolvable_git_bounds(vuln_data.get("id", "unknown"), package_name, package_version)
 
     # If we found the package in affected but no range matched AND no version
     # list was present, assume affected (conservative — the advisory was issued
@@ -749,6 +865,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             )
         )
 
+    _apply_distro_release_ambiguity(package, vulns)
     return vulns
 
 
@@ -837,6 +954,9 @@ def merge_local_vulns(pkg: "Any", local_vulns: "list[Any]") -> "list[Vulnerabili
         for key in cluster_keys:
             by_id.setdefault(key, prior)
 
+    # A blindly-fanned-out distro release is a property of the PACKAGE, so it
+    # applies to every advisory on it regardless of which feed produced it.
+    _apply_distro_release_ambiguity(pkg, pkg.vulnerabilities)
     return added
 
 

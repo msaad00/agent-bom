@@ -315,7 +315,8 @@ async function captureRenderedRegion(page: Page, region: Locator, path: string) 
   // The region is laid out asynchronously behind a canvas renderer, so a single
   // boundingBox() read can land before the element has non-zero geometry. Poll
   // for real geometry instead: that is the structural claim worth asserting.
-  await region.scrollIntoViewIfNeeded();
+  // The poll re-resolves the locator on every attempt, so it rides out the
+  // re-renders that detach an already-resolved element handle.
   await expect
     .poll(async () => (await region.boundingBox())?.width ?? 0, { timeout: 15_000 })
     .toBeGreaterThan(0);
@@ -327,7 +328,14 @@ async function captureRenderedRegion(page: Page, region: Locator, path: string) 
   // The screenshot is a debugging artifact, not an assertion — every functional
   // claim about this region is already covered by the canvas-pixel checks. A
   // capture that times out under a loaded runner must not fail the suite.
+  //
+  // scrollIntoViewIfNeeded belongs here rather than above it: it waits for the
+  // element to hold a stable bounding box, which a continuously animating sigma
+  // canvas never does, and it operates on a resolved handle that a re-render can
+  // detach. Both failure modes are "the screenshot did not happen", not "the
+  // graph did not render" — so neither may fail the suite.
   try {
+    await region.scrollIntoViewIfNeeded({ timeout: 5_000 });
     await page.screenshot({
       path,
       animations: "disabled",

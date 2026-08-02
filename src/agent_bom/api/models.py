@@ -946,13 +946,17 @@ class TenantQuotaUpdateRequest(BaseModel):
 class ExecScoreConfigUpdateRequest(BaseModel):
     """Body for PUT /v1/overview/score-config (issue #3940).
 
-    Deliberately lenient: unknown keys are ignored and values are canonicalized
-    / clamped server-side (see ``agent_bom.exec_score.canonicalize_config``) so
-    an ad-hoc override never raises — out-of-range weights are clamped, junk
-    keys dropped, an invalid display format falls back to the default.
+    Lenient about *values*: they are canonicalized / clamped server-side (see
+    ``agent_bom.exec_score.canonicalize_config``) so an out-of-range weight or
+    an invalid display format never raises.
+
+    Strict about *keys*, like every other write body. A misspelled top-level
+    field used to be dropped silently and the response still reported the
+    override as active — a config write that says it applied while having
+    changed nothing.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
     weights: dict[str, Any] | None = None
     grade_thresholds: dict[str, Any] | None = None
     display_format: str | None = None

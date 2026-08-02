@@ -35,6 +35,7 @@ from agent_bom.api.delegation_token import (
     propagate_delegation_token,
     verify_delegation_token,
 )
+from agent_bom.api.request_contract import reject_unknown_fields, require_scalar_str
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.webhook_store import emit_governance_event
 from agent_bom.rbac import require_authenticated_permission
@@ -52,9 +53,9 @@ def _tenant(request: Request) -> str:
 
 
 def _actor(request: Request) -> str:
-    return getattr(getattr(request, "state", None), "actor", None) or getattr(
-        getattr(request, "state", None), "api_key_name", None
-    ) or "api"
+    return (
+        getattr(getattr(request, "state", None), "actor", None) or getattr(getattr(request, "state", None), "api_key_name", None) or "api"
+    )
 
 
 def _emit(event_type: str, *, tenant_id: str, subject_id: str, **payload: object) -> None:
@@ -63,7 +64,7 @@ def _emit(event_type: str, *, tenant_id: str, subject_id: str, **payload: object
 
 
 def _tool_name(body: dict) -> str:
-    tool_name = str(body.get("tool_name", "") or "").strip()[:120]
+    tool_name = require_scalar_str(body, "tool_name", max_length=120)
     if not tool_name:
         raise HTTPException(status_code=400, detail="'tool_name' is required")
     return tool_name
@@ -91,11 +92,12 @@ def _identity_for_tenant(request: Request, identity_id: str) -> AgentIdentity:
 @router.post("/identities", status_code=201, dependencies=[_dep("config")])
 async def issue_agent_identity(request: Request, body: dict) -> dict[str, object]:
     """Issue a new agent identity. Returns the raw token exactly once."""
-    agent_id = str(body.get("agent_id", "") or "").strip()
+    reject_unknown_fields(body, ("agent_id", "role", "blueprint_id", "ttl_seconds", "allowed_tools", "owner", "owner_type"))
+    agent_id = require_scalar_str(body, "agent_id")
     if not agent_id:
         raise HTTPException(status_code=400, detail="'agent_id' is required")
-    role = str(body.get("role", "agent") or "agent").strip()[:60]
-    blueprint_id = str(body.get("blueprint_id", "") or "").strip()[:60]
+    role = require_scalar_str(body, "role", default="agent", max_length=60) or "agent"
+    blueprint_id = require_scalar_str(body, "blueprint_id", max_length=60)
     try:
         ttl_seconds = int(body.get("ttl_seconds", 90 * 86400))
     except (TypeError, ValueError) as exc:
@@ -110,8 +112,8 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
     # identity is attributed to the actor that provisioned it, so an issued
     # identity is never orphaned (matching the accountability we require of
     # discovered cloud NHIs). owner_type is advisory (user | team | service).
-    owner = str(body.get("owner", "") or "").strip()[:200] or _actor(request)
-    owner_type = str(body.get("owner_type", "") or "").strip()[:60]
+    owner = require_scalar_str(body, "owner") or _actor(request)
+    owner_type = require_scalar_str(body, "owner_type", max_length=60)
 
     identity, raw_token = issue_identity(
         get_agent_identity_store(),
@@ -157,6 +159,7 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
 async def rotate_agent_identity(request: Request, identity_id: str, body: dict | None = None) -> dict[str, object]:
     """Rotate an identity: issue a replacement and keep the old one live briefly."""
     payload = body or {}
+    reject_unknown_fields(payload, ("overlap_seconds", "ttl_seconds"))
     try:
         overlap_seconds = int(payload.get("overlap_seconds", 3600))
         ttl_seconds = int(payload.get("ttl_seconds", 90 * 86400))
@@ -167,9 +170,7 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
     existing = store.get(identity_id, tenant_id=tenant_id)
     if existing is None or existing.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Agent identity not found")
-    result = rotate_identity(
-        store, identity_id, tenant_id=tenant_id, overlap_seconds=max(0, overlap_seconds), ttl_seconds=ttl_seconds
-    )
+    result = rotate_identity(store, identity_id, tenant_id=tenant_id, overlap_seconds=max(0, overlap_seconds), ttl_seconds=ttl_seconds)
     if result is None:
         raise HTTPException(status_code=409, detail="Identity cannot be rotated (revoked)")
     new_identity, raw_token = result
@@ -204,6 +205,7 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
 @router.post("/identities/{identity_id}/revoke", dependencies=[_dep("config")])
 async def revoke_agent_identity(request: Request, identity_id: str, body: dict | None = None) -> dict[str, object]:
     """Revoke an identity immediately; its token can no longer authenticate."""
+    reject_unknown_fields(body or {}, ("reason",))
     store = get_agent_identity_store()
     tenant_id = _tenant(request)
     existing = store.get(identity_id, tenant_id=tenant_id)
@@ -230,6 +232,7 @@ async def revoke_agent_identity(request: Request, identity_id: str, body: dict |
 @router.post("/identities/{identity_id}/jit-requests", status_code=201, dependencies=[_dep("config")])
 async def request_agent_identity_jit(request: Request, identity_id: str, body: dict) -> dict[str, object]:
     """Request time-bound access to one tool. Requests do not authorize calls."""
+    reject_unknown_fields(body, ("tool_name", "reason", "ticket_id"))
     identity = _identity_for_tenant(request, identity_id)
     tool_name = _tool_name(body)
     grant = request_jit_grant(
@@ -258,6 +261,7 @@ async def request_agent_identity_jit(request: Request, identity_id: str, body: d
 @router.post("/identities/{identity_id}/jit-grants", status_code=201, dependencies=[_dep("config")])
 async def grant_agent_identity_jit(request: Request, identity_id: str, body: dict) -> dict[str, object]:
     """Grant one identity time-bound access to one tool."""
+    reject_unknown_fields(body, ("tool_name", "ttl_seconds", "reason", "ticket_id"))
     identity = _identity_for_tenant(request, identity_id)
     ttl_seconds = _ttl_seconds(body)
     grant = issue_jit_grant(
@@ -297,6 +301,7 @@ async def grant_agent_identity_jit(request: Request, identity_id: str, body: dic
 async def approve_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
     """Approve a pending JIT request for a bounded TTL."""
     payload = body or {}
+    reject_unknown_fields(payload, ("ttl_seconds",))
     store = get_agent_identity_store()
     existing = store.get_jit_grant(grant_id)
     if existing is None or existing.tenant_id != _tenant(request):
@@ -320,6 +325,7 @@ async def approve_agent_identity_jit(request: Request, grant_id: str, body: dict
 @router.post("/identity-jit-grants/{grant_id}/deny", dependencies=[_dep("config")])
 async def deny_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
     """Deny a pending JIT request."""
+    reject_unknown_fields(body or {}, ("reason",))
     store = get_agent_identity_store()
     existing = store.get_jit_grant(grant_id)
     if existing is None or existing.tenant_id != _tenant(request):
@@ -342,6 +348,7 @@ async def deny_agent_identity_jit(request: Request, grant_id: str, body: dict | 
 @router.post("/identity-jit-grants/{grant_id}/revoke", dependencies=[_dep("config")])
 async def revoke_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
     """Revoke an active JIT grant immediately."""
+    reject_unknown_fields(body or {}, ("reason",))
     store = get_agent_identity_store()
     existing = store.get_jit_grant(grant_id)
     if existing is None or existing.tenant_id != _tenant(request):
@@ -453,10 +460,32 @@ def _int_list(body: dict, key: str, *, lo: int, hi: int) -> list[int]:
 @router.post("/conditional-access-policies", status_code=201, dependencies=[_dep("config")])
 async def create_conditional_access_policy(request: Request, body: dict) -> dict[str, object]:
     """Create a context-aware access policy (time / CIDR / environment guardrail)."""
-    name = str(body.get("name", "") or "").strip()
+    reject_unknown_fields(
+        body,
+        (
+            "name",
+            "effect",
+            "priority",
+            "description",
+            "identity_ids",
+            "agent_ids",
+            "tools",
+            "allowed_environments",
+            "allowed_hours_utc",
+            "allowed_weekdays",
+            "allowed_source_cidrs",
+            "allowed_devices",
+            "allowed_groups",
+            "allowed_clients",
+            "require_device_managed",
+            "require_device_compliant",
+            "require_device_disk_encrypted",
+        ),
+    )
+    name = require_scalar_str(body, "name")
     if not name:
         raise HTTPException(status_code=400, detail="'name' is required")
-    effect = str(body.get("effect", "require") or "require").strip()
+    effect = require_scalar_str(body, "effect", default="require", max_length=20) or "require"
     if effect not in ("require", "deny"):
         raise HTTPException(status_code=400, detail="'effect' must be 'require' or 'deny'")
     try:
@@ -586,8 +615,9 @@ async def issue_agent_delegation(request: Request, identity_id: str, body: dict)
     The delegatee (receiver) validates it via ``POST /v1/delegations/verify``; it
     is propagated across further handoffs via ``POST /v1/delegations/propagate``.
     """
+    reject_unknown_fields(body, ("delegatee", "scopes", "ttl_seconds", "chain"))
     identity = _identity_for_tenant(request, identity_id)
-    delegatee = str(body.get("delegatee", "") or "").strip()[:200]
+    delegatee = require_scalar_str(body, "delegatee")
     if not delegatee:
         raise HTTPException(status_code=400, detail="'delegatee' is required")
     scopes = _delegation_scopes(body)
@@ -683,17 +713,16 @@ async def propagate_agent_delegation(request: Request, body: dict) -> dict[str, 
     The child token inherits the parent's expiry (never extended), may only carry
     a subset of the parent's scopes, and decrements the delegation-depth budget.
     """
-    token = str(body.get("token", "") or "")
-    next_delegatee = str(body.get("next_delegatee", "") or "").strip()[:200]
+    reject_unknown_fields(body, ("token", "next_delegatee", "scopes"))
+    token = require_scalar_str(body, "token", max_length=8192)
+    next_delegatee = require_scalar_str(body, "next_delegatee")
     if not next_delegatee:
         raise HTTPException(status_code=400, detail="'next_delegatee' is required")
     scopes = None
     if "scopes" in body:
         scopes = _delegation_scopes(body)
     try:
-        child_token, claims = propagate_delegation_token(
-            token, next_delegatee=next_delegatee, scopes=scopes, tenant_id=_tenant(request)
-        )
+        child_token, claims = propagate_delegation_token(token, next_delegatee=next_delegatee, scopes=scopes, tenant_id=_tenant(request))
     except DelegationTokenError as exc:
         raise HTTPException(status_code=400, detail=f"Delegation cannot be propagated: {sanitize_error(exc)}") from exc
     log_action(
@@ -827,7 +856,8 @@ async def create_access_review(request: Request, body: dict | None = None) -> di
     )
 
     payload = body or {}
-    name = str(payload.get("name", "") or "").strip()
+    reject_unknown_fields(payload, ("name", "due_days", "description", "subjects"))
+    name = require_scalar_str(payload, "name")
     if not name:
         raise HTTPException(status_code=400, detail="'name' is required")
     try:
@@ -934,7 +964,8 @@ async def submit_access_review_decision(request: Request, campaign_id: str, item
     """
     from agent_bom.api.access_review import _VALID_DECISIONS, get_access_review_store, record_decision
 
-    decision = str(body.get("decision", "") or "").strip()
+    reject_unknown_fields(body, ("decision", "note"))
+    decision = require_scalar_str(body, "decision", max_length=60)
     if decision not in _VALID_DECISIONS:
         raise HTTPException(status_code=400, detail=f"'decision' must be one of {sorted(_VALID_DECISIONS)}")
     note = str(body.get("note", "") or "")

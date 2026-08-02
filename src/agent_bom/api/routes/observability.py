@@ -566,9 +566,14 @@ async def ingest_traces(request: Request, body: dict, screen_content: bool | Non
     content and surface injection / PII / credential-leak findings. Raw content
     is screened in-memory and never persisted.
     """
+    tenant_id = _tenant_id(request)
     try:
-        tenant_id = _tenant_id(request)
         return await asyncio.to_thread(_ingest_traces_sync, body, tenant_id, _screen_content_enabled(screen_content))
+    except ValueError as exc:
+        # A malformed OTLP payload is the caller's error, not ours. The blanket
+        # 500 this replaced both mis-signalled 5xx alerting and echoed the raw
+        # parser exception text back to the client.
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Request failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
@@ -776,7 +781,9 @@ async def correlate_trace_attack_paths(request: Request, body: dict, span_id: st
     try:
         traces = parse_otel_traces(body)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+        # 422 matches the sibling ingest route and every Pydantic-modelled body
+        # on the write path — one status for one class of bad input.
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
     if span_id:
         traces = [t for t in traces if t.span_id == span_id]
 

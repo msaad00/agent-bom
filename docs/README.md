@@ -23,7 +23,7 @@ material. The index below groups the canonical docs by audience.
 - [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md) — five-stage evidence flow (canonical product story)
 - [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md) — positioning and persona contract
 - [`PRODUCT_MAP.md`](PRODUCT_MAP.md) — operator chooser: lanes, surfaces, backends
-- [`EDITIONS.md`](EDITIONS.md) — lanes + cost posture (canonical editions statement)
+- [`EDITIONS.md`](EDITIONS.md) — deployment lanes (canonical lanes statement)
 - [`PRODUCT_BOUNDARIES.md`](PRODUCT_BOUNDARIES.md) — boundary and copy-rules companion to editions
 - [`AGENT_CAPABILITY.md`](AGENT_CAPABILITY.md) — machine-readable capability manifest (MCP/API counts)
 - [`TRUST.md`](TRUST.md) — what we store, what we don't, customer boundary

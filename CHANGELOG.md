@@ -9,7 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Behaviour changes staged for the next release move numbers you may already be reporting.
+## [0.98.3] - 2026-08-02
+
+Behaviour changes in this release move numbers you may already be reporting.
 Read "Changed" before upgrading.
 
 ### Breaking
@@ -2778,7 +2780,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.3...HEAD
+[0.98.3]: https://github.com/msaad00/agent-bom/compare/v0.98.2...v0.98.3
 [0.98.2]: https://github.com/msaad00/agent-bom/compare/v0.98.1...v0.98.2
 [0.98.1]: https://github.com/msaad00/agent-bom/compare/v0.98.0...v0.98.1
 [0.98.0]: https://github.com/msaad00/agent-bom/compare/v0.97.5...v0.98.0

@@ -57,5 +57,5 @@ control plane and gateway consume that same evidence instead of rebuilding it.
 - Deeper module and surface architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - Service lanes and backend choices: [`PRODUCT_MAP.md`](PRODUCT_MAP.md)
 - Positioning and shipped-vs-not: [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md)
-- Lanes and cost posture: [`EDITIONS.md`](EDITIONS.md)
+- Deployment lanes: [`EDITIONS.md`](EDITIONS.md)
 - What to deploy first: [deployment overview](../site-docs/deployment/overview.md)

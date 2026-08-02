@@ -116,7 +116,7 @@ def test_source_create_rejects_mismatched_tenant(source_client: TestClient) -> N
         },
     )
     assert resp.status_code == 403
-    assert "tenant_id must match" in resp.json()["detail"]
+    assert "tenant_id in the request body must match the authenticated tenant" in resp.json()["detail"]
 
 
 def test_credential_reference_crud_and_tenant_isolation(source_client: TestClient) -> None:

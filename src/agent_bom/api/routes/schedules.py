@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import ScheduleCreate
 from agent_bom.api.stores import _get_schedule_store
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_schedule_quota, tenant_quota_guard
 
 router = APIRouter()
@@ -35,8 +35,7 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
 
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
-    if body.tenant_id not in ("default", tenant_id):
-        raise HTTPException(status_code=403, detail="Forbidden — tenant_id must match the authenticated tenant")
+    require_body_tenant_match(body.tenant_id, tenant_id)
 
     if not validate_cron_expression(body.cron_expression):
         raise HTTPException(status_code=422, detail="Invalid cron expression")

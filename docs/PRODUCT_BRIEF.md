@@ -28,7 +28,7 @@ Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). Th
 For the canonical product flow and the headline differentiator — symbol-level
 CVE reachability — see [HOW_IT_WORKS.md](HOW_IT_WORKS.md). This brief covers
 positioning and shipped-vs-not; it does not re-derive the stage-by-stage flow.
-For the lanes and cost posture, see [EDITIONS.md](EDITIONS.md).
+For the deployment lanes, see [EDITIONS.md](EDITIONS.md).
 
 ## Positioning contract
 
@@ -82,10 +82,9 @@ own cloud / infrastructure" the production form of lane 2, with runtime
 controls from lane 3 added where the customer needs inline enforcement.
 
 Use [PRODUCT_BOUNDARIES.md](PRODUCT_BOUNDARIES.md) as the source of truth for
-OSS, self-hosted enterprise, and Snowflake lane wording. In particular,
-managed `agent-bom Cloud` is not shipped today, and Snowflake is a governance
-and selected-backend lane rather than the default transactional backend for
-every API/UI workflow.
+OSS, self-hosted, and Snowflake lane wording. In particular, Snowflake is a
+governance and selected-backend lane rather than the default transactional
+backend for every API/UI workflow.
 
 Integrations should be described as distribution and workflow fit, not as a
 miscellaneous compatibility list. The strongest story is:

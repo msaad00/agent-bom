@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.connection_crypto import ConnectionSecretError, connections_key_configured, encrypt_secret
@@ -49,6 +49,8 @@ _WRITE_DEP = require_authenticated_permission("scan")
 
 
 class ExportDestinationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     kind: str = Field(
         ...,
         description="Destination kind: s3, azure-blob, gcs, clickhouse, snowflake, bigquery, or databricks",
@@ -73,6 +75,8 @@ class ExportDestinationCreate(BaseModel):
 
 
 class ExportScheduleCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(..., min_length=1, max_length=200)
     cron_expression: str = Field(..., description="Five-field cron expression")
     destination_id: str

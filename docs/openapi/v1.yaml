@@ -1381,6 +1381,7 @@ components:
       title: ComplianceThreatModel
       type: object
     CompositionModel:
+      additionalProperties: false
       properties:
         agents:
           items:
@@ -1420,6 +1421,7 @@ components:
       title: CompositionModel
       type: object
     CreateBlueprintBody:
+      additionalProperties: false
       properties:
         composition:
           $ref: '#/components/schemas/CompositionModel'
@@ -1715,6 +1717,7 @@ components:
       title: DatasetVersionCreate
       type: object
     DecisionBody:
+      additionalProperties: false
       properties:
         note:
           default: ''
@@ -1724,6 +1727,7 @@ components:
       title: DecisionBody
       type: object
     DraftVersionBody:
+      additionalProperties: false
       properties:
         composition:
           $ref: '#/components/schemas/CompositionModel'
@@ -1945,11 +1949,14 @@ components:
       title: ExceptionRequest
       type: object
     ExecScoreConfigUpdateRequest:
-      description: "Body for PUT /v1/overview/score-config (issue #3940).\n\nDeliberately\
-        \ lenient: unknown keys are ignored and values are canonicalized\n/ clamped\
-        \ server-side (see ``agent_bom.exec_score.canonicalize_config``) so\nan ad-hoc\
-        \ override never raises \u2014 out-of-range weights are clamped, junk\nkeys\
-        \ dropped, an invalid display format falls back to the default."
+      additionalProperties: false
+      description: "Body for PUT /v1/overview/score-config (issue #3940).\n\nLenient\
+        \ about *values*: they are canonicalized / clamped server-side (see\n``agent_bom.exec_score.canonicalize_config``)\
+        \ so an out-of-range weight or\nan invalid display format never raises.\n\n\
+        Strict about *keys*, like every other write body. A misspelled top-level\n\
+        field used to be dropped silently and the response still reported the\noverride\
+        \ as active \u2014 a config write that says it applied while having\nchanged\
+        \ nothing."
       properties:
         display_format:
           anyOf:
@@ -1971,6 +1978,7 @@ components:
       title: ExecScoreConfigUpdateRequest
       type: object
     ExportDestinationCreate:
+      additionalProperties: false
       properties:
         config:
           additionalProperties: true
@@ -2004,6 +2012,7 @@ components:
       title: ExportDestinationCreate
       type: object
     ExportScheduleCreate:
+      additionalProperties: false
       properties:
         cron_expression:
           description: Five-field cron expression
@@ -4651,7 +4660,7 @@ info:
     \ cloud infrastructure. agent \u2192 MCP server \u2192 packages \u2192 CVEs \u2192\
     \ blast radius."
   title: agent-bom API
-  version: 0.98.2
+  version: 0.98.3
 openapi: 3.1.0
 paths:
   /health:

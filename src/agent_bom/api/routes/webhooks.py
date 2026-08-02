@@ -13,6 +13,7 @@ from typing import Any, cast
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.request_contract import reject_unknown_fields, require_scalar_str
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.webhook_store import (
     GOVERNANCE_EVENT_TYPES,
@@ -49,7 +50,8 @@ def _subscription_for_tenant(request: Request, subscription_id: str) -> WebhookS
 @router.post("/webhooks", status_code=201, dependencies=[_dep("config")])
 async def create_webhook_subscription(request: Request, body: dict) -> dict[str, object]:
     """Register a governance webhook destination. Returns the signing secret once."""
-    url = str(body.get("url", "") or "").strip()
+    reject_unknown_fields(body, ("url", "event_types", "description", "signing_secret", "allow_private_networks"))
+    url = require_scalar_str(body, "url", max_length=2048)
     if not url:
         raise HTTPException(status_code=400, detail="'url' is required")
     raw_events = body.get("event_types", [])

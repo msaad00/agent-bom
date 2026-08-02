@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.dataset_version_store import get_dataset_version_store
 from agent_bom.api.evaluation_store import EvaluationRunRecord, get_evaluation_run_store
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -129,7 +129,7 @@ async def register_evaluation_run(request: Request, body: EvaluationRunCreate) -
     _validate_dataset_link(tenant_id, body)
     now = _now()
     evaluation_id = body.evaluation_id or str(uuid.uuid4())
-    ignored_body_tenant = bool(body.tenant_id and body.tenant_id != tenant_id)
+    require_body_tenant_match(body.tenant_id, tenant_id)
     record = EvaluationRunRecord(
         tenant_id=tenant_id,
         evaluation_id=evaluation_id,
@@ -155,7 +155,7 @@ async def register_evaluation_run(request: Request, body: EvaluationRunCreate) -
         resource=f"evaluation/{evaluation_id}",
         tenant_id=tenant_id,
     )
-    warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
+    warnings: list[str] = []
     return {"schema_version": "evals.runs.v1", "evaluation": record.to_dict(), "warnings": warnings}
 
 

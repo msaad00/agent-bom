@@ -483,19 +483,22 @@ SKILL_DISCOVERY_SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-# Test fixture trees intentionally contain malicious / high-risk skill samples
-# for unit tests. Auto-discovery must not treat them as first-party surfaces
-# (self-scan / project scan would otherwise fail the severity gate on fixtures).
+# Test trees intentionally contain malicious / high-risk skill samples: fixture
+# corpora, and also plain `tests/SKILL.md`-style documents tabulating the inputs
+# a detector must flag. Auto-discovery must not treat any of them as first-party
+# surfaces (self-scan / project scan would otherwise fail the severity gate on
+# its own test material — and a test-input table would outrank a real attack).
 _TEST_FIXTURE_ROOT_NAMES: frozenset[str] = frozenset({"tests", "test", "__tests__"})
 
 
-def _is_test_fixture_path(path: Path) -> bool:
-    """Return True for paths under ``tests/fixtures`` (or ``test/fixtures``)."""
-    parts = path.parts
-    for index, part in enumerate(parts[:-1]):
-        if part in _TEST_FIXTURE_ROOT_NAMES and parts[index + 1] == "fixtures":
-            return True
-    return False
+def _is_test_material_path(path: Path) -> bool:
+    """Return True for paths under a ``tests`` / ``test`` / ``__tests__`` directory.
+
+    ``path`` must be relative to the scan root, so that pointing a scan *at* a
+    test tree (``agent-bom skills scan tests/fixtures/skills/…``) still works:
+    the test-root component is then part of the root, not of the relative path.
+    """
+    return any(part in _TEST_FIXTURE_ROOT_NAMES for part in path.parts[:-1])
 
 # Well-known instruction filenames recognised anywhere in the tree.
 _INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
@@ -557,6 +560,7 @@ def looks_like_instruction_surface(
     *,
     allow_docs_skills: bool = False,
     skip_test_fixtures: bool = True,
+    scan_root: Path | None = None,
 ) -> bool:
     """Return True when a file path looks like a real skill/instruction surface.
 
@@ -568,15 +572,22 @@ def looks_like_instruction_surface(
     templates, changelogs) and vendored trees are excluded so discovery does not
     scan an entire monorepo blindly.
 
-    ``skip_test_fixtures`` defaults on for project auto-discovery (self-scan must
-    not treat intentional malicious samples under ``tests/fixtures`` as estate
-    skills). Explicit CLI targets pass ``False`` so release fixtures remain
-    scannable when an operator points at them directly.
+    ``skip_test_fixtures`` defaults on: self-scan must not treat intentional
+    malicious samples under a ``tests`` tree as estate skills. The check runs
+    against ``path`` relative to ``scan_root``, so release fixtures remain
+    scannable when an operator points a scan directly at them.
     """
     if any(part in SKILL_DISCOVERY_SKIP_DIRS for part in path.parts):
         return False
-    if skip_test_fixtures and _is_test_fixture_path(path):
-        return False
+    if skip_test_fixtures:
+        relative = path
+        if scan_root is not None:
+            try:
+                relative = path.relative_to(scan_root)
+            except ValueError:
+                relative = path
+        if _is_test_material_path(relative):
+            return False
     if not allow_docs_skills and any(root in path.parts for root in _DOCS_SKILL_ROOT_NAMES) and "skills" in path.parts:
         return False
 
@@ -628,7 +639,7 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
     seen: set[Path] = set()
 
     for path in iter_discovery_files(project_dir, extra_skip_dirs=SKILL_DISCOVERY_SKIP_DIRS):
-        if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
+        if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills, scan_root=project_dir):
             continue
         resolved = path.resolve()
         if resolved not in seen:

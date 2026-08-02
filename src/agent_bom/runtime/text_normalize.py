@@ -16,7 +16,11 @@ import re
 import unicodedata
 
 # Zero-width and invisible characters commonly used for evasion.
-INVISIBLE_RE = re.compile(r"[​‌‍‎‏⁠⁡⁢⁣⁤﻿­͏ᅟᅠ឴឵]")
+# Written as escapes, not literals. Embedding raw bidirectional and
+# zero-width characters in source is itself the trojan-source vector this
+# module exists to defeat (bandit B613 flags it), and a reviewer cannot see
+# what a literal contains. The escapes compile to the same class.
+INVISIBLE_RE = re.compile("[\u200b\u200c\u200d\u200e\u200f\u2060\u2061\u2062\u2063\u2064\ufeff\u00ad\u034f\u115f\u1160\u17b4\u17b5]")
 
 # Cyrillic/Greek/other script confusables → Latin. Unicode normalization does
 # not fold these: they are distinct letters that merely *look* identical.

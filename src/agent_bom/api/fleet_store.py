@@ -561,9 +561,10 @@ class SQLiteFleetStore:
         if not key:
             return None
         for column in ("name", "agent_id", "canonical_id"):
-            row = self._conn.execute(  # nosec B608 - column is from a fixed literal tuple
-                f"SELECT data FROM fleet_agents WHERE lower({column}) = ? "
-                "AND json_extract(data, '$.tenant_id') = ? LIMIT 1",
+            row = self._conn.execute(
+                # nosec B608 - ``column`` comes from the fixed literal tuple in
+                # the loop above; the values are bound.
+                f"SELECT data FROM fleet_agents WHERE lower({column}) = ? AND tenant_id = ? LIMIT 1",  # nosec B608
                 (key, tenant_id),
             ).fetchone()
             if row is not None:

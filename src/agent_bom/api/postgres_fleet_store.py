@@ -186,8 +186,10 @@ class PostgresFleetStore:
             return None
         with _tenant_connection(self._pool) as conn:
             for column in ("name", "agent_id", "canonical_id"):
-                row = conn.execute(  # nosec B608 - column is from a fixed literal tuple
-                    f"SELECT data FROM fleet_agents WHERE lower({column}) = %s AND tenant_id = %s LIMIT 1",
+                row = conn.execute(
+                    # nosec B608 - ``column`` comes from the fixed literal tuple
+                    # in the loop above; the values are bound.
+                    f"SELECT data FROM fleet_agents WHERE lower({column}) = %s AND tenant_id = %s LIMIT 1",  # nosec B608
                     (key, tenant_id),
                 ).fetchone()
                 if row is not None:

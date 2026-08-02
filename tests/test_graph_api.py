@@ -1511,7 +1511,13 @@ class _RecordingGraphStore:
         self.calls.append(("bfs_paths", tenant_id, scan_id, source, max_depth, traversable_only))
         paths = self.graph.bfs(source, max_depth=max_depth, traversable_only=traversable_only)
         reachable = self.graph.reachable_from(source, max_depth=max_depth, traversable_only=traversable_only, include_source=False)
-        return paths, reachable, self.graph.completeness.truncated
+        # Depth-limitedness comes from the real traversal primitive rather than
+        # a hand-held constant, so the double cannot certify a completeness the
+        # store it stands in for would not.
+        walked, _depths, _truncated = self.graph.traverse_subgraph(
+            [source], max_depth=max_depth, traversable_only=traversable_only, max_nodes=10**9, max_edges=10**9
+        )
+        return paths, reachable, self.graph.completeness.truncated, walked.completeness.depth_limited
 
     def impact_of(self, *, tenant_id: str = "", scan_id: str = "", node_id: str, max_depth: int = 4):
         self.calls.append(("impact_of", tenant_id, scan_id, node_id, max_depth))

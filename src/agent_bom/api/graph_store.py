@@ -35,6 +35,7 @@ from agent_bom.graph import (
     technique_mappings_from_json,
 )
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
+from agent_bom.graph.completeness import bounded_walk_reason, impact_completeness
 from agent_bom.graph.container import apply_node_budget
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
@@ -271,13 +272,16 @@ class GraphStoreProtocol(Protocol):
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str], bool]:
-        """Paths and reachable set from ``source``, plus whether the walk was bounded.
+    ) -> tuple[list[list[str]], set[str], bool, bool]:
+        """Paths and reachable set from ``source``, plus how the walk was bounded.
 
-        The third element is the traversal's own truncation flag. It is part of
-        the answer, not diagnostics: without it a caller cannot tell "these are
-        all the reachable nodes" from "these are the first ``max_nodes`` we got
-        to", and every surface downstream reports the bound as the total.
+        The last two elements are part of the answer, not diagnostics. Without
+        them a caller cannot tell "these are all the reachable nodes" from
+        "these are the first ``max_nodes`` we got to" (third element,
+        budget-bounded) or "these are the ones within ``max_depth``" (fourth,
+        depth-bounded, and only ever true when the frontier still had unwalked
+        neighbours). Either way the surface downstream must not report the
+        bound as the total.
         """
         ...
 
@@ -799,11 +803,11 @@ class SQLiteGraphStore:
         static_only: bool,
         dynamic_only: bool,
         include_roots: bool,
-    ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], UnifiedEdge], dict[str, str], list[str], bool]:
+    ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], UnifiedEdge], dict[str, str], list[str], bool, bool]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
         if not effective_scan_id:
-            return scan_id, "", set(), {}, {}, {}, [], False
+            return scan_id, "", set(), {}, {}, {}, [], False, False
 
         existing_roots = {node.id for node in self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=set(roots))}
         visited: set[str] = set()
@@ -812,7 +816,33 @@ class SQLiteGraphStore:
         parent_by_node: dict[str, str] = {}
         discovery_order: list[str] = []
         truncated = False
+        depth_limited = False
         edge_count = 0
+
+        def _neighbors(node_id: str) -> list[str]:
+            found: list[str] = []
+            for row in self._filtered_edge_rows(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                frontier={node_id},
+                traversable_only=traversable_only,
+                relationship_types=relationship_types,
+                static_only=static_only,
+                dynamic_only=dynamic_only,
+            ):
+                edge = self._edge_from_row(row)
+                if direction in {"forward", "both"}:
+                    if edge.source == node_id:
+                        found.append(edge.target)
+                    elif edge.is_bidirectional and edge.target == node_id:
+                        found.append(edge.source)
+                if direction in {"reverse", "both"}:
+                    if edge.target == node_id:
+                        found.append(edge.source)
+                    elif edge.is_bidirectional and edge.source == node_id:
+                        found.append(edge.target)
+            return found
 
         queue: list[tuple[str, int]] = []
         for root in roots:
@@ -831,6 +861,11 @@ class SQLiteGraphStore:
             current, depth = queue[index]
             index += 1
             if depth >= max_depth:
+                # Frontier node: only a *demonstrably* unwalked neighbour makes
+                # this an incomplete answer. Costs one edge lookup per frontier
+                # node, and only until the first one that leaves work behind.
+                if not depth_limited and any(neighbor not in visited for neighbor in _neighbors(current)):
+                    depth_limited = True
                 continue
             for row in self._filtered_edge_rows(
                 conn,
@@ -882,7 +917,17 @@ class SQLiteGraphStore:
         if include_roots:
             visited.update(existing_roots)
 
-        return effective_scan_id, created_at, visited, depth_by_node, traversed_edges, parent_by_node, discovery_order, truncated
+        return (
+            effective_scan_id,
+            created_at,
+            visited,
+            depth_by_node,
+            traversed_edges,
+            parent_by_node,
+            discovery_order,
+            truncated,
+            depth_limited,
+        )
 
     def bfs_paths(
         self,
@@ -892,10 +937,10 @@ class SQLiteGraphStore:
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str], bool]:
+    ) -> tuple[list[list[str]], set[str], bool, bool]:
         conn = self._open_ro_conn()
         if conn is None:
-            return [], set(), False
+            return [], set(), False, False
         try:
             (
                 _effective_scan_id,
@@ -906,6 +951,7 @@ class SQLiteGraphStore:
                 parent_by_node,
                 discovery_order,
                 truncated,
+                depth_limited,
             ) = self._walk_graph(
                 conn,
                 tenant_id=tenant_id,
@@ -923,7 +969,7 @@ class SQLiteGraphStore:
                 include_roots=True,
             )
             if source not in visited:
-                return [], set(), truncated
+                return [], set(), truncated, depth_limited
 
             paths: list[list[str]] = []
             for node_id in discovery_order:
@@ -939,7 +985,7 @@ class SQLiteGraphStore:
                     paths.append(path)
             reachable = set(visited)
             reachable.discard(source)
-            return paths, reachable, truncated
+            return paths, reachable, truncated, depth_limited
         finally:
             conn.close()
 
@@ -955,7 +1001,7 @@ class SQLiteGraphStore:
         if conn is None:
             return None
         try:
-            effective_scan_id, _created_at, visited, depth_by_node, _edges, _parents, _order, _truncated = self._walk_graph(
+            effective_scan_id, _created_at, visited, depth_by_node, _edges, _parents, _order, truncated, depth_limited = self._walk_graph(
                 conn,
                 tenant_id=tenant_id,
                 scan_id=scan_id,
@@ -987,6 +1033,11 @@ class SQLiteGraphStore:
                 "affected_by_type": affected_by_type,
                 "affected_count": len(affected_nodes),
                 "max_depth_reached": max((depth_by_node.get(node, 0) for node in affected_nodes), default=0),
+                "completeness": impact_completeness(
+                    affected_count=len(affected_nodes),
+                    truncated=truncated,
+                    depth_limited=depth_limited,
+                ),
             }
         finally:
             conn.close()
@@ -1017,21 +1068,23 @@ class SQLiteGraphStore:
         if conn is None:
             return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id), {}, False
         try:
-            effective_scan_id, created_at, visited, depth_by_node, traversed_edges, _parents, _order, truncated = self._walk_graph(
-                conn,
-                tenant_id=tenant_id,
-                scan_id=scan_id,
-                roots=roots,
-                direction=direction,
-                max_depth=max_depth,
-                max_nodes=max_nodes,
-                max_edges=max_edges,
-                deadline_monotonic=deadline_monotonic,
-                traversable_only=traversable_only,
-                relationship_types=relationship_types,
-                static_only=static_only,
-                dynamic_only=dynamic_only,
-                include_roots=include_roots,
+            effective_scan_id, created_at, visited, depth_by_node, traversed_edges, _parents, _order, truncated, depth_limited = (
+                self._walk_graph(
+                    conn,
+                    tenant_id=tenant_id,
+                    scan_id=scan_id,
+                    roots=roots,
+                    direction=direction,
+                    max_depth=max_depth,
+                    max_nodes=max_nodes,
+                    max_edges=max_edges,
+                    deadline_monotonic=deadline_monotonic,
+                    traversable_only=traversable_only,
+                    relationship_types=relationship_types,
+                    static_only=static_only,
+                    dynamic_only=dynamic_only,
+                    include_roots=include_roots,
+                )
             )
             graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
             if not effective_scan_id:
@@ -1047,16 +1100,21 @@ class SQLiteGraphStore:
             # returning a fresh GraphCompleteness that reads "complete,
             # returned: 0" over a non-empty result. Now that drill-down answers
             # from a traversal, that laundering is reachable from a shipped
-            # endpoint. The denominator is the snapshot's recorded node_count —
+            # endpoint. The denominator is the snapshot's recorded node_count --
             # a single-row primary-key lookup, never a COUNT over graph_nodes.
+            #
+            # Two bounds are reported independently: the node budget and the
+            # depth cap. Collapsing them would leave a caller unable to tell
+            # whether raising max_depth could recover the missing nodes.
             snapshot_row = conn.execute(
                 "SELECT node_count FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
                 (tenant_id, effective_scan_id),
             ).fetchone()
             snapshot_nodes = int(snapshot_row["node_count"] or 0) if snapshot_row is not None else 0
             graph.completeness.truncated = truncated
-            graph.completeness.reason = "traversal_budget" if truncated else ""
+            graph.completeness.depth_limited = depth_limited
             graph.completeness.node_budget = max_nodes if truncated else None
+            graph.completeness.reason = bounded_walk_reason(truncated=truncated, depth_limited=depth_limited)
             graph.completeness.total_nodes = snapshot_nodes or len(graph.nodes)
             graph.completeness.returned_nodes = len(graph.nodes)
             return graph, depth_by_node, truncated

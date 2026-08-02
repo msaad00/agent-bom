@@ -56,7 +56,7 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
 )
-from agent_bom.graph.completeness import graph_completeness
+from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
 from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
@@ -2542,15 +2542,19 @@ async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecision
     return cast("dict[str, Any]", payload)
 
 
-def _paths_truncation_reason(traversal_truncated: bool, page_truncated: bool) -> str:
+def _paths_truncation_reason(traversal_truncated: bool, page_truncated: bool, depth_limited: bool = False) -> str:
     """Name the *stronger* loss first.
 
-    A traversal budget is a harder limit than a page limit: paging further
-    cannot recover the nodes the walk never reached, so the traversal reason
-    must not be masked by the pagination one.
+    A traversal budget is a harder limit than a depth cap, which is harder than
+    a page limit: paging further cannot recover the nodes the walk never
+    reached, and raising ``max_depth`` cannot recover the nodes the node budget
+    never let it visit. So the deeper reason must not be masked by the shallower
+    one.
     """
     if traversal_truncated:
         return "traversal_budget"
+    if depth_limited:
+        return "depth_limit"
     return "path_page_limit" if page_truncated else ""
 
 
@@ -2576,7 +2580,7 @@ async def get_graph_paths(
     if not source_nodes:
         raise HTTPException(status_code=404, detail=f"Node '{source_node_id}' not found in graph")
 
-    all_paths, reachable, traversal_truncated = await _graph_store_call(
+    all_paths, reachable, traversal_truncated, depth_limited = await _graph_store_call(
         graph_store.bfs_paths,
         scan_id=requested_scan_id,
         tenant_id=tenant,
@@ -2620,15 +2624,19 @@ async def get_graph_paths(
         ],
         "pagination": pagination,
         "truncated": traversal_truncated,
-        # A budget-bounded BFS knows neither the reachable set nor the path
-        # count, so it cannot report a total: `len(all_paths)` is the bound, not
-        # the answer. Reporting it as `total` told a client that paged to
-        # exhaustion it had everything. Same invariant as /v1/graph/query.
+        "depth_limited": depth_limited,
+        # A bounded BFS knows neither the reachable set nor the path count, so
+        # it cannot report a total: `len(all_paths)` is the bound, not the
+        # answer. Reporting it as `total` told a client that paged to exhaustion
+        # it had everything. `max_depth` bounds it exactly as the node budget
+        # does — it defaults to 4 and is the server's choice when the caller
+        # passes nothing — so a walk that stopped with reachable nodes still
+        # unwalked is no more complete than one that ran out of budget.
         "completeness": graph_completeness(
             returned=len(paged_paths),
-            total=None if traversal_truncated else len(all_paths),
-            truncated=traversal_truncated or pagination["has_more"],
-            reason=_paths_truncation_reason(traversal_truncated, pagination["has_more"]),
+            total=None if (traversal_truncated or depth_limited) else len(all_paths),
+            truncated=traversal_truncated or depth_limited or pagination["has_more"],
+            reason=_paths_truncation_reason(traversal_truncated, pagination["has_more"], depth_limited),
         ),
     }
 
@@ -2847,6 +2855,9 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         include_roots=body.include_roots,
     )
 
+    depth_limited = bool(getattr(traversal_graph.completeness, "depth_limited", False))
+    bounded = truncated or depth_limited
+
     filtered_graph = _filtered_query_graph(
         traversal_graph,
         roots=body.roots,
@@ -2894,6 +2905,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         "timeout_ms": body.timeout_ms,
         "budget": budget,
         "truncated": truncated,
+        "depth_limited": depth_limited,
         "missing_roots": [],
         "depth_by_node": {node_id: depth for node_id, depth in depth_by_node.items() if node_id in filtered_graph.nodes},
         "nodes": [node.to_dict() for node in filtered_graph.nodes.values()],
@@ -2908,11 +2920,16 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             dynamic_only=body.dynamic_only,
             include_ids=set(body.roots),
         ).to_dict(),
+        # The traversal's own completeness carries a loss the `truncated` bool
+        # does not: a walk that stopped at `max_depth` with reachable nodes
+        # still unwalked. Reading only the bool reported such a walk as a
+        # complete answer, which is how a bounded traversal comes to read as
+        # "there is no attack path past here".
         "completeness": graph_completeness(
             returned=len(filtered_graph.nodes),
-            total=None if truncated else filtered_graph.stats().get("node_count", len(filtered_graph.nodes)),
-            truncated=truncated,
-            reason="traversal_budget" if truncated else "",
+            total=None if bounded else filtered_graph.stats().get("node_count", len(filtered_graph.nodes)),
+            truncated=bounded,
+            reason=bounded_walk_reason(truncated=truncated, depth_limited=depth_limited),
         ),
     }
 

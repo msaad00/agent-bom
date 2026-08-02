@@ -61,7 +61,7 @@ from agent_bom.api.models import (
     TenantQuotaUpdateRequest,
 )
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
@@ -2124,6 +2124,7 @@ async def create_exception(request: Request, req: ExceptionRequest) -> dict:
     from agent_bom.api.exception_store import VulnException
 
     tenant_id = require_request_tenant_id(request)
+    require_body_tenant_match(req.tenant_id, tenant_id)
     actor = _request_actor(request)
     exc = VulnException(
         vuln_id=req.vuln_id,

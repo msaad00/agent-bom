@@ -14,7 +14,7 @@ import logging
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.blueprint_store import (
     BlueprintApprovalError,
@@ -48,12 +48,14 @@ def _tenant(request: Request) -> str:
 
 
 def _actor(request: Request) -> str:
-    return getattr(getattr(request, "state", None), "actor", None) or getattr(
-        getattr(request, "state", None), "api_key_name", None
-    ) or "api"
+    return (
+        getattr(getattr(request, "state", None), "actor", None) or getattr(getattr(request, "state", None), "api_key_name", None) or "api"
+    )
 
 
 class CompositionModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     agents: list[str] = Field(default_factory=list)
     models: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
@@ -75,6 +77,8 @@ class CompositionModel(BaseModel):
 
 
 class CreateBlueprintBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=200)
     owner: str = Field(min_length=1, max_length=200)
     owner_type: str = Field(default="", max_length=60)
@@ -83,10 +87,14 @@ class CreateBlueprintBody(BaseModel):
 
 
 class DraftVersionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     composition: CompositionModel = Field(default_factory=CompositionModel)
 
 
 class DecisionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     note: str = Field(default="", max_length=1000)
 
 

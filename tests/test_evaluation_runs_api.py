@@ -61,14 +61,14 @@ def test_register_evaluation_run_links_dataset_version_and_uses_request_tenant()
                 }
             ],
             "metadata": {"owner": "platform"},
-            "tenant_id": "tenant-beta",
+            "tenant_id": "tenant-alpha",
         },
     )
 
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["schema_version"] == "evals.runs.v1"
-    assert body["warnings"] == ["tenant_id in body ignored; request tenant scope is authoritative"]
+    assert body["warnings"] == []
     evaluation = body["evaluation"]
     assert evaluation["tenant_id"] == "tenant-alpha"
     assert evaluation["evaluation_id"] == "eval-2026-05-25"
@@ -117,3 +117,14 @@ def test_evaluation_run_requires_analyst_role() -> None:
     response = _client(role="viewer").post("/v1/evaluations", json={"evaluation_id": "eval-a"})
 
     assert response.status_code == 403
+
+
+def test_register_evaluation_run_rejects_a_foreign_body_tenant() -> None:
+    """A body tenant the caller is not authenticated for fails closed (was: ignored)."""
+    response = _client(tenant="tenant-alpha").post(
+        "/v1/evaluations",
+        json={"evaluation_id": "eval-x", "tenant_id": "tenant-beta"},
+    )
+
+    assert response.status_code == 403, response.text
+    assert "tenant_id" in response.json()["error"]["message"]

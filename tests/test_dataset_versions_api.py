@@ -40,14 +40,14 @@ def test_register_dataset_version_uses_request_tenant() -> None:
             "digest": "sha256:abc123",
             "source": "training-agent",
             "metadata": {"license": "apache-2.0"},
-            "tenant_id": "tenant-beta",
+            "tenant_id": "tenant-alpha",
         },
     )
 
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["schema_version"] == "v1"
-    assert body["warnings"] == ["tenant_id in body ignored; request tenant scope is authoritative"]
+    assert body["warnings"] == []
     dataset = body["dataset"]
     assert dataset["tenant_id"] == "tenant-alpha"
     assert dataset["dataset_id"] == "hf-corpus"
@@ -89,3 +89,19 @@ def test_dataset_version_requires_analyst_role() -> None:
     response = _client(role="viewer").post("/v1/datasets/data-prod/versions", json={"version_id": "v1"})
 
     assert response.status_code == 403
+
+
+def test_register_dataset_version_rejects_a_foreign_body_tenant() -> None:
+    """Asking to write into another tenant fails closed rather than being dropped.
+
+    This used to return 201 with a "tenant_id in body ignored" warning. The write
+    was always bound to the request tenant, but a silently downgraded
+    cross-tenant request is not an answer a client can act on.
+    """
+    response = _client(tenant="tenant-alpha").post(
+        "/v1/datasets/hf-corpus/versions",
+        json={"version_id": "v1", "source": "ci", "tenant_id": "tenant-beta"},
+    )
+
+    assert response.status_code == 403, response.text
+    assert "tenant_id" in response.json()["error"]["message"]

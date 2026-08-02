@@ -161,7 +161,14 @@ def scan_cloned_repo_tree(
         if update_progress is not None:
             update_progress(f"Scanning {len(skill_files)} skill/instruction file(s)")
         skill_result = scan_skill_files(skill_files)
-        if skill_result.servers or skill_result.packages or skill_result.credential_env_vars:
+        # A successfully read instruction file is itself an auditable security
+        # surface. Behavioral risks live in ``raw_content`` and must not be
+        # gated on whether inventory extraction happened to find a package,
+        # server, or credential reference — a pure prompt-injection or
+        # credential-exfiltration file has none of those. The CLI copy of this
+        # gate was removed in #4568; this is the same fix for the hosted
+        # ``POST /v1/scans`` repo-URL job and the MCP ``scan`` tool.
+        if skill_result.source_files:
             skill_provenance = {
                 "source_type": "skill_invoked_pull",
                 "observed_via": ["skill_invoked_pull"],

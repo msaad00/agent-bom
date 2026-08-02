@@ -332,3 +332,40 @@ def test_skills_output_schemas_exist():
 
     assert scan_doc["$id"] == "https://agent-bom.github.io/schemas/skills-scan/v1"
     assert rescan_doc["$id"] == "https://agent-bom.github.io/schemas/skills-rescan/v1"
+
+
+# ── Default target resolution: no arguments means "here", not "nothing" ──
+
+
+def test_resolve_skill_targets_empty_tuple_matches_none(tmp_path):
+    """Click hands `()` for `nargs=-1`, so `()` must mean the same as `None`.
+
+    `agent-bom skills scan` (no arguments) is example #1 in the command's own
+    help text; treating `()` as "no targets" made it scan zero files and exit 0
+    over a tree full of malicious instruction files.
+    """
+    from agent_bom.skills_service import resolve_skill_targets
+
+    (tmp_path / "CLAUDE.md").write_text("# Instructions\n")
+    (tmp_path / "AGENTS.md").write_text("# Contributor guide\n")
+
+    implicit = resolve_skill_targets((), cwd=tmp_path)
+    default = resolve_skill_targets(None, cwd=tmp_path)
+    explicit = resolve_skill_targets((".",), cwd=tmp_path)
+
+    assert implicit == default
+    assert implicit == explicit
+    assert {p.name for p in implicit} == {"CLAUDE.md", "AGENTS.md"}
+
+
+def test_verify_skill_targets_empty_tuple_matches_none(tmp_path):
+    """`agent-bom skills verify` shares the same default-target resolution."""
+    from agent_bom.skills_service import verify_skill_targets
+
+    (tmp_path / "CLAUDE.md").write_text("# Instructions\n")
+
+    implicit = verify_skill_targets((), cwd=tmp_path)
+    default = verify_skill_targets(None, cwd=tmp_path)
+
+    assert implicit == default
+    assert len(implicit) == 1

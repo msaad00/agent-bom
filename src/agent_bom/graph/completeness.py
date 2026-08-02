@@ -33,3 +33,32 @@ def graph_completeness(
     if reason:
         payload["reason"] = reason
     return payload
+
+
+def bounded_walk_reason(*, truncated: bool, depth_limited: bool) -> str:
+    """Name the *stronger* loss a bounded graph walk suffered.
+
+    A node/edge/deadline budget outranks a depth cap: raising ``max_depth``
+    cannot recover nodes the budget never let the walk visit, so the budget
+    reason must not be masked by the depth one.
+    """
+    if truncated:
+        return "traversal_budget"
+    return "depth_limit" if depth_limited else ""
+
+
+def impact_completeness(*, affected_count: int, truncated: bool, depth_limited: bool) -> dict[str, Any]:
+    """Completeness for a blast-radius walk.
+
+    A bounded reverse walk knows how many ancestors it *reached*, never how many
+    exist — so it reports no ``total``. Without this, ``affected_count`` read as
+    the whole blast radius, which is the difference between "nothing else
+    depends on this" and "we stopped looking".
+    """
+    bounded = truncated or depth_limited
+    return graph_completeness(
+        returned=affected_count,
+        total=None if bounded else affected_count,
+        truncated=bounded,
+        reason=bounded_walk_reason(truncated=truncated, depth_limited=depth_limited),
+    )

@@ -110,7 +110,7 @@ class TestBfsPathsReportsItsBudget:
         store = SQLiteGraphStore(tmp_path / "graph.db")
         store.save_graph(tree(BIG_TREE_NODES, scan_id="big"))
 
-        paths, reachable, truncated = store.bfs_paths(tenant_id="default", scan_id="big", source="n0", max_depth=10)
+        paths, reachable, truncated, _depth_limited = store.bfs_paths(tenant_id="default", scan_id="big", source="n0", max_depth=10)
 
         true_reachable = BIG_TREE_NODES - 1
         assert truncated is True
@@ -124,9 +124,10 @@ class TestBfsPathsReportsItsBudget:
         store = SQLiteGraphStore(tmp_path / "graph.db")
         store.save_graph(tree(SMALL_TREE_NODES, scan_id="small"))
 
-        paths, reachable, truncated = store.bfs_paths(tenant_id="default", scan_id="small", source="n0", max_depth=10)
+        paths, reachable, truncated, depth_limited = store.bfs_paths(tenant_id="default", scan_id="small", source="n0", max_depth=10)
 
         assert truncated is False
+        assert depth_limited is False, "a 40-node tree three levels deep is not depth-bounded at 10"
         assert len(reachable) == SMALL_TREE_NODES - 1
         assert len(paths) == SMALL_TREE_NODES - 1
 

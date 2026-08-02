@@ -411,8 +411,15 @@ def _graph(agents: list[dict[str, object]], servers: list[dict[str, object]]) ->
                 ref_name = str(ref.get("name") or "")
                 if not ref_name:
                     continue
-                cred_id = f"credential:{ref_name}"
-                nodes[cred_id] = _node(cred_id, "credential", ref_name, kind=ref.get("kind"))
+                # An env-var name identifies a credential *slot* on this server,
+                # not the underlying secret. Keying the node on the name alone
+                # merged every server that happens to read ``API_KEY`` into one
+                # node, joining unrelated estates into a single connected
+                # component and fabricating a lateral-movement route the scan
+                # has no evidence for. Same scoping as ``graph/builder.py`` and
+                # ``context_graph.py``; the label stays the bare name.
+                cred_id = f"credential:{server_id}:{ref_name}"
+                nodes[cred_id] = _node(cred_id, "credential", ref_name, kind=ref.get("kind"), server=server_id)
                 edges[f"{server_id}:exposes_cred:{cred_id}"] = _edge(
                     f"{server_id}:exposes_cred:{cred_id}",
                     server_id,

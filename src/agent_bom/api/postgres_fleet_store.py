@@ -243,7 +243,9 @@ class PostgresFleetStore:
         # session tenant must agree, so a mismatch updates nothing.
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
-                f"UPDATE fleet_agents SET lifecycle_state = %s WHERE {_TENANT_SCOPED_AGENT}",
+                # nosec B608 - _TENANT_SCOPED_AGENT is a module constant of %s
+                # placeholders; agent_id and tenant_id are bound, never inlined.
+                f"UPDATE fleet_agents SET lifecycle_state = %s WHERE {_TENANT_SCOPED_AGENT}",  # nosec B608
                 (state.value, agent_id, tenant_id),
             )
             if cursor.rowcount > 0:
@@ -257,7 +259,8 @@ class PostgresFleetStore:
                     data = json.loads(raw)
                     data["lifecycle_state"] = state.value
                     conn.execute(
-                        f"UPDATE fleet_agents SET data = %s WHERE {_TENANT_SCOPED_AGENT}",
+                        # nosec B608 - same module constant, same bound parameters.
+                        f"UPDATE fleet_agents SET data = %s WHERE {_TENANT_SCOPED_AGENT}",  # nosec B608
                         (json.dumps(data), agent_id, tenant_id),
                     )
             conn.commit()

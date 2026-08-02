@@ -736,7 +736,11 @@ class SQLiteGraphStore:
         def _branch(column: str) -> tuple[str, list[Any]]:
             where = ["tenant_id = ?", "scan_id = ?", f"{column} IN ({placeholders})", *shared_where]
             params: list[Any] = [tenant_id, scan_id, *frontier_ids, *shared_params]
-            return f"SELECT * FROM graph_edges WHERE {' AND '.join(where)}", params
+            # nosec B608 - every interpolated fragment is generated here, never
+            # caller-supplied: ``column`` is one of two string literals below,
+            # and each clause contributes only ``?`` placeholders. Values travel
+            # in ``params``.
+            return f"SELECT * FROM graph_edges WHERE {' AND '.join(where)}", params  # nosec B608
 
         source_sql, source_params = _branch("source_id")
         target_sql, target_params = _branch("target_id")

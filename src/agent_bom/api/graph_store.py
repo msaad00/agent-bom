@@ -271,7 +271,15 @@ class GraphStoreProtocol(Protocol):
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str]]: ...
+    ) -> tuple[list[list[str]], set[str], bool]:
+        """Paths and reachable set from ``source``, plus whether the walk was bounded.
+
+        The third element is the traversal's own truncation flag. It is part of
+        the answer, not diagnostics: without it a caller cannot tell "these are
+        all the reachable nodes" from "these are the first ``max_nodes`` we got
+        to", and every surface downstream reports the bound as the total.
+        """
+        ...
 
     def impact_of(
         self,
@@ -757,10 +765,10 @@ class SQLiteGraphStore:
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str]]:
+    ) -> tuple[list[list[str]], set[str], bool]:
         conn = self._open_ro_conn()
         if conn is None:
-            return [], set()
+            return [], set(), False
         try:
             (
                 _effective_scan_id,
@@ -770,7 +778,7 @@ class SQLiteGraphStore:
                 _edges,
                 parent_by_node,
                 discovery_order,
-                _truncated,
+                truncated,
             ) = self._walk_graph(
                 conn,
                 tenant_id=tenant_id,
@@ -788,7 +796,7 @@ class SQLiteGraphStore:
                 include_roots=True,
             )
             if source not in visited:
-                return [], set()
+                return [], set(), truncated
 
             paths: list[list[str]] = []
             for node_id in discovery_order:
@@ -804,7 +812,7 @@ class SQLiteGraphStore:
                     paths.append(path)
             reachable = set(visited)
             reachable.discard(source)
-            return paths, reachable
+            return paths, reachable, truncated
         finally:
             conn.close()
 

@@ -2541,6 +2541,18 @@ async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecision
     return cast("dict[str, Any]", payload)
 
 
+def _paths_truncation_reason(traversal_truncated: bool, page_truncated: bool) -> str:
+    """Name the *stronger* loss first.
+
+    A traversal budget is a harder limit than a page limit: paging further
+    cannot recover the nodes the walk never reached, so the traversal reason
+    must not be masked by the pagination one.
+    """
+    if traversal_truncated:
+        return "traversal_budget"
+    return "path_page_limit" if page_truncated else ""
+
+
 @router.get("/graph/paths", tags=["graph"])
 async def get_graph_paths(
     request: Request,
@@ -2563,7 +2575,7 @@ async def get_graph_paths(
     if not source_nodes:
         raise HTTPException(status_code=404, detail=f"Node '{source_node_id}' not found in graph")
 
-    all_paths, reachable = await _graph_store_call(
+    all_paths, reachable, traversal_truncated = await _graph_store_call(
         graph_store.bfs_paths,
         scan_id=requested_scan_id,
         tenant_id=tenant,
@@ -2606,11 +2618,16 @@ async def get_graph_paths(
             if ap.source == source_node_id
         ],
         "pagination": pagination,
+        "truncated": traversal_truncated,
+        # A budget-bounded BFS knows neither the reachable set nor the path
+        # count, so it cannot report a total: `len(all_paths)` is the bound, not
+        # the answer. Reporting it as `total` told a client that paged to
+        # exhaustion it had everything. Same invariant as /v1/graph/query.
         "completeness": graph_completeness(
             returned=len(paged_paths),
-            total=len(all_paths),
-            truncated=pagination["has_more"],
-            reason="path_page_limit" if pagination["has_more"] else "",
+            total=None if traversal_truncated else len(all_paths),
+            truncated=traversal_truncated or pagination["has_more"],
+            reason=_paths_truncation_reason(traversal_truncated, pagination["has_more"]),
         ),
     }
 

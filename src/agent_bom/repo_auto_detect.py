@@ -64,7 +64,7 @@ REPO_STATIC_SURFACES: tuple[RepoStaticSurface, ...] = (
     RepoStaticSurface("python_agents", "Python agent frameworks", cli_auto_key="python_agents", api_repo_tree=True),
     RepoStaticSurface("ai_inventory", "AI SDK / observability inventory", cli_auto_key="ai_inventory", api_repo_tree=True),
     RepoStaticSurface("skills", "Skills & instruction files", api_repo_tree=True),
-    RepoStaticSurface("iac", "IaC & deployment configs", api_repo_tree=True),
+    RepoStaticSurface("iac", "IaC & deployment configs", cli_auto_key="iac", api_repo_tree=True),
     RepoStaticSurface("dependencies", "Lockfiles & manifests", api_repo_tree=True),
     RepoStaticSurface("secrets", "Secrets & credentials", api_repo_tree=True),
     RepoStaticSurface("weak_crypto", "Weak cryptography", api_repo_tree=True),
@@ -100,6 +100,7 @@ class ProjectScanTargets:
     gha_path: str | None
     agent_projects: tuple[str, ...]
     ai_inventory_paths: tuple[str, ...] = ()
+    iac_paths: tuple[str, ...] = ()
     auto_enabled: list[str] = field(default_factory=list)
 
 
@@ -148,6 +149,23 @@ def project_has_terraform(root: Path) -> bool:
     )
 
 
+def project_has_iac(root: Path) -> bool:
+    """True when the tree holds any file the IaC scanners would dispatch on.
+
+    Delegates to :func:`agent_bom.iac.is_iac_file` so detection can never
+    disagree with what ``scan_iac_with_context`` actually scans, and walks
+    recursively — IaC normally lives under ``infra/``, ``deploy/`` or
+    ``charts/``, not at the repo root.
+    """
+    if not root.is_dir():
+        return False
+    from agent_bom.iac import is_iac_file
+
+    return any(
+        is_iac_file(path, root) for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=4000)
+    )
+
+
 def project_has_github_actions(root: Path) -> bool:
     workflows = root / ".github" / "workflows"
     if not workflows.is_dir():
@@ -183,6 +201,7 @@ def expand_project_scan_targets(
     gha_path: str | None = None,
     agent_projects: tuple[str, ...] = (),
     ai_inventory_paths: tuple[str, ...] = (),
+    iac_paths: tuple[str, ...] = (),
 ) -> ProjectScanTargets:
     """Fill empty scan targets from project tree content."""
     root = Path(project).resolve()
@@ -194,6 +213,7 @@ def expand_project_scan_targets(
     out_gha = gha_path
     out_agents = agent_projects
     out_ai_inventory = ai_inventory_paths
+    out_iac = iac_paths
 
     if not jupyter_dirs and project_has_notebooks(root):
         out_jupyter = (str(root),)
@@ -210,6 +230,13 @@ def expand_project_scan_targets(
     if not tf_dirs and project_has_terraform(root):
         out_tf = (str(root),)
         auto.append("terraform")
+
+    # The IaC security rules run on the whole tree, exactly as the API repo-tree
+    # scan does. Without this the CLI reported ``terraform`` as a scan source
+    # while every misconfiguration rule stayed unexecuted.
+    if not iac_paths and project_has_iac(root):
+        out_iac = (str(root),)
+        auto.append("iac")
 
     if not gha_path and project_has_github_actions(root):
         out_gha = str(root)
@@ -233,5 +260,6 @@ def expand_project_scan_targets(
         gha_path=out_gha,
         agent_projects=out_agents,
         ai_inventory_paths=out_ai_inventory,
+        iac_paths=out_iac,
         auto_enabled=auto,
     )

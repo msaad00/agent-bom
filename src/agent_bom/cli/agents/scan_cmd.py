@@ -1019,6 +1019,7 @@ def scan(
             gha_path=gha_path,
             agent_projects=agent_projects,
             ai_inventory_paths=ai_inventory_paths,
+            iac_paths=iac_paths,
         )
         if auto_targets.auto_enabled:
             jupyter_dirs = auto_targets.jupyter_dirs
@@ -1028,6 +1029,7 @@ def scan(
             gha_path = auto_targets.gha_path
             agent_projects = auto_targets.agent_projects
             ai_inventory_paths = auto_targets.ai_inventory_paths
+            iac_paths = auto_targets.iac_paths
             if not quiet:
                 con.print(f"[dim]Auto-detected project scan surfaces: {', '.join(auto_targets.auto_enabled)}[/dim]")
 
@@ -1849,6 +1851,11 @@ def scan(
         _scan_sources.append("filesystem")
     if tf_dirs:
         _scan_sources.append("terraform")
+    # ``iac`` is claimed only when the misconfiguration rules actually executed
+    # — ``ctx.iac_findings_data`` is set by the IaC step itself, so the source
+    # list can never advertise a scan that was skipped.
+    if ctx.iac_findings_data is not None:
+        _scan_sources.append("iac")
     if gha_path:
         _scan_sources.append("github_actions")
     if ctx.skill_audit_data is not None:
@@ -2322,7 +2329,9 @@ def scan(
             report.model_files.extend(mf_results)
             _existing_finding_ids = {finding.id for finding in report.findings}
             report.findings.extend(
-                finding for finding in model_file_findings(mf_results) if finding.id not in _existing_finding_ids
+                finding
+                for finding in model_file_findings(mf_results, require_model_signatures=require_model_signatures)
+                if finding.id not in _existing_finding_ids
             )
             report.model_manifests.extend(manifest_results)
             for w in mf_warnings:

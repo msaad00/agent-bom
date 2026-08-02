@@ -699,7 +699,7 @@ class UnifiedGraph:
             analysis_status=dict(self.analysis_status),
         )
         if not roots:
-            return sub, {}, False
+            return self._inherit_completeness(sub), {}, False
 
         visited: set[str] = set()
         depth_by_node: dict[str, int] = {}
@@ -776,6 +776,7 @@ class UnifiedGraph:
             if edge.source in sub.nodes and edge.target in sub.nodes:
                 sub.add_edge(edge)
 
+        self._inherit_completeness(sub, truncated=truncated, reason="traversal_budget", node_budget=max_nodes if truncated else None)
         return sub, depth_by_node, truncated
 
     # ── Centrality ───────────────────────────────────────────────────────
@@ -1023,7 +1024,14 @@ class UnifiedGraph:
                 pruned.add_edge(edge)
         return self._inherit_completeness(pruned)
 
-    def _inherit_completeness(self, view: "UnifiedGraph") -> "UnifiedGraph":
+    def _inherit_completeness(
+        self,
+        view: "UnifiedGraph",
+        *,
+        truncated: bool = False,
+        reason: str = "",
+        node_budget: int | None = None,
+    ) -> "UnifiedGraph":
         """Carry the source's truncation onto a derived view.
 
         Truncation is a property of the SOURCE snapshot. Filtering cannot make
@@ -1033,13 +1041,19 @@ class UnifiedGraph:
         holds, and ``total_nodes`` stays the upstream total so ``omitted_nodes``
         keeps meaning "how much of the estate we never saw".
 
-        Every derived view goes through here — the five typed views as much as
-        ``filtered_view`` — so no projection can report completeness its source
-        does not have.
+        ``truncated`` lets a derivation that bounded itself — a traversal that
+        exhausted its node/edge/time budget — OR its own loss in. The source's
+        reason wins when both are truncated: it describes the deeper loss, and
+        a caller that widens the traversal budget still would not see the nodes
+        the loader never fetched.
+
+        Every derived view goes through here — the typed views as much as
+        ``filtered_view`` and ``traverse_subgraph`` — so no projection can
+        report completeness its source does not have.
         """
-        view.completeness.truncated = self.completeness.truncated
-        view.completeness.node_budget = self.completeness.node_budget
-        view.completeness.reason = self.completeness.reason
+        view.completeness.truncated = self.completeness.truncated or truncated
+        view.completeness.node_budget = self.completeness.node_budget if self.completeness.node_budget is not None else node_budget
+        view.completeness.reason = self.completeness.reason or (reason if truncated else "")
         # An untruncated graph built by hand never populates total_nodes; falling
         # back to the source's own size keeps `total` from reading as 0 next to a
         # non-empty `returned`.

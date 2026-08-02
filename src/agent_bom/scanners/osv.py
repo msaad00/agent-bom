@@ -180,11 +180,7 @@ def parse_fixed_version(
                         prerelease_candidate = fixed
                     continue
 
-                if (
-                    has_current
-                    and same_branch_fix is None
-                    and version_in_range(current_version, introduced, fixed, None, ecosystem)
-                ):
+                if has_current and same_branch_fix is None and version_in_range(current_version, introduced, fixed, None, ecosystem):
                     same_branch_fix = fixed
                 _consider_fallback(fixed)
 
@@ -586,6 +582,19 @@ async def query_osv_batch_impl(
         )
         console.print(f"  [yellow]⚠[/yellow] {len(lookup_errors)} packages had lookup errors [dim](use --verbose for details)[/dim]")
         record_scan_warning(f"{len(lookup_errors)} package lookup error(s)")
+        # Structured signal so a caller can fail closed deterministically
+        # instead of string-matching the warning above. A zero-vuln result for
+        # a package whose remote lookup ERRORED is not evidence of anything.
+        from agent_bom.scanners.state import record_coverage_warning
+
+        record_coverage_warning(
+            {
+                "kind": "remote_lookup_error",
+                "release": "remote:osv",
+                "ecosystems": sorted({eco.lower() for _name, eco, _err in lookup_errors if eco}),
+                "package_count": len(lookup_errors),
+            }
+        )
         for pkg_name, eco, err in lookup_errors:
             _logger.info("  Lookup error: %s/%s — %s", eco, pkg_name, err)
     return results

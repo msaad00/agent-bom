@@ -29,6 +29,7 @@ PARTITION_CHILD_RLS = VERSIONS_DIR / "20260729_03_partition_child_rls.py"
 GRAPH_EDGE_SNAPSHOT_KEY_INDEX = VERSIONS_DIR / "20260730_01_graph_edge_snapshot_key_index.py"
 TEAMS_TENANT_RLS = VERSIONS_DIR / "20260730_02_teams_tenant_rls.py"
 OBSERVATION_PARTITION_RUNWAY = VERSIONS_DIR / "20260731_01_observation_partition_runway.py"
+FLEET_AGENTS_TENANT_KEY = VERSIONS_DIR / "20260801_01_fleet_agents_tenant_scoped_key.py"
 POSTGRES_MCP_CONFIG_STORE = Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_mcp_config.py"
 AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
@@ -435,7 +436,7 @@ def test_teams_tenant_rls_is_chained_idempotent_and_irreversible() -> None:
     assert "NO FORCE ROW LEVEL SECURITY" not in sql
 
 
-def test_observation_partition_runway_is_the_alembic_head() -> None:
+def test_fleet_agents_tenant_scoped_key_is_the_alembic_head() -> None:
     """Nothing may chain past the new revision without being noticed."""
     revisions = {
         path.name: re.search(r'down_revision\s*=\s*"([^"]+)"', path.read_text())
@@ -443,14 +444,37 @@ def test_observation_partition_runway_is_the_alembic_head() -> None:
         if path.name != "__init__.py"
     }
     parents = {match.group(1) for match in revisions.values() if match}
-    assert "20260731_01" not in parents
+    assert "20260801_01" not in parents
     # And exactly one head: every other revision is some revision's parent.
     all_revisions = {
         match.group(1)
         for match in (re.search(r'^revision\s*=\s*"([^"]+)"', path.read_text(), re.M) for path in VERSIONS_DIR.glob("*.py"))
         if match
     }
-    assert all_revisions - parents == {"20260731_01"}
+    assert all_revisions - parents == {"20260801_01"}
+
+
+def test_fleet_agents_tenant_key_is_chained_concurrent_and_irreversible() -> None:
+    """The tenant-scoped fleet key follows the established migration contract.
+
+    A tenant-less UNIQUE key is what let one customer's registration deny
+    another's, so the replacement must actually carry ``tenant_id``, must build
+    its index without holding a write lock for the duration, and must be
+    forward-only — reverting to a global key would have to discard one of two
+    tenants that now legitimately share an ``agent_id``.
+    """
+    sql = FLEET_AGENTS_TENANT_KEY.read_text()
+    assert re.search(r'revision\s*=\s*"20260801_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260731_01"', sql)
+    assert "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_fleet_agents_tenant_agent" in sql
+    assert "fleet_agents(tenant_id, agent_id)" in sql
+    assert "autocommit_block" in sql
+    assert "PRIMARY KEY USING INDEX uq_fleet_agents_tenant_agent" in sql
+    # RLS is suspended only under the exclusive lock, and always restored.
+    assert "DISABLE ROW LEVEL SECURITY" in sql
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+    assert "FORCE ROW LEVEL SECURITY" in sql
+    assert "NotImplementedError" in sql
 
 
 def test_observation_partition_runway_migration_provisions_a_year_ahead() -> None:

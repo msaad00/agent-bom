@@ -513,3 +513,200 @@ def test_benign_non_pickle_files_are_not_discovered(tmp_path: Path):
     (tmp_path / "data.csv").write_bytes(b"a,b,c\n1,2,3\n")
     results, _ = scan_model_files(tmp_path)
     assert results == []
+
+
+# ── ZIP containers larger than the byte cap ──────────────────────────────
+# A ZIP's central directory lives at the END of the file. Reading only the
+# leading ``AGENT_BOM_PICKLE_MAX_BYTES`` bytes into memory destroys it, so
+# ``zipfile`` rejects the archive and every embedded pickle goes unscanned.
+# Since real models are GB-scale, that made the detector a no-op in
+# production. The container must be opened BY PATH; the byte cap belongs on
+# each member, not on the whole-file buffer.
+
+
+def _stored_zip_over(path: Path, *, first_member: bytes, total_bytes: int) -> None:
+    """Write an uncompressed .pt whose on-disk size exceeds ``total_bytes``."""
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
+        zf.writestr("archive/data.pkl", first_member)
+        zf.writestr("archive/version", "3")
+        with zf.open("archive/data/0", "w") as fh:
+            written = 0
+            chunk = b"\x00" * 65536
+            while written <= total_bytes:
+                fh.write(chunk)
+                written += len(chunk)
+    assert path.stat().st_size > total_bytes
+
+
+def test_zip_container_larger_than_byte_cap_is_still_scanned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A malicious pickle inside a .pt bigger than the cap must still be flagged.
+
+    Regression guard for the silent-miss: truncating the whole-file buffer to
+    the cap discarded the ZIP central directory, so the archive was
+    unreadable and the payload was reported as a LOW scan error instead of a
+    CRITICAL malicious pickle.
+    """
+    cap = 100_000
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_BYTES", str(cap))
+    p = tmp_path / "oversized.pt"
+    _stored_zip_over(p, first_member=_malicious_bytes(), total_bytes=cap)
+
+    results = scan_pickle_file(p)
+    assert not any(r.verdict == "error" for r in results), (
+        "container above the byte cap was rejected as unreadable — central directory was truncated away"
+    )
+    malicious = [r for r in results if r.verdict == "malicious"]
+    assert malicious, "malicious pickle inside an over-cap container was not flagged"
+    assert malicious[0].member is not None and "data.pkl" in malicious[0].member
+    assert malicious[0].severity == "CRITICAL"
+
+    flags, _ = scan_pickle_file_flags(p)
+    assert "MALICIOUS_PICKLE" in {f["type"] for f in flags}
+
+
+def test_over_cap_container_scan_stays_bounded_per_member(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Opening the container by path must NOT relax the per-member byte cap.
+
+    The DoS bound moved from the whole file to each member; prove no single
+    disassembly is ever handed more than the cap.
+    """
+    cap = 100_000
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_BYTES", str(cap))
+    p = tmp_path / "bomb.pt"
+    # Every member is a pickle-looking stream far larger than the cap.
+    big_member = pickle.dumps(b"\x00" * (cap * 8))
+    with zipfile.ZipFile(p, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+        for i in range(12):
+            zf.writestr(f"archive/shard{i}.pkl", big_member)
+    assert p.stat().st_size < cap, "compressed zip bomb should stay small on disk"
+
+    sizes: list[int] = []
+    real_stream = model_pickle_scan._scan_opcode_stream
+
+    def _recording(data: bytes, path: str, member: str | None):
+        sizes.append(len(data))
+        return real_stream(data, path, member)
+
+    monkeypatch.setattr(model_pickle_scan, "_scan_opcode_stream", _recording)
+    flags, results = scan_pickle_file_flags(p)
+
+    assert sizes, "no member was disassembled"
+    # +2 for the two-byte magic sniff read that precedes the capped body read.
+    assert max(sizes) <= cap + 2, f"a member was read past the cap: {max(sizes)} > {cap}"
+    assert len(results) <= model_pickle_scan._MAX_EMBEDDED_PICKLES
+    # Every oversized member still fails safe rather than being dropped.
+    assert all(r.oversize_unscanned for r in results)
+    assert {f["type"] for f in flags} == {"OVERSIZE_PICKLE_UNSCANNED"}
+
+
+def test_unreadable_oversize_member_reports_oversize_not_scan_error():
+    """``oversize_unscanned`` must win over ``verdict == "error"``.
+
+    OVERSIZE_PICKLE_UNSCANNED (HIGH) is the fail-safe written to stop padding
+    evasion. Checking the error branch first made it unreachable whenever the
+    oversized member also failed to read, downgrading the evasion signal to a
+    LOW PICKLE_SCAN_ERROR that the finding promoter drops.
+    """
+    res = model_pickle_scan.PickleScanResult(
+        path="/models/evil.pt",
+        member="archive/data.pkl",
+        verdict="error",
+        error="could not read zip member: bad CRC",
+        oversize_unscanned=True,
+        declared_size=999_999_999,
+    )
+    flag = res.to_security_flag()
+    assert flag is not None
+    assert flag["type"] == "OVERSIZE_PICKLE_UNSCANNED"
+    assert flag["severity"] == "HIGH"
+
+
+def test_corrupt_oversize_member_keeps_the_oversize_failsafe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """End-to-end: a member that declares a huge size and cannot be read.
+
+    A hostile archive can advertise an enormous member and then corrupt it so
+    decompression fails. That must not silently downgrade to a LOW error.
+    """
+    cap = 20_000
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_BYTES", str(cap))
+    p = tmp_path / "corrupt.pt"
+    with zipfile.ZipFile(p, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("archive/data.pkl", pickle.dumps(b"\x00" * (cap * 4)))
+
+    # Corrupt ONLY the member's compressed payload, leaving the central
+    # directory intact — the archive must stay openable so the failure lands
+    # on the member read, which is the branch under test.
+    with zipfile.ZipFile(p) as zf:
+        info = zf.getinfo("archive/data.pkl")
+        header_offset, compress_size = info.header_offset, info.compress_size
+    raw = bytearray(p.read_bytes())
+    name_len = int.from_bytes(raw[header_offset + 26 : header_offset + 28], "little")
+    extra_len = int.from_bytes(raw[header_offset + 28 : header_offset + 30], "little")
+    data_start = header_offset + 30 + name_len + extra_len
+    for offset in range(data_start, data_start + compress_size):
+        raw[offset] ^= 0xFF
+    p.write_bytes(bytes(raw))
+    with zipfile.ZipFile(p) as zf:  # sanity: the container itself still parses
+        assert zf.namelist() == ["archive/data.pkl"]
+
+    flags, results = scan_pickle_file_flags(p)  # must not raise
+    assert results, "corrupt oversized member was dropped entirely"
+    assert results[0].member == "archive/data.pkl"
+    types = {f["type"] for f in flags}
+    assert "OVERSIZE_PICKLE_UNSCANNED" in types, f"oversize fail-safe lost, got {types}"
+
+
+@pytest.mark.slow
+def test_real_gb_scale_pt_above_default_cap_fails_the_scan_gate(tmp_path: Path):
+    """The production shape: a >256 MiB .pt with a malicious first member.
+
+    Every realistic model artifact is far larger than the 256 MiB default cap.
+    This builds a real one on disk (and deletes it in teardown) to prove the
+    CLI exits 1 with a MALICIOUS_MODEL finding, exactly as it does for a small
+    .pt carrying the identical payload.
+    """
+    import shutil
+
+    free_bytes = shutil.disk_usage(tmp_path).free
+    if free_bytes < 2 * 1024 * 1024 * 1024:
+        pytest.skip(f"needs ~300 MiB of scratch space, only {free_bytes // (1 << 20)} MiB free")
+
+    default_cap = model_pickle_scan._MAX_PICKLE_BYTES
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    model = model_dir / "pytorch_model.pt"
+    output = tmp_path / "report.json"
+    try:
+        _stored_zip_over(model, first_member=_malicious_bytes(), total_bytes=default_cap)
+        assert model.stat().st_size > default_cap
+
+        with (
+            patch("agent_bom.cli.agents.discover_all", return_value=[]),
+            patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
+            patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "scan",
+                    "--model-files",
+                    str(model_dir),
+                    "--no-discover",
+                    "--no-scan",
+                    "--no-auto-update-db",
+                    "--format",
+                    "json",
+                    "--output",
+                    str(output),
+                ],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 1, f"a {model.stat().st_size >> 20} MiB malicious model did not fail the gate"
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        malicious = [f for f in payload["findings"] if f["finding_type"] == "MALICIOUS_MODEL"]
+        assert malicious, "no MALICIOUS_MODEL finding for the GB-scale artifact"
+        assert malicious[0]["severity"] == "critical"
+        assert malicious[0]["evidence"]["deserialized"] is False
+    finally:
+        model.unlink(missing_ok=True)

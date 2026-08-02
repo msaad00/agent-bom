@@ -216,49 +216,60 @@ class PickleScanResult:
     declared_size: int | None = None  # declared (uncompressed) size when oversize
 
     def to_security_flag(self) -> dict | None:
-        """Render a ``security_flags``-shaped dict, or ``None`` when clean."""
-        if self.verdict in {"clean", "not_pickle"}:
-            if self.oversize_unscanned:
-                # A pickle-bearing member larger than the byte cap could only be
-                # disassembled up to the cap; bytes beyond it are UNVERIFIED. Fail
-                # safe — surface a finding even when the scanned prefix is clean,
-                # because an attacker can pad a malicious pickle past the cap to
-                # evade the scanner.
-                location = f" (zip member {self.member})" if self.member else ""
-                size_note = f"declared size {self.declared_size} bytes; " if self.declared_size else ""
-                return {
-                    "severity": "HIGH",
-                    "type": "OVERSIZE_PICKLE_UNSCANNED",
-                    "description": (
-                        f"Pickle-bearing member{location} exceeds the scan byte cap "
-                        f"({size_note}cap {_max_pickle_bytes()} bytes); only the leading slice was "
-                        "disassembled and the remainder was NOT scanned. Padding a pickle past the "
-                        "cap is a known evasion — treat as suspicious; prefer safetensors/ONNX or "
-                        "raise AGENT_BOM_PICKLE_MAX_BYTES to scan it fully."
-                    ),
-                }
-            return None
+        """Render a ``security_flags``-shaped dict, or ``None`` when clean.
+
+        Branch order is load-bearing, strongest signal first:
+
+        1. ``malicious`` / ``suspicious`` — a payload was actually observed.
+        2. ``oversize_unscanned`` — the fail-safe that stops padding evasion.
+           It must be checked BEFORE ``error`` so an oversized member that
+           also failed to read keeps its HIGH signal instead of collapsing to
+           a LOW scan error (which the finding promoter treats as coverage
+           loss, not as evasion).
+        3. ``error`` — the scan could not complete.
+        """
+        if self.verdict in {"malicious", "suspicious"}:
+            location = f" (zip member {self.member})" if self.member else ""
+            imports = ", ".join(sorted(set(self.dangerous_imports))[:12]) or "none captured"
+            opcodes = ", ".join(sorted(set(self.code_exec_opcodes)))
+            return {
+                "severity": self.severity or "HIGH",
+                "type": "MALICIOUS_PICKLE" if self.verdict == "malicious" else "SUSPICIOUS_PICKLE",
+                "description": (
+                    f"Pickle opcode disassembly{location} found code-execution opcodes "
+                    f"[{opcodes}] referencing dangerous imports [{imports}]. "
+                    "Detected by static opcode walk (pickletools.genops); the model was NOT deserialized. "
+                    "Treat as a potential supply-chain implant — prefer safetensors/ONNX."
+                ),
+                "dangerous_imports": sorted(set(self.dangerous_imports)),
+                "code_exec_opcodes": sorted(set(self.code_exec_opcodes)),
+            }
+        if self.oversize_unscanned:
+            # A pickle-bearing stream larger than the byte cap could only be
+            # disassembled up to the cap; bytes beyond it are UNVERIFIED. Fail
+            # safe — surface a finding even when the scanned prefix is clean,
+            # because an attacker can pad a malicious pickle past the cap to
+            # evade the scanner.
+            location = f" (zip member {self.member})" if self.member else ""
+            size_note = f"declared size {self.declared_size} bytes; " if self.declared_size else ""
+            return {
+                "severity": "HIGH",
+                "type": "OVERSIZE_PICKLE_UNSCANNED",
+                "description": (
+                    f"Pickle-bearing stream{location} exceeds the scan byte cap "
+                    f"({size_note}cap {_max_pickle_bytes()} bytes); only the leading slice was "
+                    "disassembled and the remainder was NOT scanned. Padding a pickle past the "
+                    "cap is a known evasion — treat as suspicious; prefer safetensors/ONNX or "
+                    "raise AGENT_BOM_PICKLE_MAX_BYTES to scan it fully."
+                ),
+            }
         if self.verdict == "error":
             return {
                 "severity": "LOW",
                 "type": "PICKLE_SCAN_ERROR",
                 "description": (f"Pickle opcode scan could not complete (no deserialization attempted): {self.error}"),
             }
-        location = f" (zip member {self.member})" if self.member else ""
-        imports = ", ".join(sorted(set(self.dangerous_imports))[:12]) or "none captured"
-        opcodes = ", ".join(sorted(set(self.code_exec_opcodes)))
-        return {
-            "severity": self.severity or "HIGH",
-            "type": "MALICIOUS_PICKLE" if self.verdict == "malicious" else "SUSPICIOUS_PICKLE",
-            "description": (
-                f"Pickle opcode disassembly{location} found code-execution opcodes "
-                f"[{opcodes}] referencing dangerous imports [{imports}]. "
-                "Detected by static opcode walk (pickletools.genops); the model was NOT deserialized. "
-                "Treat as a potential supply-chain implant — prefer safetensors/ONNX."
-            ),
-            "dangerous_imports": sorted(set(self.dangerous_imports)),
-            "code_exec_opcodes": sorted(set(self.code_exec_opcodes)),
-        }
+        return None
 
 
 def _int_env(name: str, default: int) -> int:
@@ -450,16 +461,22 @@ def _looks_like_zip(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04" or data[:4] == b"PK\x05\x06"
 
 
-def _scan_zip(data: bytes, path: str) -> list[PickleScanResult]:
+def _scan_zip(archive: Path, path: str) -> list[PickleScanResult]:
     """Find and scan embedded pickle members inside a torch/zip archive.
 
     Torch ``.pt`` files are ZIP archives containing ``data.pkl`` (and shards).
     We enumerate members and disassemble those that are pickle streams, without
     extracting to disk and without deserializing.
+
+    The archive is opened **by path**, never from a byte buffer. A ZIP's
+    central directory lives at the END of the file, so reading a bounded
+    prefix into memory destroys it and makes every real (GB-scale) model
+    unreadable. Bounding happens per member instead — see ``cap`` below — so
+    a hostile archive still cannot force unbounded work.
     """
     results: list[PickleScanResult] = []
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        with zipfile.ZipFile(archive) as zf:
             members = zf.namelist()[:_MAX_ZIP_MEMBERS]
             scanned = 0
             for member in members:
@@ -488,8 +505,27 @@ def _scan_zip(data: bytes, path: str) -> list[PickleScanResult]:
                         if not (is_pkl_ext or starts_pickle):
                             continue
                         body = head + fh.read(cap)
-                except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
-                    results.append(PickleScanResult(path=path, member=member, error=f"could not read zip member: {exc}", verdict="error"))
+                except Exception as exc:  # noqa: BLE001 — a hostile member must never crash the scan
+                    # Decompression of a corrupted member raises ``zlib.error``,
+                    # which is not an OSError; catching narrowly here let a
+                    # crafted archive crash a scanner documented as never
+                    # raising. Any read failure is reported, never propagated.
+                    #
+                    # An unreadable member that ALSO declares a size past the
+                    # cap keeps the oversize fail-safe: a hostile archive must
+                    # not be able to downgrade the evasion signal to a LOW
+                    # scan error simply by corrupting the member it padded.
+                    results.append(
+                        PickleScanResult(
+                            path=path,
+                            member=member,
+                            error=f"could not read zip member: {exc}",
+                            verdict="error",
+                            oversize_unscanned=oversize,
+                            declared_size=info.file_size if oversize else None,
+                        )
+                    )
+                    scanned += 1
                     continue
                 res = _scan_opcode_stream(body, path=path, member=member)
                 if oversize:
@@ -518,23 +554,39 @@ def scan_pickle_file(file_path: str | Path) -> list[PickleScanResult]:
     """
     p = Path(file_path)
     path_str = str(p)
+    cap = _max_pickle_bytes()
     try:
         with open(p, "rb") as fh:
-            data = fh.read(_max_pickle_bytes() + 1)
+            # Sniff the container magic first. A ZIP must NOT be read into a
+            # bounded buffer: its central directory sits at the end of the
+            # file, so a truncated buffer is an unreadable archive and every
+            # embedded pickle would go unscanned. ZIPs are handed to
+            # ``_scan_zip`` by path, which bounds each member instead.
+            magic = fh.read(4)
+            if not magic:
+                return [PickleScanResult(path=path_str, verdict="not_pickle")]
+            if _looks_like_zip(magic):
+                return _scan_zip(p, path=path_str)
+            data = magic + fh.read(cap - len(magic))
+            # One extra byte tells us whether the raw stream ran past the cap
+            # without keeping the remainder in memory.
+            oversize = bool(fh.read(1))
     except OSError as exc:
         return [PickleScanResult(path=path_str, error=f"could not open file: {exc}", verdict="error")]
 
     if not data:
         return [PickleScanResult(path=path_str, verdict="not_pickle")]
 
-    if len(data) > _max_pickle_bytes():
-        # Truncate the working buffer to the cap; opcode walk still bounded.
-        data = data[: _max_pickle_bytes()]
-
-    if _looks_like_zip(data):
-        return _scan_zip(data, path=path_str)
-
-    return [_scan_opcode_stream(data, path=path_str, member=None)]
+    result = _scan_opcode_stream(data, path=path_str, member=None)
+    if oversize:
+        # Same evasion as an oversized zip member: a raw pickle padded past
+        # the cap has an UNVERIFIED tail. Fail safe rather than report clean.
+        result.oversize_unscanned = True
+        try:
+            result.declared_size = p.stat().st_size
+        except OSError:
+            result.declared_size = None
+    return [result]
 
 
 def scan_pickle_file_flags(file_path: str | Path) -> tuple[list[dict], list[PickleScanResult]]:

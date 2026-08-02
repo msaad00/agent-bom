@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.dataset_version_store import DatasetVersionRecord, get_dataset_version_store
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 
 router = APIRouter()
 
@@ -78,7 +78,7 @@ async def register_dataset_version(
     tenant_id = _tenant_id(request)
     normalized_dataset_id = _validate_dataset_id(dataset_id)
     version_id = body.version_id or str(uuid.uuid4())
-    ignored_body_tenant = bool(body.tenant_id and body.tenant_id != tenant_id)
+    require_body_tenant_match(body.tenant_id, tenant_id)
     record = DatasetVersionRecord(
         tenant_id=tenant_id,
         dataset_id=normalized_dataset_id,
@@ -97,7 +97,7 @@ async def register_dataset_version(
         resource=f"dataset/{normalized_dataset_id}/version/{version_id}",
         tenant_id=tenant_id,
     )
-    warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
+    warnings: list[str] = []
     return {"schema_version": "v1", "dataset": record.to_dict(), "warnings": warnings}
 
 

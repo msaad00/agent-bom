@@ -79,7 +79,7 @@ from agent_bom.api.stores import (
     _jobs_pop,
     _jobs_put,
 )
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id
@@ -2823,7 +2823,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     tenant_id = _tenant_id(request)
-    ignored_body_tenant = bool(body.tenant_id and body.tenant_id != tenant_id)
+    require_body_tenant_match(body.tenant_id, tenant_id)
 
     # Batch-level replay safety: an identical retry under the same
     # Idempotency-Key returns the first cached response (same batch_id and
@@ -2884,7 +2884,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     new_total = store_result["new_total"]
     reconciled = store_result["reconciled"]
     delta_results = store_result["delta_results"]
-    warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
+    warnings: list[str] = []
     response = {
         "schema_version": "v1",
         "batch_id": batch_id,

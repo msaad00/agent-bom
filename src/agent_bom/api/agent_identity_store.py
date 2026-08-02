@@ -339,6 +339,8 @@ class AgentIdentityStore(Protocol):
 
     def list(self, tenant_id: str, *, include_inactive: bool = False, limit: int = 200) -> list[AgentIdentity]: ...
 
+    def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]: ...
+
     def put_jit_grant(self, grant: AgentJITGrant) -> None: ...
 
     def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None: ...
@@ -383,6 +385,10 @@ def _ttl_to_expiry(ttl_seconds: int, *, at: datetime | None = None) -> str:
     return _iso(base + timedelta(seconds=max(60, int(ttl_seconds))))
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # nosec B608 - table is static
+
+
 class InMemoryAgentIdentityStore:
     def __init__(self) -> None:
         self._by_id: dict[str, AgentIdentity] = {}
@@ -413,6 +419,11 @@ class InMemoryAgentIdentityStore:
             rows = [
                 i for i in self._by_id.values() if i.tenant_id == tenant_id and (include_inactive or i.status in ("active", "rotating"))
             ]
+            return sorted(rows, key=lambda i: i.issued_at, reverse=True)[:limit]
+
+    def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]:
+        with self._lock:
+            rows = [i for i in self._by_id.values() if i.tenant_id == tenant_id and (i.agent_id or "").strip() == agent_id]
             return sorted(rows, key=lambda i: i.issued_at, reverse=True)[:limit]
 
     def put_jit_grant(self, grant: AgentJITGrant) -> None:
@@ -509,12 +520,20 @@ class SQLiteAgentIdentityStore:
                 token_hash TEXT NOT NULL UNIQUE,
                 status TEXT NOT NULL,
                 issued_at TEXT NOT NULL,
+                agent_id TEXT NOT NULL DEFAULT '',
                 data TEXT NOT NULL
             )
             """
         )
+        # Revocation is looked up per agent, not per tenant. Without this column
+        # the check had to page the tenant's whole roster and could miss an old
+        # revoked row behind the page cap.
+        if "agent_id" not in _table_columns(self._conn, "agent_identities"):
+            self._conn.execute("ALTER TABLE agent_identities ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''")
+            self._backfill_agent_ids()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_identities_tenant ON agent_identities(tenant_id, status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_identities_hash ON agent_identities(token_hash)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_identities_agent ON agent_identities(tenant_id, agent_id)")
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_identity_jit_grants (
@@ -551,16 +570,30 @@ class SQLiteAgentIdentityStore:
         )
         self._conn.commit()
 
+    def _backfill_agent_ids(self) -> None:
+        rows = self._conn.execute("SELECT identity_id, data FROM agent_identities WHERE agent_id = ''").fetchall()
+        for identity_id, data in rows:
+            try:
+                agent_id = str(json.loads(data).get("agent_id") or "").strip()
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            if agent_id:
+                self._conn.execute(
+                    "UPDATE agent_identities SET agent_id = ? WHERE identity_id = ?",
+                    (agent_id, identity_id),
+                )
+
     def put(self, identity: AgentIdentity) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO agent_identities "
-            "(identity_id, tenant_id, token_hash, status, issued_at, data) VALUES (?, ?, ?, ?, ?, ?)",
+            "(identity_id, tenant_id, token_hash, status, issued_at, agent_id, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 identity.identity_id,
                 identity.tenant_id,
                 identity.token_hash,
                 identity.status,
                 identity.issued_at,
+                (identity.agent_id or "").strip(),
                 json.dumps(asdict(identity), sort_keys=True),
             ),
         )
@@ -588,6 +621,13 @@ class SQLiteAgentIdentityStore:
                 "ORDER BY issued_at DESC LIMIT ?",
                 (tenant_id, limit),
             ).fetchall()
+        return [AgentIdentity(**json.loads(r[0])) for r in rows]
+
+    def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]:
+        rows = self._conn.execute(
+            "SELECT data FROM agent_identities WHERE tenant_id = ? AND agent_id = ? ORDER BY issued_at DESC LIMIT ?",
+            (tenant_id, agent_id, limit),
+        ).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
 
     def put_jit_grant(self, grant: AgentJITGrant) -> None:
@@ -802,21 +842,31 @@ def revoke_identity(store: AgentIdentityStore, identity_id: str, *, tenant_id: s
     return identity
 
 
-# Upper bound on identities fetched per revocation check. ``store.list`` returns
-# the most recently issued identities, so a smaller window would silently drop an
-# older revoked identity and read as "this agent was never issued one". When the
-# cap is actually hit we cannot rule out an identity in the untraversed tail, so
-# the lookup reports ``unavailable`` — an honest partial signal the caller can
-# fail closed on — rather than a confident "not revoked". Mirrors
-# ``_DRIFT_INCIDENT_LOOKUP_CAP`` in the gateway.
+# Upper bound on identities fetched per revocation check. The agent-keyed
+# lookup bounds one agent's own rotation history, which no deployment approaches,
+# so the cap is not reachable in practice. A store that predates
+# ``list_by_agent`` still has to page the tenant roster by recency; there the cap
+# IS reachable, and hitting it means an older revoked row may sit in the
+# untraversed tail. That case reports the lookup as incomplete — an honest
+# partial signal the caller fails closed on — rather than a confident "not
+# revoked". Mirrors ``_DRIFT_INCIDENT_LOOKUP_CAP`` in the gateway.
 _IDENTITY_LOOKUP_CAP = 5000
 
 
 def identities_for_agent(store: AgentIdentityStore, tenant_id: str, agent_id: str) -> tuple[list[AgentIdentity], bool]:
-    """Return ``(identities_for_agent, lookup_was_capped)`` for one tenant."""
+    """Return ``(identities_for_agent, lookup_was_incomplete)`` for one tenant.
+
+    Reads the agent's own identities through an indexed lookup so the tenant's
+    roster size cannot hide a revoked row. Falls back to the recency-capped
+    roster scan only for a store that does not implement ``list_by_agent``.
+    """
     key = (agent_id or "").strip()
     if not key:
         return [], False
+    by_agent = getattr(store, "list_by_agent", None)
+    if by_agent is not None:
+        rows = by_agent(tenant_id, key, limit=_IDENTITY_LOOKUP_CAP)
+        return [i for i in rows if (i.agent_id or "").strip() == key], False
     rows = store.list(tenant_id, include_inactive=True, limit=_IDENTITY_LOOKUP_CAP)
     capped = len(rows) >= _IDENTITY_LOOKUP_CAP
     return [i for i in rows if (i.agent_id or "").strip() == key], capped

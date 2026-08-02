@@ -44,7 +44,7 @@ def test_bulk_findings_ingest_returns_agent_native_envelope() -> None:
         json={
             "source": "agent-runtime",
             "schema_version": "v1",
-            "tenant_id": "tenant-beta",
+            "tenant_id": tenant_id,
             "findings": [
                 {
                     "id": "agent-runtime:finding-1",
@@ -64,7 +64,7 @@ def test_bulk_findings_ingest_returns_agent_native_envelope() -> None:
     assert body["tenant_total"] == 1
     assert body["tenant_id"] == tenant_id
     assert body["source"] == "agent-runtime"
-    assert body["warnings"] == ["tenant_id in body ignored; request tenant scope is authoritative"]
+    assert body["warnings"] == []
     assert body["batch_id"]
 
 
@@ -250,3 +250,19 @@ def test_sqlite_store_replaces_pre_origin_scale_index(tmp_path) -> None:
     assert "idx_hub_findings_tenant_reach" not in indexes
     assert "idx_hub_findings_tenant_origin_reach" in indexes
     assert "tenant_id, origin, effective_reach_score DESC, ordinal" in indexes["idx_hub_findings_tenant_origin_reach"]
+
+
+def test_bulk_findings_ingest_rejects_a_foreign_body_tenant() -> None:
+    """Legacy clients may send their own tenant_id; they may not send someone else's."""
+    tenant_id = f"bulk-ingest-{uuid4().hex}"
+    resp = _client(tenant=tenant_id).post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "tenant_id": "tenant-beta",
+            "findings": [{"id": "agent-runtime:finding-1", "severity": "high"}],
+        },
+    )
+
+    assert resp.status_code == 403, resp.text
+    assert "tenant_id" in resp.json()["error"]["message"]

@@ -1,5 +1,6 @@
 {
-  "description": "Body for PUT /v1/overview/score-config (issue #3940).\n\nDeliberately lenient: unknown keys are ignored and values are canonicalized\n/ clamped server-side (see ``agent_bom.exec_score.canonicalize_config``) so\nan ad-hoc override never raises \u2014 out-of-range weights are clamped, junk\nkeys dropped, an invalid display format falls back to the default.",
+  "additionalProperties": false,
+  "description": "Body for PUT /v1/overview/score-config (issue #3940).\n\nLenient about *values*: they are canonicalized / clamped server-side (see\n``agent_bom.exec_score.canonicalize_config``) so an out-of-range weight or\nan invalid display format never raises.\n\nStrict about *keys*, like every other write body. A misspelled top-level\nfield used to be dropped silently and the response still reported the\noverride as active \u2014 a config write that says it applied while having\nchanged nothing.",
   "properties": {
     "display_format": {
       "anyOf": [

@@ -344,6 +344,7 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         {
             "event_id": "evt-args-redact",
             "event_type": "gateway.dlp.arguments_redacted",
+            "event_timestamp": now,
             "agent_id": "agent-a",
             "profile_id": "finance",
             "upstream": "filesystem",
@@ -356,6 +357,7 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         {
             "event_id": "evt-result-redact",
             "event_type": "gateway.dlp.result_redacted",
+            "event_timestamp": now,
             "agent_id": "agent-a",
             "profile_id": "finance",
             "upstream": "filesystem",
@@ -367,6 +369,7 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         {
             "event_id": "evt-result-block",
             "event_type": "gateway.dlp.result_blocked",
+            "event_timestamp": now,
             "agent_id": "agent-a",
             "profile_id": "finance",
             "upstream": "filesystem",
@@ -379,6 +382,7 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         {
             "event_id": "evt-visual-redact",
             "event_type": "gateway.visual.redacted",
+            "event_timestamp": now,
             "agent_id": "agent-a",
             "profile_id": "finance",
             "upstream": "browser",
@@ -391,6 +395,7 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
             "event_id": "evt-identity-block",
             "decision_id": "evt-identity-block",
             "event_type": "gateway.tool_call.blocked",
+            "event_timestamp": now,
             "agent_id": "unknown",
             "identity_id": "identity-missing-profile",
             "profile_id": "",

@@ -76,6 +76,10 @@ class PostgresFleetStore:
                 ON fleet_agents(tenant_id, lower(name))
                 """
             )
+            # The relay resolves a caller by any of its three identifiers; all
+            # three need an index or quarantine enforcement pages the roster.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant_agent_id_lower ON fleet_agents(tenant_id, lower(agent_id))")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant_canonical_id_lower ON fleet_agents(tenant_id, lower(canonical_id))")
             _ensure_tenant_rls(conn, "fleet_agents", "tenant_id")
             conn.commit()
 
@@ -173,6 +177,24 @@ class PostgresFleetStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM fleet_agents WHERE tenant_id = %s ORDER BY name", (tenant_id,)).fetchall()
             return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+
+    def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None:
+        from .fleet_store import FleetAgent
+
+        key = (identifier or "").strip().lower()
+        if not key:
+            return None
+        with _tenant_connection(self._pool) as conn:
+            for column in ("name", "agent_id", "canonical_id"):
+                row = conn.execute(
+                    # nosec B608 - ``column`` comes from the fixed literal tuple
+                    # in the loop above; the values are bound.
+                    f"SELECT data FROM fleet_agents WHERE lower({column}) = %s AND tenant_id = %s LIMIT 1",  # nosec B608
+                    (key, tenant_id),
+                ).fetchone()
+                if row is not None:
+                    return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+        return None
 
     def query_by_tenant(
         self,

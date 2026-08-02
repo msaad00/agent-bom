@@ -187,11 +187,27 @@ def _is_ml_span(span: dict, scope_name: str) -> bool:
     return False
 
 
+def _require_object_array(value: object, path: str) -> list[dict]:
+    """Return ``value`` as a list of JSON objects or raise ``ValueError``.
+
+    Key presence alone is not enough: the parsers below call ``.get()`` on every
+    element, so an array of strings used to escape validation and surface as a
+    bare ``AttributeError`` deep inside the parser.
+    """
+    if not isinstance(value, list):
+        raise ValueError(f"'{path}' must be a JSON array, got: {type(value).__name__}")
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"'{path}[{index}]' must be a JSON object, got: {type(item).__name__}")
+    return value
+
+
 def validate_otel_schema(trace_data: dict) -> None:
     """Validate that trace_data conforms to OTLP JSON structure.
 
-    Raises ``ValueError`` with a clear path if the required structure is absent.
-    Accepts both ``resourceSpans`` (OTLP standard) and flat ``spans`` arrays.
+    Raises ``ValueError`` with a clear path if the required structure is absent
+    or an array holds anything other than JSON objects. Accepts both
+    ``resourceSpans`` (OTLP standard) and flat ``spans`` arrays.
     """
     if not isinstance(trace_data, dict):
         raise ValueError("OTel trace must be a JSON object, got: " + type(trace_data).__name__)
@@ -205,8 +221,19 @@ def validate_otel_schema(trace_data: dict) -> None:
             "Ensure the file is a valid OTel JSON export."
         )
 
-    if has_resource_spans and not isinstance(trace_data["resourceSpans"], list):
-        raise ValueError("'resourceSpans' must be a JSON array")
+    if has_flat_spans:
+        _require_object_array(trace_data["spans"], "spans")
+
+    if has_resource_spans:
+        for rs_index, resource_span in enumerate(_require_object_array(trace_data["resourceSpans"], "resourceSpans")):
+            rs_path = f"resourceSpans[{rs_index}]"
+            if "scopeSpans" not in resource_span:
+                continue
+            scope_spans = _require_object_array(resource_span["scopeSpans"], f"{rs_path}.scopeSpans")
+            for ss_index, scope_span in enumerate(scope_spans):
+                if "spans" not in scope_span:
+                    continue
+                _require_object_array(scope_span["spans"], f"{rs_path}.scopeSpans[{ss_index}].spans")
 
 
 def parse_otel_traces(trace_data: dict) -> list[ToolCallTrace]:

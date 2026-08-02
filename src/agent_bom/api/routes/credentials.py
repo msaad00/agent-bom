@@ -17,7 +17,7 @@ from agent_bom.api.models import (
     CredentialRefUpdate,
 )
 from agent_bom.api.stores import _get_credential_ref_store
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 
 router = APIRouter()
 
@@ -74,8 +74,7 @@ def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) ->
 @router.post("/credentials", tags=["credentials"], status_code=201)
 async def create_credential_ref(request: Request, body: CredentialRefCreate) -> dict:
     tenant_id = _tenant_id(request)
-    if body.tenant_id not in ("default", tenant_id):
-        raise HTTPException(status_code=403, detail="Forbidden — tenant_id must match the authenticated tenant")
+    require_body_tenant_match(body.tenant_id, tenant_id)
 
     now = _now()
     credential = CredentialRefRecord(

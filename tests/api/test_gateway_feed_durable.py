@@ -305,7 +305,17 @@ def test_observability_outage_marks_feed_and_kpis_partial(monkeypatch: pytest.Mo
     assert "cost store URL" not in kpis.text
 
 
-def test_missing_timestamp_replay_is_degraded_not_a_durable_conflict() -> None:
+def test_canonical_event_without_a_timestamp_is_rejected_not_degraded() -> None:
+    """A canonical gateway event is durably stored or rejected — never demoted.
+
+    This test previously asserted the opposite: a blocked event with no
+    ``event_timestamp`` was answered 200 with ``durable_accepted_count == 0``
+    and served from the process-local ring. That is the silent downgrade the
+    module docstring rules out, and the sibling required field (``event_id``)
+    was already hardened to 422. Acknowledging a *deny* decision that was
+    committed nowhere is the worst shape of it — the ledger has no record that
+    the gateway blocked anything.
+    """
     client = TestClient(app)
     tenant_id = "tenant-missing-timestamp"
     event = _blocked_event("evt-no-timestamp")
@@ -319,12 +329,43 @@ def test_missing_timestamp_replay_is_degraded_not_a_durable_conflict() -> None:
     first = client.post("/v1/proxy/audit", headers=_headers(tenant_id, role="admin"), json=payload)
     replay = client.post("/v1/proxy/audit", headers=_headers(tenant_id, role="admin"), json=payload)
 
+    assert first.status_code == 422, first.text
+    assert replay.status_code == 422, replay.text
+    feed = client.get("/v1/gateway/feed", headers=_headers(tenant_id)).json()
+    assert feed["events"] == [], feed
+
+
+def test_legacy_envelope_replay_is_degraded_not_a_durable_conflict() -> None:
+    """The property the timestamp test used to carry, on the path that still has it.
+
+    A legacy (non-canonical) proxy envelope is genuinely ring-only. Replaying
+    one must dedupe on ``event_id`` rather than surface as a durable conflict.
+    """
+    client = TestClient(app)
+    tenant_id = "tenant-legacy-replay"
+    payload = {
+        "source_id": "legacy-gateway",
+        "session_id": "session-a",
+        "alerts": [
+            {
+                "type": "runtime_alert",
+                "event_id": "evt-legacy-replay",
+                "detector": "credential_leak",
+                "severity": "high",
+                "message": "leak",
+            }
+        ],
+    }
+
+    first = client.post("/v1/proxy/audit", headers=_headers(tenant_id, role="admin"), json=payload)
+    replay = client.post("/v1/proxy/audit", headers=_headers(tenant_id, role="admin"), json=payload)
+
     assert first.status_code == 200, first.text
     assert first.json()["durable_accepted_count"] == 0
     assert replay.status_code == 200, replay.text
-    assert replay.json()["duplicate_event_ids"] == ["evt-no-timestamp"]
+    assert replay.json()["duplicate_event_ids"] == ["evt-legacy-replay"]
     feed = client.get("/v1/gateway/feed", headers=_headers(tenant_id)).json()
-    assert [row["event_id"] for row in feed["events"]] == ["evt-no-timestamp"]
+    assert [row["event_id"] for row in feed["events"]] == ["evt-legacy-replay"]
     assert feed["source"] == "degraded_single_process"
     assert feed["completeness"]["status"] == "partial"
 

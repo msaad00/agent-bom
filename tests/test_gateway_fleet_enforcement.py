@@ -240,6 +240,9 @@ def test_identity_store_failure_fails_open_for_unsecured_posture():
         def list(self, *a, **k):
             raise RuntimeError("identity store down")
 
+        def list_by_agent(self, *a, **k):
+            raise RuntimeError("identity store down")
+
     _seed_fleet()
     set_agent_identity_store(_RevocationLookupDown())
     client = TestClient(create_gateway_app(_settings("enforce")))
@@ -253,6 +256,9 @@ def test_identity_store_failure_fails_closed_when_identity_is_required():
 
     class _RevocationLookupDown(InMemoryAgentIdentityStore):
         def list(self, *a, **k):
+            raise RuntimeError("identity store down")
+
+        def list_by_agent(self, *a, **k):
             raise RuntimeError("identity store down")
 
     _seed_fleet()
@@ -292,28 +298,73 @@ def test_boot_is_silent_when_enforcement_is_opted_out(caplog):
     assert not [r for r in caplog.records if "fleet enforcement is active" in r.getMessage()]
 
 
-def test_revocation_is_not_defeated_by_a_large_identity_roster():
-    """The lookup must not silently fail open once a tenant grows.
+def _roster(revoked_agent: str, fillers: int):
+    """A revoked identity buried under *fillers* NEWER identities.
 
-    store.list() returns the N most recently issued identities. A revoked
-    agent whose identity is older than that window fell out of the result,
-    the helper saw "no identities for this agent", and concluded "not
-    revoked" — reporting no degradation, so the fail-closed branch never
-    fired either.
+    The victim is the OLDEST row, so any ``ORDER BY issued_at DESC LIMIT n``
+    window with ``n <= fillers`` drops it. Sizing the filler count off the real
+    module constant is the point: the previous version of this guard hardcoded
+    500 against a 5000-row cap, so the victim never left the window and the
+    assertion could not fail.
     """
-    from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
-
-    _seed_fleet()
-    # The revoked identity is the OLDEST, so any recency-capped window drops it.
-    identities = [_identity("agent-b", "revoked")]
-    identities[0].issued_at = "2020-01-01T00:00:00Z"
-    for i in range(500):
+    victim = _identity(revoked_agent, "revoked")
+    victim.issued_at = "2020-01-01T00:00:00Z"
+    identities = [victim]
+    for i in range(fillers):
         filler = _identity(f"filler-{i}", "active")
         filler.identity_id = f"filler-id-{i}"
         filler.token_hash = f"filler-hash-{i}"
         filler.issued_at = "2026-01-01T00:00:00Z"
         identities.append(filler)
-    _seed_identities(*identities)
+    return identities
+
+
+class _RosterScanOnlyStore:
+    """A store from before the agent-keyed lookup existed.
+
+    Exposes only the legacy surface, so ``identities_for_agent`` has to fall
+    back to the recency-capped roster scan. This keeps the truncated-lookup
+    signal reachable — and therefore keeps the gateway's fail-closed branch
+    for it honest rather than dead code.
+    """
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def put(self, identity) -> None:
+        self._inner.put(identity)
+
+    def get(self, identity_id: str, *, tenant_id: str):
+        return self._inner.get(identity_id, tenant_id=tenant_id)
+
+    def get_by_token_hash(self, token_hash: str):
+        return self._inner.get_by_token_hash(token_hash)
+
+    def list(self, tenant_id: str, *, include_inactive: bool = False, limit: int = 200):
+        return self._inner.list(tenant_id, include_inactive=include_inactive, limit=limit)
+
+    def active_jit_grant(self, *a, **k):
+        return self._inner.active_jit_grant(*a, **k)
+
+    def list_conditional_policies(self, *a, **k):
+        return self._inner.list_conditional_policies(*a, **k)
+
+
+def test_revocation_is_not_defeated_by_a_large_identity_roster():
+    """The lookup must not silently fail open once a tenant grows.
+
+    ``store.list()`` returns the N most recently issued identities. A revoked
+    agent whose identity is older than that window fell out of the result, the
+    helper saw "no identities for this agent", and concluded "not revoked" —
+    reporting no degradation, so the fail-closed branch never fired either.
+    Rosters grow monotonically (rotation leaves revoked rows behind), so this
+    is reached by ordinary operation, not by an operator mistake.
+    """
+    from agent_bom.api import agent_identity_store as store_mod
+    from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
+
+    _seed_fleet()
+    _seed_identities(*_roster("agent-b", store_mod._IDENTITY_LOOKUP_CAP + 1))
 
     assert agent_identity_revoked(get_agent_identity_store(), "default", "agent-b") == (True, False)
 
@@ -322,26 +373,95 @@ def test_revocation_is_not_defeated_by_a_large_identity_roster():
     assert _is_blocked(resp), "a revoked agent must stay blocked regardless of roster size"
 
 
+def test_revocation_lookup_is_agent_keyed_not_a_roster_scan():
+    """The root cause: the lookup read the roster instead of the agent.
+
+    An agent-keyed lookup makes the roster size irrelevant, so the cap can
+    never hide a revoked row again. Breaking ``list`` proves the revocation
+    path no longer depends on it.
+    """
+    from agent_bom.api.agent_identity_store import (
+        InMemoryAgentIdentityStore,
+        agent_identity_revoked,
+        set_agent_identity_store,
+    )
+
+    class _NoRosterScans(InMemoryAgentIdentityStore):
+        def list(self, *a, **k):
+            raise AssertionError("revocation must not scan the tenant roster")
+
+    store = _NoRosterScans()
+    for identity in _roster("agent-b", 3):
+        store.put(identity)
+    set_agent_identity_store(store)
+
+    assert agent_identity_revoked(store, "default", "agent-b") == (True, False)
+
+    _seed_fleet()
+    client = TestClient(create_gateway_app(_settings("enforce")))
+    resp = client.post("/mcp/filesystem", json=_call("token-b"))
+    assert _is_blocked(resp), resp.text
+
+
+def test_a_truncated_revocation_lookup_denies_even_on_a_loopback_listener():
+    """The safety net, independent of the root-cause fix.
+
+    A truncated lookup is an unproven negative. The gateway converted it to a
+    block only when ``require_agent_identity`` was set or anonymous agents were
+    disallowed — and anonymous agents are allowed unconditionally on a loopback
+    listener, which is the default and the sidecar/single-node shape. Revocation
+    is an emergency control: a partial answer must deny on every listener.
+    """
+    from agent_bom.api import agent_identity_store as store_mod
+    from agent_bom.api.agent_identity_store import InMemoryAgentIdentityStore, set_agent_identity_store
+
+    original_cap = store_mod._IDENTITY_LOOKUP_CAP
+    store_mod._IDENTITY_LOOKUP_CAP = 10
+    try:
+        inner = InMemoryAgentIdentityStore()
+        for identity in _roster("agent-b", 20):
+            inner.put(identity)
+        set_agent_identity_store(_RosterScanOnlyStore(inner))
+
+        _seed_fleet()
+        settings = _settings("enforce")
+        assert settings.listener_host == "127.0.0.1", "the default listener is the exposed surface"
+        assert not settings.policy.get("require_agent_identity")
+
+        client = TestClient(create_gateway_app(settings))
+        resp = client.post("/mcp/filesystem", json=_call("token-b"))
+        assert _is_blocked(resp), "an unproven revocation status must not reach the upstream"
+    finally:
+        store_mod._IDENTITY_LOOKUP_CAP = original_cap
+
+
 def test_unknown_agent_in_a_capped_roster_reports_the_lookup_as_incomplete():
     """Absence past the scan cap is unproven, not evidence of absence.
 
     With a roster larger than the cap and no matching identity, the helper must
     say so rather than returning a confident "not revoked" — otherwise the
-    caller's fail-closed branch can never fire.
+    caller's fail-closed branch can never fire. Only a store without the
+    agent-keyed lookup still scans, so that is what this pins; a store that
+    supports it is covered by ``..._is_agent_keyed_not_a_roster_scan``.
     """
     from agent_bom.api import agent_identity_store as store_mod
-    from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
+    from agent_bom.api.agent_identity_store import (
+        InMemoryAgentIdentityStore,
+        agent_identity_revoked,
+        get_agent_identity_store,
+        set_agent_identity_store,
+    )
 
     original_cap = store_mod._IDENTITY_LOOKUP_CAP
     store_mod._IDENTITY_LOOKUP_CAP = 10
     try:
-        fillers = []
+        inner = InMemoryAgentIdentityStore()
         for i in range(20):
             filler = _identity(f"filler-{i}", "active")
             filler.identity_id = f"filler-id-{i}"
             filler.token_hash = f"filler-hash-{i}"
-            fillers.append(filler)
-        _seed_identities(*fillers)
+            inner.put(filler)
+        set_agent_identity_store(_RosterScanOnlyStore(inner))
 
         revoked, incomplete = agent_identity_revoked(get_agent_identity_store(), "default", "agent-zzz")
         assert revoked is False
@@ -356,3 +476,98 @@ def test_small_roster_reports_a_clean_negative():
 
     _seed_identities(_identity("agent-b", "active"))
     assert agent_identity_revoked(get_agent_identity_store(), "default", "agent-zzz") == (False, False)
+
+
+# ── Tenant scoping of the new indexed lookups ────────────────────────────────
+#
+# Both revocation and quarantine now resolve one agent through an index rather
+# than filtering a tenant-scoped list in Python. A new index and a new WHERE
+# clause are exactly where tenant scoping gets dropped, and two tenants naming
+# an agent the same way is ordinary — "assistant", "ci-bot", "claude-code".
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_revocation_does_not_leak_across_tenants_sharing_an_agent_id(store_kind, tmp_path):
+    """One tenant revoking its agent must not revoke another tenant's."""
+    from agent_bom.api.agent_identity_store import (
+        InMemoryAgentIdentityStore,
+        SQLiteAgentIdentityStore,
+        agent_identity_revoked,
+    )
+
+    store = InMemoryAgentIdentityStore() if store_kind == "memory" else SQLiteAgentIdentityStore(db_path=str(tmp_path / "identity.db"))
+    revoked = _identity("shared-agent", "revoked")
+    revoked.tenant_id = "tenant-a"
+    live = _identity("shared-agent", "active")
+    live.tenant_id = "tenant-b"
+    live.identity_id = "id-shared-agent-active-b"
+    live.token_hash = "hash-shared-agent-active-b"
+    store.put(revoked)
+    store.put(live)
+
+    assert agent_identity_revoked(store, "tenant-a", "shared-agent") == (True, False)
+    assert agent_identity_revoked(store, "tenant-b", "shared-agent") == (False, False)
+    # And neither tenant sees the other's row at all.
+    assert [i.tenant_id for i in store.list_by_agent("tenant-a", "shared-agent")] == ["tenant-a"]
+    assert [i.tenant_id for i in store.list_by_agent("tenant-b", "shared-agent")] == ["tenant-b"]
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_quarantine_does_not_leak_across_tenants_sharing_an_agent_name(store_kind, tmp_path):
+    """Quarantining one tenant's agent must not isolate another tenant's."""
+    from agent_bom.api.fleet_store import SQLiteFleetStore, find_fleet_agent
+
+    store = InMemoryFleetStore() if store_kind == "memory" else SQLiteFleetStore(db_path=str(tmp_path / "fleet.db"))
+    store.put(
+        FleetAgent(
+            agent_id="agent-a-1",
+            name="shared-name",
+            agent_type="custom",
+            tenant_id="tenant-a",
+            lifecycle_state=FleetLifecycleState.QUARANTINED,
+        )
+    )
+    store.put(
+        FleetAgent(
+            agent_id="agent-b-1",
+            name="shared-name",
+            agent_type="custom",
+            tenant_id="tenant-b",
+            lifecycle_state=FleetLifecycleState.APPROVED,
+        )
+    )
+
+    found_a = find_fleet_agent(store, "tenant-a", "shared-name")
+    found_b = find_fleet_agent(store, "tenant-b", "shared-name")
+
+    assert found_a is not None and found_a.tenant_id == "tenant-a"
+    assert found_a.lifecycle_state == FleetLifecycleState.QUARANTINED
+    assert found_b is not None and found_b.tenant_id == "tenant-b"
+    assert found_b.lifecycle_state == FleetLifecycleState.APPROVED
+    assert find_fleet_agent(store, "tenant-c", "shared-name") is None
+
+
+@pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
+def test_quarantine_lookup_stays_case_insensitive(store_kind, tmp_path):
+    """The roster scan matched case-insensitively; the indexed lookup must too.
+
+    An exact-match index would have quietly turned a case mismatch into a
+    missed quarantine — a fail-open regression hidden inside a perf fix.
+    """
+    from agent_bom.api.fleet_store import SQLiteFleetStore, find_fleet_agent
+
+    store = InMemoryFleetStore() if store_kind == "memory" else SQLiteFleetStore(db_path=str(tmp_path / "fleet.db"))
+    store.put(
+        FleetAgent(
+            agent_id="Agent-Mixed-Case",
+            name="Agent-Mixed-Case",
+            agent_type="custom",
+            tenant_id="default",
+            lifecycle_state=FleetLifecycleState.QUARANTINED,
+        )
+    )
+
+    for identifier in ("agent-mixed-case", "AGENT-MIXED-CASE", "Agent-Mixed-Case", "  agent-mixed-case  "):
+        found = find_fleet_agent(store, "default", identifier)
+        assert found is not None, f"{identifier!r} did not resolve"
+        assert found.lifecycle_state == FleetLifecycleState.QUARANTINED

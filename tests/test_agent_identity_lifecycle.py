@@ -760,3 +760,62 @@ async def test_mcp_identity_write_emits_lifecycle_audit_chain(store):
         assert any(e.actor == _AUTHENTICATED_OPERATOR for e in audit.list_entries(limit=100))
     finally:
         set_audit_log(InMemoryAuditLog())
+
+
+def test_upgrading_a_pre_agent_id_database_backfills_the_revocation_lookup(tmp_path) -> None:
+    """An existing SQLite deployment must not lose revocation on upgrade.
+
+    Revocation now resolves through an indexed ``agent_id`` column. Rows
+    written before that column existed carry the agent id only inside the JSON
+    blob, so a migration that added the column without backfilling it would
+    answer "no identity for this agent" for every pre-upgrade row — silently
+    reinstating the fail-open this column was added to close.
+    """
+    import sqlite3
+    from dataclasses import asdict
+
+    from agent_bom.api.agent_identity_store import (
+        AgentIdentity,
+        SQLiteAgentIdentityStore,
+        agent_identity_revoked,
+    )
+    from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
+    db_path = str(tmp_path / "legacy.db")
+    legacy = sqlite3.connect(db_path)
+    ensure_sqlite_schema_version(legacy, "agent_identities")
+    legacy.execute(
+        """CREATE TABLE agent_identities (
+            identity_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            issued_at TEXT NOT NULL,
+            data TEXT NOT NULL
+        )"""
+    )
+    identity = AgentIdentity(
+        identity_id="id-legacy",
+        agent_id="legacy-agent",
+        tenant_id="default",
+        token_hash="hash-legacy",
+        token_prefix="abi_test",
+        role="agent",
+        blueprint_id="",
+        status="revoked",
+        issued_at="2020-01-01T00:00:00Z",
+        expires_at="",
+    )
+    legacy.execute(
+        "INSERT INTO agent_identities (identity_id, tenant_id, token_hash, status, issued_at, data) VALUES (?, ?, ?, ?, ?, ?)",
+        ("id-legacy", "default", "hash-legacy", "revoked", "2020-01-01T00:00:00Z", json.dumps(asdict(identity))),
+    )
+    legacy.commit()
+    legacy.close()
+
+    store = SQLiteAgentIdentityStore(db_path=db_path)
+
+    columns = {row[1] for row in store._conn.execute("PRAGMA table_info(agent_identities)").fetchall()}
+    assert "agent_id" in columns, "upgrade did not add the column"
+    assert [i.identity_id for i in store.list_by_agent("default", "legacy-agent")] == ["id-legacy"]
+    assert agent_identity_revoked(store, "default", "legacy-agent") == (True, False)

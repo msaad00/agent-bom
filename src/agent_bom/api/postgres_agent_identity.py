@@ -63,9 +63,18 @@ class PostgresAgentIdentityStore:
                     token_hash  TEXT NOT NULL UNIQUE,
                     status      TEXT NOT NULL,
                     issued_at   TEXT NOT NULL,
+                    agent_id    TEXT NOT NULL DEFAULT '',
                     data        TEXT NOT NULL
                 )
             """)
+            # Revocation is an agent-keyed question. Without this column the
+            # check paged the tenant roster by recency and could miss an older
+            # revoked row behind the page cap.
+            conn.execute("ALTER TABLE agent_identities ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                "UPDATE agent_identities SET agent_id = TRIM(data::jsonb ->> 'agent_id') "
+                "WHERE agent_id = '' AND data::jsonb ->> 'agent_id' IS NOT NULL"
+            )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS agent_identity_jit_grants (
                     grant_id     TEXT PRIMARY KEY,
@@ -90,6 +99,7 @@ class PostgresAgentIdentityStore:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_identities_tenant ON agent_identities(tenant_id, status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_identities_hash ON agent_identities(token_hash)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_identities_agent ON agent_identities(tenant_id, agent_id)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_identity_jit_lookup "
                 "ON agent_identity_jit_grants(tenant_id, identity_id, tool_name, status, expires_at)"
@@ -109,12 +119,13 @@ class PostgresAgentIdentityStore:
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """
-                INSERT INTO agent_identities (identity_id, tenant_id, token_hash, status, issued_at, data)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO agent_identities (identity_id, tenant_id, token_hash, status, issued_at, agent_id, data)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (identity_id) DO UPDATE SET
                     token_hash = EXCLUDED.token_hash,
                     status = EXCLUDED.status,
                     issued_at = EXCLUDED.issued_at,
+                    agent_id = EXCLUDED.agent_id,
                     data = EXCLUDED.data
                 """,
                 (
@@ -123,6 +134,7 @@ class PostgresAgentIdentityStore:
                     identity.token_hash,
                     identity.status,
                     identity.issued_at,
+                    (identity.agent_id or "").strip(),
                     json.dumps(asdict(identity), sort_keys=True),
                 ),
             )
@@ -154,6 +166,14 @@ class PostgresAgentIdentityStore:
                     "ORDER BY issued_at DESC LIMIT %s",
                     (tenant_id, limit),
                 ).fetchall()
+        return [AgentIdentity(**json.loads(r[0])) for r in rows]
+
+    def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]:
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                "SELECT data FROM agent_identities WHERE tenant_id = %s AND agent_id = %s ORDER BY issued_at DESC LIMIT %s",
+                (tenant_id, agent_id, limit),
+            ).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
 
     # ── JIT grants ──────────────────────────────────────────────────────────

@@ -1804,7 +1804,7 @@ def test_graph_walk_marks_query_limit_omissions_truncated(monkeypatch):
     store = object.__new__(PostgresGraphStore)
     monkeypatch.setattr(store, "_filtered_edge_rows", lambda *_args, **_kwargs: ([], True))
 
-    result = store._walk_graph(
+    *_, truncated, depth_limited = store._walk_graph(
         WalkConnection(),
         tenant_id="tenant-alpha",
         scan_id="scan-limited",
@@ -1821,7 +1821,14 @@ def test_graph_walk_marks_query_limit_omissions_truncated(monkeypatch):
         include_roots=True,
     )
 
-    assert result[-1] is True
+    # Unpacked by name rather than indexed off the end: the walk now reports
+    # two independent bounds, and a positional ``result[-1]`` silently began
+    # reading the depth flag when the second one was added.
+    assert truncated is True
+    # The query limit is what bound this walk. Nothing was cut by depth -- the
+    # frontier ran out of edges -- so the depth flag must stay clear, otherwise
+    # "truncated" stops distinguishing which bound actually applied.
+    assert depth_limited is False
 
 
 def test_graph_store_save_graph_batches_postgres_writes(mock_pool, mock_maintenance_pool, monkeypatch):

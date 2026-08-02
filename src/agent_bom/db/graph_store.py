@@ -141,6 +141,13 @@ CREATE INDEX IF NOT EXISTS idx_ge_target ON graph_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_ge_rel ON graph_edges(relationship);
 CREATE INDEX IF NOT EXISTS idx_ge_scan ON graph_edges(scan_id);
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id);
+-- Per-hop traversal indexes. A graph walk asks "which edges touch this node in
+-- this snapshot?" once per node it visits; without an endpoint column in the
+-- index that question degrades to a scan of the whole snapshot, so the walk
+-- costs visited x snapshot_edges. These mirror the Postgres store's
+-- idx_pg_graph_edges_scan_source / _scan_target.
+CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_target ON graph_edges(tenant_id, scan_id, target_id);
 
 -- ── Snapshots ──
 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -323,6 +330,9 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
     conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to)")
+    # Backfill the per-hop traversal indexes onto stores created before them.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
     # Materialise the per-snapshot entity-type breakdown so inventory/summary
     # reads a cached count instead of a per-request GROUP BY over every node.
     # NULL marks pre-migration snapshots, which fall back to the live GROUP BY.
@@ -699,6 +709,7 @@ def save_graph_streaming(
     edge_count = 0
     severity_counts: dict[str, int] = defaultdict(int)
     type_counts: dict[str, int] = defaultdict(int)
+
     # ── Nodes ──
     def node_rows() -> Iterator[tuple[Any, ...]]:
         nonlocal node_count

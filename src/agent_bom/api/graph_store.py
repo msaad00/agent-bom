@@ -577,6 +577,83 @@ class SQLiteGraphStore:
             activity_id=edge.activity_id,
         )
 
+    def _frontier_edge_query(
+        self,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        frontier: set[str],
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+    ) -> tuple[str, list[Any]]:
+        """Build the per-hop "edges touching these nodes" query, and its parameters.
+
+        Written as a UNION of two endpoint-anchored branches rather than the
+        obvious ``source_id IN (...) OR target_id IN (...)`` disjunction. SQLite
+        cannot drive a single index from that disjunction: it settles on
+        ``idx_ge_tenant_scan`` and reads every edge in the snapshot, once per
+        node the walk visits, making traversal cost visited x snapshot_edges.
+        Split into two branches, each is an index seek against
+        ``idx_ge_tenant_scan_source`` / ``idx_ge_tenant_scan_target``, so a hop
+        costs its own degree.
+
+        Both halves are load-bearing: the disjunction ignores those indexes even
+        when they exist, and the UNION falls back to a full snapshot scan when
+        they do not. Neither relies on ``sqlite_stat1``, which a freshly written
+        customer database does not have.
+
+        ``ORDER BY rowid`` reproduces the row order the scan happened to yield
+        (index entries for one snapshot are ordered by rowid, i.e. insertion
+        order), so ``discovery_order``, ``parent_by_node`` and every path built
+        from them are unchanged — and are now pinned to insertion order outright
+        instead of inherited from whichever plan the query planner picked.
+        """
+        placeholders = ",".join("?" for _ in frontier)
+        # Sorted so the emitted SQL and parameters are deterministic across runs.
+        ordered_frontier = sorted(frontier)
+        shared: list[str] = []
+        shared_params: list[Any] = []
+        if traversable_only:
+            shared.append("traversable = 1")
+        if relationship_types:
+            rel_values = sorted(rel.value if isinstance(rel, RelationshipType) else str(rel) for rel in relationship_types)
+            shared.append(f"relationship IN ({','.join('?' for _ in rel_values)})")
+            shared_params.extend(rel_values)
+        if static_only:
+            shared.append(f"relationship NOT IN ({','.join('?' for _ in _DYNAMIC_RELATIONSHIP_VALUES)})")
+            shared_params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        if dynamic_only:
+            shared.append(f"relationship IN ({','.join('?' for _ in _DYNAMIC_RELATIONSHIP_VALUES)})")
+            shared_params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        shared_sql = ("".join(f" AND {clause}" for clause in shared)) if shared else ""
+
+        def branch(column: str) -> str:
+            return f"SELECT rowid FROM graph_edges WHERE tenant_id = ? AND scan_id = ? AND {column} IN ({placeholders}){shared_sql}"
+
+        params: list[Any] = [
+            tenant_id,
+            scan_id,
+            *ordered_frontier,
+            *shared_params,
+            tenant_id,
+            scan_id,
+            *ordered_frontier,
+            *shared_params,
+        ]
+        sql = f"""
+            SELECT *
+            FROM graph_edges
+            WHERE rowid IN (
+                {branch("source_id")}
+                UNION
+                {branch("target_id")}
+            )
+            ORDER BY rowid
+            """  # nosec B608 - clause fragments and placeholders are generated internally
+        return sql, params
+
     def _filtered_edge_rows(
         self,
         conn: sqlite3.Connection,
@@ -591,36 +668,16 @@ class SQLiteGraphStore:
     ) -> list[sqlite3.Row]:
         if not frontier:
             return []
-        placeholders = ",".join("?" for _ in frontier)
-        where = [
-            "tenant_id = ?",
-            "scan_id = ?",
-            f"(source_id IN ({placeholders}) OR target_id IN ({placeholders}))",
-        ]
-        params: list[Any] = [tenant_id, scan_id, *frontier, *frontier]
-        if traversable_only:
-            where.append("traversable = 1")
-        if relationship_types:
-            rel_values = sorted(rel.value if isinstance(rel, RelationshipType) else str(rel) for rel in relationship_types)
-            rel_placeholders = ",".join("?" for _ in rel_values)
-            where.append(f"relationship IN ({rel_placeholders})")
-            params.extend(rel_values)
-        if static_only:
-            dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
-            where.append(f"relationship NOT IN ({dynamic_placeholders})")
-            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
-        if dynamic_only:
-            dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
-            where.append(f"relationship IN ({dynamic_placeholders})")
-            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
-        return conn.execute(
-            f"""
-            SELECT *
-            FROM graph_edges
-            WHERE {" AND ".join(where)}
-            """,  # nosec B608 - clause fragments and placeholders are generated internally
-            params,
-        ).fetchall()
+        sql, params = self._frontier_edge_query(
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            frontier=frontier,
+            traversable_only=traversable_only,
+            relationship_types=relationship_types,
+            static_only=static_only,
+            dynamic_only=dynamic_only,
+        )
+        return conn.execute(sql, params).fetchall()
 
     def nodes_by_ids(
         self,

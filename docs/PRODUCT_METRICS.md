@@ -5,7 +5,7 @@
 This appendix is the canonical home for volatile product counts.
 Keep counts out of public positioning copy and update this file from the repo instead of hand-editing numbers.
 
-- Generated on: `2026-08-01`
+- Generated on: `2026-08-02`
 - Version: `0.98.2`
 
 | Metric | Value | Source | Notes |
@@ -14,7 +14,7 @@ Keep counts out of public positioning copy and update this file from the repo in
 | MCP resources | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card resources. |
 | MCP prompts | 8 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card workflow prompts. |
 | GitHub workflow files | 38 | `.github/workflows` | Counts .yml and .yaml workflow definitions. |
-| Test files | 1092 | `tests/` | Counts files matching test_*.py. |
+| Test files | 1093 | `tests/` | Counts files matching test_*.py. |
 | API route modules | 45 | `src/agent_bom/api/routes` | Counts Python files in the routes package, including __init__.py. |
 | UI app pages | 40 | `ui/app` | Counts page.tsx and page.jsx files recursively. |
 | Python modules | 817 | `src/agent_bom` | Counts all Python files recursively. |

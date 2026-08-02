@@ -348,6 +348,108 @@ class GraphStoreProtocol(Protocol):
     def delete_preset(self, *, tenant_id: str, name: str) -> bool: ...
 
 
+def containment_drilldown_graph(
+    store: GraphStoreProtocol,
+    *,
+    node_id: str,
+    tenant_id: str = "",
+    scan_id: str = "",
+    node_budget: int | None = None,
+) -> UnifiedGraph:
+    """Fetch only the containment subtree a roll-up drill-down reads.
+
+    ``drill_down`` answers one container's direct children, but its aggregates
+    (descendant counts, severity histogram, exposure flags) cover each child's
+    whole subtree. The subtree under ``node_id`` is therefore the exact part of
+    the estate the answer depends on — and the only part worth fetching.
+
+    Loading the full snapshot instead made a twenty-row answer cost time linear
+    in estate size. Measured on SQLite, drilling into one application whose
+    answer is twenty children either way:
+
+        snapshot     full load        containment walk
+         5,065 nodes    55.1 ms          1.2 ms  (21 nodes read)
+        20,046 nodes   270.2 ms          1.4 ms  (21 nodes read)
+        40,091 nodes   580.5 ms          1.2 ms  (21 nodes read)
+        80,181 nodes 1,141.6 ms          1.2 ms  (21 nodes read)
+
+    The walk is ``traverse_subgraph``, the incremental primitive that already
+    made ``impact_of`` sublinear, rather than a new store method — every backend
+    that can traverse gets this without a protocol change.
+
+    **The budget is a dispatch threshold, not a cap on the answer.** A container
+    whose subtree does not fit falls back to the full load and returns exactly
+    what it would have returned before. Truncating instead would have been both
+    dishonest-looking and pointless: at the root of the tree the subtree *is* the
+    estate, so the walk is strictly more expensive than one bulk read, and every
+    ``descendant_count`` in the response would silently become a floor. The cost
+    of that choice is the wasted partial walk before a fallback — measured at
+    +44 ms on an 80,181-node root drill that already took 1,189 ms. The fast path
+    is for the drill targets below the top, which is where drill-down goes.
+
+    This is why ``traverse_subgraph`` reporting its own truncation matters here:
+    the flag is what selects the fallback. A walk that under-reported itself as
+    complete would ship bounded aggregates as if they were totals.
+
+    ``max_depth`` is set to the node budget deliberately: a walk of depth *d*
+    visits at least *d + 1* distinct nodes, so the node budget — which reports
+    itself as truncation — always binds first. ``max_depth`` cuts a walk
+    *without* setting that flag, so a depth-bound walk would return a short
+    subtree that looks complete, and the fallback would never fire.
+
+    A backend that cannot traverse incrementally (the experimental Neptune
+    adapter implements only part of the protocol) takes the same fallback, so
+    its answer is unchanged rather than a 501.
+    """
+    from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES, ROLLUP_CONTAINMENT_RELATIONSHIPS
+
+    def _full_load() -> UnifiedGraph:
+        return store.load_graph(
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            relationship_types=ROLLUP_CONTAINMENT_RELATIONSHIPS,
+        )
+
+    budget = node_budget if node_budget is not None else _drilldown_subtree_budget()
+    try:
+        graph, _depths, truncated = store.traverse_subgraph(
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            roots=[node_id],
+            direction="forward",
+            max_depth=budget,
+            max_nodes=budget,
+            # Every visited node also matches on the edge that reached it, so the
+            # edge budget must clear the node budget or it, not the node budget,
+            # becomes the binding limit.
+            max_edges=budget * 4,
+            relationship_types=set(ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES),
+            include_roots=True,
+        )
+    except _unsupported_traversal_errors():
+        return _full_load()
+    if truncated:
+        return _full_load()
+    return graph
+
+
+def _drilldown_subtree_budget() -> int:
+    from agent_bom.config import GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET
+
+    return GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET
+
+
+def _unsupported_traversal_errors() -> tuple[type[BaseException], ...]:
+    """Backends that implement only part of the protocol, resolved lazily.
+
+    Imported inside the call so selecting SQLite or Postgres never pulls the
+    optional Neptune adapter into the import graph.
+    """
+    from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
+
+    return (NeptuneGraphStoreUnsupportedOperationError,)
+
+
 class SQLiteGraphStore:
     """SQLite-backed graph store wrapper around the low-level graph DB helpers."""
 
@@ -589,37 +691,58 @@ class SQLiteGraphStore:
         static_only: bool = False,
         dynamic_only: bool = False,
     ) -> list[sqlite3.Row]:
+        """Edges touching the frontier, as two index-anchored reads.
+
+        This is the inner loop of every incremental walk, run once per frontier
+        node. It used to be one query with ``(source_id IN (...) OR target_id IN
+        (...))``, which SQLite can only serve from the composite indexes as a
+        MULTI-INDEX OR — and it only chooses that plan when ``sqlite_stat1`` has
+        been populated. On a freshly written store, which has never been
+        ``ANALYZE``d, the planner instead prefix-scanned ``(tenant_id, scan_id)``
+        and read EVERY edge in the snapshot on EVERY hop: 12,876us per hop on an
+        80,181-node snapshot, so a walk that materialised 21 nodes still cost
+        time linear in estate size.
+
+        Splitting the OR into a UNION of two single-column lookups makes each
+        branch independently index-anchored, so the plan does not depend on
+        whether statistics happen to exist: 33us per hop, stats or no stats.
+        ``UNION`` (not ``UNION ALL``) because an edge whose both endpoints are in
+        the frontier matches both branches.
+        """
         if not frontier:
             return []
-        placeholders = ",".join("?" for _ in frontier)
-        where = [
-            "tenant_id = ?",
-            "scan_id = ?",
-            f"(source_id IN ({placeholders}) OR target_id IN ({placeholders}))",
-        ]
-        params: list[Any] = [tenant_id, scan_id, *frontier, *frontier]
+        # Sorted so the emitted SQL and its parameters are stable for a given
+        # frontier regardless of set iteration order.
+        frontier_ids = sorted(frontier)
+        placeholders = ",".join("?" for _ in frontier_ids)
+        shared_where: list[str] = []
+        shared_params: list[Any] = []
         if traversable_only:
-            where.append("traversable = 1")
+            shared_where.append("traversable = 1")
         if relationship_types:
             rel_values = sorted(rel.value if isinstance(rel, RelationshipType) else str(rel) for rel in relationship_types)
             rel_placeholders = ",".join("?" for _ in rel_values)
-            where.append(f"relationship IN ({rel_placeholders})")
-            params.extend(rel_values)
+            shared_where.append(f"relationship IN ({rel_placeholders})")
+            shared_params.extend(rel_values)
         if static_only:
             dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
-            where.append(f"relationship NOT IN ({dynamic_placeholders})")
-            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+            shared_where.append(f"relationship NOT IN ({dynamic_placeholders})")
+            shared_params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
         if dynamic_only:
             dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
-            where.append(f"relationship IN ({dynamic_placeholders})")
-            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+            shared_where.append(f"relationship IN ({dynamic_placeholders})")
+            shared_params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+
+        def _branch(column: str) -> tuple[str, list[Any]]:
+            where = ["tenant_id = ?", "scan_id = ?", f"{column} IN ({placeholders})", *shared_where]
+            params: list[Any] = [tenant_id, scan_id, *frontier_ids, *shared_params]
+            return f"SELECT * FROM graph_edges WHERE {' AND '.join(where)}", params
+
+        source_sql, source_params = _branch("source_id")
+        target_sql, target_params = _branch("target_id")
         return conn.execute(
-            f"""
-            SELECT *
-            FROM graph_edges
-            WHERE {" AND ".join(where)}
-            """,  # nosec B608 - clause fragments and placeholders are generated internally
-            params,
+            f"{source_sql} UNION {target_sql}",  # nosec B608 - clause fragments and placeholders are generated internally
+            [*source_params, *target_params],
         ).fetchall()
 
     def nodes_by_ids(
@@ -881,6 +1004,11 @@ class SQLiteGraphStore:
         dynamic_only: bool = False,
         include_roots: bool = True,
     ) -> tuple[UnifiedGraph, dict[str, int], bool]:
+        # Resolve the tenant up front so the returned graph is labelled with the
+        # tenant it was actually read under. `_walk_graph` normalized a local
+        # copy while the graph kept the caller's raw string, so a default-tenant
+        # traversal came back labelled "" where every other read says "default".
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id), {}, False
@@ -910,6 +1038,23 @@ class SQLiteGraphStore:
             for edge in traversed_edges.values():
                 if edge.source in graph.nodes and edge.target in graph.nodes:
                     graph.add_edge(edge)
+            # A bounded walk must say so. #4595 gave the in-memory container and
+            # the Postgres store this shape; the default backend was left
+            # returning a fresh GraphCompleteness that reads "complete,
+            # returned: 0" over a non-empty result. Now that drill-down answers
+            # from a traversal, that laundering is reachable from a shipped
+            # endpoint. The denominator is the snapshot's recorded node_count —
+            # a single-row primary-key lookup, never a COUNT over graph_nodes.
+            snapshot_row = conn.execute(
+                "SELECT node_count FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            snapshot_nodes = int(snapshot_row["node_count"] or 0) if snapshot_row is not None else 0
+            graph.completeness.truncated = truncated
+            graph.completeness.reason = "traversal_budget" if truncated else ""
+            graph.completeness.node_budget = max_nodes if truncated else None
+            graph.completeness.total_nodes = snapshot_nodes or len(graph.nodes)
+            graph.completeness.returned_nodes = len(graph.nodes)
             return graph, depth_by_node, truncated
         finally:
             conn.close()

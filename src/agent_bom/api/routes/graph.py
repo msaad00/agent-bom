@@ -39,7 +39,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET
+from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -57,6 +57,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.completeness import graph_completeness
+from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.security import sanitize_error
@@ -3837,14 +3838,10 @@ async def delete_preset(request: Request, name: str) -> dict:
 # Estate-scale roll-up (CONTAINS) — backend for the UI graph-nav drill-down
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Containment-only edge load for /v1/graph/rollup (default mode).
-_ROLLUP_CONTAINMENT_RELATIONSHIPS = frozenset(
-    {
-        RelationshipType.CONTAINS.value,
-        RelationshipType.HOSTS.value,
-        RelationshipType.OWNS.value,
-    }
-)
+# Containment-only edge load for /v1/graph/rollup (default mode). Taken from the
+# roll-up itself rather than restated here, so the set fetched can never be
+# narrower than the set rolled up.
+_ROLLUP_CONTAINMENT_RELATIONSHIPS = ROLLUP_CONTAINMENT_RELATIONSHIPS
 
 
 @router.get("/graph/rollup", tags=["graph"])
@@ -3882,13 +3879,27 @@ async def get_graph_rollup(
         raise HTTPException(status_code=422, detail=f"Unsupported severity: {min_severity}")
 
     try:
-        load_kwargs: dict[str, Any] = {
-            "scan_id": requested_scan_id,
-            "tenant_id": tenant,
-        }
-        if mode != "attack_path":
-            load_kwargs["relationship_types"] = _ROLLUP_CONTAINMENT_RELATIONSHIPS
-        graph = await _graph_store_call(graph_store.load_graph, **load_kwargs)
+        if node:
+            # A drill-down reads one container's subtree, so that subtree is all
+            # this request fetches. Loading the whole snapshot to return twenty
+            # children made the cost of the answer track estate size rather than
+            # answer size (5k nodes 54ms -> 80k nodes 1169ms, twenty children
+            # either way).
+            graph = await _graph_store_call(
+                containment_drilldown_graph,
+                graph_store,
+                node_id=node,
+                scan_id=requested_scan_id,
+                tenant_id=tenant,
+            )
+        else:
+            load_kwargs: dict[str, Any] = {
+                "scan_id": requested_scan_id,
+                "tenant_id": tenant,
+            }
+            if mode != "attack_path":
+                load_kwargs["relationship_types"] = _ROLLUP_CONTAINMENT_RELATIONSHIPS
+            graph = await _graph_store_call(graph_store.load_graph, **load_kwargs)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 

@@ -370,6 +370,28 @@ GRAPH_BACKEND = _str("AGENT_BOM_GRAPH_BACKEND", "")
 # omitted, so a bounded view is never mistaken for a complete one. 0 disables
 # the cap — only safe on a control plane whose snapshots are known to be small.
 GRAPH_INVESTIGATION_NODE_BUDGET = _int("AGENT_BOM_GRAPH_INVESTIGATION_NODE_BUDGET", 25_000)
+
+# Subtree size up to which a roll-up drill-down is answered by walking the
+# containment tree instead of loading the whole snapshot. A dispatch threshold,
+# NOT a cap on the answer: a subtree larger than this falls back to the full
+# load, so the response is identical either way and never a bounded aggregate.
+#
+# Raising it does not make the fast path faster — the walk costs what the
+# subtree costs, and an account-level drill measured 5.4-6.2ms at every setting.
+# It only widens which subtrees qualify, at the price of a longer wasted walk
+# when one does not. Root-container drill-down, where the subtree IS the estate
+# so the fallback always fires (SQLite, cost over the full load):
+#
+#   snapshot     full load   b=500    b=1000   b=2000   b=5000
+#    5,065 nodes    59.1ms   +23.7    +37.4    +75.7   +124.9
+#   20,046 nodes   308.6ms    +4.1    +29.3    +51.3   +133.8
+#   80,181 nodes 1,189.0ms    +8.9    -11.2    +44.0   +129.3
+#
+# 2,000 covers a substantial account subtree while keeping the wasted walk to
+# ~4-17% of a read that was already hundreds of ms. The penalty is worst in
+# relative terms on estates barely larger than the budget, where both numbers
+# are small anyway.
+GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET = _int("AGENT_BOM_GRAPH_ROLLUP_DRILLDOWN_SUBTREE_BUDGET", 2_000)
 EXPERIMENTAL_NEPTUNE_GRAPH = _bool("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", False)
 NEPTUNE_ENDPOINT = _str("AGENT_BOM_NEPTUNE_ENDPOINT", "")
 NEPTUNE_TRAVERSAL_SOURCE = _str("AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE", "g")

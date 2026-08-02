@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from agent_bom.api.audit_log import (
@@ -28,6 +30,32 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _tenant_scope(tenant_id: str | None) -> Iterator[None]:
+    """Bind ``tenant_id`` for the enclosed reads, or leave context untouched.
+
+    ``audit_log`` is under RLS keyed on the session tenant, so a read filters by
+    whatever the calling thread last bound -- not by the ``tenant_id`` argument
+    it was handed. A caller with no ambient tenant (a background job, a worker
+    thread, a route that resolved the tenant from a path parameter) therefore
+    resolved zero rows for a tenant that has plenty.
+
+    ``_get_checkpoint`` already guards its own table this way; these reads did
+    not, which is how ``verify_integrity`` came to compare an empty result set
+    against a checkpoint counting N and report a clean log as tampered.
+
+    ``None`` means "no tenant asked for", so the ambient context is left alone.
+    """
+    if tenant_id is None:
+        yield
+        return
+    token = _current_tenant.set(tenant_id)
+    try:
+        yield
+    finally:
+        _current_tenant.reset(token)
 
 # Name of the per-tenant chain-head uniqueness guard. A concurrent fork violates
 # it (SQLSTATE 23505), which `append` catches to re-read the head and re-link.
@@ -430,123 +458,130 @@ class PostgresAuditLog:
         offset: int = 0,
         tenant_id: str | None = None,
     ) -> list[AuditEntry]:
-        clauses: list[str] = []
-        params: list[object] = []
-        if tenant_id is not None:
-            clauses.append("team_id = %s")
-            params.append(tenant_id)
-        if action:
-            clauses.append("action = %s")
-            params.append(action)
-        if resource:
-            clauses.append("resource LIKE %s")
-            params.append(f"{resource}%")
-        if since:
-            clauses.append("timestamp >= %s")
-            params.append(since)
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        sql = (
-            "SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature "
-            f"FROM audit_log{where} ORDER BY timestamp DESC LIMIT %s OFFSET %s"  # nosec B608
-        )
-        params.extend([limit, offset])
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(sql, tuple(params)).fetchall()
-        return [
-            AuditEntry(
-                entry_id=row[0],
-                timestamp=row[1],
-                action=row[2],
-                actor=row[3],
-                resource=row[4],
-                details=row[5] if isinstance(row[5], dict) else json.loads(row[5]),
-                prev_signature=row[6],
-                hmac_signature=row[7],
+        with _tenant_scope(tenant_id):
+            clauses: list[str] = []
+            params: list[object] = []
+            if tenant_id is not None:
+                clauses.append("team_id = %s")
+                params.append(tenant_id)
+            if action:
+                clauses.append("action = %s")
+                params.append(action)
+            if resource:
+                clauses.append("resource LIKE %s")
+                params.append(f"{resource}%")
+            if since:
+                clauses.append("timestamp >= %s")
+                params.append(since)
+            where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            sql = (
+                "SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature "
+                f"FROM audit_log{where} ORDER BY timestamp DESC LIMIT %s OFFSET %s"  # nosec B608
             )
-            for row in rows
-        ]
+            params.extend([limit, offset])
+            with _tenant_connection(self._pool) as conn:
+                rows = conn.execute(sql, tuple(params)).fetchall()
+            return [
+                AuditEntry(
+                    entry_id=row[0],
+                    timestamp=row[1],
+                    action=row[2],
+                    actor=row[3],
+                    resource=row[4],
+                    details=row[5] if isinstance(row[5], dict) else json.loads(row[5]),
+                    prev_signature=row[6],
+                    hmac_signature=row[7],
+                )
+                for row in rows
+            ]
 
     def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
-        sql = "SELECT COUNT(*) FROM audit_log"
-        clauses: list[str] = []
-        params: list[object] = []
-        if tenant_id is not None:
-            clauses.append("team_id = %s")
-            params.append(tenant_id)
-        if action:
-            clauses.append("action = %s")
-            params.append(action)
-        if clauses:
-            sql += " WHERE " + " AND ".join(clauses)
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute(sql, tuple(params)).fetchone()
-        return row[0] if row else 0
+        with _tenant_scope(tenant_id):
+            sql = "SELECT COUNT(*) FROM audit_log"
+            clauses: list[str] = []
+            params: list[object] = []
+            if tenant_id is not None:
+                clauses.append("team_id = %s")
+                params.append(tenant_id)
+            if action:
+                clauses.append("action = %s")
+                params.append(action)
+            if clauses:
+                sql += " WHERE " + " AND ".join(clauses)
+            with _tenant_connection(self._pool) as conn:
+                row = conn.execute(sql, tuple(params)).fetchone()
+            return row[0] if row else 0
 
     def _list_entries_chronological(
         self,
         limit: int,
         tenant_id: str | None = None,
     ) -> list[AuditEntry]:
-        # Walk the entries in true chain-link order (genesis first), NOT by
-        # wall-clock timestamp. `AuditEntry.timestamp` is stamped at entry
-        # creation, so a retried or clock-skewed append can commit out of step
-        # with its chain position (#4284) — a timestamp-ordered walk then mis-
-        # scores a perfectly valid chain as tampered (its `prev_signature` no
-        # longer matches the timestamp-preceding row). Follow the hash links from
-        # the genesis row (`prev_signature = ''`) instead, mirroring the SQLite
-        # path's append-ordered (`rowid ASC`) walk. RLS scopes rows to the bound
-        # tenant and the fork-guard UNIQUE (team_id, prev_signature) makes each
-        # recursive step an index probe; content tampering is still caught by
-        # `entry.verify()` and the checkpoint entry-count/head comparison.
-        anchor_clause = ""
-        params: list[object] = []
-        if tenant_id is not None:
-            anchor_clause = "AND a.team_id = %s"
-            params.append(tenant_id)
-        sql = f"""
-            WITH RECURSIVE chain AS (
-                SELECT a.entry_id, a.timestamp, a.action, a.actor, a.resource,
-                       a.details, a.prev_signature, a.hmac_signature, a.team_id,
-                       0 AS depth
-                FROM audit_log a
-                WHERE a.prev_signature = '' {anchor_clause}
-                UNION ALL
-                SELECT n.entry_id, n.timestamp, n.action, n.actor, n.resource,
-                       n.details, n.prev_signature, n.hmac_signature, n.team_id,
-                       c.depth + 1
-                FROM audit_log n
-                JOIN chain c
-                  ON n.team_id = c.team_id AND n.prev_signature = c.hmac_signature
-            )
-            SELECT entry_id, timestamp, action, actor, resource, details,
-                   prev_signature, hmac_signature
-            FROM chain
-            ORDER BY depth
-            LIMIT %s
-        """  # nosec B608 - anchor_clause is a constant; values are parameterized
-        params.append(limit)
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(sql, tuple(params)).fetchall()
-        return [
-            AuditEntry(
-                entry_id=row[0],
-                timestamp=row[1],
-                action=row[2],
-                actor=row[3],
-                resource=row[4],
-                details=row[5] if isinstance(row[5], dict) else json.loads(row[5]),
-                prev_signature=row[6],
-                hmac_signature=row[7],
-            )
-            for row in rows
-        ]
+        with _tenant_scope(tenant_id):
+            # Walk the entries in true chain-link order (genesis first), NOT by
+            # wall-clock timestamp. `AuditEntry.timestamp` is stamped at entry
+            # creation, so a retried or clock-skewed append can commit out of step
+            # with its chain position (#4284) — a timestamp-ordered walk then mis-
+            # scores a perfectly valid chain as tampered (its `prev_signature` no
+            # longer matches the timestamp-preceding row). Follow the hash links from
+            # the genesis row (`prev_signature = ''`) instead, mirroring the SQLite
+            # path's append-ordered (`rowid ASC`) walk. RLS scopes rows to the bound
+            # tenant and the fork-guard UNIQUE (team_id, prev_signature) makes each
+            # recursive step an index probe; content tampering is still caught by
+            # `entry.verify()` and the checkpoint entry-count/head comparison.
+            anchor_clause = ""
+            params: list[object] = []
+            if tenant_id is not None:
+                anchor_clause = "AND a.team_id = %s"
+                params.append(tenant_id)
+            sql = f"""
+                WITH RECURSIVE chain AS (
+                    SELECT a.entry_id, a.timestamp, a.action, a.actor, a.resource,
+                           a.details, a.prev_signature, a.hmac_signature, a.team_id,
+                           0 AS depth
+                    FROM audit_log a
+                    WHERE a.prev_signature = '' {anchor_clause}
+                    UNION ALL
+                    SELECT n.entry_id, n.timestamp, n.action, n.actor, n.resource,
+                           n.details, n.prev_signature, n.hmac_signature, n.team_id,
+                           c.depth + 1
+                    FROM audit_log n
+                    JOIN chain c
+                      ON n.team_id = c.team_id AND n.prev_signature = c.hmac_signature
+                )
+                SELECT entry_id, timestamp, action, actor, resource, details,
+                       prev_signature, hmac_signature
+                FROM chain
+                ORDER BY depth
+                LIMIT %s
+            """  # nosec B608 - anchor_clause is a constant; values are parameterized
+            params.append(limit)
+            with _tenant_connection(self._pool) as conn:
+                rows = conn.execute(sql, tuple(params)).fetchall()
+            return [
+                AuditEntry(
+                    entry_id=row[0],
+                    timestamp=row[1],
+                    action=row[2],
+                    actor=row[3],
+                    resource=row[4],
+                    details=row[5] if isinstance(row[5], dict) else json.loads(row[5]),
+                    prev_signature=row[6],
+                    hmac_signature=row[7],
+                )
+                for row in rows
+            ]
 
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
         tenant_key = tenant_id or "default"
-        total = self.count(tenant_id=tenant_id)
-        fetch_limit = total if total else limit
-        entries = self._list_entries_chronological(limit=fetch_limit, tenant_id=tenant_id)
-        checkpoint = self._get_checkpoint(tenant_key)
+        # One scope around all three reads: the count, the walk and the
+        # checkpoint must describe the same tenant, or the comparison between
+        # them is meaningless and reports a clean log as tampered.
+        with _tenant_scope(tenant_id):
+            total = self.count(tenant_id=tenant_id)
+            fetch_limit = total if total else limit
+            entries = self._list_entries_chronological(limit=fetch_limit, tenant_id=tenant_id)
+            checkpoint = self._get_checkpoint(tenant_key)
         return _verify_audit_chain_with_checkpoint(entries, checkpoint)
 
 

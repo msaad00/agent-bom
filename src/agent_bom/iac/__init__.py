@@ -41,6 +41,7 @@ from agent_bom.iac.terraform_security import scan_terraform_security
 _DCM_AVAILABLE = True  # dcm.py is on main (#2222 merged)
 
 __all__ = [
+    "is_iac_file",
     "scan_iac_directory",
     "scan_iac_with_context",
     "scan_chart_yaml",
@@ -114,6 +115,33 @@ def _is_k8s_manifest(path: Path) -> bool:
         return "apiVersion:" in head and "kind:" in head
     except OSError:
         return False
+
+
+def is_iac_file(path: Path, root: Path | None = None) -> bool:
+    """True when :func:`scan_iac_with_context` would dispatch a scanner for ``path``.
+
+    The single source of truth for "does this tree contain IaC?". Callers that
+    auto-detect scan surfaces (the CLI ``--project`` expansion, the API repo
+    tree scan) MUST use this rather than their own glob, or detection and
+    dispatch drift apart — which is how ``scan`` came to report ``terraform``
+    as a completed scan source while running zero IaC rules.
+
+    ``root`` is only needed to recognise dbt project layouts; omit it for a
+    cheap filename/marker check.
+    """
+    if _is_chart_yaml(path) or _is_values_yaml(path):
+        return True
+    if _is_dockerfile(path):
+        return True
+    if path.suffix == ".tf":
+        return True
+    if is_dcm_migration(path):
+        return True
+    if root is not None and is_dbt_file(path, root):
+        return True
+    if _is_k8s_manifest(path):
+        return True
+    return bool(_is_cloudformation(path))
 
 
 def scan_iac_with_context(

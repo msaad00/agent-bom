@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 import uuid
 
 from starlette.testclient import TestClient
@@ -18,22 +17,21 @@ from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_e
 _FINDINGS_COUNT = 2000
 _PAGE_LIMIT = 50
 
-# The property worth guarding is that first-page cost does not scale with the
-# size of the tenant's table — i.e. nobody reintroduced a full scan on the read
-# path. A wall-clock ceiling cannot measure that on shared CI hardware: the same
-# unchanged code measured 622ms on a contended runner and ~30ms on an idle one,
-# so the threshold only ever recorded how busy the machine was.
+# The property worth guarding is that the route pages the store rather than
+# fetching a tenant's whole table and slicing it in Python.
 #
-# Compare the small table against a 4x larger one in the same process instead.
-# Indexed/keyset reads stay roughly flat; a full scan grows with the row count.
-# The allowance is deliberately loose because both samples share whatever noise
-# the runner has — it still catches the 4x-and-worse growth of a real scan.
-_SCALE_FACTOR = 4
-_MAX_GROWTH_RATIO = 2.5
-
-# Retained only as a catastrophic-regression backstop, far above any plausible
-# scheduling noise. It is not the assertion that does the work.
-_ABSURD_ELAPSED_MS = 10_000.0
+# Two earlier attempts measured time and both were wrong. A wall-clock ceiling
+# recorded how busy the runner was (622ms contended, ~30ms idle, same code). A
+# growth *ratio* was better but still wrong here, because the in-memory store
+# backing these tests is a dict, not an indexed table — it examines rows on
+# every read by construction, so its cost grows with size no matter how correct
+# the route is. Asserting flatness against it tests the wrong thing.
+#
+# Assert the contract instead: one bounded store call per request, with the
+# page limit pushed down, returning no more rows than a page. That is exactly
+# what "fetch everything and slice" violates, it is identical on every backend,
+# and it cannot flake.
+_SCALE_TIERS = (2_000, 8_000, 32_000)
 
 
 def _synthetic_findings(count: int, *, batch_id: str) -> list[dict]:
@@ -88,47 +86,60 @@ def _seed_tenant(count: int) -> str:
     return tenant_id
 
 
-def _time_first_page(client: TestClient, tenant_id: str, expected_total: int) -> float:
-    """Return the steady-state milliseconds for one first-page read."""
+def _first_page_store_calls(
+    client: TestClient, tenant_id: str, expected_total: int
+) -> list[tuple[int | None, int]]:
+    """Return ``(limit_pushed_down, rows_returned)`` for each store call one page makes."""
     headers = proxy_headers(role="viewer", tenant=tenant_id)
     params = {"limit": _PAGE_LIMIT, "offset": 0}
+    calls: list[tuple[int | None, int]] = []
+    original = InMemoryComplianceHubStore.list_current_page
 
-    # Warm the route so the timed samples reflect steady-state list cost.
-    warmup = client.get("/v1/findings", params=params, headers=headers)
-    assert warmup.status_code == 200, warmup.text
+    def _spy(self, tenant: str, **kwargs):  # type: ignore[no-untyped-def]
+        rows, total, cursor = original(self, tenant, **kwargs)
+        calls.append((kwargs.get("limit"), len(rows)))
+        return rows, total, cursor
 
-    # Take the best of three: a scheduling stall inflates a sample but can never
-    # make a genuinely slow read look fast, so the minimum is the honest figure.
-    samples = []
-    for _ in range(3):
-        started = time.perf_counter()
+    InMemoryComplianceHubStore.list_current_page = _spy  # type: ignore[method-assign]
+    try:
         response = client.get("/v1/findings", params=params, headers=headers)
-        samples.append((time.perf_counter() - started) * 1000)
-        assert response.status_code == 200, response.text
+    finally:
+        InMemoryComplianceHubStore.list_current_page = original  # type: ignore[method-assign]
 
+    assert response.status_code == 200, response.text
     body = response.json()
-    assert body["total"] == expected_total
-    assert body["count"] == _PAGE_LIMIT
-    assert len(body["findings"]) == _PAGE_LIMIT
-    return min(samples)
+    assert body["total"] == expected_total, f"total {body['total']} != seeded {expected_total}"
+    assert body["count"] == _PAGE_LIMIT, (
+        f"page reported count={body['count']} for a {_PAGE_LIMIT}-row request at "
+        f"{expected_total} rows; the page limit was not honoured"
+    )
+    assert len(body["findings"]) == _PAGE_LIMIT, (
+        f"page returned {len(body['findings'])} findings for a {_PAGE_LIMIT}-row request"
+    )
+    return calls
 
 
-def test_findings_first_page_cost_does_not_scale_with_table_size() -> None:
-    """A first-page read must stay flat as the tenant's table grows."""
+def test_findings_first_page_is_paged_not_scanned() -> None:
+    """One bounded store call per page, whatever the tenant's table size."""
     set_compliance_hub_store(InMemoryComplianceHubStore())
     client = TestClient(app)
 
-    small = _time_first_page(client, _seed_tenant(_FINDINGS_COUNT), _FINDINGS_COUNT)
-    large_count = _FINDINGS_COUNT * _SCALE_FACTOR
-    large = _time_first_page(client, _seed_tenant(large_count), large_count)
+    for total in _SCALE_TIERS:
+        calls = _first_page_store_calls(client, _seed_tenant(total), total)
 
-    ratio = large / small if small > 0 else 0.0
-    assert ratio < _MAX_GROWTH_RATIO, (
-        f"first-page cost grew {ratio:.1f}x for a {_SCALE_FACTOR}x larger table "
-        f"({small:.1f}ms at {_FINDINGS_COUNT} rows -> {large:.1f}ms at {large_count}); "
-        "the read path is scanning rather than paging"
-    )
-    assert large < _ABSURD_ELAPSED_MS, f"GET /v1/findings took {large:.1f}ms at {large_count} rows"
+        assert len(calls) == 1, (
+            f"one first page issued {len(calls)} store reads at {total} rows; "
+            "the route is fetching in a loop rather than paging"
+        )
+        limit, rows = calls[0]
+        assert limit == _PAGE_LIMIT, (
+            f"route asked the store for limit={limit} at {total} rows, expected {_PAGE_LIMIT}; "
+            "the page limit is no longer pushed down"
+        )
+        assert rows <= _PAGE_LIMIT, (
+            f"store returned {rows} rows for a {_PAGE_LIMIT}-row page at {total} rows; "
+            "the read path is scanning rather than paging"
+        )
 
 
 def test_findings_approximate_total_skips_count_on_deep_page() -> None:

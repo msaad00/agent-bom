@@ -1173,7 +1173,34 @@ jobs:
             uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 
       - name: Run real Postgres storage contract
-        run: uv run pytest tests/test_postgres_integration.py tests/test_postgres_gateway_activity.py -q --tb=short
+        # Every suite here SKIPS without AGENT_BOM_POSTGRES_URL, so this job is
+        # the only place they ever execute. Two files used to be listed, which
+        # left the audit chain, fleet tenancy, hub ingest, partitioning and the
+        # Postgres graph traversal running against mocks alone -- and hid a
+        # verify_integrity call that reported a clean audit log as tampered,
+        # plus a bfs_paths signature change the SQLite tests caught and the
+        # Postgres ones could not. Add a suite here whenever one starts
+        # depending on a live engine.
+        run: |
+          uv run pytest -q --tb=short \
+            tests/test_postgres_integration.py \
+            tests/test_postgres_gateway_activity.py \
+            tests/test_postgres_schema.py \
+            tests/test_postgres_governance_audit.py \
+            tests/test_postgres_connection_rls_guard.py \
+            tests/test_postgres_migrated_graph_parity.py \
+            tests/test_audit_chain_concurrency.py \
+            tests/test_audit_checkpoint_backfill_4294.py \
+            tests/test_audit_reads_bind_their_tenant.py \
+            tests/test_fleet_agents_tenant_scoped_key.py \
+            tests/test_hub_ingest_atomic.py \
+            tests/test_hub_bulk_ingest.py \
+            tests/test_hub_overview_cache.py \
+            tests/test_hub_observations_partition_runway.py \
+            tests/test_partition_maintenance.py \
+            tests/test_graph_traversal_budget_honesty.py \
+            tests/test_graph_traverse_subgraph_completeness.py \
+            tests/test_self_posture_postgres.py
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

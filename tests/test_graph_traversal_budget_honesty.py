@@ -190,9 +190,12 @@ class TestPostgresBfsPathsReportsItsBudget:
         store, tenant = postgres_graph_store
         store.save_graph(tree(BIG_TREE_NODES, scan_id="pg-big", tenant_id=tenant))
 
-        paths, reachable, truncated = store.bfs_paths(tenant_id=tenant, scan_id="pg-big", source="n0", max_depth=10)
+        paths, reachable, truncated, depth_limited = store.bfs_paths(tenant_id=tenant, scan_id="pg-big", source="n0", max_depth=10)
 
         assert truncated is True
+        # The node budget bound this walk, not the depth cap. Keeping them
+        # distinct is the point of reporting two flags.
+        assert depth_limited is False
         assert len(reachable) < BIG_TREE_NODES - 1
         assert len(paths) <= BFS_MAX_NODES
 
@@ -200,7 +203,8 @@ class TestPostgresBfsPathsReportsItsBudget:
         store, tenant = postgres_graph_store
         store.save_graph(tree(SMALL_TREE_NODES, scan_id="pg-small", tenant_id=tenant))
 
-        _paths, reachable, truncated = store.bfs_paths(tenant_id=tenant, scan_id="pg-small", source="n0", max_depth=10)
+        _paths, reachable, truncated, depth_limited = store.bfs_paths(tenant_id=tenant, scan_id="pg-small", source="n0", max_depth=10)
 
         assert truncated is False
+        assert depth_limited is False
         assert len(reachable) == SMALL_TREE_NODES - 1

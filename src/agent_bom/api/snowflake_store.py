@@ -392,16 +392,23 @@ class SnowflakeFleetStore:
     def _init_tables(self) -> None:
         with self._connect() as conn:
             cur = conn.cursor()
+            # Keyed by (tenant_id, agent_id): agent IDs are derived from agent
+            # content with no tenant component, so a bare agent_id key let one
+            # tenant's MERGE silently overwrite another tenant's row. Snowflake
+            # treats every constraint but NOT NULL as informational, so the
+            # MERGE predicates below — not this declaration — are what actually
+            # keep the tenants apart.
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS fleet_agents (
-                    agent_id VARCHAR PRIMARY KEY,
+                    agent_id VARCHAR NOT NULL,
                     canonical_id VARCHAR NOT NULL DEFAULT '',
                     name VARCHAR NOT NULL,
                     lifecycle_state VARCHAR NOT NULL,
                     trust_score FLOAT DEFAULT 0.0,
                     updated_at TIMESTAMP_TZ NOT NULL,
                     tenant_id VARCHAR NOT NULL DEFAULT 'default',
-                    data VARIANT NOT NULL
+                    data VARIANT NOT NULL,
+                    PRIMARY KEY (tenant_id, agent_id)
                 )
             """)
             cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id VARCHAR NOT NULL DEFAULT ''")
@@ -411,22 +418,24 @@ class SnowflakeFleetStore:
     def put(self, agent: FleetAgent) -> None:
         with self._connect() as conn:
             conn.cursor().execute(
-                """MERGE INTO fleet_agents t USING (SELECT %s AS agent_id) s
-                   ON t.agent_id = s.agent_id
+                # The MERGE key carries the tenant: matching on agent_id alone
+                # made one tenant's registration overwrite another's row.
+                """MERGE INTO fleet_agents t USING (SELECT %s AS agent_id, %s AS tenant_id) s
+                   ON t.agent_id = s.agent_id AND t.tenant_id = s.tenant_id
                    WHEN MATCHED THEN UPDATE SET
                      canonical_id = %s, name = %s, lifecycle_state = %s, trust_score = %s,
-                     updated_at = %s, tenant_id = %s, data = PARSE_JSON(%s)
+                     updated_at = %s, data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
                      (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, tenant_id, data)
                      VALUES (%s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     agent.agent_id,
+                    agent.tenant_id,
                     agent.canonical_id,
                     agent.name,
                     agent.lifecycle_state.value,
                     agent.trust_score,
                     agent.updated_at,
-                    agent.tenant_id,
                     agent.model_dump_json(),
                     agent.agent_id,
                     agent.canonical_id,
@@ -533,10 +542,13 @@ class SnowflakeFleetStore:
             )
             return [{"tenant_id": r[0], "agent_count": r[1]} for r in cur.fetchall()]
 
-    def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
+    def update_state(self, agent_id: str, state: FleetLifecycleState, *, tenant_id: str) -> bool:
+        # agent_id is unique only WITHIN a tenant. The row access policy allows
+        # all rows while agent_bom_tenant_access is empty (its post-init state),
+        # so this explicit tenant filter is what actually isolates the write.
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
             row = cur.fetchone()
         if row is None:
             return False
@@ -581,10 +593,10 @@ class SnowflakeFleetStore:
             source_sql = " UNION ALL ".join(source_parts)
             merge_sql = (
                 f"MERGE INTO fleet_agents t USING ({source_sql}) s "  # nosec B608
-                "ON t.agent_id = s.agent_id "
+                "ON t.agent_id = s.agent_id AND t.tenant_id = s.tenant_id "
                 "WHEN MATCHED THEN UPDATE SET "
                 "  canonical_id = s.canonical_id, name = s.name, lifecycle_state = s.lifecycle_state, "
-                "  trust_score = s.trust_score, updated_at = s.updated_at, tenant_id = s.tenant_id, data = s.data "
+                "  trust_score = s.trust_score, updated_at = s.updated_at, data = s.data "
                 "WHEN NOT MATCHED THEN INSERT "
                 "  (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, tenant_id, data) "
                 "  VALUES (s.agent_id, s.canonical_id, s.name, s.lifecycle_state, s.trust_score, "

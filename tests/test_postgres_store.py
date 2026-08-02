@@ -736,7 +736,7 @@ def test_fleet_store_update_state(mock_pool):
         "2026-01-01",
         json.dumps({"lifecycle_state": "discovered"}),
     )
-    result = store.update_state("a-1", FleetLifecycleState.APPROVED)
+    result = store.update_state("a-1", FleetLifecycleState.APPROVED, tenant_id="default")
     assert result is True
 
 

@@ -423,9 +423,13 @@ def _cached_version_match_state(
     last_affected: Optional[str],
     ecosystem: str = "",
 ) -> str:
-    from agent_bom.version_utils import _looks_like_commit_sha, compare_version_order
+    from agent_bom.version_utils import _looks_like_commit_sha, compare_version_order, normalize_introduced
 
-    intro = introduced or None
+    # ``introduced: "0"`` is the OSV sentinel for "before every version", not a
+    # version to compare against — see ``normalize_introduced``. Comparing to it
+    # literally dropped every Go pseudo-version out of every sentinel-opened
+    # window, while the OSV walker (which already stripped it) said affected.
+    intro = normalize_introduced(introduced)
     fix = fixed or None
     last = last_affected or None
     # ``ambiguous``: a genuine version-vs-version comparison yielded no ordering

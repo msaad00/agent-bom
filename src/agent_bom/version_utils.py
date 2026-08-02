@@ -647,6 +647,14 @@ def _maven_parse(version: str) -> _MavenList:
     def parse_item(digit: bool, buf: str) -> object:
         return _MavenInt(buf.lstrip("0") or "0") if digit else _MavenStr(buf, False)
 
+    def descend() -> None:
+        """Append a fresh sublist to the current list and make it current."""
+        nonlocal current
+        nested = _MavenList()
+        current.append(nested)
+        current = nested
+        stack.append(nested)
+
     for index, char in enumerate(version):
         if char == ".":
             current.append(_MavenInt("0") if index == start else parse_item(is_digit, version[start:index]))
@@ -654,32 +662,34 @@ def _maven_parse(version: str) -> _MavenList:
         elif char in "-_":
             current.append(_MavenInt("0") if index == start else parse_item(is_digit, version[start:index]))
             start = index + 1
-            nested = _MavenList()
-            current.append(nested)
-            current = nested
-            stack.append(nested)
+            descend()
         elif char.isdigit():
-            # A character→digit transition is equivalent to a hyphen.
+            # A character→digit transition is equivalent to a hyphen. Upstream
+            # nests the qualifier itself one level deeper whenever the current
+            # list already holds something, so a trailing qualifier sorts as a
+            # sublist (below any number) rather than as a sibling token.
             if not is_digit and index > start:
+                if current:
+                    descend()
                 current.append(_MavenStr(version[start:index], True))
                 start = index
-                nested = _MavenList()
-                current.append(nested)
-                current = nested
-                stack.append(nested)
+                descend()
             is_digit = True
         else:
             # A digit→character transition is equivalent to a hyphen.
             if is_digit and index > start:
                 current.append(parse_item(True, version[start:index]))
                 start = index
-                nested = _MavenList()
-                current.append(nested)
-                current = nested
-                stack.append(nested)
+                descend()
             is_digit = False
 
     if len(version) > start:
+        # Same nesting rule for the final token: ``2.0.a`` is ``2, [a]`` — a
+        # sublist that sorts BELOW ``2-1``'s ``[1]`` — not the sibling ``2, 0,
+        # a`` that would sort above it. Treating it as a sibling made the whole
+        # cross-type ordering wrong for any version ending in a qualifier.
+        if not is_digit and current:
+            descend()
         current.append(parse_item(is_digit, version[start:]))
 
     while stack:
@@ -1187,6 +1197,29 @@ def _warn_unparseable_bound(bound: str, ecosystem: str) -> None:
     record_scan_warning(_dropped_bound_message(bound, ecosystem))
 
 
+def normalize_introduced(introduced: str | None) -> str | None:
+    """Resolve an OSV ``introduced`` bound, returning ``None`` when unbounded.
+
+    The OSV schema defines ``"0"`` as a sentinel — "a version that sorts before
+    any other version" — not as a version string to compare against. Comparing
+    a real version to the literal ``"0"`` gives the wrong answer whenever the
+    version sorts BELOW zero in its own ecosystem's order, and Go pseudo-
+    versions do exactly that: ``v0.0.0-20200622213623-75b288015ac9`` is a
+    pre-release of ``0.0.0``. Every advisory window opening at the sentinel then
+    excluded every pseudo-version-pinned module — a silent, total recall loss
+    for the most common way an untagged Go dependency is pinned.
+
+    Only ``introduced`` carries this sentinel. ``fixed`` and ``last_affected``
+    keep their literal meaning: nothing is "fixed before every version".
+    """
+    if introduced is None:
+        return None
+    bound = introduced.strip()
+    if not bound or bound == "0":
+        return None
+    return bound
+
+
 def version_in_range(
     version: str,
     introduced: str | None,
@@ -1215,7 +1248,7 @@ def _resolve_version_range(
 ) -> tuple[bool, tuple[str, ...]]:
     """Return ``(affected, dropped_bounds)`` for the supplied advisory bounds."""
     dropped: list[str] = []
-    intro = introduced or None
+    intro = normalize_introduced(introduced)
     fix = fixed or None
     last = last_affected or None
 

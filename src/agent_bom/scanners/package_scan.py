@@ -547,14 +547,15 @@ def _version_in_window(
     same package got opposite verdicts depending on which engine served the
     query. ``version_in_range`` fails CLOSED and records the dropped bound.
     """
-    from agent_bom.version_utils import version_in_range
+    from agent_bom.version_utils import normalize_introduced, version_in_range
 
     introduced, fixed, last_affected = window
     # ``introduced: 0`` is not a real bound — it means "vulnerable from the
     # beginning", so package identity alone establishes the match and no
-    # comparison should be required to confirm it.
-    lower = None if introduced == "0" else introduced
-    return version_in_range(version, lower, fixed, last_affected, ecosystem)
+    # comparison should be required to confirm it. ``version_in_range`` now
+    # applies the same rule for every caller; resolving here too keeps this
+    # walker's intent explicit at the call site.
+    return version_in_range(version, normalize_introduced(introduced), fixed, last_affected, ecosystem)
 
 
 def _is_version_affected(

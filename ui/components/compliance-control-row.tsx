@@ -3,7 +3,20 @@
 import { ChevronRight } from "lucide-react";
 
 import type { ComplianceControl } from "@/lib/api";
-import { StatusIcon } from "@/components/compliance-status";
+import {
+  type ControlStatusTone,
+  StatusIcon,
+  controlStatusTone,
+} from "@/components/compliance-status";
+
+// A control nothing was measured for is neutral, not red: the row border must
+// agree with the neutral icon StatusIcon already renders for it.
+const CONTROL_ROW_TONE: Record<ControlStatusTone, string> = {
+  pass: "border-emerald-900/40 bg-emerald-950/15",
+  warning: "border-yellow-900/40 bg-yellow-950/15",
+  fail: "border-red-900/40 bg-red-950/15",
+  neutral: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]",
+};
 
 export function ComplianceControlRow({
   control,
@@ -31,11 +44,7 @@ export function ComplianceControlRow({
       type="button"
       onClick={onOpen}
       className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition hover:border-[color:var(--border-strong)] ${
-        control.status === "pass"
-          ? "border-emerald-900/40 bg-emerald-950/15"
-          : control.status === "warning"
-            ? "border-yellow-900/40 bg-yellow-950/15"
-            : "border-red-900/40 bg-red-950/15"
+        CONTROL_ROW_TONE[controlStatusTone(control.status)]
       }`}
     >
       <StatusIcon status={control.status} className="h-4 w-4 shrink-0" />

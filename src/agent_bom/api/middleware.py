@@ -851,6 +851,62 @@ class PostgresRateLimitStore:
         return int(row[0]) if row and row[0] is not None else 0
 
 
+def middleware_error(
+    request: StarletteRequest,
+    status_code: int,
+    detail: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    """Build the error body for a request terminated inside the middleware stack.
+
+    A route-raised failure reaches the handlers registered by
+    :func:`install_error_envelope`; a middleware returns its own ``Response``
+    and never does, so the whole auth-rejection class used to answer with a
+    bare ``{"detail": ...}`` — no ``error.code``, no ``correlation_id`` — while
+    every route-raised failure carried the full envelope. Both shapes are
+    chosen here so the two paths cannot drift again: SCIM keeps the RFC 7644
+    Error body it is specified to return, everything else gets the v1 envelope.
+    """
+    from agent_bom.api.scim import is_scim_path
+
+    # A body-guard middleware can reject before ``TrustHeadersMiddleware`` has
+    # populated ``state``, so every attribute is read defensively and coerced —
+    # the error envelope must never itself raise, and a non-string correlation
+    # id would fail JSON serialization on the way out.
+    def _first_str(*candidates: object) -> str:
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        return str(uuid.uuid4())
+
+    state = getattr(request, "state", None)
+    header_getter = getattr(getattr(request, "headers", None), "get", None)
+    correlation_id = _first_str(
+        getattr(state, "request_id", None),
+        header_getter("x-request-id") if callable(header_getter) else None,
+    )
+    raw_path = getattr(getattr(request, "url", None), "path", "")
+    path = raw_path if isinstance(raw_path, str) else ""
+    if is_scim_path(path):
+        from agent_bom.api.scim import scim_error_body
+
+        response_headers = dict(headers or {})
+        response_headers.setdefault("X-Request-ID", correlation_id)
+        return JSONResponse(
+            status_code=status_code,
+            content=scim_error_body(status_code=status_code, detail=detail),
+            media_type="application/scim+json",
+            headers=response_headers,
+        )
+    return _build_error_envelope(
+        status_code=status_code,
+        detail=detail,
+        correlation_id=correlation_id,
+        headers=headers,
+    )
+
+
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
     """Add trust + standard security headers to every response."""
 
@@ -1461,9 +1517,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if not resolution.matched:
             return upstream_role, None
         if not resolution.active:
-            return None, JSONResponse(status_code=401, content={"detail": "Unauthorized — SCIM user is inactive"})
+            return None, middleware_error(request, 401, "Unauthorized — SCIM user is inactive")
         if resolution.role is None:
-            return None, JSONResponse(status_code=403, content={"detail": "Forbidden — SCIM user has no runtime role"})
+            return None, middleware_error(request, 403, "Forbidden — SCIM user has no runtime role")
         self._record_scim_role_state(request, user_id=resolution.user_id, user_name=resolution.user_name)
         if resolution.user_id:
             request.state.scim_subject_id = resolution.user_id
@@ -1526,10 +1582,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             role = Role.VIEWER
         required = Role(self._required_role(request.method, request.url.path))
         if not self._role_allows(role, required):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, anonymous access has {role.value}"},
-            )
+            return middleware_error(request, 403, f"Forbidden — requires {required.value} role, anonymous access has {role.value}")
         request.state.api_key_name = "anonymous"
         request.state.api_key_role = role.value
         request.state.tenant_id = getattr(request.state, "tenant_id", None) or "default"
@@ -1549,7 +1602,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_route_allowed
 
         if managed_trial_enabled() and not managed_trial_route_allowed(request.method, request.url.path):
-            return JSONResponse(status_code=403, content={"detail": "This API route is disabled in managed trial mode."})
+            return middleware_error(request, 403, "This API route is disabled in managed trial mode.")
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
         if self._is_dashboard_public_request(request.url.path, request.method):
@@ -1560,7 +1613,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
             if is_tenant_rls_bypassed():
                 _logger.critical("Rejecting request while Postgres tenant RLS bypass context is active")
-                return JSONResponse(status_code=500, content={"detail": "Tenant isolation guard is not clean"})
+                return middleware_error(request, 500, "Tenant isolation guard is not clean")
 
         return await self.resolve_principal(request, call_next)
 
@@ -1596,7 +1649,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if response is not None:
             return response
         # Unreachable: the terminal resolver never returns Absent. Fail closed.
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return middleware_error(request, 401, "Unauthorized")
 
     @staticmethod
     def _classify_terminal(request: StarletteRequest, response: Response) -> Resolution:
@@ -1696,12 +1749,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 request.state.auth_issuer = issuer.rsplit("/", 1)[-1][:64] if issuer else None
                 return Resolved(await self._call_with_tenant_context(request, call_next))
             actual_role = effective_role.value if effective_role else oidc_role
-            return Invalid(
-                JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Forbidden — requires {required} role, OIDC session has {actual_role}"},
-                )
-            )
+            return Invalid(middleware_error(request, 403, f"Forbidden — requires {required} role, OIDC session has {actual_role}"))
         except OIDCError as exc:
             record_oidc_decode_failure()
             _logger.debug("OIDC verification failed: %s", sanitize_text(exc))
@@ -1719,12 +1767,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             # ``Absent`` so the API-key resolver can still authenticate it,
             # preserving the legitimate key-as-bearer path.
             if token_is_jwt_shaped(raw_key):
-                return Invalid(
-                    JSONResponse(
-                        status_code=401,
-                        content={"detail": "Unauthorized — OIDC bearer token verification failed"},
-                    )
-                )
+                return Invalid(middleware_error(request, 401, "Unauthorized — OIDC bearer token verification failed"))
             return Absent()
 
     async def _resolve_api_key(self, request: StarletteRequest, call_next: RequestResponseEndpoint, raw_key: str) -> Resolution:
@@ -1759,20 +1802,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 return Invalid(scim_error)
             effective_role = resolved_role or api_key.role
         if not self._role_allows(effective_role, required_role):
-            return Invalid(
-                JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Forbidden — requires {required} role, you have {effective_role.value}"},
-                )
-            )
+            return Invalid(middleware_error(request, 403, f"Forbidden — requires {required} role, you have {effective_role.value}"))
         required_scope = self._required_scope(request.method, request.url.path)
         if not api_key.has_scope(required_scope):
-            return Invalid(
-                JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Forbidden — requires scope {required_scope}"},
-                )
-            )
+            return Invalid(middleware_error(request, 403, f"Forbidden — requires scope {required_scope}"))
         request.state.api_key_name = api_key.name
         request.state.api_key_role = effective_role.value
         request.state.tenant_id = api_key.tenant_id
@@ -1805,23 +1838,14 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if self._allow_unauthenticated and not self._credential_presented(request, auth):
                 return Resolved(await self._serve_anonymous(request, call_next))
             return Invalid(
-                JSONResponse(
-                    status_code=401,
-                    content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},
-                )
+                middleware_error(request, 401, "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header")
             )
-        return Invalid(
-            JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized — invalid API key"},
-            )
-        )
+        return Invalid(middleware_error(request, 401, "Unauthorized — invalid API key"))
 
     def _is_scim_path(self, path: str) -> bool:
-        from agent_bom.api.scim import scim_base_path
+        from agent_bom.api.scim import is_scim_path
 
-        base = scim_base_path()
-        return path == base or path.startswith(base + "/")
+        return is_scim_path(path)
 
     async def _try_scim_bearer_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         """Authenticate dedicated SCIM provisioning traffic.
@@ -1838,15 +1862,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         try:
             binding = resolve_scim_bearer_token(raw_key)
         except SCIMConfigurationError:
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "SCIM bearer token configuration is invalid"},
-            )
+            return middleware_error(request, 503, "SCIM bearer token configuration is invalid")
         if binding is None:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized — SCIM bearer token required"},
-            )
+            return middleware_error(request, 401, "Unauthorized — SCIM bearer token required")
 
         request.state.api_key_name = "scim-provisioner"
         request.state.api_key_role = "admin"
@@ -1864,7 +1882,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             payload = verify_browser_session_token(token)
             session_role = Role(str(payload.get("role", "")).lower())
         except (BrowserSessionError, ValueError):
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid browser session"})
+            return middleware_error(request, 401, "Unauthorized — invalid browser session")
 
         subject = str(payload.get("sub") or "browser-session")
         tenant_id = str(payload.get("tenant_id") or "default")
@@ -1873,7 +1891,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             from agent_bom.api.tenant_lifecycle import tenant_access_active
 
             if not await anyio.to_thread.run_sync(tenant_access_active, tenant_id):
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized — managed trial is inactive"})
+                return middleware_error(request, 401, "Unauthorized — managed trial is inactive")
         effective_role = session_role
         if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):
             resolved_role, scim_error = self._resolve_runtime_role(
@@ -1888,31 +1906,28 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         required = Role(self._required_role(request.method, request.url.path))
         if not self._role_allows(effective_role, required):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, browser session has {effective_role.value}"},
-            )
+            return middleware_error(request, 403, f"Forbidden — requires {required.value} role, browser session has {effective_role.value}")
 
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
             csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
             if not verify_csrf(payload, csrf_cookie, csrf_header):
-                return JSONResponse(status_code=403, content={"detail": "Forbidden — missing or invalid CSRF token"})
+                return middleware_error(request, 403, "Forbidden — missing or invalid CSRF token")
 
         store = get_key_store()
         key_id = str(payload.get("key_id") or "")
         if key_id:
             stored = store.get(key_id)
             if stored is None or stored.tenant_id != tenant_id or not stored.is_usable():
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized — browser session key is no longer active"})
+                return middleware_error(request, 401, "Unauthorized — browser session key is no longer active")
             required_scope = self._required_scope(request.method, request.url.path)
             if not stored.has_scope(required_scope):
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
+                return middleware_error(request, 403, f"Forbidden — requires scope {required_scope}")
         elif auth_method == "managed_trial_oidc":
             required_scope = self._required_scope(request.method, request.url.path)
             session_scopes = {str(scope) for scope in (payload.get("scopes") or [])}
             if required_scope and required_scope not in session_scopes:
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
+                return middleware_error(request, 403, f"Forbidden — requires scope {required_scope}")
 
         request.state.api_key_name = subject
         request.state.api_key_role = effective_role.value
@@ -1938,27 +1953,18 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return None
         if not self._trusted_proxy_secret:
             _logger.error("AGENT_BOM_TRUST_PROXY_AUTH is enabled without AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "Trusted proxy authentication is not securely configured"},
-            )
+            return middleware_error(request, 503, "Trusted proxy authentication is not securely configured")
         if not _trusted_proxy_secret_is_strong(self._trusted_proxy_secret):
             _logger.error("AGENT_BOM_TRUST_PROXY_AUTH_SECRET is too short for trusted proxy authentication")
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "Trusted proxy authentication is not securely configured"},
-            )
+            return middleware_error(request, 503, "Trusted proxy authentication is not securely configured")
         presented_secret = request.headers.get("x-agent-bom-proxy-secret", "").strip()
         if not hmac.compare_digest(presented_secret, self._trusted_proxy_secret):
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid trusted proxy attestation"})
+            return middleware_error(request, 401, "Unauthorized — invalid trusted proxy attestation")
         presented_issuer = request.headers.get("x-agent-bom-auth-issuer", "").strip()
         if self._trusted_proxy_issuer and not hmac.compare_digest(presented_issuer, self._trusted_proxy_issuer):
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid trusted proxy issuer"})
+            return middleware_error(request, 401, "Unauthorized — invalid trusted proxy issuer")
         if not tenant_id:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID"},
-            )
+            return middleware_error(request, 401, "Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID")
         # Customer-supplied identifiers must not collide with the agent-bom
         # reserved tenant namespace (system fallbacks + role/permission
         # vocabulary). See docs/IDENTITY_AND_NAMING_CONTRACT.md.
@@ -1967,7 +1973,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         try:
             tenant_id = validate_customer_tenant_id(tenant_id)
         except ReservedTenantIdError as exc:
-            return JSONResponse(status_code=400, content={"detail": str(exc)})
+            return middleware_error(request, 400, str(exc))
 
         from agent_bom.api.auth import Role
 
@@ -1976,7 +1982,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             try:
                 proxy_role = Role(role_header)
             except ValueError:
-                return JSONResponse(status_code=403, content={"detail": f"Invalid proxy role '{role_header}'"})
+                return middleware_error(request, 403, f"Invalid proxy role '{role_header}'")
 
         effective_role, scim_error = self._resolve_runtime_role(
             request,
@@ -1987,14 +1993,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if scim_error is not None:
             return scim_error
         if effective_role is None:
-            return JSONResponse(status_code=403, content={"detail": "Forbidden — trusted proxy role required"})
+            return middleware_error(request, 403, "Forbidden — trusted proxy role required")
 
         required = Role(self._required_role(request.method, request.url.path))
         if not self._role_allows(effective_role, required):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, proxy session has {effective_role.value}"},
-            )
+            return middleware_error(request, 403, f"Forbidden — requires {required.value} role, proxy session has {effective_role.value}")
 
         request.state.api_key_name = subject or "proxy-header"
         request.state.api_key_role = effective_role.value
@@ -2216,9 +2219,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if hit_count > limit:
             retry_after = max(int(reset_at - now), 1)
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded"},
+            return middleware_error(
+                request,
+                429,
+                "Rate limit exceeded",
                 headers={
                     "Retry-After": str(retry_after),
                     "X-RateLimit-Limit": str(limit),
@@ -2264,9 +2268,10 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
         hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
         if hit_count > self._rpm:
             retry_after = max(int(reset_at - now), 1)
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Global rate limit exceeded"},
+            return middleware_error(
+                request,
+                429,
+                "Global rate limit exceeded",
                 headers={
                     "Retry-After": str(retry_after),
                     "X-RateLimit-Scope": "global-ip",
@@ -2498,12 +2503,9 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
             try:
                 cl = int(content_length)
             except (ValueError, OverflowError):
-                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
+                return middleware_error(request, 400, "Invalid Content-Length header")
             if cl > self._max_bytes:
-                return JSONResponse(
-                    status_code=413,
-                    content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
-                )
+                return middleware_error(request, 413, f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)")
         elif request.method in ("POST", "PUT", "PATCH"):
             # No Content-Length — drain and check streaming body under timeout
             min_bps = self._throughput_floor_bps()
@@ -2518,10 +2520,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                     async for chunk in request.stream():
                         total += len(chunk)
                         if total > self._max_bytes:
-                            return JSONResponse(
-                                status_code=413,
-                                content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
-                            )
+                            return middleware_error(request, 413, f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)")
                         chunks.append(chunk)
                         # Throughput floor check — only meaningful past warmup
                         # AND after the window has elapsed, otherwise a
@@ -2537,18 +2536,17 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                             if elapsed > 0:
                                 bps = window_bytes / elapsed
                                 if bps < min_bps:
-                                    return JSONResponse(
-                                        status_code=408,
-                                        content={
-                                            "detail": (
-                                                "Request body throughput below "
-                                                f"floor ({int(bps)} B/s < {min_bps} B/s) — "
-                                                "set AGENT_BOM_BODY_MIN_BPS to tune for legitimate slow clients."
-                                            )
-                                        },
+                                    return middleware_error(
+                                        request,
+                                        408,
+                                        (
+                                            "Request body throughput below "
+                                            f"floor ({int(bps)} B/s < {min_bps} B/s) — "
+                                            "set AGENT_BOM_BODY_MIN_BPS to tune for legitimate slow clients."
+                                        ),
                                     )
             except TimeoutError:
-                return JSONResponse(status_code=408, content={"detail": "Request body read timed out"})
+                return middleware_error(request, 408, "Request body read timed out")
 
             # Re-inject the drained body so downstream handlers can read it
             body = b"".join(chunks)
@@ -2701,19 +2699,18 @@ def install_error_envelope(application: object) -> None:
         return getattr(request.state, "request_id", "") or request.headers.get("x-request-id") or str(uuid.uuid4())
 
     async def http_exception_handler(request: StarletteRequest, exc: HTTPException) -> JSONResponse:
-        if request.url.path.startswith("/scim/"):
-            from agent_bom.api.scim import scim_error_body
+        from agent_bom.api.scim import is_scim_path
 
-            correlation_id = _correlation_id(request)
+        if is_scim_path(request.url.path):
+            # ``middleware_error`` owns both error shapes, so a SCIM failure
+            # raised by a route and one rejected by the auth middleware cannot
+            # answer differently.
             detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-            payload = scim_error_body(status_code=exc.status_code, detail=detail)
-            response_headers = dict(getattr(exc, "headers", None) or {})
-            response_headers.setdefault("X-Request-ID", correlation_id)
-            return JSONResponse(
-                status_code=exc.status_code,
-                content=payload,
-                media_type="application/scim+json",
-                headers=response_headers,
+            return middleware_error(
+                request,
+                exc.status_code,
+                detail,
+                headers=getattr(exc, "headers", None),
             )
         return _build_error_envelope(
             status_code=exc.status_code,

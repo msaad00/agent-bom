@@ -70,7 +70,7 @@ function DetailSection({ title, icon: Icon, children, accent }: {
 /*  Detail view (shown when ?id=… is present)                          */
 /* ------------------------------------------------------------------ */
 
-type RiskFilter = "all" | "high" | "medium" | "low";
+type RiskFilter = "all" | "high" | "medium" | "low" | "unknown";
 type RegistryView = "table" | "cards";
 
 function RegistryDetail({ serverId }: { serverId: string }) {
@@ -344,6 +344,10 @@ function RegistryList() {
     high: servers.filter((s) => s.risk_level === "high").length,
     medium: servers.filter((s) => s.risk_level === "medium").length,
     low: servers.filter((s) => s.risk_level === "low").length,
+    // Most catalog entries carry no assessed band. Counting them keeps the
+    // filter row honest — without this bucket they are reachable only via
+    // "All" and the catalog reads as if it were fully risk-rated.
+    unknown: servers.filter((s) => s.risk_level === "unknown").length,
   };
 
   if (loading) {
@@ -370,7 +374,7 @@ function RegistryList() {
       <PageLaneHeader
         lane="reference"
         title="MCP Catalog"
-        subtitle={`${(meta?.total_servers ?? servers.length).toLocaleString()} known servers · capability risk (not CVE status) · ${riskCounts.high} high · ${riskCounts.medium} medium`}
+        subtitle={`${(meta?.total_servers ?? servers.length).toLocaleString()} known servers · capability risk (not CVE status) · ${riskCounts.high} high · ${riskCounts.medium} medium · ${riskCounts.unknown} unrated`}
         banner={<CatalogBanner />}
       />
 
@@ -400,7 +404,7 @@ function RegistryList() {
 
           <div className="flex items-center gap-1">
             <Filter className="w-3.5 h-3.5 text-[color:var(--text-tertiary)] mr-1" />
-            {(["all", "high", "medium", "low"] as RiskFilter[]).map((r) => (
+            {(["all", "high", "medium", "low", "unknown"] as RiskFilter[]).map((r) => (
               <button
                 key={r}
                 onClick={() => setRiskFilter(r)}

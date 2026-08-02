@@ -2112,7 +2112,7 @@ class TestGraphStoreBackendSelection:
 
         response = client.post(
             "/v1/graph/should-i-deploy",
-            json={"candidate": "server:s", "tenant_id": "ignored-by-route", "warnRisk": 40, "blockRisk": 80},
+            json={"candidate": "server:s", "tenant_id": "default", "warnRisk": 40, "blockRisk": 80},
         )
 
         assert response.status_code == 200
@@ -2137,6 +2137,36 @@ class TestGraphStoreBackendSelection:
         assert empty_candidate.json()["detail"]["details"]["argument"] == "candidate"
         assert bad_thresholds.status_code == 422
         assert bad_thresholds.json()["detail"]["details"] == {"warn_risk": 90.0, "block_risk": 20.0}
+
+    def test_should_i_deploy_rejects_a_body_tenant_the_caller_is_not_authenticated_for(self, recording_graph_store):
+        """A body ``tenant_id`` naming another tenant is answered, not ignored.
+
+        The authenticated tenant has always been authoritative here, so this was
+        never a cross-tenant read — but silently discarding the field left a
+        caller believing it had scoped the request. Every route that accepts a
+        body ``tenant_id`` now gives the same fail-closed answer.
+        """
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/should-i-deploy",
+            json={"candidate": "server:s", "tenant_id": "some-other-tenant"},
+        )
+
+        assert response.status_code == 403, response.text
+        assert "must match the authenticated tenant" in response.json()["detail"]
+
+    def test_should_i_deploy_accepts_the_callers_own_tenant_and_the_schema_default(self, recording_graph_store):
+        client = TestClient(app)
+
+        explicit = client.post(
+            "/v1/graph/should-i-deploy",
+            json={"candidate": "server:s", "tenant_id": "default"},
+        )
+        omitted = client.post("/v1/graph/should-i-deploy", json={"candidate": "server:s"})
+
+        assert explicit.status_code == 200, explicit.text
+        assert omitted.status_code == 200, omitted.text
 
     def test_persisted_graph_routes_return_incident_edges_for_dense_finding_pages(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "dense-live-graph.db")

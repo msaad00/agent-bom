@@ -2032,7 +2032,12 @@ export interface RegistryServer {
   publisher: string;
   verified: boolean;
   transport: string;
-  risk_level: "low" | "medium" | "high";
+  /**
+   * Capability-risk band from the MCP registry. Most catalog entries carry no
+   * assessed band and are served as `"unknown"` — the union keeps that value
+   * so a consumer cannot mistake the catalog for fully risk-rated.
+   */
+  risk_level: "low" | "medium" | "high" | "unknown";
   packages: Array<{ name: string; ecosystem: string }>;
   source_url: string;
   description?: string | undefined;
@@ -2098,11 +2103,26 @@ export interface ComplianceNarrativeResponse {
   generated_at: string;
 }
 
+/**
+ * The per-control status vocabulary the compliance route actually emits. The
+ * backend deliberately separates "measured and failed" from "never measured"
+ * (no completed scan, no mapped finding, or an applicability overlay), so the
+ * union carries those states instead of collapsing them into `fail`.
+ */
+export type ComplianceControlStatus =
+  | "pass"
+  | "warning"
+  | "fail"
+  | "applicable"
+  | "not_applicable"
+  | "not_assessed"
+  | "not_evaluated";
+
 export interface ComplianceControl {
   code: string;
   name: string;
   findings: number;
-  status: "pass" | "warning" | "fail";
+  status: ComplianceControlStatus;
   severity_breakdown: Record<string, number>;
   affected_packages: string[];
   affected_agents: string[];

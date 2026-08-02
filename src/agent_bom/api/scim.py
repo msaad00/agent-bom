@@ -49,6 +49,18 @@ def scim_base_path() -> str:
     return path.rstrip("/") or "/scim/v2"
 
 
+def is_scim_path(path: str) -> bool:
+    """Return whether ``path`` is served by the SCIM provisioning surface.
+
+    SCIM answers errors in its own RFC 7644 shape rather than the v1 envelope,
+    so both the auth middleware and the exception handlers must agree on which
+    requests are SCIM. They ask here, honouring a configured
+    ``AGENT_BOM_SCIM_BASE_PATH`` instead of assuming the default prefix.
+    """
+    base = scim_base_path()
+    return path == base or path.startswith(base + "/")
+
+
 def scim_enabled_from_env() -> bool:
     """Return whether any dedicated SCIM bearer token source is configured."""
     from agent_bom.api.secret_source import secret_is_configured

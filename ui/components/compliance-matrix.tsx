@@ -12,8 +12,14 @@ import {
   ColumnFiltersState,
 } from "@tanstack/react-table";
 import {
+  type ControlStatusTone,
+  controlStatusLabel,
+  controlStatusTone,
+} from "@/components/compliance-status";
+import {
   ComplianceResponse,
   ComplianceControl,
+  type ComplianceControlStatus,
   OWASP_LLM_TOP10,
   OWASP_MCP_TOP10,
   OWASP_AGENTIC_TOP10,
@@ -36,7 +42,7 @@ interface MatrixRow {
   framework: string;
   code: string;
   name: string;
-  status: "pass" | "warning" | "fail";
+  status: ComplianceControlStatus;
   findings: number;
   critical: number;
   high: number;
@@ -118,17 +124,18 @@ const columns = [
     header: "Status",
     cell: (info) => {
       const s = info.getValue();
-      const styles = {
+      const styles: Record<ControlStatusTone, string> = {
         pass: "bg-emerald-950 text-emerald-300 border-emerald-800",
         warning: "bg-yellow-950 text-yellow-300 border-yellow-800",
         fail: "bg-red-950 text-red-300 border-red-800",
+        neutral:
+          "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] border-[color:var(--border-subtle)]",
       };
-      const labels = { pass: "Pass", warning: "Warning", fail: "Fail" };
       return (
         <span
-          className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${styles[s]}`}
+          className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${styles[controlStatusTone(s)]}`}
         >
-          {labels[s]}
+          {controlStatusLabel(s)}
         </span>
       );
     },

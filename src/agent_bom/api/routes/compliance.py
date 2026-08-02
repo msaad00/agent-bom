@@ -772,6 +772,34 @@ async def list_cis_benchmark_checks(
         ) from exc
 
 
+def _cis_checks_envelope(
+    checks: list[dict[str, Any]],
+    *,
+    total: int | None,
+    limit: int,
+    offset: int,
+    has_more: bool,
+    source: str,
+) -> dict:
+    """Build the one /v1/cis/checks response shape shared by every backend.
+
+    ``count`` is derived from the page actually returned so it cannot drift
+    into meaning "total" on one branch and "page size" on another. ``total`` is
+    the true underlying size where the backend knows it and ``None`` where it
+    genuinely does not, so a caller never reads a bounded read as a complete
+    one; ``has_more`` answers the truncation question in both cases.
+    """
+    return {
+        "checks": checks,
+        "count": len(checks),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": has_more,
+        "source": source,
+    }
+
+
 def _list_cis_benchmark_checks_impl(
     request: Request,
     cloud: str | None,
@@ -796,11 +824,21 @@ def _list_cis_benchmark_checks_impl(
             cloud=next(iter(cloud_filter), None),
             status=next(iter(status_filter), None),
             priority=priority,
-            limit=safe_limit,
+            # Over-fetch one row so truncation is answerable without a second
+            # COUNT(*) round trip (the same trick the campaign queue uses).
+            limit=safe_limit + 1,
             offset=safe_offset,
         )
         if rows:
-            return {"checks": [_coerce_cis_row(row) for row in rows], "count": len(rows), "source": "columnar"}
+            page = list(rows)[:safe_limit]
+            return _cis_checks_envelope(
+                [_coerce_cis_row(row) for row in page],
+                total=None,
+                limit=safe_limit,
+                offset=safe_offset,
+                has_more=len(rows) > safe_limit,
+                source="columnar",
+            )
 
     analytics_store = _get_analytics_store()
     query_fn = getattr(analytics_store, "query_cis_benchmark_checks", None)
@@ -810,12 +848,20 @@ def _list_cis_benchmark_checks_impl(
                 cloud=next(iter(cloud_filter), None),
                 status=next(iter(status_filter), None),
                 priority=priority,
-                limit=safe_limit,
+                limit=safe_limit + 1,
                 offset=safe_offset,
                 tenant_id=tenant_id,
             )
             if rows:
-                return {"checks": [_coerce_cis_row(row) for row in rows], "count": len(rows), "source": "analytics"}
+                page = list(rows)[:safe_limit]
+                return _cis_checks_envelope(
+                    [_coerce_cis_row(row) for row in page],
+                    total=None,
+                    limit=safe_limit,
+                    offset=safe_offset,
+                    has_more=len(rows) > safe_limit,
+                    source="analytics",
+                )
         except Exception:
             pass
 
@@ -852,7 +898,15 @@ def _list_cis_benchmark_checks_impl(
             continue
         seen.add(key)
         deduped.append(row)
-    return {"checks": deduped[safe_offset : safe_offset + safe_limit], "count": len(deduped), "source": "scan_jobs"}
+    page = deduped[safe_offset : safe_offset + safe_limit]
+    return _cis_checks_envelope(
+        page,
+        total=len(deduped),
+        limit=safe_limit,
+        offset=safe_offset,
+        has_more=safe_offset + len(page) < len(deduped),
+        source="scan_jobs",
+    )
 
 
 def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:

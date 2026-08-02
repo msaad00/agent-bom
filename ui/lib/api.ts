@@ -296,6 +296,7 @@ export type {
   RemediationImpact,
   ComplianceNarrativeResponse,
   ComplianceControl,
+  ComplianceControlStatus,
   AISVSCheck,
   AISVSBenchmark,
   AISVSComplianceResponse,

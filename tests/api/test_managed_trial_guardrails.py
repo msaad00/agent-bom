@@ -163,7 +163,7 @@ def test_managed_trial_route_denial_precedes_every_principal_resolver() -> None:
     for attempt in attempts:
         response = client.get("/v1/auth/keys", **attempt)
         assert response.status_code == 403
-        assert response.json() == {"detail": "This API route is disabled in managed trial mode."}
+        assert response.json()["detail"] == "This API route is disabled in managed trial mode."
 
 
 def test_managed_trial_disables_connection_scheduler_even_when_flagged(monkeypatch: pytest.MonkeyPatch) -> None:

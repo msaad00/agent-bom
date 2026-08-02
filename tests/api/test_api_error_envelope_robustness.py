@@ -133,3 +133,45 @@ def test_idempotency_payload_error_detail_is_sanitized() -> None:
     assert "https://internal.example/api" not in response.text
     assert "SUPER_SECRET" not in response.text
     assert "<path>" in error["message"] or "<url>" in error["message"]
+
+
+# ── Middleware-origin failures share the route-origin envelope ──────────────
+#
+# Auth rejections are returned by the middleware stack, not by a route handler,
+# so they never reached ``install_error_envelope``'s exception handlers. That
+# left the single most common read-path failure class emitting a bare
+# ``{"detail": ...}`` with no ``error.code`` and no ``correlation_id`` while
+# every route-raised failure carried the full envelope.
+
+
+def test_spoofed_proxy_role_rejection_uses_the_v1_error_envelope() -> None:
+    """A middleware 401 must carry ``error.code``/``correlation_id`` like a route 401."""
+    client = TestClient(app)
+    response = client.get("/v1/posture", headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "tenant-alpha"})
+
+    from agent_bom.api.middleware import _error_code_for_status
+
+    assert response.status_code == 401, response.text
+    error = _envelope(response)
+    # The same status must map to the same code whichever layer rejected it.
+    assert error["code"] == _error_code_for_status(401), error
+    # Backward compatibility: the historical top-level ``detail`` still parses.
+    assert isinstance(response.json().get("detail"), str)
+
+
+def test_scim_auth_rejection_uses_the_rfc7644_error_body() -> None:
+    """SCIM failures must use the RFC 7644 Error schema, not the v1 envelope.
+
+    RFC 7644 §3.12 fixes the body (``schemas`` + string ``status`` + ``detail``)
+    and §3.1 fixes the media type. IdPs parse this shape; a bare
+    ``{"detail": ...}`` is not conformant.
+    """
+    client = TestClient(app)
+    response = client.get("/scim/v2/Users")
+
+    assert response.status_code == 401, response.text
+    body = response.json()
+    assert body.get("schemas") == ["urn:ietf:params:scim:api:messages:2.0:Error"], body
+    assert body.get("status") == "401", body
+    assert isinstance(body.get("detail"), str) and body["detail"], body
+    assert response.headers.get("content-type", "").startswith("application/scim+json"), response.headers

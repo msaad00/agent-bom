@@ -42,7 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
-from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET
 from agent_bom.graph import (
@@ -2501,7 +2501,11 @@ async def get_graph_exposure_paths(
 @router.post("/graph/should-i-deploy", tags=["graph"])
 async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecisionRequest) -> dict:
     """Return the MCP-compatible allow/warn/block deploy decision over REST."""
-    _ = (body.tenant_id, body.context)  # SDK compatibility/future policy context; request tenant scope is authoritative today.
+    # The request tenant is authoritative for the read; a body tenant naming
+    # anyone else is refused rather than silently dropped, so this route gives
+    # the same answer as every other surface that accepts a body ``tenant_id``.
+    require_body_tenant_match(body.tenant_id, _tenant(request))
+    _ = body.context  # Future policy context; unused today.
     from agent_bom.mcp_tools.graph import deploy_decision_impl
 
     candidate = _candidate_to_string(body.candidate)

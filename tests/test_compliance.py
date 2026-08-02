@@ -77,9 +77,7 @@ def test_compliance_tag_registry_covers_every_blast_radius_tag_field() -> None:
     from agent_bom.output.finding_views import compliance_row_dict
 
     model_fields = {item.name for item in fields(BlastRadius) if item.name.endswith("_tags")}
-    finding_fields = {
-        item.name for item in fields(Finding) if item.name.endswith("_tags") and item.name != "compliance_tags"
-    }
+    finding_fields = {item.name for item in fields(Finding) if item.name.endswith("_tags") and item.name != "compliance_tags"}
     assert set(COMPLIANCE_TAG_FIELDS) == model_fields
     assert set(COMPLIANCE_TAG_FIELDS) == finding_fields
     row = compliance_row_dict(
@@ -1153,4 +1151,33 @@ def test_posture_has_proxy_flips_on_proxy_alert_ingest():
     assert other["has_proxy"] is False
 
     _proxy_alerts.clear()
+    _clear_jobs()
+
+
+def test_cis_checks_count_is_page_size_and_total_is_honest_under_truncation():
+    """``count`` must mean the same thing on every /v1/cis/checks branch.
+
+    The in-memory fallback reported ``count = len(deduped)`` — the true total —
+    while the columnar and analytics branches report ``count = len(page)``. A
+    caller could not tell a truncated page from a complete one, because the
+    route emitted neither ``total`` nor ``has_more``.
+    """
+    _clear_jobs()
+    checks = [{"check_id": f"2.1.{i}", "title": f"check {i}", "status": "FAIL", "severity": "high"} for i in range(5)]
+    _add_done_job([], result_extra=_cis_benchmark_result(checks))
+    client = TestClient(app)
+
+    body = client.get("/v1/cis/checks?limit=2", headers=_AUTH_HEADERS).json()
+
+    assert len(body["checks"]) == 2, body
+    # ``count`` describes the page actually returned, as it does everywhere else.
+    assert body["count"] == len(body["checks"]), body
+    # ``total`` carries the real underlying size, so truncation is visible.
+    assert body["total"] == 5, body
+    assert body["has_more"] is True, body
+
+    full = client.get("/v1/cis/checks?limit=500", headers=_AUTH_HEADERS).json()
+    assert full["count"] == len(full["checks"]) == 5, full
+    assert full["total"] == 5, full
+    assert full["has_more"] is False, full
     _clear_jobs()

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import {
+  controlStatusLabel,
   isNotEvaluated,
   postureLabel,
   statusColor,
@@ -71,12 +72,6 @@ function downloadBlobToFile(blob: Blob, filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
-
-const CONTROL_STATUS_LABEL: Record<string, string> = {
-  pass: "Pass",
-  warning: "Warn",
-  fail: "Fail",
-};
 
 function statusToAccent(status: string): StatAccent {
   if (isNotEvaluated(status)) return "neutral";
@@ -481,7 +476,7 @@ function CompliancePageContent() {
         <span className="inline-flex items-center gap-1.5">
           <StatusIcon status={c.status} className="h-3.5 w-3.5" />
           <span className={`text-xs font-medium ${statusColor(c.status)}`}>
-            {CONTROL_STATUS_LABEL[c.status] ?? c.status}
+            {controlStatusLabel(c.status)}
           </span>
         </span>
       ),

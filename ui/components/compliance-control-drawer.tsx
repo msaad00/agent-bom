@@ -3,20 +3,12 @@
 import Link from "next/link";
 import { Package, Server, X } from "lucide-react";
 
+import { controlStatusLabel } from "@/components/compliance-status";
 import { useEscToClose } from "@/hooks/use-esc-to-close";
 import type { ComplianceControl } from "@/lib/api";
 import { findingsHref, remediationHref, securityGraphHref } from "@/lib/page-links";
 
-function statusLabel(status: ComplianceControl["status"]): string {
-  switch (status) {
-    case "pass":
-      return "Pass";
-    case "warning":
-      return "Needs attention";
-    default:
-      return "Fail";
-  }
-}
+const statusLabel = controlStatusLabel;
 
 export function ComplianceControlDrawer({
   control,

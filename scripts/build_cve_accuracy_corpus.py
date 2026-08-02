@@ -43,6 +43,19 @@ DEFAULT_PACKAGES: list[tuple[str, str]] = [
     ("RubyGems", "rails"),
     ("crates.io", "openssl"),
     ("Packagist", "symfony/http-kernel"),
+    # Ecosystems whose ordering is NOT PEP 440 and not plain SemVer. Without
+    # these the gate scored 1.0 while whole families of version strings
+    # compared equal or uncomparable — a comparator gap the corpus could not
+    # see. magento pins PHP patch suffixes (2.4.5-p1 < 2.4.5-p2), typo3 pins
+    # v-prefixed enumerations against unprefixed ranges, activerecord/actionpack
+    # pin Gem prereleases (5.0.0.beta1.1), and the NuGet entries pin the 4th
+    # Revision segment and case-insensitive release labels.
+    ("Packagist", "magento/community-edition"),
+    ("Packagist", "typo3/cms-core"),
+    ("RubyGems", "activerecord"),
+    ("RubyGems", "actionpack"),
+    ("NuGet", "Microsoft.AspNetCore.Mvc.Core"),
+    ("NuGet", "System.Text.Encodings.Web"),
 ]
 
 
@@ -84,13 +97,29 @@ def _multi_window(vuln: dict) -> bool:
     return False
 
 
+def _existing_entries() -> list[dict]:
+    if not OUT.exists():
+        return []
+    return json.loads(OUT.read_text(encoding="utf-8")).get("entries", []) or []
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--limit-per-package", type=int, default=12)
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="discard the committed corpus instead of adding to it (drops labelled coverage)",
+    )
     args = parser.parse_args()
 
-    entries: list[dict] = []
-    seen: set[str] = set()
+    # Default to ADDING to the committed corpus. Upstream returns a different
+    # slice of each package's advisories over time, so a wholesale rebuild
+    # silently drops labelled cases the gate already depends on — the last
+    # rebuild would have taken multi-window coverage from 22 advisories down to
+    # 14, blinding the very regression this corpus exists to catch.
+    entries: list[dict] = [] if args.rebuild else list(_existing_entries())
+    seen: set[str] = {str(entry["advisory"].get("id")) for entry in entries}
     for ecosystem, name in DEFAULT_PACKAGES:
         vulns = _query(ecosystem, name)
         # Multi-window advisories first so the corpus covers the failure mode

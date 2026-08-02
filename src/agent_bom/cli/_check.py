@@ -465,10 +465,7 @@ def _package_spec_error(name: str, ecosystem: str) -> str | None:
     # Other ecosystems do not share one package-name grammar, but shell and
     # requirement operators are never part of a package name after parsing.
     if not name.strip() or any(char in name for char in "\r\n=<>!"):
-        return (
-            f"Invalid {ecosystem} package name '{name}'. "
-            "Provide a package name followed by an explicit version."
-        )
+        return f"Invalid {ecosystem} package name '{name}'. Provide a package name followed by an explicit version."
     return None
 
 
@@ -823,9 +820,12 @@ def check(
 
     scan_warnings = consume_scan_warnings()
     coverage_warnings = consume_coverage_warnings()
-    offline_coverage_gap = offline and any(
-        w.get("kind") == "offline_ecosystem_gap" for w in coverage_warnings
-    )
+    offline_coverage_gap = offline and any(w.get("kind") == "offline_ecosystem_gap" for w in coverage_warnings)
+    # Same failure, over the network: the local DB carried no advisories for the
+    # ecosystem AND the remote lookup errored, so nothing was consulted. Exit 2
+    # ("insufficient context for a trustworthy clean verdict") rather than
+    # reporting a clean that no source actually supports.
+    remote_lookup_gap = not offline and any(w.get("kind") == "remote_lookup_gap" for w in coverage_warnings)
     if scan_warnings and not quiet and not structured_output:
         console.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
 
@@ -887,18 +887,26 @@ def check(
             if not quiet and not structured_output:
                 console.print(f"  [yellow]⚠[/yellow] External enrichment skipped: {exc}")
 
-    if not vulns and offline_coverage_gap:
-        # Symmetric with the deb/apk/rpm incomplete path below: an offline scan
-        # of an ecosystem the local DB carries no advisories for produced no
-        # vulns because nothing could be matched — NOT because the package is
-        # clean. Fail closed (rc=2) so a pre-install gate isn't silently green.
-        # Re-run online, `agent-bom db update` for coverage, or --exit-zero to
-        # force a non-failing exploratory result.
-        message = (
-            f"Incomplete offline coverage for {name}@{version} ({eco_display}). "
-            "The local vulnerability DB carries no advisories for this ecosystem, so a clean result "
-            "cannot be trusted. Run `agent-bom db update` (online) for full coverage."
-        )
+    if not vulns and (offline_coverage_gap or remote_lookup_gap):
+        # An offline scan of an ecosystem the local DB carries no advisories
+        # for — or an online one whose remote lookup errored with the same
+        # empty DB behind it — produced no vulns because nothing could be
+        # matched, NOT because the package is clean. Fail closed (rc=2) so a
+        # pre-install gate isn't silently green. Re-run, `agent-bom db update`
+        # for coverage, or --exit-zero to force an exploratory result.
+        if remote_lookup_gap:
+            message = (
+                f"Incomplete scan for {name}@{version} ({eco_display}). "
+                "The remote advisory lookup failed and the local vulnerability DB carries no advisories "
+                "for this ecosystem, so a clean result cannot be trusted. Retry, or run "
+                "`agent-bom db update` for local coverage."
+            )
+        else:
+            message = (
+                f"Incomplete offline coverage for {name}@{version} ({eco_display}). "
+                "The local vulnerability DB carries no advisories for this ecosystem, so a clean result "
+                "cannot be trusted. Run `agent-bom db update` (online) for full coverage."
+            )
         if structured_output:
             _write_check_output(
                 _check_result_payload(
@@ -917,7 +925,8 @@ def check(
             )
             sys.exit(2)
         if quiet:
-            click.echo(f"{name}@{version}: incomplete offline coverage ({eco_display})")
+            gap_label = "incomplete scan (remote lookup failed)" if remote_lookup_gap else "incomplete offline coverage"
+            click.echo(f"{name}@{version}: {gap_label} ({eco_display})")
         else:
             console.print(f"  [yellow]⚠ {message}[/yellow]\n")
         sys.exit(2)

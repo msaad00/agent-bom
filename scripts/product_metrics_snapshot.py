@@ -284,6 +284,26 @@ def main() -> int:
     if args.write:
         markdown_path = ROOT / args.markdown_out
         json_path = ROOT / args.json_out
+
+        # Keep the existing stamp when nothing measurable moved. The drift gate
+        # compares only ``version`` and ``metrics``, so re-stamping on every run
+        # produced a diff carrying no signal — one that every branch had to
+        # revert or carry, and that collided whenever two branches ran the
+        # generator on different days.
+        if json_path.exists():
+            try:
+                previous = json.loads(json_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                previous = None
+            if (
+                isinstance(previous, dict)
+                and previous.get("version") == snapshot["version"]
+                and previous.get("metrics") == snapshot["metrics"]
+                and isinstance(previous.get("generated_on"), str)
+            ):
+                snapshot["generated_on"] = previous["generated_on"]
+                markdown = render_markdown(snapshot)
+
         markdown_path.write_text(markdown)
         json_path.write_text(json.dumps(snapshot, indent=2, sort_keys=False) + "\n")
     else:

@@ -968,10 +968,11 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
         graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True))
         store.save_graph(graph)
 
-        paths, reachable = store.bfs_paths(tenant_id="default", scan_id="traversal-scan", source="agent:a", max_depth=3)
+        paths, reachable, truncated = store.bfs_paths(tenant_id="default", scan_id="traversal-scan", source="agent:a", max_depth=3)
 
         assert reachable == {"server:s", "vuln:cve"}
         assert paths == [["agent:a", "server:s"], ["agent:a", "server:s", "vuln:cve"]]
+        assert truncated is False
 
     def test_sqlite_graph_store_bfs_paths_traverse_persisted_identity_hops(self, tmp_path):
         from agent_bom.graph.builder import build_unified_graph_from_report
@@ -1011,13 +1012,14 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
 
         account_id = "account:aws:123456789012"
         resource_id = "cloud_resource:aws:bedrock:agent:arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc"
-        paths, reachable = store.bfs_paths(
+        paths, reachable, truncated = store.bfs_paths(
             tenant_id="default",
             scan_id="identity-hop-scan",
             source=account_id,
             max_depth=2,
         )
 
+        assert truncated is False
         assert resource_id in reachable
         assert "agent:cloud-agent" in reachable
         assert [account_id, resource_id] in paths
@@ -1509,7 +1511,7 @@ class _RecordingGraphStore:
         self.calls.append(("bfs_paths", tenant_id, scan_id, source, max_depth, traversable_only))
         paths = self.graph.bfs(source, max_depth=max_depth, traversable_only=traversable_only)
         reachable = self.graph.reachable_from(source, max_depth=max_depth, traversable_only=traversable_only, include_source=False)
-        return paths, reachable
+        return paths, reachable, self.graph.completeness.truncated
 
     def impact_of(self, *, tenant_id: str = "", scan_id: str = "", node_id: str, max_depth: int = 4):
         self.calls.append(("impact_of", tenant_id, scan_id, node_id, max_depth))

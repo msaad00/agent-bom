@@ -138,9 +138,17 @@ def _await_until(predicate, timeout: float = 10.0) -> bool:
 def test_overview_concurrent_misses_share_one_fold(monkeypatch) -> None:
     """8 concurrent cold readers must fold the estate ONCE.
 
-    The barrier is structural, not a timing assertion: every reader is held
-    until all 8 have missed the cache, so a stampeding implementation is
-    guaranteed to record 8 folds and a single-flight one exactly 1.
+    The barrier holds the LEADER until the other 7 have provably parked on the
+    in-flight event, so no reader can arrive late enough to become a second
+    leader. A stampeding implementation records 8 folds, a single-flight one
+    exactly 1, and neither outcome depends on thread scheduling.
+
+    Barrier placement is the whole point. Signalling arrival at the cache probe
+    is too early: that happens before the leader/follower decision, so the
+    leader can fold, clear the in-flight entry and return while stragglers are
+    still between the probe and the lock. Each straggler then finds no flight,
+    elects itself leader and folds again -- yielding anywhere from 1 to 8 folds
+    purely by timing, which is what made this test flaky under load.
     """
     from agent_bom.api.routes import overview
 
@@ -151,24 +159,42 @@ def test_overview_concurrent_misses_share_one_fold(monkeypatch) -> None:
     monkeypatch.setattr(overview, "_hub_severity_snapshot", lambda request: {"critical": 1})
 
     readers = 8
-    arrived = threading.Semaphore(0)
-    release = threading.Event()
+    parked = threading.Semaphore(0)
     folds = {"n": 0}
     folds_lock = threading.Lock()
 
-    real_cache_get = overview._overview_cache_get
+    class _ParkSignallingEvent(threading.Event):
+        """Signal the moment a follower commits to waiting on the leader."""
 
-    def _counting_cache_get(tenant_id: str, fingerprint: str):
-        result = real_cache_get(tenant_id, fingerprint)
-        arrived.release()
-        return result
+        def wait(self, timeout: float | None = None) -> bool:
+            parked.release()
+            return super().wait(timeout)
 
-    monkeypatch.setattr(overview, "_overview_cache_get", _counting_cache_get)
+    original_flight = overview._OverviewFlight
+
+    def _instrumented_flight(*args: Any, **kwargs: Any):
+        flight = original_flight(*args, **kwargs)
+        flight.event = _ParkSignallingEvent()
+        return flight
+
+    monkeypatch.setattr(overview, "_OverviewFlight", _instrumented_flight)
+
+    barrier_held = {"ok": True}
 
     def _slow_compose(request, tenant_id, jobs, hub_severity):
         with folds_lock:
             folds["n"] += 1
-        assert release.wait(timeout=10)
+        # Hold the leader until every other reader is parked as a follower.
+        # Until that has happened a straggler could still elect itself leader,
+        # so releasing earlier would make the count timing-dependent.
+        #
+        # A timeout here is not an error to raise: under a stampede there are
+        # no followers to wait for, and the fold count below is the far clearer
+        # diagnosis. Raising would bury it in eight identical thread errors.
+        for _ in range(readers - 1):
+            if not parked.acquire(timeout=10):
+                barrier_held["ok"] = False
+                break
         return {"schema_version": "overview.v1", "tenant_id": tenant_id}
 
     monkeypatch.setattr(overview, "_compose_overview", _slow_compose)
@@ -185,18 +211,14 @@ def test_overview_concurrent_misses_share_one_fold(monkeypatch) -> None:
     threads = [threading.Thread(target=_reader, args=(i,)) for i in range(readers)]
     for thread in threads:
         thread.start()
-    try:
-        for _ in range(readers):
-            assert arrived.acquire(timeout=10), "readers did not all reach the cache probe"
-    finally:
-        release.set()
     for thread in threads:
         thread.join(timeout=15)
 
     overview._reset_overview_cache()
     assert not errors
     assert all(thread.is_alive() is False for thread in threads)
-    assert folds["n"] == 1
+    assert folds["n"] == 1, f"expected one shared fold, saw {folds['n']} — concurrent misses stampeded the estate fold"
+    assert barrier_held["ok"], "the leader was never joined by 7 followers, so the fold count above proves nothing"
     assert all(result == {"schema_version": "overview.v1", "tenant_id": "acme"} for result in results)
 
 

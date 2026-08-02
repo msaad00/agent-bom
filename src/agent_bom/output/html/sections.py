@@ -259,8 +259,17 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
             cvss_bar = '<span style="color:#334155">&mdash;</span>'
         epss = f"{finding.epss_score:.1%}" if finding.epss_score else '<span style="color:#334155">&mdash;</span>'
         exploit_level = exploit_likelihood_value(finding)
+        kev_due = evidence(finding, "kev_due_date", "") if finding.is_kev else ""
+        kev_due_attr = f' data-kev-due="{_esc(kev_due)}"' if kev_due else ""
         if finding.is_kev:
             kev = '<span class="badge-kev" title="CISA Known Exploited Vulnerability">KEV</span>'
+            if kev_due:
+                # BOD 22-01 remediation deadline — the actionable half of a KEV
+                # hit, and the only part that carries a date.
+                kev += (
+                    f'<div style="font-size:.6rem;color:#94a3b8;margin-top:2px" '
+                    f'title="CISA BOD 22-01 remediation due date">due {_esc(kev_due)}</div>'
+                )
         elif exploit_level == "likely_exploited":
             kev = '<span class="badge-exploit-likely" title="EPSS ≥ 0.5 or percentile ≥ 95 — exploitation likely">EXPL</span>'
         elif exploit_level == "public_exploit":
@@ -306,7 +315,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         tier = evidence(finding, "match_confidence_tier", None)
         tier_hint = ""
         if tier:
-            _tier_color = "#f59e0b" if tier == "nvd_cpe_candidate" else "#64748b"
+            _tier_color = "#f59e0b" if tier in {"nvd_cpe_candidate", "ambiguous_distro_release"} else "#64748b"
             tier_hint = (
                 f'<br><span class="match-tier" data-tier="{_esc(tier)}" '
                 f'title="match confidence: {_esc(tier)}" '
@@ -318,7 +327,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         pkg_version = package_version(finding)
         pg_cls = " pg-hidden" if idx >= _PAGE_SIZE else ""
         rows.append(
-            f'<tr class="pg-row{pg_cls}" data-severity="{sev}" data-kev="{"1" if finding.is_kev else "0"}" '
+            f'<tr class="pg-row{pg_cls}" data-severity="{sev}" data-kev="{"1" if finding.is_kev else "0"}"{kev_due_attr} '
             f'data-exploit-likelihood="{exploit_level}" '
             f'data-reachability="{reach_state}" '
             f'data-match-tier="{_esc(tier or "")}" '

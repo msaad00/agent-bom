@@ -1521,13 +1521,13 @@ class PostgresGraphStore:
         source: str,
         max_depth: int = 4,
         traversable_only: bool = True,
-    ) -> tuple[list[list[str]], set[str]]:
+    ) -> tuple[list[list[str]], set[str], bool]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         timeout_ms = _graph_search_timeout_ms()
         deadline = time.monotonic() + (timeout_ms / 1000) if timeout_ms else None
         with _tenant_connection(self._pool) as conn:
             _apply_graph_search_timeout(conn)
-            _, _, visited, _, _, parents, order, _ = self._walk_graph(
+            _, _, visited, _, _, parents, order, truncated = self._walk_graph(
                 conn,
                 tenant_id=tenant_id,
                 scan_id=scan_id,
@@ -1544,7 +1544,7 @@ class PostgresGraphStore:
                 include_roots=True,
             )
         if source not in visited:
-            return [], set()
+            return [], set(), truncated
         paths: list[list[str]] = []
         for node_id in order:
             path = [node_id]
@@ -1556,7 +1556,7 @@ class PostgresGraphStore:
             if path and path[0] == source:
                 paths.append(path)
         visited.discard(source)
-        return paths, visited
+        return paths, visited, truncated
 
     def impact_of(
         self,
@@ -1644,6 +1644,17 @@ class PostgresGraphStore:
                 dynamic_only=dynamic_only,
                 include_roots=include_roots,
             )
+            # Snapshot size for the completeness denominator. A single-row
+            # primary-key lookup on (tenant_id, scan_id) — never a COUNT over
+            # graph_nodes, which would put an O(snapshot) scan on every
+            # traversal.
+            snapshot_nodes = 0
+            if effective_scan_id:
+                row = conn.execute(
+                    "SELECT node_count FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+                    (tenant_id, effective_scan_id),
+                ).fetchone()
+                snapshot_nodes = int(row[0] or 0) if row else 0
         from agent_bom.graph import UnifiedGraph
 
         graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
@@ -1652,6 +1663,15 @@ class PostgresGraphStore:
         for edge in edges.values():
             if edge.source in graph.nodes and edge.target in graph.nodes:
                 graph.add_edge(edge)
+        # A bounded walk must say so, and `returned` must be what we returned.
+        # Reporting `returned: 0` beside a non-empty node set was the shipped
+        # self-contradiction; matching the in-memory container's shape keeps a
+        # store swap from changing what a client is told.
+        graph.completeness.truncated = truncated
+        graph.completeness.reason = "traversal_budget" if truncated else ""
+        graph.completeness.node_budget = max_nodes if truncated else None
+        graph.completeness.total_nodes = snapshot_nodes or len(graph.nodes)
+        graph.completeness.returned_nodes = len(graph.nodes)
         return graph, depths, truncated
 
     def attack_paths_for_sources(

@@ -309,9 +309,7 @@ def _is_agent_bom_report(content: str) -> bool:
         return True
     if '"$schema"' in head and "sarif" in head.lower() and '"runs"' in head:
         return True
-    return head.startswith("cve_id,package,version,ecosystem,severity") or head.startswith(
-        "﻿cve_id,package,version,ecosystem,severity"
-    )
+    return head.startswith("cve_id,package,version,ecosystem,severity") or head.startswith("﻿cve_id,package,version,ecosystem,severity")
 
 
 def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) -> list[SecretFinding]:

@@ -127,6 +127,20 @@ _GUARDRAIL_IMPORTS = {
     "anthropic.types": ("Anthropic Safety", "content_filter"),
 }
 
+
+def _import_matches_module(module: str, target: str) -> bool:
+    """True when *module* is *target* or a submodule of it.
+
+    Whole dotted modules only. A substring test used to accept
+    ``nemoguardrails`` for the ``guardrails`` entry — NVIDIA's documented
+    ``from nemoguardrails import LLMRails`` then produced two guardrails, the
+    extra one credited to the wrong vendor — and accepted any project-local
+    module whose name merely contained a vendor's, such as
+    ``app.guardrails_config``.
+    """
+    return module == target or module.startswith(f"{target}.")
+
+
 _DYNAMIC_CODE_CALLS = {"eval", "exec", "compile", "__import__"}
 _SUBPROCESS_CALLS = {
     "os.system",
@@ -785,7 +799,7 @@ def _analyze_file(
 
             # Check guardrail imports
             for guard_module, (name, gtype) in _GUARDRAIL_IMPORTS.items():
-                if guard_module in module:
+                if _import_matches_module(module, guard_module):
                     guardrails.append(
                         DetectedGuardrail(
                             name=name,

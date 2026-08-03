@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_bom.ast_signal_utils import is_agent_tool_decorator
 from agent_bom.finding import stable_id
 
 _SKIP_DIRS = {
@@ -347,13 +348,19 @@ def _framework_for_call(imports: set[str], call_name: str, short_name: str) -> s
     return None
 
 
+def _decorator_name(node: ast.AST) -> str:
+    """Dotted name of a decorator, unwrapping the applied form ``@mcp.tool()``."""
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
+    return _call_name(node)
+
+
 def _collect_tools(tree: ast.Module) -> dict[str, FrameworkCapability]:
     tools: dict[str, FrameworkCapability] = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for decorator in node.decorator_list:
-                decorator_name = _call_name(decorator).split(".")[-1]
-                if decorator_name in {"tool", "function_tool", "skill", "action"}:
+                if is_agent_tool_decorator(_decorator_name(decorator)):
                     tools[node.name] = FrameworkCapability(node.name, "decorator", node.lineno, "high")
         elif isinstance(node, ast.Assign):
             for target in node.targets:

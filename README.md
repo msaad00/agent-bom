@@ -26,8 +26,7 @@
 <p align="center">
   <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>77</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
-  <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
-  <a href="https://demo.agent-bom.com">Live demo</a>
+  <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
 ## What it is

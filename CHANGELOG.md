@@ -9,41 +9,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- Azure private-endpoint inventory called `private_endpoints.list_all()`, which
-  exists on no release of `azure-mgmt-network`. The call raised into a broad
-  `except`, so the scan reported a warning and inventoried nothing. It now uses
-  `list_by_subscription()`.
-- Azure ML online-endpoint discovery read `online_endpoints` /
-  `online_deployments` off the management client. Those moved to the v2 control
-  plane and are absent from every stable `azure-mgmt-machinelearningservices`
-  release, so no endpoint was ever discovered. Discovery now uses `MLClient`
-  from `azure-ai-ml`, scoped per workspace.
-
-### Changed
-
-- The type-check CI job installs the cloud extras. Without them
-  `--ignore-missing-imports` silenced every provider-SDK type error, which is
-  how both calls above shipped green. A companion guard asserts that each SDK
-  operation the scanners call exists on the installed client type.
-
-### Fixed
-
-- `agent-bom scan --inventory <path>` refreshed the entire vulnerability
-  database before checking whether the path existed, so a typo'd inventory
-  cost a full cold-start download — minutes on a machine with no cache —
-  before the CLI reported "Inventory file not found". Existence is now
-  decided first; format and parse errors still surface from the loader.
-
-### Changed
-
-- The test suite no longer downloads the advisory corpus. It already ran under
-  `-m "not network"`, but that marker only deselects tests that declare it and
-  could not stop a CLI scan from going to the network, which made three CLI
-  tests the whole CI job's critical path. Tests that drive `sync_db` itself opt
-  out with `@pytest.mark.real_vuln_db_sync`.
-
 ## [0.98.3] - 2026-08-02
 
 Behaviour changes in this release move numbers you may already be reporting.
@@ -98,6 +63,13 @@ Read "Changed" before upgrading.
 - The posture grade is withheld when vulnerability coverage is incomplete,
   instead of grading an unscanned estate an A.
 - Conflicting advisory severities resolve upward rather than by sort order.
+- Effective-reach scores are clamped to their documented 0–100 range; the
+  highest-risk graph fixture previously emitted 142.8.
+- Azure private-endpoint inventory now calls the supported
+  `list_by_subscription()` SDK operation; the previous `list_all()` call exists
+  on no stable `azure-mgmt-network` release and left inventory empty.
+- Azure ML online endpoints and deployments now use the v2 `MLClient`, scoped
+  per workspace, instead of operations absent from the management client.
 
 ### Fixed — graph
 
@@ -109,6 +81,9 @@ Read "Changed" before upgrading.
   rather than presenting the first 50 nodes in insertion order as fact.
 - Postgres edge reconciliation is bounded, so a second scan no longer fails to
   persist and silently freeze the graph.
+- A finding drill-down no longer substitutes an older graph when the requested
+  scan has no snapshot, and focused investigations no longer show an unrelated
+  global path when no path matches.
 
 ### Fixed — control plane and tenancy
 
@@ -119,7 +94,11 @@ Read "Changed" before upgrading.
   up on every deploy. The previous three-month window could not be extended at
   runtime and would have broken all current-dated hub ingest permanently.
 - Malformed requests return a 4xx envelope instead of a bare 500, and validation
-  errors no longer reflect the submitted body.
+  errors no longer reflect the submitted body. Bulk finding ingest now also
+  rejects a missing or ambiguous JSON content type instead of accepting it.
+- `agent-bom scan --inventory <path>` checks that the inventory exists before
+  refreshing the vulnerability database, so a typo fails immediately instead
+  of paying a full cold-start download.
 - An unreadable or non-UTF8 manifest degrades with a named coverage warning
   instead of aborting the scan with no artifact.
 - `HTTP(S)_PROXY` is honoured; it was silently ignored, so pinned egress was not
@@ -140,6 +119,12 @@ Read "Changed" before upgrading.
 - The PCI DSS coverage table now reports 12 *sub-requirements* across
   requirements 2, 6, 8, 11 and 12. It previously read "12 requirements / 12",
   which implied complete PCI coverage.
+- The test suite no longer downloads the advisory corpus unless a test opts in
+  with `@pytest.mark.real_vuln_db_sync`, removing accidental network work from
+  ordinary CI runs.
+- Type-check CI installs the cloud extras and asserts that scanner SDK
+  operations exist, so missing provider methods cannot be hidden by
+  `--ignore-missing-imports`.
 
 
 ## [0.98.2] - 2026-07-27

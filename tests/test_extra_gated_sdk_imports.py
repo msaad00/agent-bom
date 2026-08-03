@@ -275,4 +275,5 @@ def test_sdk_client_operation_exists(module_path: str, symbol: str, attribute: s
     owner = getattr(module, symbol, None)
     assert owner is not None, f"{module_path} no longer exports {symbol}"
     version = getattr(importlib.import_module(module_path.split(".")[0]), "__version__", "unknown")
-    assert hasattr(owner, attribute), f"{symbol}.{attribute} missing (installed {module_path.split('.')[0]}=={version}) — agent-bom calls it"
+    message = f"{symbol}.{attribute} missing (installed {module_path.split('.')[0]}=={version}) — agent-bom calls it"
+    assert hasattr(owner, attribute), message

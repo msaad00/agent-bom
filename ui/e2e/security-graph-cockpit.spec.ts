@@ -150,7 +150,7 @@ function buildCockpitGraph(nodeCount = 5) {
 async function routeCockpit(
   page: Page,
   snapshotNodeCount?: number,
-  options: { emptyRollup?: boolean; rollupDelayMs?: number } = {},
+  options: { emptyFocusResults?: boolean; emptyRollup?: boolean; rollupDelayMs?: number } = {},
 ) {
   const graph = buildCockpitGraph(snapshotNodeCount);
 
@@ -199,13 +199,9 @@ async function routeCockpit(
   });
   await page.route("**/v1/graph/views/fix-first?**", async (route) => {
     const attackPath = graph.attack_paths[0]!;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        scan_id: scanId,
-        tenant_id: "default",
-        created_at: createdAt,
-        cards: [
+    const cards = options.emptyFocusResults
+      ? []
+      : [
           {
             id: "card-cockpit-fixture",
             rank: 1,
@@ -237,13 +233,20 @@ async function routeCockpit(
               tools: ["create_pull_request"],
             },
           },
-        ],
+        ];
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        scan_id: scanId,
+        tenant_id: "default",
+        created_at: createdAt,
+        cards,
         summary: {
           total_paths: 1,
-          matched_paths: 1,
-          returned_paths: 1,
-          highest_risk: 9.8,
-          covered_findings: 1,
+          matched_paths: cards.length,
+          returned_paths: cards.length,
+          highest_risk: cards.length ? 9.8 : 0,
+          covered_findings: cards.length,
           node_count: graph.nodes.length,
           edge_count: graph.edges.length,
         },
@@ -365,6 +368,27 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
   expect(overflows).toBe(false);
 
   await page.screenshot({ path: testInfo.outputPath("security-graph-cockpit-mobile.png"), fullPage: true });
+});
+
+test("requested scan without a graph snapshot never falls back to another scan", async ({ page }) => {
+  await routeCockpit(page);
+
+  await page.goto("/security-graph?scan=scan-without-graph&cve=CVE-2099-MISSING");
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("Snapshot unavailable for requested scan")).toBeVisible();
+  await expect(page.getByText(/did not substitute evidence from a different scan/i)).toBeVisible();
+  await expect(page.getByText("Critical package reachable from MCP server")).toHaveCount(0);
+});
+
+test("focused investigation never shows an unrelated global path", async ({ page }) => {
+  await routeCockpit(page, undefined, { emptyFocusResults: true });
+
+  await page.goto(`/security-graph?scan=${scanId}&cve=CVE-2099-NOT-IN-SNAPSHOT`);
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("No attack paths matched the current focus")).toBeVisible();
+  await expect(page.getByText("Critical package reachable from MCP server")).toHaveCount(0);
 });
 
 test("ranked path selection focuses the in-place interactive graph and announces the change", async ({ page }) => {

@@ -162,7 +162,7 @@ def test_high_reach_lands_in_red_band() -> None:
     annotate_graph(graph)
     node = graph.nodes["vuln:CVE-2099-HIGH"]
     breakdown = node.metadata["effective_reach"]
-    assert breakdown["composite"] > 80, breakdown
+    assert breakdown["composite"] == 100.0, breakdown
     assert breakdown["band"] in ("red", "pulsing-red"), breakdown
     assert breakdown["is_kev"] is True
     # run_shell → 1.0 capability.
@@ -208,6 +208,18 @@ def test_determinism_low_reach_fixture() -> None:
         annotate_graph(graph)
         seen.add(graph.nodes["vuln:CVE-2099-LOW"].metadata["effective_reach"]["composite"])
     assert len(seen) == 1, seen
+
+
+def test_composite_never_exceeds_documented_range() -> None:
+    score = ReachScore(
+        cvss=10.0,
+        epss=1.0,
+        is_kev=True,
+        tool_capability=1.0,
+        cred_visibility=1.0,
+        agent_breadth=5,
+    )
+    assert score.composite == 100.0
 
 
 # ── Snapshot test ─────────────────────────────────────────────────────────

@@ -158,6 +158,16 @@ function SecurityGraphPageContent() {
     [pathname, router, searchParams],
   );
 
+  const selectSnapshot = useCallback(
+    (scanId: string) => {
+      setSelectedScanId(scanId);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("scan", scanId);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
   const handleStepHint = useCallback(
     (step: "expand" | "impact" | "fix") => {
       setCompletedSteps((current) => ({ ...current, path: true, [step]: true }));
@@ -172,6 +182,9 @@ function SecurityGraphPageContent() {
     const parts = [focus.nodeId, focus.cve, focus.packageName, focus.agentName].filter(Boolean);
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [focus.agentName, focus.cve, focus.nodeId, focus.packageName]);
+  const hasFocusContext = Boolean(
+    focus.cve || focus.packageName || focus.agentName || focus.nodeId || focus.findingId,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -191,7 +204,9 @@ function SecurityGraphPageContent() {
         const initialScanId =
           requestedScanId && snapshotList.some((snapshot) => snapshot.scan_id === requestedScanId)
             ? requestedScanId
-            : snapshotList[0]?.scan_id ?? "";
+            : requestedScanId
+              ? ""
+              : snapshotList[0]?.scan_id ?? "";
         setSelectedScanId(initialScanId);
         setApiError(null);
         setGraphLoadError(null);
@@ -270,6 +285,10 @@ function SecurityGraphPageContent() {
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
   );
+  const requestedSnapshotMissing =
+    !loadingSnapshots &&
+    Boolean(focus.scanId) &&
+    !snapshots.some((snapshot) => snapshot.scan_id === focus.scanId);
   // Stale/empty snapshots (0 persisted nodes) and unrelated older scans pile up
   // in a long-lived graph store and drown the real ones in the chip row.
   // Default to the current scan plus at most a couple of recent populated
@@ -325,14 +344,20 @@ function SecurityGraphPageContent() {
     const fromApi = [...(graphData?.attack_paths ?? [])].sort(
       (left, right) => right.composite_risk - left.composite_risk,
     );
-    const base =
-      fromApi.length > 0
+    const fromFixFirst = fixFirstCards.map((card) => card.attack_path);
+    const focusedPaths =
+      focus.nodeId || focus.findingId
+        ? fromFixFirst.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus))
+        : fromFixFirst;
+    const base = hasFocusContext
+      ? focusedPaths
+      : fromApi.length > 0
         ? fromApi
-        : fixFirstCards.map((card) => card.attack_path);
+        : fromFixFirst;
     if (!selectedCampaign?.member_paths?.length) return base;
     const members = new Set(selectedCampaign.member_paths);
     return base.filter((path) => members.has(`${path.source}->${path.target}`));
-  }, [fixFirstCards, graphData?.attack_paths, selectedCampaign]);
+  }, [fixFirstCards, focus, graphData?.attack_paths, graphNodeById, hasFocusContext, selectedCampaign]);
   const attackPaths = useMemo(
     () => filterAttackPathsForInvestigation(allAttackPaths, graphNodeById, investigationFilters),
     [allAttackPaths, graphNodeById, investigationFilters],
@@ -423,7 +448,6 @@ function SecurityGraphPageContent() {
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
 
-  const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName || focus.nodeId || focus.findingId);
   const selectedAttackPath = useMemo(
     () =>
       selectedAttackPathKey
@@ -740,7 +764,7 @@ function SecurityGraphPageContent() {
                       <button
                         key={snapshot.scan_id}
                         type="button"
-                        onClick={() => setSelectedScanId(snapshot.scan_id)}
+                        onClick={() => selectSnapshot(snapshot.scan_id)}
                         className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
                           selected
                             ? "border-emerald-700 bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200"
@@ -817,6 +841,34 @@ function SecurityGraphPageContent() {
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             )}
+          </div>
+        </section>
+      ) : requestedSnapshotMissing ? (
+        <section className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <GraphEmptyState
+            title="Snapshot unavailable for requested scan"
+            detail={`No persisted graph snapshot exists for scan ${focus.scanId}. The investigation did not substitute evidence from a different scan.`}
+            suggestions={[
+              "Run or re-sync the requested scan with graph persistence enabled.",
+              "Choose one of the available snapshots above to investigate older evidence explicitly.",
+              "Review the requested scan's findings while its graph snapshot is unavailable.",
+            ]}
+          />
+          <div className="mt-4 flex flex-wrap gap-3 border-t border-amber-500/20 pt-4">
+            <Link
+              href={buildFindingsHref({ scanId: focus.scanId })}
+              className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 transition hover:border-amber-600 dark:text-amber-200"
+            >
+              Review requested scan findings
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href="/security-graph"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+            >
+              Open latest snapshot
+              <GitBranch className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </section>
       ) : allAttackPaths.length === 0 ? (

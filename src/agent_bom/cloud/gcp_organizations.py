@@ -353,7 +353,7 @@ def _collect_org_policies(
     unavailable — the org tree is still useful without it.
     """
     try:
-        from google.cloud import orgpolicy_v2
+        from google.cloud import orgpolicy_v2  # type: ignore[attr-defined]  # namespace package export
     except ImportError:
         warnings.append("google-cloud-org-policy not installed. Skipping org-policy constraint discovery.")
         return

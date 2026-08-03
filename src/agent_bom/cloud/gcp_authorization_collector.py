@@ -197,7 +197,13 @@ def _pab_binding_record(binding: Any) -> dict[str, Any]:
 
 
 def _load_clients(credentials: Any) -> Any:
-    from google.cloud import asset_v1, iam_admin_v1, iam_v2, iam_v3, resourcemanager_v3
+    from google.cloud import (  # type: ignore[attr-defined]  # namespace package exports
+        asset_v1,
+        iam_admin_v1,
+        iam_v2,
+        iam_v3,
+        resourcemanager_v3,
+    )
 
     return SimpleNamespace(
         assets=asset_v1.AssetServiceClient(credentials=credentials),

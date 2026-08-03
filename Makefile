@@ -40,6 +40,7 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 	@echo "→ v1 schemas (docs/schemas/v1/)";        python scripts/generate_v1_schemas.py --check
 	@echo "→ agent capability manifest";             python scripts/generate_agent_capability_manifest.py --check
 	@echo "→ product surface contract";             python scripts/check_product_surface_contract.py
+	@echo "→ graph proof fixtures";                 python scripts/check_graph_epic_proof.py
 	@echo "→ release/README consistency";           python scripts/check_release_consistency.py
 	@echo "→ env-var reference";                    python scripts/generate_env_var_reference.py --check
 	@echo "→ SDK patterns.json";                    python sdks/shared/generate-patterns.py --check

@@ -236,7 +236,8 @@ class ReachScore:
         )
         from agent_bom.symbol_reach_triage import apply_composite_delta
 
-        return apply_composite_delta(score, self.symbol_reachability)
+        adjusted = apply_composite_delta(score, self.symbol_reachability)
+        return round(max(0.0, min(adjusted, 100.0)), 2)
 
     @property
     def band(self) -> Literal["green", "amber", "red", "pulsing-red"]:

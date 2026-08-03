@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Annotated, Any, NamedTuple, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
@@ -99,6 +99,13 @@ _BULK_FINDINGS_SOURCE_MAX_LENGTH = 128
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _require_json_content_type(request: Request) -> None:
+    """Reject ambiguous bulk-ingest bodies before accepting caller data."""
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json" and not media_type.endswith("+json"):
+        raise HTTPException(status_code=422, detail="Content-Type must be application/json")
 
 
 def _api_local_scans_enabled() -> bool:
@@ -2807,7 +2814,12 @@ def _list_findings_impl(
     return envelope
 
 
-@router.post("/findings/bulk", tags=["scan"], status_code=201)
+@router.post(
+    "/findings/bulk",
+    tags=["scan"],
+    status_code=201,
+    dependencies=[Depends(_require_json_content_type)],
+)
 async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> dict:
     """Append normalized findings for the request tenant.
 

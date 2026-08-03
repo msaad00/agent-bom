@@ -265,6 +265,7 @@ jobs:
           python scripts/check_benchmark_drift.py
           python scripts/check_framework_catalog.py
           python scripts/check_product_surface_contract.py
+          python scripts/check_graph_epic_proof.py
           python sdks/shared/generate-patterns.py --check
 
       - uses: ./.github/actions/setup-python
@@ -1364,6 +1365,9 @@ jobs:
 
       - name: Verify product surface contract
         run: python scripts/check_product_surface_contract.py
+
+      - name: Verify graph proof fixtures and effective-reach contract
+        run: python scripts/check_graph_epic_proof.py
 
       - name: Install dependencies for CLI smoke checks
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'

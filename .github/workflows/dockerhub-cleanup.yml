@@ -52,11 +52,19 @@ jobs:
           EXPECTED_DELETE_COUNT: ${{ inputs.expected_delete_count || '' }}
         run: |
           set -euo pipefail
+          # Never let retention delete the version this repository currently
+          # ships, whatever its rank among the published tags.
+          CURRENT_VERSION=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "::error::could not read the current version from pyproject.toml"
+            exit 1
+          fi
           args=(
             --repository agentbom/agent-bom
             --repository agentbom/agent-bom-ui
             --repository agentbom/agent-bom-collector
             --keep-count "$KEEP_COUNT"
+            --protect-tag "$CURRENT_VERSION"
           )
           if [ "$DRY_RUN" = "true" ]; then
             args+=(--dry-run)

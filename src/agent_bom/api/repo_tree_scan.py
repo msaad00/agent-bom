@@ -207,9 +207,7 @@ def scan_cloned_repo_tree(
                     )
                 )
             if skill_result.credential_env_vars:
-                warnings.append(
-                    f"{len(skill_result.credential_env_vars)} credential env var(s) referenced in skill/instruction files"
-                )
+                warnings.append(f"{len(skill_result.credential_env_vars)} credential env var(s) referenced in skill/instruction files")
             skill_audit = audit_skill_result(skill_result)
             result.skill_audit_data = {
                 "findings": [
@@ -364,9 +362,7 @@ def scan_cloned_repo_tree(
                     pkg_key = f"{comp.ecosystem}:{comp.package_name}"
                     if pkg_key not in seen_pkgs:
                         seen_pkgs.add(pkg_key)
-                        ai_packages.append(
-                            Package(name=comp.package_name, version="latest", ecosystem=comp.ecosystem)
-                        )
+                        ai_packages.append(Package(name=comp.package_name, version="latest", ecosystem=comp.ecosystem))
             if ai_packages:
                 ai_provenance = {
                     "source_type": "ai_inventory",

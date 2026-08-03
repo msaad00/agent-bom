@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
+from agent_bom.traversal import iter_discovery_files
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
@@ -308,9 +309,7 @@ def _is_agent_bom_report(content: str) -> bool:
         return True
     if '"$schema"' in head and "sarif" in head.lower() and '"runs"' in head:
         return True
-    return head.startswith("cve_id,package,version,ecosystem,severity") or head.startswith(
-        "﻿cve_id,package,version,ecosystem,severity"
-    )
+    return head.startswith("cve_id,package,version,ecosystem,severity") or head.startswith("﻿cve_id,package,version,ecosystem,severity")
 
 
 def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) -> list[SecretFinding]:
@@ -436,7 +435,7 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
     result = SecretScanResult()
     file_count = 0
 
-    for f in sorted(project.rglob("*")):
+    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS)):
         if not f.is_file():
             continue
         if not _should_scan(f):

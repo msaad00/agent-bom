@@ -37,12 +37,8 @@ def _project_with_nested_checkout(tmp_path: Path, nest: str) -> Path:
 
 def _populate(directory: Path, marker: str) -> None:
     (directory / "requirements.txt").write_text("requests==2.20.0\n")
-    (directory / "package.json").write_text(
-        json.dumps({"name": marker, "version": "1.0.0", "dependencies": {"lodash": "4.17.11"}})
-    )
-    (directory / "main.tf").write_text(
-        'resource "aws_s3_bucket" "b" {\n  bucket = "x"\n  acl    = "public-read"\n}\n'
-    )
+    (directory / "package.json").write_text(json.dumps({"name": marker, "version": "1.0.0", "dependencies": {"lodash": "4.17.11"}}))
+    (directory / "main.tf").write_text('resource "aws_s3_bucket" "b" {\n  bucket = "x"\n  acl    = "public-read"\n}\n')
     (directory / "crypto_util.py").write_text("import hashlib\n\ndef h(v):\n    return hashlib.md5(v).hexdigest()\n")
     (directory / "LICENSE").write_text("MIT License\n")
 

@@ -250,6 +250,31 @@ def test_smithery_listing_matching_the_shipped_tool_count_is_fresh(monkeypatch):
     assert result["tool_count"] == 77
 
 
+def test_legacy_glama_tool_count_flag_is_still_accepted(monkeypatch, tmp_path):
+    """Renaming the flag must not break anything still passing the old spelling."""
+    script = _load_script("check_surface_freshness.py")
+    seen = {}
+
+    def record(name):
+        def probe(expected, *args, **kwargs):
+            seen[name] = kwargs.get("expected_tool_count")
+            return {"surface": name, "status": "fresh", "version": expected, "expected": expected}
+
+        return probe
+
+    monkeypatch.setattr(script, "probe_pypi", record("PyPI"))
+    monkeypatch.setattr(script, "probe_docker", record("Docker"))
+    monkeypatch.setattr(script, "probe_glama", record("Glama"))
+    monkeypatch.setattr(script, "probe_smithery", record("Smithery"))
+
+    out = tmp_path / "report.json"
+    script.main(["--expected", "0.98.3", "--expected-glama-tool-count", "77", "--out", str(out)])
+
+    # The one expectation reaches BOTH surfaces that advertise a tool list.
+    assert seen["Glama"] == 77
+    assert seen["Smithery"] == 77
+
+
 def test_smithery_tool_count_is_not_gated_when_no_expectation_is_supplied(monkeypatch):
     """Without an expected count the contract check stands on its own."""
     script = _load_script("check_surface_freshness.py")

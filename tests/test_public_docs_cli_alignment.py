@@ -169,7 +169,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "<b>77</b> MCP tools" in hero
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
-    assert '<a href="https://demo.agent-bom.com">Live demo</a>' in hero
+    # No hosted-demo link: this repo ships the scanner and the self-host runbook,
+    # and nothing here should promise an endpoint whose uptime it does not own.
+    assert "demo.agent-bom.com" not in readme
+    assert "Live demo" not in hero
     assert "## How it works" not in readme
 
     current_what_it_is = """`agent-bom` is an open scanner and self-hosted control plane for software,

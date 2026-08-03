@@ -10,7 +10,7 @@ import re
 import subprocess
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -271,15 +271,51 @@ def render_markdown(snapshot: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
+def _metric_value(snapshot: dict[str, Any], name: str) -> object:
+    """Value of a named metric in *snapshot*, or None when it carries no such metric."""
+    for metric in snapshot.get("metrics", []):
+        if isinstance(metric, dict) and metric.get("name") == name:
+            return metric.get("value")
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="Write docs/PRODUCT_METRICS.md and docs/PRODUCT_METRICS.json")
+    parser.add_argument("--check", action="store_true", help="Exit non-zero if the committed snapshot is stale")
     parser.add_argument("--markdown-out", default="docs/PRODUCT_METRICS.md", help="Markdown output path when writing")
     parser.add_argument("--json-out", default="docs/PRODUCT_METRICS.json", help="JSON output path when writing")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     snapshot = build_snapshot()
     markdown = render_markdown(snapshot)
+
+    if args.check:
+        # Compare on the same basis the drift gate uses: version and metrics.
+        # ``generated_on`` deliberately does not participate — re-stamping on
+        # every run is churn with no signal.
+        json_path = ROOT / args.json_out
+        try:
+            committed = json.loads(json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"cannot read {args.json_out}: {exc}")
+            return 1
+
+        drifted = [
+            f"  {metric['name']}: committed={_metric_value(committed, str(metric['name']))} actual={metric['value']}"
+            for metric in cast(list[dict[str, object]], snapshot["metrics"])
+            if _metric_value(committed, str(metric["name"])) != metric["value"]
+        ]
+        if drifted or committed.get("version") != snapshot["version"]:
+            print("PRODUCT_METRICS snapshot is stale:")
+            if committed.get("version") != snapshot["version"]:
+                print(f"  version: committed={committed.get('version')} actual={snapshot['version']}")
+            print("\n".join(drifted))
+            print("Regenerate with: python scripts/product_metrics_snapshot.py --write")
+            return 1
+
+        print(f"OK: {args.json_out} matches the repository.")
+        return 0
 
     if args.write:
         markdown_path = ROOT / args.markdown_out

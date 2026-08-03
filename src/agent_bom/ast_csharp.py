@@ -247,7 +247,13 @@ def _collect_csharp_tool_registrations(
             )
         )
 
-    for attr_match in _CS_MCP_TOOL_ATTR_RE.finditer(source):
+    # Scan masked source so a commented-out attribute is not a tool; the
+    # attribute text itself is re-read from the real source at the same offset.
+    masked = mask_line_comments_and_strings(source)
+    for masked_match in _CS_MCP_TOOL_ATTR_RE.finditer(masked):
+        attr_match = _CS_MCP_TOOL_ATTR_RE.match(source, masked_match.start())
+        if attr_match is None:
+            continue
         method_match = _CS_METHOD_RE.search(source, attr_match.end())
         if not method_match:
             continue

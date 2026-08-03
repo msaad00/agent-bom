@@ -227,7 +227,13 @@ def _collect_php_tool_registrations(
             ),
         )
 
-    for attr_match in _PHP_MCP_TOOL_ATTR_RE.finditer(source):
+    # Scan masked source so a commented-out attribute is not a tool. ``#`` line
+    # comments stay unmasked here because ``#[`` is PHP's attribute syntax.
+    masked = mask_line_comments_and_strings(source, heredoc=True)
+    for masked_match in _PHP_MCP_TOOL_ATTR_RE.finditer(masked):
+        attr_match = _PHP_MCP_TOOL_ATTR_RE.match(source, masked_match.start())
+        if attr_match is None:
+            continue
         method_match = _PHP_METHOD_RE.search(source, attr_match.end())
         if not method_match:
             continue

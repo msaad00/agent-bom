@@ -267,6 +267,16 @@ def test_csharp_standalone_attribute_tool_is_still_detected(tmp_path: Path) -> N
     assert _tool_names(tmp_path) == {"weather_ui"}
 
 
+def test_csharp_commented_out_attribute_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "Doc.cs").write_text(
+        "using ModelContextProtocol.Server;\n\npublic sealed class Doc\n{\n"
+        '    // [McpServerTool, Description("retired")]\n'
+        "    public static string Retired(string message)\n    {\n        return message;\n    }\n}\n"
+    )
+
+    assert _tool_names(tmp_path) == set()
+
+
 def test_csharp_tool_type_marker_alone_is_not_a_tool(tmp_path: Path) -> None:
     """``[McpServerToolType]`` marks the container class, not a tool method."""
     (tmp_path / "Marker.cs").write_text(
@@ -320,6 +330,14 @@ def test_java_ordinary_builder_is_not_an_agent_tool(tmp_path: Path) -> None:
     assert _tool_names(tmp_path) == set()
 
 
+def test_java_commented_out_tool_builder_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "Doc.java").write_text(
+        'public class Doc {\n    // Tool.builder("retired_tool", schema).build();\n    public void nothing() {}\n}\n'
+    )
+
+    assert _tool_names(tmp_path) == set()
+
+
 # --------------------------------------------------------------------------
 # PHP -- mcp/sdk (official php-sdk, Symfony + PHP Foundation)
 # --------------------------------------------------------------------------
@@ -369,6 +387,15 @@ def test_php_official_mcp_tool_attribute_is_detected(tmp_path: Path) -> None:
 
 def test_php_ordinary_attribute_is_not_an_agent_tool(tmp_path: Path) -> None:
     (tmp_path / "SyncCommand.php").write_text(PHP_ORDINARY_ATTRIBUTE)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_php_commented_out_mcp_tool_attribute_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "Tools.php").write_text(
+        "<?php\n\nclass Tools\n{\n    // #[McpTool(name: 'retired')]\n"
+        "    public function retired(): array\n    {\n        return [];\n    }\n}\n"
+    )
 
     assert _tool_names(tmp_path) == set()
 

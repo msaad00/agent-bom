@@ -65,6 +65,9 @@ _JAVA_TOOL_ANNOTATION_RE = re.compile(r"@Tool\b")
 # rather than a name string. Anchoring on ``Tool.builder`` keeps ordinary
 # builders such as ``Report.builder("quarterly", …)`` out.
 _JAVA_TOOL_BUILDER_RE = re.compile(r"""\bTool\s*\.\s*builder\s*\(\s*"(?P<name>[^"]+)\"""")
+# The call head alone, for scanning comment/string-masked source where the name
+# literal has been blanked out; the name is then read from the real source.
+_JAVA_TOOL_BUILDER_START_RE = re.compile(r"""\bTool\s*\.\s*builder\s*\(\s*""")
 _JAVA_METHOD_REF_RE = re.compile(r"::\s*(?P<method>[a-z]\w*)")
 _JAVA_LOCAL_BINDING_RE = re.compile(r"\b(?P<type>[\w.]+)\s+(?P<var>[a-z]\w*)\s*=\s*new\s+(?P<ctor>[\w.]+)")
 _JAVA_FRAMEWORK_HINTS: dict[str, str] = {
@@ -264,8 +267,12 @@ def _collect_java_tool_registrations(
             )
         )
 
-    for match in _JAVA_TOOL_BUILDER_RE.finditer(source):
-        tool_name = match.group("name").strip()
+    # Scan masked source so a commented-out builder is not a tool; the name is
+    # then read from the real source at the same offset.
+    masked = mask_line_comments_and_strings(source)
+    for match in _JAVA_TOOL_BUILDER_START_RE.finditer(masked):
+        name_match = _JAVA_TOOL_BUILDER_RE.match(source, match.start())
+        tool_name = name_match.group("name").strip() if name_match else ""
         if not tool_name:
             continue
         key = (tool_name, match.start())

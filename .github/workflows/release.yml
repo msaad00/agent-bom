@@ -460,47 +460,6 @@ jobs:
           fi
           rm -f "$RESPONSE_FILE"
 
-      - name: Clean up old Docker Hub tags (keep last 10)
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          REPO="agentbom/agent-bom"
-          CURRENT_VERSION="${{ steps.meta.outputs.version }}"
-          TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-            | jq -r '.token') || {
-            echo "::error::Docker Hub login curl failed during cleanup"
-            exit 1
-          }
-          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-            echo "::error::Docker Hub login returned empty token during cleanup"
-            exit 1
-          fi
-          echo "::add-mask::$TOKEN"
-
-          ALL_TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
-            -H "Authorization: Bearer $TOKEN" | jq -r '.results[].name')
-          SEMVER_TAGS=$(printf '%s\n' "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vr || true)
-          KEEP=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$SEMVER_TAGS" | awk 'NF && !seen[$0]++' | head -n 10)
-
-          echo "Keeping Docker Hub tags:"
-          printf '  %s\n' latest 0
-          printf '%s\n' "$KEEP" | sed '/^$/d;s/^/  /'
-
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            echo "$tag" | grep -qE '^(latest|0)$' && continue
-            [ "$tag" = "$CURRENT_VERSION" ] && continue
-            echo "$KEEP" | grep -qxF "$tag" && continue
-            echo "Deleting $tag"
-            curl -sf -o /dev/null -X DELETE \
-              "https://hub.docker.com/v2/repositories/${REPO}/tags/${tag}" \
-              -H "Authorization: Bearer $TOKEN" || true
-          done <<< "$ALL_TAGS"
-
   docker-publish-collector:
     name: Publish cloud-SDK collector image
     needs: [build, self-scan-gate, container-gate]

@@ -1,10 +1,13 @@
 name: Docker Hub Tag Cleanup
 
 on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       keep_count:
-        description: "Number of recent tags to keep (besides latest and floating)"
+        description: "Number of recent semantic-version tags to keep per repository"
         required: false
         default: "10"
       dry_run:
@@ -15,87 +18,50 @@ on:
         options:
           - "true"
           - "false"
+      expected_delete_count:
+        description: "Optional fail-closed assertion for the total number of deletions"
+        required: false
+        default: ""
+
+concurrency:
+  group: dockerhub-tag-cleanup
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   cleanup:
-    name: Clean up old Docker Hub tags
+    name: Clean up old Docker Hub tags across release images
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Delete old tags
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Plan and apply bounded retention
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          KEEP_COUNT: ${{ inputs.keep_count }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          KEEP_COUNT: ${{ inputs.keep_count || '10' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          EXPECTED_DELETE_COUNT: ${{ inputs.expected_delete_count || '' }}
         run: |
           set -euo pipefail
-          REPO="agentbom/agent-bom"
-
-          # Authenticate
-          TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-            | jq -r '.token')
-
-          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-            echo "::error::Docker Hub login failed"
-            exit 1
-          fi
-
-          # Fetch all tags sorted by last_updated, then keep the highest semver tags.
-          ALL_TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
-            -H "Authorization: Bearer $TOKEN" | jq -r '.results[].name')
-
-          # Tags to always keep
-          KEEP_PATTERNS="^(latest|0)$"
-
-          # Build keep list: floating tags + highest N semver tags
-          SEMVER_TAGS=$(printf '%s\n' "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vr || true)
-          KEEP_SEMVER=$(printf '%s\n' "$SEMVER_TAGS" | head -n "${KEEP_COUNT}")
-
-          echo "=== Tags to KEEP ==="
-          echo "  latest, 0 (floating)"
-          echo "$KEEP_SEMVER" | sed 's/^/  /'
-
-          DELETE_COUNT=0
-          echo ""
-          echo "=== Tags to DELETE ==="
-
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            # Skip floating tags
-            if echo "$tag" | grep -qE "$KEEP_PATTERNS"; then
-              continue
-            fi
-
-            # Skip if in keep list
-            if echo "$KEEP_SEMVER" | grep -qxF "$tag"; then
-              continue
-            fi
-
-            echo "  $tag"
-            DELETE_COUNT=$((DELETE_COUNT + 1))
-
-            if [ "$DRY_RUN" = "false" ]; then
-              HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
-                -X DELETE "https://hub.docker.com/v2/repositories/${REPO}/tags/${tag}" \
-                -H "Authorization: Bearer $TOKEN")
-
-              if [ "$HTTP_CODE" = "204" ]; then
-                echo "    ✓ deleted"
-              else
-                echo "    ✗ failed (HTTP $HTTP_CODE)"
-              fi
-            fi
-          done <<< "$ALL_TAGS"
-
-          echo ""
+          args=(
+            --repository agentbom/agent-bom
+            --repository agentbom/agent-bom-ui
+            --repository agentbom/agent-bom-collector
+            --keep-count "$KEEP_COUNT"
+          )
           if [ "$DRY_RUN" = "true" ]; then
-            echo "DRY RUN: would delete $DELETE_COUNT tags. Re-run with dry_run=false to execute."
-          else
-            echo "Deleted $DELETE_COUNT tags."
+            args+=(--dry-run)
           fi
+          if [ -n "$EXPECTED_DELETE_COUNT" ]; then
+            args+=(--expected-delete-count "$EXPECTED_DELETE_COUNT")
+          fi
+          python3 scripts/dockerhub_tag_cleanup.py "${args[@]}"

@@ -12,6 +12,14 @@ from rich.tree import Tree
 
 from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_rank, severity_worst_first_rank
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
+from agent_bom.output.cis_posture import (
+    ERROR,
+    INCOMPLETE,
+    NOT_EVALUATED,
+    PASS,
+    cis_pass_rate,
+    cis_verdict,
+)
 from agent_bom.output.compact import _coverage_bar, _pct
 from agent_bom.output.finding_views import (
     active_cve_findings,
@@ -1622,6 +1630,14 @@ _SEV_TABLE_STYLE: dict[str, str] = {
 }
 
 
+_CIS_VERDICT_STYLE = {
+    NOT_EVALUATED: "dim",
+    ERROR: "bold red",
+    INCOMPLETE: "bold yellow",
+    PASS: "bold green",
+}
+
+
 def _cis_sev(check: dict) -> str:
     """Normalize a check's severity to a known lowercase band."""
     sev = str(check.get("severity") or "").lower()
@@ -1708,24 +1724,22 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
         errored = [c for c in checks if str(c.get("status")) == "error"]
         actionable = failed + errored
         evaluated = len(failed) + len(passed)
-        pass_rate = bundle.get("pass_rate")
-        if not isinstance(pass_rate, (int, float)):
-            pass_rate = (len(passed) / evaluated * 100) if evaluated else 0.0
+        pass_rate = cis_pass_rate(bundle, checks)
 
         band = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 70 else "red"
 
-        # Verdict driven by the worst failing severity.
-        if errored and not failed:
-            verdict = "[bold red]ERROR[/bold red]"
-        elif errored:
-            verdict = "[bold yellow]INCOMPLETE[/bold yellow]"
-        elif not failed:
-            verdict = "[bold green]PASS[/bold green]"
-        else:
-            worst_check = min(failed, key=lambda c: severity_worst_first_rank(c.get("severity")))
-            worst_band = _SEV_LABEL.get(_cis_sev(worst_check), "LOW")
-            vstyle = {"CRITICAL": "red bold", "HIGH": "#e67e22 bold", "MEDIUM": "yellow", "LOW": "dim"}[worst_band]
-            verdict = f"[{vstyle}]{worst_band} GAPS[/{vstyle}]"
+        # Verdict comes from the one shared derivation so this panel and the
+        # HTML report can never disagree about the same scan.
+        verdict_text = cis_verdict(checks)
+        if verdict_text == NOT_EVALUATED:
+            band = "dim"
+        vstyle = _CIS_VERDICT_STYLE.get(verdict_text) or {
+            "CRITICAL": "red bold",
+            "HIGH": "#e67e22 bold",
+            "MEDIUM": "yellow",
+            "LOW": "dim",
+        }.get(verdict_text.split()[0], "red bold")
+        verdict = f"[{vstyle}]{verdict_text}[/{vstyle}]"
 
         con.print()
         con.print(

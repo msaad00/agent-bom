@@ -25,6 +25,7 @@ from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.graph.severity import normalize_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
     sanitize_command_args,
@@ -628,11 +629,14 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
     for s in agent.mcp_servers:
         all_credentials.extend(s.credential_names)
 
-    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    # Every blast radius lands in exactly one bucket. Advisories with no CVSS
+    # vector normalise to ``unknown``; without an explicit bucket they fell out
+    # of the histogram entirely and the detail page rendered "N vulnerabilities"
+    # beside a 0/0/0/0 strip labelled Clean.
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unrated": 0}
     for br in agent_blast:
-        sev = (br.get("severity") or "").lower()
-        if sev in severity_counts:
-            severity_counts[sev] += 1
+        sev = normalize_severity(br.get("severity"))
+        severity_counts[sev if sev in severity_counts else "unrated"] += 1
 
     fleet_agent = None
     tenant_id = _tenant_id(request)

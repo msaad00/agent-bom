@@ -815,7 +815,12 @@ function AgentDetail({ agentName }: { agentName: string }) {
     high: summary.severity_breakdown.high ?? 0,
     medium: summary.severity_breakdown.medium ?? 0,
     low: summary.severity_breakdown.low ?? 0,
+    unrated: summary.severity_breakdown.unrated ?? 0,
   };
+  // The strip must reconcile with the Vulnerabilities tile beside it: anything
+  // the API could not band still has to be visible, and "Clean" may only show
+  // when there is genuinely nothing to report.
+  const sevTotal = sev.critical + sev.high + sev.medium + sev.low + sev.unrated;
 
   const toggleServer = (name: string) => {
     setExpandedServers((prev) => {
@@ -912,8 +917,16 @@ function AgentDetail({ agentName }: { agentName: string }) {
               {sev.high > 0 && <span className="text-orange-400 font-bold">{sev.high}H</span>}
               {sev.medium > 0 && <span className="text-yellow-400">{sev.medium}M</span>}
               {sev.low > 0 && <span className="text-blue-400">{sev.low}L</span>}
-              {sev.critical + sev.high + sev.medium + sev.low === 0 && (
+              {sev.unrated > 0 && (
+                <span className="text-[color:var(--text-secondary)]" title="Reported with no CVSS severity — not yet rated">
+                  {sev.unrated}U
+                </span>
+              )}
+              {sevTotal === 0 && summary.total_vulnerabilities === 0 && (
                 <span className="text-emerald-400 font-medium">Clean</span>
+              )}
+              {sevTotal === 0 && summary.total_vulnerabilities > 0 && (
+                <span className="text-[color:var(--text-secondary)]">Unrated</span>
               )}
             </div>
           </div>

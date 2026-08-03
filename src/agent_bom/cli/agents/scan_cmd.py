@@ -772,6 +772,16 @@ def scan(
         except Exception:
             pass  # DB not available, will use network
 
+    # ── Fail on an unusable --inventory before paying for anything ───────────
+    # A path that does not exist invalidates the whole scan, and detecting it
+    # costs one stat(). The refresh below is a multi-minute cold-start download
+    # on a machine with no cache, so checking afterwards makes a typo'd path
+    # cost minutes before the CLI admits the file was never there. Only
+    # existence is decided here; format and parse errors still surface from the
+    # loader during discovery, which owns that reporting.
+    if inventory and inventory != "-" and not Path(inventory).exists():
+        raise click.BadParameter(f"Inventory file not found: {inventory}", param_hint="--inventory")
+
     # ── Vuln-data freshness snapshot + auto-refresh ──────────────────────────
     # Single source of truth for "where did the vuln data come from, how old is
     # it, is it stale". Computed once here, surfaced to the user below, and

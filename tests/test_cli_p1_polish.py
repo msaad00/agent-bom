@@ -143,3 +143,26 @@ def test_resolve_output_path_still_rejects_unrelated_extension() -> None:
     with pytest.raises(SystemExit) as exc:
         _resolve_output_path("out.png", "cyclonedx")
     assert exc.value.code == 2
+
+
+def test_missing_inventory_is_reported_before_any_vuln_db_refresh(monkeypatch) -> None:
+    """A bad `--inventory` path must be reported without first refreshing the
+    vuln DB.
+
+    The refresh is a multi-minute cold-start cost; the file check that
+    invalidates it is free. Ordering them the other way makes a typo'd path
+    cost minutes before the CLI admits the file was never there.
+    """
+    import agent_bom.db.sync as db_sync
+    import agent_bom.vuln_freshness as vuln_freshness
+
+    refreshes: list[tuple] = []
+    monkeypatch.setattr(vuln_freshness, "should_refresh", lambda *a, **k: True)
+    monkeypatch.setattr(db_sync, "sync_db", lambda *a, **k: refreshes.append(a))
+
+    result = CliRunner().invoke(main, ["scan", "--inventory", "/tmp/__does_not_exist_agent_bom.json"])
+
+    assert result.exit_code != 0
+    assert "Inventory file not found" in result.output
+    assert refreshes == [], "vuln DB was refreshed before the inventory path was validated"
+    assert "Refreshing local vuln DB" not in result.output

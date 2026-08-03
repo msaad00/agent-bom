@@ -339,6 +339,7 @@ markers = [
     "network: tests that require network access (OSV API)",
     "slow: slow tests (e.g. large-scale perf benchmarks) — opt-in only",
     "live_cluster: tests that require a reachable local Kubernetes cluster (e.g. kind) — opt-in only",
+    "real_vuln_db_sync: test drives sync_db itself; opts out of the autouse no-download patch",
 ]
 
 [tool.mypy]

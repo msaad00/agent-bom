@@ -940,6 +940,7 @@ def test_sync_alpine_secdb_downloads_selected_branches(tmp_db):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.real_vuln_db_sync
 def test_sync_db_single_kev_source(tmp_path):
     """sync_db with sources=['kev'] only calls sync_kev."""
     from agent_bom.db.sync import sync_db
@@ -950,6 +951,7 @@ def test_sync_db_single_kev_source(tmp_path):
     mock_kev.assert_called_once()
 
 
+@pytest.mark.real_vuln_db_sync
 def test_sync_db_single_epss_source(tmp_path):
     """sync_db with sources=['epss'] only calls sync_epss."""
     from agent_bom.db.sync import sync_db
@@ -960,6 +962,7 @@ def test_sync_db_single_epss_source(tmp_path):
     mock_epss.assert_called_once()
 
 
+@pytest.mark.real_vuln_db_sync
 def test_sync_db_single_alpine_source(tmp_path):
     """sync_db with sources=['alpine'] only calls sync_alpine_secdb."""
     from agent_bom.db.sync import sync_db

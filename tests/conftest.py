@@ -44,6 +44,44 @@ os.environ.setdefault(
 os.environ.setdefault("AGENT_BOM_EPHEMERAL_STORE", "1")
 
 
+@pytest.fixture(autouse=True)
+def _no_vuln_db_download(request):
+    """Keep the suite off the network when a CLI scan decides to refresh.
+
+    The suite runs under ``-m "not network"``, but that marker only deselects
+    tests that declare it — it cannot stop a scan from auto-refreshing the vuln
+    DB, which downloads the advisory corpus. With no cache (every CI runner)
+    that cost made three CLI tests the whole job's critical path at 750-990s
+    each.
+
+    Patched at the module attribute rather than via ``AGENT_BOM_VULN_DB_OFFLINE``
+    on purpose: that env var also disables network *enrichment*, so setting it
+    suite-wide silently changes what the NVD/CWE/EPSS paths do. This stops the
+    download and nothing else. ``scan_cmd`` imports ``sync_db`` inside the
+    function, so it resolves this patch; tests that import it directly keep the
+    real one, and tests that patch it themselves still override this. Tests of
+    ``sync_db`` itself opt out with ``@pytest.mark.real_vuln_db_sync``.
+
+    Restores by hand rather than via ``monkeypatch``: requesting that fixture
+    here would construct it before every module-local fixture, moving its
+    env-restoring teardown after theirs. A module that reloads config on
+    teardown would then reload it against environment the test had not yet
+    finished unwinding.
+    """
+    if "real_vuln_db_sync" in request.keywords:
+        yield
+        return
+
+    import agent_bom.db.sync as db_sync
+
+    original = db_sync.sync_db
+    db_sync.sync_db = lambda *a, **k: 0
+    try:
+        yield
+    finally:
+        db_sync.sync_db = original
+
+
 def _reset_runtime_state() -> None:
     # Remove the kill-switch state file between tests so a blocked/CRITICAL
     # state from one test never restores into the next on the same worker.

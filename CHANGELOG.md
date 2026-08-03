@@ -9,6 +9,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `agent-bom scan --inventory <path>` refreshed the entire vulnerability
+  database before checking whether the path existed, so a typo'd inventory
+  cost a full cold-start download — minutes on a machine with no cache —
+  before the CLI reported "Inventory file not found". Existence is now
+  decided first; format and parse errors still surface from the loader.
+
+### Changed
+
+- The test suite no longer downloads the advisory corpus. It already ran under
+  `-m "not network"`, but that marker only deselects tests that declare it and
+  could not stop a CLI scan from going to the network, which made three CLI
+  tests the whole CI job's critical path. Tests that drive `sync_db` itself opt
+  out with `@pytest.mark.real_vuln_db_sync`.
+
 ## [0.98.3] - 2026-08-02
 
 Behaviour changes in this release move numbers you may already be reporting.

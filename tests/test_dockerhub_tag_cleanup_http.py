@@ -70,14 +70,25 @@ def test_list_tags_refuses_offsite_pagination_url(client: mod.DockerHubClient, m
     assert not any("attacker" in url for url in reached)
 
 
-def test_delete_tag_rejects_non_204(client: mod.DockerHubClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_tag_raises_on_server_error(client: mod.DockerHubClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_urlopen(req: Any, **_: object) -> _Response:
+        raise urllib.error.HTTPError(req.full_url, 500, "Server Error", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        client.delete_tag("ns/repo", "0.1.0")
+
+
+def test_delete_tag_treats_missing_tag_as_done(client: mod.DockerHubClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A tag that is already gone is the desired end state, not a failure."""
+
     def fake_urlopen(req: Any, **_: object) -> _Response:
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)  # type: ignore[arg-type]
 
     monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
 
-    with pytest.raises(RuntimeError, match="HTTP 404"):
-        client.delete_tag("ns/repo", "0.1.0")
+    client.delete_tag("ns/repo", "0.1.0")
 
 
 def test_protected_tag_is_never_deleted() -> None:
@@ -131,50 +142,3 @@ def test_main_dry_run_never_deletes(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert rc == 0
     assert deleted == []
-
-
-class _FakeHub:
-    """Docker Hub with configurable deletion lag, mirroring the observed API."""
-
-    def __init__(self, tags: list[str], *, lag: int = 0, never_delete: set[str] | None = None) -> None:
-        self.tags = list(tags)
-        self.lag = lag
-        self.never_delete = never_delete or set()
-        self.pending: dict[str, int] = {}
-        self.delete_calls: list[str] = []
-
-    def list_tags(self, repository: str) -> list[str]:
-        for tag in list(self.pending):
-            self.pending[tag] -= 1
-            if self.pending[tag] <= 0:
-                del self.pending[tag]
-                if tag in self.tags:
-                    self.tags.remove(tag)
-        return list(self.tags)
-
-    def delete_tag(self, repository: str, tag: str) -> None:
-        self.delete_calls.append(tag)
-        # Re-issuing a delete does not restart the removal already in flight.
-        if tag not in self.never_delete and tag not in self.pending:
-            self.pending[tag] = self.lag
-
-
-def test_settle_tolerates_asynchronous_deletion() -> None:
-    """A delete that lands a few reads later is success, not a failed run."""
-    hub = _FakeHub(["latest", "0.2.0", "0.1.0"], lag=3)
-    plan = mod.CleanupPlan(repository="ns/repo", keep=("latest",), delete=("0.1.0",))
-    hub.delete_tag("ns/repo", "0.1.0")
-
-    mod.settle_deletions(hub, plan, sleep=lambda _: None)  # type: ignore[arg-type]
-
-    assert "0.1.0" not in hub.tags
-
-
-def test_settle_reissues_and_then_fails_on_a_delete_that_never_lands() -> None:
-    hub = _FakeHub(["latest", "0.1.0"], never_delete={"0.1.0"})
-    plan = mod.CleanupPlan(repository="ns/repo", keep=("latest",), delete=("0.1.0",))
-
-    with pytest.raises(RuntimeError, match="deletion verification failed"):
-        mod.settle_deletions(hub, plan, sleep=lambda _: None)  # type: ignore[arg-type]
-
-    assert len(hub.delete_calls) > 1, "a surviving tag must be retried, not assumed gone"

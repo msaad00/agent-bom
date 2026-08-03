@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.traversal import iter_discovery_files
+
 logger = logging.getLogger(__name__)
 
 # ─── SPDX identifier extraction ──────────────────────────────────────────────
@@ -286,7 +288,7 @@ def scan_directory(
 
     source_scanned = 0
 
-    for path in sorted(root.rglob("*")):
+    for path in sorted(iter_discovery_files(root)):
         if not path.is_file():
             continue
 

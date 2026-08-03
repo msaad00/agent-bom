@@ -32,6 +32,7 @@ from agent_bom.ai_components.patterns import (
     MODEL_PATTERNS,
     SDK_PATTERNS_BY_LANGUAGE,
 )
+from agent_bom.traversal import is_nested_worktree_root
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,14 @@ def _walk_directory(
     """Walk directory tree, scanning source files."""
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune skip directories in-place
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.endswith(".egg-info")]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _SKIP_DIRS
+            and not d.endswith(".egg-info")
+            # A linked worktree is a second copy of the project.
+            and not is_nested_worktree_root(Path(dirpath) / d)
+        ]
 
         for filename in filenames:
             filepath = Path(dirpath) / filename

@@ -37,6 +37,7 @@ from agent_bom.iac.helm import scan_chart_yaml, scan_values_yaml
 from agent_bom.iac.kubernetes import scan_k8s_manifest
 from agent_bom.iac.models import IaCFinding, ScanContext, ScannerVerdict, ScanResult
 from agent_bom.iac.terraform_security import scan_terraform_security
+from agent_bom.traversal import iter_discovery_files
 
 _DCM_AVAILABLE = True  # dcm.py is on main (#2222 merged)
 
@@ -211,7 +212,7 @@ def scan_iac_with_context(
     from agent_bom.graph.severity import severity_worst_first_rank
 
     walk_root = root_path.parent if explicit_file else root_path
-    walk_paths = [root_path] if explicit_file else sorted(root_path.rglob("*"))
+    walk_paths = [root_path] if explicit_file else sorted(iter_discovery_files(root_path))
     for path in walk_paths:
         if not path.is_file():
             continue

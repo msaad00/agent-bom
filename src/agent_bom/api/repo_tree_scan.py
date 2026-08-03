@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
+from agent_bom.traversal import iter_discovery_files
 
 _WEAK_CRYPTO_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
     ("MD5 hash", re.compile(r"\bhashlib\.md5\b|\bMD5\.new\b|\bmd5\s*\(", re.IGNORECASE), "medium"),
@@ -95,7 +96,7 @@ def _scan_weak_crypto(project: Path) -> WeakCryptoScanResult:
         return result
 
     file_count = 0
-    for file_path in sorted(project.rglob("*")):
+    for file_path in sorted(iter_discovery_files(project, extra_skip_dirs=_WEAK_CRYPTO_SKIP_DIRS)):
         if not file_path.is_file():
             continue
         if any(part in _WEAK_CRYPTO_SKIP_DIRS for part in file_path.parts):

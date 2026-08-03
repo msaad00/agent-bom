@@ -72,6 +72,36 @@ _SECURITY_SEVERITY_SCORE = {
     Severity.UNKNOWN: "0.0",
 }
 
+# ``info`` is the unified findings stream's spelling for "reported, not a
+# problem" — the same thing SARIF calls level ``none``.
+_SEVERITY_LABEL_ALIASES: dict[str, Severity] = {
+    "info": Severity.NONE,
+    "informational": Severity.NONE,
+}
+
+
+def _sarif_severity(label: object) -> tuple[str, str]:
+    """Return ``(level, security-severity)`` for a finding severity label.
+
+    Every result stream in a document resolves severity here. The unified
+    finding, IaC, AI and CIS streams each used to carry an inline copy of these
+    tables keyed by severity string; none of the copies had a ``none`` or
+    ``unknown`` key and they fell back to ``warning`` / ``4.0``, so a finding
+    rated ``none`` — or one the scanner could not rate — reached GitHub code
+    scanning as Medium while the CVE stream in the same document reported it as
+    ``note`` / ``0.0``. An unrecognised label resolves to ``unknown``: unrated
+    is never silently promoted to a rating.
+    """
+    name = str(label or "").strip().lower()
+    severity = _SEVERITY_LABEL_ALIASES.get(name)
+    if severity is None:
+        try:
+            severity = Severity(name)
+        except ValueError:
+            severity = Severity.UNKNOWN
+    return _SARIF_SEVERITY_MAP[severity], _SECURITY_SEVERITY_SCORE[severity]
+
+
 _FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
     "owasp_tags": (
         "owasp-llm-top10",
@@ -385,6 +415,7 @@ _DEDICATED_CIS_BENCHMARKS: tuple[tuple[str, str], ...] = (
     ("snowflake", "snowflake_cis_benchmark_data"),
 )
 _DEDICATED_CIS_PROVIDERS = frozenset(provider for provider, _ in _DEDICATED_CIS_BENCHMARKS)
+
 
 def _finding_artifact_uri(report: AIBOMReport, finding: Finding) -> str:
     """Resolve a SARIF artifact URI from unified finding + report agent inventory."""
@@ -728,8 +759,6 @@ def to_sarif(
         )
 
     # Unified non-CVE findings, including MCP intelligence/blocklist matches.
-    finding_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
-    finding_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
     for finding in apply_workload_runtime_evidence_for_export(list(report.to_findings())):
         if finding.finding_type == FindingType.CVE:
             continue
@@ -752,9 +781,8 @@ def to_sarif(
         # exactly one SARIF result.
         if finding.finding_type == FindingType.CIS_FAIL and evidence.get("iac"):
             continue
-        finding_severity_name = str(finding.severity or "medium").lower()
         rule_id = f"finding/{finding.finding_type.value}"
-        level = finding_sev_map.get(finding_severity_name, "warning")
+        level, security_severity = _sarif_severity(finding.severity or "medium")
         if rule_id not in seen_rule_ids:
             seen_rule_ids.add(rule_id)
             description = _sanitize_scanner_text(
@@ -768,7 +796,7 @@ def to_sarif(
                 "fullDescription": {"text": description},
                 "defaultConfiguration": {"level": level},
                 "properties": {
-                    "security-severity": finding_sev_score.get(finding_severity_name, "4.0"),
+                    "security-severity": security_severity,
                     "source": finding.source.value,
                     "finding_type": finding.finding_type.value,
                 },
@@ -842,12 +870,10 @@ def to_sarif(
     # IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)
     iac_data = getattr(report, "iac_findings_data", None)
     if iac_data:
-        iac_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
-        iac_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
         for iac_finding in iac_data.get("findings", []):
             sev = iac_finding.get("severity", "medium").lower()
             rule_id = f"iac/{iac_finding.get('rule_id', 'unknown')}"
-            level = iac_sev_map.get(sev, "warning")
+            level, security_severity = _sarif_severity(sev)
             file_path = _to_relative_path(iac_finding.get("file_path", "unknown") or "unknown")
             line_num = iac_finding.get("line_number") or 1
 
@@ -864,7 +890,7 @@ def to_sarif(
                     "fullDescription": {"text": description},
                     "defaultConfiguration": {"level": level},
                     "properties": {
-                        "security-severity": iac_sev_score.get(sev, "4.0"),
+                        "security-severity": security_severity,
                         "category": iac_finding.get("category", "iac"),
                         "compliance": iac_finding.get("compliance", []),
                     },
@@ -905,8 +931,6 @@ def to_sarif(
     # AI inventory findings (shadow AI, deprecated models, API keys, invisible Unicode)
     ai_inv = getattr(report, "ai_inventory_data", None)
     if ai_inv:
-        ai_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
-        ai_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
         for comp in ai_inv.get("components", []):
             sev = comp.get("severity", "info")
             if sev not in ("critical", "high", "medium"):
@@ -916,7 +940,7 @@ def to_sarif(
             raw_name = comp.get("name", "")
             name = "[REDACTED]" if comp_type == "api_key" else raw_name
             rule_id = f"ai-inventory/{comp_type}/{name}"
-            level = ai_sev_map.get(sev, "warning")
+            level, security_severity = _sarif_severity(sev)
 
             if rule_id not in seen_rule_ids:
                 seen_rule_ids.add(rule_id)
@@ -930,7 +954,7 @@ def to_sarif(
                     "shortDescription": {"text": sanitize_advisory_text("title", f"{sev.upper()}: {comp_type.replace('_', ' ')} - {name}")},
                     "fullDescription": {"text": description},
                     "defaultConfiguration": {"level": level},
-                    "properties": {"security-severity": ai_sev_score.get(sev, "0.0")},
+                    "properties": {"security-severity": security_severity},
                 }
                 help_body = advisory_help(
                     description,
@@ -966,8 +990,6 @@ def to_sarif(
     # check emits a SARIF result with the structured remediation dict
     # (issue #665) in ``properties.remediation`` so GitHub Code Scanning
     # and downstream SARIF consumers can surface fix guidance per finding.
-    cis_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
-    cis_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
     from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
 
     for cloud_key, data_attr in _DEDICATED_CIS_BENCHMARKS:
@@ -981,7 +1003,7 @@ def to_sarif(
             cis_severity = str(check.get("severity") or "medium").lower()
             check_id = check.get("check_id") or "unknown"
             rule_id = f"cis/{cloud_key}/{check_id}"
-            level = cis_sev_map.get(cis_severity, "warning")
+            level, security_severity = _sarif_severity(cis_severity)
             remediation = check.get("remediation") or {}
             title = check.get("title") or rule_id
             help_uri = sanitize_url(str(remediation.get("docs") or "")) or ""
@@ -1005,7 +1027,7 @@ def to_sarif(
                     "fullDescription": {"text": recommendation},
                     "defaultConfiguration": {"level": level},
                     "properties": {
-                        "security-severity": cis_sev_score.get(cis_severity, "4.0"),
+                        "security-severity": security_severity,
                         "tags": ["cis", cloud_key, "compliance"],
                         "cis_section": check.get("cis_section") or "",
                     },

@@ -20,6 +20,7 @@ from agent_bom.ast_models import (
 from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS
 from agent_bom.ast_signal_utils import check_prompt_risks as _check_prompt_risks
 from agent_bom.ast_signal_utils import classify_prompt_type as _classify_prompt_type
+from agent_bom.ast_signal_utils import is_agent_tool_decorator as _is_agent_tool_decorator
 
 
 # Bounded depth for inter-procedural taint propagation. The taint analyzer
@@ -1010,38 +1011,6 @@ def _analyze_file(
             )
 
     return prompts, guardrails, tools, frameworks, function_analyses, flow_findings
-
-
-# Decorator name segments that actually register a function as an agent tool.
-# Matched per dotted segment so ``@mcp.tool`` and ``@FunctionTool.from_defaults``
-# resolve, while ``@action`` (Django REST) and ``@transaction.atomic`` — which a
-# substring test on "tool"/"action" used to accept — do not.
-_AGENT_TOOL_DECORATOR_SEGMENTS: frozenset[str] = frozenset(
-    {
-        "tool",
-        "tools",
-        "agent_tool",
-        "agenttool",
-        "function_tool",
-        "functiontool",
-        "structuredtool",
-        "basetool",
-        "tool_plugin",
-        "toolnode",
-        "kernel_function",
-        "ai_function",
-        "openai_function",
-        "skill",
-    }
-)
-
-
-def _is_agent_tool_decorator(decorator_name: str) -> bool:
-    """Return True when *decorator_name* marks a function as an agent tool."""
-    for segment in decorator_name.lower().split("."):
-        if segment in _AGENT_TOOL_DECORATOR_SEGMENTS or segment.endswith("_tool"):
-            return True
-    return False
 
 
 def _get_decorator_name(node: ast.expr) -> str | None:

@@ -494,7 +494,10 @@ def test_surface_freshness_targets_the_latest_published_release():
     assert "repos/$GITHUB_REPOSITORY/releases/latest" in workflow
     assert "EXPECTED_VERSION: ${{ steps.expected.outputs.version }}" in workflow
     assert '--expected "$EXPECTED_VERSION"' in workflow
-    assert '--expected-glama-tool-count "${{ steps.expected.outputs.tool_count }}"' in workflow
+    # One shipped tool inventory, so one expectation, fed to every surface that
+    # advertises a tool list. The Glama-specific spelling this used to pin is
+    # still accepted by the script as an alias.
+    assert '--expected-tool-count "${{ steps.expected.outputs.tool_count }}"' in workflow
     assert 'git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json"' in workflow
     assert 'select(.name == "MCP tools")' in workflow
     assert 'METRICS_VERSION" != "$VERSION"' in workflow
@@ -572,13 +575,9 @@ def test_security_scan_npm_installs_use_network_retries():
 def test_postgres_ci_upgrade_checks_preserved_queue_through_scoped_maintenance_role():
     """FORCE RLS must not make the migration-preservation assertion self-contradictory."""
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert ("export AGENT_BOM_POSTGRES_MAINTENANCE_URL='postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_migration'") in workflow
     assert (
-        "export AGENT_BOM_POSTGRES_MAINTENANCE_URL="
-        "'postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_migration'"
-    ) in workflow
-    assert (
-        "PGPASSWORD=maintenancepass PGOPTIONS='-c app.bypass_rls=1' psql "
-        "-h 127.0.0.1 -U agent_bom_maintenance -d agentbom_migration"
+        "PGPASSWORD=maintenancepass PGOPTIONS='-c app.bypass_rls=1' psql -h 127.0.0.1 -U agent_bom_maintenance -d agentbom_migration"
     ) in workflow
     assert (
         "PGPASSWORD=migrationpass psql -h 127.0.0.1 "

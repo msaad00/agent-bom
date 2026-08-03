@@ -37,7 +37,16 @@ _GO_PROMPT_ASSIGN_RE = re.compile(
     """,
     re.VERBOSE | re.IGNORECASE,
 )
-_GO_TOOL_START_RE = re.compile(r"""\b(?:AddTool|RegisterTool|NewTool|Tool)\s*\(""", re.IGNORECASE)
+# A bare ``Tool(`` alternative used to be listed here, but with IGNORECASE it
+# claimed any ordinary call spelled ``inventory.Tool("hammer-42")``. Only the
+# registration verbs stay.
+_GO_TOOL_START_RE = re.compile(r"""\b(?:AddTool|RegisterTool|NewTool)\s*\(""", re.IGNORECASE)
+# github.com/modelcontextprotocol/go-sdk carries the tool name in a composite
+# literal instead of a leading string argument, in both registration forms:
+#   mcp.AddTool(server, &mcp.Tool{Name: "greet"}, SayHi)   // generic function
+#   server.AddTool(&mcp.Tool{Name: "delete_file"}, handler) // method
+_GO_TOOL_LITERAL_RE = re.compile(r"""^&?\s*(?:[A-Za-z_]\w*\s*\.\s*)?Tool\s*\{""")
+_GO_TOOL_LITERAL_NAME_RE = re.compile(r"""\bName\s*:\s*(?P<quote>`|")(?P<name>[^`"]*)(?P=quote)""")
 _GO_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("exec.Command", re.compile(r"\bexec\.Command(?:Context)?\s*\(")),
     ("os.WriteFile", re.compile(r"\bos\.WriteFile\s*\(")),
@@ -366,6 +375,25 @@ def _collect_go_functions(
     return functions
 
 
+def _go_tool_name_from_args(args: Sequence[str]) -> str:
+    """Return the registered tool name from a Go tool-registration argument list.
+
+    Handles both the leading string-literal form used by the community server
+    libraries and the ``&mcp.Tool{Name: "…"}`` composite literal used by the
+    official go-sdk, where the leading argument is the server or the tool struct.
+    """
+    first = args[0]
+    if first and first[0] in {'"', "'", "`"} and first[-1] == first[0]:
+        return first[1:-1]
+    for arg in args:
+        if not _GO_TOOL_LITERAL_RE.match(arg):
+            continue
+        name_match = _GO_TOOL_LITERAL_NAME_RE.search(arg)
+        if name_match:
+            return name_match.group("name")
+    return ""
+
+
 def _collect_go_tool_registrations(
     source: str,
     *,
@@ -377,7 +405,11 @@ def _collect_go_tool_registrations(
     functions: dict[str, _GoFunctionAnalysis],
 ) -> list[_GoToolRegistration]:
     registrations: list[_GoToolRegistration] = []
-    for match in _GO_TOOL_START_RE.finditer(source):
+    # Match on masked source so a registration quoted inside a comment or a
+    # backtick raw string is never reported as a live tool. Masking preserves
+    # offsets, so every span below is still read from the real source.
+    masked = mask_line_comments_and_strings(source, backtick_strings=True)
+    for match in _GO_TOOL_START_RE.finditer(masked):
         open_index = source.find("(", match.start())
         args_segment = _balanced_segment(source, open_index, open_char="(", close_char=")")
         if args_segment is None:
@@ -386,9 +418,7 @@ def _collect_go_tool_registrations(
         args = _split_top_level_args(args_text[1:-1])
         if not args:
             continue
-        tool_name = ""
-        if args[0] and args[0][0] in {'"', "'", "`"} and args[0][-1] == args[0][0]:
-            tool_name = args[0][1:-1]
+        tool_name = _go_tool_name_from_args(args)
         if not tool_name:
             continue
 

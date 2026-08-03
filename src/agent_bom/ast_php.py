@@ -50,6 +50,10 @@ _PHP_TOOL_RE = re.compile(
     r"""->(?:tool|registerTool|addTool)\s*\(\s*['"](?P<name>[^'"]+)['"]""",
     re.IGNORECASE,
 )
+# The official php-sdk (Mcp\Capability\Attribute\McpTool) declares tools with a
+# PHP attribute on the handler method, not with a builder call.
+_PHP_MCP_TOOL_ATTR_RE = re.compile(r"""#\[\s*McpTool\b(?P<args>\s*\((?:[^()]|\([^()]*\))*\))?""")
+_PHP_ATTR_NAME_RE = re.compile(r"""\bname\s*:\s*['"](?P<name>[^'"]*)['"]""", re.IGNORECASE)
 _PHP_HANDLER_ARRAY_RE = re.compile(
     r"""\[\s*\$this\s*,\s*['"](?P<method>\w+)['"]\s*\]""",
     re.IGNORECASE,
@@ -217,6 +221,32 @@ def _collect_php_tool_registrations(
                 tool_name=tool_name,
                 handler_name=handler_name,
                 line_number=_line_number_from_index(source, match.start()),
+                file_path=rel_path,
+                class_name=class_name,
+                import_bindings=dict(bindings),
+            ),
+        )
+
+    for attr_match in _PHP_MCP_TOOL_ATTR_RE.finditer(source):
+        method_match = _PHP_METHOD_RE.search(source, attr_match.end())
+        if not method_match:
+            continue
+        method_name = method_match.group("name")
+        handler_name = _php_method_key(class_name, method_name)
+        if handler_name not in methods:
+            continue
+        declared_name = _PHP_ATTR_NAME_RE.search(attr_match.group("args") or "")
+        tool_name = declared_name.group("name").strip() if declared_name else ""
+        tool_name = tool_name or method_name
+        key = (tool_name, attr_match.start())
+        if key in seen:
+            continue
+        seen.add(key)
+        registrations.append(
+            _PhpToolRegistration(
+                tool_name=tool_name,
+                handler_name=handler_name,
+                line_number=_line_number_from_index(source, attr_match.start()),
                 file_path=rel_path,
                 class_name=class_name,
                 import_bindings=dict(bindings),

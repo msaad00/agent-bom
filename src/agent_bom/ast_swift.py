@@ -124,6 +124,15 @@ _SWIFT_TOOL_RE = re.compile(
     r'\.(?:tool|registerTool|addTool)\s*\(\s*"(?P<name>[^"]+)"',
     re.IGNORECASE,
 )
+# swift-sdk servers return `Tool` values from the ListTools handler rather than
+# calling a registration method, so the name never appears positionally. `Tool`
+# is far too ordinary a type name to key on alone, so this only applies to files
+# that import the SDK's module.
+_SWIFT_TOOL_INIT_RE = re.compile(r"""\bTool\s*\(\s*name:\s*"(?P<name>[^"]+)\"""")
+# The call head alone, for scanning comment/string-masked source where the name
+# literal has been blanked out; the name is then read from the real source.
+_SWIFT_TOOL_INIT_START_RE = re.compile(r"""\bTool\s*\(\s*name:\s*""")
+_SWIFT_MCP_MODULES = frozenset({"MCP", "ModelContextProtocol"})
 _SWIFT_HANDLER_RE = re.compile(
     r'\.(?:tool|registerTool|addTool)\s*\(\s*"[^"]+"\s*,\s*(?P<handler>\w+)',
     re.IGNORECASE,
@@ -352,6 +361,30 @@ def _collect_swift_tool_registrations(
                 import_bindings=dict(bindings),
             ),
         )
+
+    if not _SWIFT_MCP_MODULES.isdisjoint(match.group("module") for match in _SWIFT_IMPORT_RE.finditer(source)):
+        masked = mask_line_comments_and_strings(source)
+        for match in _SWIFT_TOOL_INIT_START_RE.finditer(masked):
+            name_match = _SWIFT_TOOL_INIT_RE.match(source, match.start())
+            tool_name = name_match.group("name").strip() if name_match else ""
+            if not tool_name:
+                continue
+            key = (tool_name, match.start())
+            if key in seen:
+                continue
+            seen.add(key)
+            registrations.append(
+                _SwiftToolRegistration(
+                    tool_name=tool_name,
+                    # The CallTool handler dispatches on the name; there is no
+                    # per-tool function to bind here.
+                    handler_name=f"tool:{tool_name}",
+                    line_number=_line_number_from_index(source, match.start()),
+                    file_path=rel_path,
+                    scope_name=scope_name,
+                    import_bindings=dict(bindings),
+                ),
+            )
     return registrations
 
 

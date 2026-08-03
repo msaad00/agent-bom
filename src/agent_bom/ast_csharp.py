@@ -63,7 +63,12 @@ _CS_CALL_SKIP = frozenset(
     }
 )
 _CS_ADD_TOOL_RE = re.compile(r'\.AddTool\s*\(\s*"(?P<name>[^"]+)"', re.IGNORECASE)
-_CS_MCP_TOOL_ATTR_RE = re.compile(r"\[\s*McpServerTool(?:\s*\([^)]*\))?\s*\]", re.IGNORECASE)
+# The official csharp-sdk samples combine attributes in one bracket group
+# (``[McpServerTool, Description("…")]``), so the whole group is matched and the
+# marker is required as a whole word -- ``[McpServerToolType]`` marks the class,
+# not a tool, and must not match.
+_CS_MCP_TOOL_ATTR_RE = re.compile(r"\[[^\[\]]*\bMcpServerTool\b[^\[\]]*\]", re.IGNORECASE)
+_CS_ATTR_NAME_RE = re.compile(r"""\bName\s*=\s*"(?P<name>[^"]*)\"""")
 _CS_LOCAL_BINDING_RE = re.compile(r"\b(?P<type>[\w.]+)\s+(?P<var>[a-z]\w*)\s*=\s*new\s+(?P<ctor>[\w.]+)")
 _CS_FRAMEWORK_HINTS: dict[str, str] = {
     "modelcontextprotocol": "MCP",
@@ -247,7 +252,11 @@ def _collect_csharp_tool_registrations(
         if not method_match:
             continue
         method_name = method_match.group("name")
-        tool_name = method_name
+        # ``[McpServerTool(Name = "weather_ui")]`` renames the wire-level tool;
+        # the method name is only the fallback.
+        declared_name = _CS_ATTR_NAME_RE.search(attr_match.group(0))
+        tool_name = declared_name.group("name").strip() if declared_name else ""
+        tool_name = tool_name or method_name
         registration_key = (tool_name, attr_match.start())
         if registration_key in seen:
             continue

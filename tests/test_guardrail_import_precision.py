@@ -58,6 +58,19 @@ def test_submodule_imports_still_resolve_to_their_vendor(tmp_path: Path, source:
 @pytest.mark.parametrize(
     "source",
     [
+        "import guardrails, os\n",
+        "import os, guardrails\n",
+        "import os, guardrails, sys\n",
+    ],
+)
+def test_a_guardrail_import_is_found_wherever_it_sits_in_the_alias_list(tmp_path: Path, source: str) -> None:
+    """``import a, b`` binds every alias; only the last one was inspected."""
+    assert _guardrails(tmp_path, source) == [("Guardrails AI", "content_filter")]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "from app.guardrails_config import RAILS\n",
         "from myproject.guardrails import policy\n",
         "import rebuff_stubs\n",

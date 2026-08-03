@@ -73,11 +73,10 @@ _SECURITY_SEVERITY_SCORE = {
 }
 
 # ``info`` is the unified findings stream's spelling for "reported, not a
-# problem" — the same thing SARIF calls level ``none``.
-_SEVERITY_LABEL_ALIASES: dict[str, Severity] = {
-    "info": Severity.NONE,
-    "informational": Severity.NONE,
-}
+# problem" — the same thing SARIF calls level ``none``. Every other label is
+# read the way ``graph.severity.normalize_severity`` reads it, which is what
+# ``Finding.__post_init__`` has already applied to anything in that stream.
+_SARIF_INFO_LABELS = frozenset({"info", "informational"})
 
 
 def _sarif_severity(label: object) -> tuple[str, str]:
@@ -93,12 +92,12 @@ def _sarif_severity(label: object) -> tuple[str, str]:
     is never silently promoted to a rating.
     """
     name = str(label or "").strip().lower()
-    severity = _SEVERITY_LABEL_ALIASES.get(name)
-    if severity is None:
-        try:
-            severity = Severity(name)
-        except ValueError:
-            severity = Severity.UNKNOWN
+    if name in _SARIF_INFO_LABELS:
+        return _SARIF_SEVERITY_MAP[Severity.NONE], _SECURITY_SEVERITY_SCORE[Severity.NONE]
+    try:
+        severity = Severity(name)
+    except ValueError:
+        severity = Severity.UNKNOWN
     return _SARIF_SEVERITY_MAP[severity], _SECURITY_SEVERITY_SCORE[severity]
 
 

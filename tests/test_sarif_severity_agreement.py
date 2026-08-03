@@ -18,7 +18,7 @@ import pytest
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulnerability
-from agent_bom.output.sarif import to_sarif
+from agent_bom.output.sarif import _SARIF_SEVERITY_MAP, _SECURITY_SEVERITY_SCORE, to_sarif
 
 SEVERITIES = ["critical", "high", "medium", "low", "none", "unknown"]
 
@@ -86,6 +86,26 @@ def test_every_result_stream_agrees_on_one_severity(severity: str) -> None:
     verdicts = {"cve": _verdict(cve), "unified": _verdict(unified), "iac": _verdict(iac)}
 
     assert len(set(verdicts.values())) == 1, verdicts
+
+
+@pytest.mark.parametrize("label", ["info", "informational"])
+def test_informational_findings_render_as_sarif_level_none(label: str) -> None:
+    """``info`` is the unified stream's spelling for SARIF level ``none``."""
+    report = AIBOMReport()
+    report.findings = [
+        Finding(
+            finding_type=FindingType.CIS_ERROR,
+            source=FindingSource.CLOUD_SECURITY,
+            asset=_asset(),
+            severity=label,
+            title="t",
+            id=f"unified-{label}",
+        )
+    ]
+
+    rules = {rule["id"]: rule for rule in to_sarif(report)["runs"][0]["tool"]["driver"]["rules"]}
+
+    assert _verdict(rules["finding/CIS_ERROR"]) == (_SARIF_SEVERITY_MAP[Severity.NONE], _SECURITY_SEVERITY_SCORE[Severity.NONE])
 
 
 @pytest.mark.parametrize("severity", ["none", "unknown"])

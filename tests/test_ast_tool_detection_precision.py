@@ -7,11 +7,29 @@ the matching decorator was computed but never emitted.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
 
+from agent_bom.ai_components.framework_agents import _collect_tools
 from agent_bom.ast_analyzer import analyze_project
+from agent_bom.python_agents import _extract_agent_defs
+
+# An agent definition, so the third detector's decorator-resolved tools have
+# somewhere to surface. Its tool table is local to the extraction pass.
+AGENT_HARNESS = """
+from langchain.agents import AgentExecutor
+
+agent = AgentExecutor(tools=[handler])
+"""
+
+
+def _python_agent_tool_names(source: str) -> set[str]:
+    """Tools the python_agents detector resolved from a decorator, at high confidence."""
+    defs = _extract_agent_defs(source + AGENT_HARNESS, "mod.py")
+    return {name for d in defs for name, kind, confidence in d.tools if kind == "decorator" and confidence == "high"}
+
 
 DJANGO_VIEWSET = '''
 from rest_framework import viewsets
@@ -85,3 +103,91 @@ def test_emitted_tool_carries_the_decorator_that_matched(tmp_path: Path) -> None
     entry = next(t for t in payload["tools"] if t["name"] == "search_docs")
 
     assert entry["decorators"] == ["tool"]
+
+
+def test_pydantic_ai_tool_plain_is_still_an_agent_tool(tmp_path: Path) -> None:
+    """``@agent.tool_plain`` is pydantic-ai's decorator for tools taking no RunContext.
+
+    Tightening the substring match to whole dotted segments dropped it, which
+    turns a real agent tool invisible — a worse failure than the false positive
+    the tightening was fixing.
+    """
+    (tmp_path / "tools.py").write_text("@agent.tool_plain\ndef roll_die() -> str:\n    '''Roll a die.'''\n")
+
+    assert _tool_names(tmp_path) == {"roll_die"}
+
+
+# The framework-agent scanner is a second, independent tool detector. It carried
+# the same ``action`` false positive, and additionally never resolved the applied
+# decorator form ``@mcp.tool()`` because the name helper returned "" for a Call —
+# so the canonical FastMCP tool decorator registered nothing at all.
+AGENT_TOOL_DECORATORS = [
+    "@tool",
+    "@tool('search')",
+    "@mcp.tool()",
+    "@function_tool",
+    "@function_tool()",
+    "@agent.tool",
+    "@agent.tool_plain",
+    "@kernel_function",
+    "@FunctionTool.from_defaults",
+]
+
+NON_AGENT_DECORATORS = [
+    "@action",
+    "@action(detail=True)",
+    "@transaction.atomic",
+    "@celery_app.task",
+    "@app.route('/x')",
+    "@property",
+    "@staticmethod",
+    "@pytest.fixture",
+]
+
+
+@pytest.mark.parametrize("decorator", AGENT_TOOL_DECORATORS)
+def test_framework_scanner_collects_agent_tool_decorators(decorator: str) -> None:
+    tree = ast.parse(f"{decorator}\ndef handler(query: str) -> str:\n    '''d'''\n")
+
+    assert set(_collect_tools(tree)) == {"handler"}
+
+
+@pytest.mark.parametrize("decorator", NON_AGENT_DECORATORS)
+def test_framework_scanner_ignores_non_agent_decorators(decorator: str) -> None:
+    tree = ast.parse(f"{decorator}\ndef handler(self, request):\n    pass\n")
+
+    assert _collect_tools(tree) == {}
+
+
+@pytest.mark.parametrize("decorator", AGENT_TOOL_DECORATORS)
+def test_agent_scanner_collects_agent_tool_decorators(decorator: str) -> None:
+    source = f"{decorator}\ndef handler(query: str) -> str:\n    '''d'''\n"
+
+    assert "handler" in _python_agent_tool_names(source)
+
+
+@pytest.mark.parametrize("decorator", NON_AGENT_DECORATORS)
+def test_agent_scanner_ignores_non_agent_decorators(decorator: str) -> None:
+    source = f"{decorator}\ndef handler(self, request):\n    pass\n"
+
+    assert "handler" not in _python_agent_tool_names(source)
+
+
+@pytest.mark.parametrize("decorator", AGENT_TOOL_DECORATORS + NON_AGENT_DECORATORS)
+def test_all_three_tool_detectors_agree(tmp_path: Path, decorator: str) -> None:
+    """Three separate detectors decide this. They must not disagree.
+
+    Two of them were fixed independently and drifted apart; asserting the
+    agreement is what stops the next fix from landing in only one of them.
+    """
+    source = f"{decorator}\ndef handler(query: str) -> str:\n    '''d'''\n"
+    (tmp_path / "mod.py").write_text(source)
+    tree = ast.parse(source)
+
+    verdicts = {
+        "ast": bool(_tool_names(tmp_path)),
+        "framework": bool(_collect_tools(tree)),
+        "agents": "handler" in _python_agent_tool_names(source),
+    }
+
+    assert len(set(verdicts.values())) == 1, verdicts

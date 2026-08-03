@@ -38,6 +38,7 @@ import re
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from agent_bom.ast_signal_utils import is_agent_tool_decorator
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 from agent_bom.traversal import iter_discovery_files
 
@@ -218,6 +219,13 @@ def _call_name(node: ast.AST) -> str:
     return ""
 
 
+def _decorator_name(node: ast.AST) -> str:
+    """Dotted name of a decorator, unwrapping the applied form ``@mcp.tool()``."""
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
+    return _call_name(node)
+
+
 def _keyword_value(node: ast.Call, name: str) -> ast.AST | None:
     for kw in node.keywords:
         if kw.arg == name:
@@ -391,8 +399,7 @@ def _extract_agent_defs(content: str, filename: str) -> list[_PythonAgentDef]:
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for decorator in node.decorator_list:
-                decorator_name = _call_name(decorator).split(".")[-1]
-                if decorator_name in {"function_tool", "tool", "skill", "action"}:
+                if is_agent_tool_decorator(_decorator_name(decorator)):
                     tool_values[node.name] = (node.name, "decorator", "high")
                     break
 

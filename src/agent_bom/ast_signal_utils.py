@@ -37,6 +37,7 @@ def _balanced_segment(source: str, open_index: int, *, open_char: str, close_cha
                 return source[open_index : index + 1], index + 1
     return None
 
+
 _GUARDRAIL_CALL_PATTERNS = re.compile(
     r"\b(?:content_filter|safety_check|moderate|moderation|validate_input|"
     r"validate_output|check_toxicity|check_bias|filter_response|sanitize|"
@@ -51,6 +52,40 @@ _PROMPT_RISK_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("data_exfil_instruction", re.compile(r"\b(?:send|forward|transmit|upload)\s+(?:data|results|output|findings)\s+to\b", re.IGNORECASE)),
     ("no_safety", re.compile(r"\b(?:bypass|skip|ignore|disable)\s+(?:safety|security|guardrail|filter|moderation)\b", re.IGNORECASE)),
 ]
+
+
+# Decorator name segments that actually register a function as an agent tool.
+# Matched per dotted segment so ``@mcp.tool``, ``@agent.tool_plain`` and
+# ``@FunctionTool.from_defaults`` resolve, while ``@action`` (Django REST) and
+# ``@transaction.atomic`` — which a substring test on "tool"/"action" used to
+# accept — do not.
+AGENT_TOOL_DECORATOR_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "tool",
+        "tools",
+        "tool_plain",
+        "agent_tool",
+        "agenttool",
+        "function_tool",
+        "functiontool",
+        "structuredtool",
+        "basetool",
+        "tool_plugin",
+        "toolnode",
+        "kernel_function",
+        "ai_function",
+        "openai_function",
+        "skill",
+    }
+)
+
+
+def is_agent_tool_decorator(decorator_name: str) -> bool:
+    """Return True when *decorator_name* marks a function as an agent tool."""
+    for segment in decorator_name.lower().split("."):
+        if segment in AGENT_TOOL_DECORATOR_SEGMENTS or segment.endswith("_tool"):
+            return True
+    return False
 
 
 def check_prompt_risks(text: str) -> list[str]:

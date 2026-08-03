@@ -52,7 +52,7 @@ def extract_gcp_storage_source_packages(
     if not eco or not bucket or not obj:
         return []
     try:
-        from google.cloud import storage
+        from google.cloud import storage  # type: ignore[attr-defined]  # google.cloud namespace package
     except ImportError:
         warnings.append("google-cloud-storage not installed; skipping GCS source archive parse.")
         return []

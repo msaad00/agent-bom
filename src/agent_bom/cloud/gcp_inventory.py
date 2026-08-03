@@ -372,7 +372,7 @@ def discover_inventory(
         return empty
 
     try:
-        from google.cloud import storage  # noqa: F401
+        from google.cloud import storage  # type: ignore[attr-defined]  # google.cloud namespace package  # noqa: F401
     except ImportError:
         return {
             **empty,
@@ -582,7 +582,7 @@ def _discover_buckets(
     become ``DATA_STORE``-signalling nodes so DSPM and exposure overlays apply.
     """
     try:
-        from google.cloud import storage
+        from google.cloud import storage  # type: ignore[attr-defined]  # google.cloud namespace package
     except ImportError:
         warnings.append("google-cloud-storage not installed. Skipping GCS bucket inventory.")
         return []
@@ -1487,8 +1487,8 @@ def _discover_load_balancers(
     backends_by_policy: dict[str, list[str]] = {}
 
     try:
-        client = compute_v1.BackendServicesClient(credentials=credentials)
-        for _scope, scoped_list in client.aggregated_list(project=project_id):
+        backend_services_client = compute_v1.BackendServicesClient(credentials=credentials)
+        for _scope, scoped_list in backend_services_client.aggregated_list(project=project_id):
             for backend in getattr(scoped_list, "backend_services", None) or []:
                 name = str(getattr(backend, "name", "") or "").strip()
                 if not name:
@@ -1520,8 +1520,8 @@ def _discover_load_balancers(
         )
 
     try:
-        client = compute_v1.UrlMapsClient(credentials=credentials)
-        for url_map in client.list(project=project_id):
+        url_maps_client = compute_v1.UrlMapsClient(credentials=credentials)
+        for url_map in url_maps_client.list(project=project_id):
             name = str(getattr(url_map, "name", "") or "").strip()
             if not name:
                 continue
@@ -1547,8 +1547,8 @@ def _discover_load_balancers(
         )
 
     try:
-        client = compute_v1.ForwardingRulesClient(credentials=credentials)
-        for _scope, scoped_list in client.aggregated_list(project=project_id):
+        forwarding_rules_client = compute_v1.ForwardingRulesClient(credentials=credentials)
+        for _scope, scoped_list in forwarding_rules_client.aggregated_list(project=project_id):
             for rule in getattr(scoped_list, "forwarding_rules", None) or []:
                 name = str(getattr(rule, "name", "") or "").strip()
                 if not name:
@@ -1590,8 +1590,8 @@ def _discover_target_proxies(
 
     proxies: list[dict[str, Any]] = []
     try:
-        client = compute_v1.TargetHttpProxiesClient(credentials=credentials)
-        for proxy in client.list(project=project_id):
+        http_proxies_client = compute_v1.TargetHttpProxiesClient(credentials=credentials)
+        for proxy in http_proxies_client.list(project=project_id):
             name = str(getattr(proxy, "name", "") or "").strip()
             if not name:
                 continue
@@ -1617,8 +1617,8 @@ def _discover_target_proxies(
         )
 
     try:
-        client = compute_v1.TargetHttpsProxiesClient(credentials=credentials)
-        for proxy in client.list(project=project_id):
+        https_proxies_client = compute_v1.TargetHttpsProxiesClient(credentials=credentials)
+        for proxy in https_proxies_client.list(project=project_id):
             name = str(getattr(proxy, "name", "") or "").strip()
             if not name:
                 continue
@@ -1957,7 +1957,7 @@ def _discover_pubsub_topics(
 ) -> list[dict[str, Any]]:
     """Enumerate every Pub/Sub topic in the project (read-only)."""
     try:
-        from google.cloud import pubsub_v1
+        from google.cloud import pubsub_v1  # type: ignore[attr-defined]  # google.cloud namespace package
     except ImportError:
         warnings.append("google-cloud-pubsub not installed. Skipping Pub/Sub topic inventory.")
         return []

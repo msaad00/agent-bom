@@ -1796,7 +1796,7 @@ def _discover_private_endpoints(
     endpoints: list[dict[str, Any]] = []
     try:
         client = NetworkManagementClient(credential, subscription_id)
-        for pe in client.private_endpoints.list_all():
+        for pe in client.private_endpoints.list_by_subscription():
             pe_id = str(getattr(pe, "id", "") or "")
             name = str(getattr(pe, "name", "") or "").strip()
             if not name:

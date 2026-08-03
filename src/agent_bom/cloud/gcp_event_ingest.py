@@ -448,7 +448,7 @@ def consume_gcp_events(
 
     if subscriber_client is None:
         try:
-            from google.cloud import pubsub_v1
+            from google.cloud import pubsub_v1  # type: ignore[attr-defined]  # google.cloud namespace package
         except ImportError:
             summary["status"] = "sdk_missing"
             return summary

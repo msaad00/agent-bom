@@ -248,7 +248,7 @@ class _FakeRouteTableOps:
 
 
 class _FakePrivateEndpointOps:
-    def list_all(self) -> list[Any]:
+    def list_by_subscription(self) -> list[Any]:
         return [
             _Obj(
                 name="pe-sql",

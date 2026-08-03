@@ -982,7 +982,7 @@ def _default_azure_blob_service(secret: str | None, account_url: str) -> Any:
 
 def _default_gcs_client(secret: str | None) -> Any:
     try:
-        from google.cloud import storage
+        from google.cloud import storage  # type: ignore[attr-defined]  # google.cloud namespace package
     except ImportError as exc:  # pragma: no cover - optional extra
         raise ExportDestinationError("GCS export requires google-cloud-storage; install with: pip install 'agent-bom[gcp]'") from exc
     if secret:

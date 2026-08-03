@@ -239,3 +239,40 @@ def test_extra_gated_sdk_import_executes(group: Group) -> None:
         version = getattr(installed, "__version__", "unknown")
         joined = "\n  ".join(errors)
         pytest.fail(f"{group.file}:{group.lineno} against {group.top}=={version}:\n  {joined}")
+
+
+# ── Client operations, not just import symbols ──────────────────────────────
+#
+# The scrape above proves a name still resolves at its import path. It cannot
+# prove that the *operation* we then call exists on the client, and that is a
+# second, equally silent failure mode: the call raises AttributeError into a
+# broad `except`, so discovery reports a warning and finds nothing while CI
+# stays green. Two shipped examples, both caught only by running mypy with the
+# cloud extras installed:
+#
+#   * `NetworkManagementClient.private_endpoints.list_all` — never existed;
+#     the real name is `list_by_subscription`. Private endpoints were never
+#     inventoried.
+#   * `MachineLearningServicesMgmtClient.online_endpoints` — absent from every
+#     stable release. Online endpoints live on `azure.ai.ml.MLClient`.
+#
+# Hand-maintained on purpose: it lists the operations agent-bom actually
+# depends on, so adding a new SDK call means declaring it here.
+_OPERATION_CONTRACTS = [
+    ("azure.mgmt.network.operations", "PrivateEndpointsOperations", "list_by_subscription"),
+    ("azure.mgmt.network.operations", "PrivateEndpointsOperations", "list"),
+    ("azure.ai.ml", "MLClient", "online_endpoints"),
+    ("azure.ai.ml", "MLClient", "online_deployments"),
+    ("azure.ai.ml.operations", "OnlineEndpointOperations", "list"),
+    ("azure.ai.ml.operations", "OnlineDeploymentOperations", "list"),
+]
+
+
+@pytest.mark.parametrize(("module_path", "symbol", "attribute"), _OPERATION_CONTRACTS)
+def test_sdk_client_operation_exists(module_path: str, symbol: str, attribute: str) -> None:
+    """The operation agent-bom calls must exist on the installed SDK type."""
+    module = pytest.importorskip(module_path)
+    owner = getattr(module, symbol, None)
+    assert owner is not None, f"{module_path} no longer exports {symbol}"
+    version = getattr(importlib.import_module(module_path.split(".")[0]), "__version__", "unknown")
+    assert hasattr(owner, attribute), f"{symbol}.{attribute} missing (installed {module_path.split('.')[0]}=={version}) — agent-bom calls it"

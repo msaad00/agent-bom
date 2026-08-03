@@ -716,6 +716,20 @@ def _discover_ml_endpoints(
         )
         return agents, warnings
 
+    # Workspaces are a control-plane resource and stay on the mgmt SDK, but
+    # online endpoints and their deployments moved to the v2 plane: no stable
+    # release of azure-mgmt-machinelearningservices exposes them, so reading
+    # them through that client found nothing and reported a warning per
+    # workspace. MLClient is scoped to one workspace, hence the per-workspace
+    # construction below.
+    try:
+        from azure.ai.ml import MLClient
+    except ImportError:
+        warnings.append(
+            "azure-ai-ml not installed. Skipping ML endpoint discovery. Install with: pip install azure-ai-ml"
+        )
+        return agents, warnings
+
     try:
         client = MachineLearningServicesMgmtClient(credential, subscription_id)
 
@@ -731,21 +745,27 @@ def _discover_ml_endpoints(
             rg_name = rg_parts[1].split("/")[0]
 
             try:
-                for endpoint in client.online_endpoints.list(rg_name, ws_name):
+                ml_client = MLClient(
+                    credential=credential,
+                    subscription_id=subscription_id,
+                    resource_group_name=rg_name,
+                    workspace_name=ws_name,
+                )
+                for endpoint in ml_client.online_endpoints.list():
                     ep_name = endpoint.name or "unknown"
-                    ep_id = endpoint.id or f"azure://ml/{ws_name}/{ep_name}"
+                    ep_id = getattr(endpoint, "id", "") or f"azure://ml/{ws_name}/{ep_name}"
                     endpoint_location = getattr(endpoint, "location", "") or getattr(ws, "location", "") or ""
-                    properties = getattr(endpoint, "properties", None)
-                    scoring_uri = getattr(properties, "scoring_uri", "") if properties else ""
+                    # v2 entities expose these flat; the mgmt shapes nested them
+                    # under ``.properties``.
+                    scoring_uri = getattr(endpoint, "scoring_uri", "") or ""
 
                     # List deployments under this endpoint
                     deploy_meta: list[dict[str, str]] = []
                     try:
-                        for deployment in client.online_deployments.list(rg_name, ws_name, ep_name):
+                        for deployment in ml_client.online_deployments.list(endpoint_name=ep_name):
                             d_name = deployment.name or "unknown"
-                            d_props = getattr(deployment, "properties", None)
-                            model_id = getattr(d_props, "model", "") if d_props else ""
-                            instance_type = getattr(d_props, "instance_type", "") if d_props else ""
+                            model_id = str(getattr(deployment, "model", "") or "")
+                            instance_type = str(getattr(deployment, "instance_type", "") or "")
                             deploy_meta.append(
                                 {
                                     "deployment": d_name,

@@ -320,25 +320,40 @@ def test_ml_endpoint_scope_persists_workspace_context():
         id="/subscriptions/sub/resourceGroups/rg-ml/providers/Microsoft.MachineLearningServices/workspaces/ml-ws",
         location="westus2",
     )
+    # v2 entities expose scoring_uri / model / instance_type flat; the mgmt
+    # shapes nested them under ``.properties``.
     endpoint = SimpleNamespace(
         name="prod-endpoint",
         id="/subscriptions/sub/resourceGroups/rg-ml/providers/Microsoft.MachineLearningServices/workspaces/ml-ws/onlineEndpoints/prod-endpoint",
         location="westus2",
-        properties=SimpleNamespace(scoring_uri="https://prod-endpoint.westus2.inference.ml.azure.com/score"),
+        scoring_uri="https://prod-endpoint.westus2.inference.ml.azure.com/score",
     )
     deployment = SimpleNamespace(
         name="blue",
-        properties=SimpleNamespace(model="azureml://registries/models/fraud-detector/versions/7", instance_type="Standard_DS3_v2"),
+        model="azureml://registries/models/fraud-detector/versions/7",
+        instance_type="Standard_DS3_v2",
     )
 
     mock_client = MagicMock()
     mock_client.workspaces.list_by_subscription.return_value = [workspace]
-    mock_client.online_endpoints.list.return_value = [endpoint]
-    mock_client.online_deployments.list.return_value = [deployment]
     mock_sdk.MachineLearningServicesMgmtClient.return_value = mock_client
 
-    with patch.dict(sys.modules, {"azure.mgmt.machinelearningservices": mock_sdk}):
+    mock_ml_client = MagicMock()
+    mock_ml_client.online_endpoints.list.return_value = [endpoint]
+    mock_ml_client.online_deployments.list.return_value = [deployment]
+    mock_ai_ml = MagicMock()
+    mock_ai_ml.MLClient.return_value = mock_ml_client
+
+    with patch.dict(sys.modules, {"azure.mgmt.machinelearningservices": mock_sdk, "azure.ai.ml": mock_ai_ml}):
         agents, warnings = _discover_ml_endpoints(MagicMock(), "sub")
+
+    # The endpoint listing is workspace-scoped, so MLClient must be built per
+    # workspace with that workspace's resource group.
+    _, ml_kwargs = mock_ai_ml.MLClient.call_args
+    assert ml_kwargs["resource_group_name"] == "rg-ml"
+    assert ml_kwargs["workspace_name"] == "ml-ws"
+    assert ml_kwargs["subscription_id"] == "sub"
+    mock_ml_client.online_deployments.list.assert_called_once_with(endpoint_name="prod-endpoint")
 
     assert warnings == []
     assert len(agents) == 1

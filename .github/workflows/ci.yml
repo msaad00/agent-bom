@@ -409,7 +409,10 @@ jobs:
 
       - name: Install dependencies
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
-        run: uv sync --frozen --extra dev
+        # Cloud extras are installed so mypy can resolve the provider SDKs. Without
+        # them --ignore-missing-imports silences every cloud type error, which is how
+        # two calls to SDK methods that do not exist shipped and stayed green.
+        run: uv sync --frozen --extra dev --extra aws --extra azure --extra gcp
 
       - name: Ruff
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'

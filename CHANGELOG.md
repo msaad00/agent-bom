@@ -11,6 +11,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Azure private-endpoint inventory called `private_endpoints.list_all()`, which
+  exists on no release of `azure-mgmt-network`. The call raised into a broad
+  `except`, so the scan reported a warning and inventoried nothing. It now uses
+  `list_by_subscription()`.
+- Azure ML online-endpoint discovery read `online_endpoints` /
+  `online_deployments` off the management client. Those moved to the v2 control
+  plane and are absent from every stable `azure-mgmt-machinelearningservices`
+  release, so no endpoint was ever discovered. Discovery now uses `MLClient`
+  from `azure-ai-ml`, scoped per workspace.
+
+### Changed
+
+- The type-check CI job installs the cloud extras. Without them
+  `--ignore-missing-imports` silenced every provider-SDK type error, which is
+  how both calls above shipped green. A companion guard asserts that each SDK
+  operation the scanners call exists on the installed client type.
+
+### Fixed
+
 - `agent-bom scan --inventory <path>` refreshed the entire vulnerability
   database before checking whether the path existed, so a typo'd inventory
   cost a full cold-start download — minutes on a machine with no cache —

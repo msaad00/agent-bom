@@ -256,6 +256,9 @@ class GovernanceReport:
                     "columns": r.columns,
                     "operation": r.operation,
                     "is_write": r.is_write,
+                    # A view reads as one innocuous object name; the base
+                    # objects are the data actually touched.
+                    "base_objects": r.base_objects,
                 }
                 for r in self.access_records
             ],
@@ -267,6 +270,10 @@ class GovernanceReport:
                     "granted_on": g.granted_on,
                     "object_name": g.object_name,
                     "is_elevated": g.is_elevated,
+                    # WITH GRANT OPTION lets the grantee re-delegate this
+                    # privilege — the escalation primitive, not a detail.
+                    "grant_option": g.grant_option,
+                    "granted_by": g.granted_by,
                 }
                 for g in self.privilege_grants
             ],

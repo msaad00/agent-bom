@@ -107,3 +107,50 @@ def test_secret_scan_to_dict_stays_quiet_on_a_complete_scan(tmp_path: Path):
     (tmp_path / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
     payload = scan_secrets(str(tmp_path)).to_dict()
     assert payload["warnings"] == []
+
+
+# ── Snowflake governance: escalation and lineage signals never leave the report
+
+
+def _governance_report():
+    from agent_bom.governance import AccessRecord, GovernanceReport, PrivilegeGrant
+
+    report = GovernanceReport(account="acct-1", discovered_at="2026-08-01T00:00:00Z")
+    report.privilege_grants = [
+        PrivilegeGrant(
+            grantee="ANALYST",
+            grantee_type="ROLE",
+            privilege="SELECT",
+            granted_on="TABLE",
+            object_name="DB.PII.CUSTOMERS",
+            granted_by="SECURITYADMIN",
+            grant_option=True,
+        )
+    ]
+    report.access_records = [
+        AccessRecord(
+            query_id="q-1",
+            user_name="SVC_AGENT",
+            role_name="ANALYST",
+            query_start="2026-08-01T00:00:00Z",
+            object_name="DB.PUBLIC.SAFE_VIEW",
+            object_type="VIEW",
+            base_objects=["DB.PII.CUSTOMERS", "DB.PII.CARDS"],
+        )
+    ]
+    return report
+
+
+def test_governance_report_surfaces_the_regrant_right():
+    """WITH GRANT OPTION is the escalation primitive — it must be visible."""
+    grant = _governance_report().to_dict()["privilege_grants"][0]
+    assert grant["grant_option"] is True, "a grantee that can re-delegate SELECT on a PII table serializes identically to one that cannot"
+    assert grant["granted_by"] == "SECURITYADMIN"
+
+
+def test_governance_report_surfaces_view_base_object_lineage():
+    """A benign-looking view that fans out to PII must not serialize as benign."""
+    record = _governance_report().to_dict()["access_records"][0]
+    assert record["base_objects"] == ["DB.PII.CUSTOMERS", "DB.PII.CARDS"], (
+        "the view's underlying objects are dropped, so the data actually touched is invisible to any lineage or exfiltration analysis"
+    )

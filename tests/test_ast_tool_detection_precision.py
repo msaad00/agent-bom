@@ -14,6 +14,22 @@ import pytest
 
 from agent_bom.ai_components.framework_agents import _collect_tools
 from agent_bom.ast_analyzer import analyze_project
+from agent_bom.python_agents import _extract_agent_defs
+
+# An agent definition, so the third detector's decorator-resolved tools have
+# somewhere to surface. Its tool table is local to the extraction pass.
+AGENT_HARNESS = """
+from langchain.agents import AgentExecutor
+
+agent = AgentExecutor(tools=[handler])
+"""
+
+
+def _python_agent_tool_names(source: str) -> set[str]:
+    """Tools the python_agents detector resolved from a decorator, at high confidence."""
+    defs = _extract_agent_defs(source + AGENT_HARNESS, "mod.py")
+    return {name for d in defs for name, kind, confidence in d.tools if kind == "decorator" and confidence == "high"}
+
 
 DJANGO_VIEWSET = '''
 from rest_framework import viewsets
@@ -143,10 +159,35 @@ def test_framework_scanner_ignores_non_agent_decorators(decorator: str) -> None:
     assert _collect_tools(tree) == {}
 
 
+@pytest.mark.parametrize("decorator", AGENT_TOOL_DECORATORS)
+def test_agent_scanner_collects_agent_tool_decorators(decorator: str) -> None:
+    source = f"{decorator}\ndef handler(query: str) -> str:\n    '''d'''\n"
+
+    assert "handler" in _python_agent_tool_names(source)
+
+
+@pytest.mark.parametrize("decorator", NON_AGENT_DECORATORS)
+def test_agent_scanner_ignores_non_agent_decorators(decorator: str) -> None:
+    source = f"{decorator}\ndef handler(self, request):\n    pass\n"
+
+    assert "handler" not in _python_agent_tool_names(source)
+
+
 @pytest.mark.parametrize("decorator", AGENT_TOOL_DECORATORS + NON_AGENT_DECORATORS)
-def test_both_tool_detectors_agree(tmp_path: Path, decorator: str) -> None:
-    """The two detectors must not disagree about what an agent tool is."""
+def test_all_three_tool_detectors_agree(tmp_path: Path, decorator: str) -> None:
+    """Three separate detectors decide this. They must not disagree.
+
+    Two of them were fixed independently and drifted apart; asserting the
+    agreement is what stops the next fix from landing in only one of them.
+    """
     source = f"{decorator}\ndef handler(query: str) -> str:\n    '''d'''\n"
     (tmp_path / "mod.py").write_text(source)
+    tree = ast.parse(source)
 
-    assert bool(_tool_names(tmp_path)) is bool(_collect_tools(ast.parse(source)))
+    verdicts = {
+        "ast": bool(_tool_names(tmp_path)),
+        "framework": bool(_collect_tools(tree)),
+        "agents": "handler" in _python_agent_tool_names(source),
+    }
+
+    assert len(set(verdicts.values())) == 1, verdicts

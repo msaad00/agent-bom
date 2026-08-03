@@ -145,7 +145,9 @@ def test_hosted_poc_keeps_the_project_demo_and_the_self_host_runbook_distinct() 
 
     # The unmapped custom domain is a deferred option, never a live endpoint and
     # never an outstanding fault. Prose wraps, so compare on normalized text.
+    # Matched as a whole hostname token rather than a bare substring: a substring
+    # test against a host reads as URL sanitization and is flagged as such.
     prose = " ".join(doc.split())
-    if "demo.agent-bom.com" in prose:
+    if re.search(r"(?<![\w.-])demo\.agent-bom\.com(?![\w.-])", prose):
         assert "No custom domain is currently mapped" in prose
         assert "optional future step" in prose

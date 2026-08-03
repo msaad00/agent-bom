@@ -208,6 +208,58 @@ def test_surface_freshness_reads_smithery_catalog_listing(monkeypatch):
     assert result["tool_count"] == 2
 
 
+def _smithery_listing_with(tool_count):
+    def fake_http_json(_url, **_kwargs):
+        return {
+            "qualifiedName": "agent-bom/agent-bom",
+            "remote": True,
+            "deploymentUrl": "https://agent-bom--agent-bom.run.tools",
+            "tools": [{"name": f"tool_{index}"} for index in range(tool_count)],
+        }
+
+    return fake_http_json
+
+
+def test_smithery_listing_advertising_fewer_tools_than_shipped_is_stale(monkeypatch):
+    """A partial catalog is the drift this monitor exists to catch.
+
+    The live listing advertised 36 of the 77 tools the release ships — a strict
+    subset, i.e. a stale snapshot — while the probe reported "fresh" because it
+    only asserted the tool list was non-empty. Under-advertising by 41 tools on
+    a public discovery surface is exactly the months-long drift this script was
+    written to prevent, and it was invisible.
+    """
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setattr(script, "_http_json", _smithery_listing_with(36))
+
+    result = script.probe_smithery("0.98.3", "agent-bom/agent-bom", expected_tool_count=77, timeout=1, attempts=1, backoff=0)
+
+    assert result["status"] == "stale"
+    assert result["tool_count"] == 36
+    assert result["expected_tool_count"] == 77
+    assert "36" in result["error"] and "77" in result["error"]
+
+
+def test_smithery_listing_matching_the_shipped_tool_count_is_fresh(monkeypatch):
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setattr(script, "_http_json", _smithery_listing_with(77))
+
+    result = script.probe_smithery("0.98.3", "agent-bom/agent-bom", expected_tool_count=77, timeout=1, attempts=1, backoff=0)
+
+    assert result["status"] == "fresh"
+    assert result["tool_count"] == 77
+
+
+def test_smithery_tool_count_is_not_gated_when_no_expectation_is_supplied(monkeypatch):
+    """Without an expected count the contract check stands on its own."""
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setattr(script, "_http_json", _smithery_listing_with(36))
+
+    result = script.probe_smithery("0.98.3", "agent-bom/agent-bom", timeout=1, attempts=1, backoff=0)
+
+    assert result["status"] == "fresh"
+
+
 def test_surface_freshness_reads_paginated_ghcr_tags(monkeypatch):
     script = _load_script("check_surface_freshness.py")
 

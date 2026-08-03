@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,8 @@ from typing import Iterable
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 _ALLOWED_FLOATING_TAGS = frozenset({"latest"})
 _STALE_FLOATING_TAGS = frozenset({"0"})
+_VERIFICATION_ATTEMPTS = 5
+_VERIFICATION_RETRY_SECONDS = 5
 
 
 @dataclass(frozen=True)
@@ -122,11 +125,57 @@ class DockerHubClient:
             with urllib.request.urlopen(self._request(url, method="DELETE"), timeout=30) as response:
                 status = response.status
         except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return
             raise RuntimeError(f"{repository}:{tag}: Docker Hub deletion failed (HTTP {exc.code})") from exc
         except (OSError, urllib.error.URLError) as exc:
             raise RuntimeError(f"{repository}:{tag}: Docker Hub deletion failed") from exc
         if status != 204:
             raise RuntimeError(f"{repository}:{tag}: Docker Hub deletion returned HTTP {status}")
+
+
+def apply_cleanup(
+    client: DockerHubClient,
+    plans: Iterable[CleanupPlan],
+    *,
+    verification_attempts: int = _VERIFICATION_ATTEMPTS,
+    verification_retry_seconds: float = _VERIFICATION_RETRY_SECONDS,
+) -> int:
+    """Delete planned tags and retry Docker Hub's accepted-but-unapplied deletes."""
+    if verification_attempts < 1:
+        raise ValueError("verification_attempts must be at least 1")
+
+    plans = tuple(plans)
+    delete_count = sum(len(plan.delete) for plan in plans)
+    for plan in plans:
+        for tag in plan.delete:
+            client.delete_tag(plan.repository, tag)
+            print(f"DELETED {plan.repository}:{tag}")
+
+    for attempt in range(1, verification_attempts + 1):
+        undeleted_by_repository: dict[str, tuple[str, ...]] = {}
+        for plan in plans:
+            remaining = set(client.list_tags(plan.repository))
+            undeleted = tuple(sorted(set(plan.delete) & remaining))
+            if undeleted:
+                undeleted_by_repository[plan.repository] = undeleted
+
+        if not undeleted_by_repository:
+            return delete_count
+        if attempt == verification_attempts:
+            details = "; ".join(f"{repository}: {list(tags)}" for repository, tags in undeleted_by_repository.items())
+            raise RuntimeError(f"deletion verification failed after {verification_attempts} attempts: {details}")
+
+        retry_count = sum(len(tags) for tags in undeleted_by_repository.values())
+        print(f"Docker Hub still reports {retry_count} deleted tags after verification attempt {attempt}/{verification_attempts}; retrying")
+        for repository, tags in undeleted_by_repository.items():
+            for tag in tags:
+                client.delete_tag(repository, tag)
+                print(f"RETRIED {repository}:{tag}")
+        if verification_retry_seconds:
+            time.sleep(verification_retry_seconds)
+
+    raise AssertionError("unreachable")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -165,17 +214,8 @@ def main(argv: list[str] | None = None) -> int:
             print("DRY RUN: no tags were deleted")
             return 0
 
-        for plan in plans:
-            for tag in plan.delete:
-                client.delete_tag(plan.repository, tag)
-                print(f"DELETED {plan.repository}:{tag}")
-
-        for plan in plans:
-            remaining = set(client.list_tags(plan.repository))
-            undeleted = sorted(set(plan.delete) & remaining)
-            if undeleted:
-                raise RuntimeError(f"{plan.repository}: deletion verification failed: {undeleted}")
-        print(f"Verified deletion of {delete_count} Docker Hub tags")
+        verified_count = apply_cleanup(client, plans)
+        print(f"Verified deletion of {verified_count} Docker Hub tags")
         return 0
     except (RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

@@ -47,6 +47,11 @@ Read "Changed" before upgrading.
   reach the written report, and a partial scan exits non-zero.
 - CISA KEV, EPSS and `kev_due_date` enrichment reached the report; an unavailable
   KEV feed no longer reads as "not exploited".
+- Both finding-ingest routes echoed the payload count as `ingested` while
+  payloads sharing a canonical id were correctly deduped on the way in, leaving
+  a client unable to explain why it pushed N and the store holds fewer. The
+  responses now also carry `distinct_findings` and `duplicate_payloads`, and
+  `/v1/findings/bulk` warns when any payload collapsed.
 
 ### Fixed — accuracy
 

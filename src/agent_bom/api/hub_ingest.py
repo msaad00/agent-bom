@@ -66,10 +66,16 @@ def hub_ingest_store_writes(
     if needs_hub_prior_snapshots(reconcile_absent=reconcile_absent):
         prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=source)
 
+    # Canonical ids are resolved for every batch, not just reconciling ones: the
+    # count of DISTINCT ids is what the store will hold, and a caller told only
+    # how many payloads it sent cannot explain the difference. Pure Python, so
+    # it costs nothing beyond the set the reconcile path already builds.
+    distinct_ids = collect_present_canonical_ids(payloads, source=source)
+
     # ``present_canonical_ids`` for absent-reconciliation (and the delta
-    # ``resolved_ids`` derived from it) is pure Python — computed before the
-    # write so the atomic seam can run the reconcile inside the same transaction.
-    present: set[str] = collect_present_canonical_ids(payloads, source=source) if reconcile_absent else set()
+    # ``resolved_ids`` derived from it) is computed before the write so the
+    # atomic seam can run the reconcile inside the same transaction.
+    present: set[str] = distinct_ids if reconcile_absent else set()
 
     atomic = getattr(hub_store, "ingest_batch_atomic", None)
     if callable(atomic):
@@ -117,4 +123,6 @@ def hub_ingest_store_writes(
         "new_total": new_total,
         "reconciled": reconciled,
         "delta_results": delta_results,
+        "distinct_findings": len(distinct_ids),
+        "duplicate_payloads": len(payloads) - len(distinct_ids),
     }

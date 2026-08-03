@@ -2579,6 +2579,8 @@ async def ingest_compliance_findings(request: Request) -> dict:
 
     response = {
         "ingested": len(payloads),
+        "distinct_findings": store_result["distinct_findings"],
+        "duplicate_payloads": store_result["duplicate_payloads"],
         "tenant_total": new_total,
         "format": fmt,
         "observed_at": observed_at,

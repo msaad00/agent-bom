@@ -1919,9 +1919,7 @@ def _finding_facets_bounded(
     from agent_bom.finding_scope import FINDING_CLASSES, SECURITY_DOMAINS, finding_class_for_row, lenses_for_row
 
     class_counts: dict[str, int] = {key: 0 for key in FINDING_CLASSES}
-    severity_counts: dict[str, int] = {
-        key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")
-    }
+    severity_counts: dict[str, int] = {key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")}
     status_counts: dict[str, int] = {key: 0 for key in ("open", "resolved")}
     domain_counts: dict[str, int] = {key: 0 for key in SECURITY_DOMAINS}
     freshness_counts: dict[str, int] = {key: 0 for key in _FRESHNESS_BUCKETS}
@@ -2747,8 +2745,7 @@ def _list_findings_impl(
         page_rows = reachability.rows
         if reachability.truncated:
             warnings.append(
-                "Graph reachability projection is bounded to the highest-risk 1000 persisted paths; "
-                "unmatched findings remain unassessed."
+                "Graph reachability projection is bounded to the highest-risk 1000 persisted paths; unmatched findings remain unassessed."
             )
     except Exception as exc:  # noqa: BLE001 — optional evidence must not fail the findings list
         _logger.warning("Finding graph reachability projection skipped: %s", sanitize_error(exc))
@@ -2884,11 +2881,20 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     new_total = store_result["new_total"]
     reconciled = store_result["reconciled"]
     delta_results = store_result["delta_results"]
+    distinct_findings = store_result["distinct_findings"]
+    duplicate_payloads = store_result["duplicate_payloads"]
     warnings: list[str] = []
+    if duplicate_payloads:
+        warnings.append(
+            f"{duplicate_payloads} duplicate payload(s) collapsed onto an existing canonical id; "
+            f"{distinct_findings} distinct finding(s) were stored"
+        )
     response = {
         "schema_version": "v1",
         "batch_id": batch_id,
         "ingested": len(payloads),
+        "distinct_findings": distinct_findings,
+        "duplicate_payloads": duplicate_payloads,
         "tenant_total": new_total,
         "tenant_id": tenant_id,
         "source": body.source,

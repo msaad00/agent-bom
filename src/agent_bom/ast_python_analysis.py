@@ -849,7 +849,7 @@ def _analyze_file(
                 dec_name = _get_decorator_name(dec)
                 if dec_name:
                     decorators.append(dec_name)
-                    if any(t in dec_name.lower() for t in ("tool", "function_tool", "skill", "action")):
+                    if _is_agent_tool_decorator(dec_name):
                         is_tool = True
 
             if is_tool:
@@ -1010,6 +1010,38 @@ def _analyze_file(
             )
 
     return prompts, guardrails, tools, frameworks, function_analyses, flow_findings
+
+
+# Decorator name segments that actually register a function as an agent tool.
+# Matched per dotted segment so ``@mcp.tool`` and ``@FunctionTool.from_defaults``
+# resolve, while ``@action`` (Django REST) and ``@transaction.atomic`` — which a
+# substring test on "tool"/"action" used to accept — do not.
+_AGENT_TOOL_DECORATOR_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "tool",
+        "tools",
+        "agent_tool",
+        "agenttool",
+        "function_tool",
+        "functiontool",
+        "structuredtool",
+        "basetool",
+        "tool_plugin",
+        "toolnode",
+        "kernel_function",
+        "ai_function",
+        "openai_function",
+        "skill",
+    }
+)
+
+
+def _is_agent_tool_decorator(decorator_name: str) -> bool:
+    """Return True when *decorator_name* marks a function as an agent tool."""
+    for segment in decorator_name.lower().split("."):
+        if segment in _AGENT_TOOL_DECORATOR_SEGMENTS or segment.endswith("_tool"):
+            return True
+    return False
 
 
 def _get_decorator_name(node: ast.expr) -> str | None:

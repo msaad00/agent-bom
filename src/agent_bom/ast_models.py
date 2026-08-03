@@ -147,6 +147,7 @@ class ASTAnalysisResult:
                     "file": t.file_path,
                     "line": t.line_number,
                     "is_async": t.is_async,
+                    "decorators": t.decorators,
                 }
                 for t in self.tools
             ],

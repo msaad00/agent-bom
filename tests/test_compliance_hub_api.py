@@ -100,6 +100,23 @@ def test_ingest_sarif_returns_count_plus_framework_breakdown():
     assert "nist-csf" in body["framework_hits"]
 
 
+def test_ingest_reports_payloads_that_collapsed_onto_one_finding():
+    """The compliance ingest route shares the bulk route's write path — and its
+    accounting. Two identical SARIF results resolve to one canonical id."""
+    doc = _sarif_doc()
+    doc["runs"][0]["results"].append(dict(doc["runs"][0]["results"][0]))
+
+    resp = _client().post(
+        "/v1/compliance/ingest",
+        json={"format": "sarif", "content": json.dumps(doc)},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["ingested"] == 2
+    assert body["distinct_findings"] == 1
+    assert body["duplicate_payloads"] == 1
+
+
 def test_ingest_invalid_format_returns_400():
     resp = _client().post(
         "/v1/compliance/ingest",

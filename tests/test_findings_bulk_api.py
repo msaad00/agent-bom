@@ -266,3 +266,56 @@ def test_bulk_findings_ingest_rejects_a_foreign_body_tenant() -> None:
 
     assert resp.status_code == 403, resp.text
     assert "tenant_id" in resp.json()["error"]["message"]
+
+
+def test_bulk_ingest_reports_payloads_that_collapsed_onto_one_finding() -> None:
+    """``ingested`` counts payloads; the caller also needs what became queryable.
+
+    Two payloads resolving to one canonical id are deduped on the way in, which
+    is correct. Echoing only the payload count leaves the client reconciling a
+    push of N against a store holding fewer, with nothing explaining the gap.
+    """
+    tenant_id = f"bulk-ingest-{uuid4().hex}"
+    client = _client(tenant=tenant_id)
+
+    resp = client.post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "findings": [
+                {"id": "agent-runtime:finding-1", "title": "first", "severity": "high"},
+                {"id": "agent-runtime:finding-2", "title": "second", "severity": "low"},
+                {"id": "agent-runtime:finding-1", "title": "first", "severity": "high"},
+            ],
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["ingested"] == 3
+    assert body["distinct_findings"] == 2
+    assert body["duplicate_payloads"] == 1
+    assert any("duplicate" in warning for warning in body["warnings"])
+
+
+def test_bulk_ingest_reports_no_duplicates_when_every_payload_is_distinct() -> None:
+    tenant_id = f"bulk-ingest-{uuid4().hex}"
+    client = _client(tenant=tenant_id)
+
+    resp = client.post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "findings": [
+                {"id": "agent-runtime:finding-1", "title": "first", "severity": "high"},
+                {"id": "agent-runtime:finding-2", "title": "second", "severity": "low"},
+            ],
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["ingested"] == 2
+    assert body["distinct_findings"] == 2
+    assert body["duplicate_payloads"] == 0
+    assert body["warnings"] == []

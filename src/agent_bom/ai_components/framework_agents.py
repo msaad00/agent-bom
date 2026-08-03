@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_bom.ast_signal_utils import is_agent_tool_decorator
+from agent_bom.constants import is_credential_key
 from agent_bom.finding import stable_id
 
 _SKIP_DIRS = {
@@ -443,11 +444,11 @@ def _extract_credential_refs(tree: ast.Module) -> list[str]:
             call_name = _call_name(node.func)
             if call_name in {"os.getenv", "getenv", "os.environ.get"} and node.args:
                 value = _string_literal(node.args[0])
-                if value and any(marker in value for marker in ("KEY", "TOKEN", "SECRET", "CREDENTIAL")):
+                if value and is_credential_key(value):
                     refs.append(value)
         elif isinstance(node, ast.Subscript) and _call_name(node.value) == "os.environ":
             value = _string_literal(node.slice)
-            if value and any(marker in value for marker in ("KEY", "TOKEN", "SECRET", "CREDENTIAL")):
+            if value and is_credential_key(value):
                 refs.append(value)
     return _dedupe_strings(refs)
 

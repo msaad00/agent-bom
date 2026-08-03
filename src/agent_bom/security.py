@@ -290,11 +290,30 @@ def _is_obfuscated_credential(value: str) -> bool:
     return False
 
 
+def env_key_is_credential(key: str) -> bool:
+    """Whether an environment-variable *name* denotes a credential.
+
+    Environment variable names are classified product-wide by
+    ``constants.is_credential_key`` — it backs ``MCPServer.credential_names``
+    and therefore every surface that reports an exposed credential.  Redaction
+    has to cover at least those names, or a report can list a variable as an
+    exposed credential in one field while publishing its value in another.
+    ``SENSITIVE_PATTERNS`` adds forms that are not env-var-shaped (``api-key``,
+    ``jwt``); it stays regex-based and is not widened, because
+    :func:`_key_looks_sensitive` applies it to arbitrary payload keys where
+    over-matching collapses distinct graph nodes.
+    """
+    from agent_bom.constants import is_credential_key
+
+    low = key.lower()
+    return is_credential_key(key) or any(re.search(pattern, low) for pattern in SENSITIVE_PATTERNS)
+
+
 def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     """
     Sanitize environment variables by redacting sensitive values.
 
-    Checks both key names (via SENSITIVE_PATTERNS) and values (via
+    Checks both key names (via :func:`env_key_is_credential`) and values (via
     _VALUE_CREDENTIAL_PATTERNS) to catch hardcoded credentials in
     custom-named variables.
 
@@ -306,10 +325,7 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     """
     sanitized = {}
     for key, value in env.items():
-        # Check if key matches sensitive pattern
-        is_sensitive = any(re.search(pattern, key.lower()) for pattern in SENSITIVE_PATTERNS)
-
-        if is_sensitive:
+        if env_key_is_credential(key):
             sanitized[key] = "***REDACTED***"
         else:
             str_value = str(value)
@@ -498,9 +514,7 @@ def _key_looks_sensitive(key: object) -> bool:
 # labels and set-dedups them, collapsing distinct credentials into one phantom
 # node and inventing cross-agent ``reaches_tool``/``exposes_cred`` edges.  Only
 # the VALUE of a credential is sensitive, and values are never carried here.
-_CREDENTIAL_IDENTIFIER_KEYS = frozenset(
-    {"credential_env_vars", "credential_env_var", "credential_names", "credential_refs"}
-)
+_CREDENTIAL_IDENTIFIER_KEYS = frozenset({"credential_env_vars", "credential_env_var", "credential_names", "credential_refs"})
 
 
 def _key_is_credential_identifier(key: object) -> bool:

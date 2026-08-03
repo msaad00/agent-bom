@@ -7,6 +7,8 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 
+from agent_bom.constants import is_credential_key
+
 
 def render_posture_summary(agents: list[Any], blast_radii: list[Any]) -> None:
     """Render the compact --posture panel."""
@@ -21,11 +23,7 @@ def render_posture_summary(agents: list[Any], blast_radii: list[Any]) -> None:
         1
         for agent in agents
         for server in agent.mcp_servers
-        if any(
-            value
-            for key, value in (getattr(server, "env", None) or {}).items()
-            if any(keyword in key.upper() for keyword in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"))
-        )
+        if any(value for key, value in (getattr(server, "env", None) or {}).items() if is_credential_key(key))
     )
     floating = sum(
         1 for agent in agents for server in agent.mcp_servers if any("@latest" in str(arg) for arg in (getattr(server, "args", None) or []))

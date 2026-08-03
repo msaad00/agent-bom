@@ -1,7 +1,11 @@
 # ── Profile: PUBLIC DEMO OVERLAY ─────────────────────────────────────────────
-# Demo-only anonymous + seeded-estate overlay for the public hosted demo
-# (demo.agent-bom.com). Not for customer POCs or internet-exposed secure
-# deployments.
+# Demo-only anonymous + seeded-estate overlay. Not for customer POCs or
+# internet-exposed secure deployments.
+#
+# This is the Compose way to run the anonymous seeded demo. The project's own
+# public demo runs the same three environment variables on Cloud Run (see
+# .github/workflows/demo-deploy-cloudrun.yml); a test asserts the two lists stay
+# identical, so keep them in sync.
 #
 # OVERLAY ONLY — layer on top of platform + hosted-poc:
 #

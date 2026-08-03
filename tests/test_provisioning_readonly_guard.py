@@ -44,13 +44,16 @@ def test_current_tree_passes() -> None:
     assert "PASS:" in proc.stdout
 
 
-def test_demo_deploy_is_explicitly_operational_and_instance_scoped() -> None:
-    """Demo redeploy may mutate only its own VM, never a connected estate."""
-    assert "demo-deploy-oidc" in GUARD.OPERATIONAL_MODULES
-    content = (ROOT / "deploy" / "terraform" / "demo-deploy-oidc" / "main.tf").read_text()
-    assert 'actions = ["ssm:SendCommand"]' in content
-    assert "local.demo_instance_arn" in content
-    assert '"ssm:*"' not in content
+def test_retired_demo_deploy_role_is_gone_from_module_and_allowlist() -> None:
+    """The demo VM is retired, so its keyless deploy role must not linger.
+
+    The module minted an IAM role whose trust policy named this repo's OIDC
+    subject and granted `ssm:SendCommand`. Leaving it provisionable after the
+    instance is gone keeps a live trust relationship pointed at nothing, and
+    keeps the allowlist claiming a grant the project no longer makes.
+    """
+    assert not (ROOT / "deploy" / "terraform" / "demo-deploy-oidc").exists()
+    assert "demo-deploy-oidc" not in GUARD.OPERATIONAL_MODULES
 
 
 # ---------------------------------------------------------------------------

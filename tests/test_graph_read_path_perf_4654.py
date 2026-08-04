@@ -180,6 +180,31 @@ def test_demo_story_cache_is_bounded(story_client: TestClient) -> None:
     assert info.maxsize == demo_routes.DEMO_STORY_CACHE_MAXSIZE
 
 
+def test_demo_story_offload_cannot_starve_the_shared_thread_pool() -> None:
+    """The offload needs its own limiter, not anyio's shared 40-token default.
+
+    API-key verification offloads its scrypt through that same pool, so a burst
+    of cold story requests holding a thread each while they queue on the build
+    lock would starve authentication. Capping this route keeps the surplus
+    waiting on the loop instead of on a worker thread.
+    """
+    import anyio
+    import anyio.to_thread
+
+    from agent_bom.api.routes import demo_estate as demo_routes
+
+    limiter = demo_routes._STORY_THREAD_LIMITER
+    assert isinstance(limiter, anyio.CapacityLimiter)
+
+    async def default_pool_size() -> float:
+        return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+    shared_tokens = asyncio.run(default_pool_size())
+    assert limiter.total_tokens < shared_tokens, (
+        f"story offload may take {limiter.total_tokens} of the shared pool's {shared_tokens} threads"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 2. One scrypt derivation per authenticated request
 # ---------------------------------------------------------------------------

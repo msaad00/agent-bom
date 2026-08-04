@@ -28,6 +28,14 @@ DEMO_STORY_CACHE_MAXSIZE = 8
 # the latency; the first caller builds, the rest wait and then read the cache.
 _STORY_BUILD_LOCK = threading.Lock()
 
+# Backpressure, and the reason it is not just the lock. anyio's default thread
+# limiter has 40 tokens and is SHARED — API-key verification offloads its scrypt
+# through the same pool. Without a limiter, a burst of cold requests would park
+# a thread each waiting on the build lock and starve authentication of the very
+# pool it needs. Capping this route at 2 tokens means the surplus waits on the
+# event loop (cheap, cancellable) instead of holding a worker thread.
+_STORY_THREAD_LIMITER = anyio.CapacityLimiter(2)
+
 
 def _demo_estate_enabled() -> bool:
     """Read the opt-in flag without importing the stateful bootstrap path."""
@@ -75,7 +83,7 @@ async def get_enterprise_demo_story(request: Request) -> EnterpriseDemoStory:
     # correlate-and-redact). Called inline from an ``async def`` it parked the
     # event loop for the whole request, so four concurrent callers serialised
     # into 6.6s on one worker. Offload it; the loop stays free either way.
-    return await anyio.to_thread.run_sync(_build_demo_story_blocking, tenant_id)
+    return await anyio.to_thread.run_sync(_build_demo_story_blocking, tenant_id, limiter=_STORY_THREAD_LIMITER)
 
 
 __all__ = [

@@ -41,11 +41,11 @@ Design notes:
   once per throttle window (:data:`IDLE_NOTICE_INTERVAL_SECONDS`) instead of
   polling silently forever.
 * **Safe.** Read-only scans only. A failing connection is marked ``error`` with
-  the same curated, secret-free detail the HTTP scan route persists
-  (``_safe_connection_detail``) — the broker's free-form message is never stored,
-  because ``status_detail`` is returned verbatim by
-  ``GET /v1/cloud/connections``. All four providers (AWS, Azure, GCP, Snowflake)
-  are broker-enabled and schedulable.
+  the same curated, secret-free detail the HTTP scan route and the CLI surface
+  (:func:`agent_bom.cloud.connection_broker.operator_facing_detail`) — the
+  broker's free-form message is never stored, because ``status_detail`` is
+  returned verbatim by ``GET /v1/cloud/connections``. All four providers (AWS,
+  Azure, GCP, Snowflake) are broker-enabled and schedulable.
 * **Fail-soft per connection, fail-closed on data.** Every failure mode —
   broker, discovery, event drain, *and* persistence — is contained to the one
   connection it belongs to: the tick completes, other tenants keep scanning, and
@@ -297,8 +297,7 @@ def _log_idle_notice(store: ConnectionStore, last_checked: float | None, poll_se
     reason = describe_idle_scheduler(store)
     if reason is not None:
         logger.warning(
-            "Cloud-connection scan scheduler is enabled but idle: %s. Polling every %ds; "
-            "this notice repeats at most every %d minutes.",
+            "Cloud-connection scan scheduler is enabled but idle: %s. Polling every %ds; this notice repeats at most every %d minutes.",
             reason,
             poll_seconds,
             IDLE_NOTICE_INTERVAL_SECONDS // 60,

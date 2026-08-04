@@ -1175,6 +1175,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
                         "narrative": cn.narrative,
                         "affected_packages": cn.affected_packages,
                         "affected_agents": cn.affected_agents,
+                        "affected_findings": cn.affected_findings,
                         "remediation_steps": cn.remediation_steps,
                     }
                     for cn in fn.failing_controls

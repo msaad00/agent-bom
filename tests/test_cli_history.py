@@ -649,3 +649,41 @@ def test_report_from_json_preserves_every_compliance_tag_field():
     rebuilt = report.blast_radii[0]
     dropped = [field for field, tags in expected.items() if list(getattr(rebuilt, field, []) or []) != tags]
     assert not dropped, f"compliance tag fields dropped on reload: {dropped}"
+
+
+def test_narrative_markdown_renders_the_failing_control_drill(tmp_path):
+    """The default markdown narrative must carry the auditor's engineer-level drill.
+
+    It rendered only the per-framework exec paragraph, status, score and
+    recommendations — no control ids, no packages, no finding ids. An auditor
+    reading the shipped default could not tie any control assertion back to the
+    evidence behind it: `grep -c "CVE-" narrative.md` returned 0.
+    """
+    runner = CliRunner()
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "summary": {"total_agents": 1, "total_packages": 1, "total_vulnerabilities": 1},
+                "blast_radius": [
+                    {
+                        "vulnerability_id": "CVE-2025-7788",
+                        "severity": "critical",
+                        "package": "langchain@0.0.150",
+                        "ecosystem": "pypi",
+                        "affected_agents": ["claude"],
+                        "affected_servers": ["filesystem"],
+                        "owasp_tags": ["LLM05"],
+                    }
+                ],
+            }
+        )
+    )
+
+    result = runner.invoke(compliance_narrative_cmd, [str(report), "--framework", "owasp-llm", "--format", "markdown"])
+
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "LLM05" in out, out
+    assert "CVE-2025-7788" in out, out
+    assert "langchain@0.0.150" in out, out

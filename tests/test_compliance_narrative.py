@@ -719,3 +719,21 @@ def test_fedramp_scores_the_namespaced_tags_the_scanner_emits():
 
     assert fw.status == "action_required", fw.narrative
     assert [c.control_id for c in fw.failing_controls] == ["SI-10"], fw.failing_controls
+
+
+def test_a_failing_control_names_the_findings_that_failed_it():
+    """An auditor must be able to walk control -> finding, not just control -> package.
+
+    The narrative listed affected packages and agents but never a vulnerability
+    id, so `grep -c CVE- narrative.md` was 0 and nobody could tie a control
+    assertion back to the evidence. The API bundle already carries `finding_id`
+    per control; the CLI rendering was the gap.
+    """
+    first = _make_blast_radius(vuln=_make_vuln("CVE-2025-1111", severity=Severity.CRITICAL), owasp_tags=["LLM05"])
+    second = _make_blast_radius(vuln=_make_vuln("CVE-2025-2222", severity=Severity.HIGH), owasp_tags=["LLM05"])
+    report = _make_report(blast_radii=[first, second])
+
+    fw = _fw(generate_compliance_narrative(report), "owasp-llm")
+    control = next(c for c in fw.failing_controls if c.control_id == "LLM05")
+
+    assert control.affected_findings == ["CVE-2025-1111", "CVE-2025-2222"]

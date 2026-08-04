@@ -479,3 +479,214 @@ def test_kev_due_date_reaches_every_serializing_format() -> None:
     }
     missing = sorted(name for name, text in rendered.items() if "2023-10-04" not in text)
     assert not missing, f"kev_due_date dropped by: {missing}"
+
+
+# ── Instance 5: integrity / provenance verification reaches machine output ───
+#
+# ``--verify-integrity`` populates ``Package.integrity_verified`` and
+# ``Package.provenance_attested`` (plus ``provenance_source``), but the verdict
+# was console-only: no SBOM, SARIF, JSON or API consumer could read it. For a
+# supply-chain scanner that verdict is the point of the scan, so every
+# machine-readable serializer has to carry it — including the negative verdict,
+# which is the one a release gate acts on.
+
+
+def _report_with_integrity(
+    *,
+    integrity_verified: bool | None,
+    provenance_attested: bool | None,
+    provenance_source: str | None = None,
+) -> AIBOMReport:
+    report = _report_with_vuln(_kev_epss_cwe_vuln())
+    pkg = report.agents[0].mcp_servers[0].packages[0]
+    pkg.checksums = {"SHA-512": "c" * 128}
+    pkg.integrity_verified = integrity_verified
+    pkg.provenance_attested = provenance_attested
+    pkg.provenance_source = provenance_source
+    return report
+
+
+def _cdx_package_component(report: AIBOMReport) -> dict:
+    cdx = to_cyclonedx(report)
+    return next(c for c in cdx["components"] if c.get("purl") == "pkg:pypi/flask@0.12.2")
+
+
+def _spdx3_package_statements(report: AIBOMReport) -> list[str]:
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    doc = to_spdx(report)
+    pkg = next(node for node in doc["@graph"] if node.get("name") == "flask")
+    return [str(a.get("statement") or "") for a in pkg.get("annotation", [])]
+
+
+def _spdx2_package_comments(report: AIBOMReport) -> list[str]:
+    from agent_bom.output.spdx2_fmt import to_spdx2
+
+    doc = to_spdx2(report)
+    pkg = next(p for p in doc["packages"] if p["name"] == "flask")
+    return [str(a.get("comment") or "") for a in pkg.get("annotations", [])]
+
+
+def test_json_carries_integrity_and_provenance_verdict() -> None:
+    from agent_bom.output.json_fmt import to_json
+
+    payload = to_json(
+        _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="npm_slsa")
+    )
+    pkg = payload["agents"][0]["mcp_servers"][0]["packages"][0]
+    assert pkg["integrity_verified"] is True
+    assert pkg["provenance_attested"] is True
+    assert pkg["provenance_source"] == "npm_slsa"
+
+
+def test_cyclonedx_component_properties_carry_verdict() -> None:
+    component = _cdx_package_component(
+        _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="npm_slsa")
+    )
+    props = {p["name"]: p["value"] for p in component.get("properties", [])}
+    assert props.get("agent-bom:integrity-verified") == "true"
+    assert props.get("agent-bom:provenance-attested") == "true"
+    assert props.get("agent-bom:provenance-source") == "npm_slsa"
+
+
+def test_cyclonedx_component_uses_native_identity_evidence() -> None:
+    """CDX 1.7 models this natively: evidence.identity[].methods[].technique."""
+    component = _cdx_package_component(
+        _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="npm_slsa")
+    )
+    identities = component.get("evidence", {}).get("identity", [])
+    techniques = {method["technique"]: method for entry in identities for method in entry.get("methods", [])}
+    assert "hash-comparison" in techniques, "integrity verification must use the native hash-comparison technique"
+    assert techniques["hash-comparison"]["confidence"] == 1.0
+    assert "attestation" in techniques, "provenance attestation must use the native attestation technique"
+    assert techniques["attestation"]["confidence"] == 1.0
+    assert techniques["attestation"]["value"] == "npm_slsa"
+
+
+def test_cyclonedx_failed_verification_is_confidence_zero_not_absent() -> None:
+    component = _cdx_package_component(_report_with_integrity(integrity_verified=False, provenance_attested=False))
+    props = {p["name"]: p["value"] for p in component.get("properties", [])}
+    assert props.get("agent-bom:integrity-verified") == "false"
+    assert props.get("agent-bom:provenance-attested") == "false"
+    identities = component.get("evidence", {}).get("identity", [])
+    techniques = {method["technique"]: method for entry in identities for method in entry.get("methods", [])}
+    assert techniques["hash-comparison"]["confidence"] == 0.0
+    assert techniques["attestation"]["confidence"] == 0.0
+
+
+def test_cyclonedx_unverified_package_emits_no_verdict() -> None:
+    """Non-vacuous: absent means "never checked", not "checked and failed"."""
+    component = _cdx_package_component(_report_with_integrity(integrity_verified=None, provenance_attested=None))
+    props = {p["name"] for p in component.get("properties", [])}
+    assert "agent-bom:integrity-verified" not in props
+    assert "agent-bom:provenance-attested" not in props
+    assert "evidence" not in component
+
+
+def test_cyclonedx_with_verdict_stays_schema_valid() -> None:
+    pytest.importorskip("jsonschema")
+    from jsonschema import Draft7Validator
+
+    schema_path = _FIXTURES / "cyclonedx-1.7.schema.json"
+    if not schema_path.exists():
+        pytest.skip("vendored CycloneDX 1.7 schema unavailable")
+    cdx = to_cyclonedx(
+        _report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source="npm_slsa")
+    )
+    validator = Draft7Validator(json.loads(schema_path.read_text()), registry=_cyclonedx_registry())
+    errors = sorted(validator.iter_errors(cdx), key=lambda e: list(e.path))
+    assert not errors, "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
+
+
+def test_spdx3_package_annotation_carries_verdict() -> None:
+    statements = _spdx3_package_statements(
+        _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="pypi_pep740")
+    )
+    assert "agent-bom:integrity-verified=true" in statements
+    assert "agent-bom:provenance-attested=true source=pypi_pep740" in statements
+
+
+def test_spdx3_package_annotation_carries_negative_verdict() -> None:
+    statements = _spdx3_package_statements(_report_with_integrity(integrity_verified=False, provenance_attested=False))
+    assert "agent-bom:integrity-verified=false" in statements
+    assert "agent-bom:provenance-attested=false" in statements
+
+
+def test_spdx3_unverified_package_has_no_verdict_annotation() -> None:
+    statements = _spdx3_package_statements(_report_with_integrity(integrity_verified=None, provenance_attested=None))
+    assert not [s for s in statements if "integrity-verified" in s or "provenance-attested" in s]
+
+
+def test_spdx2_package_annotation_carries_verdict() -> None:
+    comments = _spdx2_package_comments(
+        _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="go_sumdb")
+    )
+    assert "agent-bom:integrity-verified=true" in comments
+    assert "agent-bom:provenance-attested=true source=go_sumdb" in comments
+
+
+def test_spdx2_unverified_package_has_no_verdict_annotation() -> None:
+    comments = _spdx2_package_comments(_report_with_integrity(integrity_verified=None, provenance_attested=None))
+    assert not [c for c in comments if "integrity-verified" in c or "provenance-attested" in c]
+
+
+def test_spdx2_with_verdict_stays_schema_valid() -> None:
+    pytest.importorskip("jsonschema")
+    from jsonschema import Draft7Validator
+
+    from agent_bom.output.spdx2_fmt import to_spdx2
+
+    schema_path = _FIXTURES / "spdx-2.3.schema.json"
+    if not schema_path.exists():
+        pytest.skip("vendored SPDX 2.3 schema unavailable")
+    doc = to_spdx2(
+        _report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source="npm_slsa")
+    )
+    validator = Draft7Validator(json.loads(schema_path.read_text()))
+    errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
+    assert not errors, "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
+
+
+def test_sarif_result_carries_integrity_and_provenance_verdict() -> None:
+    report = _report_with_integrity(integrity_verified=False, provenance_attested=True, provenance_source="npm_slsa")
+    sarif = to_sarif(report)
+    result = next(r for r in sarif["runs"][0]["results"] if r["ruleId"] == "CVE-2026-0001")
+    props = result["properties"]
+    assert props.get("package_integrity_verified") is False
+    assert props.get("package_provenance_attested") is True
+    assert props.get("package_provenance_source") == "npm_slsa"
+
+
+def test_sarif_result_omits_verdict_when_not_verified() -> None:
+    report = _report_with_integrity(integrity_verified=None, provenance_attested=None)
+    sarif = to_sarif(report)
+    result = next(r for r in sarif["runs"][0]["results"] if r["ruleId"] == "CVE-2026-0001")
+    assert "package_integrity_verified" not in result["properties"]
+    assert "package_provenance_attested" not in result["properties"]
+
+
+def test_finding_evidence_carries_integrity_and_provenance_verdict() -> None:
+    report = _report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source=None)
+    finding = cve_findings(report)[0]
+    assert finding.evidence.get("package_integrity_verified") is True
+    assert finding.evidence.get("package_provenance_attested") is False
+
+
+def test_integrity_verdict_reaches_every_serializing_format() -> None:
+    """One assertion per format so a future exporter cannot drop it in silence."""
+    from agent_bom.output.csv_fmt import to_csv
+    from agent_bom.output.json_fmt import to_json
+    from agent_bom.output.spdx2_fmt import to_spdx2
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    report = _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="npm_slsa")
+    rendered = {
+        "json": json.dumps(to_json(report)),
+        "csv": to_csv(report),
+        "sarif": json.dumps(to_sarif(report)),
+        "cyclonedx": json.dumps(to_cyclonedx(report)),
+        "spdx3": json.dumps(to_spdx(report)),
+        "spdx2": json.dumps(to_spdx2(report)),
+    }
+    missing = sorted(name for name, text in rendered.items() if "npm_slsa" not in text)
+    assert not missing, f"provenance verdict dropped by: {missing}"

@@ -119,7 +119,11 @@ def print_summary(report: AIBOMReport) -> None:
     table.add_row("MCP servers", str(report.total_servers))
     table.add_row("Total packages", str(report.total_packages))
     table.add_row("Vulnerabilities", str(report.total_vulnerabilities))
-    table.add_row("Critical findings", str(len(report.critical_vulns)))
+    # Scope-labelled: ``critical_vulns`` counts blast radii, so a critical
+    # non-CVE finding (malicious package, CIS FAIL, toxic combination) is not in
+    # it. The posture headline a few lines below counts every finding category,
+    # so an unscoped "Critical findings" here contradicts it on the same screen.
+    table.add_row("Critical package CVEs", str(len(report.critical_vulns)))
 
     # AI inventory stats (if scan was run)
     ai_inv = getattr(report, "ai_inventory_data", None)

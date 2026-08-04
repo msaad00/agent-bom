@@ -1748,36 +1748,37 @@ def scan(
             import asyncio as _asyncio
 
             from agent_bom.http_client import create_client as _create_client
-            from agent_bom.integrity import check_package_provenance, verify_package_integrity
+            from agent_bom.integrity import verify_packages
 
             all_pkgs = [pkg for agent in agents for srv in agent.mcp_servers for pkg in srv.packages]
             unique_pkgs = {f"{p.ecosystem}:{p.name}@{p.version}": p for p in all_pkgs if p.version not in ("latest", "unknown", "")}
 
             async def _verify_all():
+                # The verdict is applied by the shared helper — the MCP path
+                # calls the same one — so this only renders what it decided.
                 async with _create_client(timeout=15.0) as client:
-                    for key, pkg in unique_pkgs.items():
-                        integrity = await verify_package_integrity(pkg, client)
-                        if integrity and integrity.get("verified"):
-                            pkg.integrity_verified = True
-                            con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — integrity verified (SHA256/SRI)")
-                        elif integrity:
-                            pkg.integrity_verified = False
-                            con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — no integrity hash found")
-
-                        provenance = await check_package_provenance(pkg, client)
-                        if provenance and provenance.get("has_provenance"):
-                            pkg.provenance_attested = True
-                            pkg.provenance_source = provenance.get("source", f"{pkg.ecosystem}_attestation")
-                            con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — SLSA provenance attested")
-                        elif provenance:
-                            pkg.provenance_attested = False
-                            prov_status = str(provenance.get("status") or "")
-                            if prov_status == "unavailable":
-                                con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — provenance service unavailable")
-                            elif prov_status == "not_provenance":
-                                con.print(f"  [dim]  {pkg.name}@{pkg.version} — attestations present, but none were SLSA provenance[/dim]")
+                    for result in await verify_packages(all_pkgs, client):
+                        pkg = result.package
+                        if result.integrity is not None:
+                            if pkg.integrity_verified:
+                                con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — integrity verified (SHA256/SRI)")
                             else:
-                                con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
+                                con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — no integrity hash found")
+
+                        if result.provenance is not None:
+                            if pkg.provenance_attested:
+                                con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — SLSA provenance attested")
+                            else:
+                                prov_status = str(result.provenance.get("status") or "")
+                                if prov_status == "unavailable":
+                                    con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — provenance service unavailable")
+                                elif prov_status == "not_provenance":
+                                    con.print(
+                                        f"  [dim]  {pkg.name}@{pkg.version} — "
+                                        "attestations present, but none were SLSA provenance[/dim]"
+                                    )
+                                else:
+                                    con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
 
             if unique_pkgs:
                 con.print(f"\n[bold blue]🔐 Verifying integrity for {len(unique_pkgs)} package(s)...[/bold blue]\n")

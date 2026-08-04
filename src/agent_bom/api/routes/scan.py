@@ -1911,8 +1911,8 @@ def _finding_facets_bounded(
     since: str | None,
     scope: Mapping[str, str],
     status: str,
-    scan_budget: int = _FACET_SCAN_BUDGET,
-    deadline_seconds: float = _FACET_DEADLINE_SECONDS,
+    scan_budget: int | None = None,
+    deadline_seconds: float | None = None,
 ) -> tuple[dict[str, dict[str, int]], int, dict[str, Any]]:
     """Compute self-excluding facets in one bounded canonical-stream pass.
 
@@ -1920,7 +1920,13 @@ def _finding_facets_bounded(
     is resident, avoiding four full tenant walks. When the row/deadline budget
     is reached the counts remain useful lower-bound evidence and are explicitly
     marked approximate by the caller.
+
+    The budgets resolve from the module constants at call time so a test can
+    reproduce truncation by lowering them instead of seeding 50k rows.
     """
+    scan_budget = _FACET_SCAN_BUDGET if scan_budget is None else scan_budget
+    deadline_seconds = _FACET_DEADLINE_SECONDS if deadline_seconds is None else deadline_seconds
+
     from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.export.runner import iter_current_findings
     from agent_bom.finding_scope import FINDING_CLASSES, SECURITY_DOMAINS, finding_class_for_row, lenses_for_row
@@ -2005,6 +2011,29 @@ def _finding_facets_bounded(
             total += 1
             freshness_counts[_freshness_bucket(row)] += 1
 
+    # ``total`` and the severity histogram have to answer the same question on
+    # the same basis. Under pushdown the histogram is the store's unbounded
+    # aggregate while the walk is row-budgeted, so a truncated walk would put an
+    # exact facet next to a lower-bound total and the two would contradict.
+    # The aggregate applies the identical predicates here (pushdown is refused
+    # whenever a scan_id or a payload-side scope key is present, so the walk's
+    # scope test is vacuous), which makes its count for the filtered band the
+    # exact total — take it, and both numbers come from one derivation again.
+    total_exact = not truncated
+    if truncated and pushed_severity_counts is not None and severity is not None:
+        total = pushed_severity_counts.get(_normalize_facet_severity(severity), total)
+        total_exact = True
+    # The walk-derived dimensions stay lower bounds after that substitution, so
+    # say per dimension which is which — "approximate" alone cannot tell a
+    # consumer that severity is exact while finding_class is not.
+    walk_state = "bounded" if truncated else "exact"
+    dimensions = {
+        "finding_class": walk_state,
+        "severity": "exact" if (pushed_severity_counts is not None or not truncated) else "bounded",
+        "status": walk_state,
+        "domain": walk_state,
+        "freshness": walk_state,
+    }
     return (
         {
             "finding_class": class_counts,
@@ -2020,6 +2049,8 @@ def _finding_facets_bounded(
             "scanned_rows": scanned_rows,
             "scan_budget": scan_budget,
             "deadline_ms": int(deadline_seconds * 1000),
+            "total_exact": total_exact,
+            "dimensions": dimensions,
         },
     )
 
@@ -2738,9 +2769,28 @@ def _list_findings_impl(
         # A partial walk that could not process even one row is not evidence
         # that the result set is empty. Preserve the list path's total instead
         # of replacing it with a misleading zero.
-        if facet_completeness["status"] == "complete" or facet_completeness["scanned_rows"] > 0:
+        if (
+            facet_completeness["status"] == "complete"
+            or facet_completeness["scanned_rows"] > 0
+            # An aggregate-derived total is authoritative even if the walk that
+            # ran alongside it processed no rows at all.
+            or facet_completeness["total_exact"]
+        ):
             total = facet_total
-        total_approximate = facet_completeness["status"] != "complete"
+        # A truncated walk does not always mean an approximate total: when the
+        # store aggregate answered the filtered band, that count *is* the total
+        # and matches the severity facet exactly. Labelling it approximate would
+        # understate a number that is exact.
+        total_approximate = not facet_completeness["total_exact"]
+        if facet_completeness["status"] != "complete":
+            bounded = sorted(
+                name for name, state in facet_completeness["dimensions"].items() if state == "bounded"
+            )
+            warnings.append(
+                "Facet counting stopped after "
+                f"{facet_completeness['scanned_rows']} scanned rows ({facet_completeness['reason']}); "
+                f"these facet counts are lower bounds, not totals: {', '.join(bounded)}."
+            )
 
     try:
         reachability = project_persisted_graph_reachability(

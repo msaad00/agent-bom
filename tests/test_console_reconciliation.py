@@ -28,6 +28,23 @@ def demo_console_output(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="module")
+def demo_verbose_console_output(tmp_path_factory) -> str:
+    """The ``--verbose`` screen, which renders a different summary path.
+
+    ``--verbose`` swaps the compact headline for ``print_summary`` +
+    ``print_posture_summary``; the non-verbose fixture above never exercises
+    either, so the two paths need their own reconciliation check.
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["scan", "--demo", "--offline", "--no-auto-update-db", "-f", "console", "--verbose"],
+        catch_exceptions=False,
+    )
+    return re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+
+
+@pytest.fixture(scope="module")
 def demo_json_report(tmp_path_factory) -> dict:
     out = tmp_path_factory.mktemp("demo") / "report.json"
     runner = CliRunner()
@@ -92,3 +109,34 @@ def test_findings_table_never_truncates_cve_ids(demo_console_output, demo_json_r
     """Every CVE id shown in the findings table renders in full."""
     assert "CVE-2020-14343" in demo_console_output
     assert not re.search(r"CVE-[\d-]*…", demo_console_output)
+
+
+def test_verbose_summary_critical_row_states_its_scope(demo_verbose_console_output, demo_json_report):
+    """The verbose summary box counted package CVEs while calling them "findings".
+
+    ``print_summary`` renders ``len(report.critical_vulns)`` — blast radii only,
+    so a critical MALICIOUS_PACKAGE finding is excluded — seven lines above
+    ``print_posture_summary``'s ``N CRITICAL`` headline, which counts every
+    finding category. Two different denominators, one unscoped label.
+    """
+    by_sev = demo_json_report["finding_summary"]["by_severity"]
+    critical_cves = demo_json_report["summary"]["critical_findings"]
+    # The demo estate is only useful as a regression lock while the two bases
+    # genuinely differ; if they converge this test stops proving anything.
+    assert critical_cves != by_sev["critical"], "demo estate no longer exercises the two bases"
+
+    row = re.search(r"^\s*(Critical\b[^\d]*?)\s{2,}(\d+)\s*$", demo_verbose_console_output, flags=re.MULTILINE)
+    assert row, "verbose summary box has no critical row"
+    label, value = row.group(1).strip(), int(row.group(2))
+    assert value == critical_cves, "the row still counts package CVEs"
+    assert "CVE" in label, f"package-CVE-scoped row must say so, got {label!r}"
+
+
+def test_verbose_posture_headline_matches_unified_stream(demo_verbose_console_output, demo_json_report):
+    """The verbose posture headline is the all-categories count, like the compact one."""
+    by_sev = demo_json_report["finding_summary"]["by_severity"]
+    match = re.search(r"SECURITY POSTURE:\s+(\d+) CRITICAL,\s+(\d+) HIGH,\s+(\d+) MEDIUM", demo_verbose_console_output)
+    assert match, "verbose posture headline missing"
+    assert int(match.group(1)) == by_sev["critical"]
+    assert int(match.group(2)) == by_sev["high"]
+    assert int(match.group(3)) == by_sev["medium"]

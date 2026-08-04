@@ -665,6 +665,12 @@ def _cve_sarif_result(
     version_provenance = evidence(finding, "package_version_provenance")
     if version_provenance is not None:
         result_properties["package_version_provenance"] = _sanitize_sarif_property(version_provenance)
+    for verdict_key in ("package_integrity_verified", "package_provenance_attested", "package_provenance_source"):
+        # --verify-integrity verdict. Omitted when the check never ran, so a
+        # missing key never reads as "verification failed".
+        verdict_value = evidence(finding, verdict_key, None)
+        if verdict_value is not None:
+            result_properties[verdict_key] = verdict_value
     agent_provenance = _agent_discovery_provenance_from_report(report, list(finding.affected_agents))
     if agent_provenance:
         result_properties["agent_discovery_provenance"] = _sanitize_sarif_property(agent_provenance)

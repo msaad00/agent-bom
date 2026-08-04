@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+from typing import Any
 
 # Expected lowercase-hex digest length per algorithm (used to reject garbage).
 _HEX_LEN_BY_ALG = {
@@ -110,3 +111,65 @@ def spdx3_verified_using(checksums: dict[str, str]) -> list[dict[str, str]]:
         for alg, value in sorted(checksums.items())
         if alg in _HEX_LEN_BY_ALG
     ]
+
+
+# Strongest-first digest preference when a single representative hash is needed.
+_DIGEST_PREFERENCE = ("SHA-512", "SHA-384", "SHA-256", "SHA-224", "SHA-1", "MD5")
+
+
+def strongest_checksum(checksums: dict[str, str]) -> tuple[str, str] | None:
+    """Return the strongest ``(algorithm, hex)`` pair available, or ``None``."""
+    for alg in _DIGEST_PREFERENCE:
+        value = checksums.get(alg)
+        if value:
+            return alg, value
+    return None
+
+
+def integrity_verdict(package: Any) -> dict[str, Any] | None:
+    """Normalize a package's supply-chain verification result.
+
+    ``--verify-integrity`` sets ``integrity_verified`` (artifact digest matched
+    the registry) and ``provenance_attested`` (a SLSA / PEP 740 / sum.golang.org
+    attestation was found). ``None`` on both means the check never ran, which is
+    a different claim from "ran and failed" — so this returns ``None`` only in
+    that case and every emitter omits the verdict rather than implying a pass.
+
+    Single source of truth for the JSON, CycloneDX, SPDX 2.x, SPDX 3.0, SARIF
+    and CSV emitters so no two of them can disagree about the same package.
+    """
+    verified = getattr(package, "integrity_verified", None)
+    attested = getattr(package, "provenance_attested", None)
+    if verified is None and attested is None:
+        return None
+    verdict: dict[str, Any] = {}
+    if verified is not None:
+        verdict["integrity_verified"] = bool(verified)
+    if attested is not None:
+        verdict["provenance_attested"] = bool(attested)
+        source = str(getattr(package, "provenance_source", None) or "").strip()
+        if source:
+            verdict["provenance_source"] = source
+    return verdict
+
+
+def integrity_verdict_statements(verdict: dict[str, Any] | None) -> list[str]:
+    """Render the verdict as SPDX annotation statements (2.x comment / 3.0 statement).
+
+    Neither SPDX 2.3 nor SPDX 3.0.1 models a verification verdict, so both use
+    their annotation mechanism (2.3 ``annotations[].comment`` with
+    ``annotationType: OTHER``; 3.0.1 ``Annotation.statement`` with
+    ``annotationType: other``). One renderer keeps the two documents identical.
+    """
+    if not verdict:
+        return []
+    statements: list[str] = []
+    if "integrity_verified" in verdict:
+        statements.append(f"agent-bom:integrity-verified={str(verdict['integrity_verified']).lower()}")
+    if "provenance_attested" in verdict:
+        statement = f"agent-bom:provenance-attested={str(verdict['provenance_attested']).lower()}"
+        source = verdict.get("provenance_source")
+        if source:
+            statement += f" source={source}"
+        statements.append(statement)
+    return statements

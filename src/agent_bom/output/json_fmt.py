@@ -1176,6 +1176,11 @@ def to_json(report: AIBOMReport) -> dict:
                                 "download_url": pkg.download_url,
                                 "copyright_text": pkg.copyright_text,
                                 "deps_dev_resolved": pkg.deps_dev_resolved,
+                                # --verify-integrity verdict; null means the
+                                # check never ran (not "ran and failed").
+                                "integrity_verified": pkg.integrity_verified,
+                                "provenance_attested": pkg.provenance_attested,
+                                "provenance_source": pkg.provenance_source,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
                                 "scorecard_repo": pkg.scorecard_repo,

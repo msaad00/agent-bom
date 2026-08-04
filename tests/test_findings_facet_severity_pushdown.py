@@ -261,6 +261,123 @@ def test_severity_alias_rows_survive_a_filtered_facet_request() -> None:
     assert total == 2, "the 'informational' alias row was dropped by a pushed-down predicate"
 
 
+def test_truncated_walk_cannot_contradict_the_severity_facet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``total`` and the severity facet must never disagree, budget or not.
+
+    Under pushdown the histogram comes from the store's unbounded ``GROUP BY``
+    while ``total`` came from the row-budgeted walk, so a tenant with more
+    matching rows than the budget got an exact facet next to a truncated total
+    — two contradicting numbers, both merely labelled approximate. Reproduced
+    here by lowering the budget rather than materialising 50k rows.
+    """
+    from agent_bom.api.routes.scan import _finding_facets_bounded
+
+    total_rows = 500
+    budget = 10
+    matching = total_rows // len(SEVERITY_CYCLE)
+    assert matching > budget, "the case only exists when matches exceed the budget"
+    _install_counting_stream(monkeypatch, total_rows=total_rows)
+
+    facets, total, metadata = _finding_facets_bounded(
+        "tenant-pushdown",
+        severity="critical",
+        scan_id=None,
+        since=None,
+        scope={},
+        status="all",
+        scan_budget=budget,
+        deadline_seconds=60,
+    )
+
+    assert metadata["status"] == "partial", "the budget did not truncate the walk"
+    assert facets["severity"]["critical"] == total, (
+        f"severity facet says {facets['severity']['critical']} but total says {total}"
+    )
+
+
+def test_truncated_walk_labels_which_dimensions_are_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A partial walk must say *which* counts are lower bounds, not just "approximate"."""
+    from agent_bom.api.routes.scan import _finding_facets_bounded
+
+    _install_counting_stream(monkeypatch, total_rows=500)
+
+    facets, total, metadata = _finding_facets_bounded(
+        "tenant-pushdown",
+        severity="critical",
+        scan_id=None,
+        since=None,
+        scope={},
+        status="all",
+        scan_budget=10,
+        deadline_seconds=60,
+    )
+
+    assert metadata["total_exact"] is True, "the store aggregate answers the total exactly"
+    dimensions = metadata["dimensions"]
+    assert dimensions["severity"] == "exact"
+    assert dimensions["finding_class"] == "bounded"
+    assert dimensions["freshness"] == "bounded"
+    # A bounded dimension is a lower bound on the exact total, never above it.
+    assert sum(facets["finding_class"].values()) <= total
+    assert sum(facets["freshness"].values()) <= total
+
+
+def test_complete_walk_reports_every_dimension_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-vacuous: the labelling is driven by real truncation, not always-on."""
+    from agent_bom.api.routes.scan import _finding_facets_bounded
+
+    _install_counting_stream(monkeypatch, total_rows=500)
+
+    facets, total, metadata = _finding_facets_bounded(
+        "tenant-pushdown",
+        severity="critical",
+        scan_id=None,
+        since=None,
+        scope={},
+        status="all",
+        scan_budget=10_000,
+        deadline_seconds=60,
+    )
+
+    assert metadata["status"] == "complete"
+    assert metadata["total_exact"] is True
+    assert set(metadata["dimensions"].values()) == {"exact"}
+    assert facets["severity"]["critical"] == total
+    assert sum(facets["freshness"].values()) == total
+
+
+def test_truncated_walk_without_pushdown_still_agrees(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The unfiltered walk truncates too; there both numbers stay lower bounds."""
+    from agent_bom.api.routes.scan import _finding_facets_bounded
+
+    _install_counting_stream(monkeypatch, total_rows=500)
+
+    facets, total, metadata = _finding_facets_bounded(
+        "tenant-pushdown",
+        severity=None,
+        scan_id=None,
+        since=None,
+        scope={},
+        status="all",
+        scan_budget=25,
+        deadline_seconds=60,
+    )
+
+    assert metadata["status"] == "partial"
+    assert metadata["total_exact"] is False
+    assert set(metadata["dimensions"].values()) == {"bounded"}
+    assert sum(facets["severity"].values()) == total
+    assert sum(facets["freshness"].values()) == total
+
+
 def test_unfiltered_facets_do_not_call_the_aggregate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

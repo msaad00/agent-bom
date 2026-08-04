@@ -231,6 +231,17 @@ def test_facet_walk_is_single_pass_and_marks_scan_budget_partial(monkeypatch: py
         "scanned_rows": 3,
         "scan_budget": 3,
         "deadline_ms": 60_000,
+        # A truncated walk with no store aggregate to fall back on leaves every
+        # dimension — and the total — a lower bound, and now says so per
+        # dimension rather than only as a single "approximate" flag.
+        "total_exact": False,
+        "dimensions": {
+            "finding_class": "bounded",
+            "severity": "bounded",
+            "status": "bounded",
+            "domain": "bounded",
+            "freshness": "bounded",
+        },
     }
 
 
@@ -292,6 +303,14 @@ def test_partial_zero_row_facet_walk_preserves_the_list_total(monkeypatch: pytes
                 "scanned_rows": 0,
                 "scan_budget": 50_000,
                 "deadline_ms": 1_500,
+                "total_exact": False,
+                "dimensions": {
+                    "finding_class": "bounded",
+                    "severity": "bounded",
+                    "status": "bounded",
+                    "domain": "bounded",
+                    "freshness": "bounded",
+                },
             },
         ),
     )
@@ -306,6 +325,53 @@ def test_partial_zero_row_facet_walk_preserves_the_list_total(monkeypatch: pytes
     assert len(body["findings"]) == 6
     assert body["total"] == 6
     assert body["total_approximate"] is True
+
+
+def test_findings_envelope_total_never_contradicts_the_severity_facet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``total`` and ``facets.severity[<filter>]`` must agree in the response body.
+
+    The row budget is lowered instead of seeding 50k rows; the store aggregate
+    still answers the histogram exactly, which is precisely the combination that
+    used to emit an exact facet beside a truncated total.
+    """
+    from agent_bom.api.routes import scan as scan_routes
+
+    tenant = "tenant-facet-contradiction"
+    store = InMemoryComplianceHubStore()
+    rows = [
+        {
+            "id": f"contradiction-{index}",
+            "canonical_id": f"contradiction-{index}",
+            "finding_type": "CVE",
+            "source": "SBOM",
+            "severity": "critical" if index % 2 == 0 else "high",
+            "origin": "bulk_ingest",
+        }
+        for index in range(24)
+    ]
+    store.add(tenant, rows)
+    store.upsert_current_batch(
+        tenant, rows, observed_at="2026-07-30T00:00:00Z", batch_id="contradiction", source="fixture"
+    )
+    set_compliance_hub_store(store)
+    monkeypatch.setattr(scan_routes, "_FACET_SCAN_BUDGET", 3)
+
+    response = TestClient(app).get(
+        "/v1/findings?include_facets=true&window_days=0&severity=critical",
+        headers=_headers(tenant),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    completeness = body["facet_metadata"]["completeness"]
+    assert completeness["status"] == "partial", "the lowered budget did not truncate the walk"
+    assert body["facets"]["severity"]["critical"] == body["total"]
+    # The envelope only carries the flag when the total really is approximate.
+    assert body.get("total_approximate", False) is False, "the aggregate answered the total exactly"
+    assert body["facets_approximate"] is True, "the walk-derived dimensions are still bounded"
+    assert any("lower bounds, not totals" in warning for warning in body["warnings"]), body["warnings"]
 
 
 def test_async_export_uses_the_same_finding_predicates(

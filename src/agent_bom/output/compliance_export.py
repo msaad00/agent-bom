@@ -260,7 +260,9 @@ def export_compliance_bundle(
         f"Packages inventoried: {report.total_packages}",
         f"Vulnerabilities found: {vulnerability_findings}",
         f"Vulnerability occurrences across inventory: {vulnerability_occurrences}",
-        f"Critical findings: {len(report.critical_vulns)}",
+        # Blast-radius scoped, like "Vulnerabilities found" above it — not the
+        # all-categories critical count the posture surfaces report.
+        f"Critical package CVEs: {len(report.critical_vulns)}",
         "",
         "Controls mapped: " + ", ".join(metadata.catalog.keys()),
         "",

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_bom.asset_provenance import package_version_provenance
-from agent_bom.checksums import spdx3_verified_using
+from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx3_verified_using
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
@@ -185,6 +185,21 @@ def to_spdx(report: AIBOMReport) -> dict:
                                 "annotationType": "other",
                                 "subject": pkg_id,
                                 "statement": f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}",
+                            }
+                        )
+                    for statement in integrity_verdict_statements(integrity_verdict(pkg)):
+                        # SPDX 3.0.1 has no modelled slot for a verification
+                        # verdict; ``Annotation`` with ``annotationType: other``
+                        # is the core-profile mechanism for exactly this ("extra
+                        # information about an Element which is not part of a
+                        # review"). ``verifiedUsing`` above carries the digest;
+                        # this carries whether it was checked, and what came back.
+                        pkg_annotations.append(
+                            {
+                                "type": "Annotation",
+                                "annotationType": "other",
+                                "subject": pkg_id,
+                                "statement": statement,
                             }
                         )
                     pkg_element["annotation"] = pkg_annotations

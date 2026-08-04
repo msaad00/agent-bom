@@ -87,7 +87,9 @@ def _build_report_lines(report: AIBOMReport, blast_radii: list[BlastRadius] | No
     lines.append(f"Servers: {report.total_servers}")
     lines.append(f"Packages: {report.total_packages}")
     lines.append(f"Vulnerabilities: {report.total_vulnerabilities}")
-    lines.append(f"Critical findings: {len(report.critical_vulns)}")
+    # ``critical_vulns`` is blast-radius scoped; label it so it cannot be read
+    # as the all-categories critical count.
+    lines.append(f"Critical package CVEs: {len(report.critical_vulns)}")
     if report.scan_sources:
         _append_wrapped(lines, f"Sources: {', '.join(report.scan_sources)}")
     if report.executive_summary:

@@ -218,21 +218,21 @@ async def _scan_impl_inner(
 
         active_findings = active_blast_radii(blast_radii)
 
-        # Integrity verification
+        # Integrity + provenance verification. Shares the CLI's helper so the
+        # verdict lands on the model fields every emitter reads, instead of an
+        # ad-hoc attribute nothing consumes.
         if verify_integrity:
             from agent_bom.http_client import create_client
-            from agent_bom.integrity import verify_package_integrity
+            from agent_bom.integrity import verify_packages
 
-            async with create_client(timeout=15.0) as client:
-                for agent in agents:
-                    for server in agent.mcp_servers:
-                        for pkg in server.packages:
-                            try:
-                                integrity_result = await verify_package_integrity(pkg, client)
-                                if integrity_result:
-                                    pkg.integrity = integrity_result
-                            except Exception as exc:
-                                logger.debug("Integrity check failed for %s: %s", pkg.name, exc)
+            all_pkgs = [pkg for agent in agents for server in agent.mcp_servers for pkg in server.packages]
+            if all_pkgs:
+                try:
+                    async with create_client(timeout=15.0) as client:
+                        await verify_packages(all_pkgs, client)
+                except Exception as exc:
+                    logger.debug("Integrity verification failed: %s", exc)
+                    scan_warnings.append(f"Package integrity verification failed: {sanitize_error(exc)}")
 
         # OpenSSF Scorecard enrichment
         if scorecard:

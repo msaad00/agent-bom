@@ -1174,6 +1174,14 @@ def blast_radius_to_finding(br: object) -> "Finding":
     if package_provenance:
         evidence["package_discovery_provenance"] = package_provenance
     evidence["package_version_provenance"] = package_version_provenance(pkg)
+    from agent_bom.checksums import integrity_verdict
+
+    integrity = integrity_verdict(pkg)
+    if integrity is not None:
+        # --verify-integrity verdict travels with the finding so SARIF/CSV and
+        # the findings API carry it, not just the package-shaped SBOM formats.
+        for key, value in integrity.items():
+            evidence[f"package_{key}"] = value
     if getattr(pkg, "is_malicious", False):
         evidence["package_is_malicious"] = True
         reason = getattr(pkg, "malicious_reason", None)

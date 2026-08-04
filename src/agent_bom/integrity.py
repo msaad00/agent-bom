@@ -11,6 +11,7 @@ import hashlib
 import json as _json
 import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
@@ -349,6 +350,58 @@ async def check_go_provenance(
             }
 
     return {"has_provenance": False, "status": "unavailable", "http_status": response.status_code}
+
+
+@dataclass
+class PackageVerification:
+    """One package's verification outcome, plus the raw registry responses.
+
+    ``package`` already carries the applied verdict (``integrity_verified`` /
+    ``provenance_attested`` / ``provenance_source``); the raw dicts are kept so a
+    renderer can explain *why* (``status: unavailable`` vs ``not_provenance``)
+    without re-deriving it.
+    """
+
+    package: Package
+    integrity: Optional[dict] = None
+    provenance: Optional[dict] = None
+
+
+async def verify_packages(
+    packages: Iterable[Package],
+    client: httpx.AsyncClient,
+) -> list[PackageVerification]:
+    """Verify integrity + provenance and write the verdict onto every package.
+
+    The single entry point behind ``--verify-integrity`` on every surface (CLI,
+    MCP, API). Each distinct ecosystem/name/version is fetched once and the
+    verdict is applied to every ``Package`` instance sharing that identity, so
+    two surfaces can never report a different answer for the same package.
+
+    Packages whose version is unresolved are skipped: they leave the verdict
+    ``None`` ("never checked") rather than recording a failure the registry was
+    never asked about.
+    """
+    by_key: dict[str, list[Package]] = {}
+    for package in packages:
+        if package.version in ("latest", "unknown", "", None):
+            continue
+        by_key.setdefault(f"{package.ecosystem}:{package.name}@{package.version}", []).append(package)
+
+    results: list[PackageVerification] = []
+    for instances in by_key.values():
+        primary = instances[0]
+        integrity = await verify_package_integrity(primary, client)
+        provenance = await check_package_provenance(primary, client)
+        for package in instances:
+            if integrity is not None:
+                package.integrity_verified = bool(integrity.get("verified"))
+            if provenance is not None:
+                package.provenance_attested = bool(provenance.get("has_provenance"))
+                if package.provenance_attested:
+                    package.provenance_source = str(provenance.get("source") or f"{package.ecosystem}_attestation")
+        results.append(PackageVerification(package=primary, integrity=integrity, provenance=provenance))
+    return results
 
 
 def verify_installed_record(package_name: str) -> dict:

@@ -924,6 +924,7 @@ from agent_bom.api.routes.compliance import router as _compliance_router  # noqa
 from agent_bom.api.routes.connectors import router as _connectors_router  # noqa: E402
 from agent_bom.api.routes.credentials import router as _credentials_router  # noqa: E402
 from agent_bom.api.routes.datasets import router as _datasets_router  # noqa: E402
+from agent_bom.api.routes.demo_estate import router as _demo_estate_router  # noqa: E402
 from agent_bom.api.routes.discovery import router as _discovery_router  # noqa: E402
 from agent_bom.api.routes.enterprise import router as _enterprise_router  # noqa: E402
 from agent_bom.api.routes.entitlements import router as _entitlements_router  # noqa: E402
@@ -974,6 +975,7 @@ for _router in (
     _connectors_router,
     _credentials_router,
     _datasets_router,
+    _demo_estate_router,
     _discovery_router,
     _entitlements_router,
     _estate_router,

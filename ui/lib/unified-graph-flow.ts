@@ -15,7 +15,11 @@ import {
   reachEdgeWidth,
   reachStrokeColor,
 } from "@/lib/effective-reach";
-import { relationshipLegendItem, type LegendItem } from "@/lib/graph-utils";
+import {
+  NODE_TYPE_LEGEND_ORDER,
+  relationshipLegendItem,
+  type LegendItem,
+} from "@/lib/graph-utils";
 import { displayContextDescription } from "@/lib/context-graph";
 import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 import {
@@ -114,6 +118,11 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   directory: "containerNode",
   sourceFile: "packageNode",
   configFile: "packageNode",
+  codeModule: "packageNode",
+  ciJob: "toolNode",
+  apiGateway: "cloudResourceNode",
+  toolCall: "toolNode",
+  blueprint: "accessPolicyNode",
 };
 
 /** Resolve an API entity to the renderer registered by the graph canvas. */
@@ -157,6 +166,11 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
   directory: "Directory",
   sourceFile: "Source File",
   configFile: "Config File",
+  codeModule: "Code Module",
+  ciJob: "CI/CD Job",
+  apiGateway: "API Gateway",
+  toolCall: "Tool Call",
+  blueprint: "Blueprint",
 };
 
 const NODE_COLORS: Record<LineageNodeType, string> = {
@@ -194,6 +208,11 @@ const NODE_COLORS: Record<LineageNodeType, string> = {
   directory: "#0d9488",
   sourceFile: "#22d3ee",
   configFile: "#f97316",
+  codeModule: "#06b6d4",
+  ciJob: "#a855f7",
+  apiGateway: "#2563eb",
+  toolCall: "#c084fc",
+  blueprint: "#818cf8",
 };
 
 const NODE_LAYERS: Record<LineageNodeType, string> = {
@@ -231,6 +250,11 @@ const NODE_LAYERS: Record<LineageNodeType, string> = {
   directory: "code",
   sourceFile: "code",
   configFile: "code",
+  codeModule: "code",
+  ciJob: "ci",
+  apiGateway: "api_gateway",
+  toolCall: "runtime_evidence",
+  blueprint: "orchestration",
 };
 
 const FINDING_NODE_TYPES = new Set<LineageNodeType>([
@@ -641,6 +665,35 @@ function toLineageData(
         stringAttr(node, "cloud_provider") ||
         stringAttr(node, "source_section");
       break;
+    case "apiGateway":
+      data.description =
+        stringAttr(node, "protocol") ||
+        stringAttr(node, "endpoint") ||
+        stringAttr(node, "cloud_provider") ||
+        stringAttr(node, "location");
+      break;
+    case "toolCall":
+      data.description =
+        stringAttr(node, "tool_name") ||
+        stringAttr(node, "server_name") ||
+        displayContextDescription(stringAttr(node, "description"));
+      break;
+    case "ciJob":
+      data.description =
+        stringAttr(node, "workflow") ||
+        stringAttr(node, "config_path") ||
+        stringAttr(node, "source");
+      break;
+    case "codeModule":
+      data.description =
+        stringAttr(node, "path") || stringAttr(node, "language");
+      break;
+    case "blueprint":
+      data.description =
+        stringAttr(node, "approval_status") ||
+        stringAttr(node, "owner") ||
+        stringAttr(node, "current_version");
+      break;
     default:
       break;
   }
@@ -736,41 +789,13 @@ function buildSummary(
   };
 }
 
+/**
+ * Reads the canonical, exhaustiveness-guarded legend order rather than a local
+ * copy — a second hand-maintained list is how framework, shared-server, and the
+ * repository file types ended up rendering on the canvas with no legend row.
+ */
 function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
-  return [
-    "provider",
-    "agent",
-    "org",
-    "account",
-    "user",
-    "group",
-    "role",
-    "policy",
-    "serviceAccount",
-    "servicePrincipal",
-    "federatedIdentity",
-    "environment",
-    "fleet",
-    "cluster",
-    "server",
-    "package",
-    "model",
-    "dataset",
-    "container",
-    "cloudResource",
-    "dataStore",
-    "credential",
-    "managedIdentity",
-    "accessGrant",
-    "accessPolicy",
-    "tool",
-    "vulnerability",
-    "misconfiguration",
-    "driftIncident",
-  ]
-    .filter((nodeType): nodeType is LineageNodeType =>
-      nodeTypes.has(nodeType as LineageNodeType),
-    )
+  return NODE_TYPE_LEGEND_ORDER.filter((nodeType) => nodeTypes.has(nodeType))
     .map((nodeType) => ({
       label: NODE_LABELS[nodeType],
       color: NODE_COLORS[nodeType],
@@ -930,11 +955,19 @@ function legendShapeForNodeType(
     return "diamond";
   if (nodeType === "role" || nodeType === "policy") return "diamond";
   if (
+    nodeType === "apiGateway" ||
+    nodeType === "toolCall" ||
+    nodeType === "ciJob"
+  ) {
+    return "diamond";
+  }
+  if (
     nodeType === "server" ||
     nodeType === "sharedServer" ||
     nodeType === "container" ||
     nodeType === "cloudResource" ||
-    nodeType === "account"
+    nodeType === "account" ||
+    nodeType === "blueprint"
   ) {
     return "square";
   }

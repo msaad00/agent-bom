@@ -428,6 +428,7 @@ def pytest_runtest_call(item: pytest.Item) -> None:
     del item
     _sync_api_auth_after_local_fixtures()
 
+
 _STORAGE_ENV_VARS = (
     "AGENT_BOM_POSTGRES_URL",
     "AGENT_BOM_POSTGRES_DSN",
@@ -645,6 +646,7 @@ _STUB_SDK_ROOTS = (
     "databricks",
     "google",
     "googleapiclient",
+    "openai",
     "snowflake",
 )
 

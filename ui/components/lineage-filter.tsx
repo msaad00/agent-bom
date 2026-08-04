@@ -52,6 +52,13 @@ export const FOCUSED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   directory: true,
   sourceFile: true,
   configFile: true,
+  codeModule: true,
+  ciJob: true,
+  toolCall: true,
+  blueprint: true,
+  // Cloud network-edge primitive; the focused lens is agent-centric and already
+  // hides cloudResource / container, so the gateway rides with them.
+  apiGateway: false,
 };
 
 export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
@@ -89,6 +96,11 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   directory: true,
   sourceFile: true,
   configFile: true,
+  codeModule: true,
+  ciJob: true,
+  apiGateway: true,
+  toolCall: true,
+  blueprint: true,
 };
 
 export type GraphScopePreset =
@@ -193,8 +205,8 @@ function observedScopeFilters(layers: LineageNodeType[]): FilterState {
 export function createCloudEstateGraphFilters(): FilterState {
   return observedScopeFilters([
     "provider", "org", "account", "environment", "fleet", "cluster",
-    "cloudResource", "container", "dataStore", "user", "group", "role",
-    "policy", "serviceAccount", "servicePrincipal", "federatedIdentity",
+    "cloudResource", "container", "dataStore", "apiGateway", "user", "group",
+    "role", "policy", "serviceAccount", "servicePrincipal", "federatedIdentity",
     "managedIdentity", "accessGrant", "accessPolicy", "vulnerability",
     "misconfiguration", "driftIncident",
   ]);
@@ -202,17 +214,17 @@ export function createCloudEstateGraphFilters(): FilterState {
 
 export function createRepositoryGraphFilters(): FilterState {
   return observedScopeFilters([
-    "directory", "sourceFile", "configFile", "package", "framework",
-    "container", "vulnerability", "misconfiguration",
+    "directory", "sourceFile", "configFile", "codeModule", "ciJob", "package",
+    "framework", "container", "vulnerability", "misconfiguration",
   ]);
 }
 
 export function createEnvironmentGraphFilters(): FilterState {
   return observedScopeFilters([
     "environment", "fleet", "cluster", "agent", "server", "sharedServer",
-    "tool", "credential", "package", "model", "dataset", "container",
-    "cloudResource", "dataStore", "managedIdentity", "accessGrant",
-    "vulnerability", "misconfiguration",
+    "tool", "toolCall", "credential", "package", "model", "dataset",
+    "container", "cloudResource", "dataStore", "apiGateway",
+    "managedIdentity", "accessGrant", "vulnerability", "misconfiguration",
   ]);
 }
 
@@ -237,6 +249,13 @@ export function createAssetLifecycleDriftGraphFilters(
       dataStore: false,
       directory: false,
       sourceFile: false,
+      codeModule: false,
+      ciJob: false,
+      toolCall: false,
+      apiGateway: false,
+      // Approved-composition blueprints are the governance baseline drift is
+      // measured against, so the drift lens keeps them.
+      blueprint: true,
       driftIncident: true,
       configFile: true,
       environment: true,
@@ -407,33 +426,50 @@ const SEVERITY_RANK_MAP: Record<string, number> = {
   unknown: 0,
 };
 
-const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
+export const LAYER_LABELS: {
+  key: LineageNodeType;
+  label: string;
+  color: string;
+}[] = [
   { key: "provider", label: "Providers", color: "bg-[var(--text-tertiary)]" },
+  { key: "org", label: "Organizations", color: "bg-teal-800" },
+  { key: "account", label: "Accounts", color: "bg-teal-700" },
   { key: "agent", label: "Agents", color: "bg-emerald-500" },
   { key: "server", label: "Servers", color: "bg-blue-500" },
+  { key: "sharedServer", label: "Shared Servers", color: "bg-cyan-400" },
   { key: "package", label: "Packages", color: "bg-[var(--text-tertiary)]" },
   { key: "model", label: "Models", color: "bg-violet-500" },
+  { key: "framework", label: "Frameworks", color: "bg-cyan-500" },
   { key: "dataset", label: "Datasets", color: "bg-cyan-500" },
   { key: "container", label: "Containers", color: "bg-indigo-500" },
   { key: "cloudResource", label: "Cloud", color: "bg-sky-500" },
+  { key: "apiGateway", label: "API Gateways", color: "bg-blue-600" },
   { key: "environment", label: "Environments", color: "bg-teal-500" },
   { key: "fleet", label: "Fleets", color: "bg-cyan-500" },
   { key: "cluster", label: "Clusters", color: "bg-sky-400" },
   { key: "user", label: "Users", color: "bg-emerald-400" },
   { key: "group", label: "Groups", color: "bg-fuchsia-500" },
   { key: "serviceAccount", label: "Svc Accounts", color: "bg-amber-400" },
+  { key: "servicePrincipal", label: "Svc Principals", color: "bg-teal-700" },
+  { key: "federatedIdentity", label: "Federated IDs", color: "bg-cyan-700" },
+  { key: "role", label: "Roles", color: "bg-orange-600" },
+  { key: "policy", label: "IAM Policies", color: "bg-amber-600" },
   { key: "vulnerability", label: "CVEs", color: "bg-red-500" },
   { key: "misconfiguration", label: "Misconfigs", color: "bg-orange-500" },
   { key: "credential", label: "Credentials", color: "bg-amber-500" },
   { key: "tool", label: "Tools", color: "bg-purple-500" },
+  { key: "toolCall", label: "Tool Calls", color: "bg-purple-400" },
   { key: "managedIdentity", label: "Managed IDs", color: "bg-cyan-600" },
   { key: "accessGrant", label: "Access Grants", color: "bg-yellow-600" },
-  { key: "accessPolicy", label: "Policies", color: "bg-amber-700" },
+  { key: "accessPolicy", label: "Access Policies", color: "bg-amber-700" },
+  { key: "blueprint", label: "Blueprints", color: "bg-indigo-400" },
   { key: "driftIncident", label: "Drift", color: "bg-orange-400" },
   { key: "dataStore", label: "Data Stores", color: "bg-sky-600" },
   { key: "directory", label: "Folders", color: "bg-teal-600" },
   { key: "sourceFile", label: "Source Files", color: "bg-cyan-400" },
+  { key: "codeModule", label: "Code Modules", color: "bg-cyan-500" },
   { key: "configFile", label: "Config Files", color: "bg-orange-500" },
+  { key: "ciJob", label: "CI/CD Jobs", color: "bg-purple-500" },
 ];
 
 const AGENT_OPTION_HEIGHT = 32;

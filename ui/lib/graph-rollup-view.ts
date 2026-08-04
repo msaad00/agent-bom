@@ -39,6 +39,11 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   directory: "containerNode",
   sourceFile: "packageNode",
   configFile: "packageNode",
+  codeModule: "packageNode",
+  ciJob: "toolNode",
+  apiGateway: "cloudResourceNode",
+  toolCall: "toolNode",
+  blueprint: "accessPolicyNode",
 };
 
 const DEFAULT_COLUMNS = 3;

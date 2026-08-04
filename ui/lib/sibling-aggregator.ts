@@ -285,6 +285,11 @@ const CHILD_TYPE_NOUNS: Partial<Record<LineageNodeType, string>> = {
   directory: "folder",
   sourceFile: "source file",
   configFile: "config file",
+  codeModule: "code module",
+  ciJob: "CI job",
+  apiGateway: "API gateway",
+  toolCall: "tool call",
+  blueprint: "blueprint",
 };
 
 function readEdgeKind(edge: Edge): string {

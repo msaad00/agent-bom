@@ -146,6 +146,11 @@ const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
   directory: "containerNode",
   sourceFile: "packageNode",
   configFile: "packageNode",
+  codeModule: "packageNode",
+  ciJob: "toolNode",
+  apiGateway: "cloudResourceNode",
+  toolCall: "toolNode",
+  blueprint: "accessPolicyNode",
 };
 
 // ─── Edge colors ─────────────────────────────────────────────────────────────

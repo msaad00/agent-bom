@@ -225,6 +225,11 @@ const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {
   directory: "Folder",
   sourceFile: "Source",
   configFile: "Config",
+  codeModule: "Module",
+  ciJob: "CI job",
+  apiGateway: "Gateway",
+  toolCall: "Tool call",
+  blueprint: "Blueprint",
 };
 
 function AgentNode({ data }: { data: LineageNodeData }) {
@@ -854,6 +859,11 @@ const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
   directory: "#0d9488",
   sourceFile: "#22d3ee",
   configFile: "#f97316",
+  codeModule: "#06b6d4",
+  ciJob: "#a855f7",
+  apiGateway: "#2563eb",
+  toolCall: "#c084fc",
+  blueprint: "#818cf8",
 };
 
 const DETAIL_RENDERERS: Record<
@@ -894,6 +904,11 @@ const DETAIL_RENDERERS: Record<
   directory: ContainerNode,
   sourceFile: PackageNode,
   configFile: PackageNode,
+  codeModule: PackageNode,
+  ciJob: ToolNode,
+  apiGateway: CloudResourceNode,
+  toolCall: ToolNode,
+  blueprint: CredentialNode,
 };
 
 function AdaptiveLineageNode({ data }: { data: LineageNodeData }) {

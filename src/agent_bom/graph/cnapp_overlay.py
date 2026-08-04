@@ -16,6 +16,8 @@ scanner inputs:
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -331,6 +333,11 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         ds_id = f"data_store:{node.id}"
         data_store_for_resource[node.id] = ds_id
         if ds_id not in graph.nodes:
+            # The companion inherits the backing resource's estate coordinates.
+            # Without them a crown-jewel data store carries no provider, account,
+            # region, or environment and silently falls out of every scoped
+            # projection (/v1/graph/scoped, /v1/inventory facets) while the
+            # resource it mirrors stays in — two views of one asset disagreeing.
             graph.add_node(
                 UnifiedNode(
                     id=ds_id,
@@ -338,7 +345,16 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                     label=f"data: {node.label}",
                     severity="info",
                     data_sources=[_OVERLAY_SOURCE],
-                    attributes={"backed_by": node.id, "internet_exposed": bool(node.attributes.get("internet_exposed"))},
+                    attributes={
+                        "backed_by": node.id,
+                        "internet_exposed": bool(node.attributes.get("internet_exposed")),
+                        **{
+                            key: value
+                            for key in ("cloud_provider", "account_id", "location", "environment", "resource_name")
+                            if (value := node.attributes.get(key))
+                        },
+                    },
+                    dimensions=replace(node.dimensions),
                 )
             )
             data_stores_added += 1

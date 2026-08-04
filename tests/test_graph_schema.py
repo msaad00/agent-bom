@@ -1215,13 +1215,20 @@ class TestGraphSchemaEndpoint:
         edge_entries = {entry["key"]: entry for entry in body["edge_kinds"]}
 
         reserved_nodes = {"external_import"}
-        reserved_edges = {"imports", "owns", "remediates", "acted_as"}
+        reserved_edges = {"imports", "remediates", "acted_as"}
         for key in reserved_nodes:
             assert node_entries[key]["emission_status"] == "reserved"
             assert "Reserved" in node_entries[key]["emission_notes"]
         for key in reserved_edges:
             assert edge_entries[key]["emission_status"] == "reserved"
             assert "Reserved" in edge_entries[key]["emission_notes"]
+
+        # ``owns`` is NOT dead vocabulary: it is the account → resource
+        # ownership backbone every cloud scan emits (see
+        # tests/test_graph_schema_emission_honesty.py, which proves it from a
+        # real build rather than from this declaration).
+        assert edge_entries["owns"]["emission_status"] == "emitted"
+        assert "cloud_inventory" in edge_entries["owns"]["emission_surfaces"]
 
         runtime_nodes = {"tool_call", "resource"}
         runtime_edges = {"called", "used_credential"}

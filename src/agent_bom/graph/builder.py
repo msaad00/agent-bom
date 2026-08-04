@@ -1275,11 +1275,7 @@ def _apply_repo_trust_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any
     """Stamp ``repo_trust`` metadata onto APPLICATION (+ root DIRECTORY when present)."""
     has_trust = isinstance(report_json.get("repo_trust"), Mapping) and bool(report_json.get("repo_trust"))
     inventory = report_json.get("project_inventory")
-    has_nested = (
-        isinstance(inventory, Mapping)
-        and isinstance(inventory.get("repo_trust"), Mapping)
-        and bool(inventory.get("repo_trust"))
-    )
+    has_nested = isinstance(inventory, Mapping) and isinstance(inventory.get("repo_trust"), Mapping) and bool(inventory.get("repo_trust"))
     if not has_trust and not has_nested:
         return
     from datetime import datetime, timezone
@@ -2200,6 +2196,26 @@ def _environment_from_tags(tags: object) -> str:
     return ""
 
 
+def _resource_environment(item: object) -> str:
+    """Return the environment a cloud resource is tagged/labelled with.
+
+    ``environment`` is a first-class leg of the estate hierarchy
+    (provider / account / region / environment) and is what
+    :func:`agent_bom.graph.scope.select_observed_scope` and
+    ``/v1/inventory?environment=`` key off. Every provider spells the key/value
+    metadata that carries it differently: AWS and Azure use ``tags``, GCP uses
+    ``labels``. Reading only ``tags`` made the environment drill-down return
+    Azure's estate while silently dropping the identically-tagged AWS and GCP
+    one.
+
+    GCE ``network_tags`` is deliberately NOT consulted — those are firewall
+    targeting labels (a bare list, no values), not resource metadata.
+    """
+    if not isinstance(item, dict):
+        return ""
+    return _environment_from_tags(item.get("tags")) or _environment_from_tags(item.get("labels"))
+
+
 def _add_account_resource_hierarchy(
     graph: UnifiedGraph,
     account_node_id: str,
@@ -2221,6 +2237,30 @@ def _add_account_resource_hierarchy(
     _add_rel_edge(graph, account_node_id, resource_node_id, RelationshipType.OWNS, payload)
     contains_evidence = {**payload, "hierarchy": "account_contains_resource"}
     _add_rel_edge(graph, account_node_id, resource_node_id, RelationshipType.CONTAINS, contains_evidence)
+    _stamp_owning_account(graph, account_node_id, resource_node_id)
+
+
+def _stamp_owning_account(graph: UnifiedGraph, account_node_id: str, resource_node_id: str) -> None:
+    """Copy the owning account's id onto a resource that lacks it.
+
+    ``account_id`` is the attribute :func:`agent_bom.graph.scope.select_observed_scope`
+    matches for ``kind="account"``, so a resource without it drops out of the
+    org → account → resource drill-down even though the graph holds an explicit
+    ``OWNS``/``CONTAINS`` edge proving the membership. The cloud-inventory loops
+    set it inline; the Snowflake object/services/pipeline layers did not, which
+    collapsed the Snowflake account view to the bare ACCOUNT node.
+
+    Derived only from the persisted ownership edge just written — never guessed —
+    and never overwrites an id the emitting lane already set.
+    """
+    account = graph.nodes.get(account_node_id)
+    resource = graph.nodes.get(resource_node_id)
+    if account is None or resource is None:
+        return
+    account_id = _clean_graph_part(account.attributes.get("account_id"))
+    if not account_id or _clean_graph_part(resource.attributes.get("account_id")):
+        return
+    resource.attributes["account_id"] = account_id
 
 
 def _add_agent_cloud_lineage(
@@ -4732,7 +4772,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         bucket_kind = _clean_graph_part(bucket.get("_kind")) or "s3-bucket"
         bucket_label = _clean_graph_part(bucket.get("_label")) or "s3 bucket"
         bucket_tags = bucket.get("tags", {}) if isinstance(bucket.get("tags"), dict) else {}
-        bucket_env = _environment_from_tags(bucket_tags)
+        bucket_env = _resource_environment(bucket)
         node_id = f"cloud_resource:{provider}:{bucket_service}:bucket:{name}"
         graph.add_node(
             UnifiedNode(
@@ -4836,6 +4876,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         sg_service = _clean_graph_part(group.get("_service")) or "ec2"
         sg_kind = _clean_graph_part(group.get("_kind")) or "ec2-security-group"
         sg_resource_type = _clean_graph_part(group.get("_resource_type")) or "security-group"
+        sg_env = _resource_environment(group)
         node_id = f"cloud_resource:{provider}:{sg_service}:{sg_resource_type}:{group_id}"
         sg_node_by_id[group_id] = node_id
         graph.add_node(
@@ -4861,9 +4902,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "fw_target_service_accounts": list(group.get("target_service_accounts", []) or []),
                     "fw_source_ranges": list(group.get("source_ranges", []) or []),
                     "account_id": account_id,
+                    "environment": sg_env,
                 },
                 data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2"),
+                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2", environment=sg_env),
             )
         )
         resource_ids.append(node_id)
@@ -4884,6 +4926,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         inst_label = _clean_graph_part(instance.get("_label")) or "ec2"
         node_id = f"cloud_resource:{provider}:{inst_service}:instance:{instance_id}"
         public_ip = _clean_graph_part(instance.get("public_ip"))
+        instance_env = _resource_environment(instance)
         graph.add_node(
             UnifiedNode(
                 id=node_id,
@@ -4911,9 +4954,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "network_tags": list(instance.get("network_tags", []) or []),
                     "service_accounts": list(instance.get("service_accounts", []) or []),
                     "account_id": account_id,
+                    "environment": instance_env,
                 },
                 data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2"),
+                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2", environment=instance_env),
             )
         )
         resource_ids.append(node_id)
@@ -4998,6 +5042,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 continue
             node_id = f"cloud_resource:{provider}:{svc}:{rtype}:{name}"
             exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed") or item.get("endpoint_public"))
+            item_env = _resource_environment(item)
             graph.add_node(
                 UnifiedNode(
                     id=node_id,
@@ -5017,9 +5062,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                         "runtime": _clean_graph_part(item.get("runtime")),
                         "encrypted": bool(item.get("encrypted")),
                         "account_id": account_id,
+                        "environment": item_env,
                     },
                     data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider=provider, surface=svc),
+                    dimensions=NodeDimensions(cloud_provider=provider, surface=svc, environment=item_env),
                 )
             )
             resource_ids.append(node_id)
@@ -5057,6 +5103,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 id_key = _clean_graph_part(item.get(id_field)) or name
                 node_id = f"cloud_resource:gcp:{svc}:{rtype}:{id_key}"
                 exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed"))
+                item_env = _resource_environment(item)
                 graph.add_node(
                     UnifiedNode(
                         id=node_id,
@@ -5075,9 +5122,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                             "engine": _clean_graph_part(item.get("database_version")),
                             "encrypted": bool(item.get("encrypted")),
                             "account_id": account_id,
+                            "environment": item_env,
                         },
                         data_sources=data_sources,
-                        dimensions=NodeDimensions(cloud_provider="gcp", surface=svc),
+                        dimensions=NodeDimensions(cloud_provider="gcp", surface=svc, environment=item_env),
                     )
                 )
                 resource_ids.append(node_id)
@@ -5326,7 +5374,7 @@ def _add_normalized_cloud_resources(
         if res.resource_type is CloudResourceType.LOAD_BALANCER:
             load_balancer_nodes.append((node_id, raw))
         resource_tags = dict(res.tags) if getattr(res, "tags", None) else {}
-        resource_env = _environment_from_tags(resource_tags)
+        resource_env = _environment_from_tags(resource_tags) or _resource_environment(raw)
         graph.add_node(
             UnifiedNode(
                 id=node_id,

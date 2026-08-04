@@ -22,8 +22,12 @@ def test_story_builds_one_canonical_cross_vendor_read_model() -> None:
     assert story.synthetic is True
     assert story.fictional is True
     assert story.tenant_id == "tenant-story"
-    assert story.summary.assets == 20
-    assert story.summary.observations == 15
+    # Floors, not fixed counts. The demo serves the narrative incident composed
+    # into a generated population, so exact totals move with the scale profile.
+    # The old values (20 / 15) described an estate too small for the incident to
+    # have to be correlated out of anything.
+    assert story.summary.assets >= 2000
+    assert story.summary.observations >= 6000
     assert story.summary.evidence_sources == 9
     assert story.summary.complete_sources == 8
     assert story.summary.partial_sources == 1

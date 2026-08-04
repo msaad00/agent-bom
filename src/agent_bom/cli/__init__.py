@@ -310,6 +310,10 @@ from agent_bom.cli._samples import samples_group  # noqa: E402
 
 main.add_command(samples_group)
 
+from agent_bom.cli._demo import demo_group  # noqa: E402
+
+main.add_command(demo_group)
+
 from agent_bom.cli._quickstart import quickstart_cmd  # noqa: E402
 
 main.add_command(quickstart_cmd, "quickstart")

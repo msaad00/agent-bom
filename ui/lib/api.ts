@@ -162,7 +162,8 @@ import type {
   RiskCampaignVerificationQueueResponse,
   RiskCampaignTicketRequest,
   RiskCampaignTicketCreateResult,
-  RiskCampaignTicketSyncResult
+  RiskCampaignTicketSyncResult,
+  EnterpriseDemoStory,
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -436,6 +437,7 @@ export type {
   RiskCampaignTicketRequest,
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult,
+  EnterpriseDemoStory,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";
@@ -1192,6 +1194,9 @@ export const api = {
 
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),
+
+  /** Correlated fictional estate, available only when demo-estate mode is enabled. */
+  getEnterpriseDemoStory: () => get<EnterpriseDemoStory>("/v1/demo-estate/story"),
 
   /** Per-account, end-to-end posture drill for one cloud account (#3931) */
   getCloudAccountSummary: (accountRef: string) =>

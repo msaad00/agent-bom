@@ -145,6 +145,31 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     if force:
         summary["force"] = True
 
+    # Validate and fingerprint the versioned synthetic-estate contract on every
+    # demo boot. PRs that project this evidence into graph/runtime/UI surfaces
+    # can now consume one deterministic source instead of inventing unrelated
+    # rows per screen. A malformed fixture remains an explicit bootstrap error.
+    try:
+        from agent_bom.demo_estate.enterprise import CollectionStatus, load_enterprise_estate
+
+        enterprise = load_enterprise_estate(tenant_id=tenant_id)
+        summary["enterprise_contract"] = {
+            "schema_version": enterprise.schema_version,
+            "estate_id": enterprise.estate_id,
+            "content_hash": enterprise.content_hash,
+            "assets": len(enterprise.assets),
+            "observations": len(enterprise.observations),
+            "snapshots": len(enterprise.snapshots),
+            "partial_sources": sorted(
+                run.source.value
+                for run in enterprise.collection_runs
+                if run.status is CollectionStatus.PARTIAL
+            ),
+        }
+    except Exception:
+        _logger.warning("demo enterprise contract validation failed", exc_info=True)
+        summary["enterprise_contract_error"] = True
+
     # Graph seed is isolated and stale-aware: a real scan is left untouched, a
     # current demo seed is a no-op, and a stale demo seed is refreshed (see
     # seed_showcase_graph_if_empty). Any failure must NOT block the findings/scan

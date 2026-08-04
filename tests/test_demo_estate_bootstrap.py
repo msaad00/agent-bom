@@ -83,6 +83,24 @@ def test_demo_estate_bootstrap_seeds_jobs_and_graph(demo_estate_client: TestClie
     assert node_count > 0
 
 
+def test_demo_estate_bootstrap_validates_versioned_enterprise_contract(
+    demo_estate_client: TestClient,
+) -> None:
+    from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+    from agent_bom.demo_estate.enterprise import ENTERPRISE_SCHEMA_VERSION
+
+    summary = maybe_bootstrap_demo_estate()
+    contract = summary.get("enterprise_contract") or {}
+
+    assert contract["schema_version"] == ENTERPRISE_SCHEMA_VERSION
+    assert contract["estate_id"] == "northstar-health-ai-v1"
+    assert contract["assets"] >= 20
+    assert contract["observations"] >= 15
+    assert contract["snapshots"] == 3
+    assert contract["partial_sources"] == ["gcp_audit"]
+    assert len(contract["content_hash"]) == 64
+
+
 def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: TestClient) -> None:
     payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
     nodes = payload.get("nodes") or []

@@ -616,3 +616,36 @@ def test_narrative_from_an_undated_artifact_still_renders(tmp_path):
     # Age unknown is reported as a pass with an explicit unknown-age reason,
     # never a fabricated stale-evidence failure.
     assert {c["control_id"] for c in fw["failing_controls"]} == {"SI-10"}
+
+
+def test_report_from_json_preserves_every_compliance_tag_field():
+    """Reloading a saved scan must carry every framework's tags, not a hand-listed subset.
+
+    ``agent-bom report compliance-narrative scan.json`` rebuilds BlastRadius rows
+    from the saved JSON. The constructor call enumerated the tag fields by hand
+    and missed two, so ATT&CK and PCI DSS evidence that is present in the
+    artifact was silently dropped: the narrative reported those frameworks as
+    unevaluated while the API, reading the same evidence, reported mapped
+    controls.
+    """
+    from agent_bom.cli._history import _report_from_json
+    from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
+
+    row = {
+        "vulnerability_id": "CVE-2025-4242",
+        "severity": "high",
+        "package": "requests@1.0.0",
+        "ecosystem": "pypi",
+        "affected_agents": ["claude"],
+        "affected_servers": ["filesystem"],
+    }
+    # One distinctive tag per framework so a dropped field is unambiguous.
+    expected = {field: [f"TAG-{field}"] for field in COMPLIANCE_TAG_FIELDS}
+    row.update(expected)
+
+    report = _report_from_json({"summary": {}, "blast_radius": [row]})
+
+    assert len(report.blast_radii) == 1
+    rebuilt = report.blast_radii[0]
+    dropped = [field for field, tags in expected.items() if list(getattr(rebuilt, field, []) or []) != tags]
+    assert not dropped, f"compliance tag fields dropped on reload: {dropped}"

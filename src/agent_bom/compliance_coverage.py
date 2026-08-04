@@ -308,6 +308,26 @@ def blast_radius_tag_kwargs(payload: Mapping[str, object]) -> dict[str, list[str
         normalized[field] = [str(tag) for tag in raw] if isinstance(raw, (list, tuple, set)) else []
     return normalized
 
+
+# Some frameworks emit their tags namespaced (``FedRAMP-SI-10``) while their
+# catalog is keyed on the bare control id. Every consumer that joins a tag to a
+# catalog must go through this one resolver — when only the evidence exporter
+# normalized, FedRAMP evidence rows carried findings while the status summary in
+# the same document reported zero evaluated controls.
+_TAG_NAMESPACE_PREFIXES: tuple[str, ...] = ("FedRAMP-", "CMMC-", "NIST-", "ISO-", "SOC2-", "CIS-", "PCI-")
+
+
+def control_key_for_tag(tag: str, catalog: Mapping[str, str]) -> str | None:
+    """Resolve an emitted compliance tag to its catalog key, or None if unmapped."""
+    value = tag.strip()
+    if value in catalog:
+        return value
+    for prefix in _TAG_NAMESPACE_PREFIXES:
+        if value.startswith(prefix) and value.removeprefix(prefix) in catalog:
+            return value.removeprefix(prefix)
+    return None
+
+
 # Canonical hyphenated slugs (``TAG_MAPPED_FRAMEWORKS``) vs legacy ingest aliases.
 FRAMEWORK_SLUG_ALIASES: dict[str, str] = {
     "mitre-attack": "attack",

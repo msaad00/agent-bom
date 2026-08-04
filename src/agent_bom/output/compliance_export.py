@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, ComplianceFrameworkMetadata
+from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, ComplianceFrameworkMetadata, control_key_for_tag
 from agent_bom.compliance_utils import effective_blast_radius_tags, framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
 from agent_bom.output.cyclonedx_fmt import to_cyclonedx
@@ -72,13 +72,8 @@ def _canonical_framework(framework: str) -> ComplianceFrameworkMetadata:
 
 
 def _control_key(tag: str, catalog: Mapping[str, str]) -> str | None:
-    value = tag.strip()
-    if value in catalog:
-        return value
-    for prefix in ("FedRAMP-", "CMMC-", "NIST-", "ISO-", "SOC2-", "CIS-", "PCI-"):
-        if value.startswith(prefix) and value.removeprefix(prefix) in catalog:
-            return value.removeprefix(prefix)
-    return None
+    """Resolve an emitted tag to its catalog key (shared with the status path)."""
+    return control_key_for_tag(tag, catalog)
 
 
 def _severity_from_blast_radius(br: object) -> str:

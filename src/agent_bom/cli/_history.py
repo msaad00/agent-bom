@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Optional, cast
 import click
 from rich.console import Console
 
+from agent_bom.compliance_coverage import blast_radius_tag_kwargs
 from agent_bom.output import print_diff
 from agent_bom.output.compliance_narrative import ACCEPTED_FRAMEWORK_SLUGS
 
@@ -108,30 +109,21 @@ def _report_from_json(data: dict) -> "_NarrativeReport":
                     agent_server_links.add(agent_link_key)
                     agent.mcp_servers.append(server)
 
-        blast_radii.append(
-            BlastRadius(
-                vulnerability=vuln,
-                package=package,
-                affected_servers=servers,
-                affected_agents=agents,
-                exposed_credentials=list(br.get("exposed_credentials", [])),
-                exposed_tools=[],
-                risk_score=float(br.get("risk_score") or 0.0),
-                owasp_tags=list(br.get("owasp_tags", [])),
-                atlas_tags=list(br.get("atlas_tags", [])),
-                nist_ai_rmf_tags=list(br.get("nist_ai_rmf_tags", [])),
-                owasp_mcp_tags=list(br.get("owasp_mcp_tags", [])),
-                owasp_agentic_tags=list(br.get("owasp_agentic_tags", [])),
-                eu_ai_act_tags=list(br.get("eu_ai_act_tags", [])),
-                nist_csf_tags=list(br.get("nist_csf_tags", [])),
-                iso_27001_tags=list(br.get("iso_27001_tags", [])),
-                soc2_tags=list(br.get("soc2_tags", [])),
-                cis_tags=list(br.get("cis_tags", [])),
-                cmmc_tags=list(br.get("cmmc_tags", [])),
-                nist_800_53_tags=list(br.get("nist_800_53_tags", [])),
-                fedramp_tags=list(br.get("fedramp_tags", [])),
-            )
+        blast_radius = BlastRadius(
+            vulnerability=vuln,
+            package=package,
+            affected_servers=servers,
+            affected_agents=agents,
+            exposed_credentials=list(br.get("exposed_credentials", [])),
+            exposed_tools=[],
+            risk_score=float(br.get("risk_score") or 0.0),
         )
+        # Driven off the canonical field registry so a newly added framework
+        # cannot be silently dropped on reload the way ATT&CK and PCI DSS were
+        # when these were enumerated by hand.
+        for tag_field, tags in blast_radius_tag_kwargs(br).items():
+            setattr(blast_radius, tag_field, tags)
+        blast_radii.append(blast_radius)
 
     summary = data.get("summary") or {}
     return _NarrativeReport(

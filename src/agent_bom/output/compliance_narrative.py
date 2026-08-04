@@ -33,7 +33,12 @@ if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
 
 from agent_bom import config
-from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS, FRAMEWORK_SLUG_ALIASES, normalize_framework_slug
+from agent_bom.compliance_coverage import (
+    COMPLIANCE_TAG_FIELDS,
+    FRAMEWORK_SLUG_ALIASES,
+    control_key_for_tag,
+    normalize_framework_slug,
+)
 from agent_bom.evidence.control_modes import DETECTIVE_CONTROLS, detective_control_status
 
 COMPLIANCE_CLAIM_BOUNDARY = (
@@ -384,9 +389,10 @@ def _build_framework_narrative(
         pkg = br.get("package", "")
         agents = br.get("affected_agents", [])
         for tag in tags:
-            if tag not in control_data:
+            control_id = control_key_for_tag(tag, catalog)
+            if control_id is None:
                 continue
-            entry = control_data[tag]
+            entry = control_data[control_id]
             entry["findings"] += 1
             if sev in entry["severity_breakdown"]:
                 entry["severity_breakdown"][sev] += 1

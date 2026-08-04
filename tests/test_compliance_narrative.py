@@ -680,3 +680,42 @@ def test_a_finding_tagged_onto_a_detective_control_never_fails_it():
 
     assert fw.status == "evidence_current", fw.narrative
     assert fw.failing_controls == []
+
+
+def test_every_framework_evaluates_the_tags_the_scanner_actually_emits():
+    """A framework's own emitted tag must match its own catalog key.
+
+    FedRAMP tags are emitted namespaced (``FedRAMP-SI-10``) while the FedRAMP
+    catalog is keyed bare (``SI-10``). The evidence exporter normalizes the
+    prefix; the narrative/status path did not, so FedRAMP could never score a
+    single control — an evidence bundle showed mapped findings per control while
+    its own summary said `evaluated: 0`. Driven off the real emitter so any
+    framework that namespaces its tags is covered, not just FedRAMP.
+    """
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
+    from agent_bom.vuln_compliance import tag_vulnerability
+
+    emitted = tag_vulnerability(
+        _make_vuln(severity=Severity.CRITICAL, is_kev=True),
+        Package(name="langchain", version="0.1.0", ecosystem="pypi"),
+    )
+
+    unmatched: dict[str, list[str]] = {}
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        tags = emitted.get(metadata.summary_prefix) or []
+        missing = [tag for tag in tags if control_key_for_tag(tag, metadata.catalog) is None]
+        if missing:
+            unmatched[metadata.slug] = missing
+    assert not unmatched, f"emitted tags that resolve to no control: {unmatched}"
+
+
+def test_fedramp_scores_the_namespaced_tags_the_scanner_emits():
+    """End-to-end: a FedRAMP-tagged finding must actually move the FedRAMP narrative."""
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.CRITICAL), owasp_tags=[])
+    br.fedramp_tags = ["FedRAMP-SI-10"]
+    report = _make_report(blast_radii=[br])
+
+    fw = _fw(generate_compliance_narrative(report), "fedramp")
+
+    assert fw.status == "action_required", fw.narrative
+    assert [c.control_id for c in fw.failing_controls] == ["SI-10"], fw.failing_controls

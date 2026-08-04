@@ -187,3 +187,43 @@ def test_readme_flow_diagrams_keep_a_ten_pixel_rendered_text_floor() -> None:
     }.items():
         sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]
         assert sizes and min(sizes) * readme_scale >= 10, (name, min(sizes) * readme_scale)
+
+
+def test_dense_diagrams_hold_their_improved_rendered_text_floor() -> None:
+    """The two diagrams the 10px floor never covered — and still cannot.
+
+    `architecture` (960px) and `persona-value` (1280px) are authored wider than
+    GitHub's ~900px README column, so their type is downscaled on screen. They
+    rendered at 6.09px and 5.98px: correct at full size, unreadable in the
+    README, and invisible to the floor above because that test only lists the
+    two near-1:1 flow diagrams.
+
+    Type is now scaled as far as `_audit_text_fit` allows without relaying out
+    the boxes, reaching 7.92px and 7.05px. That is a real improvement and still
+    short of 10px — reaching the flow diagrams' floor needs fewer cards per row
+    or a narrower canvas, which is a design change, not a scale factor. This
+    pins what was achieved so it cannot silently regress, and records the gap.
+    """
+    for name, (svg, readme_scale, floor) in {
+        "architecture": (architecture("light"), 900 / 960, 7.5),
+        "persona-value": (persona_value("light"), 900 / 1280, 7.0),
+    }.items():
+        sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]
+        rendered = min(sizes) * readme_scale
+        assert rendered >= floor, (name, rendered, floor)
+
+
+def test_dense_diagram_text_stays_inside_the_canvas() -> None:
+    """Scaling type for legibility needs a check that actually looks at type.
+
+    `_audit_layout` bounds `<rect>` elements only, so it reported no issues at
+    every font scale tried, including ones that would clip.
+    """
+    from scripts.generate_doc_architecture_svgs import _audit_text_fit
+
+    for name, svg in {
+        "architecture": architecture("light"),
+        "persona-value": persona_value("light"),
+        "how-it-works": how_it_works("light"),
+    }.items():
+        assert _audit_text_fit(svg) == [], name

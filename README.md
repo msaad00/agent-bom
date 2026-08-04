@@ -20,10 +20,6 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  Scan repositories, images, and cloud accounts; centralize evidence across environments; and enforce AI and MCP runtime policy in infrastructure you control.
-</p>
-
-<p align="center">
   <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>77</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://agent-bom-demo-82102570041.us-central1.run.app">Live demo</a> ·
@@ -32,19 +28,17 @@
 
 ## What it is
 
-`agent-bom` is an open scanner and self-hosted control plane for software,
-cloud, identity, AI-agent, and MCP evidence. One Finding + UnifiedGraph model
-powers CLI and CI artifacts, fleet and browser investigations, compliance
-evidence, and runtime policy.
+`agent-bom` scans repositories, images, and cloud accounts, then correlates what
+it finds into one Finding + UnifiedGraph model — powering CLI and CI artifacts,
+fleet and browser investigations, compliance evidence, and runtime policy. Run
+the scanner without an account, or deploy the control plane inside your own
+cloud, VPC, cluster, database, identity, and audit boundary.
 
-Use the scanner without an account, or deploy the shared control plane inside
-your own cloud, VPC, Kubernetes cluster, database, identity, and audit boundary.
-
-Graph provenance remains explicit: collected, inferred, static, and runtime
-relationships stay distinct, and unavailable evidence is never upgraded to
+Graph provenance stays explicit: collected, inferred, static, and runtime
+relationships remain distinct, and unavailable evidence is never upgraded to
 observed.
 
-<details>
+<details open>
 <summary><b>Control-plane architecture</b></summary>
 
 <p align="center">

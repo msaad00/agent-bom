@@ -595,6 +595,32 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
     sys.exit(1 if remaining else 0)
 
 
+_MAX_RENDERED_FAILING_CONTROLS = 20
+
+
+def _render_failing_controls_markdown(lines: list, failing_controls: list) -> None:
+    """Render the per-control auditor drill under a framework's exec paragraph.
+
+    The exec read (status, score, narrative) answers "where do we stand"; this
+    answers "on what evidence". Without the finding ids an auditor cannot walk
+    the control assertion back to the scan output that produced it, which is the
+    engineer half of the two-altitude read. Bounded so a large estate stays
+    scannable — the JSON output carries the complete set.
+    """
+    if not failing_controls:
+        return
+    lines.append("| Control | Status | Findings | Packages |")
+    lines.append("|---|---|---|---|")
+    for control in failing_controls[:_MAX_RENDERED_FAILING_CONTROLS]:
+        findings = ", ".join(control.affected_findings) or "—"
+        packages = ", ".join(control.affected_packages) or "—"
+        lines.append(f"| {control.control_id} {control.title} | {control.status} | {findings} | {packages} |")
+    hidden = len(failing_controls) - _MAX_RENDERED_FAILING_CONTROLS
+    if hidden > 0:
+        lines.append(f"| … {hidden} more | | | |")
+    lines.append("")
+
+
 def _render_nist_catalog_markdown(lines: list, catalog: dict) -> None:
     """Render the catalog-backed NIST 800-53 line + per-control drill.
 
@@ -688,6 +714,7 @@ def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_fo
                     "",
                 ]
             )
+            _render_failing_controls_markdown(lines, fw.failing_controls)
             if fw.recommendations:
                 lines.append("Recommendations:")
                 for recommendation in fw.recommendations:

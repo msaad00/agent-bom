@@ -52,6 +52,11 @@
       "schema": "ComplianceReportSummary.json"
     },
     {
+      "doc": "Whether the bundle's own signature can be verified, and by whom.",
+      "name": "ComplianceSignatureDisclosure",
+      "schema": "ComplianceSignatureDisclosure.json"
+    },
+    {
       "doc": "",
       "name": "ComplianceThreatModel",
       "schema": "ComplianceThreatModel.json"

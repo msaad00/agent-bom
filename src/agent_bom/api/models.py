@@ -520,6 +520,21 @@ class ComplianceThreatModel(BaseModel):
     non_repudiation: str
 
 
+class ComplianceSignatureDisclosure(BaseModel):
+    """Whether the bundle's own signature can be verified, and by whom."""
+
+    # False when the deployment signs with a per-process HMAC key: the bundle
+    # is stamped HMAC-SHA256 but no verifier — not even the issuer after a
+    # restart — holds the key.
+    signature_verifiable: bool
+    persists_across_restart: bool
+    # verifiable_public_key | verifiable_shared_secret | unverifiable_ephemeral_key
+    verification_status: str
+    verification_guidance: str
+    # Operator action that makes evidence verifiable; null when it already is.
+    remediation: str | None = None
+
+
 class ComplianceReportBundle(BaseModel):
     schema_version: str = "v1"
     framework: str
@@ -535,6 +550,10 @@ class ComplianceReportBundle(BaseModel):
     audit_events: list[dict[str, Any]] = Field(default_factory=list)
     audit_log_integrity: ComplianceAuditIntegrity
     signature_algorithm: str
+    # Inside the signed envelope: whether the signature is checkable at all.
+    # A default deployment signs with a per-process HMAC key, so the algorithm
+    # name alone overstates what the bundle proves.
+    signature_disclosure: ComplianceSignatureDisclosure
     threat_model: ComplianceThreatModel
 
 

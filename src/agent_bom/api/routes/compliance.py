@@ -1268,41 +1268,41 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
 
 @router.get("/compliance/verification-key", tags=["compliance"])
 async def get_compliance_verification_key(request: Request) -> dict:
-    """Return the Ed25519 public key used to sign compliance evidence bundles.
+    """Return the key material — and the verifiability posture — for evidence bundles.
 
-    Safe to expose — it's a public key. Auditors and external SIEM systems
-    use this endpoint to fetch the verification key without operator
-    hand-off.
+    Safe to expose: the only key it can return is a public key. Auditors and
+    external SIEM systems use this endpoint to fetch the verification key
+    without operator hand-off.
+
+    It answers "can I verify a bundle from this deployment?", not just "which
+    algorithm was used". By default ``agent-bom serve`` has no
+    ``AGENT_BOM_AUDIT_HMAC_KEY``, so the HMAC key is generated per-process and
+    never leaves it — bundles signed with it are unverifiable by anyone, and
+    reporting only ``algorithm: HMAC-SHA256`` sent auditors after a key that
+    does not exist.
 
     Response shape:
       - ``algorithm``: "Ed25519" when asymmetric signing is configured, else "HMAC-SHA256"
+      - ``signature_verifiable``: whether ANY verifier can check a bundle from this deployment
+      - ``persists_across_restart``: whether the signing key survives a restart
+      - ``verification_status``: verifiable_public_key | verifiable_shared_secret | unverifiable_ephemeral_key
+      - ``remediation``: operator action to make evidence verifiable, or null when it already is
       - ``key_id``: stable 16-hex prefix of SHA-256(DER public key) — identifies the key across rotations
       - ``public_key_pem``: PEM-encoded public key (Ed25519 only)
-      - ``key_distribution``: one-line guidance for verifiers
+      - ``key_distribution``: guidance for verifiers
     """
-    from agent_bom.api.compliance_signing import describe_current_signer
+    from agent_bom.api.compliance_signing import describe_signer_disclosure
 
-    algorithm, key_id, public_key_pem = describe_current_signer()
-    if algorithm == "Ed25519":
-        return {
-            "algorithm": algorithm,
-            "key_id": key_id,
-            "public_key_pem": public_key_pem,
-            "key_distribution": (
-                "Retrieve this key over TLS once, pin the key_id, and use it to verify "
-                "every compliance bundle signed with Ed25519. Rotate by updating "
-                "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM and re-fetching."
-            ),
-        }
+    disclosure = describe_signer_disclosure()
     return {
-        "algorithm": algorithm,
-        "key_id": None,
-        "public_key_pem": None,
-        "key_distribution": (
-            "Server is signing with HMAC-SHA256 (shared secret). Verifiers must obtain "
-            "AGENT_BOM_AUDIT_HMAC_KEY out-of-band. For auditor-distributable signing, "
-            "set AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM on the server."
-        ),
+        "algorithm": disclosure.algorithm,
+        "key_id": disclosure.key_id,
+        "public_key_pem": disclosure.public_key_pem,
+        "signature_verifiable": disclosure.signature_verifiable,
+        "persists_across_restart": disclosure.persists_across_restart,
+        "verification_status": disclosure.verification_status,
+        "remediation": disclosure.remediation,
+        "key_distribution": disclosure.verification_guidance,
     }
 
 
@@ -1836,11 +1836,14 @@ async def export_compliance_report(
     # same fields and reconstruct the exact canonical form.
     from agent_bom.api.compliance_signing import (
         canonical_bundle_payload,
-        describe_current_signer,
+        describe_signer_disclosure,
         sign_compliance_bundle,
     )
 
-    signing_algorithm, signing_key_id, signing_public_key_pem = describe_current_signer()
+    signer = describe_signer_disclosure()
+    signing_algorithm = signer.algorithm
+    signing_key_id = signer.key_id
+    signing_public_key_pem = signer.public_key_pem
 
     body: dict[str, Any] = {
         "schema_version": "v1",
@@ -1887,8 +1890,19 @@ async def export_compliance_report(
             "truncated": audit_truncated,
         },
         "signature_algorithm": signing_algorithm,
+        # Verifiability travels INSIDE the signed envelope (everything except
+        # `signature` is canonicalised and signed), so a bundle from a
+        # default deployment — per-process HMAC key, verifiable by nobody —
+        # cannot be handed to an auditor with the disclosure quietly removed.
+        "signature_disclosure": signer.as_bundle_field(),
         "threat_model": {
-            "integrity": (f"{signing_algorithm} over the canonical UTF-8 body. Tampering with any field invalidates the signature."),
+            "integrity": (
+                f"{signing_algorithm} over the canonical UTF-8 body. Tampering with any field invalidates the signature."
+                if signer.signature_verifiable
+                else f"{signing_algorithm} over the canonical UTF-8 body, but with a signing key no verifier can hold — "
+                "see signature_disclosure. Treat this bundle as unsigned evidence until the deployment is reconfigured "
+                "and the bundle re-exported."
+            ),
             "confidentiality": (
                 "The bundle is cleartext at the application layer by design — auditors "
                 "need to read it. Operators MUST serve /v1/compliance/* over TLS so the "
@@ -2120,11 +2134,14 @@ async def export_compliance_pack(
 
     from agent_bom.api.compliance_signing import (
         canonical_bundle_payload,
-        describe_current_signer,
+        describe_signer_disclosure,
         sign_compliance_bundle,
     )
 
-    signing_algorithm, signing_key_id, signing_public_key_pem = describe_current_signer()
+    signer = describe_signer_disclosure()
+    signing_algorithm = signer.algorithm
+    signing_key_id = signer.key_id
+    signing_public_key_pem = signer.public_key_pem
 
     body: dict[str, Any] = {
         "schema_version": "v1",
@@ -2175,6 +2192,8 @@ async def export_compliance_pack(
             "truncated": audit_truncated,
         },
         "signature_algorithm": signing_algorithm,
+        # Same in-envelope disclosure contract as the single-framework bundle.
+        "signature_disclosure": signer.as_bundle_field(),
     }
     if signing_key_id is not None:
         body["signature_key_id"] = signing_key_id

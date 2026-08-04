@@ -14,6 +14,43 @@ public key, which cannot be used to forge new bundles.
 
 ---
 
+## Is the signature actually verifiable?
+
+**A bundle is not verifiable just because it is signed.** When neither
+`AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM` nor `AGENT_BOM_AUDIT_HMAC_KEY`
+is set — the default for `agent-bom serve` — the HMAC key is generated at
+process start and never leaves the process. Bundles are still stamped
+`signature_algorithm: HMAC-SHA256`, but nobody can check them, including the
+issuing deployment after a restart.
+
+Every bundle therefore carries `signature_disclosure` **inside the signed
+envelope** (it is part of the canonical body, so it cannot be stripped or
+forged without breaking the signature):
+
+```json
+"signature_disclosure": {
+  "signature_verifiable": false,
+  "persists_across_restart": false,
+  "verification_status": "unverifiable_ephemeral_key",
+  "verification_guidance": "This deployment signs with a per-process HMAC key …",
+  "remediation": "Set AGENT_BOM_AUDIT_HMAC_KEY … or AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM …"
+}
+```
+
+| `verification_status` | Meaning | Auditor-distributable |
+|---|---|---|
+| `verifiable_public_key` | Ed25519 — verifier needs only the public key | yes |
+| `verifiable_shared_secret` | `AGENT_BOM_AUDIT_HMAC_KEY` is configured and persists | no — the secret can also forge bundles |
+| `unverifiable_ephemeral_key` | per-process key; the bundle proves nothing | no |
+
+`GET /v1/compliance/verification-key` reports the same three fields plus
+`remediation`, so a verifier can tell before fetching evidence whether the
+deployment can produce anything checkable. A bundle whose status is
+`unverifiable_ephemeral_key` must be re-exported after the deployment is
+reconfigured — the key that signed it is gone.
+
+---
+
 ## Enabling Ed25519
 
 Generate a key pair once, store the private key in your secret manager:
@@ -85,7 +122,31 @@ verify before buffering the body.
 
 ### 3. Verify offline
 
-Python:
+Shipped verifier — no hand-copied script required:
+
+```bash
+agent-bom attest compliance-verify bundle.json --public-key pinned.pem
+```
+
+```
+VERIFIED: bundle.json
+  reason:    verified
+  algorithm: Ed25519
+  check:     disclosure:verifiable_public_key
+  check:     expires_at:valid
+```
+
+It exits non-zero on any failure and reads both the `json` and `jsonl`
+renderings. It **never trusts `signature_public_key_pem` embedded in the
+bundle** — that key is self-attesting, so anyone who edits the bundle can
+re-sign it. Without `--public-key` an Ed25519 bundle fails with
+`no_trusted_public_key`. (`--trust-embedded-key` exists for checking your own
+artifact's internal consistency; it is not evidence.) HMAC bundles are
+verified against `AGENT_BOM_AUDIT_HMAC_KEY` in the verifier's environment;
+a bundle whose own disclosure says the issuer key was ephemeral fails with
+`issuer_key_ephemeral` rather than pretending to check it.
+
+The equivalent by hand, in Python:
 
 ```python
 import json
@@ -148,7 +209,7 @@ evidence archives can pick the right key at audit time.
 The `threat_model` block inside every bundle summarises what the signature
 does and does not prove:
 
-- **Integrity** — the HMAC or Ed25519 signature covers the canonical body. Any field change invalidates the signature.
+- **Integrity** — the HMAC or Ed25519 signature covers the canonical body. Any field change invalidates the signature. When the signer is ephemeral, `integrity` says so and the bundle should be treated as unsigned evidence — see `signature_disclosure` above.
 - **Confidentiality** — the bundle itself is cleartext by design (auditors read it). Always serve `/v1/compliance/*` over TLS.
 - **Replay** — `nonce` + `expires_at` are inside the signed envelope. Verifiers reject bundles past `expires_at`.
 - **Non-repudiation** — only Ed25519 provides it. HMAC is a shared secret, so the server and the verifier are indistinguishable.

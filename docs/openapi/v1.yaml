@@ -1235,6 +1235,8 @@ components:
         signature_algorithm:
           title: Signature Algorithm
           type: string
+        signature_disclosure:
+          $ref: '#/components/schemas/ComplianceSignatureDisclosure'
         summary:
           $ref: '#/components/schemas/ComplianceReportSummary'
         tenant_id:
@@ -1254,6 +1256,7 @@ components:
       - summary
       - audit_log_integrity
       - signature_algorithm
+      - signature_disclosure
       - threat_model
       title: ComplianceReportBundle
       type: object
@@ -1358,6 +1361,33 @@ components:
       required:
       - pass
       title: ComplianceReportSummary
+      type: object
+    ComplianceSignatureDisclosure:
+      description: Whether the bundle's own signature can be verified, and by whom.
+      properties:
+        persists_across_restart:
+          title: Persists Across Restart
+          type: boolean
+        remediation:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Remediation
+        signature_verifiable:
+          title: Signature Verifiable
+          type: boolean
+        verification_guidance:
+          title: Verification Guidance
+          type: string
+        verification_status:
+          title: Verification Status
+          type: string
+      required:
+      - signature_verifiable
+      - persists_across_restart
+      - verification_status
+      - verification_guidance
+      title: ComplianceSignatureDisclosure
       type: object
     ComplianceThreatModel:
       properties:
@@ -8670,14 +8700,25 @@ paths:
       - compliance
   /v1/compliance/verification-key:
     get:
-      description: "Return the Ed25519 public key used to sign compliance evidence\
-        \ bundles.\n\nSafe to expose \u2014 it's a public key. Auditors and external\
-        \ SIEM systems\nuse this endpoint to fetch the verification key without operator\n\
-        hand-off.\n\nResponse shape:\n  - ``algorithm``: \"Ed25519\" when asymmetric\
-        \ signing is configured, else \"HMAC-SHA256\"\n  - ``key_id``: stable 16-hex\
-        \ prefix of SHA-256(DER public key) \u2014 identifies the key across rotations\n\
-        \  - ``public_key_pem``: PEM-encoded public key (Ed25519 only)\n  - ``key_distribution``:\
-        \ one-line guidance for verifiers"
+      description: "Return the key material \u2014 and the verifiability posture \u2014\
+        \ for evidence bundles.\n\nSafe to expose: the only key it can return is a\
+        \ public key. Auditors and\nexternal SIEM systems use this endpoint to fetch\
+        \ the verification key\nwithout operator hand-off.\n\nIt answers \"can I verify\
+        \ a bundle from this deployment?\", not just \"which\nalgorithm was used\"\
+        . By default ``agent-bom serve`` has no\n``AGENT_BOM_AUDIT_HMAC_KEY``, so\
+        \ the HMAC key is generated per-process and\nnever leaves it \u2014 bundles\
+        \ signed with it are unverifiable by anyone, and\nreporting only ``algorithm:\
+        \ HMAC-SHA256`` sent auditors after a key that\ndoes not exist.\n\nResponse\
+        \ shape:\n  - ``algorithm``: \"Ed25519\" when asymmetric signing is configured,\
+        \ else \"HMAC-SHA256\"\n  - ``signature_verifiable``: whether ANY verifier\
+        \ can check a bundle from this deployment\n  - ``persists_across_restart``:\
+        \ whether the signing key survives a restart\n  - ``verification_status``:\
+        \ verifiable_public_key | verifiable_shared_secret | unverifiable_ephemeral_key\n\
+        \  - ``remediation``: operator action to make evidence verifiable, or null\
+        \ when it already is\n  - ``key_id``: stable 16-hex prefix of SHA-256(DER\
+        \ public key) \u2014 identifies the key across rotations\n  - ``public_key_pem``:\
+        \ PEM-encoded public key (Ed25519 only)\n  - ``key_distribution``: guidance\
+        \ for verifiers"
       operationId: get_compliance_verification_key_v1_compliance_verification_key_get
       parameters:
       - in: header

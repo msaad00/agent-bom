@@ -324,6 +324,26 @@ def _framework_overall_narrative(
     )
 
 
+def _signing_caveat() -> str:
+    """Qualify "export a signed bundle" when this deployment's signer is ephemeral.
+
+    Recommending auditor submission is only honest when the signature can be
+    checked. A default deployment signs with a per-process HMAC key, so the
+    recommendation has to carry that fact rather than imply verifiable evidence.
+    """
+    from agent_bom.api.compliance_signing import describe_signer_disclosure
+
+    disclosure = describe_signer_disclosure()
+    if disclosure.signature_verifiable:
+        return ""
+    return (
+        " Note: this deployment currently signs with a per-process key, so the bundle's signature cannot be verified "
+        "by an auditor — or by this deployment after a restart. Set AGENT_BOM_AUDIT_HMAC_KEY, or "
+        "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM for auditor-distributable signing, and re-export before "
+        "submitting."
+    )
+
+
 def _framework_recommendations(
     display_name: str,
     slug: str,
@@ -349,7 +369,7 @@ def _framework_recommendations(
     recs.append(
         f"Export a signed {display_name} evidence bundle from the compliance API "
         f"(`GET /v1/compliance/{slug}/report`, or the all-framework pack at "
-        "`GET /v1/compliance/report/pack`) for auditor submission."
+        "`GET /v1/compliance/report/pack`) for auditor submission." + _signing_caveat()
     )
     return recs
 
@@ -731,8 +751,7 @@ def _build_executive_summary(
     # Closing action
     if action_fws or review_fws:
         sentences.append(
-            "Remediation of identified vulnerabilities is the highest-priority action; "
-            "control owners must validate compliance separately."
+            "Remediation of identified vulnerabilities is the highest-priority action; control owners must validate compliance separately."
         )
     else:
         sentences.append("Continue regular scanning and independent control validation to maintain current evidence coverage.")

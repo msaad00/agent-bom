@@ -26,6 +26,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
     assert [profile.name for profile in profiles] == [
         "scanner-only",
         "sqlite-pilot",
+        "synthetic-enterprise-story",
         "focused-pilot",
         "enterprise-demo",
         "focused-pilot-byo-postgres",
@@ -54,6 +55,21 @@ def test_production_secret_sync_profile_layers_the_bootstrap_overlay() -> None:
         examples / "eks-production-values.yaml",
         examples / "eks-production-secret-sync-values.yaml",
     )
+
+
+def test_synthetic_enterprise_story_profile_is_explicit_and_demo_only() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    examples = repo_root / "deploy" / "helm" / "agent-bom" / "examples"
+    profiles = {profile.name: profile for profile in helm_validation_profiles(repo_root)}
+    profile = profiles["synthetic-enterprise-story"]
+
+    assert profile.values_files == (examples / "synthetic-enterprise-story-values.yaml",)
+    values = yaml.safe_load(profile.values_files[0].read_text())
+    env = {row["name"]: row["value"] for row in values["controlPlane"]["api"]["env"]}
+    assert env["AGENT_BOM_DEMO_ESTATE"] == "1"
+    assert env["AGENT_BOM_ALLOW_UNAUTHENTICATED_API"] == "1"
+    assert env["AGENT_BOM_NO_AUTH_ROLE"] == "viewer"
+    assert values["scanner"]["enabled"] is False
 
 
 def test_production_secret_sync_uses_a_separate_release_by_default() -> None:

@@ -51,6 +51,20 @@ def test_non_required_heavy_jobs_are_path_gated() -> None:
     assert "needs.changes.result != 'success'" in jobs["helm-profiles"]["if"]
 
 
+def test_enterprise_demo_contract_is_gated_and_packaged() -> None:
+    workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    deploy_workflow = (
+        ROOT / ".github" / "workflows" / "demo-deploy-cloudrun.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "scripts/check_enterprise_demo_surfaces.py" in workflow_text
+    assert "scripts/check_enterprise_demo_surfaces.py" in makefile
+    assert "agent_bom/demo_estate/data/enterprise_observations.jsonl" in workflow_text
+    assert "/v1/demo-estate/story" in deploy_workflow
+    assert "rate_limited_after_page_2" in deploy_workflow
+
+
 def test_dependency_security_skips_only_proven_docs_only_changes() -> None:
     workflow_path = ROOT / ".github" / "workflows" / "pr-security-gate.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))

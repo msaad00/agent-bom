@@ -19,6 +19,7 @@ material. The index below groups the canonical docs by audience.
 ## Orientation (start here)
 
 - [`FIRST_RUN.md`](FIRST_RUN.md) — install → first scan → first artifact (canonical first-run path)
+- [`ENTERPRISE_DEMO.md`](ENTERPRISE_DEMO.md) — fictional cross-vendor estate: offline artifact → dashboard → packaged Helm profile
 - [`START_HERE.md`](START_HERE.md) — role-based entry paths (security engineer / platform-SRE / AI-agent developer)
 - [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md) — five-stage evidence flow (canonical product story)
 - [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md) — positioning and persona contract
@@ -55,7 +56,7 @@ Two hubs cover the clustered material — start at the hub, then follow it to th
 - [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
 - [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
 - [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification
-- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (321 paths / 380 operations)
+- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (322 paths / 381 operations)
 
 ## AI / agent developers (MCP · clients · tools)
 

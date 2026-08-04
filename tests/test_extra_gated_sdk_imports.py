@@ -21,6 +21,13 @@ symbol-move/rename defect class is caught before release.
 Fallback groups (``try: <new path> except ImportError: <old path>``) are handled
 specially: the two alternatives substitute for each other, so the group passes
 when *at least one* alternative resolves. Standalone imports must resolve.
+
+By design this leaves every executed SDK module resident in ``sys.modules`` for
+the rest of the session — executing the import IS the check. Tests that fake one
+of those SDKs must therefore shadow the whole namespace they claim to own, not
+just the names they stub: a partial stub of a namespace package (``google.cloud``)
+resolves its un-stubbed siblings straight out of ``sys.modules`` and silently
+picks up whatever this file imported. See ``tests._sdk_stub_helpers``.
 """
 
 from __future__ import annotations

@@ -306,6 +306,7 @@ def test_helm_examples_readme_is_shipped():
     assert "enterprise-demo" in body
     assert "byo-postgres" in body
     assert "sqlite-pilot" in body
+    assert "synthetic-enterprise-story" in body
     assert "eks-vanilla" in body
     assert "gateway-runtime" in body
     assert "keda-autoscaling" in body

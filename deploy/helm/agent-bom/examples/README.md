@@ -9,6 +9,7 @@ product split.
 | Profile | File | Intended use |
 |---|---|---|
 | `sqlite-pilot` | `eks-control-plane-sqlite-pilot-values.yaml` | Single-node packaged demo or short-lived pilot where Postgres is not ready yet |
+| `synthetic-enterprise-story` | `synthetic-enterprise-story-values.yaml` | Explicitly fictional Northstar Health AI story with a viewer-only dashboard; never combine with live customer collection |
 | `focused-pilot` | `eks-mcp-pilot-values.yaml` | Narrow EKS pilot with control plane, scanner, and tightened ingress |
 | `enterprise-demo` | `eks-mcp-pilot-values.yaml` + `eks-enterprise-demo-overlay.yaml` | Focused pilot plus scheduled AWS estate inventory (IRSA, `AGENT_BOM_AWS_INVENTORY=1`) |
 | `byo-postgres` | `byo-postgres-values.yaml` | Overlay for operator-owned Postgres-compatible databases, including Snowflake Postgres candidates |
@@ -115,6 +116,7 @@ Which keys each profile requires, and its first-run login posture:
 | `focused-pilot` (`eks-mcp-pilot`) | `agent-bom-control-plane-db` + `agent-bom-control-plane-maintenance` + `agent-bom-control-plane-admin` + `agent-bom-control-plane-auth` | app: `AGENT_BOM_POSTGRES_URL`; maintenance: `AGENT_BOM_POSTGRES_MAINTENANCE_URL`; admin: `ALEMBIC_DATABASE_URL`; auth: browser-session, connections, and API keys | Seeded `AGENT_BOM_API_KEYS` admin key |
 | `eks-vanilla` | same four split Secrets | app: `AGENT_BOM_POSTGRES_URL`; maintenance: `AGENT_BOM_POSTGRES_MAINTENANCE_URL`; admin: `ALEMBIC_DATABASE_URL`; auth: `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY`, `AGENT_BOM_AUDIT_HMAC_KEY`, `AGENT_BOM_CONNECTIONS_KEY`, `AGENT_BOM_API_KEYS` | Seeded `AGENT_BOM_API_KEYS` admin key |
 | `sqlite-pilot` | `agent-bom-control-plane` (demo) | `AGENT_BOM_CONNECTIONS_KEY` only (sqlite, replicas 1) | Anonymous — the profile sets a **visible, demo-only** `AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1` (viewer role). Not for production |
+| `synthetic-enterprise-story` | `agent-bom-control-plane` (demo) | `AGENT_BOM_CONNECTIONS_KEY` only (sqlite, replicas 1) | Anonymous viewer — synthetic fixture only, explicitly labeled, and not for production or live collection |
 
 Swap `AGENT_BOM_API_KEYS` for the OIDC block
 (`AGENT_BOM_OIDC_ISSUER` / `AGENT_BOM_OIDC_CLIENT_ID` /

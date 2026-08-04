@@ -193,11 +193,57 @@ jobs:
             echo "::error::demo serves ${SERVED} but its estate has zero findings"
             exit 1
           fi
+
+          STORY_PATH="${RUNNER_TEMP}/enterprise-demo-story.json"
+          curl -fsS --max-time 30 "${URL}/v1/demo-estate/story" -o "${STORY_PATH}"
+          STORY_SUMMARY="$(STORY_PATH="${STORY_PATH}" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path(os.environ["STORY_PATH"]).read_text())
+          assert payload["synthetic"] is True and payload["fictional"] is True
+          summary = payload["summary"]
+          assert summary == {
+              "assets": 20,
+              "observations": 15,
+              "evidence_sources": 9,
+              "complete_sources": 8,
+              "partial_sources": 1,
+              "correlations": 4,
+              "snapshots": 3,
+          }
+          assert payload["primary_correlation"]["outcome"] == "blocked"
+          assert payload["primary_correlation"]["sources"] == [
+              "github_actions",
+              "aws_cloudtrail",
+              "kubernetes_audit",
+              "mcp_gateway",
+              "snowflake_access_history",
+              "otel_llm",
+          ]
+          gcp = next(row for row in payload["collection_health"] if row["source"] == "gcp_audit")
+          assert gcp["status"] == "partial"
+          assert gcp["failure_code"] == "rate_limited_after_page_2"
+
+          def contains_raw(value):
+              if isinstance(value, dict):
+                  return "raw_payload" in value or any(contains_raw(child) for child in value.values())
+              if isinstance(value, list):
+                  return any(contains_raw(child) for child in value)
+              return False
+
+          assert not contains_raw(payload)
+          print(f'{summary["assets"]} assets · {summary["observations"]} observations · {summary["evidence_sources"]} sources')
+          PY
+          )"
+          echo "enterprise demo story=${STORY_SUMMARY}"
           {
             echo "### Demo deployed"
             echo ""
             echo "- URL: ${URL}"
             echo "- Version: ${SERVED}"
             echo "- Seeded findings: ${TOTAL}"
+            echo "- Enterprise story: ${STORY_SUMMARY}"
             echo "- Min instances: ${{ vars.DEMO_MIN_INSTANCES || '0' }} (0 = scales to zero, no idle cost)"
           } >> "$GITHUB_STEP_SUMMARY"

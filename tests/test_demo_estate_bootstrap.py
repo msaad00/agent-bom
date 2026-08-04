@@ -93,9 +93,14 @@ def test_demo_estate_bootstrap_validates_versioned_enterprise_contract(
     contract = summary.get("enterprise_contract") or {}
 
     assert contract["schema_version"] == ENTERPRISE_SCHEMA_VERSION
-    assert contract["estate_id"] == "northstar-health-ai-v1"
-    assert contract["assets"] >= 20
-    assert contract["observations"] >= 15
+    # The demo now boots the narrative estate composed into a generated
+    # population, so the id gains its suffix and the floors move from
+    # "the story exists" to "the story sits inside an enterprise". The old
+    # values (20 assets, 15 observations) passed against an estate too small
+    # to demonstrate correlation at all.
+    assert contract["estate_id"] == "northstar-health-ai-v1-composed"
+    assert contract["assets"] >= 2000
+    assert contract["observations"] >= 6000
     assert contract["snapshots"] == 3
     assert contract["partial_sources"] == ["gcp_audit"]
     assert len(contract["content_hash"]) == 64

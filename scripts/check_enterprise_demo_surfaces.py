@@ -50,15 +50,24 @@ def main_check() -> None:
     _require(story.schema_version == "enterprise_demo_story.v1", "story schema version changed")
     _require(story.synthetic is True and story.fictional is True, "synthetic disclosure flags missing")
     _require(story.tenant_id == "contract-tenant", "tenant ID was not propagated")
-    _require(story.summary.assets == 20, "asset count changed")
-    _require(story.summary.observations == 15, "observation count changed")
+    # The demo serves the narrative estate composed into a generated population,
+    # so these are floors rather than fixed counts: pinning exact totals would
+    # make every scale-profile change a gate failure, while a floor still catches
+    # the regression that matters — the estate silently shrinking back to the
+    # 20-asset spine, where nothing has to be correlated out of anything.
+    _require(story.summary.assets >= 2000, "estate is no longer enterprise-sized")
+    _require(story.summary.observations >= 6000, "estate carries too little evidence to correlate")
     _require(story.summary.evidence_sources == 9, "evidence-source count changed")
-    _require(story.summary.correlations == 4, "correlation count changed")
+    # Floor, not a fixed count: the composed estate correlates thousands of rows.
+    _require(story.summary.correlations >= 4, "the narrative correlations are gone")
+    # The view is bounded so the incident stays visible; the summary must still
+    # report the unbounded truth, never the page size.
+    _require(len(story.correlations) <= story.summary.correlations, "story claims more rows than it holds")
+    _require(story.correlations[0] == story.primary_correlation, "the incident is no longer surfaced first")
     _require(story.summary.snapshots == 3, "snapshot count changed")
     _require(story.primary_correlation.outcome == "blocked", "primary outcome is no longer blocked")
     _require(
-        tuple(source.value for source in story.primary_correlation.sources)
-        == EXPECTED_PRIMARY_SOURCES,
+        tuple(source.value for source in story.primary_correlation.sources) == EXPECTED_PRIMARY_SOURCES,
         "primary cross-vendor path changed",
     )
     gcp = next((row for row in story.collection_health if row.source.value == "gcp_audit"), None)
@@ -82,12 +91,7 @@ def main_check() -> None:
     openapi = json.loads(_read("docs/openapi/v1.json"))
     operation = openapi.get("paths", {}).get("/v1/demo-estate/story", {}).get("get", {})
     response_ref = (
-        operation.get("responses", {})
-        .get("200", {})
-        .get("content", {})
-        .get("application/json", {})
-        .get("schema", {})
-        .get("$ref")
+        operation.get("responses", {}).get("200", {}).get("content", {}).get("application/json", {}).get("schema", {}).get("$ref")
     )
     _require(response_ref == "#/components/schemas/EnterpriseDemoStory", "OpenAPI story contract is missing")
 
@@ -103,9 +107,7 @@ def main_check() -> None:
     ):
         _require(marker in dashboard, f"dashboard lost required marker: {marker}")
 
-    helm_profile = _read(
-        "deploy/helm/agent-bom/examples/synthetic-enterprise-story-values.yaml"
-    )
+    helm_profile = _read("deploy/helm/agent-bom/examples/synthetic-enterprise-story-values.yaml")
     for marker in (
         "AGENT_BOM_DEMO_ESTATE",
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",

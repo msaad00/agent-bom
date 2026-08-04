@@ -150,9 +150,10 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     # can now consume one deterministic source instead of inventing unrelated
     # rows per screen. A malformed fixture remains an explicit bootstrap error.
     try:
-        from agent_bom.demo_estate.enterprise import CollectionStatus, load_enterprise_estate
+        from agent_bom.demo_estate.enterprise import CollectionStatus
+        from agent_bom.demo_estate.enterprise_composition import build_demo_estate
 
-        enterprise = load_enterprise_estate(tenant_id=tenant_id)
+        enterprise = build_demo_estate(tenant_id=tenant_id)
         summary["enterprise_contract"] = {
             "schema_version": enterprise.schema_version,
             "estate_id": enterprise.estate_id,

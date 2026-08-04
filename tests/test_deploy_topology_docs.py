@@ -151,3 +151,48 @@ def test_hosted_poc_keeps_the_project_demo_and_the_self_host_runbook_distinct() 
     if re.search(r"(?<![\w.-])demo\.agent-bom\.com(?![\w.-])", prose):
         assert "No custom domain is currently mapped" in prose
         assert "optional future step" in prose
+
+
+def test_readme_shared_deployment_row_points_at_a_shared_deployment_profile() -> None:
+    """The README's shared-deployment table must not route operators to the pilot.
+
+    The self-host section promises "your VPC, Postgres, signed audit" and tells
+    the reader to "configure real identity, TLS, PostgreSQL, encryption, and
+    audit keys before exposing it" — then its only Docker Compose link was
+    `docker-compose.pilot.yml`, which is loopback-bound, SQLite-persisted and
+    runs `--allow-insecure-no-auth`. The pilot file's own header is honest; the
+    routing was not.
+    """
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pilot = (ROOT / "deploy" / "docker-compose.pilot.yml").read_text(encoding="utf-8")
+    platform = (ROOT / "deploy" / "docker-compose.platform.yml").read_text(encoding="utf-8")
+
+    # The premise: pilot really is the insecure single-workstation profile and
+    # platform really is the Postgres-backed one. If either stops being true this
+    # guard must be revisited rather than silently passing.
+    assert "--allow-insecure-no-auth" in pilot
+    assert "postgres" in platform.lower()
+    assert "--allow-insecure-no-auth" not in platform
+
+    _, _, self_host = readme.partition("## Self-host")
+    shared, _, _ = self_host.partition("[Deployment overview]")
+    assert "deploy/docker-compose.platform.yml" in shared, "shared-deployment table omits the platform profile"
+
+
+def test_postgres_init_never_hardcodes_the_database_name() -> None:
+    """`init.sql` must grant against the database it is running in.
+
+    The platform compose parameterizes the database (`POSTGRES_DB:-agent_bom`),
+    but `init.sql` granted `ON DATABASE agent_bom` literally. Any operator who
+    set `POSTGRES_DB` hit `ERROR: database "agent_bom" does not exist`; init
+    aborted mid-file and the following `alembic upgrade head` then died on a
+    missing role *after* committing tables — a half-migrated database.
+    """
+    init_sql = (ROOT / "deploy" / "supabase" / "postgres" / "init.sql").read_text(encoding="utf-8")
+    compose = (ROOT / "deploy" / "docker-compose.platform.yml").read_text(encoding="utf-8")
+
+    # Premise: the database name really is operator-configurable.
+    assert "POSTGRES_DB: ${POSTGRES_DB:-agent_bom}" in compose
+
+    hardcoded = [line.strip() for line in init_sql.splitlines() if "ON DATABASE agent_bom" in line]
+    assert not hardcoded, f"init.sql hardcodes the database name: {hardcoded}"

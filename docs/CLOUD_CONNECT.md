@@ -28,6 +28,13 @@ wizard lets you copy the matching script. Secondary vendors (Databricks,
 CoreWeave, HF, W&B, …) stay under `scripts/provision/` until they join the
 brokered catalog.
 
+With connection flags, `connect` is safe to chain (`agent-bom connect aws &&
+<next step>`): it exits `0` only after the read-only credential actually
+verified, and on failure it exits non-zero and prints the same curated,
+secret-free reason the API and the Connections drawer show — never "see server
+logs". Codes are in
+[`site-docs/reference/exit-codes.md`](../site-docs/reference/exit-codes.md).
+
 ---
 
 ## 1c. Control-plane Connections wizard (browser onboarding)

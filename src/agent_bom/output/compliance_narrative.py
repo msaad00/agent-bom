@@ -107,6 +107,10 @@ class ControlNarrative:
     narrative: str
     affected_packages: list[str] = field(default_factory=list)
     affected_agents: list[str] = field(default_factory=list)
+    # The vulnerability ids that mapped onto this control. Without them an
+    # auditor can only walk control -> package and can never tie the control
+    # assertion back to the finding that produced it.
+    affected_findings: list[str] = field(default_factory=list)
     remediation_steps: list[str] = field(default_factory=list)
 
 
@@ -324,6 +328,26 @@ def _framework_overall_narrative(
     )
 
 
+def _signing_caveat() -> str:
+    """Qualify "export a signed bundle" when this deployment's signer is ephemeral.
+
+    Recommending auditor submission is only honest when the signature can be
+    checked. A default deployment signs with a per-process HMAC key, so the
+    recommendation has to carry that fact rather than imply verifiable evidence.
+    """
+    from agent_bom.api.compliance_signing import describe_signer_disclosure
+
+    disclosure = describe_signer_disclosure()
+    if disclosure.signature_verifiable:
+        return ""
+    return (
+        " Note: this deployment currently signs with a per-process key, so the bundle's signature cannot be verified "
+        "by an auditor — or by this deployment after a restart. Set AGENT_BOM_AUDIT_HMAC_KEY, or "
+        "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM for auditor-distributable signing, and re-export before "
+        "submitting."
+    )
+
+
 def _framework_recommendations(
     display_name: str,
     slug: str,
@@ -349,7 +373,7 @@ def _framework_recommendations(
     recs.append(
         f"Export a signed {display_name} evidence bundle from the compliance API "
         f"(`GET /v1/compliance/{slug}/report`, or the all-framework pack at "
-        "`GET /v1/compliance/report/pack`) for auditor submission."
+        "`GET /v1/compliance/report/pack`) for auditor submission." + _signing_caveat()
     )
     return recs
 
@@ -381,6 +405,7 @@ def _build_framework_narrative(
             "severity_breakdown": {"critical": 0, "high": 0, "medium": 0, "low": 0},
             "affected_pkgs": set(),
             "affected_agents": set(),
+            "affected_findings": set(),
         }
 
     for br in blast_radii_dicts:
@@ -388,6 +413,7 @@ def _build_framework_narrative(
         sev = (br.get("severity") or "").lower()
         pkg = br.get("package", "")
         agents = br.get("affected_agents", [])
+        vuln_id = br.get("vulnerability_id") or ""
         for tag in tags:
             control_id = control_key_for_tag(tag, catalog)
             if control_id is None:
@@ -398,6 +424,8 @@ def _build_framework_narrative(
                 entry["severity_breakdown"][sev] += 1
             if pkg:
                 entry["affected_pkgs"].add(pkg)
+            if vuln_id:
+                entry["affected_findings"].add(vuln_id)
             for agent in agents:
                 entry["affected_agents"].add(agent)
 
@@ -471,6 +499,7 @@ def _build_framework_narrative(
                     narrative=_control_narrative(code, data["name"], data["findings"], pkgs, agents, data["severity_breakdown"]),
                     affected_packages=pkgs,
                     affected_agents=agents,
+                    affected_findings=sorted(data["affected_findings"]),
                     remediation_steps=_control_remediation_steps(code, data["name"], pkgs, data["severity_breakdown"]),
                 )
             )
@@ -731,8 +760,7 @@ def _build_executive_summary(
     # Closing action
     if action_fws or review_fws:
         sentences.append(
-            "Remediation of identified vulnerabilities is the highest-priority action; "
-            "control owners must validate compliance separately."
+            "Remediation of identified vulnerabilities is the highest-priority action; control owners must validate compliance separately."
         )
     else:
         sentences.append("Continue regular scanning and independent control validation to maintain current evidence coverage.")

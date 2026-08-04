@@ -33,7 +33,7 @@ import hmac
 import json
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Final
@@ -221,14 +221,117 @@ def reset_signer_cache_for_tests() -> None:
 def describe_current_signer() -> tuple[str, str | None, str | None]:
     """Return ``(algorithm, key_id, public_key_pem)`` for the active signer.
 
-    Called BEFORE signing so the algorithm and key fields can be embedded in
-    the canonical body that gets signed — verifiers then see the same body
-    that was signed.
+    Reports the signer's identity only. Surfaces that publish signer facts to
+    an auditor want :func:`describe_signer_disclosure` instead — this cannot
+    tell a configured HMAC key from a per-process one, so on its own it made
+    an unverifiable deployment look identical to a verifiable one.
     """
     signer = _load_ed25519_signer()
     if signer is not None:
         return "Ed25519", signer.key_id, signer.public_key_pem
     return "HMAC-SHA256", None, None
+
+
+VERIFIABLE_PUBLIC_KEY: Final[str] = "verifiable_public_key"
+VERIFIABLE_SHARED_SECRET: Final[str] = "verifiable_shared_secret"
+UNVERIFIABLE_EPHEMERAL_KEY: Final[str] = "unverifiable_ephemeral_key"
+
+_ED25519_GUIDANCE: Final[str] = (
+    "Retrieve this key over TLS once, pin the key_id, and use it to verify "
+    "every compliance bundle signed with Ed25519. Rotate by updating "
+    "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM and re-fetching."
+)
+_SHARED_SECRET_GUIDANCE: Final[str] = (
+    "Bundles are signed with the shared secret in AGENT_BOM_AUDIT_HMAC_KEY, which the operator must hand to each "
+    "verifier over a trusted channel. Anyone holding that secret can also forge a bundle, so it is not safe to give "
+    "an external auditor — set AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM for asymmetric, auditor-distributable signing."
+)
+_EPHEMERAL_GUIDANCE: Final[str] = (
+    "This deployment signs with a per-process HMAC key generated at startup that never leaves the process. There is "
+    "no key to distribute, and bundles it signs cannot be verified by anyone — including this deployment after a restart."
+)
+_EPHEMERAL_REMEDIATION: Final[str] = (
+    "Set AGENT_BOM_AUDIT_HMAC_KEY (or AGENT_BOM_AUDIT_HMAC_KEY_FILE) to a persistent secret so signatures survive a "
+    "restart, or — for evidence an external auditor can verify without holding forgeable key material — set "
+    "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM to an Ed25519 private key. Re-export any bundle already issued: "
+    "the key that signed it is gone."
+)
+
+
+@dataclass(frozen=True)
+class SignerDisclosure:
+    """Whether the active signer produces bundles anyone can actually verify.
+
+    ``describe_current_signer`` only sees the algorithm name, so an ephemeral
+    per-process HMAC key was indistinguishable from a configured one — both
+    stamped ``HMAC-SHA256``. This carries the persistence fact alongside the
+    algorithm so the bundle and the verification-key endpoint can say which
+    deployment produced it.
+    """
+
+    algorithm: str
+    key_id: str | None
+    public_key_pem: str | None
+    signature_verifiable: bool
+    persists_across_restart: bool
+    verification_status: str
+    verification_guidance: str
+    remediation: str | None
+
+    def as_bundle_field(self) -> dict[str, object]:
+        """The disclosure as it is embedded in the signed bundle body."""
+        return {
+            "signature_verifiable": self.signature_verifiable,
+            "persists_across_restart": self.persists_across_restart,
+            "verification_status": self.verification_status,
+            "verification_guidance": self.verification_guidance,
+            "remediation": self.remediation,
+        }
+
+
+def describe_signer_disclosure() -> SignerDisclosure:
+    """Return the verifiability disclosure for the active signer.
+
+    Built from :func:`describe_signing_posture`, which is the only function
+    here that can see whether the HMAC secret survives a restart.
+    """
+    posture = describe_signing_posture()
+    algorithm = str(posture["algorithm"])
+    key_id = posture["key_id"]
+    persists = bool(posture["persists_across_restart"])
+
+    if algorithm == "Ed25519":
+        return SignerDisclosure(
+            algorithm=algorithm,
+            key_id=str(key_id) if key_id is not None else None,
+            public_key_pem=current_public_key_pem(),
+            signature_verifiable=True,
+            persists_across_restart=True,
+            verification_status=VERIFIABLE_PUBLIC_KEY,
+            verification_guidance=_ED25519_GUIDANCE,
+            remediation=None,
+        )
+    if persists:
+        return SignerDisclosure(
+            algorithm=algorithm,
+            key_id=None,
+            public_key_pem=None,
+            signature_verifiable=True,
+            persists_across_restart=True,
+            verification_status=VERIFIABLE_SHARED_SECRET,
+            verification_guidance=_SHARED_SECRET_GUIDANCE,
+            remediation=None,
+        )
+    return SignerDisclosure(
+        algorithm=algorithm,
+        key_id=None,
+        public_key_pem=None,
+        signature_verifiable=False,
+        persists_across_restart=False,
+        verification_status=UNVERIFIABLE_EPHEMERAL_KEY,
+        verification_guidance=_EPHEMERAL_GUIDANCE,
+        remediation=_EPHEMERAL_REMEDIATION,
+    )
 
 
 def sign_compliance_bundle(payload: bytes) -> SignatureResult:
@@ -297,12 +400,73 @@ def verify_compliance_signature(payload: bytes, signature_hex: str) -> bool:
     return hmac.compare_digest(sign_export_payload(payload), signature_hex)
 
 
-def verify_compliance_bundle(body: Mapping[str, object]) -> bool:
-    """Verify a bundle against the signature it carries in its own body."""
-    signature = body.get(SIGNATURE_FIELD)
-    if not isinstance(signature, str):
+def _verify_ed25519_pem(pem: str, payload: bytes, signature_hex: str) -> bool:
+    """Verify ``signature_hex`` over ``payload`` against one PEM public key."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey as _Ed25519PublicKey
+
+    try:
+        raw = bytes.fromhex(signature_hex)
+    except ValueError:
         return False
-    return verify_compliance_signature(canonical_bundle_payload(body), signature)
+    try:
+        key = serialization.load_pem_public_key(pem.encode())
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(key, _Ed25519PublicKey):
+        return False
+    try:
+        key.verify(raw, payload)
+    except InvalidSignature:
+        return False
+    return True
+
+
+def _verify_hmac_with_secret(secret: str, payload: bytes, signature_hex: str) -> bool:
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_hex)
+
+
+def verify_compliance_bundle(
+    body: Mapping[str, object],
+    *,
+    trusted_public_key_pems: Sequence[str] = (),
+    shared_secret: str | None = None,
+) -> bool:
+    """Verify a bundle against the signature it carries in its own body.
+
+    ``trusted_public_key_pems`` / ``shared_secret`` let an off-line verifier
+    (``agent-bom attest compliance-verify``) supply key material it obtained
+    itself. Key material EMBEDDED in the bundle (``signature_public_key_pem``)
+    is never consulted — it is self-attesting and proves only that the file is
+    internally consistent. With neither argument the active in-process signer
+    is used, which is what the issuing server has.
+
+    Dispatch follows the bundle's own ``signature_algorithm``: an HMAC bundle
+    is never checked with a locally configured Ed25519 key, and vice versa.
+    """
+    signature = body.get(SIGNATURE_FIELD)
+    if not isinstance(signature, str) or not signature:
+        return False
+    payload = canonical_bundle_payload(body)
+    declared = body.get("signature_algorithm")
+
+    if trusted_public_key_pems:
+        return any(_verify_ed25519_pem(pem, payload, signature) for pem in trusted_public_key_pems)
+    if shared_secret is not None:
+        return _verify_hmac_with_secret(shared_secret, payload, signature)
+
+    if declared == "HMAC-SHA256":
+        from agent_bom.api.audit_log import sign_export_payload
+
+        return hmac.compare_digest(sign_export_payload(payload), signature)
+    if declared == "Ed25519":
+        signer = _load_ed25519_signer()
+        if signer is None:
+            return False
+        return _verify_ed25519_pem(signer.public_key_pem, payload, signature)
+    return verify_compliance_signature(payload, signature)
 
 
 def current_public_key_pem() -> str | None:

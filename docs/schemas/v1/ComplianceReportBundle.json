@@ -315,6 +315,47 @@
       "title": "ComplianceReportSummary",
       "type": "object"
     },
+    "ComplianceSignatureDisclosure": {
+      "description": "Whether the bundle's own signature can be verified, and by whom.",
+      "properties": {
+        "persists_across_restart": {
+          "title": "Persists Across Restart",
+          "type": "boolean"
+        },
+        "remediation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remediation"
+        },
+        "signature_verifiable": {
+          "title": "Signature Verifiable",
+          "type": "boolean"
+        },
+        "verification_guidance": {
+          "title": "Verification Guidance",
+          "type": "string"
+        },
+        "verification_status": {
+          "title": "Verification Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "signature_verifiable",
+        "persists_across_restart",
+        "verification_status",
+        "verification_guidance"
+      ],
+      "title": "ComplianceSignatureDisclosure",
+      "type": "object"
+    },
     "ComplianceThreatModel": {
       "properties": {
         "confidentiality": {
@@ -399,6 +440,9 @@
       "title": "Signature Algorithm",
       "type": "string"
     },
+    "signature_disclosure": {
+      "$ref": "#/$defs/ComplianceSignatureDisclosure"
+    },
     "summary": {
       "$ref": "#/$defs/ComplianceReportSummary"
     },
@@ -422,6 +466,7 @@
     "summary",
     "audit_log_integrity",
     "signature_algorithm",
+    "signature_disclosure",
     "threat_model"
   ],
   "title": "ComplianceReportBundle",

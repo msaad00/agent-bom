@@ -75,6 +75,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `attest` | Sign tenant-bound SBOM DSSE-PAE attestations and per-instance MCP scan attestations; verify against explicit Ed25519 trust policies |
 | `attest mcp sign` | Sign a completed scan JSON into a DSSE MCP scan attestation for one server |
 | `attest mcp verify` | Verify an MCP scan attestation (optional `--accept` consumes replay once) |
+| `attest compliance-verify` | Verify a compliance evidence bundle (`json` or `jsonl`) against a supplied public key or shared secret |
 
 SBOM signing is fail-closed and does not reuse the compliance/audit HMAC
 fallback. Configure a persistent Ed25519 private key, preferably through the
@@ -99,6 +100,20 @@ agent-bom attest mcp verify scan.json.mcp-attestation.intoto.json \
   --tenant-id tenant-a \
   --public-key trusted-mcp-scan-signing.pub.pem
 ```
+
+Compliance evidence bundles from `GET /v1/compliance/*/report` verify with the
+same trust rule — the key is supplied by the verifier, never read out of the
+artifact:
+
+```bash
+curl -s "$CONTROL_PLANE/v1/compliance/verification-key" | jq -r .public_key_pem > pinned.pem
+agent-bom attest compliance-verify bundle.json --public-key pinned.pem
+```
+
+`/v1/compliance/verification-key` also reports `signature_verifiable` and
+`verification_status`; a deployment running on the default per-process HMAC key
+reports `unverifiable_ephemeral_key` and the bundle it issued fails with
+`issuer_key_ephemeral`. See `docs/COMPLIANCE_SIGNING.md`.
 
 Verification never trusts a key embedded in an envelope. Older envelopes remain
 readable as `legacy_attestation_untrusted`, but cannot produce a verified result.

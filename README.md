@@ -146,7 +146,8 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 
 | Target | Start here |
 |---|---|
-| Docker Compose | [Pilot compose](deploy/docker-compose.pilot.yml) |
+| Docker Compose | [Platform compose](deploy/docker-compose.platform.yml) — PostgreSQL, split secrets, migration job |
+| Docker Compose (evaluation) | [Pilot compose](deploy/docker-compose.pilot.yml) — loopback only, SQLite, no auth |
 | Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.98.3` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Snowflake SPCS / Native App | `scripts/deploy/install.sh snowflake-native` · [install guide](docs/snowflake-native-app/INSTALL.md) |

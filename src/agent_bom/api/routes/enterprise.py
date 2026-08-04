@@ -2593,7 +2593,7 @@ async def update_finding_triage_decision(request: Request, triage_id: str, req: 
 @router.get("/findings/triage/vex", tags=["enterprise"])
 async def export_finding_triage_vex(request: Request) -> dict:
     """Export signed OpenVEX for eligible tenant-scoped not_affected triage decisions."""
-    from agent_bom.api.compliance_signing import sign_compliance_bundle
+    from agent_bom.api.compliance_signing import describe_signer_disclosure, sign_compliance_bundle
     from agent_bom.vex import VexDocument, VexJustification, VexStatement, VexStatus, export_openvex
 
     tenant_id = require_request_tenant_id(request)
@@ -2637,6 +2637,10 @@ async def export_finding_triage_vex(request: Request) -> dict:
             "algorithm": signature.algorithm,
             "signature_hex": signature.signature_hex,
             "key_id": signature.key_id,
+            # Same disclosure contract as the compliance evidence bundle: an
+            # algorithm name alone hides that the default deployment signs
+            # with a per-process key nobody can verify against.
+            **describe_signer_disclosure().as_bundle_field(),
         },
     }
 

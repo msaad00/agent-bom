@@ -405,10 +405,7 @@ def _connect_options(source: _ConnectSource) -> list[click.Parameter]:
                 "no_auto_scan_on_create",
                 is_flag=True,
                 default=False,
-                help=(
-                    "Disable auto_scan_on_create for --server registration "
-                    "(API default is on)."
-                ),
+                help=("Disable auto_scan_on_create for --server registration (API default is on)."),
             ),
             click.Option(
                 ["--scan", "do_scan"],
@@ -532,6 +529,52 @@ def _handle_emit(con: object, source: _ConnectSource, kwargs: dict[str, object])
     )
 
 
+# CLI exit codes for a failed `connect`, per site-docs/reference/exit-codes.md.
+# `1` = operational failure (precondition failed / backend unreachable /
+# dependency not present); `2` = the caller sent something invalid.
+_EXIT_OPERATIONAL = 1
+_EXIT_USAGE = 2
+
+# HTTP statuses the exit-code contract maps to `2` ("caller sent something
+# invalid — fix the input"). Everything else the control plane can return —
+# 401/403, 404/409, 429, 5xx — flattens to `1` until the reserved codes `4`/`5`
+# are assigned.
+_USAGE_STATUSES = frozenset({400, 422})
+
+# Cap on a control-plane detail string so a pathological body cannot flood the
+# terminal. Sized to fit the longest guidance the API curates
+# (``connection_broker._MAX_REMEDIATION_CHARS``) without chopping it mid-word.
+_MAX_DETAIL_CHARS = 1000
+
+
+def _control_plane_detail(body: str) -> str:
+    """Extract the control plane's operator-facing message from an error body.
+
+    The API returns ``{"detail": "<message>"}`` and deliberately writes those
+    details as operator guidance already sanitized server-side
+    (``operator_facing_detail``) — the server is the side that holds secrets, so
+    that is where redaction belongs. The CLI therefore passes the string
+    through, but ONLY when the body really is a JSON object with a string
+    ``detail``: an HTML error page from an intermediary proxy, a non-string
+    ``detail`` (e.g. the structured 429 payload), or an empty body is not an
+    operator message and is never printed. Returns "" when there is nothing
+    trustworthy to show.
+    """
+    import json
+
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    detail = parsed.get("detail")
+    if not isinstance(detail, str):
+        return ""
+    detail = detail.strip()
+    return detail[:_MAX_DETAIL_CHARS]
+
+
 def _readonly_probe(provider: str, brokered: object, regions: list[str]) -> str:
     """Run a trivial, bounded, read-only call against a brokered credential.
 
@@ -580,12 +623,14 @@ def _local_verify(
     """Broker a read-only credential in-process and prove it with a bounded probe.
 
     Standalone — needs no control plane. Degrades gracefully with an install hint
-    when the provider SDK extra is missing. The secret is never printed.
+    when the provider SDK extra is missing. The secret is never printed, and any
+    failure exits non-zero so ``connect && <next step>`` cannot proceed on an
+    unverified connection.
     """
     from rich.markup import escape
 
     from agent_bom.cloud.base import CloudDiscoveryError
-    from agent_bom.cloud.connection_broker import ConnectionBrokerError, broker_session
+    from agent_bom.cloud.connection_broker import ConnectionBrokerError, broker_session, operator_facing_detail
     from agent_bom.cloud.connection_request import ephemeral_connection_record
 
     con.print(f"[dim]Verifying a read-only {source.title} connection locally (no server)...[/dim]")  # type: ignore[attr-defined]
@@ -604,12 +649,12 @@ def _local_verify(
         # Missing SDK extra — the broker's own install hint is already actionable.
         # Escape so the ``[extra]`` in the hint is not swallowed as rich markup.
         con.print(f"[yellow]Cannot verify locally:[/yellow] {escape(str(exc))}")  # type: ignore[attr-defined]
-        return
+        raise click.exceptions.Exit(_EXIT_OPERATIONAL) from None
     except (ConnectionBrokerError, Exception) as exc:  # noqa: BLE001 - broker/provider failure
-        from agent_bom.security import sanitize_error
-
-        con.print(f"[red]Verification failed:[/red] {escape(sanitize_error(exc, generic=True))}")  # type: ignore[attr-defined]
-        return
+        # Same operator-message boundary the API applies: the broker's curated
+        # remediation passes through, anything unexpected stays redacted.
+        con.print(f"[red]Verification failed:[/red] {escape(operator_facing_detail(exc))}")  # type: ignore[attr-defined]
+        raise click.exceptions.Exit(_EXIT_OPERATIONAL) from None
 
     con.print(f"[green]Verified[/green] read-only credentials — {escape(detail)}.")  # type: ignore[attr-defined]
     if do_scan:
@@ -638,7 +683,14 @@ def _register_via_server(
     Uses the API client + the SAME ``CloudConnectionCreate`` schema, so this is
     the identical connection the UI/API create. The secret is sent for at-rest
     encryption server-side and is never printed by the CLI.
+
+    Any failure exits non-zero and surfaces the control plane's own actionable
+    ``detail`` — an operator who does not host the control plane cannot "see
+    server logs".
     """
+    import httpx
+    from rich.markup import escape
+
     from agent_bom.client import AgentBomApiError, AgentBomClient
 
     client = AgentBomClient(base_url=server, api_key=api_key, tenant_id=tenant or None)
@@ -662,7 +714,17 @@ def _register_via_server(
             scan = client.scan_cloud_connection(connection_id)
             con.print(f"[green]Scan:[/green] launched (scan_id {scan.get('scan_id', '?')}).")  # type: ignore[attr-defined]
     except AgentBomApiError as exc:
-        con.print(f"[red]Control plane rejected the request ({exc.status_code}).[/red] See server logs for detail.")  # type: ignore[attr-defined]
+        detail = _control_plane_detail(exc.body)
+        suffix = f" {escape(detail)}" if detail else " Re-run with the control plane's logs available for detail."
+        con.print(f"[red]Control plane rejected the request ({exc.status_code}).[/red]{suffix}")  # type: ignore[attr-defined]
+        code = _EXIT_USAGE if exc.status_code in _USAGE_STATUSES else _EXIT_OPERATIONAL
+        raise click.exceptions.Exit(code) from None
+    except httpx.RequestError as exc:
+        con.print(  # type: ignore[attr-defined]
+            f"[red]Could not reach the agent-bom control plane at {escape(server)}.[/red] "
+            f"Check --server, network reachability, and that the API is running: {escape(type(exc).__name__)}."
+        )
+        raise click.exceptions.Exit(_EXIT_OPERATIONAL) from None
     finally:
         client.close()
 

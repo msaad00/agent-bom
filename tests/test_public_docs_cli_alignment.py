@@ -251,3 +251,25 @@ def test_mcp_server_instructions_do_not_overclaim_read_only_surface() -> None:
     assert "Scanner and posture tools are read-only" in factory
     assert "write actions require an authenticated operator token" in factory
     assert "operator_role is audit metadata" in factory
+
+
+def test_no_shipped_docstring_carries_an_issue_reference() -> None:
+    """Issue references belong in commit messages, not in shipped source.
+
+    `agent-bom graph --help` printed "Closes #292." to every user, because the
+    tracker reference lived in the command's docstring and Click renders
+    docstrings as help text. The same pattern sat in module docstrings that ship
+    inside the wheel.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    pattern = re.compile(r"\b(?:Closes|Fixes|Resolves|Refs?)\s+#\d+", re.IGNORECASE)
+
+    offenders: list[str] = []
+    for path in sorted((root / "src" / "agent_bom").rglob("*.py")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if pattern.search(line):
+                offenders.append(f"{path.relative_to(root)}:{lineno}: {line.strip()}")
+    assert not offenders, "tracker references in shipped source:\n" + "\n".join(offenders)

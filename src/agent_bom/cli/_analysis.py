@@ -291,8 +291,6 @@ def graph_cmd(
 
         agent-bom graph report.json --format mermaid
         agent-bom graph report.json --expected expected-graph.json --eval-output graph-eval.json --fail-under 0.9
-
-    Closes #292.
     """
     from rich.console import Console as _Console
 

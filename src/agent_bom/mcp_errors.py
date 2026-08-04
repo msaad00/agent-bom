@@ -1,6 +1,6 @@
 """Stable MCP error envelope for tool returns.
 
-Closes #1960 (the "stable error codes" piece). Every MCP tool that returns a
+Every MCP tool that returns a
 JSON-serialised error to the client now flows through ``mcp_error_payload``
 or ``mcp_error_json`` so clients can branch on a stable ``code``/``category``
 pair instead of substring-matching on a free-form ``error`` string.

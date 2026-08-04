@@ -365,7 +365,7 @@ def discover_vector_dbs(
 
 
 # ---------------------------------------------------------------------------
-# Pinecone cloud vector DB — API-authenticated scanning (closes #310)
+# Pinecone cloud vector DB — API-authenticated scanning
 # ---------------------------------------------------------------------------
 
 _PINECONE_API_BASE = "https://api.pinecone.io"

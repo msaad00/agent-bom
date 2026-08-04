@@ -129,6 +129,35 @@ That document includes:
 
 This is the public verification path. Release trust is not hidden inside CI.
 
+## Scanned-package integrity and provenance verdict
+
+`agent-bom scan --verify-integrity` checks each resolved package's artifact
+digest against its registry (`Package.integrity_verified`) and looks for a SLSA
+/ PEP 740 / `sum.golang.org` attestation (`Package.provenance_attested`, with
+`provenance_source` naming which one). The verdict is machine-readable in every
+serializing format, so a gate never has to scrape console text:
+
+| Surface | Where the verdict lands |
+| --- | --- |
+| JSON | `agents[].mcp_servers[].packages[].integrity_verified` / `.provenance_attested` / `.provenance_source` |
+| CycloneDX 1.7 | `component.evidence.identity[]` — `methods[].technique` is `hash-comparison` (integrity) and `attestation` (provenance), `confidence` 1.0 pass / 0.0 fail; plus `component.properties` `agent-bom:integrity-verified`, `agent-bom:provenance-attested`, `agent-bom:provenance-source` |
+| SPDX 3.0.1 | `software_Package.annotation[]` with `annotationType: other` — `agent-bom:integrity-verified=<bool>`, `agent-bom:provenance-attested=<bool> source=<src>` |
+| SPDX 2.2 / 2.3 | `packages[].annotations[]` with `annotationType: OTHER` and the same `comment` statements |
+| SARIF 2.1.0 | `runs[].results[].properties.package_integrity_verified` / `.package_provenance_attested` / `.package_provenance_source` |
+| CSV | appended `integrity_verified`, `provenance_attested`, `provenance_source` columns |
+| `GET /v1/findings` | `package_integrity_verified`, `package_provenance_attested`, `package_provenance_source` on each finding |
+| MCP `scan` tool | the JSON payload above, from the same verification helper the CLI uses |
+
+Neither CycloneDX nor SPDX models a verification *verdict* as a first-class
+field, so each format uses the extension point its own spec designates for a
+tool-asserted statement: CycloneDX identity evidence plus namespaced
+`properties`, and SPDX annotations (`AnnotationType.other` — "extra information
+about an Element which is not part of a review").
+
+Absent means the check never ran. A failed verification is emitted explicitly
+as `false` / `confidence: 0.0`, so "not checked" and "checked and failed" are
+never conflated.
+
 ## Where to inspect the current posture
 
 - [Security Policy](../SECURITY.md)

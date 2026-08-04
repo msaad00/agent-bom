@@ -10,6 +10,7 @@ import csv
 import io
 
 from agent_bom.compliance_utils import framework_qualified_finding_tags
+from agent_bom.finding import Finding
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import (
     evidence,
@@ -55,7 +56,21 @@ _COLUMNS = [
     "finding_type",
     "finding_id",
     "title",
+    # --verify-integrity verdict. Empty = the check never ran, which is not the
+    # same claim as "no"; a gate must distinguish the two.
+    "integrity_verified",
+    "provenance_attested",
+    "provenance_source",
 ]
+
+
+def _verdict_cell(finding: Finding, key: str) -> str:
+    value = evidence(finding, key, None)
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
 
 
 def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
@@ -102,6 +117,9 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "finding_type": finding.finding_type.value,
                 "finding_id": finding.id,
                 "title": finding.title or "",
+                "integrity_verified": _verdict_cell(finding, "package_integrity_verified"),
+                "provenance_attested": _verdict_cell(finding, "package_provenance_attested"),
+                "provenance_source": _verdict_cell(finding, "package_provenance_source"),
             }
         writer.writerow({key: _excel_safe_cell(value) for key, value in row.items()})
 

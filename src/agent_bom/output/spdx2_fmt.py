@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from agent_bom.checksums import spdx2_checksums
+from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx2_checksums
 from agent_bom.models import AIBOMReport
 
 _SUPPORTED_VERSIONS = {"2.2", "2.3"}
@@ -181,6 +181,18 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
                                 "annotator": "Tool: agent-bom",
                                 "annotationDate": created,
                                 "comment": f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}",
+                            }
+                        )
+                    # SPDX 2.x has no field for a verification verdict either;
+                    # the annotation mechanism (annotationType OTHER) is the
+                    # spec's slot for a tool-asserted statement about a package.
+                    for statement in integrity_verdict_statements(integrity_verdict(pkg)):
+                        annotations.append(
+                            {
+                                "annotationType": "OTHER",
+                                "annotator": "Tool: agent-bom",
+                                "annotationDate": created,
+                                "comment": statement,
                             }
                         )
                     if annotations:

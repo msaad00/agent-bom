@@ -187,6 +187,84 @@ def test_default_cli_scan_surfaces_combination():
     assert "COMBINATION" in cats, f"default CLI dropped graph-derived category; got {cats}"
 
 
+@pytest.mark.asyncio
+async def test_mcp_verify_integrity_populates_the_model_verdict(monkeypatch):
+    """``verify_integrity=True`` over MCP must land on the same model fields the CLI sets.
+
+    The MCP path assigned the raw registry response to a ``Package.integrity``
+    attribute that no model field, emitter or consumer reads, and never checked
+    provenance at all — so an MCP caller asking for verification got a scan with
+    no verdict in it.
+    """
+    import agent_bom.integrity as integrity_mod
+    from agent_bom.mcp_tools.scanning import scan_impl
+
+    agents, brs = _seeded_estate()
+
+    async def _pipeline(*_args, **_kwargs):
+        return agents, brs, [], []
+
+    async def _integrity(_package, _client):
+        return {"verified": True, "algorithm": "sha256"}
+
+    async def _provenance(_package, _client):
+        return {"has_provenance": True, "source": "npm_slsa"}
+
+    monkeypatch.setattr(integrity_mod, "verify_package_integrity", _integrity)
+    monkeypatch.setattr(integrity_mod, "check_package_provenance", _provenance)
+
+    payload = json.loads(
+        await scan_impl(
+            config_path="/tmp/estate",
+            offline=False,
+            auto_update_db=False,
+            verify_integrity=True,
+            _run_scan_pipeline=_pipeline,
+            _truncate_response=_trunc,
+        )
+    )
+
+    packages = [pkg for agent in payload["agents"] for server in agent["mcp_servers"] for pkg in server["packages"]]
+    assert packages, "seeded estate produced no packages"
+    assert all(pkg["integrity_verified"] is True for pkg in packages)
+    assert all(pkg["provenance_attested"] is True for pkg in packages)
+    assert all(pkg["provenance_source"] == "npm_slsa" for pkg in packages)
+
+
+@pytest.mark.asyncio
+async def test_verify_packages_fetches_each_identity_once_and_applies_to_every_instance(monkeypatch):
+    """One derivation for the whole estate: dedup by identity, apply to all copies."""
+    import agent_bom.integrity as integrity_mod
+    from agent_bom.integrity import verify_packages
+
+    calls: list[str] = []
+
+    async def _integrity(package, _client):
+        calls.append(f"{package.ecosystem}:{package.name}@{package.version}")
+        return {"verified": True}
+
+    async def _provenance(_package, _client):
+        return {"has_provenance": False, "status": "not_provenance"}
+
+    monkeypatch.setattr(integrity_mod, "verify_package_integrity", _integrity)
+    monkeypatch.setattr(integrity_mod, "check_package_provenance", _provenance)
+
+    shared_a = Package(name="requests", version="2.31.0", ecosystem="pypi")
+    shared_b = Package(name="requests", version="2.31.0", ecosystem="pypi")
+    floating = Package(name="left-pad", version="latest", ecosystem="npm")
+
+    results = await verify_packages([shared_a, shared_b, floating], client=None)
+
+    assert calls == ["pypi:requests@2.31.0"], "the same identity was fetched more than once"
+    assert len(results) == 1
+    for package in (shared_a, shared_b):
+        assert package.integrity_verified is True
+        assert package.provenance_attested is False
+    # An unresolved version was never asked about, so it must stay "not checked".
+    assert floating.integrity_verified is None
+    assert floating.provenance_attested is None
+
+
 def test_default_cli_toxic_count_is_single_honest_number():
     """The console must not print a legacy toxic count that contradicts the
     unified stream (never 11 vs 5 vs 0). Only the unified graph count shows."""

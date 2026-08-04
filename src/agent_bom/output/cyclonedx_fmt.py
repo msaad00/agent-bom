@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from agent_bom import __version__
@@ -21,7 +22,7 @@ from agent_bom.asset_provenance import (
     sanitize_discovery_provenance,
 )
 from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
-from agent_bom.checksums import cyclonedx_hashes
+from agent_bom.checksums import cyclonedx_hashes, integrity_verdict, strongest_checksum
 from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.package_utils import synthesize_purl
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -272,6 +273,42 @@ def _append_discovery_provenance_properties(properties: list[dict], provenance: 
 
 
 # ── ML BOM extension builders ────────────────────────────────────────────────
+
+
+def _integrity_identity_evidence(pkg: Any, verdict: dict[str, Any], purl: str | None) -> list[dict[str, Any]]:
+    """Render the verification verdict as CycloneDX 1.7 identity evidence.
+
+    CycloneDX models this natively: ``component.evidence.identity[]`` carries
+    ``methods[].technique``, whose enum includes ``hash-comparison`` (the
+    registry-digest check) and ``attestation`` (the SLSA / PEP 740 /
+    sum.golang.org lookup). ``confidence`` is 1.0 for a pass and 0.0 for a
+    documented failure — absent entirely when the check never ran.
+    """
+    identities: list[dict[str, Any]] = []
+    verified = verdict.get("integrity_verified")
+    if verified is not None:
+        confidence = 1.0 if verified else 0.0
+        method: dict[str, Any] = {"technique": "hash-comparison", "confidence": confidence}
+        digest = strongest_checksum(getattr(pkg, "checksums", {}) or {})
+        entry: dict[str, Any] = {"field": "hash", "confidence": confidence}
+        if digest is not None:
+            alg, value = digest
+            method["value"] = f"{alg}:{value}"
+            entry["concludedValue"] = f"{alg}:{value}"
+        entry["methods"] = [method]
+        identities.append(entry)
+    attested = verdict.get("provenance_attested")
+    if attested is not None:
+        confidence = 1.0 if attested else 0.0
+        method = {"technique": "attestation", "confidence": confidence}
+        source = verdict.get("provenance_source")
+        if source:
+            method["value"] = str(source)
+        entry = {"field": "purl", "confidence": confidence, "methods": [method]}
+        if purl:
+            entry["concludedValue"] = purl
+        identities.append(entry)
+    return identities
 
 
 def _build_model_card(provenance: dict) -> dict:
@@ -636,6 +673,23 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     pkg_properties.append({"name": "agent-bom:is-malicious", "value": "true"})
                     if pkg.malicious_reason:
                         pkg_properties.append({"name": "agent-bom:malicious-reason", "value": pkg.malicious_reason})
+                # --verify-integrity verdict. The namespaced properties give a
+                # consumer an unambiguous boolean; the identity evidence below
+                # says the same thing in the spec's own vocabulary.
+                verdict = integrity_verdict(pkg)
+                if verdict is not None:
+                    if "integrity_verified" in verdict:
+                        pkg_properties.append(
+                            {"name": "agent-bom:integrity-verified", "value": str(verdict["integrity_verified"]).lower()}
+                        )
+                    if "provenance_attested" in verdict:
+                        pkg_properties.append(
+                            {"name": "agent-bom:provenance-attested", "value": str(verdict["provenance_attested"]).lower()}
+                        )
+                    if verdict.get("provenance_source"):
+                        pkg_properties.append(
+                            {"name": "agent-bom:provenance-source", "value": str(verdict["provenance_source"])}
+                        )
 
                 pkg_component: dict = {
                     "type": "library",
@@ -650,6 +704,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 purl = pkg.purl or synthesize_purl(pkg.name, pkg.version, pkg.ecosystem)
                 if purl:
                     pkg_component["purl"] = purl
+                if verdict is not None:
+                    identities = _integrity_identity_evidence(pkg, verdict, purl)
+                    if identities:
+                        pkg_component["evidence"] = {"identity": identities}
                 if pkg.license_expression or pkg.license:
                     lic_val = pkg.license_expression or pkg.license or ""
                     # CycloneDX 1.7: compound expressions (AND/OR/WITH) use

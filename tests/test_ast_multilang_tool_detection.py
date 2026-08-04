@@ -485,3 +485,412 @@ def test_swift_ordinary_tool_type_without_mcp_is_not_an_agent_tool(tmp_path: Pat
     (tmp_path / "Hardware.swift").write_text(SWIFT_ORDINARY_TOOL_TYPE)
 
     assert _tool_names(tmp_path) == set()
+
+
+# --------------------------------------------------------------------------
+# Kotlin -- io.modelcontextprotocol:kotlin-sdk (official kotlin-sdk)
+# --------------------------------------------------------------------------
+
+# README.md "Creating a Server": addTool carries the name as a named argument.
+KOTLIN_ADD_TOOL = """import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+fun main(args: Array<String>) {
+    val port = args.firstOrNull()?.toIntOrNull() ?: 3000
+    val mcpServer = Server(
+        serverInfo = Implementation(
+            name = "example-server",
+            version = "1.0.0"
+        ),
+        options = ServerOptions(
+            capabilities = ServerCapabilities(
+                tools = ServerCapabilities.Tools(listChanged = true),
+            ),
+        )
+    )
+
+    mcpServer.addTool(
+        name = "example-tool",
+        description = "An example tool",
+        inputSchema = ToolSchema(
+            properties = buildJsonObject {
+                put("input", buildJsonObject { put("type", "string") })
+            }
+        )
+    ) { request ->
+        CallToolResult(content = listOf(TextContent("Hello, world!")))
+    }
+
+    embeddedServer(CIO, host = "127.0.0.1", port = port) {
+        mcpStreamableHttp {
+            mcpServer
+        }
+    }.start(wait = true)
+}
+"""
+
+# README.md "Tools": the short form, with the handler as a trailing lambda.
+KOTLIN_ADD_TOOL_SHORT = """import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+
+val server = Server(
+    serverInfo = Implementation(
+        name = "example-server",
+        version = "1.0.0"
+    )
+)
+
+server.addTool(
+    name = "echo",
+    description = "Return whatever the user sent back to them",
+) { request ->
+    val text = request.arguments?.get("text")?.jsonPrimitive?.content ?: "(empty)"
+    CallToolResult(content = listOf(TextContent(text = "Echo: $text")))
+}
+"""
+
+# README.md "Prompts"/"Resources": neither registers a tool.
+KOTLIN_PROMPT_AND_RESOURCE = """import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+
+val server = Server(serverInfo = Implementation(name = "example-server", version = "1.0.0"))
+
+server.addPrompt(
+    name = "code-review",
+    description = "Ask the model to review a diff",
+) { request -> null }
+
+server.addResource(
+    uri = "note://release/latest",
+    name = "Release notes",
+    description = "Last deployment summary",
+) { request -> null }
+"""
+
+KOTLIN_ORDINARY_ADD_TOOL = """package com.example.workshop
+
+class Workbench {
+    private val tools = mutableListOf<String>()
+
+    fun addTool(name: String, weightKg: Double) {
+        tools.add(name)
+    }
+}
+
+fun setUp(bench: Workbench) {
+    bench.addTool(name = "wrench-7", weightKg = 0.4)
+}
+"""
+
+KOTLIN_COMMENTED_OUT = """import io.modelcontextprotocol.kotlin.sdk.server.Server
+
+// Older builds registered server.addTool(name = "retired_tool") here.
+val usage = "call server.addTool(name = \\"documented_example\\")"
+
+/* server.addTool(name = "block_commented_tool") { request -> null } */
+fun help(): String = usage
+"""
+
+
+def test_kotlin_official_sdk_add_tool_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "Main.kt").write_text(KOTLIN_ADD_TOOL)
+
+    assert _tool_names(tmp_path) == {"example-tool"}
+
+
+def test_kotlin_official_sdk_short_add_tool_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "Echo.kt").write_text(KOTLIN_ADD_TOOL_SHORT)
+
+    assert _tool_names(tmp_path) == {"echo"}
+
+
+def test_kotlin_prompt_and_resource_registrations_are_not_tools(tmp_path: Path) -> None:
+    (tmp_path / "Extras.kt").write_text(KOTLIN_PROMPT_AND_RESOURCE)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_kotlin_ordinary_add_tool_without_mcp_is_not_an_agent_tool(tmp_path: Path) -> None:
+    (tmp_path / "Workbench.kt").write_text(KOTLIN_ORDINARY_ADD_TOOL)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_kotlin_commented_out_add_tool_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "Docs.kt").write_text(KOTLIN_COMMENTED_OUT)
+
+    assert _tool_names(tmp_path) == set()
+
+
+# --------------------------------------------------------------------------
+# TypeScript -- the low-level Server class of @modelcontextprotocol/sdk
+# --------------------------------------------------------------------------
+
+# Servers built on `Server` rather than the `McpServer` wrapper declare their
+# tools in the ListTools response instead of through registerTool.
+TS_LOW_LEVEL_LIST_TOOLS = """import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema
+} from '@modelcontextprotocol/sdk/types.js';
+
+const server = new Server(
+  { name: 'calculator', version: '1.0.0' },
+  { capabilities: { tools: {} } }
+);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: 'calculate_sum',
+        description: 'Add two numbers together',
+        inputSchema: {
+          type: 'object',
+          properties: { a: { type: 'number' }, b: { type: 'number' } },
+          required: ['a', 'b']
+        }
+      },
+      {
+        name: 'calculate_product',
+        description: 'Multiply two numbers together',
+        inputSchema: { type: 'object', properties: {} }
+      }
+    ]
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  return { content: [{ type: 'text', text: 'ok' }] };
+});
+"""
+
+# The v2 SDK migrates the schema identifier to the method string; the codemod's
+# own test asserts `server.setRequestHandler('tools/list', …)` is the output.
+TS_LOW_LEVEL_METHOD_STRING = """import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+const server = new Server({ name: 'calculator', version: '1.0.0' });
+
+server.setRequestHandler('tools/list', async () => ({
+  tools: [{ name: 'calculate_sum', description: 'Add two numbers together' }]
+}));
+"""
+
+TS_LOW_LEVEL_LIST_RESOURCES = """import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { ListResourcesRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+
+const server = new Server({ name: 'notes', version: '1.0.0' });
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: [{ uri: 'note://1', name: 'First note' }]
+}));
+"""
+
+JS_ORDINARY_NAMED_OBJECTS = """const contributors = [
+  { name: 'ada', role: 'maintainer' },
+  { name: 'grace', role: 'reviewer' }
+];
+
+export function listContributors() {
+  return { tools: contributors };
+}
+"""
+
+
+def test_ts_low_level_list_tools_handler_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "server.ts").write_text(TS_LOW_LEVEL_LIST_TOOLS)
+
+    assert _tool_names(tmp_path) == {"calculate_sum", "calculate_product"}
+
+
+def test_ts_low_level_tools_list_method_string_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "server.ts").write_text(TS_LOW_LEVEL_METHOD_STRING)
+
+    assert _tool_names(tmp_path) == {"calculate_sum"}
+
+
+def test_ts_low_level_list_resources_handler_declares_no_tools(tmp_path: Path) -> None:
+    (tmp_path / "resources.ts").write_text(TS_LOW_LEVEL_LIST_RESOURCES)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_js_ordinary_named_objects_are_not_tools(tmp_path: Path) -> None:
+    (tmp_path / "contributors.js").write_text(JS_ORDINARY_NAMED_OBJECTS)
+
+    assert _tool_names(tmp_path) == set()
+
+
+# --------------------------------------------------------------------------
+# JS/TS agent frameworks that carry the tool name outside the first argument
+# --------------------------------------------------------------------------
+
+# ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling: the tool NAME is the key
+# of the `tools` object, not an argument of `tool()`.
+TS_VERCEL_AI_OBJECT_KEY = """import { z } from 'zod';
+import { generateText, tool, isStepCount } from 'ai';
+
+const result = await generateText({
+  model: 'xai/grok-4.5',
+  tools: {
+    weather: tool({
+      description: 'Get the weather in a location',
+      inputSchema: z.object({
+        location: z.string().describe('The location to get the weather for'),
+      }),
+      execute: async ({ location }) => ({
+        location,
+        temperature: 72 + Math.floor(Math.random() * 21) - 10,
+      }),
+    }),
+  },
+  stopWhen: isStepCount(5),
+  prompt: 'What is the weather in San Francisco?',
+});
+"""
+
+# docs.langchain.com/oss/javascript/langchain/tools: the name lives in the
+# options object that follows the handler function.
+TS_LANGCHAIN_OPTIONS_NAME = """import * as z from 'zod';
+import { tool } from 'langchain';
+
+const searchDatabase = tool(
+  ({ query, limit }) => `Found ${limit} results for '${query}'`,
+  {
+    name: 'search_database',
+    description: 'Search the customer database for records matching the query.',
+    schema: z.object({
+      query: z.string().describe('Search terms to look for'),
+      limit: z.number().describe('Maximum number of results to return'),
+    }),
+  }
+);
+"""
+
+JS_ORDINARY_OBJECT_KEY_CALL = """import { buildHandler } from './handlers.js';
+
+export const handlers = {
+  weather: buildHandler({ description: 'Get the weather in a location' }),
+};
+"""
+
+
+def test_ts_vercel_ai_object_key_tool_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "agent.ts").write_text(TS_VERCEL_AI_OBJECT_KEY)
+
+    assert _tool_names(tmp_path) == {"weather"}
+
+
+def test_ts_langchain_options_object_name_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "tools.ts").write_text(TS_LANGCHAIN_OPTIONS_NAME)
+
+    assert _tool_names(tmp_path) == {"search_database"}
+
+
+def test_js_ordinary_object_key_call_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "handlers.js").write_text(JS_ORDINARY_OBJECT_KEY_CALL)
+
+    assert _tool_names(tmp_path) == set()
+
+
+# --------------------------------------------------------------------------
+# Residual precision gaps
+# --------------------------------------------------------------------------
+
+# ``NewTool`` is the name-bearing call of the mainstream community Go library,
+# but ``NewX`` is also the ordinary Go constructor idiom. Without an MCP import
+# in the file there is nothing agentic to claim.
+GO_ORDINARY_NEW_TOOL = """package hardware
+
+type toolFactory struct{}
+
+func (f *toolFactory) NewTool(sku string) string {
+\treturn sku
+}
+
+func Setup() string {
+\tmcp := &toolFactory{}
+\treturn mcp.NewTool("wrench-7")
+}
+"""
+
+PHP_HASH_COMMENTED_ATTRIBUTE = """<?php
+
+namespace Mcp\\Example\\Server;
+
+use Mcp\\Capability\\Attribute\\McpTool;
+
+final class McpElements
+{
+    # #[McpTool(name: 'retired_tool', description: 'Removed in v2')]
+    public function retiredTool(): array
+    {
+        return [];
+    }
+}
+"""
+
+# A ``]`` inside the Description string must not truncate the attribute span.
+CSHARP_BRACKET_IN_DESCRIPTION = """using ModelContextProtocol.Server;
+using System.ComponentModel;
+
+[McpServerToolType]
+public sealed class EchoTool
+{
+    [McpServerTool, Description("Echoes the input back [verbatim] to the client.")]
+    public static string Echo(string message)
+    {
+        return "hello " + message;
+    }
+}
+"""
+
+CSHARP_BRACKET_BEFORE_NAME = """using ModelContextProtocol.Server;
+using System.ComponentModel;
+
+[McpServerToolType]
+public sealed class ItemTools
+{
+    [Description("Returns items] in order."), McpServerTool(Name = "list_items")]
+    public static string ListItems()
+    {
+        return "ok";
+    }
+}
+"""
+
+
+def test_go_ordinary_new_tool_without_mcp_import_is_not_an_agent_tool(tmp_path: Path) -> None:
+    (tmp_path / "hardware.go").write_text(GO_ORDINARY_NEW_TOOL)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_php_hash_commented_out_mcp_tool_attribute_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "McpElements.php").write_text(PHP_HASH_COMMENTED_ATTRIBUTE)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_csharp_bracket_inside_description_still_finds_the_tool(tmp_path: Path) -> None:
+    (tmp_path / "EchoTool.cs").write_text(CSHARP_BRACKET_IN_DESCRIPTION)
+
+    assert _tool_names(tmp_path) == {"Echo"}
+
+
+def test_csharp_bracket_before_the_declared_name_still_finds_the_tool(tmp_path: Path) -> None:
+    (tmp_path / "ItemTools.cs").write_text(CSHARP_BRACKET_BEFORE_NAME)
+
+    assert _tool_names(tmp_path) == {"list_items"}

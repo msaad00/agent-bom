@@ -65,6 +65,7 @@ def mask_line_comments_and_strings(
     source: str,
     *,
     hash_comments: bool = False,
+    hash_attributes: bool = False,
     heredoc: bool = False,
     backtick_strings: bool = False,
     single_line_quotes: bool = False,
@@ -72,6 +73,12 @@ def mask_line_comments_and_strings(
     """Return ``source`` with comments and quoted literals replaced by spaces.
 
     ``hash_comments`` also masks ``#`` line comments (PHP/Ruby/Swift-adjacent).
+    ``hash_attributes`` refines that for PHP, where ``#[`` opens an attribute
+    rather than a comment: a ``#`` is a comment only when the next character is
+    not ``[``. Without it a commented-out ``# #[McpTool(…)]`` still reads as a
+    live tool registration; with plain ``hash_comments`` the real attribute
+    would be masked away instead. It has no effect unless ``hash_comments``
+    is also set.
     ``heredoc`` masks PHP heredoc/nowdoc (``<<<EOT`` / ``<<<'EOT'``) bodies,
     where an identifier such as ``$client->request`` inside a SQL/HTML template
     must not be mistaken for a call site.
@@ -114,7 +121,7 @@ def mask_line_comments_and_strings(
                 result.extend("  ")
                 i += 2
                 continue
-            if hash_comments and char == "#":
+            if hash_comments and char == "#" and not (hash_attributes and nxt == "["):
                 state = "line_comment"
                 result.append(" ")
                 i += 1

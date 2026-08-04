@@ -161,6 +161,11 @@ This checks:
 - SLSA provenance attestations
 - SRI (Subresource Integrity) values
 
+The verdict is machine-readable in JSON, CycloneDX, SPDX, SARIF, CSV and
+`GET /v1/findings`. See
+[Supply Chain — scanned-package integrity and provenance verdict](../SUPPLY_CHAIN.md#scanned-package-integrity-and-provenance-verdict)
+for the exact field in each format.
+
 ### 8. Scan History for Audit Trail
 
 Save every scan for historical tracking:

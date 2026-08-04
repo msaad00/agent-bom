@@ -13,8 +13,9 @@ Extends the regex-based scanner with semantic analysis:
 Python files use full AST parsing. JS/TS files contribute prompt/tool/guardrail
 signals plus parser-backed import, handler, and call-chain extraction so
 non-Python agent projects participate in the same inventory and flow model.
-Go, Rust, Java, C#, Ruby, PHP (Composer), and Swift sources also contribute MCP tool
-entrypoints and dependency-symbol reach for Cargo/Maven/NuGet/RubyGems/Composer/SPM CVE join.
+Go, Rust, Java, Kotlin, C#, Ruby, PHP (Composer), and Swift sources also contribute MCP
+tool entrypoints and dependency-symbol reach for Cargo/Maven/NuGet/RubyGems/Composer/SPM
+CVE join.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
@@ -35,6 +36,10 @@ from agent_bom.ast.js_ts import build_js_ts_dependency_symbol_reach
 from agent_bom.ast.js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
 from agent_bom.ast.js_ts import js_ts_function_key as _js_ts_function_key
 from agent_bom.ast.js_ts import scan_js_ts_file as _scan_js_ts_file
+from agent_bom.ast.kotlin import KOTLIN_EXTS as _KOTLIN_EXTS
+from agent_bom.ast.kotlin import build_kotlin_dependency_symbol_reach
+from agent_bom.ast.kotlin import kotlin_function_key as _kotlin_function_key
+from agent_bom.ast.kotlin import scan_kotlin_file as _scan_kotlin_file
 from agent_bom.ast_csharp import _csharp_method_key, build_csharp_dependency_symbol_reach, load_nuget_namespace_map
 from agent_bom.ast_csharp import scan_csharp_file as _scan_csharp_file
 from agent_bom.ast_go import _go_function_key, build_go_dependency_symbol_reach
@@ -52,6 +57,8 @@ from agent_bom.ast_models import (
     _GoToolRegistration,
     _JavaMethodAnalysis,
     _JavaToolRegistration,
+    _KotlinFunctionAnalysis,
+    _KotlinToolRegistration,
     _PhpMethodAnalysis,
     _PhpToolRegistration,
     _RubyMethodAnalysis,
@@ -86,9 +93,7 @@ from agent_bom.ast_swift import scan_swift_file as _scan_swift_file
 
 _max_taint_depth = _python_max_taint_depth
 
-_ANALYZABLE_SUFFIXES = frozenset(
-    {".py", ".go", ".java", ".rb", ".php", ".swift", ".rs", ".cs", *_JS_TS_EXTS}
-)
+_ANALYZABLE_SUFFIXES = frozenset({".py", ".go", ".java", ".rb", ".php", ".swift", ".rs", ".cs", *_JS_TS_EXTS, *_KOTLIN_EXTS})
 
 
 def project_has_analyzable_sources(project_path: str | Path) -> bool:
@@ -175,6 +180,16 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             continue
         java_files.append(f)
 
+    kotlin_files = []
+    for f in sorted(project.rglob("*")):
+        if f.suffix.lower() not in _KOTLIN_EXTS:
+            continue
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        kotlin_files.append(f)
+
     csharp_files = []
     for f in sorted(project.rglob("*.cs")):
         if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
@@ -219,6 +234,12 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     swift_files = swift_files[
         : max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files) - len(php_files))
     ]
+    kotlin_files = kotlin_files[
+        : max(
+            0,
+            remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files) - len(php_files) - len(swift_files),
+        )
+    ]
     result.files_analyzed = (
         len(py_files)
         + len(js_ts_files)
@@ -229,6 +250,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         + len(ruby_files)
         + len(php_files)
         + len(swift_files)
+        + len(kotlin_files)
     )
     function_analyses: list[_FunctionAnalysis] = []
     js_ts_functions: dict[str, JSTSFunction] = {}
@@ -247,6 +269,8 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     php_tool_registrations: list[_PhpToolRegistration] = []
     swift_functions: dict[str, _SwiftFunctionAnalysis] = {}
     swift_tool_registrations: list[_SwiftToolRegistration] = []
+    kotlin_functions: dict[str, _KotlinFunctionAnalysis] = {}
+    kotlin_tool_registrations: list[_KotlinToolRegistration] = []
     maven_dependency_map = _load_maven_dependency_map(project)
     nuget_namespace_map = load_nuget_namespace_map(project)
     ruby_gem_map = load_ruby_gem_map(project)
@@ -401,6 +425,24 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
                 swift_functions[_swift_function_key(swift_function.scope_name, swift_function.name)] = swift_function
             swift_tool_registrations.extend(swift_analysis.tool_registrations)
 
+    for kotlin_file in kotlin_files:
+        rel = str(kotlin_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings, frameworks, kotlin_call_edges, kotlin_analysis = _scan_kotlin_file(
+            kotlin_file,
+            rel,
+            maven_map=maven_dependency_map,
+        )
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(kotlin_call_edges)
+        if kotlin_analysis is not None:
+            for kotlin_function in kotlin_analysis.functions.values():
+                kotlin_functions[_kotlin_function_key(kotlin_function.scope_name, kotlin_function.name)] = kotlin_function
+            kotlin_tool_registrations.extend(kotlin_analysis.tool_registrations)
+
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
@@ -473,6 +515,13 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             functions=swift_functions,
             tool_registrations=swift_tool_registrations,
             package_map=swift_package_map,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_kotlin_dependency_symbol_reach(
+            functions=kotlin_functions,
+            tool_registrations=kotlin_tool_registrations,
             max_depth=_python_max_taint_depth(),
         )
     )

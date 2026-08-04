@@ -53,7 +53,17 @@ def _report_with_known_vuln() -> dict:
         fixed_version="2.0.0",
         is_kev=True,
     )
-    pkg = Package(name="demo-lib", version="1.0.0", ecosystem="pypi", vulnerabilities=[vuln])
+    pkg = Package(
+        name="demo-lib",
+        version="1.0.0",
+        ecosystem="pypi",
+        vulnerabilities=[vuln],
+        # --verify-integrity verdict must survive scan -> store -> API, not stop
+        # at the console.
+        integrity_verified=True,
+        provenance_attested=False,
+        provenance_source="pypi_pep740",
+    )
     tool = MCPTool(name="run_shell", description="Executes shell commands")
     server = MCPServer(
         name="demo-server",
@@ -188,6 +198,16 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
     assert unassessed["graph_reachable"] is None
     assert unassessed["graph_min_hop_distance"] is None
     assert unassessed["graph_reachable_from_agents"] == []
+
+    # The supply-chain verification verdict is the point of --verify-integrity;
+    # a machine consumer has to be able to read it off the findings API.
+    assert reachable["package_integrity_verified"] is True
+    assert reachable["package_provenance_attested"] is False
+    assert reachable["package_provenance_source"] == "pypi_pep740"
+    # Never checked stays an explicit null, never a silent "no".
+    assert unassessed["package_integrity_verified"] is None
+    assert unassessed["package_provenance_attested"] is None
+    assert unassessed["package_provenance_source"] is None
 
 
 def test_findings_reachability_projection_is_tenant_scoped_and_bounded():

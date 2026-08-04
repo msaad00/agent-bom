@@ -8,7 +8,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from agent_bom.ast_analyzer import analyze_project
+from agent_bom.ast_analyzer import analyze_project, project_has_analyzable_sources
 from agent_bom.ast_go import scan_go_file
 from agent_bom.cli import main
 
@@ -576,6 +576,39 @@ def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path)
     reach = next(item for item in nuget_reaches if item.symbol == "ExecuteAsync")
     assert reach.entrypoint == "fetch_url"
     assert reach.package == "RestSharp"
+
+
+def test_analyze_project_surfaces_kotlin_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle.kts").write_text(
+        'dependencies {\n    implementation("io.modelcontextprotocol:kotlin-sdk:0.9.0")\n'
+        '    implementation("com.squareup.okhttp3:okhttp:4.12.0")\n}\n'
+    )
+    (tmp_path / "Server.kt").write_text(
+        "import io.modelcontextprotocol.kotlin.sdk.server.Server\n"
+        "import com.squareup.okhttp3.OkHttpClient\n\n"
+        "fun register(server: Server) {\n"
+        '    server.addTool(name = "fetch_url", description = "Fetch a URL") { request ->\n'
+        "        val client = OkHttpClient()\n"
+        "        client.newCall(request)\n"
+        "    }\n"
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert {tool.name for tool in result.tools} == {"fetch_url"}
+    maven_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "maven"]
+    reach = next(item for item in maven_reaches if item.symbol == "newCall")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "com.squareup.okhttp3:okhttp"
+    assert reach.file_path == "Server.kt"
+
+
+def test_analyze_project_counts_kotlin_files_as_analyzable(tmp_path: Path) -> None:
+    (tmp_path / "Plain.kt").write_text('fun main() {\n    println("hi")\n}\n')
+
+    assert project_has_analyzable_sources(tmp_path) is True
+    assert analyze_project(tmp_path).files_analyzed == 1
 
 
 def test_analyze_project_surfaces_ruby_dependency_symbol_reach(tmp_path: Path) -> None:

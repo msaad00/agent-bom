@@ -7,6 +7,8 @@ drift between duplicated definitions.
 
 from __future__ import annotations
 
+import re
+
 # ── AI/ML Framework Packages ────────────────────────────────────────────────
 # Used by compliance taggers (owasp, atlas, nist_ai_rmf, eu_ai_act,
 # owasp_agentic) to determine if a vulnerability affects an AI/ML component.
@@ -177,8 +179,9 @@ def critical_severities() -> frozenset:
 
 
 # ── Credential Detection Patterns ───────────────────────────────────────────
-# Used by models.MCPServer.has_credentials / credential_names and
-# context_graph._is_credential_key.
+# Compatibility vocabulary for callers that display the broad families.  The
+# product judgement itself lives in ``is_credential_key`` below; consumers
+# must call it instead of repeating substring matching.
 
 SENSITIVE_PATTERNS: list[str] = [
     "key",
@@ -218,9 +221,88 @@ SENSITIVE_PATTERNS: list[str] = [
 
 
 def is_credential_key(name: str) -> bool:
-    """Check if an environment variable name matches credential patterns."""
-    low = name.lower()
-    return any(pat in low for pat in SENSITIVE_PATTERNS)
+    """Return whether an environment-variable name denotes a credential.
+
+    Credential inventory feeds graph, posture, and blast-radius evidence, so
+    substring matching is too imprecise: ``AUTH_MODE``, ``KEYBOARD_LAYOUT``,
+    and ``DB_CONNECTION_POOL_SIZE`` are configuration rather than credentials.
+    Split on identifier boundaries and match credential words or the few
+    credential-shaped compound names that do not contain one.
+
+    This predicate intentionally answers a narrower question than payload
+    sanitization.  Redaction may conservatively hide additional values; those
+    values must not become credential nodes merely because their names contain
+    an adjacent substring.
+    """
+    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    tokens = tuple(re.findall(r"[a-z0-9]+", separated.casefold()))
+    if not tokens:
+        return False
+
+    # These words make the variable a policy/lifecycle setting about a
+    # credential, not the credential (or a reference to it).  Examples from
+    # agent-bom's own supported configuration include
+    # ``API_KEY_DEFAULT_TTL_SECONDS`` and ``TOKEN_ROTATION_DAYS``.
+    configuration_words = {
+        "age",
+        "configured",
+        "days",
+        "disable",
+        "disabled",
+        "enable",
+        "enabled",
+        "expires",
+        "expiry",
+        "max",
+        "method",
+        "min",
+        "mode",
+        "policy",
+        "records",
+        "require",
+        "required",
+        "rotated",
+        "rotation",
+        "seconds",
+        "status",
+        "ttl",
+        "type",
+    }
+    if any(token in configuration_words for token in tokens):
+        return False
+    if "no" in tokens:
+        return False
+
+    credential_words = {
+        "apikey",
+        "authorization",
+        "bearer",
+        "credential",
+        "key",
+        "password",
+        "secret",
+        "token",
+    }
+    if any(token in credential_words for token in tokens):
+        return True
+
+    token_pairs = set(zip(tokens, tokens[1:]))
+    if token_pairs & {
+        ("ca", "cert"),
+        ("client", "cert"),
+        ("client", "certificate"),
+        ("conn", "str"),
+        ("connection", "string"),
+        ("connection", "uri"),
+        ("connection", "url"),
+        ("database", "url"),
+        ("db", "url"),
+    }:
+        return True
+
+    # A terminal AUTH commonly holds an auth header/blob.  AUTH_MODE and
+    # NO_AUTH are posture settings and must not become credential evidence.
+    return tokens[-1] == "auth" and (len(tokens) == 1 or tokens[-2] != "no")
 
 
 # ── CWE-to-Compliance Mapping ────────────────────────────────────────────────

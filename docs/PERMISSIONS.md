@@ -236,7 +236,7 @@ This is an open-source tool — you can verify every claim above:
 | Read source code | `src/agent_bom/` — all scanning logic is in plain Python |
 | Audit scanner/enrichment calls | `grep -rn "osv.dev\|nvd.nist\|first.org\|cisa.gov\|npmjs.org\|pypi.org" src/agent_bom/` — public vulnerability and package metadata lookups used by scanner/enrichment paths |
 | Audit file access | `grep -rn "open(\|Path(" src/agent_bom/discovery/` — all file reads in the discovery module |
-| Audit credential handling | `src/agent_bom/models.py` — `MCPServer.credential_names` property + `SENSITIVE_PATTERNS` in `security.py` |
+| Audit credential handling | `src/agent_bom/constants.py` — canonical `is_credential_key` predicate; `src/agent_bom/models.py` — `MCPServer.credential_names`; `src/agent_bom/security.py` — conservative value redaction |
 | Inspect boundary contract | `agent-bom trust --format json` — code-generated data, network, storage, auth, and SCIM boundaries surfaced through CLI/API/UI |
 | Verify SCIM tenant boundary | `docs/SCIM_SECURITY_MODEL.md` and `/v1/auth/policy` — tenant comes from `AGENT_BOM_SCIM_TENANT_ID`, not IdP payload fields |
 | Run in isolation | `--no-scan` skips all network calls; `--dry-run` reads nothing |

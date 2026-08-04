@@ -1158,6 +1158,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
         "executive_summary": narrative.executive_summary,
         "risk_narrative": narrative.risk_narrative,
         "generated_at": narrative.generated_at,
+        "claim_boundary": narrative.claim_boundary,
         "framework_narratives": [
             {
                 "framework": fn.framework,
@@ -1199,7 +1200,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
 async def get_compliance_narrative(request: Request) -> dict:
     """Generate a review-ready compliance narrative from all completed scans.
 
-    Produces human-readable stories for all 11 supported frameworks, a
+    Produces human-readable stories for all supported framework mappings, a
     cross-framework executive summary, and a remediation-compliance bridge
     showing which package upgrades resolve which controls.
 
@@ -1207,6 +1208,7 @@ async def get_compliance_narrative(request: Request) -> dict:
     and the structured blast radius data in completed scan results.
     """
     from agent_bom.output.compliance_narrative import (
+        COMPLIANCE_CLAIM_BOUNDARY,
         generate_compliance_narrative,
     )
 
@@ -1218,6 +1220,7 @@ async def get_compliance_narrative(request: Request) -> dict:
             "remediation_impact": [],
             "risk_narrative": "No scan data available.",
             "generated_at": "",
+            "claim_boundary": COMPLIANCE_CLAIM_BOUNDARY,
         }
 
     narrative: ComplianceNarrative = generate_compliance_narrative(report)
@@ -1237,6 +1240,7 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
     from agent_bom.compliance_coverage import normalize_framework_slug
     from agent_bom.output.compliance_narrative import (
         ALL_FRAMEWORK_SLUGS,
+        COMPLIANCE_CLAIM_BOUNDARY,
         generate_compliance_narrative,
     )
 
@@ -1255,6 +1259,7 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
             "remediation_impact": [],
             "risk_narrative": "No scan data available.",
             "generated_at": "",
+            "claim_boundary": COMPLIANCE_CLAIM_BOUNDARY,
         }
 
     narrative: ComplianceNarrative = generate_compliance_narrative(report, framework=canonical)

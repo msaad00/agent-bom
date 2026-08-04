@@ -684,9 +684,18 @@ def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_fo
     if output_format == "json":
         rendered = _json.dumps(asdict(narrative), indent=2)
     else:
-        lines = ["# Compliance Narrative", "", narrative.executive_summary, ""]
+        lines = ["# Compliance Narrative", "", f"> {narrative.claim_boundary}", "", narrative.executive_summary, ""]
         for fw in narrative.framework_narratives:
-            lines.extend([f"## {fw.framework}", "", fw.narrative, "", f"Status: `{fw.status}` · Score: `{fw.score}/100`", ""])
+            lines.extend(
+                [
+                    f"## {fw.framework}",
+                    "",
+                    fw.narrative,
+                    "",
+                    f"Evidence status: `{fw.status}` · Evidence score: `{fw.score}/100`",
+                    "",
+                ]
+            )
             if fw.recommendations:
                 lines.append("Recommendations:")
                 for recommendation in fw.recommendations:

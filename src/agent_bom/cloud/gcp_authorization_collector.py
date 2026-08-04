@@ -196,6 +196,26 @@ def _pab_binding_record(binding: Any) -> dict[str, Any]:
     }
 
 
+def _client_class(module: Any, attribute: str) -> Any:
+    """Return ``module.attribute``, or raise ``ImportError`` when the SDK lacks it.
+
+    ``google.cloud`` is a namespace package assembled from one distribution per
+    service, so the modules can import while still missing the client classes we
+    need — a partial ``[gcp]`` install, or a version predating a client. That is
+    the same operator condition as an absent SDK, so it is reported the same way:
+    the caller's ``ImportError`` handler degrades to ``SDK_MISSING``. Letting the
+    raw ``AttributeError`` escape would abort the whole GCP inventory walk, whose
+    call site does not guard it.
+    """
+    try:
+        return getattr(module, attribute)
+    except AttributeError as exc:
+        raise ImportError(
+            f"{getattr(module, '__name__', module)} has no {attribute} — the installed "
+            "google-cloud SDKs are incomplete. Install with: pip install 'agent-bom[gcp]'"
+        ) from exc
+
+
 def _load_clients(credentials: Any) -> Any:
     from google.cloud import (  # type: ignore[attr-defined]  # namespace package exports
         asset_v1,
@@ -206,14 +226,14 @@ def _load_clients(credentials: Any) -> Any:
     )
 
     return SimpleNamespace(
-        assets=asset_v1.AssetServiceClient(credentials=credentials),
-        projects=resourcemanager_v3.ProjectsClient(credentials=credentials),
-        folders=resourcemanager_v3.FoldersClient(credentials=credentials),
-        organizations=resourcemanager_v3.OrganizationsClient(credentials=credentials),
-        roles=iam_admin_v1.IAMClient(credentials=credentials),
-        denies=iam_v2.PoliciesClient(credentials=credentials),
-        pabs=iam_v3.PrincipalAccessBoundaryPoliciesClient(credentials=credentials),
-        policy_bindings=iam_v3.PolicyBindingsClient(credentials=credentials),
+        assets=_client_class(asset_v1, "AssetServiceClient")(credentials=credentials),
+        projects=_client_class(resourcemanager_v3, "ProjectsClient")(credentials=credentials),
+        folders=_client_class(resourcemanager_v3, "FoldersClient")(credentials=credentials),
+        organizations=_client_class(resourcemanager_v3, "OrganizationsClient")(credentials=credentials),
+        roles=_client_class(iam_admin_v1, "IAMClient")(credentials=credentials),
+        denies=_client_class(iam_v2, "PoliciesClient")(credentials=credentials),
+        pabs=_client_class(iam_v3, "PrincipalAccessBoundaryPoliciesClient")(credentials=credentials),
+        policy_bindings=_client_class(iam_v3, "PolicyBindingsClient")(credentials=credentials),
     )
 
 

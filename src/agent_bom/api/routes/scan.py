@@ -1288,6 +1288,11 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
 
+    ``format`` selects the shape of the completed result. ``json`` (the default)
+    leaves the AI-BOM JSON in ``result``; ``cyclonedx``, ``sarif``, ``spdx``,
+    ``html``, and ``text`` render that report into ``result_document``, which is
+    what the CLI and MCP surfaces emit for the same value.
+
     Retry-safe: repeating the request with the same ``Idempotency-Key`` header
     returns the first job instead of minting a new job_id per attempt; reusing
     the key with a different body is a 409 conflict.
@@ -1354,7 +1359,12 @@ async def list_scan_drivers(include_planned: bool = True) -> dict:
 
 @router.get("/scan/{job_id}", response_model=ScanJob, tags=["scan"])
 async def get_scan(request: Request, job_id: str) -> ScanJob:
-    """Fetch scan status and full results."""
+    """Fetch scan status and full results.
+
+    ``result`` is always the canonical AI-BOM JSON. When the request asked for a
+    non-json ``format``, ``result_document`` carries that rendering and
+    ``result_format`` names it.
+    """
     return _job_response_payload(_job_for_request(request, job_id))
 
 

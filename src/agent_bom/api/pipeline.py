@@ -919,6 +919,26 @@ def _promote_repo_dependency_inventory(report: Any, ai_inventory: dict[str, Any]
         report.project_inventory_data = nested
 
 
+def _rendered_result_document(job: ScanJob, report: Any, blast_radii: list | None = None) -> tuple[dict[str, Any] | str | None, str | None]:
+    """Render the finished report in the format the request asked for.
+
+    Returns ``(document, note)``. ``document`` is ``None`` for ``format=json``
+    (``job.result`` already carries the AI-BOM JSON) and on a render failure,
+    in which case ``note`` explains why — never a silent empty document that
+    would read as an audited result.
+    """
+    requested = str(getattr(job.request, "format", "json") or "json")
+    if requested == "json":
+        return None, None
+    try:
+        from agent_bom.output.scan_document import render_scan_document
+
+        return render_scan_document(report, requested, blast_radii=blast_radii), None
+    except Exception as exc:  # noqa: BLE001 — a formatting failure never fails the scan
+        _logger.warning("Rendering scan result as %s failed: %s", requested, sanitize_error(exc, generic=True))
+        return None, f"Requested {requested} output could not be rendered; result carries AI-BOM JSON only"
+
+
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
     from contextlib import ExitStack
@@ -1394,8 +1414,12 @@ def _run_scan_sync(job: ScanJob) -> None:
                     report.repo_trust_data = repo_trust_data
                 report_json = to_json(report)
                 report_json["status"] = "findings_only"
+                result_document, document_note = _rendered_result_document(job, report)
                 with lock:
                     job.result = report_json
+                    job.result_document = result_document
+                    if document_note:
+                        job.progress.append(document_note)
                     job.status = JobStatus.DONE
                     job.completed_at = _now()
                 if side_effects_enabled:
@@ -1425,6 +1449,18 @@ def _run_scan_sync(job: ScanJob) -> None:
                 "warnings": scan_run.warnings,
                 "scan_run": scan_run.to_dict(),
             }
+            # An empty estate still honours the requested format: the rendered
+            # document carries the same "nothing discovered" outcome rather than
+            # leaving the caller with a null they cannot distinguish from a bug.
+            from agent_bom.models import AIBOMReport as _EmptyReport
+
+            empty_document, empty_note = _rendered_result_document(
+                job,
+                _EmptyReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id, scan_run=scan_run),
+            )
+            job.result_document = empty_document
+            if empty_note:
+                job.progress.append(empty_note)
             job.status = JobStatus.DONE
             job.completed_at = _now()
             return
@@ -1685,8 +1721,12 @@ def _run_scan_sync(job: ScanJob) -> None:
             _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_error(gderiv_exc))
 
         report_json = to_json(report)
+        result_document, document_note = _rendered_result_document(job, report)
         with lock:
             job.result = report_json
+            job.result_document = result_document
+            if document_note:
+                job.progress.append(document_note)
             job.status = JobStatus.DONE
 
         if side_effects_enabled:

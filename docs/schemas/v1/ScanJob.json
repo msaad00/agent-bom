@@ -389,6 +389,28 @@
       "default": null,
       "title": "Result"
     },
+    "result_document": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Document"
+    },
+    "result_format": {
+      "description": "Which format ``result_document`` (or ``result``, for json) is in.",
+      "readOnly": true,
+      "title": "Result Format",
+      "type": "string"
+    },
     "schedule_id": {
       "anyOf": [
         {
@@ -487,7 +509,8 @@
   "required": [
     "job_id",
     "created_at",
-    "request"
+    "request",
+    "result_format"
   ],
   "title": "ScanJob",
   "type": "object"

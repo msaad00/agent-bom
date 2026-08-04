@@ -5500,6 +5500,27 @@
             ],
             "title": "Result"
           },
+          "result_document": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Document"
+          },
+          "result_format": {
+            "description": "Which format ``result_document`` (or ``result``, for json) is in.",
+            "readOnly": true,
+            "title": "Result Format",
+            "type": "string"
+          },
           "schedule_id": {
             "anyOf": [
               {
@@ -5591,7 +5612,8 @@
         "required": [
           "job_id",
           "created_at",
-          "request"
+          "request",
+          "result_format"
         ],
         "title": "ScanJob",
         "type": "object"
@@ -30282,7 +30304,7 @@
     },
     "/v1/scan": {
       "post": {
-        "description": "Start a scan. Returns immediately with a job_id.\nPoll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.\n\nRetry-safe: repeating the request with the same ``Idempotency-Key`` header\nreturns the first job instead of minting a new job_id per attempt; reusing\nthe key with a different body is a 409 conflict.",
+        "description": "Start a scan. Returns immediately with a job_id.\nPoll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.\n\n``format`` selects the shape of the completed result. ``json`` (the default)\nleaves the AI-BOM JSON in ``result``; ``cyclonedx``, ``sarif``, ``spdx``,\n``html``, and ``text`` render that report into ``result_document``, which is\nwhat the CLI and MCP surfaces emit for the same value.\n\nRetry-safe: repeating the request with the same ``Idempotency-Key`` header\nreturns the first job instead of minting a new job_id per attempt; reusing\nthe key with a different body is a 409 conflict.",
         "operationId": "create_scan_v1_scan_post",
         "requestBody": {
           "content": {
@@ -30668,7 +30690,7 @@
         ]
       },
       "get": {
-        "description": "Fetch scan status and full results.",
+        "description": "Fetch scan status and full results.\n\n``result`` is always the canonical AI-BOM JSON. When the request asked for a\nnon-json ``format``, ``result_document`` carries that rendering and\n``result_format`` names it.",
         "operationId": "get_scan_v1_scan__job_id__get",
         "parameters": [
           {

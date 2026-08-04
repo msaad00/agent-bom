@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator, model_validator
 
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
@@ -172,7 +172,15 @@ class ScanRequest(BaseModel):
     """Filesystem directories or tar archives to scan via Syft."""
 
     format: Literal["json", "cyclonedx", "sarif", "spdx", "html", "text"] = "json"
-    """Output format: json | cyclonedx | sarif | spdx | html | text."""
+    """Output format for the completed result.
+
+    ``json`` (the default) leaves the AI-BOM JSON in ``ScanJob.result``; every
+    other value renders that report through
+    :func:`agent_bom.output.scan_document.render_scan_document` into
+    ``ScanJob.result_document``. The enum must stay identical to
+    ``SCAN_DOCUMENT_FORMATS`` — a published value with no renderer behind it is
+    a false contract (locked by ``tests/api/test_api_scan_format_contract.py``).
+    """
 
     dynamic_discovery: bool = False
     """Enable dynamic content-based MCP config discovery."""
@@ -280,9 +288,24 @@ class ScanJob(BaseModel):
     request: ScanRequest
     progress: list[str] = Field(default_factory=list)
     result: dict[str, Any] | None = None
+    result_document: dict[str, Any] | str | None = None
+    """The completed result rendered in ``request.format``.
+
+    ``None`` while the job is running, and for ``format=json`` — the default —
+    because ``result`` already *is* the AI-BOM JSON and a second copy would only
+    double the payload. Any other requested format renders here, so the enum
+    published on ``ScanRequest.format`` changes what the caller gets instead of
+    being silently ignored.
+    """
     error: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def result_format(self) -> str:
+        """Which format ``result_document`` (or ``result``, for json) is in."""
+        return self.request.format
 
     def model_post_init(self, __context: Any) -> None:
         if not isinstance(self.progress, _BoundedProgress):

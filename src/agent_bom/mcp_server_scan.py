@@ -13,6 +13,7 @@ from typing import Optional
 
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
 from agent_bom.mcp_errors import (
+    CODE_VALIDATION_INVALID_ECOSYSTEM,
     CODE_VALIDATION_INVALID_IMAGE_REF,
     CODE_VALIDATION_INVALID_PATH,
 )
@@ -41,39 +42,136 @@ class McpScanValidationError(ValueError):
 logger = logging.getLogger(__name__)
 
 
-def _package_spec_agent(package_spec: str):
-    """Build a synthetic MCP inventory entry from a direct package command."""
-    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+PACKAGE_SPEC_DISCOVERY_SOURCE = "mcp_scan_package"
+
+# Launcher token -> the ecosystem that launcher installs from. A spec that names
+# its launcher is not a guess; the ecosystem follows from the command.
+_LAUNCHER_ECOSYSTEMS = {
+    "npx": "npm",
+    "npm": "npm",
+    "pnpm": "npm",
+    "yarn": "npm",
+    "bunx": "npm",
+    "uvx": "pypi",
+    "uv": "pypi",
+    "pip": "pypi",
+    "pip3": "pypi",
+    "pipx": "pypi",
+}
+
+# Sub-commands that sit between the launcher and the package it installs
+# (``npm exec <pkg>``, ``uv tool run <pkg>``, ``pip install <pkg>``). Left in
+# place they were parsed AS the package: ``uv tool run flask==0.12.2`` resolved
+# to a PyPI package literally named ``run``.
+_LAUNCHER_SUBCOMMANDS = {"dlx", "exec", "run", "tool", "install"}
+
+# The two ecosystems a synthetic launcher command can express; every other
+# ecosystem names its package directly on the synthetic server instead.
+_ECOSYSTEM_LAUNCHERS = {"npm": "npx", "pypi": "uvx"}
+
+# PEP 440 / PEP 508 version specifiers. An npm spec never contains these, so
+# their presence identifies a Python requirement even with no launcher token.
+_PEP508_OPERATORS = ("===", "==", "~=", "!=", ">=", "<=", ">", "<")
+
+
+def _package_spec_agent(package_spec: str, *, ecosystem: str | None = None):
+    """Build a synthetic MCP inventory entry from a direct package command.
+
+    Returns ``(agent, warnings)``. ``warnings`` is non-empty whenever the
+    ecosystem had to be *assumed*: the caller named neither a launcher nor an
+    ``ecosystem``, so the result is reported as an assumption rather than
+    presented as fact.
+
+    Previously any unrecognized first token was forced to ``npx``, which scanned
+    ``flask==0.12.2`` as an npm package and extracted nothing — a clean-looking
+    AI-BOM for a package with known CVEs.
+    """
+    from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
     tokens = shlex.split(package_spec)
     if not tokens:
         raise ValueError("package must not be empty")
 
-    command = tokens[0]
-    args = tokens[1:]
-    if command not in {"npx", "npm", "pnpm", "yarn", "bunx", "uvx", "uv"}:
-        command = "npx"
-        args = tokens
-    elif command in {"npm", "pnpm", "yarn"} and args and args[0] in {"dlx", "exec"}:
-        command = "npx"
+    requested: str | None = None
+    if ecosystem is not None and str(ecosystem).strip():
+        requested = str(ecosystem).strip().lower()
+        if requested not in SUPPORTED_PACKAGE_ECOSYSTEM_SET:
+            raise ValueError(f"Invalid ecosystem: {ecosystem!r}. Valid: {', '.join(sorted(SUPPORTED_PACKAGE_ECOSYSTEM_SET))}")
+
+    launcher = tokens[0] if tokens[0] in _LAUNCHER_ECOSYSTEMS else None
+    args = tokens[1:] if launcher is not None else list(tokens)
+    while args and args[0] in _LAUNCHER_SUBCOMMANDS:
         args = args[1:]
-    elif command == "bunx":
-        command = "npx"
+
+    warnings: list[str] = []
+    if requested is not None:
+        resolved = requested
+    elif launcher is not None:
+        resolved = _LAUNCHER_ECOSYSTEMS[launcher]
+    elif any(operator in package_spec for operator in _PEP508_OPERATORS):
+        resolved = "pypi"
+    else:
+        resolved = "npm"
+        warnings.append(
+            f"'{package_spec}' names neither a launcher nor an ecosystem; assumed the "
+            f"{resolved} ecosystem. Pass ecosystem='pypi' (or cargo/maven/go/...), or "
+            "prefix the launcher (e.g. 'uvx <spec>'), to scan a different ecosystem."
+        )
+
+    command = _ECOSYSTEM_LAUNCHERS.get(resolved, "")
+    packages: list[Package] = []
+    if not command:
+        # cargo/maven/go/... have no launcher spelling the scanner understands,
+        # so name the package on the server directly instead of round-tripping
+        # it through a command line that would resolve to the wrong ecosystem.
+        from agent_bom.mcp_tools.scanning import normalize_check_package_spec
+
+        name, version = normalize_check_package_spec(" ".join(args) if args else package_spec)
+        packages = [Package(name=name, version=version, ecosystem=resolved)]
 
     server = MCPServer(
         name=f"package:{' '.join([command, *args]).strip()}",
         command=command,
         args=args,
         env={},
-        transport=TransportType.STDIO,
+        transport=TransportType.STDIO if command else TransportType.UNKNOWN,
         config_path="mcp-scan-package",
-        discovery_sources=["mcp_scan_package"],
+        discovery_sources=[PACKAGE_SPEC_DISCOVERY_SOURCE],
+        packages=packages,
     )
-    return Agent(
-        name=f"package:{package_spec}",
-        agent_type=AgentType.CUSTOM,
-        config_path="mcp-scan-package",
-        mcp_servers=[server],
+    return (
+        Agent(
+            name=f"package:{package_spec}",
+            agent_type=AgentType.CUSTOM,
+            config_path="mcp-scan-package",
+            mcp_servers=[server],
+        ),
+        warnings,
+    )
+
+
+def package_spec_extracted_count(agents) -> int:
+    """Count packages extracted from synthetic ``package=`` scan targets.
+
+    The fail-closed guard reads this: a package spec that resolves to zero
+    packages must never be presented as a completed clean scan.
+    """
+    return sum(
+        len(server.packages)
+        for agent in agents
+        for server in agent.mcp_servers
+        if PACKAGE_SPEC_DISCOVERY_SOURCE in (server.discovery_sources or [])
+    )
+
+
+def unresolved_package_spec_warning(package_spec: str) -> str:
+    """The single wording for "this package spec produced no evidence"."""
+    return (
+        f"No packages could be resolved from package spec '{package_spec}'; the scan is "
+        "incomplete and its empty result is NOT evidence that the package is clean. "
+        "Pass an explicit ecosystem (e.g. ecosystem='pypi') or a launcher-prefixed "
+        "spec (e.g. 'uvx <spec>')."
     )
 
 
@@ -87,6 +185,7 @@ async def run_scan_pipeline(
     enrich: bool = False,
     transitive: bool = False,
     offline: bool = False,
+    ecosystem: Optional[str] = None,
 ):
     """Run discovery -> extraction -> scanning and return agents + findings."""
     from agent_bom.discovery import discover_all
@@ -155,10 +254,14 @@ async def run_scan_pipeline(
 
     if package:
         try:
-            agents.append(_package_spec_agent(package))
-            scan_sources.append("mcp_package")
+            package_agent, package_warnings = _package_spec_agent(package, ecosystem=ecosystem)
         except ValueError as exc:
-            raise McpScanValidationError(CODE_VALIDATION_INVALID_PATH, exc, argument="package") from exc
+            code = CODE_VALIDATION_INVALID_ECOSYSTEM if "ecosystem" in str(exc).lower() else CODE_VALIDATION_INVALID_PATH
+            argument = "ecosystem" if code == CODE_VALIDATION_INVALID_ECOSYSTEM else "package"
+            raise McpScanValidationError(code, exc, argument=argument) from exc
+        agents.append(package_agent)
+        warnings.extend(package_warnings)
+        scan_sources.append("mcp_package")
 
     if image:
         try:
@@ -239,6 +342,12 @@ async def run_scan_pipeline(
                             f"{pkg.name} uses a floating package reference; pass {pkg.name}@version "
                             "or set offline=false for registry-backed resolution."
                         )
+
+    if package and package_spec_extracted_count(agents) == 0:
+        # Fail closed: a package spec the extractor could not resolve yields no
+        # packages and therefore no findings. Reporting that as a clean scan is
+        # a wrong answer, so say the scan is incomplete instead.
+        warnings.append(unresolved_package_spec_warning(package))
 
     if enrich and not offline:
         blast_radii = await scan_agents_with_enrichment(agents, options=ScanOptions(offline=offline))

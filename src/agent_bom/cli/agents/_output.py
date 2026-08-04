@@ -651,31 +651,14 @@ def render_output(
 
 
 def _format_text(report: AIBOMReport, blast_radii: list) -> str:
-    """Plain text output for piping to grep/awk."""
-    lines = []
-    lines.append(f"agent-bom {report.tool_version}")
-    lines.append(
-        f"agents={report.total_agents} servers={report.total_servers} "
-        f"packages={report.total_packages} vulnerabilities={report.total_vulnerabilities}"
-    )
-    lines.append("")
+    """Plain text output for piping to grep/awk.
 
-    for agent in report.agents:
-        for server in agent.mcp_servers:
-            for pkg in server.packages:
-                lines.append(f"{agent.name}\t{server.name}\t{pkg.ecosystem}\t{pkg.name}\t{pkg.version}")
+    Delegates to the shared renderer so the CLI, the API scan result, and any
+    other surface emit byte-identical plain text.
+    """
+    from agent_bom.output.scan_document import to_text
 
-    if blast_radii:
-        lines.append("")
-        lines.append("VULN_ID\tSEVERITY\tPACKAGE\tFIX\tAGENTS\tCREDENTIALS")
-        for br in blast_radii:
-            v = br.vulnerability
-            lines.append(
-                f"{v.id}\t{v.severity.value}\t{br.package.name}@{br.package.version}\t"
-                f"{v.fixed_version or '-'}\t{len(br.affected_agents)}\t{len(br.exposed_credentials)}"
-            )
-
-    return "\n".join(lines) + "\n"
+    return to_text(report, blast_radii)
 
 
 def _print_text(report: AIBOMReport, blast_radii: list) -> None:

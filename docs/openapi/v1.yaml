@@ -3807,6 +3807,19 @@ components:
             type: object
           - type: 'null'
           title: Result
+        result_document:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: string
+          - type: 'null'
+          title: Result Document
+        result_format:
+          description: Which format ``result_document`` (or ``result``, for json)
+            is in.
+          readOnly: true
+          title: Result Format
+          type: string
         schedule_id:
           anyOf:
           - type: string
@@ -3854,6 +3867,7 @@ components:
       - job_id
       - created_at
       - request
+      - result_format
       title: ScanJob
       type: object
     ScanRequest:
@@ -19786,6 +19800,16 @@ paths:
         Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
 
 
+        ``format`` selects the shape of the completed result. ``json`` (the default)
+
+        leaves the AI-BOM JSON in ``result``; ``cyclonedx``, ``sarif``, ``spdx``,
+
+        ``html``, and ``text`` render that report into ``result_document``, which
+        is
+
+        what the CLI and MCP surfaces emit for the same value.
+
+
         Retry-safe: repeating the request with the same ``Idempotency-Key`` header
 
         returns the first job instead of minting a new job_id per attempt; reusing
@@ -20076,7 +20100,15 @@ paths:
       tags:
       - scan
     get:
-      description: Fetch scan status and full results.
+      description: 'Fetch scan status and full results.
+
+
+        ``result`` is always the canonical AI-BOM JSON. When the request asked for
+        a
+
+        non-json ``format``, ``result_document`` carries that rendering and
+
+        ``result_format`` names it.'
       operationId: get_scan_v1_scan__job_id__get
       parameters:
       - in: path

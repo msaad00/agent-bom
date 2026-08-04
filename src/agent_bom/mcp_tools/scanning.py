@@ -72,6 +72,7 @@ async def scan_impl(
     image: str | None = None,
     sbom_path: str | None = None,
     package: str | None = None,
+    ecosystem: str | None = None,
     enrich: bool = False,
     offline: bool = True,
     scorecard: bool = False,
@@ -119,6 +120,7 @@ async def scan_impl(
             image=image,
             sbom_path=sbom_path,
             package=package,
+            ecosystem=ecosystem,
             enrich=enrich,
             offline=offline,
             scorecard=scorecard,
@@ -142,6 +144,7 @@ async def _scan_impl_inner(
     image: str | None = None,
     sbom_path: str | None = None,
     package: str | None = None,
+    ecosystem: str | None = None,
     enrich: bool = False,
     offline: bool = True,
     scorecard: bool = False,
@@ -202,8 +205,23 @@ async def _scan_impl_inner(
             enrich,
             transitive=transitive,
             offline=offline,
+            ecosystem=ecosystem,
         )
         scan_warnings = [*pre_warnings, *scan_warnings]
+        # Fail closed: a package spec that resolved to zero packages produced no
+        # evidence at all, so the empty finding list must not read as "clean".
+        package_spec_unresolved = False
+        if package:
+            from agent_bom.mcp_server_scan import (
+                package_spec_extracted_count,
+                unresolved_package_spec_warning,
+            )
+
+            package_spec_unresolved = package_spec_extracted_count(agents) == 0
+            if package_spec_unresolved:
+                warning = unresolved_package_spec_warning(package)
+                if warning not in scan_warnings:
+                    scan_warnings.append(warning)
         if not agents:
             result: dict[str, object] = {
                 "status": "no_agents_found",
@@ -265,6 +283,26 @@ async def _scan_impl_inner(
                 report,
                 scan_id=report.scan_id or "mcp-scan",
                 tenant_id="default",
+            )
+
+        if package_spec_unresolved:
+            # Fail closed ahead of format selection: an empty SARIF/CycloneDX/SPDX
+            # document reads as an audited clean result, so the structured
+            # incomplete envelope is returned for every requested format.
+            return _truncate_response(
+                json.dumps(
+                    {
+                        "status": "incomplete_scan",
+                        "requested_package": package,
+                        "requested_ecosystem": ecosystem,
+                        "agents": [],
+                        "vulnerabilities": [],
+                        "blast_radius": [],
+                        "blast_radii": [],
+                        "warnings": scan_warnings,
+                    },
+                    indent=2,
+                )
             )
 
         # Format selection

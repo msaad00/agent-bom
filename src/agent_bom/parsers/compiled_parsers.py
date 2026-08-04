@@ -1419,22 +1419,26 @@ def detect_uvx_package(server: MCPServer) -> list[Package]:
     if server.command not in ("uvx", "uv"):
         return packages
 
-    args = server.args
-    for i, arg in enumerate(args):
-        if arg in ("run", "tool") and i + 1 < len(args):
-            pkg_arg = args[i + 1]
-            match = re.match(r"^([a-zA-Z0-9_.-]+)(?:==(.+))?$", pkg_arg)
-            if match:
-                name = match.group(1)
-                version = match.group(2) or "latest"
-                packages.append(_uvx_package_from_command(name, version, server))
-            break
-        elif not arg.startswith("-") and arg not in ("run", "tool"):
-            match = re.match(r"^([a-zA-Z0-9_.-]+)(?:==(.+))?$", arg)
-            if match:
-                name = match.group(1)
-                version = match.group(2) or "latest"
-                packages.append(_uvx_package_from_command(name, version, server))
-            break
+    args = list(server.args)
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        # ``uv tool run <pkg>`` stacks two sub-commands before the package.
+        # Reading the token immediately after the FIRST one resolved
+        # ``uv tool run flask==0.12.2`` to a package literally named "run".
+        if arg in ("run", "tool"):
+            index += 1
+            continue
+        if arg == "--from" and index + 1 < len(args):
+            arg = args[index + 1]
+        elif arg.startswith("-"):
+            index += 1
+            continue
+        match = re.match(r"^([a-zA-Z0-9_.-]+)(?:==(.+))?$", arg)
+        if match:
+            name = match.group(1)
+            version = match.group(2) or "latest"
+            packages.append(_uvx_package_from_command(name, version, server))
+        break
 
     return packages

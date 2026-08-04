@@ -465,6 +465,7 @@ async def _run_scan_pipeline(
     enrich: bool = False,
     transitive: bool = False,
     offline: bool = False,
+    ecosystem: Optional[str] = None,
 ):
     """Run discovery -> extraction -> scanning and return (agents, blast_radii, warnings)."""
     return await _mcp_scan.run_scan_pipeline(
@@ -476,6 +477,7 @@ async def _run_scan_pipeline(
         enrich=enrich,
         transitive=transitive,
         offline=offline,
+        ecosystem=ecosystem,
     )
 
 
@@ -559,7 +561,20 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             Field(
                 description=(
                     "Direct package or MCP launch command to scan, e.g. "
-                    "'npx @modelcontextprotocol/server-filesystem@2025.1.14' or '@modelcontextprotocol/server-filesystem'."
+                    "'npx @modelcontextprotocol/server-filesystem@2025.1.14' or '@modelcontextprotocol/server-filesystem'. "
+                    "A bare 'name@version' spec is assumed to be npm — pass ``ecosystem`` for anything else."
+                )
+            ),
+        ] = None,
+        ecosystem: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Ecosystem of ``package`` when the spec does not name a launcher: 'npm', "
+                    "'pypi', 'go', 'cargo', 'maven', 'nuget', 'rubygems', 'composer', 'swift', "
+                    "'pub', 'hex', 'conda', 'deb', 'apk', or 'rpm'. Omitted, the ecosystem is "
+                    "inferred from the spec (PEP 440 specifiers such as 'flask==0.12.2' are "
+                    "PyPI) and any assumption is reported in the result warnings."
                 )
             ),
         ] = None,
@@ -616,7 +631,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
           • config_path  — a local project / MCP-config directory
           • image        — a Docker image
           • sbom_path    — an existing CycloneDX/SPDX SBOM
-          • package      — a single package or MCP launch command
+          • package      — a single package or MCP launch command (pair it with
+                           ``ecosystem`` when the spec names no launcher)
         With none of these, it auto-discovers local MCP clients (Claude Desktop,
         Cursor, Windsurf, VS Code Copilot, OpenClaw, etc.).
 
@@ -637,6 +653,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             image=image,
             sbom_path=sbom_path,
             package=package,
+            ecosystem=ecosystem,
             enrich=enrich,
             offline=offline,
             scorecard=scorecard,

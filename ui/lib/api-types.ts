@@ -2837,6 +2837,82 @@ export interface OverviewResponse {
   top_risks: OverviewTopRisk[];
 }
 
+/** Stable counts shared by the enterprise-demo CLI, API, and dashboard. */
+export interface EnterpriseDemoSummary {
+  assets: number;
+  observations: number;
+  evidence_sources: number;
+  complete_sources: number;
+  partial_sources: number;
+  correlations: number;
+  snapshots: number;
+}
+
+export interface EnterpriseDemoEvent {
+  normalization_version: string;
+  event_id: string;
+  tenant_id: string;
+  stage: string;
+  source: string;
+  event_type: string;
+  observed_at: string;
+  trace_id: string;
+  actor_id: string;
+  resource_ids: string[];
+  evidence_hash: string;
+  source_run_id: string;
+  event_relationships: Record<string, unknown>;
+  graph_projection: Record<string, unknown>;
+}
+
+export interface EnterpriseDemoCorrelation {
+  correlation_version: string;
+  correlation_id: string;
+  tenant_id: string;
+  trace_id: string;
+  kind: string;
+  outcome: string;
+  started_at: string;
+  ended_at: string;
+  event_ids: string[];
+  sources: string[];
+  asset_ids: string[];
+  asset_path: string[];
+  data_classifications: string[];
+  evidence_hashes: string[];
+  evidence_quality: string;
+  incomplete_sources: string[];
+}
+
+export interface EnterpriseDemoCollectionHealth {
+  source: string;
+  status: "complete" | "partial" | "unavailable";
+  records_read: number;
+  watermark: string;
+  source_schema: string;
+  schema_url: string;
+  failure_code: string;
+}
+
+/** GET /v1/demo-estate/story — normalized, fictional enterprise evidence. */
+export interface EnterpriseDemoStory {
+  schema_version: string;
+  synthetic: true;
+  fictional: true;
+  disclosure: string;
+  estate_id: string;
+  estate_name: string;
+  tenant_id: string;
+  scenario: string;
+  estate_content_hash: string;
+  story_content_hash: string;
+  summary: EnterpriseDemoSummary;
+  primary_correlation: EnterpriseDemoCorrelation;
+  events: EnterpriseDemoEvent[];
+  correlations: EnterpriseDemoCorrelation[];
+  collection_health: EnterpriseDemoCollectionHealth[];
+}
+
 /** One security-domain lane on the per-account drill summary (#3931). Its
  * severity strip sums to ``count`` (same honest invariant as the overview). */
 export interface AccountSummaryDomain {

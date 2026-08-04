@@ -160,10 +160,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
         )
         == 1
     )
-    assert (
-        "Scan repositories, images, and cloud accounts; centralize evidence across environments; "
-        "and enforce AI and MCP runtime policy in infrastructure you control."
-    ) in hero
+    # The hero is one claim plus the numbers. The scan/centralize/enforce
+    # sentence duplicated what "What it is" says a few lines later, so the
+    # storefront opened with the same paragraph twice.
+    assert "Scan repositories, images, and cloud accounts" not in hero
     assert "<b>15</b> package ecosystems" in hero
     assert "<b>16</b> compliance surfaces" in hero
     assert "<b>77</b> MCP tools" in hero
@@ -181,16 +181,16 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "demo.agent-bom.com" not in readme
     assert "## How it works" not in readme
 
-    current_what_it_is = """`agent-bom` is an open scanner and self-hosted control plane for software,
-cloud, identity, AI-agent, and MCP evidence. One Finding + UnifiedGraph model
-powers CLI and CI artifacts, fleet and browser investigations, compliance
-evidence, and runtime policy.
+    # Two paragraphs, not three: what it does and where it runs, then the
+    # provenance guarantee. The middle paragraph restated the first.
+    current_what_it_is = """`agent-bom` scans repositories, images, and cloud accounts, then correlates what
+it finds into one Finding + UnifiedGraph model — powering CLI and CI artifacts,
+fleet and browser investigations, compliance evidence, and runtime policy. Run
+the scanner without an account, or deploy the control plane inside your own
+cloud, VPC, cluster, database, identity, and audit boundary.
 
-Use the scanner without an account, or deploy the shared control plane inside
-your own cloud, VPC, Kubernetes cluster, database, identity, and audit boundary.
-
-Graph provenance remains explicit: collected, inferred, static, and runtime
-relationships stay distinct, and unavailable evidence is never upgraded to
+Graph provenance stays explicit: collected, inferred, static, and runtime
+relationships remain distinct, and unavailable evidence is never upgraded to
 observed."""
     assert current_what_it_is in readme
 

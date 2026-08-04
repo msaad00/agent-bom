@@ -591,7 +591,12 @@ def _legacy_how_it_works(theme_name: str) -> str:
             margin_x,
             60,
             "onboard read-only  ->  scan + enrich  ->  ContextGraph + blast radius  ->  agent-bom serve",
-            **{"font-family": "ui-monospace,SFMono-Regular,Menlo,monospace", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
+            **{
+                "font-family": "ui-monospace,SFMono-Regular,Menlo,monospace",
+                "font-size": "10",
+                "font-weight": "500",
+                "fill": t["subtitle"],
+            },
         ),
     ]
 
@@ -671,9 +676,7 @@ def _legacy_how_it_works(theme_name: str) -> str:
     )
     for i, (icon, label, desc) in enumerate(steps):
         sy = step_top + i * step_h
-        parts.append(
-            f'<circle cx="{rail_x}" cy="{sy + 14}" r="8.5" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.3"/>'
-        )
+        parts.append(f'<circle cx="{rail_x}" cy="{sy + 14}" r="8.5" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.3"/>')
         parts.append(
             f'<text x="{rail_x}" y="{sy + 17}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
             f'font-size="7.5" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
@@ -731,9 +734,7 @@ def _legacy_how_it_works(theme_name: str) -> str:
     ]
     for nx, ny, _size, _label, _icon, center in hub_nodes:
         if not center:
-            parts.append(
-                f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.2" opacity="0.75"/>'
-            )
+            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.2" opacity="0.75"/>')
     for nx, ny, size, nlabel, icon, center in hub_nodes:
         parts.append(_hub_node(nx, ny, size, nlabel, icon, t, center=center))
 
@@ -806,9 +807,7 @@ def _legacy_how_it_works(theme_name: str) -> str:
         col, row = i % 3, i // 3
         gx = out_x + col * (glass_w + 4)
         gy = lane_top + 58 + row * 42
-        parts.append(
-            f'<rect x="{gx}" y="{gy}" width="{glass_w}" height="36" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-        )
+        parts.append(f'<rect x="{gx}" y="{gy}" width="{glass_w}" height="36" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
         parts.append(_icon_box(gx + 6, gy + 8, ICONS[icon], t, size=20))
         parts.append(
             _text(
@@ -837,9 +836,7 @@ def _legacy_how_it_works(theme_name: str) -> str:
         rw = (out_card_w - 8) // 3
         rx = out_x + i * (rw + 4)
         ry = lane_top + 252
-        parts.append(
-            f'<rect x="{rx}" y="{ry}" width="{rw}" height="36" rx="8" fill="{t["card"]}" stroke="{color}" stroke-width="1.1"/>'
-        )
+        parts.append(f'<rect x="{rx}" y="{ry}" width="{rw}" height="36" rx="8" fill="{t["card"]}" stroke="{color}" stroke-width="1.1"/>')
         parts.append(_icon_box(rx + 6, ry + 8, ICONS[icon], t, accent=True, size=20))
         parts.append(
             _text(
@@ -973,34 +970,134 @@ def how_it_works(theme_name: str) -> str:
             '<rect width="1120" height="420" rx="20" fill="url(#bg)"/>',
             f'<circle cx="180" cy="90" r="120" fill="{palette["glow1"]}" opacity="0.08" filter="url(#soft)"/>',
             f'<circle cx="920" cy="340" r="140" fill="{palette["glow2"]}" opacity="0.07" filter="url(#soft)"/>',
-            _text(48, 52, "AGENT-BOM", **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "13", "font-weight": "700", "letter-spacing": "0.22em", "fill": palette["brand"]}),
-            _text(48, 92, "One evidence model. Three ways in.", **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "28", "font-weight": "700", "fill": palette["title"]}),
-            _text(48, 118, "Scan / control plane / runtime enforcement. Same Finding + UnifiedGraph everywhere.", **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "14", "fill": palette["muted"]}),
+            _text(
+                48,
+                52,
+                "AGENT-BOM",
+                **{
+                    "font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif",
+                    "font-size": "13",
+                    "font-weight": "700",
+                    "letter-spacing": "0.22em",
+                    "fill": palette["brand"],
+                },
+            ),
+            _text(
+                48,
+                92,
+                "One evidence model. Three ways in.",
+                **{
+                    "font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif",
+                    "font-size": "28",
+                    "font-weight": "700",
+                    "fill": palette["title"],
+                },
+            ),
+            _text(
+                48,
+                118,
+                "Scan / control plane / runtime enforcement. Same Finding + UnifiedGraph everywhere.",
+                **{"font-family": "'IBM Plex Sans','Segoe UI',system-ui,sans-serif", "font-size": "14", "fill": palette["muted"]},
+            ),
         ]
     )
 
     lanes = (
-        (48, 320, "lane1", palette["scan_bar"], palette["scan"], "01  SCAN", "Local CLI / CI", ("Inventory, findings, fix-first,", "SARIF / SBOM / HTML - no server."), "agent-bom scan .", palette["scan_cmd"]),
-        (392, 320, "lane2", palette["central_bar"], palette["central"], "02  CENTRALIZE", "Self-hosted plane", ("Fleet, graph, compliance,", "audit - your VPC / Postgres."), "agent-bom serve", palette["central"]),
-        (736, 336, "lane3", palette["enforce_bar"], palette["enforce"], "03  ENFORCE", "Runtime gateway", ("Allow / warn / block MCP", "tool calls with signed audit."), "agent-bom gateway serve --help", palette["enforce"]),
+        (
+            48,
+            320,
+            "lane1",
+            palette["scan_bar"],
+            palette["scan"],
+            "01  SCAN",
+            "Local CLI / CI",
+            ("Inventory, findings, fix-first,", "SARIF / SBOM / HTML - no server."),
+            "agent-bom scan .",
+            palette["scan_cmd"],
+        ),
+        (
+            392,
+            320,
+            "lane2",
+            palette["central_bar"],
+            palette["central"],
+            "02  CENTRALIZE",
+            "Self-hosted plane",
+            ("Fleet, graph, compliance,", "audit - your VPC / Postgres."),
+            "agent-bom serve",
+            palette["central"],
+        ),
+        (
+            736,
+            336,
+            "lane3",
+            palette["enforce_bar"],
+            palette["enforce"],
+            "03  ENFORCE",
+            "Runtime gateway",
+            ("Allow / warn / block MCP", "tool calls with signed audit."),
+            "agent-bom gateway serve --help",
+            palette["enforce"],
+        ),
     )
     for x, width, gradient, bar, accent, label, title, body, command, command_color in lanes:
         parts.extend(
             [
                 f'<rect x="{x}" y="148" width="{width}" height="200" rx="4" fill="url(#{gradient})"/>',
                 f'<rect x="{x}" y="148" width="4" height="200" fill="{bar}"/>',
-                _text(x + 24, 178, label, **{"font-family": "'IBM Plex Mono',ui-monospace,monospace", "font-size": "11", "font-weight": "700", "letter-spacing": "0.16em", "fill": accent}),
-                _text(x + 24, 214, title, **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "22", "font-weight": "700", "fill": palette["title"]}),
-                _text(x + 24, 242, body[0], **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "13", "fill": palette["muted"]}),
-                _text(x + 24, 260, body[1], **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "13", "fill": palette["muted"]}),
-                _text(x + 24, 312, command, **{"font-family": "'IBM Plex Mono',ui-monospace,monospace", "font-size": "12", "fill": command_color}),
+                _text(
+                    x + 24,
+                    178,
+                    label,
+                    **{
+                        "font-family": "'IBM Plex Mono',ui-monospace,monospace",
+                        "font-size": "11",
+                        "font-weight": "700",
+                        "letter-spacing": "0.16em",
+                        "fill": accent,
+                    },
+                ),
+                _text(
+                    x + 24,
+                    214,
+                    title,
+                    **{
+                        "font-family": "'IBM Plex Sans',system-ui,sans-serif",
+                        "font-size": "22",
+                        "font-weight": "700",
+                        "fill": palette["title"],
+                    },
+                ),
+                _text(
+                    x + 24,
+                    242,
+                    body[0],
+                    **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "13", "fill": palette["muted"]},
+                ),
+                _text(
+                    x + 24,
+                    260,
+                    body[1],
+                    **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "13", "fill": palette["muted"]},
+                ),
+                _text(
+                    x + 24,
+                    312,
+                    command,
+                    **{"font-family": "'IBM Plex Mono',ui-monospace,monospace", "font-size": "12", "fill": command_color},
+                ),
             ]
         )
 
     parts.extend(
         [
             f'<rect x="48" y="372" width="1024" height="1" fill="{palette["divider"]}"/>',
-            _text(48, 398, "Finding + UnifiedGraph is the spine - CLI, API, UI, and MCP share it.", **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "12", "fill": palette["muted"]}),
+            _text(
+                48,
+                398,
+                "Finding + UnifiedGraph is the spine - CLI, API, UI, and MCP share it.",
+                **{"font-family": "'IBM Plex Sans',system-ui,sans-serif", "font-size": "12", "fill": palette["muted"]},
+            ),
             "</svg>",
         ]
     )
@@ -1207,9 +1304,7 @@ def architecture(theme_name: str) -> str:
 
     def _consumer_mini(y: int, x: int, cw: int, icon: str, label: str) -> int:
         mh = 30
-        parts.append(
-            f'<rect x="{x}" y="{y}" width="{cw}" height="{mh}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-        )
+        parts.append(f'<rect x="{x}" y="{y}" width="{cw}" height="{mh}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
         parts.append(_icon_box(x + 10, y + 3, ICONS[icon], t, size=22))
         parts.append(
             _text(
@@ -1320,7 +1415,7 @@ def architecture(theme_name: str) -> str:
         )
     )
     parts.append("</svg>")
-    return "\n".join(parts)
+    return _scale_type("\n".join(parts), _ARCHITECTURE_TYPE_SCALE)
 
 
 # Persona band accents — one restrained hue per buyer lane, on neutral cards.
@@ -1496,7 +1591,7 @@ def _persona_lane_card(
         f'<circle cx="18.5" cy="18" r="6" fill="{t["card"]}"/>'
         f'<circle cx="18.5" cy="18" r="4.6" fill="{accent}"/>'
         f'<g fill="none" stroke="{glyph_stroke}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">'
-        f'{PERSONA_BADGES[accent_key].replace("GLYPH", glyph_stroke).replace("ACCENT", accent)}</g></g>'
+        f"{PERSONA_BADGES[accent_key].replace('GLYPH', glyph_stroke).replace('ACCENT', accent)}</g></g>"
     )
     parts.append(
         _text(
@@ -1534,10 +1629,7 @@ def _persona_lane_card(
         tag_x += tag_w + 6
 
     divider_y = y + 92
-    parts.append(
-        f'<line x1="{x + 16}" y1="{divider_y}" x2="{x + w - 16}" y2="{divider_y}" '
-        f'stroke="{t["card_stroke"]}" stroke-width="1"/>'
-    )
+    parts.append(f'<line x1="{x + 16}" y1="{divider_y}" x2="{x + w - 16}" y2="{divider_y}" stroke="{t["card_stroke"]}" stroke-width="1"/>')
     arrow_x = x + w // 2
     parts.append(
         f'<polygon points="{arrow_x},{divider_y + 10} {arrow_x - 5},{divider_y + 3} {arrow_x + 5},{divider_y + 3}" '
@@ -1546,18 +1638,12 @@ def _persona_lane_card(
 
     value_y = divider_y + 16
     value_h = h - (value_y - y) - 14
+    parts.append(f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" fill="{accent}" opacity="{tint_opacity}"/>')
     parts.append(
-        f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" '
-        f'fill="{accent}" opacity="{tint_opacity}"/>'
-    )
-    parts.append(
-        f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" '
-        f'fill="none" stroke="{accent}" opacity="0.4"/>'
+        f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" fill="none" stroke="{accent}" opacity="0.4"/>'
     )
     # Accent marker keys the headline value to the persona hue.
-    parts.append(
-        f'<rect x="{x + 20}" y="{value_y + 16}" width="3" height="14" rx="1.5" fill="{accent}"/>'
-    )
+    parts.append(f'<rect x="{x + 20}" y="{value_y + 16}" width="3" height="14" rx="1.5" fill="{accent}"/>')
     parts.append(
         _text(
             x + 30,
@@ -1605,7 +1691,60 @@ def persona_value(theme: str) -> str:
         )
     )
     parts.append("</svg>")
-    return "\n".join(parts)
+    return _scale_type("\n".join(parts), _PERSONA_TYPE_SCALE)
+
+
+# Average glyph advance for Inter/system-ui at a given font-size, in em. Used to
+# estimate rendered text width; deliberately generous so the audit errs toward
+# reporting an overflow that turns out to fit rather than passing one that clips.
+_GLYPH_ADVANCE_EM = 0.58
+
+# GitHub renders README images at roughly 900px wide. These two diagrams are
+# authored at 960 and 1280, so their type is downscaled to ~6px on screen —
+# below the 10px floor the flow diagrams already hold themselves to, which is
+# why they read as unreadable in the README while being correct at full size.
+# Scaled as far as `_audit_text_fit` allows without a relayout; persona-value
+# runs out of room first because its five cards share one 1280px row.
+_ARCHITECTURE_TYPE_SCALE = 1.3
+_PERSONA_TYPE_SCALE = 1.18
+
+
+def _scale_type(svg: str, factor: float) -> str:
+    """Scale every font-size so the diagram survives GitHub's downscale."""
+    return re.sub(
+        r'font-size="([\d.]+)"',
+        lambda m: f'font-size="{round(float(m.group(1)) * factor, 2)}"',
+        svg,
+    )
+
+
+def _audit_text_fit(svg: str, *, margin: int = 4) -> list[str]:
+    """Return text runs whose estimated width escapes the canvas.
+
+    ``_audit_layout`` only bounds ``<rect>`` elements, so it reported "OK" for
+    every font size tried — including ones that would clip. Type cannot be scaled
+    for legibility behind a check that never looks at type.
+
+    This estimates width from glyph count and honours ``text-anchor``. It is an
+    estimate, not a shaping engine: it catches a label growing past the canvas
+    edge, not one overlapping a neighbouring box.
+    """
+    vb = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg)
+    if not vb:
+        return ["missing viewBox"]
+    width, _height = map(int, vb.groups())
+    issues: list[str] = []
+    for match in re.finditer(r'<text x="([\d.]+)"[^>]*?font-size="([\d.]+)"[^>]*?>([^<]*)</text>', svg):
+        x, size, content = float(match.group(1)), float(match.group(2)), match.group(3)
+        if not content.strip():
+            continue
+        run = len(content) * size * _GLYPH_ADVANCE_EM
+        anchor = re.search(r'text-anchor="(\w+)"', match.group(0))
+        kind = anchor.group(1) if anchor else "start"
+        left = x - run / 2 if kind == "middle" else x - run if kind == "end" else x
+        if left < -margin or left + run > width + margin:
+            issues.append(f"text {content[:24]!r} at x={x} spans {round(run)}px, outside 0..{width}")
+    return issues
 
 
 def _audit_layout(svg: str, *, margin: int = 2) -> list[str]:

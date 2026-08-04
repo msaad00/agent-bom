@@ -64,7 +64,22 @@ def _tenant_has_demo_jobs(store: Any, tenant_id: str) -> bool:
     return False
 
 
-def _run_demo_scan_report() -> dict[str, Any]:
+def _estate_findings(tenant_id: str) -> list[Any]:
+    """Return the composed estate's posture findings for the demo scan job.
+
+    Seeded through the SAME ``findings`` list every other generator uses, so the
+    findings list, the severity facets, the exec tiles, SARIF and every export
+    read one derivation. Anything else would let the demo's own surfaces
+    disagree with each other, which is precisely what the estate exists to
+    disprove.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+    from agent_bom.demo_estate.enterprise_findings import build_estate_findings
+
+    return list(build_estate_findings(build_demo_estate(tenant_id=tenant_id)))
+
+
+def _run_demo_scan_report(*, tenant_id: str) -> dict[str, Any]:
     from agent_bom.cli._common import _build_agents_from_inventory
     from agent_bom.demo import DEMO_INVENTORY
     from agent_bom.finding import blast_radius_to_finding
@@ -85,6 +100,7 @@ def _run_demo_scan_report() -> dict[str, Any]:
     findings = [blast_radius_to_finding(br) for br in blast_radii]
     findings.extend(blocklist_findings_for_agents(agents))
     findings.extend(evaluate_mcp_auth_posture(agents))
+    findings.extend(_estate_findings(tenant_id))
     report = to_json(
         AIBOMReport(
             agents=agents,
@@ -217,7 +233,7 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         return summary
 
     try:
-        report = _run_demo_scan_report()
+        report = _run_demo_scan_report(tenant_id=tenant_id)
         finding_count = len(report.get("findings") or report.get("vulnerabilities") or [])
         if finding_count < 1:
             raise RuntimeError("demo estate scan produced zero findings")

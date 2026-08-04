@@ -48,6 +48,7 @@ const story: EnterpriseDemoStory = {
     partial_sources: 1,
     correlations: 4,
     snapshots: 3,
+    findings: 439,
   },
   primary_correlation: correlation,
   events: [
@@ -69,6 +70,68 @@ const story: EnterpriseDemoStory = {
     },
   ],
   correlations: [correlation],
+  finding_summary: {
+    schema_version: "enterprise_findings.v1",
+    total: 439,
+    // Sums to `total`, `unrated` included — the invariant the page renders.
+    by_severity: { critical: 26, high: 204, medium: 180, low: 1, unrated: 28 },
+    assets_affected: 407,
+    assets_total: 2068,
+    controls_evidenced: 45,
+    frameworks_evidenced: ["generic", "mitre_attack"],
+    attack_paths_evidenced: 4,
+    identities_implicated: 399,
+  },
+  findings: [
+    {
+      finding_id: "finding-1",
+      finding_type: "CIS_FAIL",
+      severity: "critical",
+      severity_bucket: "critical",
+      title: "CIS 1.16: No full-admin IAM policies attached",
+      security_domain: "cspm",
+      provider: "aws",
+      account_ref: "aws:123456789012",
+      region: "global",
+      environment: "production",
+      asset_id: "cloud_resource:aws:iam:role:member-copilot-prod",
+      asset_canonical_id: "d".repeat(36),
+      asset_display_name: "member-copilot-prod",
+      identity_asset_id: "cloud_resource:aws:iam:role:member-copilot-prod",
+      identity_display_name: "member-copilot-prod",
+      identity_actor_id: "arn:aws:sts::123456789012:assumed-role/member-copilot-prod",
+      configuration_setting: "attached_policy_actions",
+      configuration_observed: "Action '*' on Resource '*'",
+      configuration_expected: "Least-privilege actions scoped to named resources",
+      controls: ["generic:CIS-1.16", "mitre_attack:T1068", "mitre_attack:T1134", "mitre_attack:T1548"],
+      correlation_id: "corr-primary",
+      attack_path: ["github:workflow", "aws:role", "openai:model"],
+    },
+    {
+      finding_id: "finding-2",
+      finding_type: "CIS_ERROR",
+      severity: "unknown",
+      severity_bucket: "unrated",
+      title: "CIS 2.1.2: S3 bucket server-side encryption enabled",
+      security_domain: "cspm",
+      provider: "aws",
+      account_ref: "aws:100000000000",
+      region: "us-east-1",
+      environment: "staging",
+      asset_id: "aws:bucket:100000000000:aws-s3-00-001",
+      asset_canonical_id: "e".repeat(36),
+      asset_display_name: "aws-s3-00-001",
+      identity_asset_id: "aws:iam_role:100000000000:aws-iam-00-002",
+      identity_display_name: "aws-iam-00-002",
+      identity_actor_id: "",
+      configuration_setting: "ServerSideEncryptionConfiguration",
+      configuration_observed: "unreadable",
+      configuration_expected: "ApplyServerSideEncryptionByDefault=aws:kms",
+      controls: ["generic:CIS-2.1.2"],
+      correlation_id: "",
+      attack_path: [],
+    },
+  ],
   collection_health: [
     {
       source: "gcp_audit",
@@ -99,6 +162,46 @@ describe("DemoEstatePage", () => {
     expect(screen.getByText("2 records · google-cloud-audit-log")).toBeInTheDocument();
     expect(screen.getByText("workflow_run")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open security graph/ })).toHaveAttribute("href", "/security-graph");
+  });
+
+  it("renders each finding as a chain, with counts that reconcile", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    render(<DemoEstatePage />);
+
+    const posture = await screen.findByTestId("demo-estate-posture");
+
+    // The severity strip carries every band including `unrated`, and the label
+    // beside it states the total those bands sum to.
+    const bands = story.finding_summary.by_severity;
+    for (const band of ["critical", "high", "medium", "low", "unrated"]) {
+      expect(posture).toHaveTextContent(new RegExp(`${band}\\s+${bands[band]}`, "i"));
+    }
+    const summed = Object.values(bands).reduce((a, b) => a + b, 0);
+    expect(summed).toBe(story.finding_summary.total);
+    expect(posture).toHaveTextContent(`= ${story.finding_summary.total} findings`);
+
+    // The bounded list states what it is bounded against — never its own length
+    // dressed up as the estate total.
+    expect(posture).toHaveTextContent(
+      `Showing ${story.findings.length} of ${story.finding_summary.total}`,
+    );
+    expect(posture).toHaveTextContent("407 / 2068");
+
+    // Every link of the chain is on screen for the incident row.
+    expect(posture).toHaveTextContent("CIS 1.16: No full-admin IAM policies attached");
+    expect(posture).toHaveTextContent("member-copilot-prod");
+    expect(posture).toHaveTextContent("attached_policy_actions");
+    expect(posture).toHaveTextContent("Least-privilege actions scoped to named resources");
+    expect(posture).toHaveTextContent("generic:CIS-1.16");
+    expect(posture).toHaveTextContent("on a correlated attack path (3 hops)");
+
+    // An unevaluable control renders as unrated rather than borrowing a band.
+    expect(posture).toHaveTextContent("unreadable");
+
+    // The correlations list is bounded too, and says so.
+    expect(
+      screen.getByText(`Showing ${story.correlations.length} of ${story.summary.correlations} — the incident first.`),
+    ).toBeInTheDocument();
   });
 
   it("does not substitute live data when demo mode is unavailable", async () => {

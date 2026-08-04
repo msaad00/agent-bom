@@ -2846,6 +2846,50 @@ export interface EnterpriseDemoSummary {
   partial_sources: number;
   correlations: number;
   snapshots: number;
+  /** Whole-estate finding count. The rendered list is bounded; this is not. */
+  findings: number;
+}
+
+/** Whole-estate posture totals. `by_severity` always carries every display
+ * bucket including `unrated`, and always sums to `total` — an unevaluable
+ * control is counted, never dropped. */
+export interface EstateFindingSummary {
+  schema_version: string;
+  total: number;
+  by_severity: Record<string, number>;
+  assets_affected: number;
+  assets_total: number;
+  controls_evidenced: number;
+  frameworks_evidenced: string[];
+  attack_paths_evidenced: number;
+  identities_implicated: number;
+}
+
+/** One finding rendered as the chain it belongs to: asset → identity →
+ * configuration → attack path → compliance control. */
+export interface EstateFindingView {
+  finding_id: string;
+  finding_type: string;
+  severity: string;
+  severity_bucket: string;
+  title: string;
+  security_domain: string;
+  provider: string;
+  account_ref: string;
+  region: string;
+  environment: string;
+  asset_id: string;
+  asset_canonical_id: string;
+  asset_display_name: string;
+  identity_asset_id: string;
+  identity_display_name: string;
+  identity_actor_id: string;
+  configuration_setting: string;
+  configuration_observed: string;
+  configuration_expected: string;
+  controls: string[];
+  correlation_id: string;
+  attack_path: string[];
 }
 
 export interface EnterpriseDemoEvent {
@@ -2911,6 +2955,11 @@ export interface EnterpriseDemoStory {
   events: EnterpriseDemoEvent[];
   correlations: EnterpriseDemoCorrelation[];
   collection_health: EnterpriseDemoCollectionHealth[];
+  /** Unbounded posture totals for the whole estate. */
+  finding_summary: EstateFindingSummary;
+  /** Bounded page of findings, incident first. `finding_summary.total` is the
+   * real total — never `findings.length`. */
+  findings: EstateFindingView[];
 }
 
 /** One security-domain lane on the per-account drill summary (#3931). Its

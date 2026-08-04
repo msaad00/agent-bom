@@ -192,6 +192,87 @@ def test_demo_estate_findings_include_critical_and_kev(demo_estate_client: TestC
     assert any(b.get("vulnerability_id") == "CVE-2023-4863" for b in kev), "expected KEV CVE in blast radius"
 
 
+def test_demo_estate_posture_findings_resolve_to_inventoried_assets(
+    demo_estate_client: TestClient,
+) -> None:
+    """The estate's posture findings reach the public findings list, chain intact.
+
+    Asserted on ``/v1/findings`` rather than the raw scan result on purpose:
+    that route is the canonical list every consumer reads, and it applies
+    ``safe_finding_response_payload`` — default-deny tier-A redaction. A chain
+    that only holds before redaction is a chain no user ever sees, so the join
+    keys the demo relies on must be ones the evidence policy already classifies
+    as safe.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
+
+    inventoried = {asset.asset_id for asset in build_demo_estate(tenant_id=SHOWCASE_TENANT).assets}
+
+    listing = demo_estate_client.get(
+        "/v1/findings", headers=VIEWER, params={"limit": 1000, "domain": "cspm"}
+    ).json()
+    rows = [
+        row
+        for row in listing["findings"]
+        if (row.get("evidence") or {}).get("resource_id", "") in inventoried
+    ]
+    assert len(rows) >= 400, f"only {len(rows)} estate posture findings reached the findings list"
+
+    for row in rows:
+        evidence = row.get("evidence") or {}
+        assert evidence["resource_id"] in inventoried, evidence["resource_id"]
+        assert evidence.get("principal_id") or evidence.get("actor_id"), (
+            f"{row.get('id')} lost its identity edge through redaction: {sorted(evidence)}"
+        )
+        assert evidence.get("check_id") and evidence.get("control_id")
+        assert evidence.get("resource_name") and evidence.get("resource_type")
+        assert row.get("provider"), sorted(row)
+        assert row.get("severity"), sorted(row)
+    assert any((row.get("evidence") or {}).get("correlation_id") for row in rows), (
+        "no posture finding kept its correlated attack path"
+    )
+    assert len({(row.get("evidence") or {}).get("resource_id") for row in rows}) > 200, (
+        "the estate's findings all land on a handful of assets"
+    )
+
+
+def test_demo_estate_finding_counts_reconcile_across_tile_list_and_facet(
+    demo_estate_client: TestClient,
+) -> None:
+    """One estate, one total — whatever surface is asked.
+
+    The tile, the list header, and the severity facet histogram are three
+    different code paths over the same evidence. Adding hundreds of posture
+    findings is exactly the change that makes them drift apart, so pin them
+    together on the seeded estate rather than trusting that they agree.
+    """
+    listing = demo_estate_client.get(
+        "/v1/findings", headers=VIEWER, params={"limit": 1, "include_facets": "true"}
+    ).json()
+    total = listing["total"]
+    assert total > 400, total
+
+    severity_facet = (listing.get("facets") or {}).get("severity") or {}
+    assert severity_facet, f"the findings list returned no severity facet: {list(listing.get('facets') or {})}"
+    assert sum(int(v) for v in severity_facet.values()) == total, (
+        f"severity facet sums to {sum(int(v) for v in severity_facet.values())} but the list reports {total}"
+    )
+
+    counts = demo_estate_client.get("/v1/posture/counts", headers=VIEWER).json()
+    assert "unrated" in counts, counts
+    assert sum(counts[band] for band in ("critical", "high", "medium", "low", "unrated")) == counts["total"], counts
+    assert counts["unrated"] > 0, (
+        "no unrated finding survives to the tiles, so an unevaluable control is "
+        "indistinguishable from one that passed"
+    )
+
+    # The bounded page reports the unbounded total, never its own size.
+    page = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 25}).json()
+    assert len(page["findings"]) <= 25
+    assert page["total"] == total > len(page["findings"]), (page["total"], len(page["findings"]))
+
+
 def test_demo_estate_cis_posture_spans_aws_gcp_azure(demo_estate_client: TestClient) -> None:
     result = _demo_report(demo_estate_client)
     # Curated multi-cloud CIS posture is attached to the demo scan result, which

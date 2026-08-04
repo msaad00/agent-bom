@@ -73,6 +73,16 @@ SEVERITY_THRESHOLD_LABELS: tuple[str, ...] = ("critical", "high", "medium", "low
 SEVERITY_BUCKETS_WORST_FIRST: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "none")
 SEVERITY_BUCKETS_ASPM: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "unknown")
 
+# ── Display histogram: the four rated bands plus one honest home for the rest ─
+# ``unrated`` is where a finding goes when its severity is empty, ``unknown``,
+# ``none``, ``info``, or a vendor label the histogram does not recognize. It
+# exists so ``sum(histogram.values()) == total`` always holds: a severity the
+# UI cannot name is reported, never dropped. Every surface that paints a
+# severity strip (overview tiles, posture counts, the demo estate summary)
+# derives its buckets here so two panes on one screen cannot disagree.
+UNRATED_SEVERITY_BUCKET = "unrated"
+SEVERITY_DISPLAY_BUCKETS: tuple[str, ...] = (*SEVERITY_THRESHOLD_LABELS, UNRATED_SEVERITY_BUCKET)
+
 # ── Risk score contribution ──────────────────────────────────────────────
 
 SEVERITY_RISK_SCORE: dict[str, float] = {
@@ -122,6 +132,21 @@ def normalize_severity(sev: str | None) -> str:
     if normalized == "informational":
         return "info"
     return normalized if normalized in SEVERITY_RANK else "unknown"
+
+
+def severity_display_bucket(sev: str | None) -> str:
+    """Return the display histogram bucket for ``sev`` — a rated band or ``unrated``.
+
+    The single choke point for severity histograms, so a finding is counted in
+    one and only one bucket and no unrecognized severity is silently dropped.
+    """
+    key = (sev or "").strip().lower()
+    return key if key in SEVERITY_THRESHOLD_LABELS else UNRATED_SEVERITY_BUCKET
+
+
+def empty_severity_histogram() -> dict[str, int]:
+    """Return a zeroed histogram carrying every display bucket, including ``unrated``."""
+    return {key: 0 for key in SEVERITY_DISPLAY_BUCKETS}
 
 
 def severity_policy_rank(sev: str | None) -> int:

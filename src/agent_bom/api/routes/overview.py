@@ -50,6 +50,12 @@ from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.exec_score import compute_exec_score
+from agent_bom.graph.severity import (
+    SEVERITY_DISPLAY_BUCKETS,
+    SEVERITY_THRESHOLD_LABELS,
+    UNRATED_SEVERITY_BUCKET,
+    severity_display_bucket,
+)
 from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(dependencies=[cast(Any, require_authenticated_permission("read"))])
@@ -158,14 +164,16 @@ def _overview_singleflight_timeout() -> float:
         return _OVERVIEW_SINGLEFLIGHT_TIMEOUT_SECONDS
 
 
-_SEVERITY_KEYS = ("critical", "high", "medium", "low")
 # ``unrated`` is the honest home for findings whose severity the histogram does
 # not recognize (empty / "unknown" / vendor-specific). Without it those findings
 # incremented the CVE count but were dropped from the severity strip, producing
 # the "39 CVEs / 0 severities" mismatch. Every severity histogram in this module
 # now carries it so ``sum(severity.values())`` reconciles with the counted total.
-_UNRATED_KEY = "unrated"
-_ALL_SEVERITY_KEYS = (*_SEVERITY_KEYS, _UNRATED_KEY)
+# The vocabulary and the bucketing rule live in ``graph.severity`` so the tiles
+# here and every other severity strip in the product share one derivation.
+_SEVERITY_KEYS = SEVERITY_THRESHOLD_LABELS
+_UNRATED_KEY = UNRATED_SEVERITY_BUCKET
+_ALL_SEVERITY_KEYS = SEVERITY_DISPLAY_BUCKETS
 
 # Coverage lanes — the five security domains, in display order (issue #3946).
 # Symmetric posture-management family: CSPM · ASPM · DSPM · AISPM, plus Vuln
@@ -192,10 +200,11 @@ def _bucket(sev: str | None, severity: dict[str, int]) -> str:
     """Return the histogram bucket for ``sev`` — an exact match or ``unrated``.
 
     The single choke point shared by every rollup so a finding is counted in one
-    and only one bucket and no unknown severity is silently dropped.
+    and only one bucket and no unknown severity is silently dropped. Delegates
+    to ``graph.severity`` so this module and every other severity strip in the
+    product answer the question identically.
     """
-    key = (sev or "").strip().lower()
-    return key if key in _SEVERITY_KEYS else _UNRATED_KEY
+    return severity_display_bucket(sev)
 
 
 def _graph_drill_href(

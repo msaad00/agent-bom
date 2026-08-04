@@ -856,7 +856,11 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
 
     check_id = sanitize_text(str(check.get("check_id", "") or "unknown"), max_len=40)
     title = sanitize_text(str(check.get("title", "") or check_id), max_len=300)
-    severity = sanitize_text(str(check.get("severity", "medium") or "medium"), max_len=40)
+    # A control that reports no severity is unrated, not medium. Defaulting to a
+    # rated band published a judgement the evidence does not support and folded
+    # unevaluable controls into the medium tile; ``unknown`` normalizes to the
+    # explicit ``unrated`` bucket, still counted and still visible (#4631).
+    severity = sanitize_text(str(check.get("severity") or "unknown"), max_len=40)
     evidence_text = sanitize_text(str(check.get("evidence", "") or ""), max_len=600)
     recommendation = sanitize_text(str(check.get("recommendation", "") or ""), max_len=600)
     resource_ids = [sanitize_text(str(r), max_len=300) for r in (check.get("resource_ids") or []) if str(r).strip()]

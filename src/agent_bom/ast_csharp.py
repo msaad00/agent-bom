@@ -247,23 +247,25 @@ def _collect_csharp_tool_registrations(
             )
         )
 
-    # Scan masked source so a commented-out attribute is not a tool; the
-    # attribute text itself is re-read from the real source at the same offset.
+    # Scan masked source so a commented-out attribute is not a tool. The span is
+    # then sliced out of the real source so the declared name is readable. The
+    # span must come from the MASKED match: brackets inside a ``Description``
+    # string are blanked there, but in the real source a ``]`` would close the
+    # group early and a ``[`` would stop the match from being found at all.
     masked = mask_line_comments_and_strings(source)
     for masked_match in _CS_MCP_TOOL_ATTR_RE.finditer(masked):
-        attr_match = _CS_MCP_TOOL_ATTR_RE.match(source, masked_match.start())
-        if attr_match is None:
-            continue
-        method_match = _CS_METHOD_RE.search(source, attr_match.end())
+        attr_start, attr_end = masked_match.span()
+        attr_text = source[attr_start:attr_end]
+        method_match = _CS_METHOD_RE.search(source, attr_end)
         if not method_match:
             continue
         method_name = method_match.group("name")
         # ``[McpServerTool(Name = "weather_ui")]`` renames the wire-level tool;
         # the method name is only the fallback.
-        declared_name = _CS_ATTR_NAME_RE.search(attr_match.group(0))
+        declared_name = _CS_ATTR_NAME_RE.search(attr_text)
         tool_name = declared_name.group("name").strip() if declared_name else ""
         tool_name = tool_name or method_name
-        registration_key = (tool_name, attr_match.start())
+        registration_key = (tool_name, attr_start)
         if registration_key in seen:
             continue
         seen.add(registration_key)
@@ -274,7 +276,7 @@ def _collect_csharp_tool_registrations(
             _CSharpToolRegistration(
                 tool_name=tool_name,
                 handler_name=handler_key,
-                line_number=_line_number_from_index(source, attr_match.start()),
+                line_number=_line_number_from_index(source, attr_start),
                 file_path=rel_path,
                 class_name=class_name,
                 import_bindings=dict(bindings),

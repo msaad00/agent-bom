@@ -320,6 +320,39 @@ class _JavaFileAnalysis:
 
 
 @dataclass
+class _KotlinCallSite:
+    name: str
+    line_number: int
+
+
+@dataclass
+class _KotlinFunctionAnalysis:
+    name: str
+    line_number: int
+    file_path: str = ""
+    scope_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+    call_sites: list[_KotlinCallSite] = field(default_factory=list)
+
+
+@dataclass
+class _KotlinToolRegistration:
+    tool_name: str
+    handler_name: str
+    line_number: int
+    file_path: str = ""
+    scope_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class _KotlinFileAnalysis:
+    scope_name: str
+    functions: dict[str, _KotlinFunctionAnalysis] = field(default_factory=dict)
+    tool_registrations: list[_KotlinToolRegistration] = field(default_factory=list)
+
+
+@dataclass
 class _CSharpCallSite:
     name: str
     line_number: int

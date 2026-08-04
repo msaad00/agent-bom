@@ -125,8 +125,7 @@ def test_write_preserves_the_stamp_when_no_metric_changed() -> None:
 
         rewritten = json.loads(METRICS_JSON.read_text(encoding="utf-8"))
         assert rewritten["generated_on"] == "2020-01-01", (
-            "--write re-stamped generated_on even though no metric changed; "
-            "that is churn every branch has to carry"
+            "--write re-stamped generated_on even though no metric changed; that is churn every branch has to carry"
         )
         assert rewritten["metrics"] == aged["metrics"], "metrics must be untouched when nothing moved"
     finally:
@@ -157,3 +156,27 @@ def test_write_restamps_when_a_metric_actually_moved() -> None:
     finally:
         METRICS_JSON.write_text(original_json, encoding="utf-8")
         METRICS_MARKDOWN.write_text(original_md, encoding="utf-8")
+
+
+def test_check_mode_reports_a_stale_snapshot(tmp_path: Path) -> None:
+    """`make preflight` claims CI's drift gate will be green; it must cover this one.
+
+    Adding a single test file moves the test-file count, so any branch that adds
+    a test leaves this snapshot stale. Without a --check mode the drift is only
+    discoverable from a full CI test run, several minutes after the push.
+    """
+    module = _load_metrics_script()
+    stale = json.loads(METRICS_JSON.read_text(encoding="utf-8"))
+    stale_metrics = cast(list[dict[str, object]], stale["metrics"])
+    stale_metrics[0]["value"] = cast(int, stale_metrics[0]["value"]) + 1
+
+    json_out = tmp_path / "PRODUCT_METRICS.json"
+    json_out.write_text(json.dumps(stale, indent=2) + "\n")
+
+    assert module.main(["--check", "--json-out", str(json_out)]) == 1
+
+
+def test_check_mode_accepts_the_committed_snapshot() -> None:
+    module = _load_metrics_script()
+
+    assert module.main(["--check"]) == 0

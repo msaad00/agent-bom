@@ -122,7 +122,14 @@ def test_demo_estate_story_api_exposes_normalized_evidence_only(
 
 
 def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: TestClient) -> None:
-    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
+    # Reads the whole snapshot rather than the default page. Since the
+    # enterprise estate is projected into this snapshot it holds ~2,900 nodes,
+    # and the default page is 500 ordered by severity — which the estate's 439
+    # posture findings now fill. The agents/servers/packages asserted here are
+    # unrated inventory, so a default-page read would be testing the pager, not
+    # the estate. ``test_demo_estate_default_graph_page_declares_its_truncation``
+    # covers the bounded read.
+    payload = _full_graph(demo_estate_client)
     nodes = payload.get("nodes") or []
     by_type = Counter(n.get("entity_type") for n in nodes)
 
@@ -150,8 +157,13 @@ def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: Test
 
 def test_demo_estate_headline_blast_radius_chain(demo_estate_client: TestClient) -> None:
     """agent -> MCP server -> vulnerable package -> critical CVE -> reachable
-    credential + reachable run_shell tool -> potential RCE renders in the graph."""
-    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
+    credential + reachable run_shell tool -> potential RCE renders in the graph.
+
+    Whole snapshot, not the default page: the hand-built chain is *extended* by
+    the projected enterprise estate, never replaced, but its unrated inventory
+    nodes no longer land in a 500-row severity-ranked page.
+    """
+    payload = _full_graph(demo_estate_client)
     node_ids = {n.get("id") for n in payload.get("nodes") or []}
     edges = payload.get("edges") or []
     edge_pairs = {(e.get("source"), e.get("target")) for e in edges}
@@ -465,7 +477,9 @@ def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: T
 
 
 def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestClient) -> None:
-    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
+    # Whole snapshot: runtime-evidence tiers sit on unrated tool/tool-call nodes,
+    # which the estate's rated findings now outrank on the default page.
+    payload = _full_graph(demo_estate_client)
     attrs_by_id = {
         node.get("id"): (node.get("attributes") or {}) for node in payload.get("nodes") or []
     }
@@ -776,3 +790,138 @@ def test_demo_estate_scan_findings_restored_after_restart(
 
     after = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 3}).json()
     assert after.get("total", 0) == before.get("total", 0), (before.get("total"), after.get("total"))
+
+
+# ── Enterprise estate projected into the graph ────────────────────────────
+#
+# The estate holds 2,068 assets and 439 findings on 407 of them. Once it is in
+# the graph the snapshot no longer fits one severity-ranked API page, so these
+# read the whole snapshot explicitly and separately assert that the *default*
+# page says so rather than reading as the estate.
+
+
+def _full_graph(client: TestClient) -> dict:
+    payload = client.get("/v1/graph", headers=VIEWER, params={"limit": 5000}).json()
+    assert payload.get("completeness", {}).get("complete") is True, payload.get("completeness")
+    return payload
+
+
+def test_demo_estate_graph_carries_the_projected_estate(demo_estate_client: TestClient) -> None:
+    """The graph a prospect clicks IS the estate, not a 112-node stand-in."""
+    payload = _full_graph(demo_estate_client)
+    nodes = payload.get("nodes") or []
+    node_ids = {n.get("id") for n in nodes}
+    by_type = Counter(n.get("entity_type") for n in nodes)
+
+    assert len(nodes) >= 2500, len(nodes)
+    # org → account → environment → asset, all four levels present.
+    assert "organization:northstar-health-ai" in node_ids
+    assert "account:aws:123456789012" in node_ids
+    assert "env:aws:123456789012:production" in node_ids
+    assert "cloud_resource:aws:iam:role:member-copilot-prod" in node_ids
+    assert by_type["account"] >= 40, by_type
+    assert by_type["environment"] >= 100, by_type
+    assert by_type["misconfiguration"] >= 439, by_type
+
+    contains = {
+        (row.get("source"), row.get("target"))
+        for row in payload.get("edges") or []
+        if row.get("relationship") == "contains"
+    }
+    assert ("organization:northstar-health-ai", "account:aws:123456789012") in contains
+    assert ("account:aws:123456789012", "env:aws:123456789012:production") in contains
+    assert (
+        "env:aws:123456789012:production",
+        "cloud_resource:aws:iam:role:member-copilot-prod",
+    ) in contains
+    # One estate, one root: the hand-built showcase org hangs off the estate org.
+    assert ("organization:northstar-health-ai", "org:corp") in contains
+
+
+def test_demo_estate_graph_incident_chain_is_traversable(demo_estate_client: TestClient) -> None:
+    """workflow → role → workload → MCP tool → PHI table → hosted model."""
+    payload = _full_graph(demo_estate_client)
+    pairs = {(row.get("source"), row.get("target")) for row in payload.get("edges") or []}
+    chain = (
+        "github:workflow:member-copilot/deploy-prod",
+        "cloud_resource:aws:iam:role:member-copilot-prod",
+        "kubernetes:workload:member-ai-prod/ai-prod/member-copilot",
+        "mcp:tool:clinical-analytics/execute_sql",
+        "snowflake:table:nh_prod/analytics/phi/patient_summary",
+        "model:openai:gpt-4.1",
+    )
+    node_ids = {n.get("id") for n in payload.get("nodes") or []}
+    for hop in chain:
+        assert hop in node_ids, f"missing incident hop {hop}"
+    for source, target in zip(chain, chain[1:], strict=False):
+        assert (source, target) in pairs, f"incident chain broken at {source} -> {target}"
+
+
+def test_demo_estate_findings_land_on_inventoried_graph_nodes(
+    demo_estate_client: TestClient,
+) -> None:
+    """No finding materialises its own stub target (the #4637 defect class)."""
+    payload = _full_graph(demo_estate_client)
+    nodes_by_id = {n.get("id"): n for n in payload.get("nodes") or []}
+    affected: set[str] = set()
+    for row in payload.get("edges") or []:
+        if row.get("relationship") != "affects":
+            continue
+        source = nodes_by_id.get(row.get("source")) or {}
+        if source.get("entity_type") != "misconfiguration":
+            continue
+        target = nodes_by_id.get(row.get("target"))
+        assert target is not None, row
+        if (target.get("attributes") or {}).get("estate_id"):
+            affected.add(row.get("target"))
+    assert len(affected) >= 407, len(affected)
+
+
+def test_demo_estate_default_graph_page_declares_its_truncation(
+    demo_estate_client: TestClient,
+) -> None:
+    """A bounded page must never read as the whole estate (#4631)."""
+    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
+    completeness = payload.get("completeness") or {}
+    stats = payload.get("stats") or {}
+
+    assert completeness.get("truncated") is True, completeness
+    assert completeness.get("complete") is False, completeness
+    assert completeness.get("returned") == len(payload.get("nodes") or [])
+    assert completeness.get("reason"), completeness
+    # The two numbers a reader reconciles must agree.
+    assert completeness.get("total") == stats.get("total_nodes_source"), (completeness, stats)
+    assert completeness["total"] > completeness["returned"]
+
+
+def test_demo_estate_graph_rolls_up_to_a_readable_estate(demo_estate_client: TestClient) -> None:
+    """2,000 raw nodes are unreadable — the default read is account → env → resource."""
+    rollup = demo_estate_client.get("/v1/graph/rollup", headers=VIEWER).json()
+    top_level = rollup.get("top_level") or []
+    containers = [row for row in top_level if row.get("is_container") and row.get("has_children")]
+    root_ids = {row.get("id") for row in containers}
+    assert "organization:northstar-health-ai" in root_ids, root_ids
+
+    root = next(row for row in containers if row["id"] == "organization:northstar-health-ai")
+    assert root["aggregate"]["descendant_count"] >= 2500, root["aggregate"]
+    assert rollup["summary"]["total_nodes_source"] >= 2500, rollup["summary"]
+
+    accounts = demo_estate_client.get(
+        "/v1/graph/rollup",
+        headers=VIEWER,
+        params={"node": "organization:northstar-health-ai"},
+    ).json()
+    account_ids = {row.get("id") for row in accounts.get("children") or []}
+    assert "account:aws:123456789012" in account_ids
+    assert len(account_ids) >= 40, len(account_ids)
+
+    envs = demo_estate_client.get(
+        "/v1/graph/rollup", headers=VIEWER, params={"node": "account:aws:123456789012"}
+    ).json()
+    env_children = {row.get("id"): row for row in envs.get("children") or []}
+    assert "env:aws:123456789012:production" in env_children, list(env_children)
+
+    resources = demo_estate_client.get(
+        "/v1/graph/rollup", headers=VIEWER, params={"node": "env:aws:123456789012:production"}
+    ).json()
+    assert resources.get("children"), resources

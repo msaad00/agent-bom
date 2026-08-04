@@ -90,3 +90,65 @@ def test_does_not_shadow_a_real_scan(store: SQLiteGraphStore) -> None:
     assert scan_ids.isdisjoint({SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID})
     # The fresh scan remains the graph the read path defaults to.
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "aws-scan-2026-07-14"
+
+
+def test_seeded_estate_is_isolated_per_tenant(store: SQLiteGraphStore) -> None:
+    """Two tenants seed the SAME node ids; neither may drop or leak.
+
+    The projected estate reuses its own ``asset_id`` values as graph node ids, so
+    every tenant seeds an identical id set. A dedup key that omitted the tenant
+    would silently drop the second tenant's rows and leave its graph reading as
+    the first tenant's — the isolation defect class the 2026-07-28 audit found in
+    the governance chain.
+    """
+    assert seed_showcase_graph_if_empty(store, tenant_id="tenant-a") is True
+    assert seed_showcase_graph_if_empty(store, tenant_id="tenant-b") is True
+
+    probe = "cloud_resource:aws:iam:role:member-copilot-prod"
+    for tenant in ("tenant-a", "tenant-b"):
+        graph = store.load_graph(tenant_id=tenant, scan_id=SHOWCASE_SCAN_ID)
+        assert len(graph.nodes) > 2500, (tenant, len(graph.nodes))
+        assert probe in graph.nodes, tenant
+        assert graph.tenant_id == tenant
+
+    # A third tenant that was never seeded sees nothing at all.
+    empty = store.load_graph(tenant_id="tenant-c", scan_id=SHOWCASE_SCAN_ID)
+    assert not empty.nodes
+
+
+def test_estate_projection_is_idempotent_on_one_graph() -> None:
+    """Re-projecting must merge, never duplicate.
+
+    ``seed_showcase_graph_if_empty`` projects once per snapshot today, but the
+    projection is a public entry point and a duplicated attack path or edge is
+    invisible until it double-counts on a screen.
+    """
+    from agent_bom.demo_estate.showcase_graph import project_estate_onto_showcase
+
+    graph = UnifiedGraph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    project_estate_onto_showcase(graph, tenant_id=SHOWCASE_TENANT, profile="current")
+    first = (len(graph.nodes), len(graph.edges), len(graph.attack_paths))
+
+    project_estate_onto_showcase(graph, tenant_id=SHOWCASE_TENANT, profile="current")
+    assert (len(graph.nodes), len(graph.edges), len(graph.attack_paths)) == first
+
+
+def test_baseline_snapshot_carries_inventory_without_the_collection_window() -> None:
+    """Baseline predates the evidence window: inventory yes, posture no.
+
+    That is what makes the drift lens show posture *arriving* between the two
+    snapshots rather than relabelling the same set.
+    """
+    from agent_bom.demo_estate.showcase_graph import project_estate_onto_showcase
+
+    baseline = UnifiedGraph(scan_id=SHOWCASE_BASELINE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    summary = project_estate_onto_showcase(baseline, tenant_id=SHOWCASE_TENANT, profile="baseline")
+    assert summary["assets"] == 2068
+    assert summary["findings"] == 0
+    assert summary["chain_edges"] == 0
+    assert not [n for n in baseline.nodes.values() if n.entity_type is EntityType.MISCONFIGURATION]
+
+    current = UnifiedGraph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    current_summary = project_estate_onto_showcase(current, tenant_id=SHOWCASE_TENANT, profile="current")
+    assert current_summary["findings"] == 439
+    assert len(current.nodes) > len(baseline.nodes)

@@ -1,0 +1,213 @@
+diff --git a/src/agent_bom/api/routes/enterprise.py b/src/agent_bom/api/routes/enterprise.py
+index 0b827de4d..37c6041f9 100644
+--- a/src/agent_bom/api/routes/enterprise.py
++++ b/src/agent_bom/api/routes/enterprise.py
+@@ -37,6 +37,7 @@ import re
+ import secrets
+ import time
+ from datetime import datetime, timedelta, timezone
++from functools import partial
+ from pathlib import Path
+ from typing import Annotated, Any, cast
+ from urllib.parse import urlsplit
+@@ -1054,13 +1055,19 @@ async def create_managed_trial_invitation(request: Request, req: ManagedTrialInv
+ 
+     if not managed_trial_invitations_enabled():
+         raise HTTPException(status_code=404, detail="Not found")
++    _require_managed_trial_operator(request)
+     tenant_id = _new_invited_tenant_id(req.organization)
+     try:
+-        issued = issue_managed_trial_invitation(
+-            get_managed_trial_invitation_store(),
+-            email=req.email,
+-            tenant_id=tenant_id,
+-            team_name=req.organization.strip(),
++        # Synchronous psycopg write: keep it off the event loop so an admin
++        # call cannot stall unrelated requests.
++        issued = await anyio.to_thread.run_sync(
++            partial(
++                issue_managed_trial_invitation,
++                get_managed_trial_invitation_store(),
++                email=req.email,
++                tenant_id=tenant_id,
++                team_name=req.organization.strip(),
++            )
+         )
+     except ManagedTrialInvitationConfigurationError as exc:
+         raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+@@ -1127,7 +1134,9 @@ async def get_managed_trial_tenant(request: Request, tenant_id: str) -> dict[str
+     _require_managed_trial_operator(request)
+     target = validate_customer_tenant_id(tenant_id)
+     try:
+-        record = get_tenant_lifecycle_store().get(target)
++        # Blocking store read (psycopg under Postgres) — run it in a worker
++        # thread so the event loop stays free.
++        record = await anyio.to_thread.run_sync(lambda: get_tenant_lifecycle_store().get(target))
+     except TenantLifecycleError as exc:
+         raise HTTPException(status_code=404, detail="Managed-trial tenant not found") from exc
+     return _trial_lifecycle_payload(record)
+@@ -1151,32 +1160,36 @@ async def _transition_managed_trial_tenant(
+     _require_managed_trial_operator(request)
+     target = validate_customer_tenant_id(tenant_id)
+     store = get_tenant_lifecycle_store()
+-    try:
++
++    def _apply() -> tuple[Any, dict[str, Any]]:
++        """Blocking lifecycle mutation — executed in a worker thread."""
+         if action == "suspend":
+-            revoked = revoke_tenant_access(target)
+-            record = store.transition(target, state=TenantLifecycleState.SUSPENDED)
+-        elif action == "resume":
+-            revoked = {}
+-            record = store.transition(target, state=TenantLifecycleState.ACTIVE)
+-        elif action == "revoke":
+-            revoked = revoke_tenant_access(target)
+-            record = store.transition(target, state=TenantLifecycleState.EXPIRED)
+-        elif action == "retry-cleanup":
++            effects = revoke_tenant_access(target)
++            return store.transition(target, state=TenantLifecycleState.SUSPENDED), effects
++        if action == "resume":
++            return store.transition(target, state=TenantLifecycleState.ACTIVE), {}
++        if action == "revoke":
++            effects = revoke_tenant_access(target)
++            return store.transition(target, state=TenantLifecycleState.EXPIRED), effects
++        if action == "retry-cleanup":
+             from agent_bom.api.tenant_lifecycle import delete_tenant_records
+ 
+             current = store.get(target)
+             if current.state is not TenantLifecycleState.EXPIRED:
+                 raise TenantLifecycleError("Cleanup may only run for an expired tenant")
+             deleted = delete_tenant_records(target)
+-            record = store.transition(target, state=TenantLifecycleState.DELETED)
+-            revoked = {"deleted_records": sum(deleted.values())}
+-        else:
+-            raise TenantLifecycleError("Unsupported lifecycle action")
++            return store.transition(target, state=TenantLifecycleState.DELETED), {"deleted_records": sum(deleted.values())}
++        raise TenantLifecycleError("Unsupported lifecycle action")
++
++    try:
++        # Every branch is synchronous psycopg work (key revocation, lifecycle
++        # transition, record deletion) — keep it off the event loop.
++        record, revoked = await anyio.to_thread.run_sync(_apply)
+     except TenantLifecycleError as exc:
+         raise HTTPException(status_code=409, detail=sanitize_error(exc, generic=True)) from exc
+     except Exception as exc:
+         if action == "retry-cleanup":
+-            store.record_cleanup_failure(target, error=sanitize_error(exc, generic=True))
++            await anyio.to_thread.run_sync(partial(store.record_cleanup_failure, target, error=sanitize_error(exc, generic=True)))
+         raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
+     log_action(
+         f"auth.managed_trial_tenant_{action.replace('-', '_')}",
+diff --git a/tests/api/test_managed_trial_invitations.py b/tests/api/test_managed_trial_invitations.py
+index 96cb87adb..c97ec19ca 100644
+--- a/tests/api/test_managed_trial_invitations.py
++++ b/tests/api/test_managed_trial_invitations.py
+@@ -48,7 +48,13 @@ def _reset_stores() -> None:
+     reset_auth_state_for_tests()
+ 
+ 
+-def _request(*, path: str, method: str = "POST", cookies: dict[str, str] | None = None) -> Request:
++def _request(
++    *,
++    path: str,
++    method: str = "POST",
++    cookies: dict[str, str] | None = None,
++    tenant_id: str | None = "default",
++) -> Request:
+     headers: list[tuple[bytes, bytes]] = []
+     if cookies:
+         headers.append((b"cookie", "; ".join(f"{key}={value}" for key, value in cookies.items()).encode()))
+@@ -68,6 +74,8 @@ def _request(*, path: str, method: str = "POST", cookies: dict[str, str] | None
+         }
+     )
+     request.state.api_key_name = "synthetic-operator"
++    if tenant_id is not None:
++        request.state.tenant_id = tenant_id
+     return request
+ 
+ 
+@@ -209,6 +217,84 @@ def test_managed_trial_requires_postgres_when_enabled(monkeypatch: pytest.Monkey
+     assert getattr(unavailable.value, "status_code", None) == 503
+ 
+ 
++def test_managed_trial_invitation_requires_platform_operator_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
++    """A tenant admin outside the operator tenant may not mint trial invitations.
++
++    ``POST /v1/auth/trial-invitations`` creates a *new* tenant, so it belongs to
++    the same reserved operator boundary as the sibling ``trial-tenants/*``
++    lifecycle routes. Role/scope rules alone are not enough: every tenant admin
++    carries the ``admin`` role inside their own tenant.
++    """
++    monkeypatch.setenv("AGENT_BOM_MANAGED_TRIAL_INVITATIONS", "1")
++    monkeypatch.setenv("AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID", "operator-tenant")
++    store = InMemoryManagedTrialInvitationStore()
++    set_managed_trial_invitation_store_for_tests(store)
++    request = _request(path="/v1/auth/trial-invitations", tenant_id="customer-tenant")
++    body = enterprise.ManagedTrialInvitationRequest(email="analyst@example.com", organization="Example Trial")
++
++    with pytest.raises(Exception) as forbidden:
++        asyncio.run(enterprise.create_managed_trial_invitation(request, body))
++
++    assert getattr(forbidden.value, "status_code", None) == 403
++    assert store._records == {}
++
++
++def test_managed_trial_invitation_runs_store_write_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
++    """The synchronous psycopg write must not run on the event-loop thread."""
++    import threading
++
++    from agent_bom.api import managed_trial_invitation as invitation_module
++
++    monkeypatch.setenv("AGENT_BOM_MANAGED_TRIAL_INVITATIONS", "1")
++    set_managed_trial_invitation_store_for_tests(InMemoryManagedTrialInvitationStore())
++    seen: list[threading.Thread] = []
++    original = invitation_module.issue_managed_trial_invitation
++
++    def _recording_issue(*args, **kwargs):
++        seen.append(threading.current_thread())
++        return original(*args, **kwargs)
++
++    monkeypatch.setattr(invitation_module, "issue_managed_trial_invitation", _recording_issue)
++    request = _request(path="/v1/auth/trial-invitations")
++    body = enterprise.ManagedTrialInvitationRequest(email="analyst@example.com", organization="Example Trial")
++
++    asyncio.run(enterprise.create_managed_trial_invitation(request, body))
++
++    assert seen, "issue_managed_trial_invitation was never called"
++    assert seen[0] is not threading.main_thread(), "blocking invitation write ran on the event-loop thread"
++
++
++def test_managed_trial_tenant_read_runs_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
++    """``GET /v1/auth/trial-tenants/{id}`` must offload its blocking store read."""
++    import threading
++
++    from agent_bom.api import tenant_lifecycle as lifecycle_module
++
++    store = InMemoryTenantLifecycleStore()
++    now = datetime.now(timezone.utc)
++    store.create(
++        tenant_id="trial-example-123",
++        trial_ends_at=now + timedelta(days=7),
++        cleanup_after=now + timedelta(days=14),
++    )
++    set_tenant_lifecycle_store_for_tests(store)
++    seen: list[threading.Thread] = []
++    original_get = store.get
++
++    def _recording_get(*args, **kwargs):
++        seen.append(threading.current_thread())
++        return original_get(*args, **kwargs)
++
++    monkeypatch.setattr(store, "get", _recording_get)
++    monkeypatch.setattr(lifecycle_module, "get_tenant_lifecycle_store", lambda: store)
++    request = _request(path="/v1/auth/trial-tenants/trial-example-123", method="GET")
++
++    asyncio.run(enterprise.get_managed_trial_tenant(request, "trial-example-123"))
++
++    assert seen, "tenant lifecycle store.get was never called"
++    assert seen[0] is not threading.main_thread(), "blocking lifecycle read ran on the event-loop thread"
++
++
+ def test_managed_trial_route_access_contract() -> None:
+     from agent_bom.api.middleware import APIKeyMiddleware
+ 

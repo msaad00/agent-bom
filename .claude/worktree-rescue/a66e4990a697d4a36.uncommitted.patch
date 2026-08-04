@@ -1,0 +1,389 @@
+diff --git a/docs/openapi/v1.json b/docs/openapi/v1.json
+index 5ecb78314..86e93d973 100644
+--- a/docs/openapi/v1.json
++++ b/docs/openapi/v1.json
+@@ -12173,7 +12173,7 @@
+     },
+     "/v1/compliance/hub/posture": {
+       "get": {
+-        "description": "Aggregate compliance posture across native scans + hub-ingested findings.\n\nReturns per-framework counts, severity breakdown, and source mix\n(native vs external) so the dashboard /compliance page can render a\nsingle posture story across every entry point.\n\nThe synchronous store aggregates (severity GROUP BY, SQL-side framework\ncounts, tenant total) plus the native-job fold run in a worker thread under\nadaptive backpressure so this O(table) read cannot block the event loop and\nstarve ``/health`` (mirrors ``/v1/findings``); under saturation it sheds with\n``429 + Retry-After``.",
++        "description": "Aggregate compliance posture across native scans + hub-ingested findings.\n\nReturns per-framework counts, severity breakdown, and source mix\n(native vs external) so the dashboard /compliance page can render a\nsingle posture story across every entry point.\n\n**Count basis \u2014 LEDGER, not live posture.** Hub numbers here come from the\nappend-only ingest ledger: every observation ever recorded for the tenant,\nall origins, no read-window, resolved/superseded rows included. The exec\nheadline (`/v1/overview`) and the `/v1/findings` total read current state\ninside the default read-window on the `open` lifecycle basis, so they are\nnormally lower. Both derivations are deliberate; the response carries a\n`count_basis` block naming which population each number covers so the two\ncan never be read as the same figure.\n\nThe synchronous store aggregates (severity GROUP BY, SQL-side framework\ncounts, tenant total) plus the native-job fold run in a worker thread under\nadaptive backpressure so this O(table) read cannot block the event loop and\nstarve ``/health`` (mirrors ``/v1/findings``); under saturation it sheds with\n``429 + Retry-After``.",
+         "operationId": "get_hub_posture_v1_compliance_hub_posture_get",
+         "parameters": [
+           {
+@@ -16083,7 +16083,7 @@
+     },
+     "/v1/findings": {
+       "get": {
+-        "description": "List unified findings aggregated from completed scan results.\n\nThe heavy work \u2014 dedup/sort of in-memory scan findings plus synchronous\nstore reads \u2014 runs in a worker thread so a single deep read cannot block\nthe event loop and freeze unrelated requests (e.g. ``/health``) under load.\n``anyio.to_thread.run_sync`` propagates the current context, and the tenant\nscope is read from ``request.state`` and passed explicitly to the store, so\nbehavior is identical to running inline.\n\nThe read is additionally guarded by adaptive backpressure (the same shared\nprimitive the graph route uses): the in-memory default hub copies and\nre-sorts the whole current-state table per request, so a burst of deep\n``?sort=cvss`` reads at scale can pile up worker threads and starve\n``/health`` and unrelated endpoints. Under genuine saturation the guard\nsheds excess reads with ``429 + Retry-After`` instead of degrading every\nroute. Normal single-reader load never trips it.\n\n``offset`` is a compatibility path capped at 10,000 (a deep ``OFFSET`` scans\nlinearly): past the ceiling the endpoint returns ``400`` and steers callers\nto ``cursor``/``next_cursor``, the unbounded-depth pagination contract shared\nwith ``/v1/compliance/hub/findings``.",
++        "description": "List unified findings aggregated from completed scan results.\n\nThe heavy work \u2014 dedup/sort of in-memory scan findings plus synchronous\nstore reads \u2014 runs in a worker thread so a single deep read cannot block\nthe event loop and freeze unrelated requests (e.g. ``/health``) under load.\n``anyio.to_thread.run_sync`` propagates the current context, and the tenant\nscope is read from ``request.state`` and passed explicitly to the store, so\nbehavior is identical to running inline.\n\nThe read is additionally guarded by adaptive backpressure (the same shared\nprimitive the graph route uses): the in-memory default hub copies and\nre-sorts the whole current-state table per request, so a burst of deep\n``?sort=cvss`` reads at scale can pile up worker threads and starve\n``/health`` and unrelated endpoints. Under genuine saturation the guard\nsheds excess reads with ``429 + Retry-After`` instead of degrading every\nroute. Normal single-reader load never trips it.\n\n``offset`` is a compatibility path capped at 10,000 (a deep ``OFFSET`` scans\nlinearly): past the ceiling the endpoint returns ``400`` and steers callers\nto ``cursor``/``next_cursor``, the unbounded-depth pagination contract shared\nwith ``/v1/compliance/hub/findings``.\n\n``include_facets=true`` adds ``facets`` plus\n``facet_metadata.completeness``. Completeness is **per dimension**, not\nper block: the severity histogram can be served by the store's exact\naggregate while the remaining dimensions come from a row-budgeted walk.\nRead ``exact_dimensions`` / ``bounded_dimensions`` before rendering any\nfacet as a total \u2014 a dimension listed as bounded is a lower bound, and the\nsame statement is repeated in ``warnings``. ``total_exact`` covers\n``total`` itself, which is derived from the same basis as the severity\nfacet so the two can never disagree for a ``?severity=`` request.",
+         "operationId": "list_findings_v1_findings_get",
+         "parameters": [
+           {
+diff --git a/docs/openapi/v1.yaml b/docs/openapi/v1.yaml
+index 574a80c38..e9148bec7 100644
+--- a/docs/openapi/v1.yaml
++++ b/docs/openapi/v1.yaml
+@@ -8229,26 +8229,22 @@ paths:
+       - compliance
+   /v1/compliance/hub/posture:
+     get:
+-      description: 'Aggregate compliance posture across native scans + hub-ingested
+-        findings.
+-
+-
+-        Returns per-framework counts, severity breakdown, and source mix
+-
+-        (native vs external) so the dashboard /compliance page can render a
+-
+-        single posture story across every entry point.
+-
+-
+-        The synchronous store aggregates (severity GROUP BY, SQL-side framework
+-
+-        counts, tenant total) plus the native-job fold run in a worker thread under
+-
+-        adaptive backpressure so this O(table) read cannot block the event loop and
+-
+-        starve ``/health`` (mirrors ``/v1/findings``); under saturation it sheds with
+-
+-        ``429 + Retry-After``.'
++      description: "Aggregate compliance posture across native scans + hub-ingested\
++        \ findings.\n\nReturns per-framework counts, severity breakdown, and source\
++        \ mix\n(native vs external) so the dashboard /compliance page can render a\n\
++        single posture story across every entry point.\n\n**Count basis \u2014 LEDGER,\
++        \ not live posture.** Hub numbers here come from the\nappend-only ingest ledger:\
++        \ every observation ever recorded for the tenant,\nall origins, no read-window,\
++        \ resolved/superseded rows included. The exec\nheadline (`/v1/overview`) and\
++        \ the `/v1/findings` total read current state\ninside the default read-window\
++        \ on the `open` lifecycle basis, so they are\nnormally lower. Both derivations\
++        \ are deliberate; the response carries a\n`count_basis` block naming which\
++        \ population each number covers so the two\ncan never be read as the same\
++        \ figure.\n\nThe synchronous store aggregates (severity GROUP BY, SQL-side\
++        \ framework\ncounts, tenant total) plus the native-job fold run in a worker\
++        \ thread under\nadaptive backpressure so this O(table) read cannot block the\
++        \ event loop and\nstarve ``/health`` (mirrors ``/v1/findings``); under saturation\
++        \ it sheds with\n``429 + Retry-After``."
+       operationId: get_hub_posture_v1_compliance_hub_posture_get
+       parameters:
+       - in: header
+@@ -10730,7 +10726,15 @@ paths:
+         \ it.\n\n``offset`` is a compatibility path capped at 10,000 (a deep ``OFFSET``\
+         \ scans\nlinearly): past the ceiling the endpoint returns ``400`` and steers\
+         \ callers\nto ``cursor``/``next_cursor``, the unbounded-depth pagination contract\
+-        \ shared\nwith ``/v1/compliance/hub/findings``."
++        \ shared\nwith ``/v1/compliance/hub/findings``.\n\n``include_facets=true``\
++        \ adds ``facets`` plus\n``facet_metadata.completeness``. Completeness is **per\
++        \ dimension**, not\nper block: the severity histogram can be served by the\
++        \ store's exact\naggregate while the remaining dimensions come from a row-budgeted\
++        \ walk.\nRead ``exact_dimensions`` / ``bounded_dimensions`` before rendering\
++        \ any\nfacet as a total \u2014 a dimension listed as bounded is a lower bound,\
++        \ and the\nsame statement is repeated in ``warnings``. ``total_exact`` covers\n\
++        ``total`` itself, which is derived from the same basis as the severity\nfacet\
++        \ so the two can never disagree for a ``?severity=`` request."
+       operationId: list_findings_v1_findings_get
+       parameters:
+       - in: query
+diff --git a/docs/skills/compliance-export.md b/docs/skills/compliance-export.md
+index 7fcf5cc34..879324e22 100644
+--- a/docs/skills/compliance-export.md
++++ b/docs/skills/compliance-export.md
+@@ -161,6 +161,22 @@ This checks:
+ - SLSA provenance attestations
+ - SRI (Subresource Integrity) values
+ 
++Each verdict is attached to the package it describes, in every machine-readable
++format — so a release gate can consume it without parsing console output:
++
++| Format | Where the verdict lands |
++| --- | --- |
++| JSON | `integrity_verified`, `provenance_attested`, `provenance_source` on the package object |
++| CycloneDX 1.7 | `component.evidence.identity[]` — the `hash-comparison` and `attestation` techniques (confidence `1.0` verified / `0.0` not substantiated), mirrored as flat `agent-bom:integrity-verified` / `agent-bom:provenance-attested` properties |
++| SPDX 2.3 | `package.externalRefs` under `referenceCategory: OTHER` (`agent-bom-integrity-verified`, `agent-bom-provenance-attested`, `agent-bom-provenance-source`) |
++| SPDX 3.0.1 | package `Annotation` statements (`agent-bom:integrity-verified=…`) |
++| Graph API | `integrity_verified` / `provenance_attested` / `provenance_source` on the package node |
++
++A package that was never checked carries **no** assertion (JSON `null`, no
++CycloneDX evidence, no SPDX ref/annotation). Absent evidence means "not
++verified", never "verification failed" — do not treat a missing field as a
++failing gate.
++
+ ### 8. Scan History for Audit Trail
+ 
+ Save every scan for historical tracking:
+diff --git a/src/agent_bom/graph/builder.py b/src/agent_bom/graph/builder.py
+index 50455a6ba..91f88c018 100644
+--- a/src/agent_bom/graph/builder.py
++++ b/src/agent_bom/graph/builder.py
+@@ -266,6 +266,13 @@ def build_unified_graph_from_report(
+                             "dependency_depth": pkg_dict.get("dependency_depth", 0),
+                             "license": pkg_dict.get("license", ""),
+                             "scorecard_score": pkg_dict.get("scorecard_score"),
++                            # ``--verify-integrity`` verdicts, carried onto the
++                            # node so the graph API answers "was this artifact's
++                            # digest verified / is its build attested?" without a
++                            # second lookup. ``None`` = the check never ran.
++                            "integrity_verified": pkg_dict.get("integrity_verified"),
++                            "provenance_attested": pkg_dict.get("provenance_attested"),
++                            "provenance_source": pkg_dict.get("provenance_source"),
+                             "is_malicious": pkg_dict.get("is_malicious", False),
+                             "stable_id": pkg_dict.get("stable_id", ""),
+                             "environment": agent_env,
+diff --git a/src/agent_bom/output/cyclonedx_fmt.py b/src/agent_bom/output/cyclonedx_fmt.py
+index d5875ca04..3e956c61f 100644
+--- a/src/agent_bom/output/cyclonedx_fmt.py
++++ b/src/agent_bom/output/cyclonedx_fmt.py
+@@ -11,6 +11,7 @@ from __future__ import annotations
+ import json
+ import re
+ from pathlib import Path
++from typing import Any
+ from uuid import uuid4
+ 
+ from agent_bom import __version__
+@@ -271,6 +272,54 @@ def _append_discovery_provenance_properties(properties: list[dict], provenance:
+         )
+ 
+ 
++def _append_supply_chain_attestation_properties(properties: list[dict], pkg: Any) -> None:
++    """Append ``--verify-integrity`` verdicts as flat namespaced properties.
++
++    A consumer gets the verdict without walking the evidence tree. ``None``
++    (the check never ran) emits nothing: absent evidence is not a negative
++    assertion, and a hardcoded ``false`` would read as "verification failed".
++    """
++    if pkg.integrity_verified is not None:
++        properties.append({"name": "agent-bom:integrity-verified", "value": str(pkg.integrity_verified).lower()})
++    if pkg.provenance_attested is not None:
++        properties.append({"name": "agent-bom:provenance-attested", "value": str(pkg.provenance_attested).lower()})
++        if pkg.provenance_attested and pkg.provenance_source:
++            properties.append({"name": "agent-bom:provenance-source", "value": str(pkg.provenance_source)})
++
++
++def _supply_chain_identity_evidence(pkg: Any) -> list[dict]:
++    """Render the verdicts as CycloneDX 1.7 ``evidence.identity`` entries.
++
++    CDX 1.7 has no boolean "integrity verified" slot; the spec-native place for
++    "this component's identity was substantiated by X" is
++    ``componentIdentityEvidence``, whose ``methods[].technique`` enum carries
++    both ``hash-comparison`` (our registry digest/SRI check) and ``attestation``
++    (SLSA / PEP 740 / sum.golang.org). Confidence expresses the verdict: 1.0
++    substantiated, 0.0 attempted and not substantiated. A check that never ran
++    contributes no entry at all.
++    """
++    identities: list[dict] = []
++    if pkg.integrity_verified is not None:
++        confidence = 1.0 if pkg.integrity_verified else 0.0
++        identities.append(
++            {
++                "field": "hash",
++                "confidence": confidence,
++                "methods": [{"technique": "hash-comparison", "confidence": confidence}],
++            }
++        )
++    if pkg.provenance_attested is not None:
++        confidence = 1.0 if pkg.provenance_attested else 0.0
++        method: dict[str, Any] = {"technique": "attestation", "confidence": confidence}
++        if pkg.provenance_attested and pkg.provenance_source:
++            method["value"] = str(pkg.provenance_source)
++        identity: dict[str, Any] = {"field": "purl", "confidence": confidence, "methods": [method]}
++        if pkg.purl:
++            identity["concludedValue"] = pkg.purl
++        identities.append(identity)
++    return identities
++
++
+ # ── ML BOM extension builders ────────────────────────────────────────────────
+ 
+ 
+@@ -624,6 +673,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
+                     {"name": "agent-bom:floating-reference", "value": str(pkg.floating_reference).lower()},
+                 ]
+                 _append_discovery_provenance_properties(pkg_properties, package_provenance)
++                _append_supply_chain_attestation_properties(pkg_properties, pkg)
+                 if pkg.floating_reference_reason:
+                     pkg_properties.append({"name": "agent-bom:floating-reference-reason", "value": pkg.floating_reference_reason})
+                 if pkg.parent_package:
+@@ -662,6 +712,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
+                 hashes = cyclonedx_hashes(pkg.checksums)
+                 if hashes:
+                     pkg_component["hashes"] = hashes
++                identity_evidence = _supply_chain_identity_evidence(pkg)
++                if identity_evidence:
++                    pkg_component["evidence"] = {"identity": identity_evidence}
+                 if pkg.supplier:
+                     pkg_component["supplier"] = {"name": pkg.supplier}
+                 if pkg.author:
+diff --git a/src/agent_bom/output/json_fmt.py b/src/agent_bom/output/json_fmt.py
+index 805bd7a2a..8b18980bd 100644
+--- a/src/agent_bom/output/json_fmt.py
++++ b/src/agent_bom/output/json_fmt.py
+@@ -524,6 +524,10 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
+                         "floating_reference_reason": pkg.floating_reference_reason,
+                         "is_malicious": pkg.is_malicious,
+                         "malicious_reason": pkg.malicious_reason,
++                        # ``--verify-integrity`` verdicts; ``None`` = never checked.
++                        "integrity_verified": pkg.integrity_verified,
++                        "provenance_attested": pkg.provenance_attested,
++                        "provenance_source": pkg.provenance_source,
+                         "version_provenance": package_version_provenance(pkg, inherited=agent_provenance),
+                         "discovery_provenance": package_discovery_provenance(pkg, inherited=agent_provenance),
+                         "occurrence_count": len(pkg.occurrences),
+@@ -1176,6 +1180,12 @@ def to_json(report: AIBOMReport) -> dict:
+                                 "download_url": pkg.download_url,
+                                 "copyright_text": pkg.copyright_text,
+                                 "deps_dev_resolved": pkg.deps_dev_resolved,
++                                # ``--verify-integrity`` verdicts. ``None`` means the
++                                # check never ran — an unverified package is unknown,
++                                # not failed, and consumers must be able to tell.
++                                "integrity_verified": pkg.integrity_verified,
++                                "provenance_attested": pkg.provenance_attested,
++                                "provenance_source": pkg.provenance_source,
+                                 "scorecard_score": pkg.scorecard_score,
+                                 "scorecard_checks": pkg.scorecard_checks or None,
+                                 "scorecard_repo": pkg.scorecard_repo,
+diff --git a/src/agent_bom/output/spdx2_fmt.py b/src/agent_bom/output/spdx2_fmt.py
+index e34cd68b5..59808f971 100644
+--- a/src/agent_bom/output/spdx2_fmt.py
++++ b/src/agent_bom/output/spdx2_fmt.py
+@@ -46,6 +46,49 @@ def _license_field(value: str | None) -> str:
+     return value or _NOASSERTION
+ 
+ 
++def _attestation_external_refs(pkg: Any) -> list[dict[str, str]]:
++    """Render ``--verify-integrity`` verdicts as SPDX 2.3 external references.
++
++    SPDX 2.3 has no native integrity-verdict or attestation field. Its
++    machine-readable extension point is ``externalRefs``: category ``OTHER``
++    with a tool-namespaced ``referenceType`` and a space-free
++    ``referenceLocator`` (both required by the spec, alongside an optional
++    ``comment``). A check that never ran emits nothing — ``NOASSERTION`` by
++    omission rather than a fabricated ``false``.
++    """
++    refs: list[dict[str, str]] = []
++    if pkg.integrity_verified is not None:
++        refs.append(
++            {
++                "referenceCategory": "OTHER",
++                "referenceType": "agent-bom-integrity-verified",
++                "referenceLocator": str(pkg.integrity_verified).lower(),
++                "comment": "Artifact digest compared against the registry-published SHA-256/SRI value.",
++            }
++        )
++    if pkg.provenance_attested is not None:
++        refs.append(
++            {
++                "referenceCategory": "OTHER",
++                "referenceType": "agent-bom-provenance-attested",
++                "referenceLocator": str(pkg.provenance_attested).lower(),
++                "comment": "Build provenance attestation (SLSA / PEP 740 / sum.golang.org) lookup result.",
++            }
++        )
++        if pkg.provenance_attested and pkg.provenance_source:
++            refs.append(
++                {
++                    "referenceCategory": "OTHER",
++                    "referenceType": "agent-bom-provenance-source",
++                    # Locators must not contain spaces; the source keys are
++                    # already single tokens (``npm_slsa``, ``pypi_pep740``, …).
++                    "referenceLocator": str(pkg.provenance_source).strip().replace(" ", "_"),
++                    "comment": "Attestation service that supplied the provenance statement.",
++                }
++            )
++    return refs
++
++
+ def _vuln_annotations(pkg: Any, created: str) -> list[dict[str, str]]:
+     """Encode each vulnerability as an SPDX annotation on the package."""
+     annotations: list[dict[str, str]] = []
+@@ -162,14 +205,18 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
+                     checksums = spdx2_checksums(pkg.checksums)
+                     if checksums:
+                         pkg_entry["checksums"] = checksums
++                    external_refs: list[dict[str, str]] = []
+                     if pkg.purl:
+-                        pkg_entry["externalRefs"] = [
++                        external_refs.append(
+                             {
+                                 "referenceCategory": "PACKAGE-MANAGER",
+                                 "referenceType": "purl",
+                                 "referenceLocator": pkg.purl,
+                             }
+-                        ]
++                        )
++                    external_refs.extend(_attestation_external_refs(pkg))
++                    if external_refs:
++                        pkg_entry["externalRefs"] = external_refs
+                     annotations = _vuln_annotations(pkg, created)
+                     if pkg.is_malicious:
+                         # SPDX 2.x has no malicious-package object; surface the
+diff --git a/src/agent_bom/output/spdx_fmt.py b/src/agent_bom/output/spdx_fmt.py
+index c2683ac36..7f769e219 100644
+--- a/src/agent_bom/output/spdx_fmt.py
++++ b/src/agent_bom/output/spdx_fmt.py
+@@ -187,6 +187,7 @@ def to_spdx(report: AIBOMReport) -> dict:
+                                 "statement": f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}",
+                             }
+                         )
++                    pkg_annotations.extend(_attestation_annotations(pkg, pkg_id))
+                     pkg_element["annotation"] = pkg_annotations
+                     verified_using = spdx3_verified_using(pkg.checksums)
+                     if verified_using:
+@@ -307,6 +308,41 @@ def export_spdx(report: AIBOMReport, output_path: str) -> None:
+     Path(output_path).write_text(json.dumps(data, indent=2))
+ 
+ 
++def _attestation_annotations(pkg: Any, subject: str) -> list[dict[str, object]]:
++    """Encode ``--verify-integrity`` verdicts as SPDX 3.0 annotations.
++
++    SPDX 3.0.1 Core carries ``verifiedUsing`` (an ``IntegrityMethod`` — the
++    artifact's own hash, already emitted from ``checksums``) but has no field
++    for the *verdict* of comparing that hash against the registry, nor for
++    "a build-provenance attestation exists". ``Annotation`` is this emitter's
++    established slot for such package facts (see the malicious flag above), so
++    the verdicts land there. A check that never ran emits no annotation.
++    """
++    annotations: list[dict[str, object]] = []
++    if pkg.integrity_verified is not None:
++        annotations.append(
++            {
++                "type": "Annotation",
++                "annotationType": "other",
++                "subject": subject,
++                "statement": f"agent-bom:integrity-verified={str(pkg.integrity_verified).lower()}",
++            }
++        )
++    if pkg.provenance_attested is not None:
++        statement = f"agent-bom:provenance-attested={str(pkg.provenance_attested).lower()}"
++        if pkg.provenance_attested and pkg.provenance_source:
++            statement += f" source={pkg.provenance_source}"
++        annotations.append(
++            {
++                "type": "Annotation",
++                "annotationType": "other",
++                "subject": subject,
++                "statement": statement,
++            }
++        )
++    return annotations
++
++
+ def _vulnerability_annotations(vuln: Any, subject: str, *, compliance_tags: list[str] | None = None) -> list[dict[str, object]]:
+     """Encode non-core vulnerability enrichments as SPDX annotations."""
+     statements: list[str] = []
+diff --git a/tests/test_finding_facet_total_agreement.py b/tests/test_finding_facet_total_agreement.py
+index a54fe7400..830e437cc 100644
+--- a/tests/test_finding_facet_total_agreement.py
++++ b/tests/test_finding_facet_total_agreement.py
+@@ -66,10 +66,7 @@ def _seed(client: TestClient, count: int = _ROWS) -> None:
+     resp = client.post(
+         "/v1/findings/bulk",
+         json={
+-            "findings": [
+-                {"id": f"facet-crit-{index}", "severity": "critical", "title": f"critical row {index}"}
+-                for index in range(count)
+-            ],
++            "findings": [{"id": f"facet-crit-{index}", "severity": "critical", "title": f"critical row {index}"} for index in range(count)],
+             "source": "facet-test",
+         },
+     )

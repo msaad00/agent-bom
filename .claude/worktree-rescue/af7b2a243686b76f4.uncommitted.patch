@@ -1,0 +1,134 @@
+diff --git a/ui/app/graph/graph-page-client.tsx b/ui/app/graph/graph-page-client.tsx
+index 179dc2466..bead9404e 100644
+--- a/ui/app/graph/graph-page-client.tsx
++++ b/ui/app/graph/graph-page-client.tsx
+@@ -120,6 +120,11 @@ import {
+   type UnifiedGraphResponse,
+ } from "@/lib/api";
+ import type { GraphDiffNode, GraphRollupResponse } from "@/lib/api-types";
++import {
++  graphScopeNodeLabel,
++  graphTruncationReason,
++  queryResponseToGraphResponse,
++} from "@/lib/graph-query-response";
+ import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
+ import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
+ import {
+@@ -437,6 +442,14 @@ function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
+       limit: 0,
+       has_more: false,
+     },
++    completeness: {
++      status: "complete",
++      complete: true,
++      sampled: false,
++      truncated: false,
++      returned: 0,
++      total: 0,
++    },
+   };
+ }
+ 
+@@ -644,27 +657,6 @@ type InvestigationMode = {
+   edgeCount: number;
+ };
+ 
+-function queryResponseToGraphResponse(
+-  response: GraphQueryResponse,
+-): UnifiedGraphResponse {
+-  return {
+-    scan_id: response.scan_id,
+-    tenant_id: response.tenant_id,
+-    created_at: response.created_at,
+-    nodes: response.nodes,
+-    edges: response.edges,
+-    attack_paths: response.attack_paths,
+-    interaction_risks: response.interaction_risks,
+-    stats: response.stats,
+-    pagination: {
+-      total: response.nodes.length,
+-      offset: 0,
+-      limit: response.nodes.length,
+-      has_more: false,
+-    },
+-  };
+-}
+-
+ /**
+  * Wrapper — supplies the xyflow store at the page root so `useLodBand`
+  * (#2257) can read `viewport.zoom` from anywhere inside the page, not
+@@ -2343,9 +2335,12 @@ function GraphPageInner() {
+   );
+ 
+   // No numbered pagination — the full current-scan graph loads at once (see the
+-  // fetch effect). `graphTruncated` only fires when a scan exceeds the render
+-  // budget, in which case the overview aggregates rather than paging.
+-  const graphTruncated = graphData?.pagination.has_more === true;
++  // fetch effect). `graphTruncated` fires when the scan exceeds the render
++  // budget (the overview aggregates rather than paging) or when the server
++  // itself returned a bounded result, e.g. a traversal that hit its budget.
++  const graphTruncated =
++    graphData?.completeness?.truncated === true ||
++    graphData?.pagination.has_more === true;
+   if (loadingSnapshots) {
+     return (
+       <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]">
+@@ -2669,7 +2664,10 @@ function GraphPageInner() {
+           )}
+           {graphData && graphData.pagination.total > 0 && (
+             <span>
+-              {graphData.pagination.total.toLocaleString()} nodes in graph
++              {graphScopeNodeLabel(
++                graphData.pagination.total,
++                activeSnapshot?.node_count,
++              )}
+             </span>
+           )}
+         </div>
+@@ -2682,8 +2680,15 @@ function GraphPageInner() {
+             evidencedEdges={relationshipEvidenceCount}
+             totalEdges={graphData?.edges.length ?? null}
+             completeness={
++              // The server's verdict is authoritative. The fallback only runs
++              // when a response predates the `completeness` contract, and it
++              // keys off `has_more` as well as the node/total delta — keying
++              // off the delta alone made every response tautologically
++              // "complete" once the total was derived from the node count.
+               graphData?.completeness?.status ??
+-              (graphData && graphData.nodes.length < graphData.pagination.total
++              (graphData &&
++              (graphData.pagination.has_more ||
++                graphData.nodes.length < graphData.pagination.total)
+                 ? "truncated"
+                 : graphData
+                   ? "complete"
+@@ -3309,7 +3314,10 @@ function GraphPageInner() {
+                   sampled: false,
+                   returned: displayNodes.length,
+                   total: graphData?.pagination.total ?? GRAPH_FULL_FETCH_LIMIT,
+-                  reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes. Dense neighborhoods are aggregated — filter or focus rather than treating this canvas as the full estate.`,
++                  reason: graphTruncationReason(
++                    graphData?.completeness,
++                    GRAPH_FULL_FETCH_LIMIT,
++                  ),
+                 }}
+                 visibleCount={displayNodes.length}
+                 omittedCount={Math.max(
+diff --git a/ui/lib/api-types.ts b/ui/lib/api-types.ts
+index 112bb3d59..9016b8b6f 100644
+--- a/ui/lib/api-types.ts
++++ b/ui/lib/api-types.ts
+@@ -422,6 +422,13 @@ export interface GraphQueryResponse extends UnifiedGraphData {
+   missing_roots: string[];
+   depth_by_node: Record<string, number>;
+   filters: Record<string, unknown>;
++  /**
++   * Server-authored coverage verdict for the traversal (POST /v1/graph/query
++   * emits it alongside `truncated`). Clients must surface it verbatim rather
++   * than re-deriving one from the returned page size — a client-side
++   * recomputation can only ever report "complete".
++   */
++  completeness?: GraphCompleteness | undefined;
+ }
+ 
+ export interface GraphImpactResponse {

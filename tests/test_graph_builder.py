@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from agent_bom.graph import EntityType, RelationshipType
-from agent_bom.graph.builder import build_unified_graph_from_report
+from agent_bom.graph import EntityType, NodeDimensions, RelationshipType, UnifiedGraph, UnifiedNode
+from agent_bom.graph.builder import _resolve_cloud_resource_node_id, build_unified_graph_from_report
 from agent_bom.graph.rollup import rollup_view
 
 
@@ -830,6 +830,67 @@ class TestCISMisconfigNodes:
         account = g.get_node("account:aws:123456789012")
         assert account is not None
         assert account.attributes["cloud_provider"] == "aws"
+
+    def test_cis_and_inventory_share_one_canonical_cloud_resource(self):
+        """A finding, hierarchy, and CNAPP overlay must address the same asset."""
+        report = _minimal_report()
+        report["cloud_inventory"] = {
+            "provider": "aws",
+            "status": "ok",
+            "account_id": "123456789012",
+            "region": "us-east-1",
+            "buckets": [
+                {
+                    "name": "prod-secrets",
+                    "arn": "arn:aws:s3:::prod-secrets",
+                    "publicly_accessible": True,
+                }
+            ],
+        }
+        report["cis_benchmark"] = {
+            "provider": "aws",
+            "account_id": "123456789012",
+            "checks": [
+                {
+                    "check_id": "2.1",
+                    "title": "Block public bucket access",
+                    "status": "FAIL",
+                    "severity": "high",
+                    "resource_ids": ["bucket/prod-secrets"],
+                }
+            ],
+        }
+
+        graph = build_unified_graph_from_report(report)
+        canonical_id = "cloud_resource:aws:s3:bucket:prod-secrets"
+        thin_id = "cloud_resource:aws:bucket/prod-secrets"
+
+        assert canonical_id in graph.nodes
+        assert thin_id not in graph.nodes
+        assert graph.has_edge("misconfig:cis_benchmark:2.1", canonical_id)
+        assert graph.has_edge("account:aws:123456789012", canonical_id)
+        assert f"data_store:{canonical_id}" in graph.nodes
+
+    def test_cloud_resource_alias_resolution_fails_closed_on_ambiguous_names(self):
+        graph = UnifiedGraph()
+        for resource_type in ("bucket", "database"):
+            graph.add_node(
+                UnifiedNode(
+                    id=f"cloud_resource:aws:{resource_type}:prod",
+                    entity_type=EntityType.CLOUD_RESOURCE,
+                    label=f"{resource_type}: prod",
+                    attributes={
+                        "cloud_provider": "aws",
+                        "resource_id": f"arn:aws:{resource_type}:::prod",
+                        "resource_name": "prod",
+                        "resource_type": resource_type,
+                    },
+                    dimensions=NodeDimensions(cloud_provider="aws"),
+                )
+            )
+
+        assert _resolve_cloud_resource_node_id(graph, "aws", "prod") is None
+        assert _resolve_cloud_resource_node_id(graph, "aws", "bucket/prod") == "cloud_resource:aws:bucket:prod"
 
 
 class TestSASTNodes:

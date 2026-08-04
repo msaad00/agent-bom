@@ -60,6 +60,15 @@ _JAVA_CALL_SKIP = frozenset(
 )
 _JAVA_ADD_TOOL_RE = re.compile(r'\.addTool\s*\(\s*"(?P<name>[^"]+)"', re.IGNORECASE)
 _JAVA_TOOL_ANNOTATION_RE = re.compile(r"@Tool\b")
+# io.modelcontextprotocol's own server API keeps the tool name in the Tool
+# builder, and ``syncServer.addTool(spec)`` then takes the built specification
+# rather than a name string. Anchoring on ``Tool.builder`` keeps ordinary
+# builders such as ``Report.builder("quarterly", …)`` out.
+_JAVA_TOOL_BUILDER_RE = re.compile(r"""\bTool\s*\.\s*builder\s*\(\s*"(?P<name>[^"]+)\"""")
+# The call head alone, for scanning comment/string-masked source where the name
+# literal has been blanked out; the name is then read from the real source.
+_JAVA_TOOL_BUILDER_START_RE = re.compile(r"""\bTool\s*\.\s*builder\s*\(\s*""")
+_JAVA_METHOD_REF_RE = re.compile(r"::\s*(?P<method>[a-z]\w*)")
 _JAVA_LOCAL_BINDING_RE = re.compile(r"\b(?P<type>[\w.]+)\s+(?P<var>[a-z]\w*)\s*=\s*new\s+(?P<ctor>[\w.]+)")
 _JAVA_FRAMEWORK_HINTS: dict[str, str] = {
     "modelcontextprotocol": "MCP",
@@ -247,6 +256,38 @@ def _collect_java_tool_registrations(
                 handler_name = _java_method_key(class_name, ref_match.group("method"))
         if handler_name is None or handler_name not in methods:
             continue
+        registrations.append(
+            _JavaToolRegistration(
+                tool_name=tool_name,
+                handler_name=handler_name,
+                line_number=_line_number_from_index(source, match.start()),
+                file_path=rel_path,
+                class_name=class_name,
+                import_bindings=dict(bindings),
+            )
+        )
+
+    # Scan masked source so a commented-out builder is not a tool; the name is
+    # then read from the real source at the same offset.
+    masked = mask_line_comments_and_strings(source)
+    for match in _JAVA_TOOL_BUILDER_START_RE.finditer(masked):
+        name_match = _JAVA_TOOL_BUILDER_RE.match(source, match.start())
+        tool_name = name_match.group("name").strip() if name_match else ""
+        if not tool_name:
+            continue
+        key = (tool_name, match.start())
+        if key in seen:
+            continue
+        seen.add(key)
+        # The call handler is usually an inline lambda; a method reference in the
+        # surrounding specification is used when one is present.
+        window = source[match.start() : match.start() + 400]
+        ref_match = _JAVA_METHOD_REF_RE.search(window)
+        handler_name = f"tool:{tool_name}"
+        if ref_match:
+            candidate = _java_method_key(class_name, ref_match.group("method"))
+            if candidate in methods:
+                handler_name = candidate
         registrations.append(
             _JavaToolRegistration(
                 tool_name=tool_name,

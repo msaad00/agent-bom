@@ -756,16 +756,16 @@ class MCPServer:
     @property
     def has_credentials(self) -> bool:
         """Check if env vars suggest credentials are present."""
-        from agent_bom.constants import SENSITIVE_PATTERNS
+        from agent_bom.constants import is_credential_key
 
-        return any(any(pat in k.lower() for pat in SENSITIVE_PATTERNS) for k in self.env)
+        return any(is_credential_key(key) for key in self.env)
 
     @property
     def credential_names(self) -> list[str]:
         """Return names of env vars that look like credentials."""
-        from agent_bom.constants import SENSITIVE_PATTERNS
+        from agent_bom.constants import is_credential_key
 
-        return [k for k in self.env if any(pat in k.lower() for pat in SENSITIVE_PATTERNS)]
+        return [key for key in self.env if is_credential_key(key)]
 
     @property
     def is_mcp_surface(self) -> bool:

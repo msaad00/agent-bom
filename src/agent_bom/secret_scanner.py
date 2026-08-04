@@ -267,6 +267,11 @@ class SecretScanResult:
             "critical": self.critical_count,
             "by_type": _group_by(self.findings, "secret_type"),
             "by_category": _group_by(self.findings, "category"),
+            # A refused path or a file-capped walk both report ``total: 0``.
+            # Without the warnings that reads as "this tree holds no secrets"
+            # instead of "we did not finish looking".
+            "warnings": list(self.warnings),
+            "complete": not self.warnings,
         }
 
 

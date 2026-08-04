@@ -65,6 +65,14 @@ _RUBY_ADD_TOOL_RE = re.compile(
     r"""\.(?:add_tool|register_tool)\s*\(\s*['"](?P<name>[^'"]+)['"]""",
     re.IGNORECASE,
 )
+# The mcp gem registers with a keyword name and a block body, so neither the
+# verb nor the positional-string shape above matches it.
+_RUBY_DEFINE_TOOL_RE = re.compile(
+    r"""\.define_tool\s*\(\s*name:\s*['"](?P<name>[^'"]+)['"]""",
+)
+# The call head alone, for scanning comment/string-masked source where the name
+# literal has been blanked out; the name is then read from the real source.
+_RUBY_DEFINE_TOOL_START_RE = re.compile(r"""\.define_tool\s*\(\s*name:\s*""")
 _RUBY_FRAMEWORK_HINTS: dict[str, str] = {
     "modelcontextprotocol": "MCP",
     "mcp": "MCP",
@@ -242,6 +250,29 @@ def _collect_ruby_tool_registrations(
             _RubyToolRegistration(
                 tool_name=tool_name,
                 handler_name=handler_name,
+                line_number=_line_number_from_index(source, match.start()),
+                file_path=rel_path,
+                class_name=class_name,
+                import_bindings=dict(bindings),
+            )
+        )
+
+    # The block body is the handler, so there is no method reference to resolve.
+    # Matching on masked source keeps a commented-out registration out.
+    masked = mask_line_comments_and_strings(source, hash_comments=True)
+    for match in _RUBY_DEFINE_TOOL_START_RE.finditer(masked):
+        name_match = _RUBY_DEFINE_TOOL_RE.match(source, match.start())
+        tool_name = name_match.group("name").strip() if name_match else ""
+        if not tool_name:
+            continue
+        key = (tool_name, match.start())
+        if key in seen:
+            continue
+        seen.add(key)
+        registrations.append(
+            _RubyToolRegistration(
+                tool_name=tool_name,
+                handler_name=f"tool:{tool_name}",
                 line_number=_line_number_from_index(source, match.start()),
                 file_path=rel_path,
                 class_name=class_name,

@@ -107,9 +107,9 @@ def _credential_names_from_server(server: dict[str, Any]) -> list[str]:
     env = server.get("env")
     if not isinstance(env, dict):
         return []
-    from agent_bom.constants import SENSITIVE_PATTERNS
+    from agent_bom.constants import is_credential_key
 
-    return sorted({key for key in env if any(pattern in key.lower() for pattern in SENSITIVE_PATTERNS)})
+    return sorted({key for key in env if is_credential_key(key)})
 
 
 def _tool_names_from_server(server: dict[str, Any]) -> list[str]:

@@ -83,6 +83,53 @@ def test_glama_listing_accepts_exact_public_api_tool_inventory(monkeypatch, caps
     assert payload["expected_tool_count"] == 77
 
 
+def test_glama_listing_accepts_exact_public_schema_when_directory_api_is_empty(monkeypatch, capsys):
+    """The rendered Schema inventory is evidence even when the directory API lags."""
+    script = _load_script("check_glama_listing.py")
+    current_page = "v0.98.3 MCP server mode exposes 77 MCP tools"
+    schema_page = "".join(
+        f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>'
+        for index in range(77)
+    )
+
+    def fetch(url, _timeout):
+        return schema_page if url.endswith("/schema") else current_page
+
+    monkeypatch.setattr(script, "_fetch", fetch)
+    monkeypatch.setattr(script, "_fetch_json", lambda _url, _timeout: {"tools": []})
+
+    assert script.main(["--expected", "0.98.3", "--expected-tool-count", "77", "--json", "--retries", "1"]) == 0
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "fresh"
+    assert payload["tool_count"] == 77
+    assert payload["inventory_source"] == "schema"
+
+
+def test_glama_listing_checks_visible_copy_not_hidden_stale_metadata(monkeypatch, capsys):
+    """Serialized metadata must not masquerade as user-visible stale copy."""
+    script = _load_script("check_glama_listing.py")
+    current_page = """
+    <html>
+      <head><meta name="description" content="18 tools for CVE scanning"></head>
+      <body>
+        <main>v0.98.3 MCP server mode exposes 77 MCP tools</main>
+        <script>window.__data = "18 tools for CVE scanning"</script>
+      </body>
+    </html>
+    """
+
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: current_page)
+    monkeypatch.setattr(
+        script,
+        "_fetch_json",
+        lambda _url, _timeout: {"tools": [{"name": f"tool_{index}"} for index in range(77)]},
+    )
+
+    assert script.main(["--expected", "0.98.3", "--expected-tool-count", "77", "--json", "--retries", "1"]) == 0
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["status"] == "fresh"
+
+
 def test_glama_api_failure_is_unreachable_and_resets_previous_retry_count(monkeypatch, capsys):
     """A later API outage must not retain an earlier attempt's observed count."""
     script = _load_script("check_glama_listing.py")

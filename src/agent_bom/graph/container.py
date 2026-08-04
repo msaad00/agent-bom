@@ -886,6 +886,11 @@ class UnifiedGraph:
             "interaction_risks": [r.to_dict() for r in self.interaction_risks],
             "analysis_status": analysis_status_map_to_dict(self.analysis_status),
             "stats": self.stats(),
+            # Whether this payload is the whole snapshot or a bounded slice of
+            # it. A budget-trimmed graph that serializes without this reads to
+            # every consumer as the complete estate — an empty blast radius
+            # becomes indistinguishable from one we stopped walking.
+            "completeness": self.completeness.to_dict(),
         }
 
     @classmethod
@@ -896,6 +901,14 @@ class UnifiedGraph:
             created_at=data.get("created_at", ""),
             analysis_status=analysis_status_map_from_dict(data.get("analysis_status", {})),
         )
+        completeness = data.get("completeness")
+        if isinstance(completeness, dict):
+            graph.completeness = GraphCompleteness(
+                truncated=bool(completeness.get("truncated", False)),
+                total_nodes=int(completeness.get("total", 0) or 0),
+                returned_nodes=int(completeness.get("returned", 0) or 0),
+                reason=str(completeness.get("reason", "") or ""),
+            )
         for nd in data.get("nodes", []):
             graph.add_node(UnifiedNode.from_dict(nd))
         for ed in data.get("edges", []):

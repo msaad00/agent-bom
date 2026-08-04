@@ -820,7 +820,9 @@ def _collect_tool_registrations(root: TreeSitterNode, source: bytes, analysis: J
         if node.type != "call_expression":
             continue
         function_name = _expression_name(node.child_by_field_name("function"), source)
-        if function_name.split(".")[-1] != "tool":
+        # ``registerTool`` is the current @modelcontextprotocol/sdk API; ``tool``
+        # is the earlier one that published servers still use.
+        if function_name.split(".")[-1] not in {"tool", "registerTool"}:
             continue
 
         args_node = node.child_by_field_name("arguments")

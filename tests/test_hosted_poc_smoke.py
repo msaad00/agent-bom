@@ -31,7 +31,7 @@ def test_hosted_poc_smoke_hits_core_customer_zero_surfaces(tmp_path: Path) -> No
         {
             "PATH": f"{tmp_path}:{env['PATH']}",
             "CURL_CALLS": str(calls),
-            "AGENT_BOM_SMOKE_URL": "https://demo.agent-bom.com",
+            "AGENT_BOM_SMOKE_URL": "https://agent-bom.example.com",
             "AGENT_BOM_SMOKE_API_KEY": "abom_test",
             "AGENT_BOM_SMOKE_CONNECTION_ID": "conn-123",
             "AGENT_BOM_SMOKE_RUN_CONNECTION_SCAN": "1",

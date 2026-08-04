@@ -496,6 +496,7 @@ def test_no_surface_claims_compliance_for_the_zero_finding_estate() -> None:
     prose = " ".join(str(v) for v in narrative.values()).lower()
     assert "fully compliant" not in prose
     assert "100%" not in prose
+    assert "not a determination of compliance" in narrative["claim_boundary"].lower()
 
     # 7: the HTML report an auditor receives.
     html = _compliance_section([])

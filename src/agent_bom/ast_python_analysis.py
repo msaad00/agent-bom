@@ -127,6 +127,20 @@ _GUARDRAIL_IMPORTS = {
     "anthropic.types": ("Anthropic Safety", "content_filter"),
 }
 
+
+def _import_matches_module(module: str, target: str) -> bool:
+    """True when *module* is *target* or a submodule of it.
+
+    Whole dotted modules only. A substring test used to accept
+    ``nemoguardrails`` for the ``guardrails`` entry — NVIDIA's documented
+    ``from nemoguardrails import LLMRails`` then produced two guardrails, the
+    extra one credited to the wrong vendor — and accepted any project-local
+    module whose name merely contained a vendor's, such as
+    ``app.guardrails_config``.
+    """
+    return module == target or module.startswith(f"{target}.")
+
+
 _DYNAMIC_CODE_CALLS = {"eval", "exec", "compile", "__import__"}
 _SUBPROCESS_CALLS = {
     "os.system",
@@ -776,26 +790,24 @@ def _analyze_file(
     # Pass 1: Detect frameworks and guardrails from imports
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            module = ""
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    module = alias.name
-            elif node.module:
-                module = node.module
+            # ``import a, b`` binds every alias; keeping only the last one made
+            # detection depend on where the guardrail sat in the list.
+            modules = [alias.name for alias in node.names] if isinstance(node, ast.Import) else [node.module or ""]
 
             # Check guardrail imports
-            for guard_module, (name, gtype) in _GUARDRAIL_IMPORTS.items():
-                if guard_module in module:
-                    guardrails.append(
-                        DetectedGuardrail(
-                            name=name,
-                            guardrail_type=gtype,
-                            file_path=rel_path,
-                            line_number=node.lineno,
-                            framework=name,
-                            description=f"Imported from {module}",
+            for module in modules:
+                for guard_module, (name, gtype) in _GUARDRAIL_IMPORTS.items():
+                    if _import_matches_module(module, guard_module):
+                        guardrails.append(
+                            DetectedGuardrail(
+                                name=name,
+                                guardrail_type=gtype,
+                                file_path=rel_path,
+                                line_number=node.lineno,
+                                framework=name,
+                                description=f"Imported from {module}",
+                            )
                         )
-                    )
 
     # Pass 2: Extract prompts from assignments and function calls
     for node in ast.walk(tree):

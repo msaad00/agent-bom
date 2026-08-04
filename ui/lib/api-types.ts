@@ -3158,7 +3158,23 @@ export interface ProxyAlert {
 
 export interface ProxyAlertsResponse {
   alerts: ProxyAlert[];
+  /** Alerts on this page (bounded by `filters.limit`). */
   count: number;
+  /** Alerts matching the filters across the whole tenant, before paging. */
+  matched_total: number;
+  /**
+   * Whole-tenant alert summary, on the same basis as `/v1/proxy/metrics`.
+   * Deliberately NOT scoped to the page or the filters, so the histogram
+   * beside a filtered page never reads as the entire estate.
+   */
+  summary: {
+    total_alerts: number;
+    blocked_alerts: number;
+    alerts_by_severity: Record<string, number>;
+    alerts_by_detector: Record<string, number>;
+    latest_alert_at: string;
+    recent_alerts: { ts: string; detector: string; severity: string; message: string }[];
+  };
   filters: { severity: string | null; detector: string | null; limit: number };
 }
 

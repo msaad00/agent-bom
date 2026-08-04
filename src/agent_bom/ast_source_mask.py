@@ -44,8 +44,30 @@ def _consume_heredoc(source: str, start: int) -> tuple[str, int] | None:
     return _mask_preserving_newlines(source[start:end]), end
 
 
+def _closes_on_same_line(source: str, start: int, quote: str) -> bool:
+    """Return whether ``quote`` opened at ``start`` is closed before the newline."""
+    i = start + 1
+    length = len(source)
+    while i < length:
+        char = source[i]
+        if char == "\n":
+            return False
+        if char == "\\":
+            i += 2
+            continue
+        if char == quote:
+            return True
+        i += 1
+    return False
+
+
 def mask_line_comments_and_strings(
-    source: str, *, hash_comments: bool = False, heredoc: bool = False, backtick_strings: bool = False
+    source: str,
+    *,
+    hash_comments: bool = False,
+    heredoc: bool = False,
+    backtick_strings: bool = False,
+    single_line_quotes: bool = False,
 ) -> str:
     """Return ``source`` with comments and quoted literals replaced by spaces.
 
@@ -58,6 +80,11 @@ def mask_line_comments_and_strings(
     ``exec.Command`` inside the raw string must not be mistaken for a call site.
     It is opt-in because a backtick means something else in other languages
     (e.g. a Swift keyword-escaped identifier), so only Go enables it.
+    ``single_line_quotes`` treats a ``'``/``"`` that is not closed on its own
+    line as ordinary text rather than opening a string. JS/TS quoted strings
+    cannot span a raw newline (multi-line uses backtick templates), so without
+    this an apostrophe in JSX text -- ``<p>Here's the panel</p>`` -- would mask
+    every real call after it.
     """
     result: list[str] = []
     i = 0
@@ -98,6 +125,10 @@ def mask_line_comments_and_strings(
                 i += 1
                 continue
             if char in {"'", '"'}:
+                if single_line_quotes and not _closes_on_same_line(source, i, char):
+                    result.append(char)
+                    i += 1
+                    continue
                 state = "string"
                 quote = char
                 result.append(" ")

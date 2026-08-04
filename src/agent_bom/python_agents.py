@@ -83,9 +83,12 @@ _AGENT_NAME_RE = re.compile(
     r'Agent\s*\(\s*(?:name\s*=\s*)?["\']([^"\']+)["\']',
 )
 
-# Tool decorators: @tool, @function_tool, @agent.tool
+# Any decorator sitting directly on a def, in bare or applied form. Which of
+# them registers an agent tool is decided by ``is_agent_tool_decorator`` — the
+# same predicate the two AST detectors use — rather than by a fourth literal
+# list, which had drifted into claiming ``@action`` and missing ``@mcp.tool()``.
 _TOOL_DECORATOR_RE = re.compile(
-    r"@(?:\w+\.)?(?:function_tool|tool|skill|action)\s*\n\s*(?:async\s+)?def\s+(\w+)",
+    r"@((?:\w+\.)*\w+)\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)",
 )
 
 # tools=[foo, bar, baz] argument
@@ -290,7 +293,7 @@ def _extract_agent_defs_regex(content: str, filename: str) -> list[_PythonAgentD
     framework = _framework_from_content(content)
 
     # Extract @tool / @function_tool decorated functions
-    tool_names = _TOOL_DECORATOR_RE.findall(content)
+    tool_names = [func for decorator, func in _TOOL_DECORATOR_RE.findall(content) if is_agent_tool_decorator(decorator)]
 
     # Extract env var references
     env_refs = [v for v in _ENV_REF_RE.findall(content) if _CRED_ENV_RE.search(v)]

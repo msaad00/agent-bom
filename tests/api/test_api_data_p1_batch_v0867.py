@@ -294,3 +294,13 @@ def test_p1_24_cli_compliance_narrative_accepts_mitre_attack(tmp_path):
     # emit an empty payload when no findings exist, but it must not 2-out from
     # click.Choice rejecting the alias.
     assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert "not a determination of compliance" in payload["claim_boundary"].lower()
+
+    markdown = runner.invoke(
+        compliance_narrative_cmd,
+        [str(scan_file), "--framework", "mitre-attack", "-f", "markdown"],
+    )
+    assert markdown.exit_code == 0, markdown.output
+    assert "> Vulnerability-to-control mappings are review evidence" in markdown.output
+    assert "Evidence status:" in markdown.output

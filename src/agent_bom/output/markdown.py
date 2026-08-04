@@ -65,6 +65,14 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     lines.append(f"| High | {sev_counts.get('high', 0)} |")
     lines.append(f"| Medium | {sev_counts.get('medium', 0)} |")
     lines.append(f"| Low | {sev_counts.get('low', 0)} |")
+    # Rated-but-informational and never-rated findings get their own rows so the
+    # severity rows add up to the totals printed directly above them. Without
+    # these an unrated finding reads as "counted, and benign".
+    if sev_counts.get("info", 0):
+        lines.append(f"| Info | {sev_counts['info']} |")
+    unrated = sev_counts.get("unknown", 0) + sev_counts.get("none", 0)
+    if unrated:
+        lines.append(f"| Unrated | {unrated} |")
     lines.append("")
 
     trust_lines = _trust_assessment_section(report)

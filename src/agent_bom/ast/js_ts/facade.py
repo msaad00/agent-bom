@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.ast_models import CallEdge, DependencySymbolReach, DetectedGuardrail, ExtractedPrompt, FlowFinding, ToolSignature
 from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS, check_prompt_risks, classify_prompt_type
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -30,10 +31,15 @@ if TYPE_CHECKING:
 
 _MAX_FILE_SIZE = 512 * 1024  # 512KB
 _JS_TS_EXTS = frozenset({".js", ".jsx", ".ts", ".tsx"})
-_JS_TOOL_CALL_RE = re.compile(
-    r"""\b(?:[A-Za-z_$][\w$]*\.)?tool\s*\(\s*["'`](?P<name>[^"'`]+)["'`]""",
+# ``registerTool`` is the current registration API of @modelcontextprotocol/sdk;
+# ``tool`` is the earlier one that thousands of published servers still use.
+# Only the call head is matched here -- the name is read from the real source at
+# the same offset, so the scan can run over comment/string-masked text.
+_JS_TOOL_CALL_START_RE = re.compile(
+    r"""\b(?:[A-Za-z_$][\w$]*\.)?(?:registerTool|tool)\s*\(""",
     re.IGNORECASE,
 )
+_JS_STRING_ARG_RE = re.compile(r"""\s*(?P<quote>["'`])(?P<name>[^"'`]*)(?P=quote)""")
 _JS_IMPORT_MODULE_RE = re.compile(
     r"""\bimport\s+(?:[\s\S]{0,200}?\s+from\s+)?["'`](?P<module>[^"'`]+)["'`]""",
     re.IGNORECASE,
@@ -101,6 +107,14 @@ _JS_TS_FRAMEWORK_HINTS: dict[str, str] = {
     "mastra": "Mastra",
     "@vercel/ai": "Vercel AI SDK",
 }
+
+
+def _js_first_string_argument(source: str, open_paren_index: int) -> str:
+    """Return the leading string-literal argument of the call at ``open_paren_index``."""
+    if open_paren_index < 0 or open_paren_index >= len(source) or source[open_paren_index] != "(":
+        return ""
+    match = _JS_STRING_ARG_RE.match(source, open_paren_index + 1)
+    return match.group("name").strip() if match else ""
 
 
 def _first_match_line(source: str, pattern: str) -> int:
@@ -562,8 +576,12 @@ def scan_js_ts_file(
         )
 
     seen_tool_names: set[tuple[str, int]] = set()
-    for match in _JS_TOOL_CALL_RE.finditer(source):
-        tool_name = match.group("name").strip()
+    # Match on masked source so a registration quoted inside a comment, a string,
+    # or a prompt template is never reported as a live tool. Masking preserves
+    # offsets, so the tool name is still read from the real source.
+    masked_source = mask_line_comments_and_strings(source, backtick_strings=True, single_line_quotes=True)
+    for match in _JS_TOOL_CALL_START_RE.finditer(masked_source):
+        tool_name = _js_first_string_argument(source, match.end() - 1)
         line_num = source[: match.start()].count("\n") + 1
         dedup_key = (tool_name, line_num)
         if not tool_name or dedup_key in seen_tool_names:

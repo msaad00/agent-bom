@@ -395,55 +395,51 @@ def test_demo_override_opts_into_anonymous_seeded_estate() -> None:
     ]
 
 
-def test_demo_redeploy_layers_demo_override_and_uses_write_secret() -> None:
-    """Public demo must layer demo-override; preflight must use --write-secret."""
-    root = Path(__file__).resolve().parents[1]
-    workflow = (root / ".github" / "workflows" / "demo-redeploy.yml").read_text(encoding="utf-8")
-    assert "deploy/docker-compose.demo-override.yml" in workflow
-    assert "hosted_poc_preflight.py --write-secret" in workflow
-    assert "--write-postgres-secret" not in workflow
-    # Empty findings spine is a demo outage — redeploy must fail closed on it.
-    assert "demo estate smoke" in workflow
-    assert "/v1/findings?limit=1" in workflow
-    # v0.97.4 made the demo overlay tracked. The VM's older untracked copy must
-    # be preserved outside the checkout path before exact-ref checkout.
-    assert 'git ls-files --error-unmatch "$legacy_overlay"' in workflow
-    assert "docker-compose.demo-override.pretracked." in workflow
-    assert 'mv "$legacy_overlay" "$legacy_backup"' in workflow
-    exact_main_fetch = "git fetch --prune --tags origin +refs/heads/main:refs/remotes/origin/main"
-    assert workflow.index('mv "$legacy_overlay" "$legacy_backup"') < workflow.index(exact_main_fetch)
-    # Release automation must deploy the exact successful release SHA, never
-    # mutable main, and must not race through a second release event trigger.
-    assert "git pull --ff-only" not in workflow
-    assert 'git rev-parse --verify "${RELEASE_REF}^{commit}"' in workflow
-    assert 'git checkout --detach "$TARGET_COMMIT"' in workflow
-    assert 'test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"' in workflow
-    assert "\n  release:\n" not in workflow
-    assert "release_ref:" in workflow
-    # Public Actions logs must not disclose private infrastructure inventory,
-    # and the short-lived AWS session should expire shortly after the deploy.
-    assert 'echo "::add-mask::${DEMO_INSTANCE_ID}"' in workflow
-    assert 'echo "::add-mask::${command_id}"' in workflow
-    assert "Sending redeploy command to ${DEMO_INSTANCE_ID}" not in workflow
-    assert "SSM CommandId: ${command_id}" not in workflow
-    assert "mask-aws-account-id: true" in workflow
-    assert "role-duration-seconds: 3600" in workflow
-    assert "unset-current-credentials: true" in workflow
-    # Static preflight precedes build and in-place promotion.
-    assert workflow.index("hosted_poc_preflight.py --write-secret") < workflow.index("compose build")
-    assert workflow.index("compose build") < workflow.index("compose up -d")
-    # Compose failures must expose bounded, sanitized API/migration evidence.
-    assert "compose failure status" in workflow
-    assert "emit_sanitized_logs" in workflow
-    assert "logs --no-color --tail=120 api migrate" in workflow
-    assert "sanitize_text" in workflow
-    assert "tail -c 24000" in workflow
-    assert "logs --no-color --tail=200 migrate >&2" not in workflow
-    assert "demo was NOT promoted" not in workflow
-    assert "in-place container replacement" in workflow
-    assert "Automatic rollback was not attempted" in workflow
+def test_cloud_run_demo_opts_into_the_same_anonymous_estate_as_the_compose_overlay() -> None:
+    """Both ways of running the public demo must opt into identical flags.
 
-    # Security gate remains platform + hosted-poc only (no demo anon flags).
+    The demo can run as the Cloud Run service this project deploys or as the
+    compose overlay a self-hoster layers on. If the two drift, the hosted demo
+    stops matching the estate the overlay documents.
+    """
+    root = Path(__file__).resolve().parents[1]
+    workflow = yaml.safe_load((root / ".github" / "workflows" / "demo-deploy-cloudrun.yml").read_text(encoding="utf-8"))
+    deploy_step = next(step for step in workflow["jobs"]["deploy"]["steps"] if step.get("id") == "deploy")
+    cloud_run_env = [line for line in deploy_step["with"]["env_vars"].splitlines() if line.strip()]
+
+    overlay = yaml.safe_load((COMPOSE_DIR / "docker-compose.demo-override.yml").read_text(encoding="utf-8"))
+    overlay_env = (overlay.get("services") or {})["api"]["environment"]
+
+    assert cloud_run_env == overlay_env
+
+
+def test_cloud_run_demo_deploy_fails_closed_on_a_stale_or_empty_estate() -> None:
+    """Reachability is not health: assert the version served and the data seeded.
+
+    A deploy that returns 200 while serving the previous revision, or one that
+    boots the right version over an estate with no findings, is the failure this
+    automation exists to catch. Both checks must stay in the verify step.
+    """
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "demo-deploy-cloudrun.yml").read_text(encoding="utf-8")
+
+    # Served version must match the image tag being deployed.
+    assert 'if [ "${SERVED}" != "${EXPECTED}" ]; then' in workflow
+    assert "demo serves ${SERVED}, expected ${EXPECTED}" in workflow
+
+    # Empty findings spine is a demo outage — the deploy must fail closed on it.
+    assert "/v1/findings?limit=1" in workflow
+    assert 'if [ "${TOTAL}" -lt 1 ]; then' in workflow
+    assert "its estate has zero findings" in workflow
+
+    # No AWS/SSM remnants: the demo VM is retired.
+    assert "aws ssm" not in workflow
+    assert "DEMO_INSTANCE_ID" not in workflow
+
+
+def test_hosted_preflight_gate_stays_platform_plus_hosted_poc_only() -> None:
+    """The security gate must never validate the anonymous demo overlay."""
+    root = Path(__file__).resolve().parents[1]
     preflight_src = (root / "scripts" / "deploy" / "hosted_poc_preflight.py").read_text(encoding="utf-8")
     assert "docker-compose.hosted-poc.yml" in preflight_src
     assert "docker-compose.demo-override.yml" not in preflight_src

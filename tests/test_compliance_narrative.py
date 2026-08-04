@@ -146,7 +146,7 @@ def test_not_evaluated_framework_status_when_no_vulns():
     assert "not-evaluated" in lower or "not evaluated" in lower or "could be evaluated" in lower
 
 
-def test_failing_framework_status_for_critical_vuln():
+def test_action_required_framework_status_for_critical_vuln():
     br = _make_blast_radius(
         vuln=_make_vuln(severity=Severity.CRITICAL),
         owasp_tags=["LLM05"],
@@ -154,9 +154,45 @@ def test_failing_framework_status_for_critical_vuln():
     report = _make_report(blast_radii=[br])
     result = generate_compliance_narrative(report, framework="owasp-llm")
     fw = result.framework_narratives[0]
-    assert fw.status == "failing"
+    assert fw.status == "action_required"
     assert fw.score < 100
     assert len(fw.failing_controls) >= 1
+
+
+def test_vulnerability_mapping_never_claims_a_compliance_or_regulatory_verdict():
+    """Mapped findings are review evidence, not an audit or legal conclusion."""
+    br = _make_blast_radius(
+        vuln=_make_vuln(severity=Severity.CRITICAL),
+        owasp_tags=["LLM05"],
+    )
+    result = generate_compliance_narrative(_make_report(blast_radii=[br]), framework="owasp-llm")
+    fw = result.framework_narratives[0]
+
+    assert fw.status == "action_required"
+    assert "not a determination of compliance" in result.claim_boundary.lower()
+    rendered = " ".join(
+        [
+            result.executive_summary,
+            fw.narrative,
+            *(control.narrative for control in fw.failing_controls),
+            *fw.recommendations,
+        ]
+    ).lower()
+    for prohibited in (
+        "regulatory breach",
+        "compliance is failing",
+        "achieve compliance",
+        "active compliance gap",
+        "frameworks are failing",
+        "restore full compliance",
+    ):
+        assert prohibited not in rendered
+
+    from agent_bom.api.routes.compliance import _narrative_to_dict
+
+    api_payload = _narrative_to_dict(result)
+    assert api_payload["claim_boundary"] == result.claim_boundary
+    assert api_payload["framework_narratives"][0]["status"] == "action_required"
 
 
 def test_at_risk_framework_status_for_medium_vuln():
@@ -167,7 +203,7 @@ def test_at_risk_framework_status_for_medium_vuln():
     report = _make_report(blast_radii=[br])
     result = generate_compliance_narrative(report, framework="owasp-llm")
     fw = result.framework_narratives[0]
-    assert fw.status == "at_risk"
+    assert fw.status == "review"
 
 
 def test_score_is_over_evaluated_controls_only():
@@ -186,7 +222,7 @@ def test_score_is_over_evaluated_controls_only():
     report = _make_report(blast_radii=[unrated, warning])
     result = generate_compliance_narrative(report, framework="owasp-llm")
     fw = result.framework_narratives[0]
-    assert fw.status == "at_risk"
+    assert fw.status == "review"
     # Only the medium control is evaluated (warning); the unrated control is
     # excluded, not counted as a pass — so the score is not inflated.
     assert fw.score == 0
@@ -413,19 +449,19 @@ def test_executive_summary_all_passing_when_no_vulns():
     result = generate_compliance_narrative(report)
     # Should mention all frameworks passing or no findings
     lower = result.executive_summary.lower()
-    assert "passing" in lower or "no vulnerabilities" in lower or "clean" in lower
+    assert "current" in lower or "no vulnerabilities" in lower or "clean" in lower
 
 
-def test_executive_summary_mentions_failing_framework():
+def test_executive_summary_mentions_framework_evidence_requiring_action():
     br = _make_blast_radius(
         vuln=_make_vuln(severity=Severity.CRITICAL),
         owasp_tags=["LLM05"],
     )
     report = _make_report(blast_radii=[br])
     result = generate_compliance_narrative(report)
-    # At least one framework should be failing; summary should mention it
+    # At least one framework mapping requires action; summary should mention it.
     lower = result.executive_summary.lower()
-    assert "failing" in lower or "critical" in lower
+    assert "requiring action" in lower or "critical" in lower
 
 
 # ─── Multi-framework blast radius coverage ────────────────────────────────────
@@ -443,11 +479,11 @@ def test_multi_framework_tags_affect_multiple_frameworks():
     result = generate_compliance_narrative(report)
 
     status_by_slug = {fn.slug: fn.status for fn in result.framework_narratives}
-    # Frameworks that were tagged should not be "passing"
-    assert status_by_slug["owasp-llm"] != "passing"
-    assert status_by_slug["owasp-mcp"] != "passing"
-    assert status_by_slug["nist"] != "passing"
-    assert status_by_slug["cmmc"] != "passing"
+    # Frameworks with mapped findings should not report current evidence.
+    assert status_by_slug["owasp-llm"] != "evidence_current"
+    assert status_by_slug["owasp-mcp"] != "evidence_current"
+    assert status_by_slug["nist"] != "evidence_current"
+    assert status_by_slug["cmmc"] != "evidence_current"
     # Untagged framework has no mapped findings → not-evaluated, never a silent pass
     assert status_by_slug["soc2"] == "not_evaluated"
 
@@ -489,7 +525,7 @@ def test_same_control_id_does_not_bleed_between_frameworks():
     result = generate_compliance_narrative(report)
     status_by_slug = {fn.slug: fn.status for fn in result.framework_narratives}
 
-    assert status_by_slug["nist-800-53"] == "failing"
+    assert status_by_slug["nist-800-53"] == "action_required"
     assert status_by_slug["fedramp"] == "not_evaluated"
     assert result.remediation_impact
     assert result.remediation_impact[0].frameworks_impacted == ["NIST 800-53"]
@@ -569,8 +605,8 @@ def test_detective_controls_pass_on_a_fresh_scan(slug, detective_ids):
 
     fw = _fw(generate_compliance_narrative(report), slug)
 
-    # Nothing failed, so the framework reads as passing off the scan evidence.
-    assert fw.status == "passing", fw.narrative
+    # Nothing failed, so the framework reports current scan evidence.
+    assert fw.status == "evidence_current", fw.narrative
     assert fw.score == 100, fw.narrative
     # The evaluated denominator has to grow by exactly the detective controls.
     assert f"{len(detective_ids)} evaluated" in fw.narrative, fw.narrative
@@ -592,7 +628,7 @@ def test_detective_controls_fail_once_evidence_is_stale(slug, detective_ids, mon
 
     fw = _fw(generate_compliance_narrative(report), slug)
 
-    assert fw.status == "failing", fw.narrative
+    assert fw.status == "action_required", fw.narrative
     stale = {c.control_id for c in fw.failing_controls if c.status == "fail"}
     assert stale == detective_ids, [c.control_id for c in fw.failing_controls]
     for control in fw.failing_controls:
@@ -626,7 +662,7 @@ def test_detective_pass_coexists_with_a_corrective_failure():
 
     fw = _fw(generate_compliance_narrative(report), "nist-800-53")
 
-    assert fw.status == "failing", fw.narrative
+    assert fw.status == "action_required", fw.narrative
     assert [c.control_id for c in fw.failing_controls] == ["SI-10"]
     # RA-5 + CM-8 pass, SI-10 fails -> 2/3.
     assert "3 evaluated" in fw.narrative, fw.narrative
@@ -642,5 +678,5 @@ def test_a_finding_tagged_onto_a_detective_control_never_fails_it():
 
     fw = _fw(generate_compliance_narrative(report), "nist-800-53")
 
-    assert fw.status == "passing", fw.narrative
+    assert fw.status == "evidence_current", fw.narrative
     assert fw.failing_controls == []

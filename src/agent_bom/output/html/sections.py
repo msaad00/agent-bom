@@ -12,6 +12,15 @@ from agent_bom.graph.severity import (
     severity_policy_rank,
     severity_worst_first_rank,
 )
+from agent_bom.output.cis_posture import (
+    ERROR,
+    EVALUATED_STATUSES,
+    INCOMPLETE,
+    NOT_EVALUATED,
+    PASS,
+    cis_pass_rate,
+    cis_verdict,
+)
 from agent_bom.output.exposure_path import exposure_path_brief_for_finding
 from agent_bom.output.finding_views import (
     compliance_row_dict,
@@ -809,6 +818,14 @@ _CIS_CLOUD_LABELS = {
 }
 
 
+_CIS_VERDICT_COLOR = {
+    NOT_EVALUATED: "#6b7280",
+    ERROR: "#dc2626",
+    INCOMPLETE: "#d97706",
+    PASS: "#16a34a",
+}
+
+
 def _cis_evidence_html(check: dict) -> str:
     """Affected-resource evidence cell: resource IDs when present, else text."""
     resources = check.get("resource_ids") or []
@@ -859,27 +876,17 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         failed = [c for c in checks if c.get("status") == "fail"]
         errored = [c for c in checks if c.get("status") == "error"]
         actionable = failed + errored
-        evaluated = [c for c in checks if c.get("status") in ("pass", "fail")]
+        evaluated = [c for c in checks if c.get("status") in EVALUATED_STATUSES]
         passed_n = bundle.get("passed", sum(1 for c in checks if c.get("status") == "pass"))
-        pass_rate = bundle.get("pass_rate", 0.0)
+        pass_rate = cis_pass_rate(bundle, checks)
         band_color = "#16a34a" if pass_rate >= 90 else "#eab308" if pass_rate >= 70 else "#ef4444"
 
         # Verdict + per-severity failed counts for the summary header.
         sev_counts = {s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in SEVERITY_THRESHOLD_LABELS}
-        if errored and not evaluated:
-            verdict_text, verdict_color = "ERROR", "#dc2626"
-        elif errored:
-            verdict_text, verdict_color = "INCOMPLETE", "#d97706"
-        elif not failed:
-            verdict_text, verdict_color = "PASS", "#16a34a"
-        else:
-            worst_check = min(failed, key=lambda c: severity_worst_first_rank(c.get("severity")))
-            worst_sev = (worst_check.get("severity") or "low").lower()
-            if worst_sev not in SEVERITY_THRESHOLD_LABELS:
-                worst_sev = "low"
-            worst_band = worst_sev.upper()
-            verdict_text = f"{worst_band} GAPS"
-            verdict_color = _SEV_COLOR.get(worst_sev, "#ef4444")
+        verdict_text = cis_verdict(checks)
+        verdict_color = _CIS_VERDICT_COLOR.get(verdict_text) or _SEV_COLOR.get(verdict_text.split()[0].lower(), "#ef4444")
+        if verdict_text == NOT_EVALUATED:
+            band_color = "#6b7280"
 
         top = sorted(actionable, key=_sort_key)[:3]
         top_html = ""

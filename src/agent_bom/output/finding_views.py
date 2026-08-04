@@ -6,6 +6,7 @@ from typing import Any
 
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 from agent_bom.finding import Finding, FindingType, blast_radius_to_finding
+from agent_bom.graph.severity import normalize_severity
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 
 _MACHINE_EXPORT_TYPES = (FindingType.CVE, FindingType.MALICIOUS_PACKAGE)
@@ -252,12 +253,29 @@ def finding_references(finding: Finding) -> list[str]:
     return []
 
 
+SEVERITY_COUNT_KEYS: tuple[str, ...] = (
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info",
+    "none",
+    "unknown",
+)
+
+
 def severity_counts(findings: list[Finding]) -> dict[str, int]:
-    counts = {severity.value: 0 for severity in Severity if severity != Severity.NONE}
+    """Bucket every finding by severity, losing none of them.
+
+    ``sum(severity_counts(f).values()) == len(f)`` always holds: a severity the
+    scanners never resolved lands in ``unknown`` rather than falling out of the
+    histogram. A total printed beside a breakdown that silently dropped its
+    unrated rows reads as "all of these are benign" when the truth is "we never
+    rated them".
+    """
+    counts = {key: 0 for key in SEVERITY_COUNT_KEYS}
     for finding in findings:
-        severity = severity_value(finding)
-        if severity in counts:
-            counts[severity] += 1
+        counts[normalize_severity(severity_value(finding))] += 1
     return counts
 
 

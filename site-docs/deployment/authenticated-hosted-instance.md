@@ -38,7 +38,7 @@ it does **not** enable anonymous API access.
 ## 0. Prerequisites
 
 - A small CPU-only host (4 vCPU / 8–16 GB RAM) with Docker + Compose.
-- DNS pointing at the host, for example `app.agent-bom.com`. Open inbound `443`
+- DNS pointing at the host, for example `agent-bom.example.com`. Open inbound `443`
   only; restrict SSH to your IP.
 - A checkout of this repository on the host.
 
@@ -57,10 +57,10 @@ Postgres or control-plane secrets in `.env` or compose environment variables.
 cp .env.example .env
 
 # Public URL wiring (Caddy terminates TLS on 443)
-export AGENT_BOM_HOSTED_DOMAIN="app.agent-bom.com"
+export AGENT_BOM_HOSTED_DOMAIN="agent-bom.example.com"
 export ACME_EMAIL="ops@example.com"
-export NEXT_PUBLIC_API_URL="https://app.agent-bom.com"
-export CORS_ORIGINS="https://app.agent-bom.com,http://ui:3000"
+export NEXT_PUBLIC_API_URL="https://agent-bom.example.com"
+export CORS_ORIGINS="https://agent-bom.example.com,http://ui:3000"
 
 # Secrets: file mounts only (Postgres + control-plane)
 python scripts/deploy/hosted_poc_preflight.py --write-secret --skip-compose
@@ -146,7 +146,7 @@ Issue scoped viewer/analyst keys for the account with the admin key against the
 RBAC endpoint (`POST /v1/auth/keys` requires the `admin` role):
 
 ```bash
-curl -sS -X POST "https://app.agent-bom.com/v1/auth/keys" \
+curl -sS -X POST "https://agent-bom.example.com/v1/auth/keys" \
   -H "Authorization: Bearer <raw admin key>" \
   -H "Content-Type: application/json" \
   -d '{"name": "ciso-viewer", "role": "viewer"}'
@@ -223,13 +223,13 @@ for the full per-provider matrix and scale caps.
 
 ## 4. Log in and see real posture
 
-1. Open `https://app.agent-bom.com` and sign in at `/login` (API key or SSO).
+1. Open `https://agent-bom.example.com` and sign in at `/login` (API key or SSO).
 2. Confirm the dashboard shows the connected account's **real** findings, CIS
    benchmark posture, and blast-radius graph — not the demo estate.
 3. Run the smoke check before inviting others:
 
    ```bash
-   AGENT_BOM_SMOKE_URL="https://app.agent-bom.com" \
+   AGENT_BOM_SMOKE_URL="https://agent-bom.example.com" \
    AGENT_BOM_SMOKE_API_KEY="<raw admin key>" \
    scripts/deploy/hosted_poc_smoke.sh
    ```

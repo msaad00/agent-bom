@@ -22,13 +22,13 @@
     },
     {
       "name": "GitHub workflow files",
-      "value": 39,
+      "value": 38,
       "source": ".github/workflows",
       "notes": "Counts .yml and .yaml workflow definitions."
     },
     {
       "name": "Test files",
-      "value": 1110,
+      "value": 1111,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },

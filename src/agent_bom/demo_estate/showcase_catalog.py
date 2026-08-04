@@ -3,7 +3,7 @@
 The graph + scan job bootstrap already fills findings/compliance, but
 Connections, Sources, and AI Spend pages read separate stores. This module
 adds idempotent showcase rows so service-registry chips and admin pages are
-not empty zeros on demo.agent-bom.com.
+not empty zeros on the public demo.
 """
 
 from __future__ import annotations

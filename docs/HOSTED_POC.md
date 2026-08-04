@@ -1,89 +1,209 @@
-# Hosted POC Runbook
+# Hosted deployment runbook
 
-This runbook is for a gated customer-0 deployment: a live URL that shows how
-agent-bom works, lets a small set of invited users connect read-only accounts,
-and proves the product loop with operator-controlled access.
+Two unrelated deployments live in this file. Read the one you need:
 
-## Recommended path
-
-The **public seeded demo** runs on Cloud Run (stateless, scales to zero — see
-[Demo redeploy](#demo-redeploy)). A **gated customer-0 POC**, which does hold
-state and needs Postgres, still runs on a VM as described below. Snowflake
-Native App remains the warehouse-native distribution lane. Recommended domain
-split:
-
-- `agentbom.io` — primary product/brand site.
-- `demo.agent-bom.com` — public seeded demo.
-- `app.agent-bom.com` — gated customer-0 / hot-lead POC.
-
-For the domains you already own, use `agent-bom.com` on Cloudflare for the
-first live link because DNS, proxying, and TLS controls are already in one
-place. Keep `agentbom.io` for the cleaner product site once the public surface
-is ready.
-
-| Need | Use | Why |
+| Lane | Who runs it | What it is |
 |---|---|---|
-| Public seeded demo | Cloud Run | Stateless and seeded in-process, so it scales to zero and costs nothing idle |
-| Gated customer-0 POC | VM + Caddy + platform compose | Holds real connections and state, so it needs a persistent Postgres |
-| Customer-owned warehouse install | Snowflake Native App | Runs inside the customer's Snowflake account with Snowflake auth and SPCS |
+| [Public demo](#public-demo-cloud-run) | This project | A stateless, anonymous, seeded estate on Cloud Run. Deployed by CI. Nothing for you to stand up. |
+| [Self-host](#self-host-your-own-instance) | You | A gated instance on your own infrastructure that holds real connections and state in Postgres. |
+| [Snowflake Native App](#snowflake-native-app-lane) | Your buyer | agent-bom running inside the customer's own Snowflake account. |
 
-## Customer-0 AWS VM
+They differ in the property that matters: the demo keeps **nothing** between
+boots, so it can be a scale-to-zero container. A self-hosted instance holds real
+connections, so it needs a persistent Postgres and a real secret story.
 
-Run one small CPU-only VM. Recommended starting point:
+## Public demo (Cloud Run)
 
-- Instance: `t3.large` or equivalent, 4 vCPU / 8-16 GB RAM
-- OS: Ubuntu LTS or Amazon Linux
-- Region: closest to you and the first demo users
-- Security group: `443` from the trusted edge only; no inbound SSH/admin
+The public demo runs on **Google Cloud Run**, deployed by
+[`.github/workflows/demo-deploy-cloudrun.yml`](../.github/workflows/demo-deploy-cloudrun.yml).
+It serves the seeded estate anonymously at viewer role — there is no login, no
+Postgres, and no VM.
 
-1. Create DNS, for example `demo.agent-bom.com`, pointing to the VM.
-2. Allow inbound `443` only from the trusted edge (for example, Cloudflare's
-   published proxy CIDRs). Do not open SSH/admin ingress; use SSM for operator
-   access.
-3. Install Docker, Compose, and Caddy.
+The service is reachable at its Cloud Run URL
+(`https://<service>-<project-number>.<region>.run.app`); the exact URL is linked
+from the README and printed in each deploy's job summary. **No custom domain is
+currently mapped** — see [Custom domain](#custom-domain-optional).
+
+### How a deploy happens
+
+1. The **Release** workflow finishes successfully. This workflow triggers on
+   `workflow_run` completion rather than on the release event directly, because
+   a direct release trigger races the still-running release and would deploy
+   twice. Manual `workflow_dispatch` is also supported, with an optional
+   `image_ref` to pin a specific tag.
+2. The run pauses on the protected `demo` environment for owner approval. The
+   repository is public and the workflow has no `pull_request` trigger, so a
+   fork can neither start it nor reach the cloud credentials.
+3. The job authenticates to Google Cloud with **Workload Identity Federation
+   over OIDC** (`google-github-actions/auth`). No service-account key is stored
+   in this repository.
+4. It deploys `ghcr.io/<owner>/agent-bom:<tag>` to the Cloud Run service. The
+   published image is the CLI (`ENTRYPOINT agent-bom`, default `CMD --help`), so
+   the workflow overrides the args to `api --host 0.0.0.0 --port 8080`, matching
+   how `docker-compose.platform.yml` starts it. `8080` is the port Cloud Run
+   routes to by default.
+5. It verifies the result, and **fails closed** on either of the two failure
+   modes that a plain `200` would hide:
+   - `/health` must report the version that was just deployed, so a deploy that
+     silently keeps serving the previous revision is caught.
+   - `/v1/findings?limit=1` must report a non-empty total, so a demo that boots
+     at the right version over an unseeded estate is caught. Every visitor
+     landing on empty tables is an outage, not a healthy deploy.
+
+A `concurrency` group (`demo-deploy-cloudrun`, `cancel-in-progress: false`)
+serializes deploys, so two releases can never race on the same service.
+
+### Configuration
+
+All settings live on the protected `demo` environment. The workflow stays inert
+until they exist — an unconfigured fork or clone logs the required settings and
+exits successfully rather than failing.
+
+| Setting | Purpose |
+| --- | --- |
+| `vars.DEMO_GCP_PROJECT` | GCP project id hosting the demo |
+| `vars.DEMO_CLOUD_RUN_SERVICE` | Cloud Run service name (e.g. `agent-bom-demo`) |
+| `secrets.DEMO_GCP_WIF_PROVIDER` | Workload Identity provider resource name |
+| `secrets.DEMO_GCP_SERVICE_ACCOUNT` | Service account the workflow impersonates |
+| `vars.DEMO_GCP_REGION` | Optional; defaults to `us-central1` |
+| `vars.DEMO_MIN_INSTANCES` | Optional; defaults to `0` (scale to zero) |
+| `vars.DEMO_MAX_INSTANCES` | Optional; defaults to `2` (hard ceiling on concurrent instances) |
+
+The demo container opts into the anonymous seeded estate with the same three
+environment variables the self-host overlay `deploy/docker-compose.demo-override.yml`
+sets, so the two ways of running the demo cannot drift apart:
+
+```
+AGENT_BOM_DEMO_ESTATE=1
+AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1
+AGENT_BOM_NO_AUTH_ROLE=viewer
+```
+
+### Why not a VM
+
+The demo is a stateless container: it seeds its estate in-process from
+`agent_bom.demo_estate`, bakes no advisory database, and keeps nothing worth
+preserving between boots — the curated scan job is TTL-wiped and reseeded by the
+API's own cleanup loop. An always-on VM therefore bills around the clock to
+serve traffic that arrives in bursts. `--min-instances=0` scales to zero, so an
+idle demo costs nothing.
+
+**The tradeoff.** The first visitor after an idle period pays a cold start
+(image pull, boot, demo seed). If that becomes unacceptable, set
+`vars.DEMO_MIN_INSTANCES=1`; it is wired into the workflow and costs roughly one
+always-on small instance.
+
+### Cost posture
+
+Cloud Run bills CPU only while a request is executing, so a demo sitting at
+`--min-instances=0` costs **nothing** when nobody is looking at it. The free
+tier is 2M requests, 400,000 vCPU-seconds and 1M GiB-seconds per month, which a
+demo does not realistically exceed on organic traffic.
+
+The exposure is therefore not steady-state hosting — it is a crawler hammering
+the URL. Three settings bound that, and all are in the workflow:
+`--max-instances` caps how much can ever run at once, `--concurrency=80` packs
+more requests onto each instance so load costs fewer instances rather than more,
+and `--timeout=60` bounds what any single abusive request can spend.
+
+Set a GCP **budget alert** on the project as the backstop; it is free, and it is
+the only mechanism that tells you about a surprise before the invoice does.
+
+### Custom domain (optional)
+
+The demo is served from its Cloud Run URL. Mapping `demo.agent-bom.com` to it is
+an **optional future step**, not an outstanding fault — nothing depends on the
+custom domain today, and the README links the Cloud Run URL directly.
+
+If you do map it, note that Google documents three paths and they are not
+equivalent:
+
+- **Global external Application Load Balancer** — Google's recommended,
+  generally-available option, and the right choice for anything load-bearing.
+- **Cloud Run domain mappings** — a one-command path
+  (`gcloud beta run domain-mappings create --service SERVICE --domain DOMAIN`),
+  but it is in **preview**, explicitly not production-ready, and available in
+  only a subset of regions. `us-central1` (this deploy's default) is one of
+  them.
+- **Firebase Hosting** — a third option Google documents.
+
+Either way, ownership of the domain must first be verified through Google Search
+Console unless it was bought through Google. See
+[Cloud Run: mapping custom domains](https://cloud.google.com/run/docs/mapping-custom-domains)
+for current details; the preview status and the supported-region list both move.
+
+Whatever is chosen, point DNS at the new front door — **not** at any prior
+origin. The demo has no non-Cloud-Run origin.
+
+## Self-host: your own instance
+
+This lane is for an instance **you** operate: a gated deployment that holds real
+connections and state, for a customer-0 POC, an internal pilot, or your own
+production use. It is not how the public demo above runs, and it needs a
+persistent Postgres.
+
+Throughout this section, `agent-bom.example.com` stands in for your own
+hostname.
+
+### Host sizing
+
+One small CPU-only host is enough to start:
+
+- 4 vCPU / 8-16 GB RAM
+- Ubuntu LTS or equivalent
+- A region close to you and your first users
+- Inbound `443` from your trusted edge only; no inbound SSH/admin port. Use your
+  cloud's session-manager equivalent for operator access.
+
+### Stand-up
+
+1. Point DNS for your hostname at the host.
+2. Allow inbound `443` only from the trusted edge (for example, your CDN's
+   published proxy CIDRs).
+3. Install Docker, Compose, and a TLS terminator (Caddy below, or a managed load
+   balancer).
 4. Deploy `deploy/docker-compose.platform.yml`.
-5. Use Caddy or an ALB for HTTPS. Do not expose plain HTTP.
+5. Terminate HTTPS at the front door. Do not expose plain HTTP.
 6. Set production secrets:
    - `AGENT_BOM_AUDIT_HMAC_KEY`
    - `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY`
    - `AGENT_BOM_CONNECTIONS_KEY`
    - the initial admin API key or OIDC reverse-proxy session settings
 7. Keep `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` unset.
-8. Mint one admin tenant/key for the customer-0 account.
+8. Mint one admin tenant/key for the first account.
 9. Connect read-only AWS, Azure, GCP, and Snowflake targets.
 10. Run the first scan and verify findings, graph, posture, and exports.
 
-This gives prospects the product experience: sign in, connect read-only,
-scan, inspect graph/blast radius, and export evidence.
+This gives users the full product experience: sign in, connect read-only, scan,
+inspect graph/blast radius, and export evidence.
 
-### Cloudflare DNS
+### DNS
 
-For `agent-bom.com`, create one proxied `A` record per lane:
+Create one record per lane you serve, pointing at your host:
 
-| Record | Target | Purpose |
-|---|---|---|
-| `demo.agent-bom.com` | AWS VM public IPv4 | seeded public demo |
-| `app.agent-bom.com` | AWS VM public IPv4 | gated customer-0 account |
+| Record | Purpose |
+|---|---|
+| `agent-bom.example.com` | the instance UI + API |
 
-Use Cloudflare proxy mode or DNS-only mode consistently with the chosen TLS
-setup:
+If you front the host with a proxying CDN, keep proxy mode and TLS mode
+consistent:
 
 - **DNS-only + Caddy** — simplest. Caddy terminates Let's Encrypt directly.
-- **Proxied + Caddy** — set Cloudflare SSL mode to `Full (strict)` and let
-  Caddy still hold a valid origin certificate.
+- **Proxied + Caddy** — set the CDN's SSL mode to `Full (strict)` and let Caddy
+  still hold a valid origin certificate.
 
-Do not point the apex/root domain at the POC VM unless it is also serving the
+Do not point the apex/root domain at the instance unless it is also serving your
 product site.
 
-### Minimal VM setup
+### Minimal host setup
 
-Generate local secrets on the VM:
+Generate local secrets on the host:
 
 ```bash
 cp .env.example .env
 
-export NEXT_PUBLIC_API_URL="https://demo.agent-bom.com"
-export CORS_ORIGINS="https://demo.agent-bom.com,http://ui:3000"
+export NEXT_PUBLIC_API_URL="https://agent-bom.example.com"
+export CORS_ORIGINS="https://agent-bom.example.com,http://ui:3000"
 export AGENT_BOM_SESSION_COOKIE_SECURE=1
 
 # All secrets are file mounts only — never .env / compose env.
@@ -131,7 +251,7 @@ agent-bom scan --demo --offline
 Replace the sample with real connected cloud scans as soon as the first account
 is connected.
 
-Before opening the VM to testers, confirm the composed stack does not expose
+Before opening the host to testers, confirm the composed stack does not expose
 API/UI ports on all interfaces and does not mount the placeholder Postgres
 password:
 
@@ -167,7 +287,7 @@ commit it or paste it into docs, screenshots, tickets, or chat transcripts.
 Run the hosted smoke before inviting anyone:
 
 ```bash
-AGENT_BOM_SMOKE_URL="https://demo.agent-bom.com" \
+AGENT_BOM_SMOKE_URL="https://agent-bom.example.com" \
 AGENT_BOM_SMOKE_API_KEY="<raw admin key>" \
 scripts/deploy/hosted_poc_smoke.sh
 ```
@@ -176,7 +296,7 @@ After at least one cloud/Snowflake connection is stored, verify the broker path
 without launching a full scan:
 
 ```bash
-AGENT_BOM_SMOKE_URL="https://demo.agent-bom.com" \
+AGENT_BOM_SMOKE_URL="https://agent-bom.example.com" \
 AGENT_BOM_SMOKE_API_KEY="<raw admin key>" \
 AGENT_BOM_SMOKE_CONNECTION_ID="<connection id>" \
 scripts/deploy/hosted_poc_smoke.sh
@@ -189,7 +309,7 @@ first admin key. Once an operator holds an admin key, the same tenant-and-key
 provisioning is available over the API without shelling into the container:
 
 ```bash
-curl -sS -X POST https://demo.agent-bom.com/v1/auth/invitations \
+curl -sS -X POST https://agent-bom.example.com/v1/auth/invitations \
   -H "X-API-Key: <raw operator admin key>" \
   -H "Content-Type: application/json" \
   -d '{"organization": "Acme Corp", "email": "owner@acme.example"}'
@@ -225,9 +345,8 @@ fails closed rather than degrading to per-replica in-memory counters. See
 
 ### Production auth checklist
 
-For the gated POC, users are invited manually and access is revoked manually.
-Keep the surface operator-controlled; this profile is not a public registration
-flow.
+For a gated POC, users are invited manually and access is revoked manually. Keep
+the surface operator-controlled; this profile is not a public registration flow.
 
 Before sharing the link, verify:
 
@@ -240,7 +359,7 @@ Before sharing the link, verify:
 | Audit integrity | `AGENT_BOM_AUDIT_HMAC_KEY` is set and survives restarts so audit signatures remain verifiable. |
 | MCP read access | `AGENT_BOM_MCP_BEARER_TOKEN` is tenant/environment-scoped and has an expiry where possible. |
 | MCP write access | `AGENT_BOM_MCP_OPERATOR_TOKEN` is separate from the read token, expires, and is issued only to operators who need Shield/gateway write tools. |
-| CORS/TLS | `CORS_ORIGINS` contains only the hosted URL and internal UI origin. Caddy/ALB terminates HTTPS; API/UI bind to loopback/private network only. |
+| CORS/TLS | `CORS_ORIGINS` contains only your hosted URL and the internal UI origin. The front door terminates HTTPS; API/UI bind to loopback/private network only. |
 | Usage control | Invitees have explicit scan windows, provider/account scope, and a manual revoke path before they connect a cloud or Snowflake account. |
 
 If any row is unknown, stop and keep the deployment internal.
@@ -250,7 +369,7 @@ If any row is unknown, stop and keep the deployment internal.
 Example `Caddyfile`:
 
 ```caddyfile
-demo.agent-bom.com {
+agent-bom.example.com {
   encode zstd gzip
 
   reverse_proxy /v1/* localhost:8422
@@ -260,21 +379,21 @@ demo.agent-bom.com {
 }
 ```
 
-Keep Caddy as the only public listener. The Postgres container remains internal
-and `deploy/docker-compose.hosted-poc.yml` binds the API/UI ports to loopback,
-so they are reachable only from Caddy on the VM.
+Keep the front door as the only public listener. The Postgres container remains
+internal and `deploy/docker-compose.hosted-poc.yml` binds the API/UI ports to
+loopback, so they are reachable only from the proxy on the host.
 
-The public anonymous demo (seeded estate + viewer without login) is **not**
-this overlay. It layers
-`deploy/docker-compose.demo-override.yml` on top of platform + hosted-poc and
-is only used by the demo redeploy path.
+An anonymous seeded demo (seeded estate + viewer without login) is **not** this
+overlay. That layers `deploy/docker-compose.demo-override.yml` on top of
+platform + hosted-poc, and it is deliberately excluded from the preflight
+security gate — never combine it with a gated instance holding real connections.
 
-### Customer-0 proof checklist
+### Proof checklist
 
 Run this checklist before inviting anyone:
 
-1. `https://demo.agent-bom.com/health` returns healthy through Caddy.
-2. The UI opens at `https://demo.agent-bom.com` and does not require direct
+1. `https://agent-bom.example.com/health` returns healthy through the front door.
+2. The UI opens at `https://agent-bom.example.com` and does not require direct
    access to ports `3000` or `8422`.
 3. `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` is unset.
 4. A seeded scan appears in the dashboard with findings, graph, posture, and
@@ -283,151 +402,15 @@ Run this checklist before inviting anyone:
    account.
 6. A connection scan hands off to scan details, findings, graph, jobs, and
    compliance surfaces.
-7. Audit export and compliance export work for the customer-0 tenant.
+7. Audit export and compliance export work for the tenant.
 
-If any item fails, treat the POC as not ready for external users.
-
-### Demo redeploy
-
-The public demo deploys to **Cloud Run** via
-`.github/workflows/demo-deploy-cloudrun.yml`.
-
-**Why not a VM.** The demo is a stateless container: it seeds its estate
-in-process from `agent_bom.demo_estate`, bakes no advisory database, and keeps
-nothing worth preserving between boots — the curated scan job is TTL-wiped and
-reseeded by the API's own cleanup loop. An always-on VM therefore bills around
-the clock to serve traffic that arrives in bursts. `--min-instances=0` scales to
-zero, so an idle demo costs nothing.
-
-**The tradeoff.** The first visitor after an idle period pays a cold start
-(image pull, boot, demo seed). If that becomes unacceptable, set
-`vars.DEMO_MIN_INSTANCES=1`; it is wired into the workflow and costs roughly one
-always-on small instance.
-
-**Configuration** (all on the protected `demo` environment; the workflow stays
-inert until these exist, so forks never attempt a deploy):
-
-| Setting | Purpose |
-| --- | --- |
-| `vars.DEMO_GCP_PROJECT` | GCP project id hosting the demo |
-| `vars.DEMO_CLOUD_RUN_SERVICE` | Cloud Run service name (e.g. `agent-bom-demo`) |
-| `secrets.DEMO_GCP_WIF_PROVIDER` | Workload Identity provider resource name |
-| `secrets.DEMO_GCP_SERVICE_ACCOUNT` | Service account the workflow impersonates |
-| `vars.DEMO_GCP_REGION` | Optional; defaults to `us-central1` |
-| `vars.DEMO_MIN_INSTANCES` | Optional; defaults to `0` (scale to zero) |
-| `vars.DEMO_MAX_INSTANCES` | Optional; defaults to `2` (hard ceiling on concurrent instances) |
-
-#### Cost posture
-
-Cloud Run bills CPU only while a request is executing, so a demo sitting at
-`--min-instances=0` costs **nothing** when nobody is looking at it. The free
-tier is 2M requests, 400,000 vCPU-seconds and 1M GiB-seconds per month, which a
-demo does not realistically exceed on organic traffic.
-
-The exposure is therefore not steady-state hosting — it is a crawler hammering
-the URL. Three settings bound that, and all are in the workflow:
-`--max-instances` caps how much can ever run at once, `--concurrency=80` packs
-more requests onto each instance so load costs fewer instances rather than more,
-and `--timeout=60` bounds what any single abusive request can spend.
-
-Set a GCP **budget alert** on the project as the backstop; it is free, and it is
-the only mechanism that tells you about a surprise before the invoice does.
-
-Auth is Workload Identity Federation over OIDC — no service-account key is
-stored in this repository.
-
-The published image is the CLI (`ENTRYPOINT agent-bom`, default `CMD --help`),
-so the workflow overrides the args to `api --host 0.0.0.0 --port 8080`, matching
-how `docker-compose.platform.yml` starts it. 8080 is the port Cloud Run routes
-to by default.
-
-After deploying, the workflow asserts `/health` reports the expected version
-rather than merely returning 200 — a deploy that succeeds while still serving
-the previous revision is the exact failure this automation exists to prevent.
-
-#### Legacy: AWS VM redeploy (retired)
-
-The former `.github/workflows/demo-redeploy.yml` drove a single always-on EC2
-instance over SSM. It is superseded by the Cloud Run workflow above and is kept
-only for reference:
-
-- **Triggers:** successful completion of the `Release` workflow (`workflow_run`,
-  so redeploy still fires when Release publishes with the default
-  `GITHUB_TOKEN`), plus `release: published` when a non-suppressed release event
-  is available, plus manual `workflow_dispatch` with an optional `reset_demo`
-  boolean.
-- **Transport:** AWS SSM Run Command (`AWS-RunShellScript`) against the demo
-  instance — no inbound SSH. AWS auth is short-lived OIDC role assumption via
-  `aws-actions/configure-aws-credentials`.
-- **Remote steps on the VM:** confirm `DEMO_DEPLOY_DIR` is a git checkout →
-  `git pull --ff-only` → `docker compose ... build` (stack keeps serving) →
-  `docker compose ... up -d` (brief restart) →
-  `scripts/deploy/hosted_poc_preflight.py --write-secret` (fail-closed; validates
-  platform + hosted-poc only) → `scripts/deploy/hosted_poc_smoke.sh`. Compose
-  build/up layers `docker-compose.demo-override.yml` for anonymous seeded demo
-  estate; that overlay is intentionally excluded from the preflight security
-  gate. The job fails if the preflight or smoke fails, so a bad redeploy never
-  gets promoted silently. When dispatched with
-  `reset_demo=true` it also runs `scripts/deploy/demo-reset.sh`.
-- **No plaintext secrets in CI.** All secret material stays on the VM as the
-  existing `deploy/secrets/` file mounts. The remote script sources an optional
-  on-VM env file `deploy/secrets/redeploy.env` (chmod `0400`, owned by the deploy
-  user) for the non-secret URL wiring the preflight needs and the admin key the
-  smoke/reset need:
-
-  ```bash
-  # /opt/agent-bom/deploy/secrets/redeploy.env  (0400, not committed)
-  NEXT_PUBLIC_API_URL="https://demo.agent-bom.com"
-  CORS_ORIGINS="https://demo.agent-bom.com,http://ui:3000"
-  AGENT_BOM_SMOKE_URL="https://demo.agent-bom.com"
-  AGENT_BOM_SMOKE_API_KEY="<raw admin key>"
-  # AGENT_BOM_DEMO_TENANT="default"   # only needed if reset targets a non-default tenant
-  ```
-
-The workflow is **inert until configured** — if `DEMO_INSTANCE_ID` is unset it
-logs the required settings and exits successfully instead of failing. To enable
-it, set these values on the protected `demo` Actions **environment**, not at
-repository scope:
-
-| Setting | Kind | Purpose |
-|---|---|---|
-| `DEMO_INSTANCE_ID` | environment var | EC2 instance id of the demo VM (`i-...`). Gate: unset ⇒ workflow no-ops. |
-| `AWS_REGION` | environment var | Region of the demo VM. Defaults to `us-east-1` if unset. |
-| `DEMO_DEPLOY_DIR` | environment var | Repo checkout dir on the VM. Defaults to `/opt/agent-bom`. Must contain a `.git` directory — the remote script fails loud if it does not. |
-| `DEMO_DEPLOY_ROLE_ARN` | environment secret | IAM role ARN the workflow assumes via OIDC. Its trust policy must allow this repo's GitHub OIDC subject, and its permissions must allow `ssm:SendCommand` / `ssm:GetCommandInvocation` on the instance. |
-
-The instance also needs the SSM agent running and an instance profile granting
-`AmazonSSMManagedInstanceCore` so Run Command can reach it.
-
-#### Public-repo hardening (required)
-
-This repo is public, so fork/PR contributors must never be able to trigger the
-deploy or assume the AWS role. Two independent defenses:
-
-- **Protected environment.** The deploy job declares `environment: demo`. Create
-  a repo Actions **Environment** named `demo` with **yourself as a required
-  reviewer**, disable administrator bypass, and restrict deployments to protected
-  branches. Then every release-driven / `workflow_dispatch` run
-  **pauses for your approval** before any AWS call. The workflow has **no**
-  `pull_request` / `pull_request_target` trigger — it is release +
-  `workflow_dispatch` only, so PRs cannot start it at all.
-- **Scoped OIDC trust.** Provision the deploy role with the
-  `deploy/terraform/demo-deploy-oidc` module. Its trust policy pins the GitHub
-  OIDC `sub` to **exactly** `repo:<owner>/<repo>:environment:demo` (StringEquals,
-  no wildcard) and grants only `ssm:SendCommand` to the demo instance +
-  `ssm:GetCommandInvocation`. Fork/PR runs present a different `sub` and STS
-  rejects them. `terraform output -raw role_arn` gives the value for
-  `DEMO_DEPLOY_ROLE_ARN`.
-- **Public-log hygiene.** Mask the EC2 instance ID, SSM command ID, and AWS
-  account ID before emitting workflow diagnostics. Keep the OIDC session at the
-  15-minute minimum; no deployment identifier is an authentication credential,
-  but public logs should not disclose private infrastructure inventory.
+If any item fails, treat the instance as not ready for external users.
 
 ## Snowflake Native App lane
 
 Use Snowflake when the buyer wants agent-bom to run inside their Snowflake
 account. This is the stronger enterprise data-boundary story, but it has more
-packaging steps than a VM demo.
+packaging steps than a self-hosted instance.
 
 ### CPU sizing
 
@@ -498,8 +481,10 @@ If this succeeds, the account can run the Native App containers.
 
 ## What to avoid
 
-- Do not present the AWS demo as anything beyond an invite-only hosted POC.
+- Do not present a self-hosted instance as anything beyond an invite-only POC
+  until it has been through the production auth checklist.
 - Do not ask testers for long-lived cloud keys when assumable roles work.
-- Do not enable unauthenticated API access.
+- Do not enable unauthenticated API access on an instance holding real
+  connections. It is correct only for the anonymous seeded demo.
 - Do not publish Grafana, observability, or development compose profiles.
 - Do not run Snowflake GPU pools for agent-bom.

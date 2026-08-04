@@ -56,7 +56,6 @@ PRIVILEGED_MODULES = {
 # can't sneak in unnoticed — it would fail rule 3 until added here on purpose.
 OPERATIONAL_MODULES = {
     "aws/baseline",
-    "demo-deploy-oidc",
     "platform-eks",
     "azure/ingestion",
 }

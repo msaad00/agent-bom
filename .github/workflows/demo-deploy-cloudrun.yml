@@ -181,10 +181,23 @@ jobs:
             echo "::error::demo serves ${SERVED}, expected ${EXPECTED}"
             exit 1
           fi
+          # A demo that boots at the right version but seeds nothing is still an
+          # outage: every persona arrives at empty tables. The estate seeds
+          # in-process, so assert the findings spine is non-empty rather than
+          # trusting that /health implies data. The demo runs unauthenticated
+          # with a viewer role, so this needs no credential.
+          FINDINGS="$(curl -fsS --max-time 30 "${URL}/v1/findings?limit=1" || true)"
+          TOTAL="$(printf '%s' "${FINDINGS}" | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("total") or 0))' 2>/dev/null || echo 0)"
+          echo "demo estate findings total=${TOTAL}"
+          if [ "${TOTAL}" -lt 1 ]; then
+            echo "::error::demo serves ${SERVED} but its estate has zero findings"
+            exit 1
+          fi
           {
             echo "### Demo deployed"
             echo ""
             echo "- URL: ${URL}"
             echo "- Version: ${SERVED}"
+            echo "- Seeded findings: ${TOTAL}"
             echo "- Min instances: ${{ vars.DEMO_MIN_INSTANCES || '0' }} (0 = scales to zero, no idle cost)"
           } >> "$GITHUB_STEP_SUMMARY"

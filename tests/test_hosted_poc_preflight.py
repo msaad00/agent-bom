@@ -16,8 +16,8 @@ def _fake_fernet_key() -> str:
 
 
 VALID_ENV = {
-    "NEXT_PUBLIC_API_URL": "https://demo.agent-bom.com",
-    "CORS_ORIGINS": "https://demo.agent-bom.com,http://ui:3000",
+    "NEXT_PUBLIC_API_URL": "https://agent-bom.example.com",
+    "CORS_ORIGINS": "https://agent-bom.example.com,http://ui:3000",
     "AGENT_BOM_SESSION_COOKIE_SECURE": "1",
 }
 
@@ -67,7 +67,7 @@ def test_preflight_rejects_localhost_api_url(monkeypatch: pytest.MonkeyPatch, tm
 
 def test_preflight_rejects_wildcard_cors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _seed_secret_files(tmp_path)
-    monkeypatch.setenv("CORS_ORIGINS", "*,https://demo.agent-bom.com")
+    monkeypatch.setenv("CORS_ORIGINS", "*,https://agent-bom.example.com")
 
     errors = run_preflight(tmp_path, skip_compose=True, write_secret=False, force=False)
 

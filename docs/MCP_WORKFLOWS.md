@@ -44,7 +44,7 @@ Use the demo when showing the platform loop:
 For a read-only command-line walkthrough, use:
 
 ```bash
-ABOM_URL=https://demo.agent-bom.com \
+ABOM_URL=https://agent-bom.example.com \
 ABOM_API_TOKEN=... \
 scripts/demo/gateway-fleet-live-demo.sh
 ```

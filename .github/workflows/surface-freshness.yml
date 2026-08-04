@@ -81,7 +81,7 @@ jobs:
         run: |
           PYTHONPATH=src python3 scripts/check_surface_freshness.py \
             --expected "$EXPECTED_VERSION" \
-            --expected-glama-tool-count "${{ steps.expected.outputs.tool_count }}" \
+            --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
             --out surface-freshness.json
           {
             echo "report<<EOF"

@@ -245,14 +245,18 @@ def probe_glama(expected: str, *, expected_tool_count: int | None = None, **kw: 
     }
 
 
-def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, Any]:
+def probe_smithery(expected: str, qualified_name: str, *, expected_tool_count: int | None = None, **kw: Any) -> dict[str, Any]:
     """Probe Smithery's public catalog listing.
 
     Smithery-hosted remote servers are OAuth-gated and do not expose agent-bom's
     raw `/health` route. Freshness for this surface is therefore the catalog
     contract: the listing exists, is remote, has a deployment URL, and advertises
-    tools. Version freshness is covered by PyPI/Docker plus the protected Railway
-    health check.
+    the full shipped tool inventory. Version freshness is covered by PyPI/Docker
+    plus the protected Railway health check.
+
+    The tool count is part of that contract. A listing that advertises a strict
+    subset is a stale snapshot, and asserting only that the list is non-empty
+    cannot tell the two apart — which is how a partial listing sat unnoticed.
     """
 
     try:
@@ -267,7 +271,7 @@ def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, A
             return _classify("Smithery", "—", expected, error="catalog listing has no deploymentUrl")
         if not tools:
             return _classify("Smithery", "—", expected, error="catalog listing has no tools")
-        return {
+        result = {
             "surface": "Smithery",
             "status": "fresh",
             "version": "catalog-live",
@@ -275,6 +279,12 @@ def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, A
             "deployment_url": deployment_url,
             "tool_count": len(tools),
         }
+        if expected_tool_count is not None:
+            result["expected_tool_count"] = expected_tool_count
+            if len(tools) != expected_tool_count:
+                result["status"] = "stale"
+                result["error"] = f"catalog advertises {len(tools)} tools; expected {expected_tool_count}"
+        return result
     except (RuntimeError, ValueError) as exc:
         return _classify("Smithery", None, expected, error=str(exc))
 
@@ -282,7 +292,9 @@ def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, A
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected", default=None, help="Override expected version (defaults to pyproject.toml).")
-    parser.add_argument("--expected-glama-tool-count", type=int, default=None)
+    # One shipped tool inventory, so one expectation. The Glama-specific spelling
+    # stays accepted because the workflow passes it.
+    parser.add_argument("--expected-tool-count", "--expected-glama-tool-count", dest="expected_tool_count", type=int, default=None)
     parser.add_argument("--docker-image", default=_env_or("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
     parser.add_argument("--smithery-server", default=_env_or("SMITHERY_SERVER_QUALIFIED_NAME", DEFAULT_SMITHERY_SERVER))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
@@ -297,8 +309,8 @@ def main(argv: list[str] | None = None) -> int:
     surfaces = [
         probe_pypi(expected, **kw),
         probe_docker(expected, args.docker_image, **kw),
-        probe_glama(expected, expected_tool_count=args.expected_glama_tool_count, **kw),
-        probe_smithery(expected, args.smithery_server, **kw),
+        probe_glama(expected, expected_tool_count=args.expected_tool_count, **kw),
+        probe_smithery(expected, args.smithery_server, expected_tool_count=args.expected_tool_count, **kw),
     ]
 
     drift = [s for s in surfaces if s["status"] in ALERT_STATUSES]

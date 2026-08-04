@@ -31,6 +31,37 @@ enforced multi-provider remediation. GCP remains `partial` with
 `rate_limited_after_page_2`; the demo never turns missing evidence into a
 complete posture claim.
 
+## Posture findings over the estate
+
+The estate also carries posture findings, so the correlation is demonstrated at
+estate scale rather than only along the hand-authored incident. Each finding
+resolves to a chain:
+
+```text
+finding → inventoried asset → identity that can act on it
+        → configuration that failed → attack path → compliance control
+```
+
+Three properties are enforced by `scripts/check_enterprise_demo_surfaces.py`
+and `tests/test_demo_estate_findings.py`, because each has regressed before:
+
+- **The asset is the inventoried one.** A finding's asset identifier is the
+  estate's own `asset_id`, so there is no second identifier scheme to reconcile
+  and every finding on one asset shares one canonical id.
+- **Unrated is a bucket, not a gap.** Controls that cannot be evaluated are
+  emitted as `CIS_ERROR` with no severity and counted under `unrated`. The
+  severity histogram always sums to the total.
+- **Bounded views report unbounded totals.** The CLI, the API story, and the
+  dashboard each render a bounded page led by the incident, and each states how
+  many rows it shows against the estate's real total.
+
+Controls come from the same benchmark catalogs the live cloud scanners use, and
+findings are produced by the same `cloud_cis_check_to_finding` converter, so the
+demo shows the product's real control vocabulary rather than a demo-only
+approximation. Findings are also seeded into the demo scan job, so
+`/v1/findings`, its facets, the posture tiles, and every export read one
+derivation.
+
 ## Open the dashboard locally
 
 ```bash

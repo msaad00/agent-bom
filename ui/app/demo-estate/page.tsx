@@ -11,6 +11,7 @@ import {
   Fingerprint,
   GitBranch,
   Network,
+  ShieldAlert,
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
@@ -31,6 +32,19 @@ const DISPLAY_LABELS: Record<string, string> = {
   otel_llm: "OpenTelemetry GenAI",
   snowflake_access_history: "Snowflake Access History",
 };
+
+// Mirrors SEVERITY_DISPLAY_BUCKETS in agent_bom/graph/severity.py. `unrated` is
+// last and always present: the strip sums to the total, so a control the
+// scanner could not evaluate is visible rather than rounded away.
+const SEVERITY_BANDS = ["critical", "high", "medium", "low", "unrated"] as const;
+const SEVERITY_CHIP: Record<string, string> = {
+  critical: "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-200",
+  high: "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-200",
+  medium: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  low: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-200",
+  unrated: "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]",
+};
+const MAX_CONTROL_CHIPS = 3;
 
 function words(value: string): string {
   return DISPLAY_LABELS[value] ?? value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -99,6 +113,7 @@ export default function DemoEstatePage() {
   }
 
   const primary = story.primary_correlation;
+  const posture = story.finding_summary;
 
   return (
     <div className="space-y-6" data-testid="demo-estate-page">
@@ -151,6 +166,7 @@ export default function DemoEstatePage() {
           { label: "Observations", value: story.summary.observations, icon: Clock3 },
           { label: "Evidence sources", value: story.summary.evidence_sources, hint: `${story.summary.complete_sources} complete` },
           { label: "Correlations", value: story.summary.correlations, icon: Network },
+          { label: "Findings", value: story.summary.findings, icon: TriangleAlert },
           { label: "Snapshots", value: story.summary.snapshots, icon: GitBranch },
           { label: "Partial sources", value: story.summary.partial_sources, accent: "warn", icon: TriangleAlert },
         ]}
@@ -182,6 +198,106 @@ export default function DemoEstatePage() {
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
           {primary.sources.map((source) => <span key={source} className="rounded-full bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[color:var(--text-secondary)]">{words(source)}</span>)}
           {primary.data_classifications.map((classification) => <span key={classification} className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 font-semibold uppercase text-rose-700 dark:text-rose-200">{classification}</span>)}
+        </div>
+      </section>
+
+      <section
+        className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 elev-1"
+        data-testid="demo-estate-posture"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-[color:var(--severity-high)]" />
+              <h2 className="text-base font-semibold text-[color:var(--foreground)]">Correlated posture</h2>
+            </div>
+            <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+              Each finding resolves to an inventoried asset, the identity that can act on it, the
+              configuration that failed, and the control it evidences.
+            </p>
+          </div>
+          <dl className="grid shrink-0 grid-cols-3 gap-x-5 gap-y-1 text-xs sm:text-right">
+            <div><dt className="text-[color:var(--text-tertiary)]">Assets affected</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.assets_affected} / {posture.assets_total}</dd></div>
+            <div><dt className="text-[color:var(--text-tertiary)]">Controls</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.controls_evidenced}</dd></div>
+            <div><dt className="text-[color:var(--text-tertiary)]">Attack paths</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.attack_paths_evidenced}</dd></div>
+          </dl>
+        </div>
+
+        {/* Sums to `total` by construction: `unrated` is a bucket, not a gap. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2" aria-label="Severity breakdown">
+          {SEVERITY_BANDS.map((band) => (
+            <span
+              key={band}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${SEVERITY_CHIP[band]}`}
+            >
+              {band} {posture.by_severity[band] ?? 0}
+            </span>
+          ))}
+          <span className="text-[11px] text-[color:var(--text-tertiary)]">
+            = {posture.total} findings
+          </span>
+        </div>
+
+        <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+          Showing {story.findings.length} of {posture.total} — incident first
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[56rem] border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-[color:var(--border-subtle)] text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+                <th className="py-2 pr-3 font-medium">Severity</th>
+                <th className="py-2 pr-3 font-medium">Finding</th>
+                <th className="py-2 pr-3 font-medium">Asset</th>
+                <th className="py-2 pr-3 font-medium">Identity</th>
+                <th className="py-2 pr-3 font-medium">Configuration</th>
+                <th className="py-2 font-medium">Controls</th>
+              </tr>
+            </thead>
+            <tbody>
+              {story.findings.map((finding) => (
+                <tr key={finding.finding_id} className="border-b border-[color:var(--border-subtle)] align-top last:border-0">
+                  <td className="py-2.5 pr-3">
+                    <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${SEVERITY_CHIP[finding.severity_bucket] ?? SEVERITY_CHIP.unrated}`}>
+                      {finding.severity}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <div className="font-medium text-[color:var(--foreground)]">{finding.title}</div>
+                    {finding.correlation_id ? (
+                      <div className="mt-1 flex items-center gap-1 text-[10px] text-[color:var(--severity-high)]" title={finding.attack_path.join(" → ")}>
+                        <Network className="h-3 w-3" /> on a correlated attack path ({finding.attack_path.length} hops)
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <div className="text-[color:var(--foreground)]">{finding.asset_display_name}</div>
+                    <div className="mt-0.5 font-mono text-[10px] text-[color:var(--text-tertiary)]" title={finding.asset_id}>{shortId(finding.asset_id)}</div>
+                  </td>
+                  <td className="py-2.5 pr-3 text-[color:var(--text-secondary)]">
+                    {finding.identity_display_name || finding.identity_actor_id || "—"}
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <div className="font-mono text-[10px] text-[color:var(--text-tertiary)]">{finding.configuration_setting}</div>
+                    <div className="mt-0.5 text-[color:var(--text-secondary)]">
+                      <span className="text-[color:var(--severity-high)]">{finding.configuration_observed}</span>
+                      {" → "}
+                      <span>{finding.configuration_expected}</span>
+                    </div>
+                  </td>
+                  <td className="py-2.5">
+                    <div className="flex flex-wrap gap-1">
+                      {finding.controls.slice(0, MAX_CONTROL_CHIPS).map((control) => (
+                        <span key={control} className="rounded bg-[color:var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]">{control}</span>
+                      ))}
+                      {finding.controls.length > MAX_CONTROL_CHIPS ? (
+                        <span className="px-1 py-0.5 text-[10px] text-[color:var(--text-tertiary)]">+{finding.controls.length - MAX_CONTROL_CHIPS}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -245,6 +361,12 @@ export default function DemoEstatePage() {
 
       <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 elev-1">
         <h2 className="text-base font-semibold text-[color:var(--foreground)]">Cross-vendor correlations</h2>
+        {/* The list is bounded so the incident stays findable at estate scale.
+            Say so, and say against what — a bounded list with an unlabeled
+            length is indistinguishable from a complete one. */}
+        <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+          Showing {story.correlations.length} of {story.summary.correlations} — the incident first.
+        </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {story.correlations.map((correlation) => (
             <article key={correlation.correlation_id} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">

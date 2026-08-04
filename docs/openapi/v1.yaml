@@ -1925,6 +1925,14 @@ components:
           default: true
           title: Fictional
           type: boolean
+        finding_summary:
+          $ref: '#/components/schemas/EstateFindingSummary'
+        findings:
+          default: []
+          items:
+            $ref: '#/components/schemas/EstateFindingView'
+          title: Findings
+          type: array
         primary_correlation:
           $ref: '#/components/schemas/EnterpriseCorrelation'
         scenario:
@@ -1964,6 +1972,7 @@ components:
       - events
       - correlations
       - collection_health
+      - finding_summary
       title: EnterpriseDemoStory
       type: object
     EnterpriseDemoSummary:
@@ -1985,6 +1994,11 @@ components:
         evidence_sources:
           minimum: 0.0
           title: Evidence Sources
+          type: integer
+        findings:
+          default: 0
+          minimum: 0.0
+          title: Findings
           type: integer
         observations:
           minimum: 0.0
@@ -2035,6 +2049,170 @@ components:
           title: Support Tier
           type: string
       title: EntitlementHealth
+      type: object
+    EstateFindingSummary:
+      additionalProperties: false
+      description: "Unbounded totals for the estate's posture, whatever a view chooses\
+        \ to show.\n\nEvery field here counts the WHOLE estate. A bounded list beside\
+        \ this summary\nis a page of it, never a redefinition of it \u2014 which is\
+        \ why the story can cap\nwhat it renders without any surface reporting a page\
+        \ size as a total."
+      properties:
+        assets_affected:
+          minimum: 0.0
+          title: Assets Affected
+          type: integer
+        assets_total:
+          minimum: 0.0
+          title: Assets Total
+          type: integer
+        attack_paths_evidenced:
+          minimum: 0.0
+          title: Attack Paths Evidenced
+          type: integer
+        by_severity:
+          additionalProperties:
+            type: integer
+          title: By Severity
+          type: object
+        controls_evidenced:
+          minimum: 0.0
+          title: Controls Evidenced
+          type: integer
+        frameworks_evidenced:
+          default: []
+          items:
+            type: string
+          title: Frameworks Evidenced
+          type: array
+        identities_implicated:
+          minimum: 0.0
+          title: Identities Implicated
+          type: integer
+        schema_version:
+          default: enterprise_findings.v1
+          title: Schema Version
+          type: string
+        total:
+          minimum: 0.0
+          title: Total
+          type: integer
+      required:
+      - total
+      - by_severity
+      - assets_affected
+      - assets_total
+      - controls_evidenced
+      - attack_paths_evidenced
+      - identities_implicated
+      title: EstateFindingSummary
+      type: object
+    EstateFindingView:
+      additionalProperties: false
+      description: 'One finding rendered as the chain it belongs to, not as a row
+        of text.
+
+
+        Deliberately narrow: enough to prove finding -> asset -> identity ->
+
+        configuration -> attack path -> control on screen, without shipping the full
+
+        finding payload for every row at estate scale.'
+      properties:
+        account_ref:
+          title: Account Ref
+          type: string
+        asset_canonical_id:
+          title: Asset Canonical Id
+          type: string
+        asset_display_name:
+          title: Asset Display Name
+          type: string
+        asset_id:
+          title: Asset Id
+          type: string
+        attack_path:
+          default: []
+          items:
+            type: string
+          title: Attack Path
+          type: array
+        configuration_expected:
+          title: Configuration Expected
+          type: string
+        configuration_observed:
+          title: Configuration Observed
+          type: string
+        configuration_setting:
+          title: Configuration Setting
+          type: string
+        controls:
+          items:
+            type: string
+          title: Controls
+          type: array
+        correlation_id:
+          default: ''
+          title: Correlation Id
+          type: string
+        environment:
+          default: ''
+          title: Environment
+          type: string
+        finding_id:
+          title: Finding Id
+          type: string
+        finding_type:
+          title: Finding Type
+          type: string
+        identity_actor_id:
+          default: ''
+          title: Identity Actor Id
+          type: string
+        identity_asset_id:
+          default: ''
+          title: Identity Asset Id
+          type: string
+        identity_display_name:
+          default: ''
+          title: Identity Display Name
+          type: string
+        provider:
+          title: Provider
+          type: string
+        region:
+          default: ''
+          title: Region
+          type: string
+        security_domain:
+          title: Security Domain
+          type: string
+        severity:
+          title: Severity
+          type: string
+        severity_bucket:
+          title: Severity Bucket
+          type: string
+        title:
+          title: Title
+          type: string
+      required:
+      - finding_id
+      - finding_type
+      - severity
+      - severity_bucket
+      - title
+      - security_domain
+      - provider
+      - account_ref
+      - asset_id
+      - asset_canonical_id
+      - asset_display_name
+      - configuration_setting
+      - configuration_observed
+      - configuration_expected
+      - controls
+      title: EstateFindingView
       type: object
     EstateStage:
       enum:

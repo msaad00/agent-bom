@@ -416,6 +416,36 @@ def test_blast_radius_to_finding_compliance_tags_carried():
     assert finding.soc2_tags == ["CC7.1"]
 
 
+def test_cloud_cis_check_without_a_severity_is_unrated_not_medium():
+    """A control that reports no severity must not be handed one.
+
+    The converter defaulted a missing/blank severity to ``medium``, which is a
+    rating the evidence does not support: a check that could not be evaluated
+    was published at the same band as a real medium failure and counted toward
+    the medium tile. ``unknown`` routes it to the explicit ``unrated`` bucket
+    instead, where it is still counted and still visible (#4631).
+    """
+    from agent_bom.finding import cloud_cis_check_to_finding
+    from agent_bom.graph.severity import severity_display_bucket
+
+    for blank in ("", "   ", None):
+        check = {
+            "check_id": "1.1",
+            "title": "Evidence source unreadable",
+            "status": "ERROR",
+            "severity": blank,
+        }
+        finding = cloud_cis_check_to_finding(check, "aws")
+        assert finding.severity == "unknown", f"severity={blank!r} was rated {finding.severity}"
+        assert severity_display_bucket(finding.severity) == "unrated"
+
+    # A check that DOES report a severity keeps it, error or not.
+    rated = cloud_cis_check_to_finding(
+        {"check_id": "1.1", "title": "MFA coverage", "status": "ERROR", "severity": "high"}, "aws"
+    )
+    assert rated.severity == "high"
+
+
 def test_cloud_cis_check_to_finding_sets_applicable_frameworks():
     """cloud_cis_check_to_finding must populate applicable_frameworks (via
     apply_hub_classification) like every other generator — previously it set only

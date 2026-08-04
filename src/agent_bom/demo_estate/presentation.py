@@ -13,6 +13,14 @@ from agent_bom.demo_estate.enterprise_correlation import (
     NormalizedEnterpriseEvent,
     correlate_enterprise_estate,
 )
+from agent_bom.demo_estate.enterprise_findings import (
+    EstateFindingSummary,
+    EstateFindingView,
+    build_estate_findings,
+    summarize_estate_findings,
+    to_finding_view,
+)
+from agent_bom.graph.severity import severity_worst_first_rank
 
 ENTERPRISE_STORY_SCHEMA_VERSION = "enterprise_demo_story.v1"
 ENTERPRISE_STORY_SCENARIO = (
@@ -34,6 +42,7 @@ class EnterpriseDemoSummary(BaseModel):
     partial_sources: int = Field(ge=0)
     correlations: int = Field(ge=0)
     snapshots: int = Field(ge=0)
+    findings: int = Field(default=0, ge=0)
 
 
 class EnterpriseDemoStory(BaseModel):
@@ -56,6 +65,16 @@ class EnterpriseDemoStory(BaseModel):
     events: tuple[NormalizedEnterpriseEvent, ...]
     correlations: tuple[EnterpriseCorrelation, ...]
     collection_health: tuple[EnterpriseCollectionHealth, ...]
+    finding_summary: EstateFindingSummary
+    findings: tuple[EstateFindingView, ...] = ()
+
+
+# Bounded so the story stays legible at estate scale. The summary still reports
+# the unbounded totals, so the view is smaller than the estate but never claims
+# to be the whole of it.
+_STORY_CORRELATION_LIMIT = 50
+_STORY_EVENT_LIMIT = 200
+_STORY_FINDING_LIMIT = 100
 
 
 # Bounded so the story stays legible at estate scale. The summary still reports
@@ -86,6 +105,23 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
     correlations = ranked[:_STORY_CORRELATION_LIMIT]
     events = result.events[:_STORY_EVENT_LIMIT]
 
+    # Findings follow the same rule as correlations and events: the summary
+    # below carries the whole estate's totals, this list carries what a reader
+    # can act on. Ranked worst-first and with the incident's own findings ahead
+    # of the population, so the bounded page is the top of the estate rather
+    # than an arbitrary slice of it.
+    estate_findings = build_estate_findings(estate, correlation_result=result)
+    finding_summary = summarize_estate_findings(estate, estate_findings)
+    ranked_findings = sorted(
+        estate_findings,
+        key=lambda finding: (
+            0 if finding.evidence.get("correlation_id") else 1,
+            severity_worst_first_rank(finding.severity),
+            finding.id,
+        ),
+    )
+    findings = tuple(to_finding_view(finding) for finding in ranked_findings[:_STORY_FINDING_LIMIT])
+
     return EnterpriseDemoStory(
         disclosure=estate.disclosure,
         estate_id=estate.estate_id,
@@ -101,11 +137,14 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
             partial_sources=result.partial_source_count,
             correlations=len(result.correlations),
             snapshots=len(estate.snapshots),
+            findings=finding_summary.total,
         ),
         primary_correlation=primary,
         events=events,
         correlations=correlations,
         collection_health=result.collection_health,
+        finding_summary=finding_summary,
+        findings=findings,
     )
 
 

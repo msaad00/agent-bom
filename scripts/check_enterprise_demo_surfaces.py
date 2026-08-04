@@ -4,13 +4,24 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-from agent_bom.cli import main
-from agent_bom.demo_estate.presentation import build_enterprise_demo_story
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Check the surfaces of THIS checkout. Without this the script imports whatever
+# ``agent_bom`` happens to be installed — in a git worktree that is the sibling
+# checkout, so a drift gate silently validated a tree the developer was not
+# editing and passed. Every other preflight script that imports the package
+# pins its own root the same way (see ``export_openapi.py``).
+if str(REPO_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from agent_bom.cli import main  # noqa: E402
+from agent_bom.demo_estate.enterprise_findings import ESTATE_FINDING_SEVERITY_BUCKETS  # noqa: E402
+from agent_bom.demo_estate.presentation import build_enterprise_demo_story  # noqa: E402
+
 EXPECTED_FIXTURES = {
     "enterprise_observations.jsonl",
 }
@@ -78,6 +89,43 @@ def main_check() -> None:
     _require(len(story.estate_content_hash) == 64, "estate content hash is invalid")
     _require(len(story.story_content_hash) == 64, "story content hash is invalid")
 
+    # ── Posture: the chain, not just a count ────────────────────────────────
+    # A findings count proves nothing. What must not regress is that each
+    # rendered finding still resolves to an inventoried asset, an identity, a
+    # configuration and a control — and that the bounded list never reports its
+    # own length as the estate's total.
+    posture = story.finding_summary
+    _require(posture.total >= 300, "the estate lost its posture findings")
+    _require(story.summary.findings == posture.total, "the summary and the posture total disagree")
+    _require(
+        sum(posture.by_severity.values()) == posture.total,
+        "the severity histogram does not sum to the total — a finding was dropped",
+    )
+    _require(
+        set(posture.by_severity) == set(ESTATE_FINDING_SEVERITY_BUCKETS),
+        "the severity histogram lost a display bucket",
+    )
+    _require(
+        posture.by_severity["unrated"] > 0,
+        "no unrated finding remains, so an unevaluable control is indistinguishable from a pass",
+    )
+    _require(len(set(posture.by_severity.values())) > 2, "the estate collapsed into one severity band")
+    _require(0 < posture.assets_affected < posture.assets_total, "every asset or no asset is affected")
+    _require(posture.controls_evidenced > 0, "posture findings evidence no compliance control")
+    _require(len(posture.frameworks_evidenced) >= 2, "posture findings evidence only one framework")
+    _require(posture.attack_paths_evidenced > 0, "no finding sits on a correlated attack path")
+    _require(0 < len(story.findings) < posture.total, "the rendered findings list is not bounded")
+    for finding in story.findings:
+        _require(bool(finding.asset_id and finding.asset_canonical_id), "a rendered finding resolves to no asset")
+        _require(bool(finding.asset_display_name), "a rendered finding has an unnamed asset")
+        _require(
+            bool(finding.identity_asset_id or finding.identity_actor_id),
+            "a rendered finding carries no identity edge",
+        )
+        _require(bool(finding.configuration_setting), "a rendered finding carries no configuration edge")
+        _require(bool(finding.controls), "a rendered finding evidences no control")
+    _require(bool(story.findings[0].correlation_id), "the bounded list no longer leads with the incident")
+
     fixture_dir = REPO_ROOT / "src" / "agent_bom" / "demo_estate" / "data"
     fixtures = {path.name for path in fixture_dir.glob("enterprise*.jsonl")}
     _require(EXPECTED_FIXTURES <= fixtures, "one or more versioned fixture files are missing")
@@ -104,6 +152,12 @@ def main_check() -> None:
         "Normalized evidence timeline",
         "Collection truth",
         "Verified provenance",
+        "Correlated posture",
+        "configuration_expected",
+        "on a correlated attack path",
+        # The bounded lists must keep saying what they are bounded against.
+        "of {posture.total} — incident first",
+        "of {story.summary.correlations} — the incident first",
     ):
         _require(marker in dashboard, f"dashboard lost required marker: {marker}")
 

@@ -438,6 +438,8 @@ export type {
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult,
   EnterpriseDemoStory,
+  EstateFindingSummary,
+  EstateFindingView,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 export type { ReadWindow } from "./api-types";

@@ -67,7 +67,10 @@ const BUDGETS = {
   // measures 3601.0 KiB locally — 1.0 KiB over the 3600 KiB line. Restore
   // ~16 KiB to 3616 KiB so routine bundler variance stops failing UI
   // Validate; largest-chunk and shared-runtime budgets are unchanged.
-  totalClientJsBytes: 3_702_784,
+  // The enterprise evidence story adds one intentionally client-rendered route
+  // and measures 3633.2 KiB in Linux CI. Keep ~15 KiB of bounded headroom at
+  // 3648 KiB; largest-chunk and shared-runtime budgets remain unchanged.
+  totalClientJsBytes: 3_735_552,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

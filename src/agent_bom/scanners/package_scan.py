@@ -62,6 +62,7 @@ from agent_bom.package_utils import (
     normalize_package_name,
     ubuntu_release_branch,
 )
+from agent_bom.pci_dss import tag_blast_radius as tag_pci_dss
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
 from agent_bom.scanners.osv import ecosystem_matches as _ecosystem_matches
@@ -1179,6 +1180,32 @@ def _scan_packages_demo_advisories(packages: list[Package]) -> tuple[int, set[st
             conn.close()
 
 
+def apply_framework_tags(br: BlastRadius) -> None:
+    """Stamp every registered compliance framework's tags onto a blast radius.
+
+    One place, so a framework cannot be published in the registry, offered by
+    the API and counted in the coverage tables while no scan ever calls its
+    tagger — which is exactly how PCI DSS shipped a full catalog and a full
+    tagger that could only ever report ``not_evaluated``.
+    ``tests/test_compliance_coverage.py`` asserts this covers the registry.
+    """
+    br.owasp_tags = tag_blast_radius(br)
+    br.atlas_tags = tag_atlas_techniques(br)
+    br.attack_tags = tag_attack_techniques(br)
+    br.nist_ai_rmf_tags = tag_nist_ai_rmf(br)
+    br.owasp_mcp_tags = tag_owasp_mcp(br)
+    br.owasp_agentic_tags = tag_owasp_agentic(br)
+    br.eu_ai_act_tags = tag_eu_ai_act(br)
+    br.nist_csf_tags = tag_nist_csf(br)
+    br.iso_27001_tags = tag_iso_27001(br)
+    br.soc2_tags = tag_soc2(br)
+    br.cis_tags = tag_cis_controls(br)
+    br.cmmc_tags = tag_cmmc(br)
+    br.nist_800_53_tags = tag_nist_800_53(br)
+    br.fedramp_tags = tag_fedramp(br)
+    br.pci_dss_tags = tag_pci_dss(br)
+
+
 def _scan_packages_local_db_batch(
     conn: Any,
     packages: list[Package],
@@ -1927,20 +1954,7 @@ async def scan_agents(
             # Context-aware tagging remains opt-in for explicit compliance
             # views, but effective framework tags are always materialized.
             if scan_options.compliance_enabled:
-                br.owasp_tags = tag_blast_radius(br)
-                br.atlas_tags = tag_atlas_techniques(br)
-                br.attack_tags = tag_attack_techniques(br)
-                br.nist_ai_rmf_tags = tag_nist_ai_rmf(br)
-                br.owasp_mcp_tags = tag_owasp_mcp(br)
-                br.owasp_agentic_tags = tag_owasp_agentic(br)
-                br.eu_ai_act_tags = tag_eu_ai_act(br)
-                br.nist_csf_tags = tag_nist_csf(br)
-                br.iso_27001_tags = tag_iso_27001(br)
-                br.soc2_tags = tag_soc2(br)
-                br.cis_tags = tag_cis_controls(br)
-                br.cmmc_tags = tag_cmmc(br)
-                br.nist_800_53_tags = tag_nist_800_53(br)
-                br.fedramp_tags = tag_fedramp(br)
+                apply_framework_tags(br)
             apply_effective_blast_radius_tags(br)
             blast_radii.append(br)
 

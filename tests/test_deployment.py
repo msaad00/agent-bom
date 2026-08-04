@@ -486,6 +486,16 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "--resolve-only" in workflow
 
 
+def test_deployment_freshness_uses_a_version_stable_issue_identity():
+    """A clean release must close deployment alerts opened by an older version."""
+    workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
+
+    assert 'TITLE="supply-chain-drift: deployment surfaces out of sync"' in workflow
+    assert 'LEGACY_TITLE_PREFIX="${TITLE} with "' in workflow
+    assert workflow.count("startswith($legacy)") == 2
+    assert 'TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"' not in workflow
+
+
 def test_surface_freshness_targets_the_latest_published_release():
     """Unreleased source versions must not create distribution drift alerts."""
     workflow = (ROOT / ".github" / "workflows" / "surface-freshness.yml").read_text()

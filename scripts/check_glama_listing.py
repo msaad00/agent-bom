@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -19,6 +21,7 @@ PYPROJECT = ROOT / "pyproject.toml"
 README = ROOT / "README.md"
 DEFAULT_URL = "https://glama.ai/mcp/servers/msaad00/agent-bom"
 DEFAULT_API_URL = "https://glama.ai/api/mcp/v1/servers/msaad00/agent-bom"
+DEFAULT_SCHEMA_URL = f"{DEFAULT_URL}/schema"
 
 
 def _env_or(name: str, default: str) -> str:
@@ -124,7 +127,37 @@ def _fetch_json(url: str, timeout: int) -> dict[str, object]:
     return payload
 
 
+def _visible_text(page: str) -> str:
+    """Return user-visible page text, excluding metadata and serialized state."""
+
+    visible = re.sub(
+        r"<(head|script|style|template)\b[^>]*>.*?</\1\s*>",
+        " ",
+        page,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    visible = re.sub(r"<[^>]+>", " ", visible)
+    return re.sub(r"\s+", " ", html.unescape(visible)).strip()
+
+
+def _extract_schema_tool_names(schema_page: str, listing_url: str) -> list[str]:
+    """Extract the unique tools Glama renders on the public Schema page."""
+
+    listing_path = urllib.parse.urlsplit(listing_url).path.rstrip("/")
+    tool_prefix = f"{listing_path}/tools/"
+    names: set[str] = set()
+    for href in re.findall(r"\bhref\s*=\s*['\"]([^'\"]+)['\"]", schema_page, flags=re.IGNORECASE):
+        path = urllib.parse.urlsplit(html.unescape(href)).path
+        if not path.startswith(tool_prefix):
+            continue
+        name = urllib.parse.unquote(path.removeprefix(tool_prefix)).strip("/")
+        if name and "/" not in name:
+            names.add(name)
+    return sorted(names)
+
+
 def _check(page: str, version: str, tool_count: int) -> list[str]:
+    page = _visible_text(page)
     expected_tokens = [
         f"v{version}",
         # Accept either phrasing while Glama's rendered README catches up.
@@ -153,6 +186,7 @@ def _check(page: str, version: str, tool_count: int) -> list[str]:
 def _extract_listing_version(page: str) -> str:
     """Best-effort version extraction from Glama's rendered listing."""
 
+    page = _visible_text(page)
     patterns = [
         r"uses:\s*msaad00/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)",
         r"\bv([0-9]+\.[0-9]+\.[0-9]+)\b",
@@ -167,6 +201,7 @@ def _extract_listing_version(page: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=_env_or("GLAMA_LISTING_URL", DEFAULT_URL))
+    parser.add_argument("--schema-url", default=_env_or("GLAMA_SCHEMA_URL", DEFAULT_SCHEMA_URL))
     parser.add_argument("--api-url", default=_env_or("GLAMA_API_URL", DEFAULT_API_URL))
     parser.add_argument("--expected", default=None, help="Expected version; defaults to pyproject.toml.")
     parser.add_argument(
@@ -209,9 +244,11 @@ def main(argv: list[str] | None = None) -> int:
     last_error = ""
     listing_version = "unknown"
     actual_tool_count: int | None = None
+    inventory_source: str | None = None
     last_probe_unreachable = False
     for attempt in range(1, max(1, args.retries) + 1):
         actual_tool_count = None
+        inventory_source = None
         last_probe_unreachable = False
         try:
             page = _fetch(args.url, args.timeout)
@@ -221,22 +258,39 @@ def main(argv: list[str] | None = None) -> int:
         else:
             listing_version = _extract_listing_version(page)
             failures = _check(page, version, tool_count)
+            schema_tools: list[str] = []
             try:
-                api_payload = _fetch_json(args.api_url, args.timeout)
-                tools = api_payload.get("tools")
-                if not isinstance(tools, list):
-                    raise ValueError("Glama public API tools field is not a list")
-                actual_tool_count = len(tools)
-                tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
-                if len(tool_names) != actual_tool_count or any(not isinstance(name, str) or not name.strip() for name in tool_names):
-                    failures.append("Glama public API inventory contains a tool without a name")
-                elif len(set(tool_names)) != actual_tool_count:
-                    failures.append("Glama public API inventory contains duplicate tool names")
+                schema_tools = _extract_schema_tool_names(_fetch(args.schema_url, args.timeout), args.url)
+            except (urllib.error.URLError, TimeoutError):
+                # The directory API remains a valid fallback when the rendered
+                # Schema page cannot be fetched or has not populated yet.
+                pass
+
+            if schema_tools:
+                inventory_source = "schema"
+                actual_tool_count = len(schema_tools)
                 if actual_tool_count != tool_count:
-                    failures.append(f"Glama public API exposes {actual_tool_count} tools; expected {tool_count}")
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
-                failures.append(f"failed to verify Glama public API tool inventory: {exc}")
-                last_probe_unreachable = True
+                    failures.append(f"Glama public Schema exposes {actual_tool_count} tools; expected {tool_count}")
+            else:
+                inventory_source = "api"
+                try:
+                    api_payload = _fetch_json(args.api_url, args.timeout)
+                    tools = api_payload.get("tools")
+                    if not isinstance(tools, list):
+                        raise ValueError("Glama public API tools field is not a list")
+                    actual_tool_count = len(tools)
+                    tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
+                    if len(tool_names) != actual_tool_count or any(
+                        not isinstance(name, str) or not name.strip() for name in tool_names
+                    ):
+                        failures.append("Glama public API inventory contains a tool without a name")
+                    elif len(set(tool_names)) != actual_tool_count:
+                        failures.append("Glama public API inventory contains duplicate tool names")
+                    if actual_tool_count != tool_count:
+                        failures.append(f"Glama public API exposes {actual_tool_count} tools; expected {tool_count}")
+                except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
+                    failures.append(f"failed to verify Glama public API tool inventory: {exc}")
+                    last_probe_unreachable = True
             if not failures:
                 if args.json:
                     print(
@@ -248,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "listing_version": listing_version,
                                 "tool_count": actual_tool_count,
                                 "expected_tool_count": tool_count,
+                                "inventory_source": inventory_source,
                             },
                             separators=(",", ":"),
                         )
@@ -271,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
                     "listing_version": listing_version,
                     "tool_count": actual_tool_count,
                     "expected_tool_count": tool_count,
+                    "inventory_source": inventory_source,
                     "error": last_error,
                 },
                 separators=(",", ":"),

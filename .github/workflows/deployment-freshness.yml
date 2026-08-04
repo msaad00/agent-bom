@@ -153,15 +153,21 @@ jobs:
           PUBLIC="${{ steps.public.outputs.public_version }}"
           PUBLIC_TOOLS="${{ steps.public.outputs.tool_count }}"
           PUBLIC_AUTH="${{ steps.public.outputs.auth_required }}"
-          TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"
+          TITLE="supply-chain-drift: deployment surfaces out of sync"
+          LEGACY_TITLE_PREFIX="${TITLE} with "
 
           gh label create supply-chain-drift --color FBCA04 --description "Automated supply-chain or deployment drift detection" >/dev/null 2>&1 || true
           gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
           gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
 
-          # Check if an issue already exists
-          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          # Match the stable title and migrate version-bound alerts created by
+          # older workflow revisions. Labels and the exact prefix keep the
+          # separate distribution-surface alert out of scope.
+          EXISTING=$(gh issue list --state open --label automated --label supply-chain-drift --limit 100 --json number,title |
+            jq -r --arg title "$TITLE" --arg legacy "$LEGACY_TITLE_PREFIX" '.[] | select(.title == $title or (.title | startswith($legacy))) | .number' |
+            head -n 1)
           if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --title "$TITLE"
             gh issue comment "$EXISTING" --body "$(cat <<EOF
           ## Supply-Chain Drift Check Failed
 
@@ -250,12 +256,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          EXPECTED="${{ steps.expected.outputs.version }}"
-          TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"
-          # Match by title (not just label) so we never close the separate
-          # surface-freshness or unmonitored-surface tracking issues that share
-          # the supply-chain-drift label.
-          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            gh issue close "$EXISTING" --comment "Deployment freshness check is clean again; closing the automated supply-chain drift alert."
-          fi
+          TITLE="supply-chain-drift: deployment surfaces out of sync"
+          LEGACY_TITLE_PREFIX="${TITLE} with "
+          # Close every stable or legacy deployment alert. The title predicate
+          # deliberately excludes the separate distribution-surface issue.
+          gh issue list --state open --label automated --label supply-chain-drift --limit 100 --json number,title |
+            jq -r --arg title "$TITLE" --arg legacy "$LEGACY_TITLE_PREFIX" '.[] | select(.title == $title or (.title | startswith($legacy))) | .number' |
+            while read -r issue; do
+              if [ -n "$issue" ]; then
+                gh issue close "$issue" --comment "Deployment freshness check is clean again; closing the automated supply-chain drift alert."
+              fi
+            done

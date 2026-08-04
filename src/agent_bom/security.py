@@ -433,15 +433,47 @@ def redact_secret_url(value: str | None) -> str:
     return f"{parsed.scheme}://{host}/…#{fingerprint}"
 
 
+# Candidate secret in free text: a run of non-space characters long enough to be
+# worth entropy-testing. Split on `=` and `:` so `secret=<value>` yields the value
+# rather than the whole assignment, which would never resemble a credential.
+_TEXT_SECRET_CANDIDATE_RE = re.compile(r"[^\s\"'<>,;]{%d,}" % _B64_MIN_LEN)
+
+
 def sanitize_text(value: object, max_len: int = 1000) -> str:
     """Redact credential-shaped substrings, credential-bearing URLs, and emails in text."""
     text = sanitize_log_label(value, max_len=max_len)
     text = re.sub(r"https?://[^\s\"'<>]+", lambda match: str(sanitize_url(match.group(0)) or ""), text)
     for pattern in _VALUE_CREDENTIAL_PATTERNS:
         text = pattern.sub("<redacted>", text)
+    # The pattern list carries AWS access key *ids* but nothing for the 40-char
+    # secret access key, so the harmless half was redacted while the dangerous
+    # half was printed verbatim. Defer to the same judgement `sanitize_env_vars`
+    # already applies — including its entropy fallback — rather than growing a
+    # second, weaker answer to "is this a secret" in the log path.
+    text = _TEXT_SECRET_CANDIDATE_RE.sub(_redact_candidate_secret, text)
     # Email is sensitive PII — mask any addresses left in free text.
     text = mask_email(text)
     return text[:max_len]
+
+
+def _redact_candidate_secret(match: re.Match[str]) -> str:
+    """Redact the value of a `key=value` run when the *key* names a credential.
+
+    Requiring the key is what keeps this usable. The entropy fallback that
+    `sanitize_env_vars` applies is safe there, because a high-entropy env var
+    value is almost certainly a secret — but free text is full of high-entropy
+    tokens that are not: content hashes, ARNs, request ids, digests. Applying it
+    to bare tokens redacted a `hash_ref` and a GuardDuty ARN in the runtime
+    taxonomy, and a redactor that eats legitimate labels is one people switch
+    off. So the two paths share the *predicate for names* and deliberately do not
+    share the bare-value heuristic.
+    """
+    token = match.group(0)
+    for separator in ("=", ":"):
+        prefix, found, candidate = token.rpartition(separator)
+        if found and candidate and env_key_is_credential(prefix) and _looks_sensitive_value(candidate):
+            return f"{prefix}{separator}<redacted>"
+    return token
 
 
 def _looks_sensitive_value(value: str) -> bool:

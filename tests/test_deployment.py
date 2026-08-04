@@ -682,9 +682,13 @@ def test_glama_rebuild_webhook_is_secret_and_missing_secret_is_honest():
     assert 'if [ "$REBUILD_TRIGGERED" = "true" ]; then' in workflow
     assert 'HTTP_STATUS" -lt 300' in workflow
     assert 'HTTP_STATUS" -lt 400' not in workflow
-    assert "EVENT_NAME: ${{ github.event_name }}" in workflow
-    assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ]; then' in workflow
-    assert "::error::Manual Glama repair" in workflow
+    # The gate reads the operator's stated intent, not merely that the run was
+    # dispatched. Gating on event_name made every manual re-publish a "repair",
+    # so an unconfigured optional webhook failed the whole multi-registry run
+    # and blocked releases (#4651). Repair is now opt-in.
+    assert "GLAMA_REPAIR: ${{ inputs.glama_repair }}" in workflow
+    assert 'if [ "$GLAMA_REPAIR" = "true" ]; then' in workflow
+    assert "::error::Requested Glama repair" in workflow
     assert "exit 1" in workflow
 
 

@@ -14,6 +14,16 @@ on:
     workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      glama_repair:
+        description: >-
+          Fail the run if the Glama rebuild cannot be triggered. Opt in only when
+          repairing the Glama listing is the point of this run; an ordinary
+          re-publish should leave this off so an unconfigured third-party
+          webhook cannot block the other registries.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -272,7 +282,7 @@ jobs:
         id: glama_trigger
         env:
           GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
-          EVENT_NAME: ${{ github.event_name }}
+          GLAMA_REPAIR: ${{ inputs.glama_repair }}
           RELEASE_REF: ${{ needs.release.outputs.release_ref }}
           RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
           VERSION: ${{ needs.release.outputs.version }}
@@ -283,8 +293,8 @@ jobs:
           fail_or_warn() {
             local message="$1"
             echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
-            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-              echo "::error::Manual Glama repair ${message}"
+            if [ "$GLAMA_REPAIR" = "true" ]; then
+              echo "::error::Requested Glama repair ${message}"
               return 1
             fi
             echo "::warning::Automatic Glama rebuild ${message}; the freshness issue will remain open"

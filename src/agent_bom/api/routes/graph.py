@@ -1966,13 +1966,7 @@ def _scoped_graph_response(
     )
     scoped = selected.graph
     result_truncated = selected.node_truncated or graph.completeness.truncated
-    node_reason = (
-        "source_node_budget"
-        if graph.completeness.truncated
-        else selected.reason
-        if selected.node_truncated
-        else ""
-    )
+    node_reason = "source_node_budget" if graph.completeness.truncated else selected.reason if selected.node_truncated else ""
     result_total = None if graph.completeness.truncated else selected.total_nodes
     edge_total = None if graph.completeness.truncated else selected.total_edges
     edge_truncated = graph.completeness.truncated or selected.edge_truncated
@@ -2001,13 +1995,7 @@ def _scoped_graph_response(
                 returned=len(scoped.edges),
                 total=edge_total,
                 truncated=edge_truncated,
-                reason=(
-                    "source_node_budget"
-                    if graph.completeness.truncated
-                    else selected.reason
-                    if edge_truncated
-                    else ""
-                ),
+                reason=("source_node_budget" if graph.completeness.truncated else selected.reason if edge_truncated else ""),
             ),
         },
     }
@@ -3187,10 +3175,6 @@ _RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
         ["code_graph"],
         "Reserved for source-code topology linking files, modules, packages, and imports.",
     ),
-    RelationshipType.OWNS.value: (
-        ["identity_graph"],
-        "Reserved for ownership imports from enterprise identity and cloud inventory sources.",
-    ),
     RelationshipType.REMEDIATES.value: (
         ["remediation_graph"],
         "Reserved for fixed-version and remediation-plan graph edges.",
@@ -3203,6 +3187,10 @@ _RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
 
 
 _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
+    # Managed front-doors read from live cloud inventory (AWS API Gateway, Azure
+    # API Management, GCP API Gateway/Apigee) — not a static scan. They carry the
+    # PROTECTS edge that refines a fronted resource's exposure verdict.
+    EntityType.API_GATEWAY.value: ["cloud_inventory"],
     EntityType.TOOL_CALL.value: ["runtime_proxy", "gateway_event_projection"],
     EntityType.RESOURCE.value: ["runtime_proxy", "gateway_event_projection", "cnapp_overlay"],
     EntityType.FRAMEWORK.value: ["ai_inventory", "framework_agents"],
@@ -3217,6 +3205,11 @@ _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
 
 
 _EMITTED_GRAPH_EDGE_SURFACES: dict[str, list[str]] = {
+    # The account → resource ownership backbone. Emitted on every cloud scan by
+    # ``_add_account_resource_hierarchy`` (alongside CONTAINS), plus org → policy
+    # ownership from AWS Organizations / GCP org policies and the Snowflake
+    # account → agent/principal lanes.
+    RelationshipType.OWNS.value: ["cloud_inventory", "aws_organizations", "gcp_organizations", "snowflake"],
     RelationshipType.CALLED.value: ["runtime_proxy", "gateway_event_projection"],
     RelationshipType.USED_CREDENTIAL.value: ["runtime_proxy", "gateway_event_projection"],
     RelationshipType.USES_FRAMEWORK.value: ["ai_inventory", "framework_agents"],

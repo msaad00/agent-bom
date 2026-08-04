@@ -76,6 +76,14 @@ const INVESTIGATION_LAYERS = {
   directory: false,
   sourceFile: false,
   configFile: false,
+  codeModule: false,
+  ciJob: false,
+  blueprint: false,
+  // A gateway PROTECTS edge is what downgrades an exposure verdict, and a tool
+  // call is the runtime evidence for a path hop — both belong in an
+  // investigation even though the rest of the estate context is trimmed out.
+  apiGateway: true,
+  toolCall: true,
 } as const;
 
 /**

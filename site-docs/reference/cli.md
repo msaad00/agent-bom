@@ -167,6 +167,7 @@ metadata or environment defaults.
 | `profiles` | Manage named CLI profiles for repeatable scan contexts |
 | `proxy-bootstrap` | Generate managed endpoint onboarding material |
 | `samples` | Create bundled sample inputs for demos and first runs |
+| `demo` | Inspect the bundled fictional enterprise evidence story in a table or as normalized JSON |
 | `sidecar-injector` | Run the TLS admission webhook for sidecar injection |
 | `upgrade` | Check for and install the latest version of agent-bom |
 | `completions` | Print a shell completion script |

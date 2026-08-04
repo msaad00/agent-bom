@@ -91,6 +91,11 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             values_files=(examples / "eks-control-plane-sqlite-pilot-values.yaml",),
         ),
         HelmValidationProfile(
+            name="synthetic-enterprise-story",
+            description="Single-node dashboard seeded only with the fictional cross-vendor enterprise story.",
+            values_files=(examples / "synthetic-enterprise-story-values.yaml",),
+        ),
+        HelmValidationProfile(
             name="focused-pilot",
             description="Focused EKS pilot with control plane, scanner, and narrowed ingress.",
             values_files=(examples / "eks-mcp-pilot-values.yaml",),

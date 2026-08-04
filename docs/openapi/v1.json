@@ -1533,6 +1533,15 @@
         "title": "ClusterPostureRequest",
         "type": "object"
       },
+      "CollectionStatus": {
+        "enum": [
+          "complete",
+          "partial",
+          "unavailable"
+        ],
+        "title": "CollectionStatus",
+        "type": "string"
+      },
       "ComplianceAuditIntegrity": {
         "properties": {
           "checked": {
@@ -2580,6 +2589,308 @@
         "title": "DraftVersionBody",
         "type": "object"
       },
+      "EnterpriseCollectionHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "failure_code": {
+            "default": "",
+            "title": "Failure Code",
+            "type": "string"
+          },
+          "records_read": {
+            "title": "Records Read",
+            "type": "integer"
+          },
+          "schema_url": {
+            "title": "Schema Url",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EvidenceSource"
+          },
+          "source_schema": {
+            "title": "Source Schema",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CollectionStatus"
+          },
+          "watermark": {
+            "title": "Watermark",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "status",
+          "records_read",
+          "watermark",
+          "source_schema",
+          "schema_url"
+        ],
+        "title": "EnterpriseCollectionHealth",
+        "type": "object"
+      },
+      "EnterpriseCorrelation": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Ids",
+            "type": "array"
+          },
+          "asset_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Path",
+            "type": "array"
+          },
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "correlation_version": {
+            "default": "enterprise_correlation.v1",
+            "title": "Correlation Version",
+            "type": "string"
+          },
+          "data_classifications": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Data Classifications",
+            "type": "array"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "title": "Ended At",
+            "type": "string"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Ids",
+            "type": "array"
+          },
+          "evidence_hashes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Hashes",
+            "type": "array"
+          },
+          "evidence_quality": {
+            "title": "Evidence Quality",
+            "type": "string"
+          },
+          "incomplete_sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSource"
+            },
+            "title": "Incomplete Sources",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "correlation_id",
+          "tenant_id",
+          "trace_id",
+          "kind",
+          "outcome",
+          "started_at",
+          "ended_at",
+          "event_ids",
+          "sources",
+          "asset_ids",
+          "asset_path",
+          "data_classifications",
+          "evidence_hashes",
+          "evidence_quality"
+        ],
+        "title": "EnterpriseCorrelation",
+        "type": "object"
+      },
+      "EnterpriseDemoStory": {
+        "additionalProperties": false,
+        "description": "One read model for every operator-facing synthetic-demo surface.",
+        "properties": {
+          "collection_health": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseCollectionHealth"
+            },
+            "title": "Collection Health",
+            "type": "array"
+          },
+          "correlations": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseCorrelation"
+            },
+            "title": "Correlations",
+            "type": "array"
+          },
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "estate_content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Estate Content Hash",
+            "type": "string"
+          },
+          "estate_id": {
+            "title": "Estate Id",
+            "type": "string"
+          },
+          "estate_name": {
+            "title": "Estate Name",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedEnterpriseEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "fictional": {
+            "const": true,
+            "default": true,
+            "title": "Fictional",
+            "type": "boolean"
+          },
+          "primary_correlation": {
+            "$ref": "#/components/schemas/EnterpriseCorrelation"
+          },
+          "scenario": {
+            "default": "A GitHub deployment assumes an AWS workload identity, reaches a Kubernetes copilot and clinical analytics MCP tool, reads Snowflake PHI, and is blocked before model egress; Azure, GCP, and remediation evidence remain correlated.",
+            "title": "Scenario",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "enterprise_demo_story.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "story_content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Story Content Hash",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/EnterpriseDemoSummary"
+          },
+          "synthetic": {
+            "const": true,
+            "default": true,
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "disclosure",
+          "estate_id",
+          "estate_name",
+          "tenant_id",
+          "estate_content_hash",
+          "story_content_hash",
+          "summary",
+          "primary_correlation",
+          "events",
+          "correlations",
+          "collection_health"
+        ],
+        "title": "EnterpriseDemoStory",
+        "type": "object"
+      },
+      "EnterpriseDemoSummary": {
+        "additionalProperties": false,
+        "description": "Stable counts shown by CLI, API, and dashboard consumers.",
+        "properties": {
+          "assets": {
+            "minimum": 0.0,
+            "title": "Assets",
+            "type": "integer"
+          },
+          "complete_sources": {
+            "minimum": 0.0,
+            "title": "Complete Sources",
+            "type": "integer"
+          },
+          "correlations": {
+            "minimum": 0.0,
+            "title": "Correlations",
+            "type": "integer"
+          },
+          "evidence_sources": {
+            "minimum": 0.0,
+            "title": "Evidence Sources",
+            "type": "integer"
+          },
+          "observations": {
+            "minimum": 0.0,
+            "title": "Observations",
+            "type": "integer"
+          },
+          "partial_sources": {
+            "minimum": 0.0,
+            "title": "Partial Sources",
+            "type": "integer"
+          },
+          "snapshots": {
+            "minimum": 0.0,
+            "title": "Snapshots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assets",
+          "observations",
+          "evidence_sources",
+          "complete_sources",
+          "partial_sources",
+          "correlations",
+          "snapshots"
+        ],
+        "title": "EnterpriseDemoSummary",
+        "type": "object"
+      },
       "EntitlementHealth": {
         "properties": {
           "current_oss_paths_gated": {
@@ -2615,6 +2926,15 @@
         },
         "title": "EntitlementHealth",
         "type": "object"
+      },
+      "EstateStage": {
+        "enum": [
+          "baseline",
+          "current",
+          "remediated"
+        ],
+        "title": "EstateStage",
+        "type": "string"
       },
       "EvaluateRequest": {
         "additionalProperties": false,
@@ -2865,6 +3185,21 @@
         },
         "title": "EvaluationRunCreate",
         "type": "object"
+      },
+      "EvidenceSource": {
+        "enum": [
+          "aws_cloudtrail",
+          "azure_activity",
+          "entra_signin",
+          "gcp_audit",
+          "github_actions",
+          "kubernetes_audit",
+          "mcp_gateway",
+          "otel_llm",
+          "snowflake_access_history"
+        ],
+        "title": "EvidenceSource",
+        "type": "string"
       },
       "ExceptionRequest": {
         "additionalProperties": false,
@@ -4684,6 +5019,90 @@
           }
         },
         "title": "ModelProvenanceRequest",
+        "type": "object"
+      },
+      "NormalizedEnterpriseEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_relationships": {
+            "additionalProperties": true,
+            "title": "Event Relationships",
+            "type": "object"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "evidence_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Evidence Hash",
+            "type": "string"
+          },
+          "graph_projection": {
+            "additionalProperties": true,
+            "title": "Graph Projection",
+            "type": "object"
+          },
+          "normalization_version": {
+            "default": "enterprise_event.v1",
+            "title": "Normalization Version",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "resource_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Resource Ids",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EvidenceSource"
+          },
+          "source_run_id": {
+            "title": "Source Run Id",
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/EstateStage"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "tenant_id",
+          "stage",
+          "source",
+          "event_type",
+          "observed_at",
+          "trace_id",
+          "actor_id",
+          "resource_ids",
+          "evidence_hash",
+          "source_run_id",
+          "event_relationships",
+          "graph_projection"
+        ],
+        "title": "NormalizedEnterpriseEvent",
         "type": "object"
       },
       "PolicyCreate": {
@@ -14514,6 +14933,88 @@
         "summary": "Verify Agent Delegation",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/v1/demo-estate/story": {
+      "get": {
+        "description": "Return tenant-scoped normalized evidence only in explicit demo mode.",
+        "operationId": "get_enterprise_demo_story_v1_demo_estate_story_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnterpriseDemoStory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Enterprise Demo Story",
+        "tags": [
+          "demo-estate"
         ]
       }
     },

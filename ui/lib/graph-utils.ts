@@ -74,6 +74,11 @@ export const LINEAGE_NODE_GRAPH_KIND: Record<
   directory: "directory",
   sourceFile: "source_file",
   configFile: "config_file",
+  codeModule: "code_module",
+  ciJob: "ci_job",
+  apiGateway: "api_gateway",
+  toolCall: "tool_call",
+  blueprint: "blueprint",
 };
 
 function generatedMetaForNodeType(nodeType: LineageNodeType) {
@@ -176,7 +181,7 @@ function legendShapeForGraphShape(shape: string): LegendItem["shape"] {
   }
 }
 
-const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
+export const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "provider",
   "agent",
   "sharedServer",
@@ -185,10 +190,14 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "directory",
   "configFile",
   "sourceFile",
+  "codeModule",
+  "ciJob",
   "model",
+  "framework",
   "dataset",
   "container",
   "cloudResource",
+  "apiGateway",
   "dataStore",
   "environment",
   "fleet",
@@ -210,6 +219,8 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "driftIncident",
   "credential",
   "tool",
+  "toolCall",
+  "blueprint",
 ];
 
 export function legendItemForNodeType(nodeType: LineageNodeType): LegendItem {
@@ -245,41 +256,73 @@ const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> =
     ]),
   ) as Record<LineageNodeType, LegendItem>;
 
-const RELATIONSHIP_LEGEND_ORDER = [
+/**
+ * Legend rows for edge kinds, grouped the way an operator reads the canvas.
+ *
+ * Every member of the backend `RelationshipType` enum must appear here. Edges
+ * already DRAW from the generated `GRAPH_EDGE_KIND_META` fallback, but
+ * `relationshipLegendItemsForVisibleEdges` gates the legend on membership in
+ * this list — so an omission leaves a drawn edge with no key to read it by.
+ */
+export const RELATIONSHIP_LEGEND_ORDER = [
+  // Static inventory
   "hosts",
   "uses",
+  "uses_framework",
   "depends_on",
   "provides_tool",
   "exposes_cred",
   "reaches_tool",
   "serves_model",
   "contains",
+  "observes",
+  // Code and CI topology
+  "imports",
+  "defines",
+  "runs",
+  "configures",
+  // Findings
   "vulnerable_to",
   "affects",
   "exploitable_via",
   "remediates",
   "triggers",
+  // Lateral movement
   "shares_server",
   "shares_cred",
   "lateral_path",
+  // Agent-identity governance
   "authenticates_as",
   "scoped_to",
   "governs",
   "exhibits_drift",
+  // Ownership and governance
+  "manages",
+  "owns",
+  "part_of",
+  "member_of",
+  "belongs_to",
   "assumes",
   "trusts",
   "attached",
   "inherits",
   "can_access",
   "cross_account_trust",
+  // Cloud exposure and data reachability
   "exposed_to",
+  "protects",
   "stores",
   "has_permission",
+  // Runtime evidence
   "invoked",
   "called",
   "accessed",
   "used_credential",
   "delegated_to",
+  "acted_as",
+  // Cross-environment correlation
+  "correlates_with",
+  "possibly_correlates_with",
 ] as const;
 
 const DASHED_LEGEND_RELATIONSHIPS = new Set<string>([
@@ -347,6 +390,17 @@ const RELATIONSHIP_DESCRIPTION_OVERRIDES: Record<string, string> = {
   used_credential: "Runtime evidence that credential material was used.",
   delegated_to:
     "Runtime delegation from one actor or tool boundary to another.",
+  protects:
+    "A WAF, gateway, or edge control fronts the asset and refines its exposure verdict.",
+  observes:
+    "Inventory evidence that an agent or framework watches the connected asset.",
+  belongs_to: "Asset is part of the connected application or service.",
+  acted_as:
+    "Runtime evidence that an actor operated under another identity.",
+  correlates_with:
+    "The same real-world asset was matched across environments or sources.",
+  possibly_correlates_with:
+    "Low-confidence cross-environment match — treat as a lead, not a fact.",
 };
 
 function fallbackRelationshipLabel(relationship: string): string {

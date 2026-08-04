@@ -101,6 +101,21 @@ def test_demo_estate_bootstrap_validates_versioned_enterprise_contract(
     assert len(contract["content_hash"]) == 64
 
 
+def test_demo_estate_story_api_exposes_normalized_evidence_only(
+    demo_estate_client: TestClient,
+) -> None:
+    response = demo_estate_client.get("/v1/demo-estate/story", headers=VIEWER)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["schema_version"] == "enterprise_demo_story.v1"
+    assert payload["synthetic"] is True
+    assert payload["fictional"] is True
+    assert payload["primary_correlation"]["outcome"] == "blocked"
+    assert payload["summary"]["evidence_sources"] == 9
+    assert "raw_payload" not in response.text
+
+
 def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: TestClient) -> None:
     payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
     nodes = payload.get("nodes") or []

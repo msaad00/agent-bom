@@ -5,6 +5,12 @@ import { EntityType } from "@/lib/graph-schema";
  * Canonical bridge between public graph layers, API entity filters, and
  * lineage renderers. A layer may intentionally own more than one backend
  * entity type (for example applications use the existing container visual).
+ *
+ * EVERY member of the backend `EntityType` enum must appear here exactly once.
+ * `unified-graph-flow.ts` skips any node whose entity type resolves to `null`,
+ * which also prunes every edge touching it — so an omission here is a silent
+ * data loss on the canvas, not a cosmetic gap. `graph-schema-canvas-coverage`
+ * walks the backend enum and fails when a type goes unmapped.
  */
 export const GRAPH_LAYER_ENTITY_TYPES: Record<
   LineageNodeType,
@@ -26,15 +32,20 @@ export const GRAPH_LAYER_ENTITY_TYPES: Record<
   cluster: [EntityType.CLUSTER],
   server: [EntityType.SERVER],
   sharedServer: [EntityType.SERVER],
-  package: [EntityType.PACKAGE],
+  // An external import is the code-side view of a third-party dependency, so
+  // it belongs in the supply-chain lane rather than the repository file lane.
+  package: [EntityType.PACKAGE, EntityType.EXTERNAL_IMPORT],
   model: [EntityType.MODEL],
   framework: [EntityType.FRAMEWORK],
   dataset: [EntityType.DATASET],
   container: [EntityType.CONTAINER, EntityType.APPLICATION],
-  cloudResource: [EntityType.CLOUD_RESOURCE],
+  cloudResource: [EntityType.CLOUD_RESOURCE, EntityType.RESOURCE],
   vulnerability: [EntityType.VULNERABILITY],
   misconfiguration: [EntityType.MISCONFIGURATION],
-  credential: [EntityType.CREDENTIAL],
+  // The backend already treats a credential and a credential reference as one
+  // class on every attack path (`_CRED_TYPES` in graph/attack_path_mitre.py),
+  // so they share one layer and one visual here.
+  credential: [EntityType.CREDENTIAL, EntityType.CREDENTIAL_REF],
   tool: [EntityType.TOOL],
   managedIdentity: [EntityType.MANAGED_IDENTITY],
   accessGrant: [EntityType.ACCESS_GRANT],
@@ -44,6 +55,11 @@ export const GRAPH_LAYER_ENTITY_TYPES: Record<
   directory: [EntityType.DIRECTORY],
   sourceFile: [EntityType.SOURCE_FILE],
   configFile: [EntityType.CONFIG_FILE],
+  codeModule: [EntityType.CODE_MODULE],
+  ciJob: [EntityType.CI_JOB],
+  apiGateway: [EntityType.API_GATEWAY],
+  toolCall: [EntityType.TOOL_CALL],
+  blueprint: [EntityType.BLUEPRINT],
 };
 
 const ENTITY_TO_LINEAGE_NODE_TYPE = new Map<string, LineageNodeType>();

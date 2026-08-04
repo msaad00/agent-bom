@@ -83,6 +83,11 @@ const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
   directory: true,
   sourceFile: true,
   configFile: true,
+  codeModule: true,
+  ciJob: true,
+  apiGateway: true,
+  toolCall: true,
+  blueprint: true,
 };
 
 const SIGMA_DEFAULT_FILTERS: UnifiedGraphFlowFilters = {

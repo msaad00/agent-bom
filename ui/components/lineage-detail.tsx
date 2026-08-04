@@ -1,13 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import Link from "next/link";
 import {
   Brain,
   Bug,
   Building2,
   Cloud,
+  Component,
   Database,
+  DraftingCompass,
   ExternalLink,
   FileCode,
   FileCog,
@@ -23,8 +25,11 @@ import {
   ShieldAlert,
   ShieldOff,
   TriangleAlert,
+  Waypoints,
+  Workflow,
   Wrench,
   X,
+  Zap,
 } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
@@ -37,7 +42,10 @@ import {
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import type { LineageNodeData, RuntimeEvidenceTier } from "./lineage-nodes";
 
-const TYPE_ICON = {
+const TYPE_ICON: Record<
+  LineageNodeData["nodeType"],
+  ComponentType<{ className?: string }>
+> = {
   provider: Building2,
   agent: ShieldAlert,
   org: Building2,
@@ -72,7 +80,12 @@ const TYPE_ICON = {
   directory: Folder,
   sourceFile: FileCode,
   configFile: FileCog,
-} as const;
+  codeModule: Component,
+  ciJob: Workflow,
+  apiGateway: Waypoints,
+  toolCall: Zap,
+  blueprint: DraftingCompass,
+};
 
 const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
   provider: "Provider",
@@ -109,6 +122,11 @@ const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
   directory: "Directory",
   sourceFile: "Source File",
   configFile: "Config File",
+  codeModule: "Code Module",
+  ciJob: "CI/CD Job",
+  apiGateway: "API Gateway",
+  toolCall: "Tool Call",
+  blueprint: "Blueprint",
 };
 
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
@@ -146,6 +164,11 @@ const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   directory: "border-teal-700",
   sourceFile: "border-cyan-700",
   configFile: "border-orange-700",
+  codeModule: "border-cyan-700",
+  ciJob: "border-purple-700",
+  apiGateway: "border-blue-700",
+  toolCall: "border-purple-700",
+  blueprint: "border-indigo-700",
 };
 
 export function LineageDetailPanel({

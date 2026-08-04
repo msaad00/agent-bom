@@ -10,8 +10,10 @@ import {
   Bug,
   Building2,
   Cloud,
+  Component,
   Container,
   Database,
+  DraftingCompass,
   FileCode,
   FileCog,
   Fingerprint,
@@ -33,7 +35,10 @@ import {
   UserCog,
   Users,
   Warehouse,
+  Waypoints,
+  Workflow,
   Wrench,
+  Zap,
 } from "lucide-react";
 
 export type LineageNodeType =
@@ -70,7 +75,12 @@ export type LineageNodeType =
   | "dataStore"
   | "directory"
   | "sourceFile"
-  | "configFile";
+  | "configFile"
+  | "codeModule"
+  | "ciJob"
+  | "apiGateway"
+  | "toolCall"
+  | "blueprint";
 
 export type EntityIcon = ComponentType<{
   className?: string;
@@ -119,6 +129,11 @@ export const ENTITY_ICONS: Record<LineageNodeType, EntityIcon> = {
   directory: Folder,
   sourceFile: FileCode,
   configFile: FileCog,
+  codeModule: Component,
+  ciJob: Workflow,
+  apiGateway: Waypoints,
+  toolCall: Zap,
+  blueprint: DraftingCompass,
 };
 
 export function entityIcon(

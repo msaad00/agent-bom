@@ -109,7 +109,7 @@ def test_spdx_request_returns_an_spdx_document(tmp_path, monkeypatch) -> None:
     document = job.result_document
     assert isinstance(document, dict)
     # ``--format spdx`` on the CLI emits SPDX 3.0.1 JSON-LD; the API must match it.
-    assert "spdx.org" in str(document.get("@context", "")), document.get("@context")
+    assert document.get("@context") == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
     assert isinstance(document.get("@graph"), list) and document["@graph"]
 
 

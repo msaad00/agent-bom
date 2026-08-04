@@ -475,15 +475,19 @@ class TestOperatorDetailBoundary:
         guidance mid-word ("…configure AWS credentials for the control plane (AWS_")
         is the same defect as dropping it — the operator still cannot act on it.
         """
-        import re
+        import ast
         from pathlib import Path
 
         from agent_bom.cloud.connection_broker import ConnectionBrokerError, operator_facing_detail
 
         source = Path(__file__).resolve().parents[1] / "src" / "agent_bom" / "cloud" / "connection_broker.py"
         remediations = [
-            "".join(re.findall(r'"([^"]*)"', match.group(1)))
-            for match in re.finditer(r'remediation=\(\s*((?:\s*"[^"]*"\s*)+)\)', source.read_text(encoding="utf-8"))
+            keyword.value.value
+            for keyword in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+            if isinstance(keyword, ast.keyword)
+            and keyword.arg == "remediation"
+            and isinstance(keyword.value, ast.Constant)
+            and isinstance(keyword.value.value, str)
         ]
         assert len(remediations) >= 3, "expected the broker to curate remediation strings"
 

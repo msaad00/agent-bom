@@ -27,7 +27,7 @@ from agent_bom.ast_signal_utils import (
 from agent_bom.ast_source_mask import mask_line_comments_and_strings
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
 _MAX_FILE_SIZE = 512 * 1024  # 512KB
 _GO_PROMPT_ASSIGN_RE = re.compile(
@@ -40,7 +40,17 @@ _GO_PROMPT_ASSIGN_RE = re.compile(
 # A bare ``Tool(`` alternative used to be listed here, but with IGNORECASE it
 # claimed any ordinary call spelled ``inventory.Tool("hammer-42")``. Only the
 # registration verbs stay.
-_GO_TOOL_START_RE = re.compile(r"""\b(?:AddTool|RegisterTool|NewTool)\s*\(""", re.IGNORECASE)
+_GO_TOOL_START_RE = re.compile(r"""\b(?P<verb>AddTool|RegisterTool|NewTool)\s*\(""", re.IGNORECASE)
+# ``NewTool`` is the name-bearing call of the mainstream community MCP library,
+# but ``NewX`` is also the ordinary Go constructor idiom, so an unrelated
+# ``mcp.NewTool("wrench-7")`` in a hardware package would otherwise register a
+# tool. It is only trusted in a file that imports an MCP module -- the same gate
+# the Swift analyzer applies to ``Tool(name:)`` via ``import MCP``. ``AddTool``
+# and ``RegisterTool`` stay ungated: they are registration verbs rather than
+# constructors, and real servers call them through a handle whose own package
+# may not be imported by name in that file.
+_GO_NEW_TOOL_VERB = "newtool"
+_GO_MCP_MODULE_SEGMENT_RE = re.compile(r"(?:^|[/.-])(?:mcp|modelcontextprotocol)(?:$|[/.-])", re.IGNORECASE)
 # github.com/modelcontextprotocol/go-sdk carries the tool name in a composite
 # literal instead of a leading string argument, in both registration forms:
 #   mcp.AddTool(server, &mcp.Tool{Name: "greet"}, SayHi)   // generic function
@@ -394,6 +404,11 @@ def _go_tool_name_from_args(args: Sequence[str]) -> str:
     return ""
 
 
+def go_source_imports_mcp_module(imported_modules: Iterable[str]) -> bool:
+    """Return whether any imported Go module path is an MCP library."""
+    return any(_GO_MCP_MODULE_SEGMENT_RE.search(module) for module in imported_modules)
+
+
 def _collect_go_tool_registrations(
     source: str,
     *,
@@ -401,6 +416,7 @@ def _collect_go_tool_registrations(
     rel_path: str,
     scope_name: str,
     imported_aliases: dict[str, str],
+    imports_mcp_module: bool,
     package_name: str,
     functions: dict[str, _GoFunctionAnalysis],
 ) -> list[_GoToolRegistration]:
@@ -410,6 +426,8 @@ def _collect_go_tool_registrations(
     # offsets, so every span below is still read from the real source.
     masked = mask_line_comments_and_strings(source, backtick_strings=True)
     for match in _GO_TOOL_START_RE.finditer(masked):
+        if match.group("verb").lower() == _GO_NEW_TOOL_VERB and not imports_mcp_module:
+            continue
         open_index = source.find("(", match.start())
         args_segment = _balanced_segment(source, open_index, open_char="(", close_char=")")
         if args_segment is None:
@@ -986,6 +1004,7 @@ def scan_go_file(
         rel_path=rel_path,
         scope_name=scope_name,
         imported_aliases=imported_aliases,
+        imports_mcp_module=go_source_imports_mcp_module(imported_modules),
         package_name=package_name,
         functions=functions,
     )

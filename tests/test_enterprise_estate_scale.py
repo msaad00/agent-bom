@@ -26,6 +26,10 @@ from agent_bom.demo_estate.enterprise import (
 )
 from agent_bom.demo_estate.enterprise_scale import (
     CLOUD_PROVIDERS,
+    MIN_ACCOUNTS_PER_CLOUD,
+    MIN_ENTERPRISE_ASSETS,
+    MIN_ENTERPRISE_EVENTS,
+    MIN_RESOURCES_PER_ACCOUNT,
     ScaleProfile,
     build_scaled_estate,
 )
@@ -152,3 +156,57 @@ def test_snapshots_only_reference_assets_that_exist(estate: EnterpriseEstate) ->
     for snapshot in estate.snapshots:
         unknown = set(snapshot.asset_ids) - known
         assert not unknown, f"{snapshot.stage} references unknown assets: {sorted(unknown)[:5]}"
+
+
+# ---------------------------------------------------------------------------
+# Size, not only shape. A correctly-shaped estate that is tiny still cannot show
+# correlation, so the shipped default carries a floor as well as a form.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def shipped() -> EnterpriseEstate:
+    """The default profile — what a demo actually gets."""
+    return build_scaled_estate()
+
+
+def test_the_shipped_estate_is_enterprise_sized(shipped: EnterpriseEstate) -> None:
+    assert len(shipped.assets) >= MIN_ENTERPRISE_ASSETS, (
+        f"the shipped estate holds {len(shipped.assets)} assets; below {MIN_ENTERPRISE_ASSETS} it reads as a diagram, not an estate"
+    )
+    assert len(shipped.observations) >= MIN_ENTERPRISE_EVENTS, (
+        f"the shipped estate holds {len(shipped.observations)} events; "
+        f"below {MIN_ENTERPRISE_EVENTS} there is too little evidence to correlate"
+    )
+
+
+def test_the_shipped_estate_has_depth_within_each_account(shipped: EnterpriseEstate) -> None:
+    """Breadth without depth is still a diagram — each account needs a real population."""
+    per_account: dict[tuple[str, str], int] = Counter()
+    for asset in shipped.assets:
+        if asset.provider in CLOUD_PROVIDERS:
+            per_account[(asset.provider, asset.account_scope)] += 1
+
+    accounts_per_cloud: dict[str, int] = Counter(provider for provider, _ in per_account)
+    thin_clouds = {p: n for p, n in accounts_per_cloud.items() if n < MIN_ACCOUNTS_PER_CLOUD}
+    assert not thin_clouds, f"clouds with fewer than {MIN_ACCOUNTS_PER_CLOUD} accounts: {thin_clouds}"
+
+    thin_accounts = {key: n for key, n in per_account.items() if n < MIN_RESOURCES_PER_ACCOUNT}
+    assert not thin_accounts, f"accounts holding fewer than {MIN_RESOURCES_PER_ACCOUNT} resources: {dict(list(thin_accounts.items())[:3])}"
+
+
+def test_the_shipped_estate_keeps_every_shape_guarantee(shipped: EnterpriseEstate) -> None:
+    """Size must not come at the cost of the properties that make it legible."""
+    environments: dict[str, set[str]] = defaultdict(set)
+    accounts: dict[str, set[str]] = defaultdict(set)
+    for asset in shipped.assets:
+        if asset.provider in CLOUD_PROVIDERS:
+            environments[asset.provider].add(asset.environment)
+            accounts[asset.provider].add(asset.account_scope)
+
+    for provider in CLOUD_PROVIDERS:
+        assert {"production", "staging", "development"} <= environments[provider], provider
+        assert len(accounts[provider]) >= MIN_ACCOUNTS_PER_CLOUD, provider
+
+    unverified = [e.event_id for e in shipped.observations if not verify_observation_hash(e)]
+    assert not unverified, f"{len(unverified)} observations fail their own provenance check at scale"

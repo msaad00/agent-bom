@@ -23,7 +23,6 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from agent_bom.demo_estate.enterprise import (
     ENTERPRISE_SCHEMA_VERSION,
@@ -128,13 +127,30 @@ _PARTIAL_FAILURE_CODE = "rate_limited"
 _EPOCH = datetime(2026, 7, 1, 0, 0, 0, tzinfo=UTC)
 
 
+# The floor below which the estate stops reading as an enterprise. Pinned by
+# tests so the default cannot be quietly shrunk back to a diagram: a reviewer
+# trimming these for speed has to change the assertion and say why.
+MIN_ENTERPRISE_ASSETS = 2000
+MIN_ENTERPRISE_EVENTS = 6000
+MIN_ACCOUNTS_PER_CLOUD = 5
+MIN_RESOURCES_PER_ACCOUNT = 20
+
+
 @dataclass(frozen=True)
 class ScaleProfile:
-    """How big the estate should be, and therefore how much story it can carry."""
+    """How big the estate should be, and therefore how much story it can carry.
 
-    accounts_per_cloud: int = 3
-    resources_per_account: int = 12
-    events_per_asset: int = 2
+    The defaults are the shipped demo size. They are deliberately in the low
+    thousands rather than the millions: the read-path wall sits far above this,
+    but the demo runs on modest hosted resources, and an estate that takes
+    seconds to paint a graph tells a worse story than one that responds
+    instantly. Scale proof belongs in a benchmark, not in the thing a prospect
+    clicks.
+    """
+
+    accounts_per_cloud: int = 8
+    resources_per_account: int = 64
+    events_per_asset: int = 3
 
     def __post_init__(self) -> None:
         if self.accounts_per_cloud < 2:
@@ -220,13 +236,25 @@ def _build_assets(profile: ScaleProfile, tenant_id: str) -> tuple[EstateAsset, .
     return tuple(assets)
 
 
-def _sealed(observation: RawObservation) -> RawObservation:
+_PLACEHOLDER_HASH = "0" * 64
+_READ_ONLY_EVENTS = frozenset({"GetObject", "QUERY", "storage.objects.get"})
+
+
+def _seal(observation: RawObservation) -> RawObservation:
     """Stamp the evidence hash using the estate's own hasher.
 
-    Deliberately not a second implementation: ``verify_observation_hash`` is the
-    consumer, so computing the digest any other way would produce evidence that
-    fails its own verification — the exact class of defect where one judgement
-    gets two implementations.
+    Deliberately not a second implementation. ``verify_observation_hash`` is the
+    consumer, so computing the digest any other way produces evidence that fails
+    its own verification — the exact class of defect where one judgement gets two
+    implementations. The first draft of this module did precisely that, and every
+    observation failed to verify.
+
+    That constraint is also why this goes through ``model_dump(mode="json")``
+    rather than hashing the source dict directly, even though the round-trip is
+    the dominant cost of the build. Pydantic serializes ``observed_at`` as
+    ``...Z`` where ``datetime.isoformat`` gives ``...+00:00``; matching it by hand
+    would mean re-implementing pydantic's serialization and re-opening the same
+    defect. The cost is the price of one hasher, and it is worth paying.
     """
     digest = _canonical_observation_hash(observation.model_dump(mode="json", exclude={"provenance"}))
     return observation.model_copy(update={"provenance": observation.provenance.model_copy(update={"evidence_hash": digest})})
@@ -234,45 +262,48 @@ def _sealed(observation: RawObservation) -> RawObservation:
 
 def _build_observations(assets: tuple[EstateAsset, ...], profile: ScaleProfile, tenant_id: str) -> tuple[RawObservation, ...]:
     observations: list[RawObservation] = []
+    occurrences = range(profile.events_per_asset)
     for asset in assets:
         source = _SOURCE_FOR_PROVIDER.get(asset.provider)
         if source is None:
             continue
+        # Hoisted: these are constant for every event on this asset, and at
+        # scale the per-event recomputation dominated the loop body.
+        source_value = source.value
+        run_id = f"demo-run-scaled-{source_value}"
         event_types = _EVENT_TYPES[asset.provider]
-        for occurrence in range(profile.events_per_asset):
-            seed = _stable_index(asset.asset_id, str(occurrence))
-            event_type = event_types[seed % len(event_types)]
+        type_count = len(event_types)
+        asset_id = asset.asset_id
+        for occurrence in occurrences:
+            seed = _stable_index(asset_id, str(occurrence))
+            event_type = event_types[seed % type_count]
             observed_at = _EPOCH + timedelta(minutes=seed % 40320)
-            event_id = f"evt-{hashlib.sha256(f'{asset.asset_id}:{occurrence}'.encode()).hexdigest()[:20]}"
-            actor = f"{asset.provider}-principal-{seed % 37:02d}@{_TENANT_DOMAIN}"
-            row: dict[str, Any] = {
-                "event_id": event_id,
-                "stage": EstateStage.CURRENT.value,
-                "source": source.value,
-                "event_type": event_type,
-                "observed_at": observed_at.isoformat(),
-                "actor_id": actor,
-                "resource_ids": [asset.asset_id],
-                "trace_id": hashlib.sha256(event_id.encode()).hexdigest()[:32],
-                "raw_payload": {
-                    "eventName": event_type,
-                    "accountScope": asset.account_scope,
-                    "region": asset.region,
-                    "environment": asset.environment,
-                    "readOnly": event_type in {"GetObject", "QUERY", "storage.objects.get"},
-                },
-            }
+            event_id = f"evt-{hashlib.sha256(f'{asset_id}:{occurrence}'.encode()).hexdigest()[:20]}"
             observations.append(
-                _sealed(
+                _seal(
                     RawObservation(
-                        **row,
+                        event_id=event_id,
+                        stage=EstateStage.CURRENT,
+                        source=source,
+                        event_type=event_type,
+                        observed_at=observed_at,
+                        actor_id=f"{asset.provider}-principal-{seed % 37:02d}@{_TENANT_DOMAIN}",
+                        resource_ids=(asset_id,),
+                        trace_id=hashlib.sha256(event_id.encode()).hexdigest()[:32],
+                        raw_payload={
+                            "eventName": event_type,
+                            "accountScope": asset.account_scope,
+                            "region": asset.region,
+                            "environment": asset.environment,
+                            "readOnly": event_type in _READ_ONLY_EVENTS,
+                        },
                         provenance=EvidenceProvenance(
                             source=source,
                             source_event_id=event_id,
                             observed_at=observed_at,
-                            run_id=f"demo-run-scaled-{source.value}",
+                            run_id=run_id,
                             tenant_id=tenant_id,
-                            evidence_hash="0" * 64,
+                            evidence_hash=_PLACEHOLDER_HASH,
                             schema_version=ENTERPRISE_SCHEMA_VERSION,
                         ),
                     )

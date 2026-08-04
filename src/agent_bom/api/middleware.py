@@ -58,6 +58,12 @@ _TENANT_SCOPED_AUTH_METHODS = {
     "scim_bearer",
     "static_api_key",
 }
+# Auth methods whose ``request.state.tenant_id`` was set from a KeyStore-verified
+# ApiKey. Re-verifying the same raw key can only return the same tenant, so the
+# rate limiter reads the state instead of paying a second scrypt derivation.
+# Deliberately narrow: "static_api_key" is NOT here because the static key never
+# reaches the KeyStore, so its verify returns None and buckets differently.
+_API_KEY_VERIFIED_AUTH_METHODS = {"api_key", "saml"}
 _AUTH_RUNTIME_STATUS: dict[str, object] = {
     "auth_required": True,
     "auth_configured": False,
@@ -2141,6 +2147,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
         tenant_id = getattr(request.state, "tenant_id", "").strip() or None
         auth_method = str(getattr(request.state, "auth_method", "") or "")
+        # APIKeyMiddleware sets ``tenant_id`` and ``auth_method`` together from
+        # the very ApiKey it just verified, so for these methods the state IS the
+        # answer and re-deriving it is pure waste — a second ~21.5ms scrypt on
+        # every authenticated request. The broader check below deliberately
+        # excludes "default", which is exactly the single-tenant and hosted-demo
+        # case, so without this clause the common path paid the cost every time.
+        if tenant_id and auth_method in _API_KEY_VERIFIED_AUTH_METHODS:
+            return tenant_id
         if tenant_id and tenant_id != "default" and auth_method in _TENANT_SCOPED_AUTH_METHODS:
             return tenant_id
         if raw_key:

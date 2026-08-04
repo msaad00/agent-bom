@@ -112,6 +112,17 @@ CREATE INDEX IF NOT EXISTS idx_gn_severity ON graph_nodes(severity);
 CREATE INDEX IF NOT EXISTS idx_gn_risk ON graph_nodes(risk_score DESC);
 CREATE INDEX IF NOT EXISTS idx_gn_scan ON graph_nodes(scan_id);
 CREATE INDEX IF NOT EXISTS idx_gn_tenant_scan ON graph_nodes(tenant_id, scan_id);
+-- Node paging order, in index form. page_nodes() equality-filters on
+-- (tenant_id, scan_id) then sorts by (severity_id DESC, risk_score DESC,
+-- label ASC, id ASC) -- the same tuple the keyset cursor encodes. With only
+-- idx_gn_tenant_scan the planner answered every page with "USE TEMP B-TREE FOR
+-- ORDER BY", materialising and sorting the WHOLE snapshot to return one page:
+-- cost O(snapshot log snapshot) per request regardless of limit. Carrying the
+-- sort columns in the index makes the scan pre-ordered, so a page is a range
+-- read. Column order and direction must keep matching the ORDER BY exactly or
+-- SQLite silently falls back to the temp B-tree.
+CREATE INDEX IF NOT EXISTS idx_gn_tenant_scan_rank
+    ON graph_nodes(tenant_id, scan_id, severity_id DESC, risk_score DESC, label ASC, id ASC);
 
 -- ── Graph edges (one row per edge per scan) ──
 CREATE TABLE IF NOT EXISTS graph_edges (

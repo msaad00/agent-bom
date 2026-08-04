@@ -789,7 +789,14 @@ _apply_cors_middleware(_cors_origins)
 
 
 app.add_middleware(TrustHeadersMiddleware)
-app.add_middleware(GZipMiddleware, minimum_size=500)
+# Starlette defaults to compresslevel=9, and GZipResponder.apply_compression is
+# synchronous — it runs on the event loop, so the whole worker stalls for the
+# duration. Measured on the 2.7 MB /v1/graph?limit=5000 payload: level 9 cost
+# 32.5ms for 175.4 KB, level 6 cost 17.7ms for 185.2 KB. Paying 15ms of blocked
+# loop per response to save 10 KB on the wire is the wrong trade on the modest
+# vCPU the demo runs on; 6 is the level nginx and friends ship for the same
+# reason. Bytes on the wire grow ~5.6%; loop time halves.
+app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
 
 # wrap FastAPI's bare ``{"detail": ...}`` errors in the
 # structured ``{error: {code, message, correlation_id, details}}`` envelope.

@@ -314,8 +314,7 @@ def test_every_demo_check_still_exists_in_the_shipped_benchmark_scanner():
     drifted = [
         f"{check.provider} {check.check_id} ({check.title})"
         for check in _CATALOG
-        if f'check_id="{check.check_id}"' not in sources[check.provider]
-        or f'title="{check.title}"' not in sources[check.provider]
+        if f'check_id="{check.check_id}"' not in sources[check.provider] or f'title="{check.title}"' not in sources[check.provider]
     ]
     assert drifted == [], f"demo checks no longer match the shipped benchmark scanner: {drifted}"
 
@@ -340,3 +339,43 @@ def test_a_second_tenant_gets_its_own_scoped_findings():
     other_findings = build_estate_findings(other)
     assert other_findings, "the second tenant produced no findings"
     assert {f.evidence["tenant_id"] for f in other_findings} == {"other-tenant"}
+
+
+# ── Adversarial: the estate is identical for every tenant, by design ─────────
+
+
+def test_two_tenants_holding_identical_finding_ids_both_persist():
+    """Same synthetic estate, same finding ids — neither tenant may be deduped away.
+
+    Every tenant that seeds the demo gets byte-identical findings, because the
+    estate itself is identical; the ids collide completely. That makes this the
+    cheapest available probe for the defect class where a store dedupes on a
+    key that omits ``tenant_id`` and silently drops the second tenant's rows
+    while still reporting healthy. It has happened here before.
+    """
+    from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore
+
+    left = build_estate_findings(build_demo_estate(tenant_id="tenant-left"))
+    right = build_estate_findings(build_demo_estate(tenant_id="tenant-right"))
+    left_ids = {f.id for f in left}
+    assert left_ids == {f.id for f in right}, "the probe is void unless the ids actually collide"
+
+    store = InMemoryComplianceHubStore()
+    for tenant, findings_for_tenant in (("tenant-left", left), ("tenant-right", right)):
+        store.upsert_current_batch(
+            tenant,
+            [f.to_dict() for f in findings_for_tenant],
+            observed_at="2026-08-04T00:00:00Z",
+            batch_id=f"batch-{tenant}",
+            source="demo-estate",
+        )
+
+    for tenant in ("tenant-left", "tenant-right"):
+        page = store.list_current_page(tenant, limit=1000)
+        rows = page[0] if isinstance(page, tuple) else page
+        assert len(rows) == len(left_ids), f"{tenant} kept {len(rows)} of {len(left_ids)} findings"
+
+    # And no tenant can see the other's rows.
+    other = store.list_current_page("tenant-unseeded", limit=10)
+    other_rows = other[0] if isinstance(other, tuple) else other
+    assert list(other_rows) == [], "an unseeded tenant sees another tenant's findings"

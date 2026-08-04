@@ -59,7 +59,7 @@ dependencies = [
     "tornado>=6.5.7",  # CVE-2026-49854, CVE-2026-49853, CVE-2026-49855, GHSA-pw6j-qg29-8w7f — transitive via streamlit
     # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
     # Tracked: https://github.com/msaad00/agent-bom/issues/930
-    "cryptography>=46.0.7",  # Required by audit chain (aes-cmac-128), proxy response signing, OIDC; top-level `audit` CLI fails without it.
+    "cryptography>=50.0.0",  # CVE-2026-69247; required by audit chain, proxy response signing, and OIDC.
 ]
 
 [project.optional-dependencies]
@@ -178,7 +178,7 @@ postgres = [
 watch = ["watchdog>=4.0"]
 runtime = [
     "psutil>=5.9",  # Process + container discovery (--include-processes)
-    "cryptography>=46.0.7",  # Proxy audit hash chain + response signing
+    "cryptography>=50.0.0",  # Proxy audit hash chain + response signing; CVE-2026-69247 floor.
 ]
 visual = [
     # Visual-leak detection on MCP screenshot/image tool responses.
@@ -198,7 +198,7 @@ snyk = []  # Uses existing httpx dependency, no additional packages needed
 interactive = ["prompt-toolkit>=3.0"]
 oidc = [
     "PyJWT>=2.13.0",  # PYSEC-2026-175..179
-    "cryptography>=46.0.7",  # Buffer overflow advisory on older releases when non-contiguous buffers reach cryptography APIs
+    "cryptography>=50.0.0",  # CVE-2026-69247 and older non-contiguous-buffer advisories.
 ]
 saml = [
     "python3-saml>=1.16.0",

@@ -5,7 +5,7 @@ name: Publish to Registries
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 # Optional vars:
-#   SMITHERY_MCP_URL    — Explicit public, unauthenticated MCP endpoint for Smithery
+#   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
 # Optional secret:
 #   GLAMA_WEBHOOK_URL   — Glama rebuild webhook (POST JSON: ref, commit, version, dockerfile)
 
@@ -153,45 +153,33 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      # Post-publish liveness probe of the configured upstream endpoint. Best-effort
-      # confirmation, NOT a gate: Smithery rebuilds the server asynchronously
-      # (the new version may not be live for minutes). A hard failure here
-      # previously red-failed the whole publish even though the catalog push
-      # (next step) succeeded. Warn instead so staleness stays visible without
-      # burning the run.
-      - name: Validate Smithery public endpoint
+      - name: Validate Smithery public server card
         if: steps.smithery_config.outputs.enabled == 'true'
-        continue-on-error: true
         env:
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+          EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
-          if RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
-              --base-url "$SMITHERY_MCP_URL" \
-              --attempts 3 \
-              --backoff-seconds 5 \
-              --timeout 15 2>&1); then
-            PUBLIC_VERSION=$(echo "$RESPONSE" | python3 -c "
-          import json, sys
-          try:
-              print(json.load(sys.stdin).get('version', 'unknown'))
-          except Exception:
-              print('unknown')
-          ")
-            PUBLIC_TOOLS=$(echo "$RESPONSE" | python3 -c "
-          import json, sys
-          try:
-              data = json.load(sys.stdin)
-              print(data.get('tool_count', data.get('mcp_metrics', {}).get('tool_count', 'unknown')))
-          except Exception:
-              print('unknown')
-          ")
-            echo "Smithery upstream endpoint version: ${PUBLIC_VERSION}"
-            echo "Smithery upstream endpoint tool count: ${PUBLIC_TOOLS}"
-          else
-            echo "::warning::Could not read version from the configured Smithery upstream endpoint (${SMITHERY_MCP_URL}). Expected while Smithery is still rebuilding (async). The catalog publish below still runs; deployment-freshness owns hard drift detection."
-          fi
+          set -euo pipefail
+          SERVER_CARD_URL=$(python3 -c 'import sys; from urllib.parse import urlsplit, urlunsplit; p=urlsplit(sys.argv[1]); print(urlunsplit((p.scheme, p.netloc, "/.well-known/mcp/server-card.json", "", "")))' "$SMITHERY_MCP_URL")
+          for ATTEMPT in $(seq 1 12); do
+            if curl -fsS --connect-timeout 10 --max-time 30 "$SERVER_CARD_URL" -o /tmp/smithery-server-card.json && \
+              jq -e \
+                --arg version "$VERSION" \
+                --argjson tool_count "$EXPECTED_TOOL_COUNT" \
+                '.serverInfo.version == $version and (.tools | length) == $tool_count and all(.tools[]; (.name | type == "string") and (.inputSchema | type == "object"))' \
+                /tmp/smithery-server-card.json >/dev/null; then
+              echo "Smithery server card matches v${VERSION} with ${EXPECTED_TOOL_COUNT} live tool schemas"
+              exit 0
+            fi
+            echo "Smithery server card attempt ${ATTEMPT}/12 has not reached the released contract"
+            sleep 10
+          done
+          echo "::error::Smithery server card does not match the released version/tool/schema contract"
+          exit 1
 
       - name: Publish to Smithery
+        id: smithery_publish
         if: steps.smithery_config.outputs.enabled == 'true'
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
@@ -228,6 +216,8 @@ jobs:
 
             if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
               echo "Smithery publish succeeded"
+              RELEASE_ID=$(jq -er '.deploymentId' /tmp/smithery-response.json)
+              echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
               break
             elif [ "$HTTP_STATUS" -eq 429 ] && [ "$ATTEMPT" -lt 3 ]; then
               DELAY=$((ATTEMPT * 15))
@@ -244,6 +234,50 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Wait for Smithery release
+        if: steps.smithery_config.outputs.enabled == 'true'
+        env:
+          SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
+          RELEASE_ID: ${{ steps.smithery_publish.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          for ATTEMPT in $(seq 1 18); do
+            STATUS=$(curl -fsS --connect-timeout 10 --max-time 30 \
+              "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}" \
+              -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" | jq -er '.status')
+            echo "Smithery release attempt ${ATTEMPT}/18 — ${STATUS}"
+            case "$STATUS" in
+              SUCCESS) exit 0 ;;
+              FAILURE|FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
+                echo "::error::Smithery release did not complete successfully (${STATUS})"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Smithery release did not finish before the verification timeout"
+          exit 1
+
+      - name: Verify Smithery catalog inventory
+        if: steps.smithery_config.outputs.enabled == 'true'
+        env:
+          EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          for ATTEMPT in $(seq 1 12); do
+            ACTUAL=$(curl -fsS --connect-timeout 10 --max-time 30 \
+              "https://api.smithery.ai/servers/agent-bom/agent-bom" | jq -er '.tools | length')
+            if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ]; then
+              echo "Smithery catalog exposes all ${ACTUAL} tools for v${VERSION}"
+              exit 0
+            fi
+            echo "Smithery catalog attempt ${ATTEMPT}/12 exposes ${ACTUAL}/${EXPECTED_TOOL_COUNT} tools"
+            sleep 10
+          done
+          echo "::error::Smithery catalog did not converge to ${EXPECTED_TOOL_COUNT} tools"
+          exit 1
 
   glama:
     name: Trigger Glama Rebuild

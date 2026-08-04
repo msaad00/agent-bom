@@ -26,6 +26,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea0996
 COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./
 COPY src/ ./src/
 COPY deploy/supabase/postgres/ ./deploy/supabase/postgres/
+COPY deploy/docker/runtime-security-requirements.txt ./deploy/docker/runtime-security-requirements.txt
 
 # Extras baked into the published control-plane image. Cloud SDKs (aws/azure/gcp)
 # ship by default so self-hosted BYOC (connect an AWS/Azure/GCP account read-only,
@@ -38,7 +39,9 @@ RUN set -eu; \
         case "${extra}" in *[!a-zA-Z0-9_-]*|'') exit 2 ;; esac; \
         sync_args="${sync_args} --extra ${extra}"; \
     done; \
-    uv sync --locked --no-dev --no-editable ${sync_args}
+    uv sync --locked --no-dev --no-editable ${sync_args}; \
+    uv pip install --no-config --python /app/.venv/bin/python --no-deps --require-hashes \
+        -r deploy/docker/runtime-security-requirements.txt
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.6-alpine3.23@sha256:02da11a8d221ca167aa07de20b3cd7104c1f01227f4b02b1fa13cf6517280a81

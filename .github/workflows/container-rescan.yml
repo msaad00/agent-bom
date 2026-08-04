@@ -83,8 +83,13 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Normalize container SARIF for GitHub
+        if: always() && steps.sarif.outputs.exists == 'true'
+        run: uv run python scripts/normalize_container_sarif_for_github.py "${{ steps.sarif.outputs.path }}"
+
       - name: Upload SARIF to GitHub Security tab
         if: always() && steps.sarif.outputs.exists == 'true'
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           sarif_file: ${{ steps.sarif.outputs.path }}

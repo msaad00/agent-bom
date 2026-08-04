@@ -36,6 +36,11 @@ from agent_bom import config
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS, FRAMEWORK_SLUG_ALIASES, normalize_framework_slug
 from agent_bom.evidence.control_modes import DETECTIVE_CONTROLS, detective_control_status
 
+COMPLIANCE_CLAIM_BOUNDARY = (
+    "Vulnerability-to-control mappings are review evidence, not a determination of compliance, "
+    "certification, audit result, or regulatory breach."
+)
+
 # ─── Catalogue lookups ────────────────────────────────────────────────────────
 # Imported lazily where needed to keep top-level import cost low.
 
@@ -106,7 +111,7 @@ class FrameworkNarrative:
 
     framework: str  # display name, e.g. "OWASP Top 10 for LLM"
     slug: str  # e.g. "owasp-llm"
-    status: str  # "passing" | "at_risk" | "failing" | "not_evaluated"
+    status: str  # "evidence_current" | "review" | "action_required" | "not_evaluated"
     score: int  # 0-100, over evaluated controls only (0 when nothing evaluated)
     narrative: str  # 2-3 sentences
     failing_controls: list[ControlNarrative] = field(default_factory=list)
@@ -134,6 +139,7 @@ class ComplianceNarrative:
     remediation_impact: list[RemediationImpact]
     risk_narrative: str
     generated_at: str  # ISO 8601
+    claim_boundary: str = COMPLIANCE_CLAIM_BOUNDARY
     # Catalog-backed NIST SP 800-53 Rev 5 line (vendor-asserted), scored over
     # EVALUATED controls only, with ISO-by-id attribution — the same
     # representation the /v1/compliance API line reports (one source of truth).
@@ -177,7 +183,7 @@ def _control_narrative(
     if findings == 0:
         return (
             f"Control {control_id} ({control_name}) shows no findings in this scan. "
-            "All assessed packages are compliant with this requirement."
+            "This is an absence of mapped findings, not a determination that the control is satisfied."
         )
 
     pkg_str = ", ".join(affected_pkgs[:3])
@@ -209,7 +215,7 @@ def _control_narrative(
         f"Control {control_id} ({control_name}) has {findings} finding"
         f"{'s' if findings > 1 else ''} ({severity_desc} severity) "
         f"in packages: {pkg_str}{agent_str}. "
-        "Immediate remediation is required to achieve compliance."
+        "The mapped finding requires review and remediation; this mapping does not determine control compliance."
     )
 
 
@@ -231,7 +237,7 @@ def _detective_control_narrative(control_id: str, control_name: str, status: str
         f"Control {control_id} ({control_name}) has no scan evidence inside the "
         f"freshness window ({config.COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS} days) — "
         "the evidence backing it is stale, so continuous monitoring has lapsed. "
-        "This control fails on evidence age, independently of any finding."
+        "Its evidence status requires action independently of any vulnerability finding."
     )
 
 
@@ -240,8 +246,8 @@ def _detective_remediation_steps(control_id: str, control_name: str) -> list[str
     return [
         f"Re-run agent-bom so {control_id} is backed by evidence inside the "
         f"{config.COMPLIANCE_DETECTIVE_EVIDENCE_MAX_AGE_DAYS}-day freshness window.",
-        "Schedule the scan continuously (CI or a recurring job) — this control attests "
-        "to ongoing monitoring, so a one-off run only restores it until the window lapses.",
+        "Schedule the scan continuously (CI or a recurring job) — this evidence documents "
+        "ongoing monitoring, so a one-off run is current only until the window lapses.",
         f"Record the scan cadence for {control_name} in your compliance evidence package.",
     ]
 
@@ -252,13 +258,13 @@ def _control_remediation_steps(
     affected_pkgs: list[str],
     sev_breakdown: dict[str, int],
 ) -> list[str]:
-    """Generate actionable remediation steps for a failing control."""
+    """Generate actionable remediation steps for mapped control evidence."""
     steps: list[str] = []
     if affected_pkgs:
         steps.append(f"Upgrade vulnerable packages: {', '.join(affected_pkgs[:5])}" + (" (and others)" if len(affected_pkgs) > 5 else ""))
     if sev_breakdown.get("critical", 0) or sev_breakdown.get("high", 0):
-        steps.append("Prioritise critical and high severity findings for immediate patching — these represent active compliance failures.")
-    steps.append(f"Re-run agent-bom after upgrades to verify {control_id} returns to passing status.")
+        steps.append("Prioritise critical and high severity findings for immediate patching, then validate the control independently.")
+    steps.append(f"Re-run agent-bom after upgrades to verify findings mapped to {control_id} are no longer detected.")
     steps.append(f"Document the remediation timeline for {control_name} in your compliance evidence package.")
     return steps
 
@@ -286,19 +292,18 @@ def _framework_overall_narrative(
     plural = "s" if evaluated_count != 1 else ""
     if fail_count == 0 and warn_count == 0:
         return (
-            f"All {evaluated_count} evaluated {display_name} control{plural} are passing "
+            f"Evidence is current for all {evaluated_count} evaluated {display_name} control{plural} "
             f"({evaluated_count} of {total_controls} controls evaluated; score {score}/100 "
             "over evaluated controls). Controls with no mapped findings are reported as "
-            "not-evaluated rather than compliant; continue scanning to broaden coverage."
+            "not-evaluated rather than compliant. This evidence status is not an audit conclusion."
         )
 
     if fail_count == 0:
         return (
-            f"{display_name} posture is at risk with {warn_count} control"
-            f"{'s' if warn_count > 1 else ''} in warning state "
+            f"{display_name} evidence requires review: {warn_count} control"
+            f"{'s have' if warn_count > 1 else ' has'} mapped medium or low severity findings "
             f"(score {score}/100 over {evaluated_count} evaluated control{plural}). "
-            "Medium and low severity findings require remediation within the next maintenance cycle "
-            "to prevent status degradation."
+            "Schedule remediation within the next maintenance cycle. The mapping is not a compliance determination."
         )
 
     ctrl_str = ", ".join(critical_failing[:3])
@@ -306,12 +311,11 @@ def _framework_overall_narrative(
         ctrl_str += f" and {len(critical_failing) - 3} others"
 
     return (
-        f"{display_name} compliance is failing: {fail_count} control"
-        f"{'s' if fail_count > 1 else ''} have critical or high severity findings "
+        f"{display_name} evidence requires action: {fail_count} control"
+        f"{'s have' if fail_count > 1 else ' has'} mapped critical or high severity findings "
         f"(score {score}/100 over {evaluated_count} evaluated control{plural}). "
-        f"Failing controls include {ctrl_str}. "
-        "Immediate remediation is required — unaddressed critical findings may constitute "
-        "a regulatory breach under this framework."
+        f"Controls requiring review include {ctrl_str}. "
+        "Remediate the underlying findings and obtain independent control evidence before drawing a compliance conclusion."
     )
 
 
@@ -326,8 +330,8 @@ def _framework_recommendations(
     recs: list[str] = []
     if fail_count:
         recs.append(
-            f"Address all failing {display_name} controls before the next audit window — "
-            "critical/high findings represent an active compliance gap."
+            f"Review and remediate all critical/high findings mapped to {display_name} before the next audit window; "
+            "validate control operation with independent evidence."
         )
     if warn_count:
         recs.append(f"Schedule remediation for {display_name} warning-state controls within the next sprint or maintenance cycle.")
@@ -473,11 +477,11 @@ def _build_framework_narrative(
     if evaluated_count == 0:
         fw_status = "not_evaluated"
     elif fail_count > 0:
-        fw_status = "failing"
+        fw_status = "action_required"
     elif warn_count > 0:
-        fw_status = "at_risk"
+        fw_status = "review"
     else:
-        fw_status = "passing"
+        fw_status = "evidence_current"
 
     narrative = _framework_overall_narrative(
         display_name, total_controls, evaluated_count, pass_count, fail_count, warn_count, critical_failing_ids, score
@@ -676,9 +680,9 @@ def _build_executive_summary(
     generated_at: str,
 ) -> str:
     """3-5 sentence executive summary for compliance stakeholders."""
-    failing_fws = [fn for fn in framework_narratives if fn.status == "failing"]
-    at_risk_fws = [fn for fn in framework_narratives if fn.status == "at_risk"]
-    evaluated_fws = [fn for fn in framework_narratives if fn.status in ("passing", "at_risk", "failing")]
+    action_fws = [fn for fn in framework_narratives if fn.status == "action_required"]
+    review_fws = [fn for fn in framework_narratives if fn.status == "review"]
+    evaluated_fws = [fn for fn in framework_narratives if fn.status in ("evidence_current", "review", "action_required")]
     # Lead: what was scanned
     sentences: list[str] = [
         f"This AI-BOM compliance report covers {total_agents} AI agent"
@@ -701,17 +705,17 @@ def _build_executive_summary(
 
     # Framework posture
     total_fws = len(framework_narratives)
-    if failing_fws:
-        fw_names = ", ".join(fn.framework for fn in failing_fws[:3])
-        sentences.append(f"{len(failing_fws)} of {total_fws} assessed frameworks are failing: {fw_names}.")
-    elif at_risk_fws:
-        fw_names = ", ".join(fn.framework for fn in at_risk_fws[:3])
+    if action_fws:
+        fw_names = ", ".join(fn.framework for fn in action_fws[:3])
+        sentences.append(f"{len(action_fws)} of {total_fws} framework mappings have evidence requiring action: {fw_names}.")
+    elif review_fws:
+        fw_names = ", ".join(fn.framework for fn in review_fws[:3])
         sentences.append(
-            f"All evaluated frameworks passed without critical failures; however {len(at_risk_fws)} "
-            f"{'are' if len(at_risk_fws) > 1 else 'is'} at risk: {fw_names}."
+            f"No framework mapping has critical/high findings; {len(review_fws)} "
+            f"{'require' if len(review_fws) > 1 else 'requires'} review: {fw_names}."
         )
     elif evaluated_fws:
-        sentences.append(f"All {len(evaluated_fws)} evaluated compliance frameworks are passing with no critical findings.")
+        sentences.append(f"All {len(evaluated_fws)} evaluated framework evidence sets are current with no mapped critical findings.")
     else:
         sentences.append(
             f"None of the {total_fws} frameworks could be evaluated — no findings mapped to their "
@@ -719,10 +723,13 @@ def _build_executive_summary(
         )
 
     # Closing action
-    if failing_fws or at_risk_fws:
-        sentences.append("Remediation of identified vulnerabilities is the highest-priority action to restore full compliance posture.")
+    if action_fws or review_fws:
+        sentences.append(
+            "Remediation of identified vulnerabilities is the highest-priority action; "
+            "control owners must validate compliance separately."
+        )
     else:
-        sentences.append("Continue regular scanning to detect newly published vulnerabilities and maintain compliance.")
+        sentences.append("Continue regular scanning and independent control validation to maintain current evidence coverage.")
 
     return " ".join(sentences)
 
@@ -830,5 +837,6 @@ def generate_compliance_narrative(
         remediation_impact=remediation_impact,
         risk_narrative=risk_narrative,
         generated_at=generated_at,
+        claim_boundary=COMPLIANCE_CLAIM_BOUNDARY,
         nist_800_53_catalog=nist_800_53_catalog,
     )

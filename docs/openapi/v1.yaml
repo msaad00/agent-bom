@@ -8348,7 +8348,7 @@ paths:
   /v1/compliance/narrative:
     get:
       description: "Generate a review-ready compliance narrative from all completed\
-        \ scans.\n\nProduces human-readable stories for all 11 supported frameworks,\
+        \ scans.\n\nProduces human-readable stories for all supported framework mappings,\
         \ a\ncross-framework executive summary, and a remediation-compliance bridge\n\
         showing which package upgrades resolve which controls.\n\nNo LLM is required\
         \ \u2014 narratives are generated from template strings\nand the structured\

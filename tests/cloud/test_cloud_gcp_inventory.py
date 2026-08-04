@@ -20,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from agent_bom.cloud import gcp_inventory
+from tests._sdk_stub_helpers import patch_sdk_namespace
 
 # ---------------------------------------------------------------------------
 # Fake google-cloud SDK objects
@@ -501,7 +502,13 @@ def _fake_discovery_build(*args: Any, **kwargs: Any) -> Any:
 
 
 def _install_fake_gcp() -> Any:
-    """Return a patch.dict context installing fake google-cloud SDK modules."""
+    """Return a context installing the fakes as the ONLY google/googleapiclient SDKs.
+
+    Stubbing a subset is not enough: ``google.cloud`` is a namespace package, so a
+    real sibling an earlier test left in ``sys.modules`` still resolves through the
+    stubbed parent and the results become test-order dependent. See
+    :func:`tests._sdk_stub_helpers.patch_sdk_namespace`.
+    """
     google_mod = types.ModuleType("google")
     cloud_mod = types.ModuleType("google.cloud")
     storage_mod = _FakeStorageModule("google.cloud.storage")
@@ -519,8 +526,7 @@ def _install_fake_gcp() -> Any:
     apiclient_mod = types.ModuleType("googleapiclient")
     discovery_mod = types.ModuleType("googleapiclient.discovery")
     discovery_mod.build = _fake_discovery_build  # type: ignore[attr-defined]
-    return patch.dict(
-        sys.modules,
+    return patch_sdk_namespace(
         {
             "google": google_mod,
             "google.cloud": cloud_mod,
@@ -539,7 +545,61 @@ def _install_fake_gcp() -> Any:
             "googleapiclient": apiclient_mod,
             "googleapiclient.discovery": discovery_mod,
         },
+        "google",
+        "googleapiclient",
     )
+
+
+# ---------------------------------------------------------------------------
+# SDK-namespace isolation (test-order independence)
+# ---------------------------------------------------------------------------
+
+
+class _StubClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+
+def _resident_sdk_siblings() -> dict[str, types.ModuleType]:
+    """The `google.cloud.*` modules `_install_fake_gcp` does NOT stub.
+
+    Stands in for the real distributions an earlier test in the same process can
+    leave resident in ``sys.modules`` — the ones the authorization collector
+    imports alongside the stubbed ``resourcemanager_v3``.
+    """
+    asset = types.ModuleType("google.cloud.asset_v1")
+    asset.AssetServiceClient = _StubClient  # type: ignore[attr-defined]
+    iam_v2 = types.ModuleType("google.cloud.iam_v2")
+    iam_v2.PoliciesClient = _StubClient  # type: ignore[attr-defined]
+    iam_v3 = types.ModuleType("google.cloud.iam_v3")
+    iam_v3.PrincipalAccessBoundaryPoliciesClient = _StubClient  # type: ignore[attr-defined]
+    iam_v3.PolicyBindingsClient = _StubClient  # type: ignore[attr-defined]
+    return {
+        "google.cloud.asset_v1": asset,
+        "google.cloud.iam_v2": iam_v2,
+        "google.cloud.iam_v3": iam_v3,
+    }
+
+
+def test_fake_sdk_shadows_siblings_it_does_not_stub() -> None:
+    """A resident `google.cloud.*` sibling must not resolve through the fake SDK.
+
+    `google.cloud` is a namespace package: with only part of it stubbed, CPython's
+    IMPORT_FROM falls back to ``sys.modules`` and hands back whatever an earlier
+    test imported, so this file's results would depend on what ran before it.
+    """
+    with patch.dict(sys.modules, _resident_sdk_siblings()), _install_fake_gcp(), pytest.raises(ImportError):
+        from google.cloud import asset_v1  # noqa: F401
+
+
+def test_inventory_unaffected_by_sdk_siblings_left_by_earlier_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The estate walk must produce the same result whatever ran before it."""
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with patch.dict(sys.modules, _resident_sdk_siblings()), _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["status"] == "ok"
+    assert {b["name"] for b in payload["buckets"]} == {"public-lake", "private-logs"}
 
 
 # ---------------------------------------------------------------------------

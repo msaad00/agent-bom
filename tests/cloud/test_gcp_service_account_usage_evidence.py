@@ -16,15 +16,14 @@ so the fail-closed rules never fired. These tests pin:
 
 from __future__ import annotations
 
-import sys
 import types
 from typing import Any
-from unittest.mock import patch
 
 from agent_bom.cloud import gcp_inventory
 from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.graph.nhi_governance import build_ciem_over_privilege_findings
 from agent_bom.graph.types import EntityType
+from tests._sdk_stub_helpers import patch_sdk_namespace
 
 
 class _FakeSA:
@@ -50,13 +49,16 @@ def _install_fake_iam(accounts: list[_FakeSA]) -> Any:
     iam_mod = types.ModuleType("google.cloud.iam_admin_v1")
     iam_mod.IAMClient = _FakeIAMClient  # type: ignore[attr-defined]
     iam_mod.ListServiceAccountsRequest = _FakeReq  # type: ignore[attr-defined]
-    return patch.dict(
-        sys.modules,
+    # Shadow the whole namespace, not just the stubbed names: a real
+    # google.cloud.* sibling left resident by an earlier test would otherwise
+    # still resolve through the stub parent. See tests._sdk_stub_helpers.
+    return patch_sdk_namespace(
         {
             "google": types.ModuleType("google"),
             "google.cloud": types.ModuleType("google.cloud"),
             "google.cloud.iam_admin_v1": iam_mod,
         },
+        "google",
     )
 
 

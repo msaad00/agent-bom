@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -39,14 +40,47 @@ from agent_bom.cloud.gcp_cis_benchmark import (
 # ---------------------------------------------------------------------------
 
 
+def _stub_namespace_module(name: str) -> types.ModuleType:
+    """Return the resident stub for *name*, installing a fresh one over any real package.
+
+    The real `google` / `google.cloud` must never be reused here: the callers bind
+    their fakes as ATTRIBUTES of whatever this returns, and an attribute written
+    onto the real namespace package outlives the process. Keeping the fakes on a
+    stub puts them inside the sys.modules snapshot/restore that conftest's
+    `reset_global_test_state` already performs.
+    """
+    resident = sys.modules.get(name)
+    if isinstance(resident, types.ModuleType) and getattr(resident, "__spec__", None) is None:
+        return resident
+    stub = types.ModuleType(name)
+    sys.modules[name] = stub
+    return stub
+
+
 def _ensure_google_namespace() -> tuple:
-    """Ensure google / google.cloud namespace modules exist in sys.modules."""
-    google_mod = sys.modules.get("google") or types.ModuleType("google")
-    google_cloud = sys.modules.get("google.cloud") or types.ModuleType("google.cloud")
+    """Ensure stub google / google.cloud namespace modules exist in sys.modules."""
+    google_mod = _stub_namespace_module("google")
+    google_cloud = _stub_namespace_module("google.cloud")
     google_mod.cloud = google_cloud
-    sys.modules.setdefault("google", google_mod)
-    sys.modules.setdefault("google.cloud", google_cloud)
     return google_mod, google_cloud
+
+
+def test_installers_never_bind_fakes_onto_a_real_google_namespace() -> None:
+    """A fake must not be written as an attribute of the real `google.cloud`.
+
+    conftest snapshots and restores `sys.modules`, but nothing can undo a package
+    ATTRIBUTE write: a fake bound onto the real namespace package outlives the
+    session, and every later `from google.cloud import <name>` resolves to it
+    because the attribute lookup wins before the import machinery is consulted.
+    """
+    real_like = types.ModuleType("google.cloud")
+    real_like.__spec__ = importlib.machinery.ModuleSpec("google.cloud", None)
+    real_like.__path__ = []  # type: ignore[attr-defined]
+
+    with patch.dict(sys.modules, {"google.cloud": real_like}):
+        _install_mock_gcp_storage(buckets=[])
+        assert sys.modules["google.cloud"] is not real_like
+        assert not hasattr(real_like, "storage")
 
 
 def _install_mock_gcp_compute(networks_list=None, firewalls_list=None):

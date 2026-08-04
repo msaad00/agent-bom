@@ -77,6 +77,13 @@ _STORY_EVENT_LIMIT = 200
 _STORY_FINDING_LIMIT = 100
 
 
+# Bounded so the story stays legible at estate scale. The summary still reports
+# the unbounded totals, so the view is smaller than the estate but never claims
+# to be the whole of it.
+_STORY_CORRELATION_LIMIT = 50
+_STORY_EVENT_LIMIT = 200
+
+
 def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> EnterpriseDemoStory:
     """Load, verify, normalize, and present the bundled fictional estate."""
 
@@ -98,6 +105,7 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
     correlations = ranked[:_STORY_CORRELATION_LIMIT]
     events = result.events[:_STORY_EVENT_LIMIT]
 
+<<<<<<< HEAD
     # Findings follow the same rule as correlations and events: the summary
     # below carries the whole estate's totals, this list carries what a reader
     # can act on. Ranked worst-first and with the incident's own findings ahead
@@ -115,6 +123,8 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
     )
     findings = tuple(to_finding_view(finding) for finding in ranked_findings[:_STORY_FINDING_LIMIT])
 
+=======
+>>>>>>> origin/main
     return EnterpriseDemoStory(
         disclosure=estate.disclosure,
         estate_id=estate.estate_id,

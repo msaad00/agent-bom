@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -295,3 +296,30 @@ def test_scan_cli_has_registry_options():
     assert "--registry-user" in result.output
     assert "--registry-pass" in result.output
     assert "--platform" in result.output
+
+
+def test_pull_failure_surfaces_the_docker_error(monkeypatch):
+    """A failed `docker pull` must report *why* it failed, not just that it did.
+
+    The Docker binary can be installed while the daemon is down. `_docker_available`
+    only checks for the binary, so the scan proceeds, `docker inspect` misses, and
+    `docker pull` fails with "Cannot connect to the Docker daemon". Swallowing that
+    stderr leaves the README's image entry point with an unactionable dead end.
+    """
+    import subprocess as _subprocess
+
+    from agent_bom.image import ImageScanError, _docker_inspect
+
+    daemon_error = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+
+    def _fake_run(cmd, **kwargs):
+        return _subprocess.CompletedProcess(cmd, 1, stdout="", stderr=daemon_error)
+
+    monkeypatch.setattr(_subprocess, "run", _fake_run)
+
+    with pytest.raises(ImageScanError) as excinfo:
+        _docker_inspect("alpine:3.14")
+
+    message = str(excinfo.value)
+    assert "alpine:3.14" in message
+    assert "docker daemon" in message.lower(), message

@@ -180,7 +180,38 @@ agent-bom scan -p .
 Add `--inventory <file>` when you already have agent/server inventory from a
 fleet collector, SIEM export, or manually curated source of truth.
 
-## 5. Release smoke (pre-tag)
+## 5. Gate CI on the result
+
+A scan exits `0` on its own: findings are reported, not blocked, until you say
+which ones matter. Opt into a gate with one of the fail flags:
+
+```bash
+agent-bom scan -p . --fail-on-severity high -f sarif -o findings.sarif
+agent-bom scan -p . --fail-on-kev            # any CISA KEV finding fails the build
+agent-bom scan -p . --fail-on-malicious      # any known-malicious package fails the build
+agent-bom scan -p . --warn-on medium --fail-on-severity critical   # two-tier gate
+```
+
+`--warn-on` still exits `0`, so a pipeline can report medium findings without
+blocking while `--fail-on-severity critical` blocks. `--preset ci` bundles
+quiet output, JSON, and fail-on-critical.
+
+In GitHub Actions the composite action propagates the same code plus parsed
+counts:
+
+```yaml
+- uses: msaad00/agent-bom@v0.98.3
+  with:
+    format: sarif
+    severity-threshold: high
+    warn-on-severity: medium
+```
+
+The full exit-code and HTTP-status contract — including which codes are stable,
+which are reserved, and how the action's outputs map to them — lives in
+[`site-docs/reference/exit-codes.md`](../site-docs/reference/exit-codes.md).
+
+## 6. Release smoke (pre-tag)
 
 ```bash
 ./scripts/release_smoke.sh

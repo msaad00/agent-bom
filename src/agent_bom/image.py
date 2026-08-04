@@ -372,7 +372,12 @@ def _docker_inspect(image_ref: str, platform: Optional[str] = None) -> dict:
             timeout=300,
         )
         if pull.returncode != 0:
-            raise ImageScanError(f"Image not found locally and pull failed: {image_ref}")
+            # Keep the daemon's own reason. `_docker_available` only proves the
+            # binary exists, so the common failure here is a stopped daemon or a
+            # missing registry credential — both unactionable without the stderr.
+            reason = (pull.stderr or pull.stdout or "").strip().splitlines()
+            detail = f" — {reason[-1][:300]}" if reason else ""
+            raise ImageScanError(f"Image not found locally and pull failed: {image_ref}{detail}")
         result = subprocess.run(
             ["docker", "inspect", "--type", "image", image_ref],
             capture_output=True,

@@ -677,9 +677,13 @@ def run_local_discovery(
 
         proj_root = Path(project)
         proj_root_resolved = proj_root.resolve()
-        is_synthetic_demo_project = proj_root.name.startswith("agent-bom-demo-dir-")
+        # Label from the *resolved* path: `Path(".").name` is the empty string, so
+        # the README's headline `agent-bom scan .` otherwise produced a nameless
+        # `project:` agent and a nameless server across console, JSON, and SARIF.
+        proj_label = proj_root_resolved.name or str(proj_root_resolved)
+        is_synthetic_demo_project = proj_label.startswith("agent-bom-demo-dir-")
         if not is_synthetic_demo_project:
-            con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
+            con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_label}[/bold blue]\n")
         package_warnings: list[str] = []
         dir_map = scan_project_directory(proj_root, follow_symlinks=follow_symlinks, warnings=package_warnings)
         for warning in package_warnings:
@@ -689,7 +693,7 @@ def run_local_discovery(
             ctx.project_inventory_data = project_inventory
             total_proj_pkgs = sum(len(v) for v in dir_map.values())
             con.print(
-                f"  [green]✓[/green] {proj_root.name}: "
+                f"  [green]✓[/green] {proj_label}: "
                 f"{total_proj_pkgs} package(s) across {project_inventory['manifest_directories']} manifest director"
                 f"{'ies' if project_inventory['manifest_directories'] != 1 else 'y'} "
                 f"({project_inventory['manifest_files']} files, {project_inventory['lockfiles']} lockfile"
@@ -708,7 +712,7 @@ def run_local_discovery(
                     )
                 except ValueError:
                     rel = Path(manifest_dir_resolved.name)
-                server_name = str(rel) if str(rel) != "." else proj_root.name
+                server_name = str(rel) if str(rel) != "." else proj_label
                 proj_server = MCPServer(
                     name=server_name,
                     command="project",
@@ -720,7 +724,7 @@ def run_local_discovery(
                 proj_servers.append(proj_server)
 
             proj_agent = Agent(
-                name=f"project:{proj_root.name}",
+                name=f"project:{proj_label}",
                 agent_type=AgentType.CUSTOM,
                 config_path=str(proj_root),
                 source="project",

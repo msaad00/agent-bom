@@ -2146,3 +2146,42 @@ def test_scan_repo_url_with_offline_rejected_up_front():
     # Must not be the old opaque temp-dir/subpath failure.
     assert "subpath" not in lowered
     assert "does not exist" not in lowered
+
+
+# ---------------------------------------------------------------------------
+# Project label derivation (README entry point: `agent-bom scan .`)
+# ---------------------------------------------------------------------------
+
+
+def _scan_dot_report(tmp_path, monkeypatch) -> dict:
+    """Run the README developer entry point `scan .` and return its JSON report."""
+    project = tmp_path / "myproject"
+    project.mkdir()
+    (project / "requirements.txt").write_text("flask==2.0.0\n")
+    out = tmp_path / "report.json"
+
+    monkeypatch.chdir(project)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["scan", ".", "--no-scan", "--no-auto-update-db", "--offline", "-f", "json", "-o", str(out)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    return json.loads(out.read_text())
+
+
+def test_scan_dot_names_the_project_agent_after_the_directory(tmp_path, monkeypatch):
+    """`scan .` must label the project asset with the directory name, not an empty string.
+
+    Regression: the project agent/server labels were built from the *unresolved*
+    path, so `Path(".").name` produced `""`. The README's headline developer
+    command therefore emitted `project:` with no name in the console, the JSON
+    asset, and the SARIF exposure path / logical locations.
+    """
+    data = _scan_dot_report(tmp_path, monkeypatch)
+    project_agents = [a for a in data.get("agents", []) if str(a.get("name", "")).startswith("project:")]
+    assert project_agents, f"no project agent in report: {[a.get('name') for a in data.get('agents', [])]}"
+    agent = project_agents[0]
+    assert agent["name"] == "project:myproject"
+    assert [s["name"] for s in agent.get("mcp_servers", [])] == ["myproject"]

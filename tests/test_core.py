@@ -3861,6 +3861,9 @@ def test_cli_dry_run_shows_data_audit():
     assert "Sent to vulnerability APIs" in result.output
     assert "Credential detection" in result.output
     assert "NAMES only" in result.output
+    assert "AUTH_MODE" in result.output
+    assert "DB_CONNECTION_POOL_SIZE" in result.output
+    assert "not credentials" in result.output
 
 
 def test_permissions_md_has_full_config_paths():

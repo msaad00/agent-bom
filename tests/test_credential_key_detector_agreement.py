@@ -29,6 +29,7 @@ from agent_bom.ai_components.framework_agents import _extract_credential_refs
 from agent_bom.cli.agents._posture import render_posture_summary
 from agent_bom.constants import is_credential_key
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
+from agent_bom.output.graph_export import _credential_names_from_server
 from agent_bom.security import sanitize_env_vars
 
 # Env-var names taken from published MCP server and agent-framework setups.
@@ -44,6 +45,10 @@ CREDENTIAL_ENV: dict[str, str] = {
     "AUTHORIZATION": "abc",
     "CLIENT_SECRET": "abc",
     "CA_CERT": "abc",
+    "AWS_ACCESS_KEY_ID": "abc",
+    "AZURE_CLIENT_CERTIFICATE_PATH": "/run/secrets/azure-client.pem",
+    "AZURE_STORAGE_CONNECTION_STRING": "abc",
+    "SNOWFLAKE_PRIVATE_KEY_PATH": "/run/secrets/snowflake-key.pem",
 }
 
 NON_CREDENTIAL_ENV: dict[str, str] = {
@@ -55,11 +60,49 @@ NON_CREDENTIAL_ENV: dict[str, str] = {
     "ALLOWED_DIRECTORIES": "/srv/data",
 }
 
+CREDENTIAL_ADJACENT_CONFIG_ENV: dict[str, str] = {
+    # Operational settings that contain credential-adjacent substrings are
+    # configuration, not authentication material.  Counting them as exposed
+    # credentials inflates graph, posture, and blast-radius evidence.
+    "AUTH_MODE": "oauth",
+    "CERTIFICATE_PATH": "/etc/ssl/certs/ca-bundle.crt",
+    "DB_CONNECTION_POOL_SIZE": "20",
+    "KEYBOARD_LAYOUT": "us",
+    "AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS": "3600",
+    "AGENT_BOM_AZURE_AUTHORIZATION_MAX_RECORDS": "500",
+    "AGENT_BOM_MCP_AUTH_REQUIRE_NETWORK_AUTH": "true",
+    "AGENT_BOM_TLS_REQUIRE_CLIENT_CERT": "true",
+    "AGENT_BOM_TOKEN_ROTATION_DAYS": "30",
+}
+
 
 def test_fixture_names_match_the_canonical_predicate() -> None:
     """Guard the fixtures themselves, so a drifting canonical list is visible here."""
     assert [name for name in CREDENTIAL_ENV if not is_credential_key(name)] == []
-    assert [name for name in NON_CREDENTIAL_ENV if is_credential_key(name)] == []
+    non_credentials = {**NON_CREDENTIAL_ENV, **CREDENTIAL_ADJACENT_CONFIG_ENV}
+    assert [name for name in non_credentials if is_credential_key(name)] == []
+
+
+def test_mcp_server_credential_inventory_uses_the_canonical_predicate() -> None:
+    """The model must not bypass the predicate used by graph consumers."""
+    server = MCPServer(
+        name="warehouse",
+        env={**CREDENTIAL_ENV, **NON_CREDENTIAL_ENV, **CREDENTIAL_ADJACENT_CONFIG_ENV},
+    )
+
+    assert sorted(server.credential_names) == sorted(CREDENTIAL_ENV)
+    assert server.has_credentials
+
+    config_only = MCPServer(name="warehouse", env=dict(CREDENTIAL_ADJACENT_CONFIG_ENV))
+    assert config_only.credential_names == []
+    assert not config_only.has_credentials
+
+
+def test_legacy_graph_export_fallback_uses_the_canonical_predicate() -> None:
+    """Legacy scan JSON must not reintroduce a second credential judgement."""
+    env = {**CREDENTIAL_ENV, **NON_CREDENTIAL_ENV, **CREDENTIAL_ADJACENT_CONFIG_ENV}
+
+    assert _credential_names_from_server({"env": env}) == sorted(CREDENTIAL_ENV)
 
 
 @pytest.mark.parametrize("name", sorted(CREDENTIAL_ENV))
@@ -76,7 +119,8 @@ def test_non_credential_values_survive_redaction(name: str) -> None:
 def test_framework_agent_credential_refs_match_the_canonical_predicate() -> None:
     """``_extract_credential_refs`` is the same judgement over Python source."""
     reads = "\n".join(f'{name.lower()} = os.getenv("{name}")' for name in CREDENTIAL_ENV)
-    reads += "\n" + "\n".join(f'{name.lower()}_2 = os.environ["{name}"]' for name in NON_CREDENTIAL_ENV)
+    non_credentials = {**NON_CREDENTIAL_ENV, **CREDENTIAL_ADJACENT_CONFIG_ENV}
+    reads += "\n" + "\n".join(f'{name.lower()}_2 = os.environ["{name}"]' for name in non_credentials)
     source = f"import os\nfrom crewai import Agent\n\n{reads}\n"
 
     assert sorted(_extract_credential_refs(ast.parse(source))) == sorted(CREDENTIAL_ENV)

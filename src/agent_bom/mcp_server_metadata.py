@@ -531,7 +531,7 @@ _SERVER_CARD_RESOURCES = [
 ]
 
 
-def build_server_card() -> dict[str, Any]:
+def build_server_card(*, auth_required: bool = False) -> dict[str, Any]:
     from agent_bom import __version__
     from agent_bom.mcp_server_helpers import get_registry_data
 
@@ -547,7 +547,7 @@ def build_server_card() -> dict[str, Any]:
         except Exception:
             registry_servers = 0
 
-    return {
+    card = {
         "name": "agent-bom",
         "version": __version__,
         "description": ("Security scanner and graph for AI supply chain and infrastructure — agents, MCP, runtime, and blast radius."),
@@ -580,6 +580,14 @@ def build_server_card() -> dict[str, Any]:
         "pypi": "agent-bom",
         "install": "pip install agent-bom[mcp-server]",
     }
+    # SEP-1649 shape consumed by Smithery and other MCP marketplaces. Retain
+    # the established top-level fields above for existing agent-bom clients.
+    card["serverInfo"] = {"name": card["name"], "version": card["version"]}
+    card["authentication"] = {
+        "required": auth_required,
+        "schemes": ["bearer"] if auth_required else [],
+    }
+    return card
 
 
 def build_root_metadata(*, auth_required: bool) -> dict[str, Any]:
@@ -622,7 +630,21 @@ def attach_metadata_routes(
     async def server_card_route(request):
         from starlette.responses import JSONResponse
 
-        return JSONResponse(build_server_card())
+        card = build_server_card(auth_required=auth_required)
+        # The static metadata catalog owns descriptions and capability classes;
+        # the live FastMCP registry owns exact JSON input/output schemas. Serve
+        # the latter here so marketplaces never index a hand-maintained schema.
+        live_tools = await mcp.list_tools()
+        metadata_by_name = {str(tool["name"]): tool for tool in card["tools"]}
+        rendered_tools: list[dict[str, Any]] = []
+        for tool in live_tools:
+            payload = tool.model_dump(by_alias=True, exclude_none=True)
+            metadata = metadata_by_name.get(str(payload.get("name")), {})
+            if metadata.get("capability_classes"):
+                payload["capability_classes"] = list(metadata["capability_classes"])
+            rendered_tools.append(payload)
+        card["tools"] = rendered_tools
+        return JSONResponse(card)
 
     @mcp.custom_route("/", methods=["GET"])
     async def root_metadata_route(request):

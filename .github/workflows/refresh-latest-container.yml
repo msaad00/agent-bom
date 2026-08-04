@@ -66,7 +66,9 @@ jobs:
           # an old release tag can keep rebuilding a known-vulnerable container even
           # after the default branch has the safe runtime pin.
           git checkout "${{ steps.release.outputs.main_sha }}" -- \
+            Dockerfile \
             deploy/docker/pip-requirements.txt \
+            deploy/docker/runtime-security-requirements.txt \
             .image-scan-ignore \
             security/image-exceptions.yaml
 

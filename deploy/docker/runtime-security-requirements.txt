@@ -1,0 +1,8 @@
+# Security-only overlay for floating container tags rebuilt from a released tag.
+#
+# The application and its dependency graph stay pinned to the release's uv.lock,
+# while this small reviewed set may move forward to clear a fixable runtime CVE.
+# Keep hashes limited to the Alpine platforms published by the multi-arch build.
+cryptography==50.0.0 \
+    --hash=sha256:1489e263a8048bb8b6a8bac662eb2d402ea5d2b7b4699b72f385f1e2772db105 \
+    --hash=sha256:7cec5b856506da6defb290f30c9ee687d5f5e8cb0bd3f6459dde43b0b4fa40ef

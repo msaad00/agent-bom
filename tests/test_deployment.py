@@ -442,6 +442,25 @@ def test_server_card_metadata():
     assert "stdio" in card["transport"]
     assert "sse" in card["transport"]
     assert "github.com/msaad00/agent-bom" in card["repository"]
+    assert card["serverInfo"] == {"name": "agent-bom", "version": card["version"]}
+    assert card["authentication"] == {"required": False, "schemes": []}
+
+
+def test_live_server_card_exposes_exact_mcp_tool_schemas():
+    """Marketplace metadata must use FastMCP's live schemas, not hand-written copies."""
+    from starlette.testclient import TestClient
+
+    from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
+
+    server = create_mcp_server(bearer_token="test-token")
+    response = TestClient(server.streamable_http_app()).get("/.well-known/mcp/server-card.json")
+
+    assert response.status_code == 200
+    card = response.json()
+    assert card["authentication"] == {"required": True, "schemes": ["bearer"]}
+    assert len(card["tools"]) == len(_SERVER_CARD_TOOLS)
+    assert all(isinstance(tool.get("inputSchema"), dict) for tool in card["tools"])
+    assert all(tool["inputSchema"].get("additionalProperties") is False for tool in card["tools"])
 
 
 def test_root_metadata_fields():
@@ -692,6 +711,19 @@ def test_glama_rebuild_webhook_is_secret_and_missing_secret_is_honest():
     assert "exit 1" in workflow
 
 
+def test_smithery_publish_is_gated_on_server_card_and_catalog_parity():
+    """A 202 response alone must not be reported as a fresh marketplace listing."""
+    workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
+
+    assert "Validate Smithery public server card" in workflow
+    assert "(.tools | length) == $tool_count" in workflow
+    assert '(.inputSchema | type == "object")' in workflow
+    assert "Wait for Smithery release" in workflow
+    assert "FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT" in workflow
+    assert "Verify Smithery catalog inventory" in workflow
+    assert 'if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ]; then' in workflow
+
+
 def test_refresh_latest_container_keeps_release_code_but_applies_runtime_security_overlay():
     """Daily latest refresh can patch runtime CVEs without changing app code."""
     workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()
@@ -700,7 +732,9 @@ def test_refresh_latest_container_keeps_release_code_but_applies_runtime_securit
     assert 'git checkout "$TAG"' in workflow
     assert "Apply current runtime security overlay" in workflow
     assert 'git checkout "${{ steps.release.outputs.main_sha }}" -- \\' in workflow
+    assert "Dockerfile \\" in workflow
     assert "deploy/docker/pip-requirements.txt \\" in workflow
+    assert "deploy/docker/runtime-security-requirements.txt \\" in workflow
     assert ".image-scan-ignore \\" in workflow
     assert "security/image-exceptions.yaml" in workflow
     assert "The application code and version stay pinned to the latest release tag" in workflow

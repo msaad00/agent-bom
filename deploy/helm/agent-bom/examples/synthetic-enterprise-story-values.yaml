@@ -1,0 +1,63 @@
+# Explicitly synthetic, single-node enterprise story profile.
+#
+# This profile is for demonstrations and evaluation only. It seeds the bundled
+# fictional Northstar Health AI estate and exposes viewer-only anonymous access
+# so the dashboard works on first boot. It must not be used for production or
+# combined with live customer collection.
+#
+# Install:
+#   python scripts/install_helm_profile.py synthetic-enterprise-story
+
+controlPlane:
+  enabled: true
+  migrations:
+    postgres:
+      enabled: false
+  api:
+    replicas: 1
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane
+    env:
+      - name: AGENT_BOM_DB
+        value: /var/lib/agent-bom/control-plane.sqlite
+      - name: AGENT_BOM_DEMO_ESTATE
+        value: "1"
+      # DEMO ONLY — viewer role, synthetic data, single-node evaluation.
+      - name: AGENT_BOM_ALLOW_UNAUTHENTICATED_API
+        value: "1"
+      - name: AGENT_BOM_NO_AUTH_ROLE
+        value: viewer
+    extraVolumes:
+      - name: sqlite-data
+        persistentVolumeClaim:
+          claimName: agent-bom-synthetic-enterprise-story
+    extraVolumeMounts:
+      - name: sqlite-data
+        mountPath: /var/lib/agent-bom
+  ui:
+    replicas: 1
+    env:
+      - name: NEXT_PUBLIC_API_URL
+        value: ""
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: agent-bom-demo.internal.example.com
+        apiPaths:
+          - path: /v1
+            pathType: Prefix
+          - path: /health
+            pathType: Prefix
+          - path: /docs
+            pathType: Prefix
+        uiPaths:
+          - path: /
+            pathType: Prefix
+
+scanner:
+  enabled: false
+
+pdb:
+  enabled: false

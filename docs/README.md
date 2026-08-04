@@ -19,6 +19,7 @@ material. The index below groups the canonical docs by audience.
 ## Orientation (start here)
 
 - [`FIRST_RUN.md`](FIRST_RUN.md) — install → first scan → first artifact (canonical first-run path)
+- [`ENTERPRISE_DEMO.md`](ENTERPRISE_DEMO.md) — fictional cross-vendor estate: offline artifact → dashboard → packaged Helm profile
 - [`START_HERE.md`](START_HERE.md) — role-based entry paths (security engineer / platform-SRE / AI-agent developer)
 - [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md) — five-stage evidence flow (canonical product story)
 - [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md) — positioning and persona contract

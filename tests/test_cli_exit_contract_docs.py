@@ -31,6 +31,23 @@ def test_exit_code_contract_maps_http_statuses_to_cli_families() -> None:
         assert http_status in text
 
 
+def test_exit_code_contract_documents_connect_failure_codes() -> None:
+    """`connect` must never exit 0 on failure, and the doc must say which code it uses.
+
+    The codes the CLI actually emits are asserted against the doc so the two
+    cannot drift — a reserved code (`3`/`4`/`5`) must not sneak in here.
+    """
+    from agent_bom.cli._entry_points import _EXIT_OPERATIONAL, _EXIT_USAGE, _USAGE_STATUSES
+
+    assert (_EXIT_OPERATIONAL, _EXIT_USAGE) == (1, 2)
+    assert _USAGE_STATUSES == frozenset({400, 422})
+
+    text = EXIT_CODES_DOC.read_text(encoding="utf-8")
+    assert "`agent-bom connect <provider>` failing to verify or register" in text
+    assert "exits `2` when the control plane\nrejects the payload and `1` for every other failure" in text
+    assert "never exits `0` without a verified connection" in text
+
+
 def test_action_exposes_documented_exit_code_output() -> None:
     action = ACTION_YML.read_text(encoding="utf-8")
     doc = EXIT_CODES_DOC.read_text(encoding="utf-8")

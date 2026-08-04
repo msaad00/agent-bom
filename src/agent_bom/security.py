@@ -889,12 +889,18 @@ def validate_image_ref(ref: str) -> str:
     return ref
 
 
-def sanitize_error(exc: Exception | str, generic: bool = False) -> str:
+def sanitize_error(exc: Exception | str, generic: bool = False, *, max_length: int = 200) -> str:
     """Return a safe error message suitable for API consumers.
 
     Strips sensitive data (file paths, URLs) from exception messages while
     preserving safe, actionable text.  Set ``generic=True`` to always return
     a fixed non-diagnostic string regardless of the exception content.
+
+    ``max_length`` caps arbitrary SDK/exception text so a pathological message
+    cannot flood a response or a terminal. Callers passing text this codebase
+    *authored* (curated remediation guidance, which is bounded by construction)
+    may raise the cap so multi-sentence guidance is not chopped mid-word — the
+    redaction above always still applies.
     """
     if generic:
         return "An internal error occurred. Please contact support."
@@ -910,7 +916,7 @@ def sanitize_error(exc: Exception | str, generic: bool = False) -> str:
     )
     # Strip absolute file paths
     msg = re.sub(r"(/[^\s:\"']+)+", "<path>", msg)
-    return msg[:200] if len(msg) > 200 else msg
+    return msg[:max_length] if len(msg) > max_length else msg
 
 
 # Export all validation functions

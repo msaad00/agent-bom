@@ -110,7 +110,8 @@ class TestLocalVerify:
             _main(),
             ["connect", "aws", "--role-arn", "arn:aws:iam::1:role/ro", "--external-id", SECRET],
         )
-        assert r.exit_code == 0
+        # A failed verify must not look like success to `connect && promote`.
+        assert r.exit_code == 1
         assert "Verification failed" in r.output
         assert SECRET not in r.output
 
@@ -139,7 +140,9 @@ class TestLocalVerify:
             _main(),
             ["connect", "aws", "--role-arn", "arn:aws:iam::1:role/ro", "--external-id", SECRET],
         )
-        assert r.exit_code == 0
+        # Degrading gracefully still means the connection was never verified —
+        # exit 1 ("dependency not present") per site-docs/reference/exit-codes.md.
+        assert r.exit_code == 1
         assert "Cannot verify locally" in r.output
         assert "agent-bom[aws]" in r.output
         assert SECRET not in r.output
@@ -182,13 +185,20 @@ class TestServerRegister:
         r = CliRunner().invoke(
             _main(),
             [
-                "connect", "aws",
-                "--role-arn", "arn:aws:iam::123456789012:role/ro",
-                "--external-id", SECRET,
-                "--region", "us-east-1",
-                "--server", "https://cp.example.com",
-                "--api-key", "k-123",
-                "--tenant", "tenant-a",
+                "connect",
+                "aws",
+                "--role-arn",
+                "arn:aws:iam::123456789012:role/ro",
+                "--external-id",
+                SECRET,
+                "--region",
+                "us-east-1",
+                "--server",
+                "https://cp.example.com",
+                "--api-key",
+                "k-123",
+                "--tenant",
+                "tenant-a",
             ],
         )
         assert r.exit_code == 0, r.output
@@ -221,13 +231,20 @@ class TestServerRegister:
         r = CliRunner().invoke(
             _main(),
             [
-                "connect", "aws",
-                "--role-arn", "arn:aws:iam::123456789012:role/ro",
-                "--external-id", SECRET,
-                "--server", "https://cp.example.com",
-                "--api-key", "k-123",
-                "--inventory-scope", "organization",
-                "--scan-mode", "continuous",
+                "connect",
+                "aws",
+                "--role-arn",
+                "arn:aws:iam::123456789012:role/ro",
+                "--external-id",
+                SECRET,
+                "--server",
+                "https://cp.example.com",
+                "--api-key",
+                "k-123",
+                "--inventory-scope",
+                "organization",
+                "--scan-mode",
+                "continuous",
                 "--no-auto-scan-on-create",
             ],
         )
@@ -251,11 +268,16 @@ class TestServerRegister:
         r = CliRunner().invoke(
             _main(),
             [
-                "connect", "aws",
-                "--role-arn", "arn:aws:iam::1:role/ro",
-                "--external-id", SECRET,
-                "--server", "https://cp.example.com",
-                "--api-key", "k",
+                "connect",
+                "aws",
+                "--role-arn",
+                "arn:aws:iam::1:role/ro",
+                "--external-id",
+                SECRET,
+                "--server",
+                "https://cp.example.com",
+                "--api-key",
+                "k",
                 "--scan",
             ],
         )
@@ -270,6 +292,210 @@ class TestServerRegister:
         )
         assert r.exit_code != 0
         assert "--server and --api-key are both required" in r.output
+
+
+# ── Failure exit codes + actionable reasons ───────────────────────────────────
+
+
+def _fake_control_plane(monkeypatch: pytest.MonkeyPatch, handler) -> None:
+    """Point the CLI at an in-process fake control plane.
+
+    Builds a *real* ``AgentBomClient`` over an httpx ``MockTransport`` so the
+    test exercises the genuine ``AgentBomApiError`` (status_code + body) the CLI
+    has to interpret. No network, no cloud credentials.
+    """
+    from agent_bom.client import AgentBomClient
+
+    def _factory(**kwargs: object) -> AgentBomClient:
+        return AgentBomClient(**kwargs, transport=httpx.MockTransport(handler))  # type: ignore[arg-type]
+
+    monkeypatch.setattr("agent_bom.client.AgentBomClient", _factory)
+
+
+# The remediation the AWS broker curates for a bad role/trust policy. The API
+# echoes it as the ``detail`` of its 502; the operator needs to see exactly this.
+ASSUME_ROLE_REMEDIATION = (
+    "AssumeRole failed. Verify the role ARN, its trust policy, and that the "
+    "ExternalId matches the one embedded in the grant script. The control plane's "
+    "caller identity also needs sts:AssumeRole permission on that role."
+)
+
+
+FAKE_ROLE_ARN = "arn:aws:iam::123456789012:role/totally-fake"
+
+
+def _connect_aws(*extra: str) -> list[str]:
+    """Minimal AWS connect argv (a role that cannot exist), plus extra flags."""
+    return ["connect", "aws", "--role-arn", FAKE_ROLE_ARN, "--external-id", SECRET, *extra]
+
+
+class TestServerFailureExitCode:
+    """`connect --server` must fail loudly, with the control plane's own reason."""
+
+    def test_failed_test_exits_one_and_surfaces_control_plane_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/test"):
+                return httpx.Response(502, json={"detail": ASSUME_ROLE_REMEDIATION})
+            return httpx.Response(201, json={"id": "conn-9", "provider": "aws"})
+
+        _fake_control_plane(monkeypatch, handler)
+        r = CliRunner().invoke(_main(), _connect_aws("--server", "http://cp", "--api-key", "k"))
+
+        assert r.exit_code == 1, r.output
+        assert "Verify the role ARN" in r.output
+        assert "sts:AssumeRole" in r.output
+        assert "See server logs" not in r.output
+        assert SECRET not in r.output
+
+    def test_failed_create_exits_one_and_surfaces_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"detail": "Connection secret encryption is not configured."})
+
+        _fake_control_plane(monkeypatch, handler)
+        r = CliRunner().invoke(_main(), _connect_aws("--server", "http://cp", "--api-key", "k"))
+
+        assert r.exit_code == 1, r.output
+        assert "Connection secret encryption is not configured." in r.output
+        assert "Registered" not in r.output
+
+    def test_caller_input_rejected_exits_two(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A 400/422 is the caller's mistake — same exit code as local input validation."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"detail": "Invalid region format: us-east-1a"})
+
+        _fake_control_plane(monkeypatch, handler)
+        r = CliRunner().invoke(_main(), _connect_aws("--server", "http://cp", "--api-key", "k"))
+
+        assert r.exit_code == 2, r.output
+        assert "Invalid region format" in r.output
+
+    def test_failed_scan_exits_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/scan"):
+                return httpx.Response(503, json={"detail": "Cloud connection scan could not be queued."})
+            if request.url.path.endswith("/test"):
+                return httpx.Response(200, json={"status": "ok"})
+            return httpx.Response(201, json={"id": "conn-9", "provider": "aws"})
+
+        _fake_control_plane(monkeypatch, handler)
+        r = CliRunner().invoke(_main(), _connect_aws("--server", "http://cp", "--api-key", "k", "--scan"))
+
+        assert r.exit_code == 1, r.output
+        assert "could not be queued" in r.output
+
+    def test_non_json_error_body_still_fails_without_dumping_html(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A proxy's HTML error page is not an operator message — do not print it."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(504, text="<html><body>gateway timeout</body></html>")
+
+        _fake_control_plane(monkeypatch, handler)
+        r = CliRunner().invoke(_main(), _connect_aws("--server", "http://cp", "--api-key", "k"))
+
+        assert r.exit_code == 1, r.output
+        assert "<html>" not in r.output
+        assert "504" in r.output
+
+    def test_unreachable_control_plane_fails_gracefully(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("[Errno 61] Connection refused", request=request)
+
+        _fake_control_plane(monkeypatch, handler)
+        r = CliRunner().invoke(_main(), _connect_aws("--server", "http://cp", "--api-key", "k"))
+
+        assert r.exit_code == 1, r.output
+        assert "Could not reach" in r.output
+        assert "Traceback" not in r.output
+        assert SECRET not in r.output
+
+
+class TestLocalFailureReason:
+    """Local verify must give the operator the broker's curated remediation."""
+
+    def test_broker_remediation_reaches_the_operator(self, fake_boto3) -> None:
+        fake_boto3(assume_fails=True)
+        r = CliRunner().invoke(_main(), _connect_aws())
+
+        assert r.exit_code == 1, r.output
+        assert "Verify the role ARN" in r.output
+        assert "An internal error occurred" not in r.output
+        assert SECRET not in r.output
+
+    def test_unexpected_exception_stays_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Only curated remediation passes through; a stray exception is generic."""
+
+        def _raise(*_a: object, **_k: object) -> None:
+            raise RuntimeError(f"boom while reading /etc/agent-bom/creds with secret={SECRET}")
+
+        monkeypatch.setattr("agent_bom.cloud.connection_broker.broker_session", _raise)
+        r = CliRunner().invoke(_main(), _connect_aws())
+
+        assert r.exit_code == 1, r.output
+        assert "An internal error occurred" in r.output
+        assert SECRET not in r.output
+        assert "/etc/agent-bom" not in r.output
+
+    def test_broker_error_without_remediation_stays_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from agent_bom.cloud.connection_broker import ConnectionBrokerError
+
+        def _raise(*_a: object, **_k: object) -> None:
+            raise ConnectionBrokerError(f"free-form message carrying {SECRET}")
+
+        monkeypatch.setattr("agent_bom.cloud.connection_broker.broker_session", _raise)
+        r = CliRunner().invoke(_main(), _connect_aws())
+
+        assert r.exit_code == 1, r.output
+        assert "An internal error occurred" in r.output
+        assert SECRET not in r.output
+
+
+class TestOperatorDetailBoundary:
+    """The CLI and the API must share ONE definition of an operator-safe detail."""
+
+    def test_api_route_delegates_to_the_shared_helper(self) -> None:
+        from agent_bom.api.routes.cloud_connections import _safe_connection_detail
+        from agent_bom.cloud.base import CloudDiscoveryError
+        from agent_bom.cloud.connection_broker import ConnectionBrokerError, operator_facing_detail
+
+        curated = ConnectionBrokerError("free-form", remediation=ASSUME_ROLE_REMEDIATION)
+        missing_sdk = CloudDiscoveryError("boto3 is required. Install with: pip install 'agent-bom[aws]'")
+        unexpected = RuntimeError("stray")
+
+        for exc in (curated, missing_sdk, unexpected):
+            assert _safe_connection_detail(exc) == operator_facing_detail(exc)
+
+        assert "Verify the role ARN" in operator_facing_detail(curated)
+        assert "agent-bom[aws]" in operator_facing_detail(missing_sdk)
+        assert operator_facing_detail(unexpected) == "An internal error occurred. Please contact support."
+
+    def test_curated_remediation_is_never_truncated_mid_sentence(self) -> None:
+        """Every remediation the broker authors is longer than the 200-char cap
+        ``sanitize_error`` applies to arbitrary exception text. Chopping authored
+        guidance mid-word ("…configure AWS credentials for the control plane (AWS_")
+        is the same defect as dropping it — the operator still cannot act on it.
+        """
+        import re
+        from pathlib import Path
+
+        from agent_bom.cloud.connection_broker import ConnectionBrokerError, operator_facing_detail
+
+        source = Path(__file__).resolve().parents[1] / "src" / "agent_bom" / "cloud" / "connection_broker.py"
+        remediations = [
+            "".join(re.findall(r'"([^"]*)"', match.group(1)))
+            for match in re.finditer(r'remediation=\(\s*((?:\s*"[^"]*"\s*)+)\)', source.read_text(encoding="utf-8"))
+        ]
+        assert len(remediations) >= 3, "expected the broker to curate remediation strings"
+
+        for remediation in remediations:
+            assert len(remediation) > 200, "test is only meaningful for remediations past the default cap"
+            assert operator_facing_detail(ConnectionBrokerError("free-form", remediation=remediation)) == remediation
+
+    def test_arbitrary_exception_text_stays_capped(self) -> None:
+        """Raising the cap for curated text must not uncap arbitrary SDK strings."""
+        from agent_bom.security import sanitize_error
+
+        assert len(sanitize_error(RuntimeError("x" * 5000))) == 200
 
 
 # ── Schema/client consistency: CLI body == CloudConnectionCreate ───────────────

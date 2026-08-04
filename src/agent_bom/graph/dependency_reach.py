@@ -1,6 +1,6 @@
 """Graph-walk dependency reachability engine.
 
-Closes #1896. The blast-radius scoring before this module gave every CVE
+The blast-radius scoring before this module gave every CVE
 the same prominence whether the vulnerable package was a direct
 import of a runtime entrypoint or three hops down a dependency tree
 that no live code exercises. Operators with thousands of findings need

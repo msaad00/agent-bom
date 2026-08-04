@@ -1364,7 +1364,7 @@ BEGIN
         ALTER ROLE agent_bom_app SET lock_timeout = '5s';
 
         -- DML only: SELECT, INSERT, UPDATE, DELETE on all current + future tables
-        GRANT CONNECT ON DATABASE agent_bom TO agent_bom_app;
+        EXECUTE format('GRANT CONNECT ON DATABASE %I TO agent_bom_app', current_database());
         GRANT USAGE ON SCHEMA public TO agent_bom_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO agent_bom_app;
         GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO agent_bom_app;
@@ -1412,7 +1412,7 @@ BEGIN
     ALTER ROLE agent_bom_maintenance CONNECTION LIMIT 32;
     ALTER ROLE agent_bom_maintenance SET statement_timeout = '30s';
     ALTER ROLE agent_bom_maintenance SET lock_timeout = '5s';
-    GRANT CONNECT ON DATABASE agent_bom TO agent_bom_maintenance;
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO agent_bom_maintenance', current_database());
     GRANT USAGE ON SCHEMA public TO agent_bom_rls_maintenance;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO agent_bom_rls_maintenance;
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO agent_bom_rls_maintenance;
@@ -1447,7 +1447,12 @@ BEGIN
 END
 $$;
 
-GRANT CONNECT ON DATABASE agent_bom TO agent_bom_readonly;
+DO $$
+BEGIN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO agent_bom_readonly', current_database());
+END
+$$;
+
 GRANT USAGE ON SCHEMA public TO agent_bom_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO agent_bom_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_readonly;

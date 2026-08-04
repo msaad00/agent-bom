@@ -31,8 +31,6 @@ Role mapping (claim value → agent-bom Role):
 Install the optional dependency::
 
     pip install "agent-bom[oidc]"
-
-Closes #278.
 """
 
 from __future__ import annotations

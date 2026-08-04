@@ -15,8 +15,6 @@ Usage::
     agent-bom graph report.json --format dot --output deps.dot
     agent-bom graph report.json --format graphml --output deps.graphml
     agent-bom graph report.json --format cypher --output import.cypher
-
-Closes #292.
 """
 
 from __future__ import annotations

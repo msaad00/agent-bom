@@ -609,6 +609,16 @@ def build_unified_graph_from_report(
                 )
             )
 
+    # Materialize cloud assets before projecting CIS findings so every
+    # finding can resolve onto the same provider/resource node used by account
+    # hierarchy, identity, CNAPP, and DSPM overlays.  The remaining inventory
+    # enrichment (roles, authorization, organization hierarchy) stays in its
+    # original phase below.
+    cloud_inventory_payloads = list(_iter_cloud_inventories(report_json.get("cloud_inventory")))
+    for inventory_payload in cloud_inventory_payloads:
+        _add_cloud_inventory(graph, inventory_payload, data_source_tag)
+    cloud_resource_alias_index = _build_cloud_resource_alias_index(graph)
+
     # ── CIS benchmark misconfigurations ──────────────────────────────
     for section_key, legacy_key, default_cloud_provider in (
         ("cis_benchmark", "cis_benchmark_data", "aws"),
@@ -656,17 +666,43 @@ def build_unified_graph_from_report(
                 )
             )
             for resource_id in sorted(set(resource_ids)):
-                resource_node_id = f"cloud_resource:{cloud_provider or 'generic'}:{resource_id}"
+                resource_node_id = _resolve_cloud_resource_node_id(
+                    graph,
+                    cloud_provider,
+                    resource_id,
+                    alias_index=cloud_resource_alias_index,
+                )
+                canonical_resource = graph.get_node(resource_node_id) if resource_node_id else None
+                resource_node_id = resource_node_id or f"cloud_resource:{cloud_provider or 'generic'}:{resource_id}"
+                attributes = {
+                    "resource_id": resource_id,
+                    "cloud_provider": cloud_provider,
+                    "source_section": section_key,
+                }
+                if canonical_resource is not None:
+                    # Preserve the inventory's provider-native resource_id
+                    # (ARN/ARM/GCP name). The CIS spelling is an evidence alias,
+                    # not a replacement identity.
+                    attributes = {
+                        "finding_resource_ids": sorted(
+                            {
+                                *canonical_resource.attributes.get("finding_resource_ids", []),
+                                resource_id,
+                            }
+                        ),
+                        "finding_source_sections": sorted(
+                            {
+                                *canonical_resource.attributes.get("finding_source_sections", []),
+                                section_key,
+                            }
+                        ),
+                    }
                 graph.add_node(
                     UnifiedNode(
                         id=resource_node_id,
                         entity_type=EntityType.CLOUD_RESOURCE,
-                        label=resource_id,
-                        attributes={
-                            "resource_id": resource_id,
-                            "cloud_provider": cloud_provider,
-                            "source_section": section_key,
-                        },
+                        label=canonical_resource.label if canonical_resource is not None else resource_id,
+                        attributes=attributes,
                         data_sources=[section_key],
                         dimensions=NodeDimensions(cloud_provider=cloud_provider),
                     )
@@ -962,8 +998,7 @@ def build_unified_graph_from_report(
     # effective-permissions overlays below can consume. Runs before those
     # overlays so they see the inventory. Accepts one payload or a list of
     # per-provider payloads.
-    for inventory_payload in _iter_cloud_inventories(report_json.get("cloud_inventory")):
-        _add_cloud_inventory(graph, inventory_payload, data_source_tag)
+    for inventory_payload in cloud_inventory_payloads:
         _add_cloud_role_assignments(graph, inventory_payload, data_source_tag)
         apply_authorization_evidence(graph, inventory_payload)
         # GCP estate roll-up backbone (org → folders → projects), carried on the
@@ -6620,6 +6655,87 @@ def _add_ai_stack_frameworks(graph: UnifiedGraph, ai_inventory: Any, data_source
 
 def _clean_graph_part(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _resource_tail(value: Any) -> str:
+    """Return the provider-resource name at the end of an ARN/path-like ID."""
+    normalized = _clean_graph_part(value).rstrip("/")
+    if not normalized:
+        return ""
+    return normalized.rsplit("/", 1)[-1].rsplit(":", 1)[-1].casefold()
+
+
+_CloudResourceAliasIndex = dict[tuple[str, str], set[str]]
+
+
+def _build_cloud_resource_alias_index(graph: UnifiedGraph) -> _CloudResourceAliasIndex:
+    """Index provider-native, typed, and name aliases in one graph pass."""
+    index: _CloudResourceAliasIndex = defaultdict(set)
+    for node in graph.nodes_by_type(EntityType.CLOUD_RESOURCE):
+        provider = _clean_graph_part(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).casefold()
+        if not provider:
+            continue
+        identifiers = {
+            _clean_graph_part(node.attributes.get("resource_id")).rstrip("/").casefold(),
+            _clean_graph_part(node.attributes.get("resource_name")).rstrip("/").casefold(),
+        }
+        identifiers.discard("")
+        kinds = {
+            _clean_graph_part(node.attributes.get("resource_type")).casefold(),
+            _clean_graph_part(node.attributes.get("resource_kind")).casefold(),
+            _clean_graph_part(node.attributes.get("cloud_service")).casefold(),
+        }
+        kinds.update(part.casefold() for part in node.id.split(":"))
+        kinds.discard("")
+        for identifier in identifiers:
+            index[(provider, f"exact:{identifier}")].add(node.id)
+            tail = _resource_tail(identifier)
+            if not tail:
+                continue
+            index[(provider, f"name:{tail}")].add(node.id)
+            for kind in kinds:
+                index[(provider, f"typed:{kind}:{tail}")].add(node.id)
+    return dict(index)
+
+
+def _resolve_cloud_resource_node_id(
+    graph: UnifiedGraph,
+    provider: str,
+    resource_id: Any,
+    *,
+    alias_index: _CloudResourceAliasIndex | None = None,
+) -> str | None:
+    """Resolve a finding resource reference to one existing inventory node.
+
+    CIS providers commonly report ``bucket/name`` or a provider-native ARN,
+    while inventory uses a typed graph ID.  Match exact provider-native IDs
+    first, then a typed ``kind/name`` alias, and finally a unique provider/name
+    alias. Ambiguity deliberately returns ``None`` so unrelated same-named
+    resources are never collapsed.
+    """
+    raw = _clean_graph_part(resource_id).rstrip("/")
+    provider_key = _clean_graph_part(provider).casefold()
+    if not raw or not provider_key:
+        return None
+
+    raw_key = raw.casefold()
+    raw_tail = _resource_tail(raw)
+    path_parts = [part.casefold() for part in raw.split("/") if part]
+    type_hint = path_parts[-2] if len(path_parts) >= 2 and not raw_key.startswith("arn:") else ""
+
+    index = alias_index if alias_index is not None else _build_cloud_resource_alias_index(graph)
+    candidate_sets = [index.get((provider_key, f"exact:{raw_key}"), set())]
+    if type_hint:
+        candidate_sets.append(index.get((provider_key, f"typed:{type_hint}:{raw_tail}"), set()))
+    candidate_sets.append(index.get((provider_key, f"name:{raw_tail}"), set()))
+
+    for candidates in candidate_sets:
+        unique = sorted(candidates)
+        if len(unique) == 1:
+            return unique[0]
+        if len(unique) > 1:
+            return None
+    return None
 
 
 def _agent_identity_scope(agent_dict: dict[str, Any]) -> str:

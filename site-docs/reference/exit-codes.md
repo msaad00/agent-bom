@@ -14,8 +14,8 @@ automation can distinguish caller mistakes from control-plane outages.
 | Code  | Name                | Meaning                                                                                                       | Typical sources                                                            |
 | ----- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `0`   | success             | Command completed; no findings or all findings under the configured severity threshold.                        | Any subcommand that finished cleanly.                                      |
-| `1`   | operational failure | A precondition failed: missing config, unreachable backend, missing required env var, dependency not present.  | `--clickhouse-url` missing, NVD unreachable, optional dependency not installed. |
-| `2`   | usage or empty      | Invalid arguments, no input to act on, or report contained no rows after filtering.                            | Click `UsageError` (auto), `agent-bom skills audit` with no skill files, empty result rendering. |
+| `1`   | operational failure | A precondition failed: missing config, unreachable backend, missing required env var, dependency not present.  | `--clickhouse-url` missing, NVD unreachable, optional dependency not installed, `agent-bom connect <provider>` failing to verify or register. |
+| `2`   | usage or empty      | Invalid arguments, no input to act on, or report contained no rows after filtering.                            | Click `UsageError` (auto), `agent-bom skills audit` with no skill files, empty result rendering, `agent-bom connect` when the control plane rejects the payload (`400`/`422`). |
 | `3`   | policy gate failed  | An opt-in policy gate failed. Currently emitted by `--require-fresh-db` / `AGENT_BOM_REQUIRE_FRESH_DB` when the local vuln DB is stale. Otherwise reserved for future policy gates. | `agent-bom scan --require-fresh-db` against a stale local vuln DB.          |
 | `4`   | (reserved)          | Reserved for "auth required" / "auth invalid" on commands that talk to an authenticated control plane.        | Not yet emitted.                                                           |
 | `5`   | (reserved)          | Reserved for "remote control-plane error" (5xx response from the API).                                         | Not yet emitted.                                                           |
@@ -65,6 +65,17 @@ care about families, not individual semantics.
 | `1`           | `429`                                             | Throttled — retry with backoff. Today flattens to `1`; future revisions may use a dedicated code. |
 | `5` (reserved) | `5xx`                                             | Control-plane fault — agent-bom is not at fault, retry or escalate.                            |
 | `130`         | n/a                                               | Operator pressed `Ctrl-C`; never originates from an HTTP response.                              |
+
+Because `4` and `5` are still reserved, the families that would map to them
+(`401`/`403` and `5xx`) **flatten to `1`** today rather than being emitted early.
+A command that talks to the control plane is therefore always safe to gate on
+`rc != 0`: `agent-bom connect <provider>` exits `2` when the control plane
+rejects the payload and `1` for every other failure — a failed credential
+verification, a rejected registration, an unreachable control plane, or a
+missing provider SDK extra. It never exits `0` without a verified connection, so
+`agent-bom connect aws && <next step>` cannot promote a broken connection. When
+the control plane returns an actionable `detail`, the CLI prints that message
+verbatim instead of a "see server logs" dead end.
 
 Until reserved codes (`3`/`4`/`5`) are emitted, the safe shell idiom is:
 

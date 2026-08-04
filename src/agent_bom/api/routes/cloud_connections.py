@@ -687,21 +687,13 @@ def _mark_connection(
 def _safe_connection_detail(exc: Exception) -> str:
     """Actionable, secret-free detail for a failed connection test/scan.
 
-    Defense in depth: a broker's free-form message is never surfaced (it could,
-    in a regression, carry the secret). Only an explicitly-curated
-    ``remediation`` string (why + how to fix) is shown; discovery/import errors
-    carry static install guidance and are surfaced sanitized. Everything else
-    falls back to a fixed generic string — no raw traceback or SDK text leaks.
+    Thin alias for the shared boundary in
+    :func:`agent_bom.cloud.connection_broker.operator_facing_detail`, which the
+    CLI uses too — one definition, no drift between surfaces.
     """
-    from agent_bom.cloud.base import CloudDiscoveryError
-    from agent_bom.cloud.connection_broker import ConnectionBrokerError
+    from agent_bom.cloud.connection_broker import operator_facing_detail
 
-    if isinstance(exc, ConnectionBrokerError) and exc.remediation:
-        return sanitize_error(exc.remediation, generic=False)
-    if isinstance(exc, CloudDiscoveryError):
-        # Static dependency/install guidance ("boto3 is required …") — safe.
-        return sanitize_error(exc, generic=False)
-    return sanitize_error(exc, generic=True)
+    return operator_facing_detail(exc)
 
 
 def _cis_summary(cis_dict: dict[str, Any]) -> dict[str, Any]:

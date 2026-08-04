@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sys
+import types
 from types import SimpleNamespace
 from typing import Any, Iterable
+from unittest.mock import patch
 
 import pytest
 
@@ -306,6 +309,48 @@ def test_missing_sdk_sets_every_required_source_explicitly(monkeypatch: pytest.M
     result = collect_gcp_authorization(None, "proj-1", warnings=[])
 
     assert set(_source_states(result).values()) == {EvidenceSourceState.SDK_MISSING.value}
+
+
+def test_incomplete_sdk_install_degrades_instead_of_crashing() -> None:
+    """A partially-installed `[gcp]` extra must degrade, never abort GCP discovery.
+
+    ``google.cloud`` is a namespace package assembled from one distribution per
+    service, so an operator can have importable modules that are missing the
+    client classes we need (a stale ``google-cloud-resource-manager``, a partial
+    install). That surfaced as an ``AttributeError`` escaping the collector and
+    killing the whole inventory walk, which is unguarded at its call site.
+    """
+
+    class _Client:
+        def __init__(self, credentials: Any = None) -> None:
+            pass
+
+    def _module(name: str, **attributes: Any) -> Any:
+        module = types.ModuleType(name)
+        for attribute, value in attributes.items():
+            setattr(module, attribute, value)
+        return module
+
+    incomplete = {
+        "google": types.ModuleType("google"),
+        "google.cloud": types.ModuleType("google.cloud"),
+        "google.cloud.asset_v1": _module("google.cloud.asset_v1", AssetServiceClient=_Client),
+        "google.cloud.iam_admin_v1": _module("google.cloud.iam_admin_v1", IAMClient=_Client),
+        "google.cloud.iam_v2": _module("google.cloud.iam_v2", PoliciesClient=_Client),
+        "google.cloud.iam_v3": _module(
+            "google.cloud.iam_v3",
+            PrincipalAccessBoundaryPoliciesClient=_Client,
+            PolicyBindingsClient=_Client,
+        ),
+        # Importable, but missing FoldersClient/OrganizationsClient.
+        "google.cloud.resourcemanager_v3": _module("google.cloud.resourcemanager_v3", ProjectsClient=_Client),
+    }
+    warnings: list[str] = []
+    with patch.dict(sys.modules, incomplete):
+        result = collect_gcp_authorization(None, "proj-1", warnings=warnings)
+
+    assert set(_source_states(result).values()) == {EvidenceSourceState.SDK_MISSING.value}
+    assert warnings
 
 
 def test_nonempty_pab_is_preserved_but_source_stays_partial_until_evaluated() -> None:

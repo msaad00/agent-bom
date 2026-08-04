@@ -127,12 +127,26 @@ class TestAwsCheck116DeniedReads:
 # ---------------------------------------------------------------------------
 
 
+def _stub_namespace_module(name: str) -> types.ModuleType:
+    """Return the resident stub for *name*, installing a fresh one over any real package.
+
+    The fake below is bound as an ATTRIBUTE of what this returns, and an attribute
+    written onto the real `google.cloud` namespace package outlives the process —
+    conftest restores `sys.modules`, but it cannot undo a package attribute. Keeping
+    the fake on a stub keeps it inside that restore.
+    """
+    resident = sys.modules.get(name)
+    if isinstance(resident, types.ModuleType) and getattr(resident, "__spec__", None) is None:
+        return resident
+    stub = types.ModuleType(name)
+    sys.modules[name] = stub
+    return stub
+
+
 def _install_mock_gcp_storage(buckets):
     """Install a fake google.cloud.storage whose Client lists *buckets*."""
-    google_mod = sys.modules.get("google") or types.ModuleType("google")
-    sys.modules["google"] = google_mod
-    google_cloud = sys.modules.get("google.cloud") or types.ModuleType("google.cloud")
-    sys.modules["google.cloud"] = google_cloud
+    google_mod = _stub_namespace_module("google")
+    google_cloud = _stub_namespace_module("google.cloud")
     google_mod.cloud = google_cloud  # type: ignore[attr-defined]
 
     storage_mod = types.ModuleType("google.cloud.storage")

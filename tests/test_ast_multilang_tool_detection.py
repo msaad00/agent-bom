@@ -429,11 +429,142 @@ RUBY_ORDINARY_KEYWORD_HASH = """config = { name: "not_a_tool", description: "jus
 puts config[:name]
 """
 
+# README.md "Tools", form 1: a subclass of MCP::Tool. With no `tool_name`, the
+# gem derives the name from the class name -- lib/mcp/tool.rb `name_value` falls
+# back to StringUtils.handle_from_class_name, which underscores and downcases it.
+RUBY_TOOL_SUBCLASS = """class MyTool < MCP::Tool
+  title "My Tool"
+  description "This tool performs specific functionality..."
+  input_schema(
+    properties: {
+      message: { type: "string" },
+    },
+    required: ["message"]
+  )
+
+  def self.call(message:, server_context:)
+    MCP::Tool::Response.new([{ type: "text", text: "OK" }])
+  end
+end
+"""
+
+# README.md "Tool Output Schemas": `tool_name` overrides the derived name.
+RUBY_TOOL_SUBCLASS_EXPLICIT_NAME = """class WeatherTool < MCP::Tool
+  tool_name "get_weather"
+  description "Get current weather for a location"
+
+  def self.call(location:, server_context:)
+    MCP::Tool::Response.new([{ type: "text", text: "Sunny" }])
+  end
+end
+"""
+
+# README.md "Tools", form 2: MCP::Tool.define with the name as a keyword.
+RUBY_TOOL_DEFINE = """require "mcp"
+
+tool = MCP::Tool.define(
+  name: "my_tool",
+  title: "My Tool",
+  description: "This tool performs specific functionality...",
+  annotations: {
+    read_only_hint: true,
+    title: "My Tool"
+  }
+) do |args, server_context:|
+  MCP::Tool::Response.new([{ type: "text", text: "OK" }])
+end
+"""
+
+# Two tool classes in one file, only the second renamed. A `tool_name` must not
+# leak across the class boundary in either direction.
+RUBY_TWO_TOOL_SUBCLASSES = """class SearchTool < MCP::Tool
+  description "Search the corpus"
+end
+
+class LookupTool < MCP::Tool
+  tool_name "lookup_user"
+  description "Look a user up"
+end
+"""
+
+# An ActiveRecord model in a workshop app. The class name ends in Tool and it
+# even carries a `tool_name`, but nothing here is MCP.
+RUBY_ORDINARY_TOOL_CLASS = """class HammerTool < ActiveRecord::Base
+  belongs_to :workbench
+
+  def tool_name
+    "hammer-42"
+  end
+end
+"""
+
+RUBY_TOOL_DEFINE_COMMENTED_OUT = """require "mcp"
+
+# MCP::Tool.define(name: "retired_tool") do |args, server_context:|
+#   nothing
+# end
+"""
+
+# Inside `module MCP` the superclass is written bare. `Tool` on its own is too
+# ordinary a name to trust, so it needs the file to require the gem.
+RUBY_BARE_TOOL_SUPERCLASS = """class SummarizeTool < Tool
+  description "Summarize a document"
+end
+"""
+
 
 def test_ruby_official_define_tool_is_detected(tmp_path: Path) -> None:
     (tmp_path / "server.rb").write_text(RUBY_DEFINE_TOOL)
 
     assert _tool_names(tmp_path) == {"get_weather"}
+
+
+def test_ruby_official_tool_subclass_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "my_tool.rb").write_text(RUBY_TOOL_SUBCLASS)
+
+    assert _tool_names(tmp_path) == {"my_tool"}
+
+
+def test_ruby_tool_subclass_explicit_tool_name_wins(tmp_path: Path) -> None:
+    (tmp_path / "weather_tool.rb").write_text(RUBY_TOOL_SUBCLASS_EXPLICIT_NAME)
+
+    assert _tool_names(tmp_path) == {"get_weather"}
+
+
+def test_ruby_tool_name_does_not_leak_between_sibling_classes(tmp_path: Path) -> None:
+    (tmp_path / "tools.rb").write_text(RUBY_TWO_TOOL_SUBCLASSES)
+
+    assert _tool_names(tmp_path) == {"search_tool", "lookup_user"}
+
+
+def test_ruby_official_tool_define_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "my_tool.rb").write_text(RUBY_TOOL_DEFINE)
+
+    assert _tool_names(tmp_path) == {"my_tool"}
+
+
+def test_ruby_ordinary_class_named_tool_is_not_an_agent_tool(tmp_path: Path) -> None:
+    (tmp_path / "hammer_tool.rb").write_text(RUBY_ORDINARY_TOOL_CLASS)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_ruby_commented_out_tool_define_is_not_a_tool(tmp_path: Path) -> None:
+    (tmp_path / "retired.rb").write_text(RUBY_TOOL_DEFINE_COMMENTED_OUT)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_ruby_bare_tool_superclass_needs_the_gem_required(tmp_path: Path) -> None:
+    (tmp_path / "summarize_tool.rb").write_text(RUBY_BARE_TOOL_SUPERCLASS)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_ruby_bare_tool_superclass_is_detected_when_the_gem_is_required(tmp_path: Path) -> None:
+    (tmp_path / "summarize_tool.rb").write_text('require "mcp"\n\n' + RUBY_BARE_TOOL_SUPERCLASS)
+
+    assert _tool_names(tmp_path) == {"summarize_tool"}
 
 
 def test_ruby_commented_out_define_tool_is_not_a_tool(tmp_path: Path) -> None:
@@ -594,6 +725,54 @@ fun setUp(bench: Workbench) {
 }
 """
 
+# Server.kt `public fun addTools(toolsToAdd: List<RegisteredTool>)` -- the bulk
+# registration. Sample copied from the SDK's own
+# integration-test/.../server/ServerBulkFeaturesTest.kt, where the name is the
+# leading positional argument of each Tool rather than a named one.
+KOTLIN_ADD_TOOLS_BULK = """import io.modelcontextprotocol.kotlin.sdk.server.RegisteredTool
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.Tool
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+
+fun register(server: Server) {
+    server.addTools(
+        listOf(
+            RegisteredTool(Tool("bulk-a", ToolSchema(), "Tool A")) { CallToolResult(emptyList()) },
+            RegisteredTool(Tool("bulk-b", ToolSchema(), "Tool B")) { CallToolResult(emptyList()) },
+            RegisteredTool(Tool("bulk-c", ToolSchema(), "Tool C")) { CallToolResult(emptyList()) },
+        ),
+    )
+}
+"""
+
+# The same call built from a variable. No name is knowable statically, and
+# inventing one would be worse than reporting none.
+KOTLIN_ADD_TOOLS_NON_LITERAL = """import io.modelcontextprotocol.kotlin.sdk.server.RegisteredTool
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+
+fun register(server: Server, discovered: List<RegisteredTool>) {
+    server.addTools(discovered)
+}
+"""
+
+KOTLIN_ORDINARY_ADD_TOOLS = """package com.example.workshop
+
+data class Tool(val name: String)
+
+class Workbench {
+    private val tools = mutableListOf<Tool>()
+
+    fun addTools(toolsToAdd: List<Tool>) {
+        tools.addAll(toolsToAdd)
+    }
+}
+
+fun setUp(bench: Workbench) {
+    bench.addTools(listOf(Tool("wrench-7"), Tool("hammer-42")))
+}
+"""
+
 KOTLIN_COMMENTED_OUT = """import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 // Older builds registered server.addTool(name = "retired_tool") here.
@@ -630,6 +809,24 @@ def test_kotlin_ordinary_add_tool_without_mcp_is_not_an_agent_tool(tmp_path: Pat
 
 def test_kotlin_commented_out_add_tool_is_not_a_tool(tmp_path: Path) -> None:
     (tmp_path / "Docs.kt").write_text(KOTLIN_COMMENTED_OUT)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_kotlin_official_sdk_add_tools_bulk_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "Bulk.kt").write_text(KOTLIN_ADD_TOOLS_BULK)
+
+    assert _tool_names(tmp_path) == {"bulk-a", "bulk-b", "bulk-c"}
+
+
+def test_kotlin_add_tools_from_a_variable_claims_no_name(tmp_path: Path) -> None:
+    (tmp_path / "Dynamic.kt").write_text(KOTLIN_ADD_TOOLS_NON_LITERAL)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_kotlin_ordinary_add_tools_without_mcp_is_not_an_agent_tool(tmp_path: Path) -> None:
+    (tmp_path / "Workbench.kt").write_text(KOTLIN_ORDINARY_ADD_TOOLS)
 
     assert _tool_names(tmp_path) == set()
 

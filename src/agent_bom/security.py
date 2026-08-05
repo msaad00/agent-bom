@@ -217,7 +217,11 @@ _VALUE_CREDENTIAL_PATTERNS = [
     re.compile(r"(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}", re.I),  # Stripe/service keys
     re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}"),  # GitHub tokens
     re.compile(r"(?:AKIA|ASIA)[A-Z0-9]{16}"),  # AWS access key IDs
-    re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"),  # Private keys
+    # Any PEM private-key label, not an enumerated few: `OPENSSH` (ssh-keygen's
+    # default since OpenSSH 7.8), `ENCRYPTED` and `PGP … BLOCK` were all missing,
+    # so those keys reached reports verbatim. Requiring the literal `PRIVATE KEY`
+    # keeps public material (`-----BEGIN CERTIFICATE-----`, `PUBLIC KEY`) out.
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----"),  # Private keys
     re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}"),  # JWTs
     re.compile(r"xox[bpsar]-[A-Za-z0-9-]{10,}"),  # Slack tokens
     re.compile(r"\w+://[^:]+:[^@]+@"),  # Connection strings with embedded credentials

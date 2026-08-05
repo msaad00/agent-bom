@@ -580,6 +580,52 @@ def test_sanitize_text_masks_email():
     assert "a***@c***.com" in out
 
 
+# `-----BEGIN OPENSSH PRIVATE KEY-----` is what `ssh-keygen` has emitted by
+# default since OpenSSH 7.8, so it is the *common* case, not an exotic one. The
+# value pattern list covered only the PKCS#1/SEC1 labels, so a key held under a
+# variable name the key-based check does not recognise reached the report
+# verbatim. Redaction is driven by the value's shape here, so this uses a
+# deliberately unremarkable variable name.
+@pytest.mark.parametrize(
+    "label",
+    [
+        "RSA PRIVATE KEY",
+        "EC PRIVATE KEY",
+        "DSA PRIVATE KEY",
+        "PRIVATE KEY",
+        "OPENSSH PRIVATE KEY",
+        "ENCRYPTED PRIVATE KEY",
+        "PGP PRIVATE KEY BLOCK",
+    ],
+)
+def test_sanitize_env_vars_redacts_every_private_key_label(label: str) -> None:
+    from agent_bom.security import sanitize_env_vars
+
+    body = "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW"
+    pem = f"-----BEGIN {label}-----\n{body}\n-----END {label}-----"
+
+    redacted = sanitize_env_vars({"DEPLOY_MATERIAL": pem})["DEPLOY_MATERIAL"]
+
+    assert body not in redacted, f"{label} key body survived redaction"
+    assert redacted != pem
+
+
+# The precision half of the pair above: widening the label match must not start
+# eating public material. A redactor that masks certificates is one people turn
+# off, and the value is not a secret to begin with.
+@pytest.mark.parametrize(
+    "label",
+    ["CERTIFICATE", "CERTIFICATE REQUEST", "PUBLIC KEY", "RSA PUBLIC KEY"],
+)
+def test_sanitize_env_vars_leaves_public_pem_material_intact(label: str) -> None:
+    from agent_bom.security import sanitize_env_vars
+
+    body = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890"
+    pem = f"-----BEGIN {label}-----\n{body}\n-----END {label}-----"
+
+    assert sanitize_env_vars({"DEPLOY_MATERIAL": pem})["DEPLOY_MATERIAL"] == pem
+
+
 def test_sanitize_sensitive_payload_masks_email_keys():
     from agent_bom.security import sanitize_sensitive_payload
 

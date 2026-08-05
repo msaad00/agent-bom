@@ -165,7 +165,7 @@ export default function DemoEstatePage() {
           { label: "Assets", value: story.summary.assets, icon: Database },
           { label: "Observations", value: story.summary.observations, icon: Clock3 },
           { label: "Evidence sources", value: story.summary.evidence_sources, hint: `${story.summary.complete_sources} complete` },
-          { label: "Correlations", value: story.summary.correlations, icon: Network },
+          { label: "Correlations", value: story.summary.correlations, icon: Network, hint: `${story.summary.cross_source_correlations} cross-source` },
           { label: "Findings", value: story.summary.findings, icon: TriangleAlert },
           { label: "Snapshots", value: story.summary.snapshots, icon: GitBranch },
           { label: "Partial sources", value: story.summary.partial_sources, accent: "warn", icon: TriangleAlert },
@@ -307,7 +307,13 @@ export default function DemoEstatePage() {
             <GitBranch className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
             <h2 className="text-base font-semibold text-[color:var(--foreground)]">Normalized evidence timeline</h2>
           </div>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Every row retains its source run and evidence hash; raw provider payloads are not returned.</p>
+          {/* Bounded like its two sibling lists, and labeled like them. The API
+              returns a page of the estate's observations; an unlabeled slice
+              beside a claim about "every row" reads as the whole estate. */}
+          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+            Showing {orderedEvents.length} of {story.summary.observations} normalized events — the correlated incident included, then oldest first.
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Every row shown retains its source run and evidence hash; raw provider payloads are not returned.</p>
           <ol className="mt-5 space-y-3">
             {orderedEvents.map((event) => (
               <li key={event.event_id} className="grid gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 sm:grid-cols-[8rem_1fr]">
@@ -365,7 +371,7 @@ export default function DemoEstatePage() {
             Say so, and say against what — a bounded list with an unlabeled
             length is indistinguishable from a complete one. */}
         <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-          Showing {story.correlations.length} of {story.summary.correlations} — the incident first.
+          Showing {story.correlations.length} of {story.summary.correlations} — the incident first. {story.summary.cross_source_correlations} span more than one evidence source.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {story.correlations.map((correlation) => (

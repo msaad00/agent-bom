@@ -2844,7 +2844,11 @@ export interface EnterpriseDemoSummary {
   evidence_sources: number;
   complete_sources: number;
   partial_sources: number;
+  /** Correlation rows, which are trace groups — most hold a single event. */
   correlations: number;
+  /** Of `correlations`, the rows that join evidence from more than one source.
+   * The cross-vendor claim reconciles against this, never against the row count. */
+  cross_source_correlations: number;
   snapshots: number;
   /** Whole-estate finding count. The rendered list is bounded; this is not. */
   findings: number;

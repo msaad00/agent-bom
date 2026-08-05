@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
-import time
 
 import pytest
 from starlette.testclient import TestClient
@@ -62,70 +61,56 @@ def test_demo_story_route_does_not_block_the_event_loop(story_client: TestClient
     whole request duration — so four concurrent callers serialised into 6.6s on
     a single worker. The route is ``async def``; calling the synchronous builder
     inside it hands the loop no yield point at all.
+
+    Asserted by **thread identity, not by timing**. Two earlier versions measured
+    loop stalls with a heartbeat and both went red on CI for reasons unrelated to
+    the code — a fixed 500 ms ceiling lost to 542 ms of xdist scheduler noise,
+    then a noise-calibrated ceiling lost to a 921 ms stall on a contended runner.
+    A wall-clock threshold cannot separate "the route parked the loop" from "the
+    machine was busy", so it was testing the runner.
+
+    The comparison has to be made against the thread running the *event loop*,
+    captured from inside the app. A third version compared against the pytest
+    thread and was vacuous: ``TestClient`` drives the app on its own loop in
+    another thread, so an on-loop build still looked "off-thread" and the test
+    passed with the offload removed.
     """
+    import threading
+
     from agent_bom.api.routes import demo_estate as demo_routes
 
-    build_seconds = 1.0
-    calls: list[str] = []
+    build_threads: list[int] = []
     real_builder = demo_routes.build_enterprise_demo_story
 
-    def slow_builder(*, tenant_id: str):
-        calls.append(tenant_id)
-        # Stand in for the ~1.6s real build with a sleep long enough that an
-        # on-loop call is unmistakable, without paying the real cost in CI.
-        time.sleep(build_seconds)
+    def recording_builder(*, tenant_id: str):
+        build_threads.append(threading.get_ident())
         return real_builder(tenant_id=tenant_id)
 
     demo_routes.reset_demo_story_cache()
 
-    # The request has to run on the SAME event loop as the heartbeat, so drive
-    # the ASGI app directly. ``TestClient`` runs the app on its own private
-    # loop in another thread, where a blocking route would never be observable.
-    async def exercise() -> tuple[float, float]:
+    async def exercise() -> tuple[int, int]:
         import httpx
 
         from agent_bom.api.server import app
 
-        stalls: list[float] = []
-        stop = False
-
-        async def heartbeat() -> None:
-            while not stop:
-                start = time.perf_counter()
-                await asyncio.sleep(0.005)
-                stalls.append(time.perf_counter() - start - 0.005)
-
+        # Captured on the loop itself, which is the thread a blocking build would
+        # occupy. Driving the ASGI app directly keeps the request on this loop.
+        loop_thread = threading.get_ident()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://probe") as client:
-            beat = asyncio.create_task(heartbeat())
-            # Idle window first: whatever the loop suffers here is the machine,
-            # not the route.
-            await asyncio.sleep(0.25)
-            idle = max(stalls) if stalls else 0.0
-            stalls.clear()
             response = await client.get("/v1/demo-estate/story")
-            stop = True
-            await beat
         assert response.status_code == 200, response.text
-        return max(stalls), idle
+        return loop_thread, response.status_code
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(demo_routes, "build_enterprise_demo_story", slow_builder)
-        worst_stall, noise_floor = asyncio.run(exercise())
+        mp.setattr(demo_routes, "build_enterprise_demo_story", recording_builder)
+        loop_thread, _status = asyncio.run(exercise())
 
-    assert calls, "the builder should have run at least once"
-    # Calibrated against this machine, not against a wall-clock constant. The
-    # heartbeat measures scheduler starvation as well as loop blocking, and on a
-    # CI box running the suite under xdist the ambient noise alone reached 542 ms
-    # — enough to trip a fixed 500 ms ceiling while the offload was working
-    # perfectly. Comparing the request's worst stall against the idle noise floor
-    # measured moments earlier asks the question that actually matters: is the
-    # loop worse off *because of the request*.
-    ceiling = max(build_seconds * 0.5, noise_floor * 4)
-    assert worst_stall < ceiling, (
-        f"event loop stalled {worst_stall * 1000:.0f} ms during a {build_seconds * 1000:.0f} ms build "
-        f"(idle noise floor {noise_floor * 1000:.0f} ms, ceiling {ceiling * 1000:.0f} ms) — "
-        "the estate build is running on the loop"
+    assert build_threads, "the builder should have run at least once"
+    on_loop = [tid for tid in build_threads if tid == loop_thread]
+    assert not on_loop, (
+        f"the estate build ran on the event-loop thread ({loop_thread}) — it must be offloaded, "
+        "otherwise the whole ~1.6s build parks the loop for the entire request"
     )
 
 

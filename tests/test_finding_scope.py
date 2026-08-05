@@ -12,6 +12,7 @@ from agent_bom.finding import (
 )
 from agent_bom.finding_scope import (
     account_ref_from_arn,
+    domain_for_row,
     lenses_for_row,
     normalize_account_ref,
     region_from_arn,
@@ -265,3 +266,43 @@ def test_snowflake_governance_converter_normalizes_account_and_domain() -> None:
     assert f.provider == "snowflake"
     assert f.account_ref == "snowflake:xy12345"
     assert f.security_domain == "dspm"
+
+
+def test_domain_derives_from_type_when_source_is_a_connector_label() -> None:
+    """A free-text ``source`` must not discard a perfectly good ``finding_type``.
+
+    ``POST /v1/findings/bulk`` takes ``source`` as a connector provenance label
+    — its default is literally ``"api"`` — while this module parsed the same
+    field as ``FindingSource``. Source and type were parsed in one ``try``, so
+    an unrecognized label threw both away: a row plainly typed ``CVE`` derived
+    no domain and no lenses, and every ``?domain=`` query returned nothing for
+    connector-ingested findings while the same finding from a scan filtered
+    fine.
+    """
+    for label in ("api", "scale-gate", "acme-connector", ""):
+        row = {"source": label, "finding_type": "CVE", "severity": "high"}
+        assert domain_for_row(row) == "vuln", f"source={label!r} lost the CVE type"
+        assert "vuln" in lenses_for_row(row), f"source={label!r} produced no lenses"
+
+    assert domain_for_row({"source": "api", "finding_type": "CREDENTIAL_EXPOSURE"}) == "aspm"
+    assert domain_for_row({"source": "api", "finding_type": "SENSITIVE_DATA"}) == "dspm"
+    assert domain_for_row({"source": "api", "finding_type": "CIEM_OVER_PRIVILEGE"}) == "cspm"
+
+
+def test_unknown_type_still_reports_no_domain_rather_than_guessing() -> None:
+    """Tolerating an unknown source must not become inventing a lane.
+
+    With no parseable type AND no parseable source there is nothing to derive
+    from, so the honest answer is None and the caller picks the default. A
+    fallback lane here would file arbitrary findings under AISPM.
+    """
+    assert domain_for_row({"source": "acme", "finding_type": "NOT_A_TYPE"}) is None
+    assert lenses_for_row({"source": "acme", "finding_type": "NOT_A_TYPE"}) == frozenset()
+
+
+def test_known_source_routing_is_unchanged_by_the_lenient_parse() -> None:
+    """The source-routed fallbacks still apply whenever the source IS known."""
+    assert domain_for_row({"source": "SBOM", "finding_type": "CVE"}) == "vuln"
+    assert lenses_for_row({"source": "SBOM", "finding_type": "CVE"}) == frozenset({"vuln", "aspm"})
+    assert domain_for_row({"source": "MCP_SCAN", "finding_type": "TOOL_DRIFT"}) == "aispm"
+    assert domain_for_row({"source": "CLOUD_CIS", "finding_type": "CIS_FAIL", "evidence": {"benchmark": "CIS"}}) == "cspm"

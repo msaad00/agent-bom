@@ -187,7 +187,7 @@ def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int
         else:
             changed += count
             if dry_run or check:
-                print(f"  DRY-RUN ({count} hit): {rel_path}")
+                print(f"  {'DRIFT' if check else 'DRY-RUN'} ({count} hit): {rel_path}")
             else:
                 path.write_text(new_text)
                 print(f"  UPDATED ({count} hit): {rel_path}")
@@ -210,7 +210,10 @@ def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int
             print(f"  UPDATED (align sweep): {path.relative_to(ROOT)}")
         changed += sweep_count
 
-    print(f"\n{'Would update' if dry_run else 'Updated'} {changed} occurrence(s)")
+    # ``--check`` writes nothing, so reporting "Updated N" for it described work
+    # that did not happen — during a release that reads as "the bump is done."
+    verb = "Would update" if (dry_run or check) else "Updated"
+    print(f"\n{verb} {changed} occurrence(s)")
 
     if check:
         if changed > 0:

@@ -187,6 +187,27 @@ def security_domain_for(
       3. Otherwise route by source (container/SBOM/external/filesystem → vuln;
          everything MCP/agent/runtime/prompt/skill/graph → AISPM).
     """
+    return _security_domain(source, finding_type, evidence) or "aispm"
+
+
+def _security_domain(
+    source: "FindingSource | None",
+    finding_type: "FindingType",
+    evidence: Optional[dict] = None,
+) -> Optional[str]:
+    """:func:`security_domain_for`, but tolerant of an unknown source.
+
+    A finding can arrive with a provenance label that is not a
+    :class:`FindingSource` — every row ingested through ``POST
+    /v1/findings/bulk`` does, because that endpoint's ``source`` is a free-text
+    connector label whose default is ``"api"``. The type-decisive rules do not
+    need the source at all: a CVE is vulnerability management wherever it came
+    from. Only the source-routed fallbacks are skipped, and this returns None
+    rather than guessing a lane when the type alone cannot decide.
+
+    Kept as the single implementation of the precedence chain so the row-level
+    and object-level entry points can never drift apart.
+    """
     from agent_bom.finding import FindingSource, FindingType
 
     ev = evidence or {}
@@ -196,7 +217,7 @@ def security_domain_for(
     if source is FindingSource.DSPM or finding_type is FindingType.SENSITIVE_DATA:
         return "dspm"
 
-    if source in {FindingSource.CLOUD_CIS, FindingSource.CLOUD_SECURITY}:
+    if source is not None and source in {FindingSource.CLOUD_CIS, FindingSource.CLOUD_SECURITY}:
         provider = str(ev.get("provider") or "").strip().lower()
         # Snowflake governance findings carry a category + no CIS benchmark tag;
         # they describe data-access posture, not infra config → DSPM.
@@ -218,6 +239,11 @@ def security_domain_for(
 
     if finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE):
         return "aspm"
+
+    if source is None:
+        # Nothing type-decisive matched and there is no source to route by.
+        # Saying "unknown" is the honest answer; the caller decides the default.
+        return None
 
     if source in (
         FindingSource.CONTAINER,
@@ -246,15 +272,37 @@ def domain_for_row(row: dict) -> Optional[str]:
     dom = canonical_domain(row.get("security_domain"))
     if dom is not None:
         return dom
+    source, ftype = _parse_row_source_and_type(row)
+    if ftype is None:
+        return None
+    evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else None
+    return _security_domain(source, ftype, evidence)
+
+
+def _parse_row_source_and_type(row: dict) -> tuple[Optional["FindingSource"], Optional["FindingType"]]:
+    """Parse a serialized row's source and type INDEPENDENTLY.
+
+    These used to be parsed in one ``try`` block, so an unrecognized source
+    discarded a perfectly good finding type. Every row from ``POST
+    /v1/findings/bulk`` hits that: its ``source`` is a free-text connector label
+    (default ``"api"``), not a :class:`FindingSource`. The result was that a row
+    plainly typed ``CVE`` derived no domain and no lenses, so every ``?domain=``
+    query returned nothing for connector-ingested findings — while the same
+    finding discovered by a scan filtered correctly.
+
+    An unknown source is now just an unknown source.
+    """
     from agent_bom.finding import FindingSource, FindingType
 
     try:
-        source = FindingSource(str(row.get("source") or "").upper())
-        ftype = FindingType(str(row.get("finding_type") or "").upper())
+        source: Optional[FindingSource] = FindingSource(str(row.get("source") or "").upper())
     except ValueError:
-        return None
-    evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else None
-    return security_domain_for(source, ftype, evidence)
+        source = None
+    try:
+        ftype: Optional[FindingType] = FindingType(str(row.get("finding_type") or "").upper())
+    except ValueError:
+        ftype = None
+    return source, ftype
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +323,7 @@ def domain_for_row(row: dict) -> Optional[str]:
 # findings spine (once per finding), never by summing lenses.
 
 
-def _is_iac_misconfig(source: "FindingSource", ftype: "FindingType", ev: dict) -> bool:
+def _is_iac_misconfig(source: "FindingSource | None", ftype: "FindingType", ev: dict) -> bool:
     """True when a misconfiguration finding describes infrastructure-as-code.
 
     IaC template scanning (Terraform / CloudFormation / K8s manifests in a repo)
@@ -315,10 +363,28 @@ def security_lenses_for(
 
     The primary lane is always included.
     """
+    return _security_lenses(source, finding_type, evidence)
+
+
+def _security_lenses(
+    source: "FindingSource | None",
+    finding_type: "FindingType",
+    evidence: Optional[dict] = None,
+) -> frozenset[str]:
+    """:func:`security_lenses_for`, tolerant of an unknown source.
+
+    Same reasoning as :func:`_security_domain`: the type-decisive lenses hold
+    whatever the provenance label says, and only the source-routed ones are
+    skipped. One implementation, so a bulk-ingested CVE and a scanned one land
+    in the same lenses.
+    """
     from agent_bom.finding import FindingSource, FindingType
 
     ev = evidence or {}
-    lenses: set[str] = {security_domain_for(source, finding_type, evidence)}
+    lenses: set[str] = set()
+    primary = _security_domain(source, finding_type, evidence)
+    if primary is not None:
+        lenses.add(primary)
 
     is_code_or_secret = finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE) or source in (
         FindingSource.SAST,
@@ -365,15 +431,11 @@ def lenses_for_row(row: dict) -> frozenset[str]:
     if str(row.get("cve_id") or "").strip():
         lenses.add("vuln")
 
-    from agent_bom.finding import FindingSource, FindingType
-
-    try:
-        source = FindingSource(str(row.get("source") or "").upper())
-        ftype = FindingType(str(row.get("finding_type") or "").upper())
-    except ValueError:
+    source, ftype = _parse_row_source_and_type(row)
+    if ftype is None:
         return frozenset(lenses)
     evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else None
-    return frozenset(lenses | security_lenses_for(source, ftype, evidence))
+    return frozenset(lenses | _security_lenses(source, ftype, evidence))
 
 
 def finding_class_for_row(row: Mapping[str, object]) -> FindingClass:

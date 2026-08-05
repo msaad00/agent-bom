@@ -33,6 +33,13 @@ some numbers you may already be reporting will move.
   pagination link would have carried the credential off-origin. It now refuses
   any pagination URL that leaves `hub.docker.com`, bounds the loop, and fails
   rather than planning deletions against a partial tag list.
+- The GHCR freshness probe had the same off-origin pagination weakness and is
+  now pinned to `ghcr.io` on the same terms. In the same pass, the surface
+  freshness monitor's tool-count assertion silently switched itself off when
+  `--expected-tool-count` was unset: only the Glama probe derived a fallback, so
+  a bare `python scripts/check_surface_freshness.py` reported a listing fresh
+  without ever checking the count. CI passed the flag, so only humans saw the
+  weaker check.
 - Configuration was being counted as credentials (`CERTIFICATE_PATH`,
   `DB_CONNECTION_POOL_SIZE`), and real credentials were being missed
   (`PGPASSWORD`, `ID_RSA`, `GOOGLE_APPLICATION_CREDENTIALS`, and every plural

@@ -25,9 +25,17 @@ step "release workflow call-graph lint (reusable-workflow permission parity + ne
 python scripts/lint_release_workflow.py .github/workflows/release.yml || fail=1
 
 step "version bump consistency"
-if [ -n "$VERSION" ]; then
-  python scripts/bump-version.py "$VERSION" --check || fail=1
+# Without a VERSION this script used to skip the bump check and still print
+# "Pre-flight OK — safe to tag", which is the one thing it exists to prevent:
+# every managed reference can be a release behind and the verdict still reads
+# green. The version is what a tag IS, so it is required.
+if [ -z "$VERSION" ]; then
+  echo "ERROR: no VERSION given. Pass the version you intend to tag:" >&2
+  echo "  scripts/preflight_release.sh 0.99.0" >&2
+  echo "Without it the version-bump check cannot run, and a green verdict would be meaningless." >&2
+  exit 2
 fi
+python scripts/bump-version.py "$VERSION" --check || fail=1
 python scripts/check_release_consistency.py || fail=1
 python scripts/check_product_surface_contract.py || fail=1
 python scripts/export_openapi.py --check || fail=1

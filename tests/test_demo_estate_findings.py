@@ -414,3 +414,62 @@ def test_two_tenants_holding_identical_finding_ids_both_persist():
     other = store.list_current_page("tenant-unseeded", limit=10)
     other_rows = other[0] if isinstance(other, tuple) else other
     assert list(other_rows) == [], "an unseeded tenant sees another tenant's findings"
+
+
+def test_the_estate_populates_every_posture_lane(estate: EnterpriseEstate) -> None:
+    """All five lanes carry findings — an empty lane reads as "we don't do this".
+
+    The product ships a five-lane taxonomy (``finding_scope.SECURITY_DOMAINS``).
+    The estate populated four: DSPM rendered **zero** while the inventory held
+    hundreds of Snowflake tables, stages and shares, and while the headline
+    incident chain ended at a PHI table. A prospect clicking the empty lane sees
+    the opposite of the truth, and DSPM is precisely the lane a
+    vulnerability-only scanner cannot produce.
+
+    Asserted as "every lane is non-empty", not against per-lane counts, so
+    growing or rebalancing the estate cannot make this a size test.
+    """
+    from agent_bom.demo_estate.enterprise_risk import build_risk_findings
+    from agent_bom.finding_scope import SECURITY_DOMAINS, domain_for_row
+
+    everything = list(build_estate_findings(estate)) + list(build_risk_findings(estate))
+    lanes: dict[str, int] = {}
+    for finding in everything:
+        domain = domain_for_row(
+            {
+                "source": getattr(finding.source, "value", ""),
+                "finding_type": getattr(finding.finding_type, "value", ""),
+                "evidence": finding.evidence,
+            }
+        )
+        if domain:
+            lanes[domain] = lanes.get(domain, 0) + 1
+
+    missing = [lane for lane in SECURITY_DOMAINS if not lanes.get(lane)]
+    assert not missing, f"posture lanes with no findings: {missing} (populated: {lanes})"
+
+
+def test_data_findings_name_the_classification_they_act_on(estate: EnterpriseEstate) -> None:
+    """A DSPM finding must say WHY the object is sensitive, not just assert it.
+
+    ``data_classification`` is what separates "this table is regulated" from an
+    unfounded claim, and ``check_id`` is the join key every posture consumer
+    reads. Both were the difference between a lane that drills and a lane that
+    only renders.
+    """
+    from agent_bom.demo_estate.enterprise_risk import build_data_findings
+
+    data_findings = build_data_findings(estate)
+    assert data_findings, "the DSPM lane produced nothing"
+
+    for finding in data_findings:
+        evidence = finding.evidence
+        assert evidence.get("data_classification"), f"{finding.id} claims sensitivity with no classification"
+        assert evidence.get("check_id"), f"{finding.id} has no check identity"
+        assert finding.applicable_frameworks, f"{finding.id} was never classified by the compliance hub"
+        assert evidence.get("resource_id"), f"{finding.id} does not resolve to an inventoried asset"
+
+    # Not every data asset is misgoverned; a lane where everything fails is a
+    # seeded constant, not a posture result.
+    data_assets = [a for a in estate.assets if a.provider == "snowflake" and a.resource_type in {"table", "stage", "share", "database"}]
+    assert len(data_findings) < len(data_assets), (len(data_findings), len(data_assets))

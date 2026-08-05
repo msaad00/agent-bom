@@ -955,6 +955,219 @@ def build_runtime_findings(estate: EnterpriseEstate) -> tuple[Finding, ...]:
     return tuple(findings)
 
 
+class _DataRule:
+    """A data-security-posture detection on an inventoried data asset.
+
+    DSPM is the one posture lane a package scanner cannot reach: it is about
+    what the data IS and who can read it, not what version something is pinned
+    to. Each rule names the classification it acts on, so a finding says *why*
+    the object is sensitive rather than asserting that it is.
+    """
+
+    __slots__ = (
+        "rule_id",
+        "finding_type",
+        "resource_types",
+        "title",
+        "description",
+        "remediation",
+        "severity",
+        "classification",
+        "setting",
+        "observed",
+        "expected",
+        "nist_800_53",
+        "rate",
+    )
+
+    def __init__(
+        self,
+        rule_id: str,
+        finding_type: FindingType,
+        resource_types: tuple[str, ...],
+        title: str,
+        description: str,
+        remediation: str,
+        severity: str,
+        *,
+        classification: str,
+        setting: str,
+        observed: str,
+        expected: str,
+        nist_800_53: tuple[str, ...] = (),
+        rate: int = 30,
+    ) -> None:
+        self.rule_id = rule_id
+        self.finding_type = finding_type
+        self.resource_types = resource_types
+        self.title = title
+        self.description = description
+        self.remediation = remediation
+        self.severity = severity
+        self.classification = classification
+        self.setting = setting
+        self.observed = observed
+        self.expected = expected
+        self.nist_800_53 = nist_800_53
+        # Percentage of matching assets that carry the finding. Not every table
+        # in a warehouse is misgoverned; a lane where every asset fails reads as
+        # a seeded constant rather than a posture result.
+        self.rate = rate
+
+
+_DATA_RULES: tuple[_DataRule, ...] = (
+    _DataRule(
+        "DSPM-PII-001",
+        FindingType.SENSITIVE_DATA,
+        ("table",),
+        "Regulated columns readable without a masking policy",
+        "The table holds columns classified as regulated health data and no masking policy is attached, "
+        "so every role with SELECT reads them in the clear.",
+        "Attach a masking policy to the classified columns and grant unmasked access through a separate, reviewed role.",
+        "critical",
+        classification="phi",
+        setting="table.masking_policy",
+        observed="absent on classified columns",
+        expected="a masking policy bound to every classified column",
+        nist_800_53=("AC-3", "SC-28"),
+        rate=26,
+    ),
+    _DataRule(
+        "DSPM-SHARE-002",
+        FindingType.SENSITIVE_DATA,
+        ("share",),
+        "Share exposes a classified object outside the account boundary",
+        "An outbound share includes an object carrying regulated data, which places it beyond the account's own access review.",
+        "Remove the classified object from the share, or replace it with a view that projects only non-regulated columns.",
+        "high",
+        classification="phi",
+        setting="share.objects",
+        observed="a classified object is in scope",
+        expected="only non-regulated projections are shared",
+        nist_800_53=("AC-21",),
+        rate=22,
+    ),
+    _DataRule(
+        "DSPM-STAGE-003",
+        FindingType.SENSITIVE_DATA,
+        ("stage",),
+        "Stage retains unencrypted extracts of regulated data",
+        "Files staged for load or unload persist after the operation with no server-side encryption declared.",
+        "Declare server-side encryption on the stage and expire staged files once the load completes.",
+        "high",
+        classification="pii",
+        setting="stage.encryption",
+        observed="unset; extracts persist",
+        expected="server-side encryption with an expiry policy",
+        nist_800_53=("SC-28", "SI-12"),
+        rate=24,
+    ),
+    _DataRule(
+        "DSPM-RETAIN-004",
+        FindingType.SENSITIVE_DATA,
+        ("database",),
+        "Regulated schema has no retention boundary",
+        "The database holds regulated data with time travel and no declared retention limit, "
+        "so deleted rows remain recoverable indefinitely.",
+        "Set a data retention period appropriate to the classification and record the basis for it.",
+        "medium",
+        classification="phi",
+        setting="database.data_retention_time_in_days",
+        observed="unbounded",
+        expected="a retention window justified by the classification",
+        nist_800_53=("SI-12",),
+        rate=20,
+    ),
+    _DataRule(
+        "DSPM-ACCESS-005",
+        FindingType.SENSITIVE_DATA,
+        ("table",),
+        "Non-human identity reads regulated data with no access review",
+        "A service role holds SELECT on classified columns and appears in no completed access review for the period.",
+        "Bring the role into the access-review cycle and scope its grant to the columns it actually reads.",
+        "high",
+        classification="phi",
+        setting="grants.reviewed_at",
+        observed="no review recorded",
+        expected="a completed review within the cycle",
+        nist_800_53=("AC-6", "AU-6"),
+        rate=18,
+    ),
+)
+
+
+def build_data_findings(estate: EnterpriseEstate) -> tuple[Finding, ...]:
+    """Data-security-posture findings on the estate's inventoried data assets.
+
+    Without this lane the demo populated four of the product's five posture
+    lanes and rendered DSPM as zero — on a healthcare estate whose headline
+    incident chain ends at a PHI table. An empty lane reads as "we do not do
+    this", which is the opposite of true, and it is the lane a
+    vulnerability-only scanner cannot produce at all.
+
+    Routed to DSPM by ``FindingType.SENSITIVE_DATA``, which
+    ``security_domain_for`` treats as decisive regardless of which provider
+    surfaced it — so this needs no new taxonomy, only findings.
+    """
+    from agent_bom.compliance_hub import apply_hub_classification
+
+    findings: list[Finding] = []
+    for asset in estate.assets:
+        if asset.provider != "snowflake":
+            continue
+        for rule in _DATA_RULES:
+            if asset.resource_type not in rule.resource_types:
+                continue
+            seed = _seed("data", asset.asset_id, rule.rule_id)
+            if seed % 100 >= rule.rate:
+                continue
+            account_ref = f"snowflake:{asset.account_scope}"
+            finding = Finding(
+                finding_type=rule.finding_type,
+                source=FindingSource.DSPM,
+                asset=Asset(
+                    name=asset.display_name,
+                    asset_type=estate_asset_type(asset),
+                    identifier=asset.asset_id,
+                    location=asset.native_id,
+                    provider="snowflake",
+                    account_ref=account_ref,
+                ),
+                severity=rule.severity,
+                provider="snowflake",
+                account_ref=account_ref,
+                region=asset.region or None,
+                environment=asset.environment or None,
+                title=f"{rule.title}: {asset.display_name}",
+                description=rule.description,
+                remediation_guidance=rule.remediation,
+                evidence={
+                    # ``check_id`` is the join key every posture consumer reads;
+                    # the rule id IS the check identity.
+                    "check_id": rule.rule_id,
+                    "data_classification": rule.classification,
+                    "category": "sensitive-data-access",
+                    "configuration": {
+                        "setting": rule.setting,
+                        "observed": rule.observed,
+                        "expected": rule.expected,
+                    },
+                },
+                nist_800_53_tags=list(rule.nist_800_53),
+                id=stable_id("estate-data", rule.rule_id, asset.asset_id),
+            )
+            bind_to_inventory(finding, asset, estate)
+            # Declare the frameworks whose controls this rule actually names.
+            # The hub's selection table has no row for (DSPM, SENSITIVE_DATA),
+            # and a finding classified into no framework is invisible to the
+            # compliance posture no matter how many control tags it carries —
+            # the same gap the runtime lane hit. This adds no crosswalk: it
+            # names exactly the frameworks whose codes are on the rule.
+            finding.applicable_frameworks = ["nist-800-53"] if rule.nist_800_53 else []
+            findings.append(apply_hub_classification(finding))
+    return tuple(findings)
+
+
 def build_risk_findings(estate: EnterpriseEstate) -> tuple[Finding, ...]:
     """Every non-posture lane, in one deterministic order."""
     lanes: Iterable[Sequence[Finding]] = (
@@ -962,6 +1175,7 @@ def build_risk_findings(estate: EnterpriseEstate) -> tuple[Finding, ...]:
         build_secret_findings(estate),
         build_iac_findings(estate),
         build_runtime_findings(estate),
+        build_data_findings(estate),
     )
     return tuple(finding for lane in lanes for finding in lane)
 
@@ -972,6 +1186,7 @@ __all__ = [
     "build_vulnerability_blast_radii",
     "build_vulnerability_evidence",
     "bind_to_inventory",
+    "build_data_findings",
     "build_iac_findings",
     "build_risk_findings",
     "build_runtime_findings",

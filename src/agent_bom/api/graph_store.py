@@ -494,6 +494,12 @@ class SQLiteGraphStore:
             conn = self._open_rw_conn()
             try:
                 _SCHEMA_INITIALIZED_PATHS.add(key)
+                # The DDL replay above re-runs every CREATE INDEX, and SQLite
+                # documents a stats refresh as the thing to do after a schema
+                # change. It also means a store that has only ever been read in
+                # this process still gets statistics, so the node-read plans do
+                # not depend on a write having happened first.
+                sqlite_graph_store.refresh_query_planner_stats(conn)
             finally:
                 conn.close()
 

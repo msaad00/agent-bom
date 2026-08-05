@@ -437,10 +437,51 @@ def redact_secret_url(value: str | None) -> str:
     return f"{parsed.scheme}://{host}/…#{fingerprint}"
 
 
-# Candidate secret in free text: a run of non-space characters long enough to be
-# worth entropy-testing. Split on `=` and `:` so `secret=<value>` yields the value
-# rather than the whole assignment, which would never resemble a credential.
-_TEXT_SECRET_CANDIDATE_RE = re.compile(r"[^\s\"'<>,;]{%d,}" % _B64_MIN_LEN)
+# `KEY = "value"` in the shapes free text actually uses: bare, quoted, spaced,
+# JSON (`"api_key": "…"`), YAML (`api_key: …`). The previous scanner took a run
+# of non-space characters and `rpartition`-ed it, so it found the key only in
+# the single unquoted `KEY=value` form — and on a base64 value it split at the
+# `=` *padding*, leaving an empty candidate. Everything else printed verbatim.
+#
+# Widening happens on the key side only. `[^\s"',;<>]` is the value: a plain run,
+# never entropy-tested on its own, because free text is full of legitimate
+# high-entropy tokens (digests, ARNs, request ids) and a redactor that eats them
+# is one people switch off.
+#
+# A bare `:` with nothing around it is *not* an assignment — it is the delimiter
+# in the graph's own structured identifiers
+# (`credential_ref:credential_ref:credential_reference:redacted`) and in ARNs and
+# digests. Reading one as `key: value` redacts the tail of a node id, and the
+# graph exporter then collapses distinct nodes into one phantom. So a colon has
+# to look like an assignment: quoted as in JSON, or followed by whitespace as
+# YAML requires. `=` needs no such proof; structured ids do not use it.
+_TEXT_KEY_VALUE_RE = re.compile(
+    r"""(?P<key>[A-Za-z][A-Za-z0-9_.\-]{1,63})   # key name
+        (?P<sep>["']?[ \t]*=[ \t]*               # `KEY=v`, `KEY = v`, `"KEY"=v`
+             |["'][ \t]*:[ \t]*                  # `"key": v`
+             |[ \t]*:[ \t]*(?=["'])              # `key:"v"`
+             |[ \t]*:[ \t]+)                     # `key: v`
+        (?P<quote>["']?)                         # optional opening quote on the value
+        (?P<value>[^\s"',;<>]+)                  # the value
+    """,
+    re.VERBOSE,
+)
+
+# Values that are plainly not credential material. The key name cannot tell a
+# secret from a count or a placeholder, and redacting these makes logs
+# unreadable without making anything safer.
+_NON_SECRET_VALUE_RE = re.compile(
+    r"^(?:\d+(?:\.\d+)*|true|false|yes|on|off|none|null|nil|unset|unknown|missing|empty|n/?a|redacted|\*+redacted\*+|\*+|-+)$",
+    re.I,
+)
+
+# An env-var *name* is an identifier, not a secret. Reports carry
+# `credential_names=OPENAI_API_KEY` as evidence; redacting the name loses the
+# finding and protects nothing — only the value of a credential is sensitive.
+_CREDENTIAL_IDENTIFIER_VALUE_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
+
+# Below this a value is an enum or a flag, not authentication material.
+_MIN_SECRET_VALUE_LEN = 4
 
 
 def sanitize_text(value: object, max_len: int = 1000) -> str:
@@ -451,33 +492,45 @@ def sanitize_text(value: object, max_len: int = 1000) -> str:
         text = pattern.sub("<redacted>", text)
     # The pattern list carries AWS access key *ids* but nothing for the 40-char
     # secret access key, so the harmless half was redacted while the dangerous
-    # half was printed verbatim. Defer to the same judgement `sanitize_env_vars`
-    # already applies — including its entropy fallback — rather than growing a
-    # second, weaker answer to "is this a secret" in the log path.
-    text = _TEXT_SECRET_CANDIDATE_RE.sub(_redact_candidate_secret, text)
+    # half was printed verbatim. Anything the shapes above miss is caught by the
+    # variable *name* it is written under, using the product-wide predicate.
+    text = _TEXT_KEY_VALUE_RE.sub(_redact_keyed_value, text)
     # Email is sensitive PII — mask any addresses left in free text.
     text = mask_email(text)
     return text[:max_len]
 
 
-def _redact_candidate_secret(match: re.Match[str]) -> str:
-    """Redact the value of a `key=value` run when the *key* names a credential.
+def _redact_keyed_value(match: re.Match[str]) -> str:
+    """Redact the value of a `key: value` pair when the *key* names a credential.
 
     Requiring the key is what keeps this usable. The entropy fallback that
     `sanitize_env_vars` applies is safe there, because a high-entropy env var
     value is almost certainly a secret — but free text is full of high-entropy
     tokens that are not: content hashes, ARNs, request ids, digests. Applying it
     to bare tokens redacted a `hash_ref` and a GuardDuty ARN in the runtime
-    taxonomy, and a redactor that eats legitimate labels is one people switch
-    off. So the two paths share the *predicate for names* and deliberately do not
-    share the bare-value heuristic.
+    taxonomy. So the two paths share the *predicate for names* and deliberately
+    do not share the bare-value heuristic.
+
+    A named credential's value is redacted on the strength of the name alone —
+    a 64-char hex API key scores below every value threshold there is, and
+    waiting for the value to look secret is what let it through.
     """
-    token = match.group(0)
-    for separator in ("=", ":"):
-        prefix, found, candidate = token.rpartition(separator)
-        if found and candidate and env_key_is_credential(prefix) and _looks_sensitive_value(candidate):
-            return f"{prefix}{separator}<redacted>"
-    return token
+    value = match.group("value")
+    if not env_key_is_credential(match.group("key")) or not _is_credential_material(value):
+        return match.group(0)
+    prefix = f"{match.group('key')}{match.group('sep')}{match.group('quote')}"
+    # A connection URL is evidence: the host says which system was reached. Keep
+    # that and drop the credential, rather than blanking the whole line.
+    if "://" in value:
+        return f"{prefix}{sanitize_url(value) or '<redacted>'}"
+    return f"{prefix}<redacted>"
+
+
+def _is_credential_material(value: str) -> bool:
+    """Whether a value under a credential-named key could be the credential."""
+    if len(value) < _MIN_SECRET_VALUE_LEN or _NON_SECRET_VALUE_RE.match(value):
+        return False
+    return not (_CREDENTIAL_IDENTIFIER_VALUE_RE.match(value) and env_key_is_credential(value))
 
 
 def _looks_sensitive_value(value: str) -> bool:

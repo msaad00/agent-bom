@@ -25,6 +25,7 @@ from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
+from agent_bom.constants import is_credential_key
 from agent_bom.graph.severity import normalize_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
@@ -761,9 +762,7 @@ async def get_agent_lifecycle(request: Request, agent_name: str) -> dict:
 
         # Credentials
         cy = ty + 10
-        env = srv.get("env", {})
-        _sens = ["key", "token", "secret", "password", "credential", "auth"]
-        cred_vars = [k for k in env if any(p in k.lower() for p in _sens)]
+        cred_vars = [k for k in srv.get("env", {}) if is_credential_key(k)]
         for cred in cred_vars:
             cid = f"cred:{cred}"
             if cid not in seen:

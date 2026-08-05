@@ -6,6 +6,7 @@
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
 import type { ScanResult, MCPServer, Agent, Vulnerability, Package as AIBOMPackage } from "@/lib/api";
 import type { LineageNodeData } from "@/components/lineage-nodes";
+import { credentialEnvKeys } from "@/lib/credential-key";
 import {
   uniqueExposureValues,
   type ExposureEntityRef,
@@ -111,9 +112,6 @@ export interface MeshGraphScope {
   maxVulnerabilitiesPerPackage?: number | undefined;
 }
 
-// ─── Credential detection ───────────────────────────────────────────────────
-
-const CRED_RE = /key|token|secret|password|credential|auth/i;
 
 function packageVersionSource(pkg: AIBOMPackage): string | undefined {
   return pkg.version_provenance?.version_source || pkg.discovery_provenance?.version_provenance?.version_source || pkg.version_source;
@@ -162,7 +160,7 @@ function meshServerNodeId(serverOrGroup: MCPServer | ServerGroup): string {
 }
 
 function getCredKeys(server: MCPServer): string[] {
-  return server.env ? Object.keys(server.env).filter((k) => CRED_RE.test(k)) : [];
+  return credentialEnvKeys(server.env);
 }
 
 function mergeServers(existing: MCPServer, incoming: MCPServer): MCPServer {

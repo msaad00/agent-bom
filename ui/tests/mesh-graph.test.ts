@@ -394,4 +394,43 @@ describe("buildMeshGraph", () => {
         .every((node) => String(node.data.serverName).includes("env-var reference")),
     ).toBe(true);
   });
+
+  // The mesh is built in the browser from scan JSON, so it held its own answer
+  // to "is this env var a credential" and disagreed with the API, the CLI and
+  // the graph export about the very same server.
+  it("mints credential nodes from the canonical predicate, not a substring match", () => {
+    const result: ScanResult = {
+      agents: [
+        {
+          name: "cursor",
+          agent_type: "desktop",
+          mcp_servers: [
+            {
+              name: "warehouse",
+              env: {
+                OPENAI_API_KEY: "",
+                GOOGLE_APPLICATION_CREDENTIALS: "",
+                ID_RSA: "",
+                AUTH_MODE: "oauth",
+                KEYBOARD_LAYOUT: "us",
+                CERTIFICATE_PATH: "/etc/ssl/ca.pem",
+                AGENT_BOM_TOKEN_ROTATION_DAYS: "30",
+              },
+              packages: [],
+              tools: [],
+            },
+          ],
+        },
+      ],
+      blast_radius: [],
+    };
+
+    const { nodes } = buildMeshGraph(result, { packages: true, vulnerabilities: true, credentials: true, tools: true }, "all");
+    const labels = nodes
+      .filter((node) => node.data.nodeType === "credential")
+      .map((node) => String(node.data.label))
+      .sort();
+
+    expect(labels).toEqual(["GOOGLE_APPLICATION_CREDENTIALS", "ID_RSA", "OPENAI_API_KEY"]);
+  });
 });

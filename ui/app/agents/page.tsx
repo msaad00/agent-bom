@@ -57,6 +57,7 @@ import {
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { credentialEnvKeys } from "@/lib/credential-key";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -85,11 +86,7 @@ function useAgentStats(agents: Agent[]) {
       a.mcp_servers.reduce(
         (ss, srv) =>
           ss +
-          (srv.env
-            ? Object.keys(srv.env).filter((k) =>
-                /key|token|secret|password|credential|auth/i.test(k)
-              ).length
-            : 0),
+          credentialEnvKeys(srv.env).length,
         0
       ),
     0
@@ -202,11 +199,9 @@ function safeDisplayText(value: string): string {
 
 // ─── Agents List View ───────────────────────────────────────────────────────
 
-const CRED_ENV_RE = /key|token|secret|password|credential|auth/i;
-
 function serverCredentialCount(srv: Agent["mcp_servers"][number]): number {
   if (srv.credential_env_vars?.length) return srv.credential_env_vars.length;
-  return srv.env ? Object.keys(srv.env).filter((k) => CRED_ENV_RE.test(k)).length : 0;
+  return credentialEnvKeys(srv.env).length;
 }
 
 function agentPackageCount(agent: Agent): number {

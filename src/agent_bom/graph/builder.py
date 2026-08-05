@@ -17,6 +17,7 @@ from agent_bom.api.tracing import get_tracer
 from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
+from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
@@ -34,15 +35,6 @@ from agent_bom.runtime.incident_feedback import (
     merge_records,
 )
 from agent_bom.security import sanitize_security_warnings, sanitize_sensitive_payload, sanitize_text, sanitize_url
-
-try:
-    from agent_bom.constants import is_credential_key as _is_credential_key
-except ImportError:  # pragma: no cover
-
-    def _is_credential_key(name: str) -> bool:
-        low = name.lower()
-        return any(p in low for p in ("key", "token", "secret", "password", "auth"))
-
 
 _GRAPH_TRACER = get_tracer("agent_bom.graph")
 _logger = logging.getLogger(__name__)

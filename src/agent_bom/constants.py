@@ -220,30 +220,12 @@ SENSITIVE_PATTERNS: list[str] = [
 ]
 
 
-def is_credential_key(name: str) -> bool:
-    """Return whether an environment-variable name denotes a credential.
-
-    Credential inventory feeds graph, posture, and blast-radius evidence, so
-    substring matching is too imprecise: ``AUTH_MODE``, ``KEYBOARD_LAYOUT``,
-    and ``DB_CONNECTION_POOL_SIZE`` are configuration rather than credentials.
-    Split on identifier boundaries and match credential words or the few
-    credential-shaped compound names that do not contain one.
-
-    This predicate intentionally answers a narrower question than payload
-    sanitization.  Redaction may conservatively hide additional values; those
-    values must not become credential nodes merely because their names contain
-    an adjacent substring.
-    """
-    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
-    tokens = tuple(re.findall(r"[a-z0-9]+", separated.casefold()))
-    if not tokens:
-        return False
-
-    # These words make the variable a policy/lifecycle setting about a
-    # credential, not the credential (or a reference to it).  Examples from
-    # agent-bom's own supported configuration include
-    # ``API_KEY_DEFAULT_TTL_SECONDS`` and ``TOKEN_ROTATION_DAYS``.
-    configuration_words = {
+# These words make the variable a policy/lifecycle setting about a credential,
+# not the credential (or a reference to it).  Examples from agent-bom's own
+# supported configuration include ``API_KEY_DEFAULT_TTL_SECONDS`` and
+# ``TOKEN_ROTATION_DAYS``.
+_CONFIGURATION_WORDS = frozenset(
+    {
         "age",
         "configured",
         "days",
@@ -268,26 +250,68 @@ def is_credential_key(name: str) -> bool:
         "ttl",
         "type",
     }
-    if any(token in configuration_words for token in tokens):
-        return False
-    if "no" in tokens:
-        return False
+)
 
-    credential_words = {
+# A name carrying one of these is authentication material, or a reference to
+# some, wherever the word appears.  ``SNOWFLAKE_PRIVATE_KEY_PATH`` names the
+# file holding a private key and is as much credential evidence as the key.
+_CREDENTIAL_WORDS = frozenset(
+    {
         "apikey",
         "authorization",
         "bearer",
         "credential",
         "key",
         "password",
+        "passwd",
         "secret",
         "token",
     }
-    if any(token in credential_words for token in tokens):
-        return True
+)
 
-    token_pairs = set(zip(tokens, tokens[1:]))
-    if token_pairs & {
+# Weaker evidence: on its own the word names credential material, but qualified
+# by a locator it names a *file or endpoint* that is not itself secret.
+# ``CERTIFICATE`` holds a PEM blob; ``CERTIFICATE_PATH`` holds ``/etc/ssl/…``
+# and ``OAUTH_CLIENT_ID`` holds a public identifier.  Widening these two words
+# without the locator guard is what previously turned ``CERTIFICATE_PATH`` into
+# a credential node.
+_CREDENTIAL_MATERIAL_WORDS = frozenset({"cert", "certificate", "oauth"})
+
+_LOCATOR_WORDS = frozenset(
+    {
+        "arn",
+        "dir",
+        "directories",
+        "directory",
+        "endpoint",
+        "file",
+        "filename",
+        "host",
+        "hostname",
+        "id",
+        "location",
+        "name",
+        "path",
+        "port",
+        "ref",
+        "url",
+    }
+)
+
+# Only words this module already knows are folded to their singular, so an
+# unrelated plural is left alone — ``DAYS`` must keep matching the
+# configuration word ``days`` rather than becoming an unknown ``day``.
+_SINGULARIZABLE_WORDS = _CREDENTIAL_WORDS | _CREDENTIAL_MATERIAL_WORDS | _LOCATOR_WORDS
+
+
+def _singularize(token: str) -> str:
+    if token.endswith("s") and token[:-1] in _SINGULARIZABLE_WORDS:
+        return token[:-1]
+    return token
+
+
+_CREDENTIAL_WORD_PAIRS = frozenset(
+    {
         ("ca", "cert"),
         ("client", "cert"),
         ("client", "certificate"),
@@ -297,7 +321,62 @@ def is_credential_key(name: str) -> bool:
         ("connection", "url"),
         ("database", "url"),
         ("db", "url"),
-    }:
+    }
+)
+
+# Established names for real credentials that contain no credential word at all,
+# so no amount of vocabulary matching reaches them.  ``PGPASSWORD`` is libpq's;
+# the ``ID_*`` family is what ``ssh-keygen`` writes.  Matched on the whole name
+# so a qualified variant (``ID_RSA_PATH``) still goes through the normal rules.
+_CREDENTIAL_COMPOUND_NAMES = frozenset(
+    {
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "id_rsa",
+        "mysql_pwd",
+        "pgpassword",
+    }
+)
+
+
+def is_credential_key(name: str) -> bool:
+    """Return whether an environment-variable name denotes a credential.
+
+    Credential inventory feeds graph, posture, and blast-radius evidence, so
+    substring matching is too imprecise: ``AUTH_MODE``, ``KEYBOARD_LAYOUT``,
+    and ``DB_CONNECTION_POOL_SIZE`` are configuration rather than credentials.
+    Split on identifier boundaries and match credential words or the few
+    credential-shaped compound names that do not contain one.
+
+    Plural forms count: a name is no less a credential for holding more than
+    one, and ``API_KEYS``/``CREDENTIALS`` are common.
+
+    This predicate intentionally answers a narrower question than payload
+    sanitization.  Redaction may conservatively hide additional values; those
+    values must not become credential nodes merely because their names contain
+    an adjacent substring.
+    """
+    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    tokens = tuple(_singularize(token) for token in re.findall(r"[a-z0-9]+", separated.casefold()))
+    if not tokens:
+        return False
+
+    if any(token in _CONFIGURATION_WORDS for token in tokens):
+        return False
+    if "no" in tokens:
+        return False
+
+    if "_".join(tokens) in _CREDENTIAL_COMPOUND_NAMES:
+        return True
+
+    if any(token in _CREDENTIAL_WORDS for token in tokens):
+        return True
+
+    if set(zip(tokens, tokens[1:])) & _CREDENTIAL_WORD_PAIRS:
+        return True
+
+    if any(token in _CREDENTIAL_MATERIAL_WORDS for token in tokens) and not any(token in _LOCATOR_WORDS for token in tokens):
         return True
 
     # A terminal AUTH commonly holds an auth header/blob.  AUTH_MODE and

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from agent_bom.constants import is_credential_key
+
 
 def _vuln_color(count: int) -> str:
     """Color based on vulnerability count."""
@@ -82,9 +84,7 @@ def build_agent_mesh(agents_data: list[dict], blast_radius: list[dict] | None = 
             total_tools += len(tools)
 
             # Count credentials
-            env = srv.get("env", {})
-            sens = ["key", "token", "secret", "password", "credential", "auth"]
-            creds = [k for k in env if any(p in k.lower() for p in sens)]
+            creds = [k for k in srv.get("env", {}) if is_credential_key(k)]
             total_credentials += len(creds)
 
             # Count vulns for this server

@@ -13,6 +13,7 @@ import click
 from rich.console import Console
 
 from agent_bom.cli._common import PORT_RANGE, read_json_file_for_cli
+from agent_bom.constants import is_credential_key
 
 if TYPE_CHECKING:
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
@@ -78,7 +79,7 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, s
             packages = server.get("packages", [])
             tools = server.get("tools", [])
             env = server.get("env", {}) or {}
-            creds = [k for k in env if any(p in k.lower() for p in ("key", "token", "secret", "password", "credential", "auth"))]
+            creds = [k for k in env if is_credential_key(k)]
             vuln_count = sum(len(pkg.get("vulnerabilities", [])) for pkg in packages)
             shared = " [dim](shared)[/dim]" if shared_counts[server.get("name", "unknown")] > 1 else ""
             con.print(

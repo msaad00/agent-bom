@@ -13,6 +13,13 @@ judgement with shorter literal lists, and they disagreed with it:
 * the ``--posture`` panel's "N with credentials" count contradicted the
   "N cred(s) reachable" line printed six rows below it.
 
+Three more were found afterwards, all of them the same substring list, all of
+them reporting a different number for one server: ``output.agent_mesh``'s
+"N credentials" stat, the ``/agents/{name}/lifecycle`` graph's credential
+nodes, and the ``agent-bom mesh`` CLI's per-server "N cred". The browser holds
+one too — ``ui/lib/credential-key.ts`` is a port of the predicate, guarded by
+``ui/tests/credential-key.test.ts`` against these same fixture names.
+
 ``enforcement.check_claude_config`` holds a fourth copy and is deliberately
 left alone: its question is "does this env var hold an inline *secret*", and
 the canonical name list is too broad to raise a high-severity finding from —
@@ -22,6 +29,8 @@ it would report ``CERTIFICATE_PATH=/etc/ssl/ca.pem`` as a hardcoded secret.
 from __future__ import annotations
 
 import ast
+import asyncio
+from typing import Any
 
 import pytest
 
@@ -29,6 +38,7 @@ from agent_bom.ai_components.framework_agents import _extract_credential_refs
 from agent_bom.cli.agents._posture import render_posture_summary
 from agent_bom.constants import is_credential_key
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
+from agent_bom.output.agent_mesh import build_agent_mesh
 from agent_bom.output.graph_export import _credential_names_from_server
 from agent_bom.security import sanitize_env_vars
 
@@ -49,6 +59,19 @@ CREDENTIAL_ENV: dict[str, str] = {
     "AZURE_CLIENT_CERTIFICATE_PATH": "/run/secrets/azure-client.pem",
     "AZURE_STORAGE_CONNECTION_STRING": "abc",
     "SNOWFLAKE_PRIVATE_KEY_PATH": "/run/secrets/snowflake-key.pem",
+    # Consolidating four detectors onto one predicate narrowed it past the
+    # point of correctness: these are the canonical names of real credentials
+    # and every one of them dropped out of inventory, graph and posture.
+    # Plural forms are the largest family — a name is no less a credential for
+    # holding more than one.
+    "GOOGLE_APPLICATION_CREDENTIALS": "abc",
+    "PGPASSWORD": "abc",
+    "ID_RSA": "abc",
+    "CERTIFICATE": "abc",
+    "OAUTH": "abc",
+    "API_KEYS": "abc",
+    "SSH_KEYS": "abc",
+    "CREDENTIALS": "abc",
 }
 
 NON_CREDENTIAL_ENV: dict[str, str] = {
@@ -73,6 +96,16 @@ CREDENTIAL_ADJACENT_CONFIG_ENV: dict[str, str] = {
     "AGENT_BOM_MCP_AUTH_REQUIRE_NETWORK_AUTH": "true",
     "AGENT_BOM_TLS_REQUIRE_CLIENT_CERT": "true",
     "AGENT_BOM_TOKEN_ROTATION_DAYS": "30",
+    # The precision half of the pair above. An earlier attempt to restore the
+    # missing names widened the predicate until these came back as credentials,
+    # and was reverted for it: a certificate is public material and a pool size
+    # is a number. Restoring coverage must not re-buy that over-claim, so both
+    # directions are asserted together.
+    "CERT_FILE": "/etc/ssl/certs/ca-bundle.crt",
+    "OAUTH_CLIENT_ID": "0oa1b2c3d4",
+    "OAUTH_ENABLED": "true",
+    "CREDENTIAL_ROTATION_POLICY": "90d",
+    "API_KEYS_ENABLED": "true",
 }
 
 
@@ -103,6 +136,60 @@ def test_legacy_graph_export_fallback_uses_the_canonical_predicate() -> None:
     env = {**CREDENTIAL_ENV, **NON_CREDENTIAL_ENV, **CREDENTIAL_ADJACENT_CONFIG_ENV}
 
     assert _credential_names_from_server({"env": env}) == sorted(CREDENTIAL_ENV)
+
+
+def _mixed_env() -> dict[str, str]:
+    return {**CREDENTIAL_ENV, **NON_CREDENTIAL_ENV, **CREDENTIAL_ADJACENT_CONFIG_ENV}
+
+
+def test_agent_mesh_credential_count_uses_the_canonical_predicate() -> None:
+    """The mesh's "N credentials" stat is the same claim the graph export makes.
+
+    Two surfaces reading the same server reported different totals, because the
+    mesh kept its own substring list: ``KEYBOARD_LAYOUT`` and ``AUTH_MODE``
+    became credentials there and nowhere else.
+    """
+    server = {"name": "warehouse", "packages": [], "tools": [], "env": _mixed_env()}
+    agents = [{"name": "a1", "agent_type": "test", "mcp_servers": [server]}]
+
+    mesh = build_agent_mesh(agents)
+
+    assert mesh["stats"]["total_credentials"] == len(CREDENTIAL_ENV)
+    assert mesh["stats"]["total_credentials"] == len(_credential_names_from_server(server))
+
+
+def test_mesh_cli_credential_count_uses_the_canonical_predicate(capsys: pytest.CaptureFixture[str]) -> None:
+    """The CLI prints "N cred" per server beside the same mesh stats."""
+    from rich.console import Console
+
+    from agent_bom.cli._analysis import _render_mesh_summary
+
+    server = {"name": "warehouse", "packages": [], "tools": [], "env": _mixed_env()}
+    agents = [{"name": "a1", "agent_type": "test", "mcp_servers": [server]}]
+
+    _render_mesh_summary(Console(width=200), agents, build_agent_mesh(agents), scope_label="local", quiet=True)
+
+    assert f"{len(CREDENTIAL_ENV)} cred" in " ".join(capsys.readouterr().out.split())
+
+
+def test_agent_lifecycle_credential_nodes_use_the_canonical_predicate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Credential nodes in the lifecycle graph are the third copy of the judgement."""
+    from agent_bom.api.routes import discovery
+
+    server = {"name": "warehouse", "packages": [], "tools": [], "env": _mixed_env()}
+
+    async def _fake_detail(request: Any, agent_name: str) -> dict[str, Any]:
+        return {
+            "agent": {"name": agent_name, "agent_type": "test", "mcp_servers": [server]},
+            "summary": {},
+        }
+
+    monkeypatch.setattr(discovery, "get_agent_detail", _fake_detail)
+
+    graph = asyncio.run(discovery.get_agent_lifecycle(None, "a1"))  # type: ignore[arg-type]
+    labels = sorted(node["data"]["label"] for node in graph["nodes"] if node["data"]["nodeType"] == "credential")
+
+    assert labels == sorted(CREDENTIAL_ENV)
 
 
 @pytest.mark.parametrize("name", sorted(CREDENTIAL_ENV))

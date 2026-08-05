@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from functools import lru_cache
 
 from agent_bom.demo_estate.enterprise import (
     ENTERPRISE_SCHEMA_VERSION,
@@ -38,8 +39,31 @@ def _canonical_json(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 
 
+@lru_cache(maxsize=2)
+def _build_demo_estate_cached(profile: ScaleProfile, tenant_id: str) -> EnterpriseEstate:
+    return _build_demo_estate(profile, tenant_id)
+
+
 def build_demo_estate(profile: ScaleProfile | None = None, *, tenant_id: str = "default") -> EnterpriseEstate:
     """Return the narrative estate embedded in a generated population.
+
+    Memoized because one demo boot builds it three times — once to validate and
+    fingerprint the contract, once for the posture findings, once for the graph
+    projection — and generation is a pure function of ``(profile, tenant_id)``
+    returning a frozen model, so a second build can only ever produce a
+    byte-identical estate. At the current size that repetition was a third of
+    the boot.
+
+    ``maxsize`` is deliberately small: an estate is thousands of assets and tens
+    of thousands of observations, and a cache that holds one per tenant would
+    trade a startup second for unbounded resident memory. Two covers the seeding
+    path (one tenant, several callers) and evicts anything else.
+    """
+    return _build_demo_estate_cached(profile or ScaleProfile(), tenant_id)
+
+
+def _build_demo_estate(profile: ScaleProfile | None, tenant_id: str) -> EnterpriseEstate:
+    """Compose the narrative estate into a generated population.
 
     Both halves are already valid :class:`EnterpriseEstate` values, so this
     composes them rather than re-deriving anything. Construction re-runs every

@@ -579,16 +579,50 @@ def _package_base_name(finding: dict[str, Any]) -> str:
 def _canonical_group_key(finding: dict[str, Any]) -> str:
     """Collapse the three per-CVE representations onto one grouping key.
 
-    Findings that carry a CVE/advisory id group by ``(vuln_id, package_base)``
-    so the ``MCP_SCAN`` (unified), ``blast_radius`` and ``package_vulnerability``
-    rows for the same vulnerability merge into a single list row. Non-CVE
+    Findings that carry a CVE/advisory id group by
+    ``(vuln_id, package_base, asset)`` so the ``MCP_SCAN`` (unified),
+    ``blast_radius`` and ``package_vulnerability`` rows for the *same
+    vulnerability on the same asset* merge into a single list row. Non-CVE
     findings (posture, malicious-package, etc.) fall back to their stable
     identity so distinct findings stay distinct.
+
+    ``asset`` is in the key, and its absence was a real under-count. The three
+    representations this function exists to merge all describe one vulnerability
+    on **one** asset, so the asset was never needed to merge them — but leaving
+    it out also merged the same package version across *different* assets. A
+    scan of one repository never noticed, because a package appears once. An
+    estate does: the demo ships fifteen advisories across 768 inventoried
+    package rows in 129 container images, and ``/v1/findings`` reported 1,833 of
+    2,616 rows — the entire vulnerability lane folded to fifteen — while every
+    surface described the result as the total. A dedup key that omits the scope
+    of the thing it dedupes is the same defect class that once dropped a second
+    tenant's rows here.
     """
     vuln = _row_vuln_id(finding)
     if vuln:
-        return f"vuln:{vuln.lower()}:{_package_base_name(finding)}"
+        return f"vuln:{vuln.lower()}:{_package_base_name(finding)}:{_row_asset_key(finding)}"
     return f"id:{_finding_identity(finding)}"
+
+
+def _row_asset_key(finding: dict[str, Any]) -> str:
+    """The asset a row is about, in whichever spelling its representation uses.
+
+    Empty when a representation names no asset — which keeps the merge working:
+    a blast-radius row that identifies no asset still folds onto the unified row
+    for the same vulnerability and package rather than splitting off on its own.
+    """
+    raw_asset = finding.get("asset")
+    asset = raw_asset if isinstance(raw_asset, dict) else {}
+    for value in (
+        asset.get("identifier"),
+        asset.get("canonical_id"),
+        asset.get("stable_id"),
+        finding.get("resource_id"),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text.lower()
+    return ""
 
 
 _EMPTY_FIELD_VALUES: tuple[Any, ...] = (None, "", [], {})

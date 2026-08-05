@@ -7,7 +7,13 @@ and a configuration, the finding sits on a correlated attack path, and it
 evidences a compliance control* — was demonstrated only for the hand-authored
 incident. At estate scale it was asserted, not shown.
 
-This module closes that. Four decisions carry the weight:
+This module closes that for the CSPM lane, and hands the rest to
+:mod:`agent_bom.demo_estate.enterprise_risk`: vulnerability, secret, IaC and
+runtime findings, appended here so every lane joins the same assets, the same
+correlations and the same identity edges. An estate whose every finding is a CIS
+check grows its risk with control coverage rather than with the estate.
+
+Four decisions carry the weight:
 
 **One id scheme.** A finding's asset identifier *is* the estate's ``asset_id``.
 There is no demo-only resource id, no parallel spelling to reconcile later, so
@@ -43,12 +49,17 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_bom.demo_estate.enterprise import EnterpriseEstate, EstateAsset
+from agent_bom.demo_estate.enterprise import (
+    NARRATIVE_INCIDENT_TRACE_ID,
+    EnterpriseEstate,
+    EstateAsset,
+)
 from agent_bom.demo_estate.enterprise_correlation import (
     EnterpriseCorrelation,
     EnterpriseCorrelationResult,
     build_estate_correlations,
 )
+from agent_bom.demo_estate.enterprise_risk import build_risk_findings
 from agent_bom.finding import Finding, cloud_cis_check_to_finding
 from agent_bom.graph.severity import SEVERITY_DISPLAY_BUCKETS, severity_display_bucket
 
@@ -612,13 +623,44 @@ def _paths_by_asset(correlations: tuple[EnterpriseCorrelation, ...]) -> dict[str
     Single-asset traces are excluded: a "path" through one node is not a path,
     and labelling it one would inflate the attack-path count with noise.
     """
+    # Ranked, not first-wins. ``setdefault`` over an iteration order made the
+    # choice a function of trace-id sort order, so any change to how trace ids
+    # are derived silently reassigned assets to different correlations — and
+    # since a correlation's kind decides whether an asset reports every control,
+    # that changed the estate's finding count. Rank explicitly: the richest
+    # chain wins, ties broken by id.
+    def rank(correlation: EnterpriseCorrelation) -> tuple[int, int, int, str]:
+        # The hand-authored incident always claims its own assets. It is the
+        # thing the demo is for, and a generated journey that happens to span
+        # the same number of sources must not take its place on the surfaces
+        # that lead with "the incident".
+        return (
+            0 if correlation.trace_id == NARRATIVE_INCIDENT_TRACE_ID else 1,
+            -len(set(correlation.sources)),
+            -len(correlation.asset_path),
+            correlation.correlation_id,
+        )
+
     by_asset: dict[str, EnterpriseCorrelation] = {}
-    for correlation in correlations:
+    for correlation in sorted(correlations, key=rank):
         if len(correlation.asset_path) < 2:
             continue
         for asset_id in correlation.asset_path:
             by_asset.setdefault(asset_id, correlation)
     return by_asset
+
+
+# Correlation kinds whose assets report every applicable control rather than a
+# prevalence sample. Deliberately narrow.
+#
+# The rule used to be "any asset on any correlated path", which was safe while
+# four correlations existed. Now that the estate produces thousands of traces,
+# that rule reached most of the inventory and quadrupled the posture lane — the
+# estate's risk would once again have been a function of control coverage, just
+# arrived at from the other direction. An asset on an egress attempt or a
+# remediation is genuinely worth reporting in full; an asset seen in an identity
+# session is not.
+_FULL_CONTROL_KINDS: frozenset[str] = frozenset({"data_egress_attempt", "remediation"})
 
 
 def _build_check_payload(asset: EstateAsset, check: EstateCheck, *, unevaluable: bool) -> dict[str, object]:
@@ -710,10 +752,12 @@ def build_estate_findings(
         correlation = path_by_asset.get(asset.asset_id)
         for check in checks:
             seed = _stable_index(asset.asset_id, check.provider, check.check_id)
-            # Assets on a correlated attack path always report their applicable
+            # Assets on the *incident* path always report their applicable
             # controls. The incident is the thing the demo is for; leaving its
             # own assets to a probability roll is how a demo loses its story.
-            if correlation is None and seed % 100 >= check.prevalence:
+            # Everything else stays on prevalence — see ``_FULL_CONTROL_KINDS``.
+            full_report = correlation is not None and correlation.kind in _FULL_CONTROL_KINDS
+            if not full_report and seed % 100 >= check.prevalence:
                 continue
             identity = _pick_identity(account_identities, subject=asset, seed=seed) if account_identities else None
             actor = asset_actors[seed % len(asset_actors)] if asset_actors else ""
@@ -762,6 +806,50 @@ def build_estate_findings(
                 finding.evidence["correlation_kind"] = correlation.kind
                 finding.evidence["attack_path"] = list(correlation.asset_path)
             findings.append(finding)
+
+    # The other four scanners. Posture alone made the estate's risk a function of
+    # control coverage rather than of the estate — every one of 439 findings was
+    # a CIS check, so an AI service, a leaked credential and a vulnerable image
+    # all read as "no findings". They correlate onto the same paths through the
+    # same asset ids, so they are appended here rather than served separately.
+    assets_by_id = {asset.asset_id: asset for asset in estate.assets}
+    kept_risk_findings: list[Finding] = []
+    for finding in build_risk_findings(estate):
+        asset_id = finding.asset.identifier or ""
+        subject = assets_by_id.get(asset_id)
+        correlation = path_by_asset.get(asset_id)
+        if correlation is not None:
+            finding.evidence["correlation_id"] = correlation.correlation_id
+            finding.evidence["correlation_kind"] = correlation.kind
+            finding.evidence["attack_path"] = list(correlation.asset_path)
+        actor_pool = actors.get(asset_id, ())
+        if actor_pool:
+            actor = actor_pool[_stable_index(finding.id) % len(actor_pool)]
+            finding.evidence["actor_id"] = actor
+            finding.evidence["identity_actor_id"] = actor
+        # Every finding names a principal, in the same two vocabularies the
+        # posture lane uses. A vulnerability with no identity edge is a row of
+        # text: what makes it actionable is *which principal the vulnerable
+        # process holds*. The inventory already declares that on the asset, so
+        # this reads it rather than inferring one.
+        if subject is not None:
+            principal = assets_by_id.get(subject.tags.get("uses_identity", ""))
+            if principal is None:
+                pool = identities.get((subject.provider, subject.account_scope), ())
+                if pool:
+                    principal = _pick_identity(pool, subject=subject, seed=_stable_index(finding.id))
+            if principal is not None:
+                finding.evidence["principal_id"] = principal.asset_id
+                finding.evidence["identity_asset_id"] = principal.asset_id
+                finding.evidence["identity_display_name"] = principal.display_name
+                finding.evidence["identity_resource_type"] = principal.resource_type
+        # Same rule the posture lane above applies, for the same reason: neither
+        # an inventoried principal nor an observed actor means there is no
+        # identity edge to draw, and a finding with a dangling half-chain is
+        # what this module exists to avoid.
+        if finding.evidence.get("identity_asset_id") or finding.evidence.get("identity_actor_id"):
+            kept_risk_findings.append(finding)
+    findings.extend(kept_risk_findings)
     return tuple(findings)
 
 

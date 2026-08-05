@@ -228,7 +228,17 @@ def test_demo_estate_posture_findings_resolve_to_inventoried_assets(
         assert evidence.get("principal_id") or evidence.get("actor_id"), (
             f"{row.get('id')} lost its identity edge through redaction: {sorted(evidence)}"
         )
-        assert evidence.get("check_id") and evidence.get("control_id")
+        # Every posture finding must say which check saw it — that is the join
+        # key the rest of the product reads. A control id is required *exactly
+        # when* the finding claims a framework: not every posture rule has a
+        # CIS twin ("resource declared without an ownership tag" has none), and
+        # a rule with no control must say so rather than borrow one. Requiring
+        # a control on every row is what forced the IaC lane to assert CIS and
+        # NIST coverage it could not support.
+        assert evidence.get("check_id"), f"{row.get('id')} has no check identity: {sorted(evidence)}"
+        claims_cis = any(str(tag).upper().startswith("CIS") for tag in (row.get("compliance_tags") or row.get("compliance") or []))
+        if claims_cis:
+            assert evidence.get("control_id"), f"{row.get('id')} claims CIS with no control_id behind it"
         assert evidence.get("resource_name") and evidence.get("resource_type")
         assert row.get("provider"), sorted(row)
         assert row.get("severity"), sorted(row)
@@ -436,8 +446,20 @@ def test_demo_estate_exec_severity_counts_reconcile_across_surfaces(
 
 
 def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: TestClient) -> None:
-    """Showcase graph carries org→account containment and a bastion→PII exposure edge."""
-    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
+    """Showcase graph carries org→account containment and a bastion→PII exposure edge.
+
+    Read through the cursor rather than from a single default page. This asserts
+    a property of the *graph* — two named low-severity leaves and the edge
+    between them — and node pages are ordered by severity, so at estate scale no
+    page-size choice can promise a particular leaf is on page one. Asserting it
+    against the default page passed only while the estate was small enough to
+    fit, which made the test a size check wearing a topology check's clothes.
+
+    The default page's own contract — that it still describes a shaped estate
+    rather than a heap of findings — is asserted separately in
+    ``test_default_graph_page_carries_the_containment_spine``.
+    """
+    payload = _full_graph(demo_estate_client)
     node_ids = {node.get("id") for node in payload.get("nodes") or []}
     assert "org:corp" in node_ids
     assert "account:aws:123456789012" in node_ids
@@ -755,16 +777,49 @@ def test_demo_estate_scan_findings_restored_after_restart(
 
 # ── Enterprise estate projected into the graph ────────────────────────────
 #
-# The estate holds 2,068 assets and 439 findings on 407 of them. Once it is in
-# the graph the snapshot no longer fits one severity-ranked API page, so these
-# read the whole snapshot explicitly and separately assert that the *default*
-# page says so rather than reading as the estate.
+# Once the estate is in the graph the snapshot no longer fits one severity-ranked
+# API page, so these read the whole snapshot explicitly and separately assert
+# that the *default* page says so rather than reading as the estate.
 
 
 def _full_graph(client: TestClient) -> dict:
-    payload = client.get("/v1/graph", headers=VIEWER, params={"limit": 5000}).json()
-    assert payload.get("completeness", {}).get("complete") is True, payload.get("completeness")
-    return payload
+    """Assemble the COMPLETE snapshot by walking the keyset cursor.
+
+    A single ``limit=5000`` request used to cover it. It no longer can: the
+    estate projects more nodes than ``/v1/graph``'s own ``limit <= 5000``
+    ceiling, so one request is a truncated page by definition and asserting
+    ``complete is True`` on it could only ever be satisfied by shrinking the
+    estate. ``cursor=`` is the route's documented deep-paging path; walking it
+    is how a client reads everything, and it is what these tests need.
+    """
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen: set[str] = set()
+    payload: dict = {}
+    cursor: str | None = None
+    for _page in range(20):  # bounded so a paging bug fails rather than hangs
+        params: dict[str, object] = {"limit": 5000}
+        if cursor:
+            params["cursor"] = cursor
+        payload = client.get("/v1/graph", headers=VIEWER, params=params).json()
+        for node in payload.get("nodes") or []:
+            node_id = node.get("id")
+            if node_id not in seen:
+                seen.add(str(node_id))
+                nodes.append(node)
+        edges.extend(payload.get("edges") or [])
+        cursor = payload.get("next_cursor") or (payload.get("pagination") or {}).get("next_cursor")
+        if not cursor:
+            break
+    else:  # pragma: no cover - only reached when paging never terminates
+        raise AssertionError("graph paging did not terminate")
+
+    total = (payload.get("completeness") or {}).get("total")
+    assert total is None or len(nodes) >= int(total), (len(nodes), total)
+    merged = dict(payload)
+    merged["nodes"] = nodes
+    merged["edges"] = edges
+    return merged
 
 
 def test_demo_estate_graph_carries_the_projected_estate(demo_estate_client: TestClient) -> None:
@@ -796,9 +851,21 @@ def test_demo_estate_graph_carries_the_projected_estate(demo_estate_client: Test
 
 
 def test_demo_estate_graph_incident_chain_is_traversable(demo_estate_client: TestClient) -> None:
-    """workflow → role → workload → MCP tool → PHI table → hosted model."""
+    """workflow → role → workload → MCP tool → PHI table → hosted model.
+
+    Asserts each landmark is *reachable* from the one before it, not that the
+    two are directly adjacent. The chain names the six assets the incident story
+    is told through; how many hops sit between them is a property of the estate,
+    not of the story. Pinning adjacency made this a test of chain length — it
+    broke the moment the estate started modelling the real intermediate assets
+    (the ECR image the role deploys, the cluster hosting the workload, the MCP
+    server publishing the tool, the database holding the table), all of which
+    make the traversal *more* faithful, not less.
+    """
     payload = _full_graph(demo_estate_client)
-    pairs = {(row.get("source"), row.get("target")) for row in payload.get("edges") or []}
+    adjacency: dict[str, set[str]] = {}
+    for row in payload.get("edges") or []:
+        adjacency.setdefault(str(row.get("source")), set()).add(str(row.get("target")))
     chain = (
         "github:workflow:member-copilot/deploy-prod",
         "cloud_resource:aws:iam:role:member-copilot-prod",
@@ -810,8 +877,21 @@ def test_demo_estate_graph_incident_chain_is_traversable(demo_estate_client: Tes
     node_ids = {n.get("id") for n in payload.get("nodes") or []}
     for hop in chain:
         assert hop in node_ids, f"missing incident hop {hop}"
+
+    def _reaches(source: str, target: str, *, max_hops: int = 6) -> bool:
+        frontier = {source}
+        seen = {source}
+        for _ in range(max_hops):
+            frontier = {nxt for node in frontier for nxt in adjacency.get(node, ())} - seen
+            if target in frontier:
+                return True
+            if not frontier:
+                return False
+            seen |= frontier
+        return False
+
     for source, target in zip(chain, chain[1:], strict=False):
-        assert (source, target) in pairs, f"incident chain broken at {source} -> {target}"
+        assert _reaches(source, target), f"incident chain broken at {source} -> {target}"
 
 
 def test_demo_estate_findings_land_on_inventoried_graph_nodes(
@@ -878,3 +958,31 @@ def test_demo_estate_graph_rolls_up_to_a_readable_estate(demo_estate_client: Tes
 
     resources = demo_estate_client.get("/v1/graph/rollup", headers=VIEWER, params={"node": "env:aws:123456789012:production"}).json()
     assert resources.get("children"), resources
+
+
+def test_default_graph_page_carries_the_containment_spine(demo_estate_client: TestClient) -> None:
+    """The first page a client gets must describe a shaped estate, not a heap.
+
+    ``/v1/graph`` orders nodes by severity. Once the estate carries more
+    high-severity findings than a page holds — 2,582 findings against a default
+    limit of 500 — every org, account and environment ranks below the cut, and
+    the default response contains findings floating with no structure. It looked
+    correct only while the estate was small enough that the spine happened to
+    fit inside the page.
+
+    Containment ancestors are few at any estate size, so they are resolved
+    explicitly and added on top of the page rather than left to compete on rank.
+    """
+    payload = demo_estate_client.get("/v1/graph", headers=VIEWER).json()
+    nodes = payload.get("nodes") or []
+    kinds = {str(node.get("type") or node.get("entity_type") or "") for node in nodes}
+    assert {"org", "account"} <= kinds, f"default page has no containment spine: {sorted(kinds)}"
+
+    node_ids = {node.get("id") for node in nodes}
+    contains = {
+        (row.get("source"), row.get("target"))
+        for row in payload.get("edges") or []
+        if row.get("relationship") in {"contains", "hosts", "owns"}
+    }
+    linked = [pair for pair in contains if pair[0] in node_ids and pair[1] in node_ids]
+    assert linked, "containment nodes arrived with no edge joining them to the page"

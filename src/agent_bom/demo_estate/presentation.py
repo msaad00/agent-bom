@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.demo_estate.enterprise import NARRATIVE_INCIDENT_TRACE_ID
 from agent_bom.demo_estate.enterprise_composition import build_demo_estate
 from agent_bom.demo_estate.enterprise_correlation import (
     EnterpriseCollectionHealth,
@@ -121,11 +122,12 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
 
     estate = build_demo_estate(tenant_id=tenant_id)
     result = correlate_enterprise_estate(estate)
-    primary = next(
-        (row for row in result.correlations if row.kind == "data_egress_attempt"),
-        None,
-    )
-    if primary is None:
+    # Named, not discovered. "The first data-egress correlation" identified the
+    # incident only while it was the only one; the population now produces
+    # hundreds, and correlations sort by trace id, so the headline would have
+    # become whichever generated journey happened to hash lowest.
+    primary = result.correlation_by_trace(NARRATIVE_INCIDENT_TRACE_ID)
+    if primary is None or primary.kind != "data_egress_attempt":
         raise ValueError("enterprise demo is missing its primary data-egress correlation")
 
     # `summary` carries the true totals; these fields carry what a reader can

@@ -103,10 +103,22 @@ def test_no_asset_leaves_a_scope_dimension_blank(estate: EnterpriseEstate) -> No
 
 
 def test_observations_reference_many_distinct_assets(estate: EnterpriseEstate) -> None:
-    """Correlation is the claim. Events pointing at a handful of assets do not show it."""
-    touched = {asset_id for event in estate.observations for asset_id in event.resource_ids}
+    """Correlation is the claim. Events pointing at a handful of assets do not show it.
 
-    assert len(touched) >= len(estate.assets) // 2, f"only {len(touched)} of {len(estate.assets)} assets carry any evidence"
+    Measured against the *observable* inventory. Some rows have no control plane
+    to be observed on: a package appears in an SBOM and in a vulnerability
+    finding, never in an audit log, and the organization root is a grouping node.
+    Counting them in the denominator would mean the only way to keep this green
+    is to emit an audit event for a package — evidence the estate cannot justify.
+    """
+    touched = {asset_id for event in estate.observations for asset_id in event.resource_ids}
+    observable = [
+        asset for asset in estate.assets if asset.resource_type not in {"package", "organization"}
+    ]
+
+    assert len(touched) >= len(observable) // 2, (
+        f"only {len(touched)} of {len(observable)} observable assets carry any evidence"
+    )
 
 
 def test_every_observation_hash_verifies(estate: EnterpriseEstate) -> None:

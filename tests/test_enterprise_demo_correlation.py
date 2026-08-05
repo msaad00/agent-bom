@@ -53,11 +53,24 @@ def test_primary_incident_correlates_ci_cloud_workload_mcp_data_and_llm() -> Non
         "snowflake_access_history",
         "otel_llm",
     )
+    # The path walks the pipeline in order and now includes the hops the
+    # ordering table used to skip: the repository behind the workflow, the image
+    # the role deploys, the cluster the workload runs on, the MCP server that
+    # owns the tool, and the database above the table. Every one was already in
+    # the incident's evidence — the rendered chain simply jumped over them.
     assert incident.asset_path == (
+        "github:repository:northstar-health/member-copilot",
         "github:workflow:member-copilot/deploy-prod",
         "cloud_resource:aws:iam:role:member-copilot-prod",
+        (
+            "cloud_resource:aws:ecr:image:member-copilot@sha256:"
+            "4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
+        ),
+        "kubernetes:cluster:eks/member-ai-prod",
         "kubernetes:workload:member-ai-prod/ai-prod/member-copilot",
+        "mcp:server:clinical-analytics",
         "mcp:tool:clinical-analytics/execute_sql",
+        "snowflake:database:nh_prod/analytics",
         "snowflake:table:nh_prod/analytics/phi/patient_summary",
         "model:openai:gpt-4.1",
     )

@@ -954,3 +954,26 @@ def test_mcp_registry_descriptions_are_bounded():
         if len(str(entry.get("description", ""))) > MCP_REGISTRY_DESCRIPTION_MAX_CHARS
     ]
     assert not too_long, f"registry descriptions exceed {MCP_REGISTRY_DESCRIPTION_MAX_CHARS} chars: {too_long[:5]}"
+
+
+def test_smithery_release_declares_the_upstream_credential():
+    """Smithery cannot enumerate an endpoint it has no credential for.
+
+    The agent-bom MCP endpoint authenticates every request. Smithery reads the
+    public server card (which advertises all 77 tools) but its live connection
+    401s, so the release settles as ``AUTH_REQUIRED`` and the public catalog
+    listed 36 of 77 — the tools it could reach without one.
+
+    Publishing the credential requirement in ``configSchema`` is what lets a
+    connection be established with a scoped, revocable token instead of opening
+    the endpoint anonymously.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
+
+    assert "bearerToken" in workflow, "the release must declare the upstream credential"
+    assert '\\"required\\": [\\"bearerToken\\"]' in workflow, (
+        "the token must be required — an optional credential leaves the catalog "
+        "enumerating anonymously, which is the state that produced 36 of 77 tools"
+    )
+    # The endpoint must never be published as open in place of supplying a token.
+    assert "--allow-insecure-no-auth" not in workflow

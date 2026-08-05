@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 from typing import NamedTuple
@@ -1471,7 +1472,7 @@ PERSONA_LANES: tuple[PersonaLane, ...] = (
         "Developers",
         "local scan · images · CI gates",
         "Accurate SCA",
-        "15 ecosystems · EPSS/KEV · distro",
+        "15 ecosystems · EPSS/KEV · distro-aware",
         "dev",
     ),
     PersonaLane(
@@ -1504,12 +1505,20 @@ PERSONA_LANES: tuple[PersonaLane, ...] = (
     ),
 )
 
-# Card geometry for the persona band (five cards on one 1280px row).
+# Card geometry for the persona band.
+#
+# Five cards on one 1280px row gave each 211px, and GitHub renders the band at
+# ~900px — so every value line sat flush against its pill and several clipped.
+# Three per row nearly doubles the card to ~400px, which buys room for readable
+# type instead of trading legibility against overflow.
 PERSONA_BAND_WIDTH = 1280
 PERSONA_BAND_MARGIN_X = 23
 PERSONA_BAND_GAP = 14
-PERSONA_CARD_WIDTH = (PERSONA_BAND_WIDTH - PERSONA_BAND_MARGIN_X * 2 - PERSONA_BAND_GAP * 4) // 5
-PERSONA_CARD_PAD_X = 14
+PERSONA_CARDS_PER_ROW = 3
+PERSONA_CARD_WIDTH = (
+    PERSONA_BAND_WIDTH - PERSONA_BAND_MARGIN_X * 2 - PERSONA_BAND_GAP * (PERSONA_CARDS_PER_ROW - 1)
+) // PERSONA_CARDS_PER_ROW
+PERSONA_CARD_PAD_X = 16
 
 # Copy budgets measured by rendering the band at README scale. Text is drawn,
 # not wrapped, so an over-long line runs past its pill and into the next card —
@@ -1518,9 +1527,9 @@ PERSONA_CARD_PAD_X = 14
 # (value title). The 39-char sub line that used to sit flush against the pill
 # edge was shortened after the box-aware fit audit showed it clipping; 33 is the
 # widest that now ships, and the audit fails anything past its box.
-PERSONA_TITLE_MAX_CHARS = 18
-PERSONA_VALUE_TITLE_MAX_CHARS = 25
-PERSONA_VALUE_SUB_MAX_CHARS = 39
+PERSONA_TITLE_MAX_CHARS = 24
+PERSONA_VALUE_TITLE_MAX_CHARS = 34
+PERSONA_VALUE_SUB_MAX_CHARS = 46
 
 
 def _persona_tag_width(tag: str) -> int:
@@ -1675,13 +1684,22 @@ def persona_value(theme: str) -> str:
     gap = PERSONA_BAND_GAP
     card_w = PERSONA_CARD_WIDTH
     card_h = 174
+    per_row = PERSONA_CARDS_PER_ROW
+    rows = math.ceil(len(PERSONA_LANES) / per_row)
+    h = margin_y * 2 + rows * card_h + (rows - 1) * gap + 44
 
     parts = _svg_open(w, h, "agent-bom personas and value")
     parts.append(f'<rect width="{w}" height="{h}" rx="12" fill="{persona_bg}"/>')
 
     for idx, lane in enumerate(PERSONA_LANES):
-        x = margin_x + idx * (card_w + gap)
-        parts += _persona_lane_card(x, margin_y, card_w, card_h, *lane, theme, t)
+        row, col = divmod(idx, per_row)
+        in_row = min(per_row, len(PERSONA_LANES) - row * per_row)
+        # Centre a short final row so the band stays balanced rather than
+        # leaving a ragged gap on the right.
+        row_w = in_row * card_w + (in_row - 1) * gap
+        x = (w - row_w) // 2 + col * (card_w + gap)
+        y = margin_y + row * (card_h + gap)
+        parts += _persona_lane_card(x, y, card_w, card_h, *lane, theme, t)
 
     parts.append(
         _trust_footer(
@@ -1710,10 +1728,11 @@ _GLYPH_ADVANCE_EM = 0.54
 # authored at 960 and 1280, so their type is downscaled to ~6px on screen —
 # below the 10px floor the flow diagrams already hold themselves to, which is
 # why they read as unreadable in the README while being correct at full size.
-# Scaled as far as `_audit_text_fit` allows without a relayout; persona-value
-# runs out of room first because its five cards share one 1280px row.
+# Scaled as far as `_audit_text_fit` allows. The persona band was relaid out to
+# three cards per row to earn that headroom — at five per row a 211px card left
+# no space to scale into.
 _ARCHITECTURE_TYPE_SCALE = 1.1
-_PERSONA_TYPE_SCALE = 1.0
+_PERSONA_TYPE_SCALE = 1.3
 
 
 def _scale_type(svg: str, factor: float) -> str:

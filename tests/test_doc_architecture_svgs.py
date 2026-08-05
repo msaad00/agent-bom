@@ -198,15 +198,19 @@ def test_dense_diagrams_hold_their_improved_rendered_text_floor() -> None:
     "15 ecosystems · EPSS/KEV · distro-aware", "Self-hosted control plane" and
     "381 API ops · 77 MCP tools · SARIF" all clipped in the README.
 
-    With a box-aware audit the honest ceiling is lower. Legibility was traded
-    back for text that stays inside its box, which is the right way round — a
-    clipped label is unreadable at any size. Reaching the flow diagrams' 10px
-    floor needs fewer cards per row or a narrower canvas, which is a design
-    change rather than a scale factor.
+    With a box-aware audit the honest ceiling was lower — until the persona band
+    was relaid out. Five cards on a 1280px row gave each 211px, leaving nothing
+    to scale into; three per row gives ~402px, and the type now renders larger
+    than the clipped version did *and* fits: 7.77px against the 7.05px that was
+    overflowing.
+
+    Architecture keeps a single row and so keeps the lower floor. Reaching the
+    flow diagrams' 10px would need the same treatment — a design change rather
+    than a scale factor.
     """
     for name, (svg, readme_scale, floor) in {
         "architecture": (architecture("light"), 900 / 960, 6.5),
-        "persona-value": (persona_value("light"), 900 / 1280, 5.9),
+        "persona-value": (persona_value("light"), 900 / 1280, 7.5),
     }.items():
         sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]
         rendered = min(sizes) * readme_scale

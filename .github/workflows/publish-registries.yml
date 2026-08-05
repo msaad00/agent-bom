@@ -3,6 +3,10 @@ name: Publish to Registries
 # Auto-publishes to Smithery and ClawHub after a successful Release workflow.
 # Secrets needed (add via Settings → Secrets):
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
+#   SMITHERY_UPSTREAM_TOKEN — bearer token Smithery presents to our own MCP
+#     endpoint. Without it Smithery cannot enumerate tools and the release
+#     settles as AUTH_REQUIRED, which is why the public catalog listed 36 of
+#     the 77 tools the server actually serves.
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
@@ -213,12 +217,17 @@ jobs:
                 \"configSchema\": {
                   \"type\": \"object\",
                   \"properties\": {
+                    \"bearerToken\": {
+                      \"type\": \"string\",
+                      \"title\": \"Access token\",
+                      \"description\": \"Bearer token for the agent-bom MCP endpoint. Required — the endpoint authenticates every request and will not enumerate tools without it.\"
+                    },
                     \"NVD_API_KEY\": {
                       \"type\": \"string\",
                       \"description\": \"NVD API key for higher rate limits on CVSS enrichment (optional)\"
                     }
                   },
-                  \"required\": []
+                  \"required\": [\"bearerToken\"]
                 }
               }")
 

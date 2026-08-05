@@ -53,6 +53,66 @@ def test_seeds_when_empty(store: SQLiteGraphStore) -> None:
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == SHOWCASE_SCAN_ID
 
 
+def test_persisted_finding_nodes_serve_prose_not_a_python_repr(store: SQLiteGraphStore) -> None:
+    """Read the attribute back out of the store, not off the in-memory graph.
+
+    The projection is where the value is chosen, but the store is where it stops
+    being checkable: ``json.dumps(..., default=str)`` accepts any object and
+    freezes its Python ``repr`` into the snapshot, so a projection bug survives
+    persistence as a plausible-looking string. Assert on what a reader is
+    actually served.
+    """
+    assert seed_showcase_graph_if_empty(store) is True
+
+    graph = store.load_graph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    estate_findings = [
+        node
+        for node in graph.nodes.values()
+        if node.entity_type is EntityType.MISCONFIGURATION and node.attributes.get("estate_id")
+    ]
+    assert len(estate_findings) >= 439, len(estate_findings)
+    for node in estate_findings:
+        recommendation = node.attributes.get("recommendation")
+        assert isinstance(recommendation, str) and recommendation, node.id
+        assert "RemediationFix(" not in recommendation, (
+            f"{node.id} serves a Python repr as remediation: {recommendation[:80]!r}"
+        )
+
+
+def test_a_seed_predating_this_build_is_treated_as_stale(store: SQLiteGraphStore) -> None:
+    """A deployed demo must pick up projection fixes without an operator reset.
+
+    ``seed_showcase_graph_if_empty`` early-returns when both snapshots carry the
+    expected ``created_at``, so a change to what the projection *writes* only
+    reaches an existing database if the stamp moved with it. Pin the stamps that
+    shipped with the repr defect: leaving either in place means every already-
+    running demo keeps serving the old snapshot forever.
+    """
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_CREATED_AT
+
+    shipped_with_the_defect = {
+        SHOWCASE_SCAN_ID: "2026-08-08T12:00:00+00:00",
+        SHOWCASE_BASELINE_SCAN_ID: "2026-08-01T12:00:00+00:00",
+    }
+    assert (
+        SHOWCASE_CURRENT_CREATED_AT != shipped_with_the_defect[SHOWCASE_SCAN_ID]
+        or SHOWCASE_BASELINE_CREATED_AT != shipped_with_the_defect[SHOWCASE_BASELINE_SCAN_ID]
+    ), "the seed stamp did not move, so a deployed demo keeps the old snapshot"
+
+    # And the mechanism still does its job for that exact pair of stamps.
+    store.save_graph(
+        _minimal_graph(scan_id=SHOWCASE_SCAN_ID, created_at=shipped_with_the_defect[SHOWCASE_SCAN_ID])
+    )
+    store.save_graph(
+        _minimal_graph(
+            scan_id=SHOWCASE_BASELINE_SCAN_ID,
+            created_at=shipped_with_the_defect[SHOWCASE_BASELINE_SCAN_ID],
+        )
+    )
+    assert seed_showcase_graph_if_empty(store) is True
+    assert _snapshot_created_at(store).get(SHOWCASE_SCAN_ID) == SHOWCASE_CURRENT_CREATED_AT
+
+
 def test_idempotent_when_current(store: SQLiteGraphStore) -> None:
     assert seed_showcase_graph_if_empty(store) is True
     # A fresh seed is not re-written on the next boot.

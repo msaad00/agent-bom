@@ -1,4 +1,4 @@
-.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui release-build publish-test publish analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
+.PHONY: help install test lint lint-ruff lint-mypy preflight preflight-fix docker-build docker-run scan clean build-ui release-build publish-test publish analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -28,9 +28,20 @@ _dev-ui:
 test:  ## Run unit tests
 	pytest tests/ -v --cov=agent_bom
 
-lint:  ## Run linters (ruff + mypy)
-	ruff check src/ tests/
+# Every Python directory that ships or gates a release. `scripts/` was outside
+# this set, so a dead local in `generate_doc_architecture_svgs.py` sat on main
+# unnoticed — release gates, drift checks and the SVG generators all live there.
+# CI's Ruff step calls `lint-ruff` rather than repeating the paths, so the two
+# cannot disagree about what gets linted.
+LINT_PATHS := src/ tests/ scripts/ fuzz/
+
+lint-ruff:  ## Ruff over every linted path
+	ruff check $(LINT_PATHS)
+
+lint-mypy:  ## MyPy over the shipped package
 	mypy src/ --ignore-missing-imports --disable-error-code import-untyped
+
+lint: lint-ruff lint-mypy  ## Run linters (ruff + mypy)
 
 format:  ## Format code with ruff
 	ruff format src/ tests/

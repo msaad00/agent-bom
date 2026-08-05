@@ -185,3 +185,27 @@ def test_self_scan_upload_filters_first_party_informational_skill_rows() -> None
     post_merge = (ROOT / ".github" / "workflows" / "post-merge-self-scan.yml").read_text(encoding="utf-8")
     assert "filter_first_party_skill_sarif.py" in pr_gate
     assert "filter_first_party_skill_sarif.py" in post_merge
+
+
+def test_ci_lint_scope_is_defined_once_in_the_makefile() -> None:
+    """CI and ``make lint`` must not hold separate opinions about what is linted.
+
+    They did: CI ran ``ruff check src/`` while the Makefile ran ``src/ tests/``,
+    and neither covered ``scripts/`` — where the release gates, drift checks and
+    documentation generators live. A dead local in
+    ``scripts/generate_doc_architecture_svgs.py`` sat on ``main`` because no gate
+    could see it.
+    """
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    lint_paths = next(
+        line.split(":=", 1)[1].split()
+        for line in makefile.splitlines()
+        if line.startswith("LINT_PATHS")
+    )
+    for required in ("src/", "tests/", "scripts/"):
+        assert required in lint_paths, f"{required} is outside the linted scope"
+
+    lint_steps = _ci()["jobs"]["lint"]["steps"]
+    ruff = next(step for step in lint_steps if step.get("name") == "Ruff")
+    assert "make lint-ruff" in ruff["run"], "CI must call the Makefile target, not restate the paths"
+    assert "ruff check" not in ruff["run"], "CI restated the lint paths instead of reusing LINT_PATHS"

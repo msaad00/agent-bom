@@ -2870,6 +2870,12 @@
             "title": "Correlations",
             "type": "integer"
           },
+          "cross_source_correlations": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cross Source Correlations",
+            "type": "integer"
+          },
           "evidence_sources": {
             "minimum": 0.0,
             "title": "Evidence Sources",

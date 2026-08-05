@@ -283,3 +283,47 @@ def test_projection_is_deterministic(estate, estate_findings) -> None:
             )
         )
     assert shapes[0] == shapes[1]
+
+
+def test_projected_node_attributes_are_json_values_not_python_objects(projected) -> None:
+    """Every projected attribute must survive ``json.dumps`` untouched.
+
+    The graph store persists attributes with ``json.dumps(..., default=str)``
+    (``agent_bom/db/graph_store.py``), so a non-JSON value is not rejected — it
+    is silently frozen into the snapshot as its Python ``repr`` and served from
+    the API as a string. The graph node drawer then renders
+    ``Remediation(fix=RemediationFix(summary=...`` as the remediation text on
+    the surface a prospect clicks. Assert on the value, not on the encoder's
+    willingness to coerce it.
+    """
+    import json
+
+    graph, _ = projected
+    offenders: list[tuple[str, str, str]] = []
+    for node in graph.nodes.values():
+        for key, value in node.attributes.items():
+            try:
+                json.dumps(value)
+            except TypeError:
+                offenders.append((node.id, key, type(value).__name__))
+    assert not offenders, f"{len(offenders)} attribute(s) are not JSON values: {offenders[:3]}"
+
+
+def test_projected_finding_nodes_carry_readable_remediation_text(projected, estate_findings) -> None:
+    """``recommendation`` is prose the UI prints, so it must read as prose.
+
+    ``ui/lib/unified-graph-flow.ts`` uses ``recommendation`` as a
+    misconfiguration node's description, and ``graph/builder.py`` supplies a
+    plain string there for live cloud scans. The estate projection must speak
+    the same vocabulary rather than handing the same key a structured object.
+    """
+    graph, _ = projected
+    finding_nodes = [
+        node for node in graph.nodes.values() if node.entity_type is EntityType.MISCONFIGURATION and node.attributes.get("estate_id")
+    ]
+    assert len(finding_nodes) == len(estate_findings)
+    for node in finding_nodes:
+        recommendation = node.attributes.get("recommendation")
+        assert isinstance(recommendation, str), (node.id, type(recommendation).__name__)
+        assert recommendation, f"{node.id} lost its remediation text"
+        assert not recommendation.startswith("Remediation("), f"{node.id} renders a Python repr as its remediation: {recommendation[:80]!r}"

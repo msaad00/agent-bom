@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-08-04",
+  "generated_on": "2026-08-05",
   "version": "0.98.3",
   "metrics": [
     {
@@ -40,7 +40,7 @@
     },
     {
       "name": "UI app pages",
-      "value": 41,
+      "value": 43,
       "source": "ui/app",
       "notes": "Counts page.tsx and page.jsx files recursively."
     },

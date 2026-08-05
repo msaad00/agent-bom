@@ -47,6 +47,7 @@ const story: EnterpriseDemoStory = {
     complete_sources: 8,
     partial_sources: 1,
     correlations: 4,
+    cross_source_correlations: 1,
     snapshots: 3,
     findings: 439,
   },
@@ -200,10 +201,13 @@ describe("DemoEstatePage", () => {
 
     // The correlations list is bounded too, and says so.
     expect(
-      screen.getByText(`Showing ${story.correlations.length} of ${story.summary.correlations} — the incident first.`),
+      screen.getByText(
+        `Showing ${story.correlations.length} of ${story.summary.correlations} — the incident first. ${story.summary.cross_source_correlations} span more than one evidence source.`,
+      ),
     ).toBeInTheDocument();
   });
 
+<<<<<<< HEAD
   it("states what the evidence timeline is bounded against", async () => {
     apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
     render(<DemoEstatePage />);
@@ -216,6 +220,34 @@ describe("DemoEstatePage", () => {
     const timeline = await screen.findByTestId("demo-estate-timeline");
     expect(timeline).toHaveTextContent(
       `Showing ${story.events.length} of ${story.summary.observations}`,
+=======
+  it("labels every bounded list, including the evidence timeline", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    render(<DemoEstatePage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("demo-estate-summary")).toBeInTheDocument(),
+    );
+
+    // The timeline renders `events`, which the API bounds against the estate's
+    // whole observation count. A slice that serialises as the whole is the
+    // #4631 defect class, and the two sibling sections already say so.
+    expect(
+      screen.getByText(
+        `Showing ${story.events.length} of ${story.summary.observations} normalized events — the correlated incident included, then oldest first.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("never presents single-source traces as cross-vendor correlations", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    render(<DemoEstatePage />);
+
+    const strip = await screen.findByTestId("demo-estate-summary");
+    // The headline tile counts trace groups; on the shipped estate almost all
+    // of them are one event from one source. The tile must qualify itself.
+    expect(strip).toHaveTextContent(
+      `${story.summary.cross_source_correlations} cross-source`,
+>>>>>>> origin/main
     );
   });
 

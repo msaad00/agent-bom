@@ -160,7 +160,9 @@ def main_check() -> None:
         # while the strip above it reports every observation in the estate.
         "of {posture.total} — incident first",
         "of {story.summary.correlations} — the incident first",
-        "of {story.summary.observations} — the incident first",
+        # The observations list carries the fuller wording that shipped; both
+        # sibling lists use the short form. Assert what renders, not a variant.
+        "of {story.summary.observations} normalized events",
     ):
         _require(marker in dashboard, f"dashboard lost required marker: {marker}")
 

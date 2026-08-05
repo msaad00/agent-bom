@@ -14,10 +14,18 @@ The registration idiom is ``addTool`` from ``io.modelcontextprotocol:kotlin-sdk`
         description = "An example tool",
     ) { request -> CallToolResult(...) }
 
-``addTool`` is an ordinary-looking method name, so -- as the Swift analyzer does
-with ``import MCP`` -- a registration is only trusted in a file that imports an
-MCP module. ``addPrompt`` and ``addResource`` are sibling registrations that
-declare no tool and are deliberately not matched.
+``Server.addTools`` is the bulk sibling, and carries each name one level deeper:
+
+    mcpServer.addTools(
+        listOf(
+            RegisteredTool(Tool("bulk-a", ToolSchema(), "Tool A")) { CallToolResult(...) },
+        ),
+    )
+
+``addTool``/``addTools`` are ordinary-looking method names, so -- as the Swift
+analyzer does with ``import MCP`` -- a registration is only trusted in a file
+that imports an MCP module. ``addPrompt`` and ``addResource`` are sibling
+registrations that declare no tool and are deliberately not matched.
 """
 
 from __future__ import annotations
@@ -73,6 +81,14 @@ _KOTLIN_CALL_SKIP = frozenset(
 # Only the call head is matched, so the scan can run over comment/string-masked
 # text; the name literal is then read from the real source at the same offset.
 _KOTLIN_ADD_TOOL_START_RE = re.compile(r"\.addTool\s*\(")
+# ``public fun addTools(toolsToAdd: List<RegisteredTool>)`` is the bulk sibling
+# of ``addTool``. Every name lives inside a ``Tool(...)`` nested two levels down,
+# so the argument list is walked rather than read as one registration. ``\b``
+# before ``Tool`` keeps ``RegisteredTool(`` from matching as the constructor, and
+# the ``\(`` keeps ``ToolSchema()`` out.
+_KOTLIN_ADD_TOOLS_START_RE = re.compile(r"\.addTools\s*\(")
+_KOTLIN_REGISTERED_TOOL_START_RE = re.compile(r"\bRegisteredTool\s*\(")
+_KOTLIN_TOOL_CTOR_START_RE = re.compile(r"\bTool\s*\(")
 _KOTLIN_TOOL_NAME_ARG_RE = re.compile(r"""\bname\s*=\s*"(?P<name>[^"]*)\"""")
 _KOTLIN_LEADING_STRING_RE = re.compile(r"""\s*"(?P<name>[^"]*)\"""")
 _KOTLIN_LOCAL_BINDING_RE = re.compile(r"\b(?:val|var)\s+(?P<var>\w+)\s*(?::\s*(?P<type>[\w.]+))?\s*=\s*(?P<ctor>[\w.]+)\s*\(")
@@ -199,6 +215,49 @@ def _kotlin_tool_name(source: str, masked: str, open_paren_index: int) -> str:
     return leading.group("name").strip() if leading else ""
 
 
+def _register_kotlin_handler_lambda(
+    source: str,
+    masked: str,
+    args_end: int,
+    *,
+    tool_name: str,
+    rel_path: str,
+    scope_name: str,
+    bindings: Mapping[str, str],
+    functions: dict[str, _KotlinFunctionAnalysis],
+) -> str:
+    """Register the trailing lambda at *args_end* as this tool's handler.
+
+    The lambda has no declared name, so it becomes a synthetic ``tool:<name>``
+    function. The key must be scope-qualified the same way real functions are,
+    because ``ast_analyzer`` re-keys every function by ``(scope_name, name)``
+    before resolving handlers.
+    """
+    handler_function_name = f"tool:{tool_name}"
+    handler_name = _kotlin_function_key(scope_name, handler_function_name)
+    brace_index = masked.find("{", args_end)
+    # Only a lambda that follows the argument list on the same statement is this
+    # tool's handler.
+    if brace_index < 0 or masked[args_end:brace_index].strip():
+        return handler_name
+    body_segment = _balanced_segment(masked, brace_index, open_char="{", close_char="}")
+    if body_segment is None:
+        return handler_name
+    masked_body, _ = body_segment
+    body_text = source[brace_index : brace_index + len(masked_body)]
+    handler_bindings = dict(bindings)
+    handler_bindings.update(_kotlin_local_bindings(body_text, bindings))
+    functions[handler_name] = _KotlinFunctionAnalysis(
+        name=handler_function_name,
+        line_number=_line_number_from_index(source, brace_index),
+        file_path=rel_path,
+        scope_name=scope_name,
+        import_bindings=handler_bindings,
+        call_sites=_kotlin_call_sites(body_text, line_offset=_line_number_from_index(source, brace_index) - 1),
+    )
+    return handler_name
+
+
 def _collect_kotlin_tool_registrations(
     source: str,
     *,
@@ -207,60 +266,80 @@ def _collect_kotlin_tool_registrations(
     bindings: Mapping[str, str],
     functions: dict[str, _KotlinFunctionAnalysis],
 ) -> list[_KotlinToolRegistration]:
-    """Collect ``addTool`` registrations, capturing the trailing-lambda handler."""
+    """Collect ``addTool``/``addTools`` registrations and their lambda handlers."""
     registrations: list[_KotlinToolRegistration] = []
     seen: set[tuple[str, int]] = set()
     # Scan masked source so a commented-out or quoted registration is never a
     # live tool; masking preserves offsets, so names are read from the real text.
     masked = mask_line_comments_and_strings(source)
-    for match in _KOTLIN_ADD_TOOL_START_RE.finditer(masked):
-        open_paren_index = match.end() - 1
-        tool_name = _kotlin_tool_name(source, masked, open_paren_index)
-        if not tool_name:
-            continue
-        key = (tool_name, match.start())
+
+    def add(tool_name: str, *, registration_index: int, handler_name: str) -> None:
+        key = (tool_name, registration_index)
         if key in seen:
-            continue
+            return
         seen.add(key)
-
-        # The trailing lambda has no declared name, so it is registered as a
-        # synthetic ``tool:<name>`` function. The key must be scope-qualified the
-        # same way real functions are, because ``ast_analyzer`` re-keys every
-        # function by ``(scope_name, name)`` before resolving handlers.
-        handler_function_name = f"tool:{tool_name}"
-        handler_name = _kotlin_function_key(scope_name, handler_function_name)
-        call_segment = _balanced_segment(masked, open_paren_index, open_char="(", close_char=")")
-        if call_segment is not None:
-            _masked_args, args_end = call_segment
-            brace_index = masked.find("{", args_end)
-            # Only a lambda that follows the argument list on the same statement
-            # is this tool's handler.
-            if brace_index >= 0 and not masked[args_end:brace_index].strip():
-                body_segment = _balanced_segment(masked, brace_index, open_char="{", close_char="}")
-                if body_segment is not None:
-                    masked_body, _ = body_segment
-                    body_text = source[brace_index : brace_index + len(masked_body)]
-                    handler_bindings = dict(bindings)
-                    handler_bindings.update(_kotlin_local_bindings(body_text, bindings))
-                    functions[handler_name] = _KotlinFunctionAnalysis(
-                        name=handler_function_name,
-                        line_number=_line_number_from_index(source, brace_index),
-                        file_path=rel_path,
-                        scope_name=scope_name,
-                        import_bindings=handler_bindings,
-                        call_sites=_kotlin_call_sites(body_text, line_offset=_line_number_from_index(source, brace_index) - 1),
-                    )
-
         registrations.append(
             _KotlinToolRegistration(
                 tool_name=tool_name,
                 handler_name=handler_name,
-                line_number=_line_number_from_index(source, match.start()),
+                line_number=_line_number_from_index(source, registration_index),
                 file_path=rel_path,
                 scope_name=scope_name,
                 import_bindings=dict(bindings),
             )
         )
+
+    for match in _KOTLIN_ADD_TOOL_START_RE.finditer(masked):
+        open_paren_index = match.end() - 1
+        tool_name = _kotlin_tool_name(source, masked, open_paren_index)
+        if not tool_name:
+            continue
+        handler_name = _kotlin_function_key(scope_name, f"tool:{tool_name}")
+        call_segment = _balanced_segment(masked, open_paren_index, open_char="(", close_char=")")
+        if call_segment is not None:
+            _masked_args, args_end = call_segment
+            handler_name = _register_kotlin_handler_lambda(
+                source,
+                masked,
+                args_end,
+                tool_name=tool_name,
+                rel_path=rel_path,
+                scope_name=scope_name,
+                bindings=bindings,
+                functions=functions,
+            )
+        add(tool_name, registration_index=match.start(), handler_name=handler_name)
+
+    for match in _KOTLIN_ADD_TOOLS_START_RE.finditer(masked):
+        call_segment = _balanced_segment(masked, match.end() - 1, open_char="(", close_char=")")
+        if call_segment is None:
+            continue
+        masked_args, _ = call_segment
+        args_offset = match.end() - 1
+        for registered in _KOTLIN_REGISTERED_TOOL_START_RE.finditer(masked_args):
+            registered_index = args_offset + registered.start()
+            registered_segment = _balanced_segment(masked, args_offset + registered.end() - 1, open_char="(", close_char=")")
+            if registered_segment is None:
+                continue
+            masked_registered_args, registered_end = registered_segment
+            tool_ctor = _KOTLIN_TOOL_CTOR_START_RE.search(masked_registered_args)
+            if tool_ctor is None:
+                continue
+            ctor_open_index = args_offset + registered.end() - 1 + tool_ctor.end() - 1
+            tool_name = _kotlin_tool_name(source, masked, ctor_open_index)
+            if not tool_name:
+                continue
+            handler_name = _register_kotlin_handler_lambda(
+                source,
+                masked,
+                registered_end,
+                tool_name=tool_name,
+                rel_path=rel_path,
+                scope_name=scope_name,
+                bindings=bindings,
+                functions=functions,
+            )
+            add(tool_name, registration_index=registered_index, handler_name=handler_name)
     return registrations
 
 

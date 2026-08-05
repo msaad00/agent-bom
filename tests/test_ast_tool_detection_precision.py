@@ -191,3 +191,227 @@ def test_all_three_tool_detectors_agree(tmp_path: Path, decorator: str) -> None:
     }
 
     assert len(set(verdicts.values())) == 1, verdicts
+
+
+# --------------------------------------------------------------------------
+# Low-level ``Server`` -- github.com/modelcontextprotocol/python-sdk
+# --------------------------------------------------------------------------
+# Servers built on the low-level ``Server`` class declare their tools in a
+# ListTools handler instead of via ``@mcp.tool()``. The tool NAME is the ``name``
+# of each ``types.Tool`` returned, never the handler's own function name --
+# emitting the handler name would be the same dishonesty as claiming a web
+# handler. Every sample below is copied from the SDK's own examples.
+
+# v1.x docs/low-level-server.md, from
+# examples/snippets/servers/lowlevel/structured_output.py.
+LOWLEVEL_V1_APPLIED_DECORATOR = '''"""Run from the repository root."""
+
+from typing import Any
+
+import mcp.server.stdio
+import mcp.types as types
+from mcp.server.lowlevel import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
+
+server = Server("example-server")
+
+
+@server.list_tools()
+async def list_tools() -> list[types.Tool]:
+    """List available tools with structured output schemas."""
+    return [
+        types.Tool(
+            name="get_weather",
+            description="Get current weather for a city",
+            inputSchema={
+                "type": "object",
+                "properties": {"city": {"type": "string", "description": "City name"}},
+                "required": ["city"],
+            },
+        )
+    ]
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Handle tool calls with structured output."""
+    if name == "get_weather":
+        return {"temperature": 22.5, "city": arguments["city"]}
+    raise ValueError(f"Unknown tool: {name}")
+'''
+
+# The same handler registered with the bare decorator. ``@server.list_tools`` is
+# an ``ast.Attribute`` and ``@server.list_tools()`` an ``ast.Call``; a matcher
+# that unwraps only one of them silently registers nothing for the other.
+LOWLEVEL_V1_BARE_DECORATOR = """import mcp.types as types
+from mcp.server.lowlevel import Server
+
+server = Server("example-server")
+
+
+@server.list_tools
+async def handle_list_tools() -> list[types.Tool]:
+    return [
+        types.Tool(name="query_db", description="Query the database", inputSchema={}),
+        types.Tool(name="fetch_url", description="Fetch a URL", inputSchema={}),
+    ]
+"""
+
+# v2 examples/snippets/servers/lowlevel/structured_output.py: the handler is a
+# plain function wired through the ``Server`` constructor, so there is no
+# decorator at all.
+LOWLEVEL_V2_CONSTRUCTOR_KWARG = '''"""Run from the repository root."""
+
+import mcp.server.stdio
+import mcp.types as types
+from mcp.server import Server, ServerRequestContext
+
+
+async def handle_list_tools(
+    ctx: ServerRequestContext, params: types.PaginatedRequestParams | None
+) -> types.ListToolsResult:
+    """List available tools with structured output schemas."""
+    return types.ListToolsResult(
+        tools=[
+            types.Tool(
+                name="get_weather",
+                description="Get current weather for a city",
+                input_schema={"type": "object", "properties": {"city": {"type": "string"}}},
+            )
+        ]
+    )
+
+
+server = Server(
+    "example-server",
+    on_list_tools=handle_list_tools,
+)
+'''
+
+# A plugin registry with a method named ``list_tools`` returning its own ``Tool``
+# records. Nothing here is MCP, and the shape is identical.
+ORDINARY_LIST_TOOLS_REGISTRY = """from dataclasses import dataclass
+
+from .registry import registry
+
+
+@dataclass
+class Tool:
+    name: str
+    description: str
+
+
+class HardwareInventory:
+    @registry.list_tools
+    def list_tools(self) -> list[Tool]:
+        return [
+            Tool(name="hammer-42", description="a claw hammer"),
+            Tool(name="wrench-7", description="an adjustable wrench"),
+        ]
+"""
+
+# An MCP project whose ``Tool`` is an unrelated domain record. Without a
+# ListTools handler to anchor it, an ``mcp`` import alone must not turn every
+# ``Tool(name=...)`` in the file into a tool.
+MCP_PROJECT_ORDINARY_TOOL_RECORD = '''from dataclasses import dataclass
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("workshop")
+
+
+@dataclass
+class Tool:
+    name: str
+
+
+BENCH = [Tool(name="hammer-42"), Tool(name="wrench-7")]
+
+
+@mcp.tool()
+def count_tools() -> int:
+    """Count the tools on the bench."""
+    return len(BENCH)
+'''
+
+
+def test_lowlevel_applied_list_tools_decorator_declares_its_tools(tmp_path: Path) -> None:
+    (tmp_path / "server.py").write_text(LOWLEVEL_V1_APPLIED_DECORATOR)
+
+    assert _tool_names(tmp_path) == {"get_weather"}
+
+
+def test_lowlevel_bare_list_tools_decorator_declares_its_tools(tmp_path: Path) -> None:
+    (tmp_path / "server.py").write_text(LOWLEVEL_V1_BARE_DECORATOR)
+
+    assert _tool_names(tmp_path) == {"query_db", "fetch_url"}
+
+
+def test_lowlevel_constructor_on_list_tools_handler_declares_its_tools(tmp_path: Path) -> None:
+    (tmp_path / "server.py").write_text(LOWLEVEL_V2_CONSTRUCTOR_KWARG)
+
+    assert _tool_names(tmp_path) == {"get_weather"}
+
+
+def test_lowlevel_handler_function_name_is_not_reported_as_a_tool(tmp_path: Path) -> None:
+    """The handler lists tools; it is not one. Emitting its name over-reports."""
+    (tmp_path / "server.py").write_text(LOWLEVEL_V1_BARE_DECORATOR)
+
+    assert "handle_list_tools" not in _tool_names(tmp_path)
+
+
+def test_lowlevel_tools_carry_the_signal_that_matched(tmp_path: Path) -> None:
+    (tmp_path / "server.py").write_text(LOWLEVEL_V1_APPLIED_DECORATOR)
+
+    entries = [t for t in analyze_project(tmp_path).to_dict()["tools"] if t["name"] == "get_weather"]
+
+    assert [t["decorators"] for t in entries] == [["tools/list"]]
+
+
+def test_ordinary_list_tools_method_without_mcp_is_not_an_agent_tool(tmp_path: Path) -> None:
+    (tmp_path / "inventory.py").write_text(ORDINARY_LIST_TOOLS_REGISTRY)
+
+    assert _tool_names(tmp_path) == set()
+
+
+def test_tool_records_without_a_list_tools_handler_are_not_agent_tools(tmp_path: Path) -> None:
+    (tmp_path / "workshop.py").write_text(MCP_PROJECT_ORDINARY_TOOL_RECORD)
+
+    assert _tool_names(tmp_path) == {"count_tools"}
+
+
+LOWLEVEL_CALL_TOOL_RUNS_A_SHELL = """import subprocess
+from typing import Any
+
+import mcp.types as types
+from mcp.server.lowlevel import Server
+
+server = Server("shell-server")
+
+
+@server.list_tools()
+async def handle_list_tools() -> list[types.Tool]:
+    return [types.Tool(name="run_command", description="Run a command", inputSchema={})]
+
+
+@server.call_tool()
+async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    output = subprocess.run(arguments["cmd"], shell=True, capture_output=True)
+    return [types.TextContent(type="text", text=output.stdout.decode())]
+"""
+
+
+def test_lowlevel_call_tool_dispatcher_stays_a_sink_entrypoint(tmp_path: Path) -> None:
+    """Dropping its tool NAME must not drop its sink analysis.
+
+    ``@server.call_tool()`` is where a low-level server's dangerous work
+    actually happens, so it stays a tool entrypoint for flow findings even
+    though it is no longer emitted as a tool called "call_tool".
+    """
+    (tmp_path / "server.py").write_text(LOWLEVEL_CALL_TOOL_RUNS_A_SHELL)
+    result = analyze_project(tmp_path)
+
+    assert _tool_names(tmp_path) == {"run_command"}
+    assert [(f.entrypoint, f.sink) for f in result.flow_findings if f.category == "unguarded_tool_sink"] == [
+        ("handle_call_tool", "subprocess.run")
+    ]

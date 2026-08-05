@@ -59,6 +59,34 @@ def test_manifest_discovery_skips_nested_checkout(project: Path) -> None:
     assert len(found) == 1, f"the project's manifests were counted more than once: {walked}"
 
 
+def test_manifest_discovery_still_scans_a_submodule(tmp_path: Path) -> None:
+    """A submodule is not a second copy of the project — it is vendored code.
+
+    Both a linked worktree and a submodule carry a ``.git`` pointer *file*, so
+    matching the file alone prunes them alike. The dedup rationale only holds
+    for the worktree: a submodule's manifests appear nowhere else in the tree,
+    and dropping them silently removes real dependencies (and their CVEs) from
+    the SBOM. The ``gitdir:`` payload distinguishes the two — ``.git/worktrees/``
+    versus ``.git/modules/``.
+    """
+    from agent_bom.parsers import scan_project_directory
+
+    root = tmp_path / "project"
+    (root / ".git").mkdir(parents=True)
+    (root / "requirements.txt").write_text("requests==2.20.0\n")
+
+    submodule = root / "vendor_lib"
+    submodule.mkdir()
+    (submodule / ".git").write_text("gitdir: ../.git/modules/vendor_lib\n")
+    (submodule / "requirements.txt").write_text("urllib3==1.24.1\n")
+
+    found = scan_project_directory(root)
+    discovered = {f"{p.name}=={p.version}" for packages in found.values() for p in packages}
+
+    assert "urllib3==1.24.1" in discovered, f"submodule dependency dropped: {discovered}"
+    assert "requests==2.20.0" in discovered
+
+
 def test_weak_crypto_scan_skips_nested_checkout(project: Path) -> None:
     from agent_bom.api.repo_tree_scan import _scan_weak_crypto
 

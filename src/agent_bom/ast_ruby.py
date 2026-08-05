@@ -4,6 +4,14 @@ Regex-backed and conservative: gem names must be declared in ``Gemfile.lock``
 (or ``Gemfile`` when no lock exists) before ``require`` bindings are trusted.
 Unresolved MCP tool handlers are dropped so headless agents do not inherit
 false ``function_reachable`` upgrades at CVE join time.
+
+The official ``mcp`` gem documents three ways to define a tool, and all three
+are matched: ``MCP::Server#define_tool`` with a block, ``MCP::Tool.define`` with
+a block, and a subclass of ``MCP::Tool`` (whose name comes from ``tool_name``
+when declared, and otherwise from the underscored class name -- the fallback
+``lib/mcp/tool.rb`` itself applies). The block- and class-bodied forms have no
+named handler to resolve, so they declare a tool without contributing a
+reachability path, exactly as ``define_tool`` already did.
 """
 
 from __future__ import annotations
@@ -73,6 +81,25 @@ _RUBY_DEFINE_TOOL_RE = re.compile(
 # The call head alone, for scanning comment/string-masked source where the name
 # literal has been blanked out; the name is then read from the real source.
 _RUBY_DEFINE_TOOL_START_RE = re.compile(r"""\.define_tool\s*\(\s*name:\s*""")
+# The mcp gem documents three ways to define a tool. ``Server#define_tool`` above
+# is one; the other two are ``MCP::Tool.define`` with a block, and a subclass of
+# ``MCP::Tool``.
+_RUBY_TOOL_DEFINE_RE = re.compile(r"""\b(?P<qualifier>(?:\w+::)*)Tool\.define\s*\(\s*name:\s*['"](?P<name>[^'"]+)['"]""")
+_RUBY_TOOL_DEFINE_START_RE = re.compile(r"""\b(?P<qualifier>(?:\w+::)*)Tool\.define\s*\(\s*name:\s*""")
+_RUBY_CLASS_DECL_RE = re.compile(r"""^[ \t]*class\s+(?P<name>[\w:]+)\s*<\s*(?P<superclass>[\w:]+)""", re.MULTILINE)
+_RUBY_TOOL_NAME_DECL_RE = re.compile(r"""^[ \t]*tool_name\s+['"](?P<name>[^'"]+)['"]""", re.MULTILINE)
+# Masking blanks the opening quote too, so the head stops before the literal.
+_RUBY_TOOL_NAME_DECL_START_RE = re.compile(r"""^[ \t]*tool_name[ \t]+""", re.MULTILINE)
+_RUBY_MCP_REQUIRE_HEADS = frozenset({"mcp", "modelcontextprotocol"})
+# ``MCP::Tool`` names the gem outright; a bare ``Tool`` is too ordinary a name to
+# trust on its own, so it needs the file to require the gem -- the discriminator
+# the Go analyzer applies to ``NewTool`` and Swift to ``Tool(name:)``.
+_RUBY_MCP_QUALIFIER = "mcp::"
+# lib/mcp/tool.rb: with no ``tool_name``, ``name_value`` falls back to
+# ``StringUtils.handle_from_class_name``, which demodulizes then underscores the
+# class name. These two substitutions are that method's, verbatim.
+_RUBY_ACRONYM_BOUNDARY_RE = re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])")
+_RUBY_WORD_BOUNDARY_RE = re.compile(r"(?<=[a-z\d])(?=[A-Z])")
 _RUBY_FRAMEWORK_HINTS: dict[str, str] = {
     "modelcontextprotocol": "MCP",
     "mcp": "MCP",
@@ -226,6 +253,7 @@ def _collect_ruby_tool_registrations(
     class_name: str,
     bindings: dict[str, str],
     methods: Mapping[str, _RubyMethodAnalysis],
+    requires_mcp: bool,
 ) -> list[_RubyToolRegistration]:
     registrations: list[_RubyToolRegistration] = []
     seen: set[tuple[str, int]] = set()
@@ -269,6 +297,104 @@ def _collect_ruby_tool_registrations(
         if key in seen:
             continue
         seen.add(key)
+        registrations.append(
+            _RubyToolRegistration(
+                tool_name=tool_name,
+                handler_name=f"tool:{tool_name}",
+                line_number=_line_number_from_index(source, match.start()),
+                file_path=rel_path,
+                class_name=class_name,
+                import_bindings=dict(bindings),
+            )
+        )
+
+    for match in _RUBY_TOOL_DEFINE_START_RE.finditer(masked):
+        if match.group("qualifier").lower() != _RUBY_MCP_QUALIFIER and not requires_mcp:
+            continue
+        name_match = _RUBY_TOOL_DEFINE_RE.match(source, match.start())
+        tool_name = name_match.group("name").strip() if name_match else ""
+        if not tool_name:
+            continue
+        key = (tool_name, match.start())
+        if key in seen:
+            continue
+        seen.add(key)
+        registrations.append(
+            _RubyToolRegistration(
+                tool_name=tool_name,
+                handler_name=f"tool:{tool_name}",
+                line_number=_line_number_from_index(source, match.start()),
+                file_path=rel_path,
+                class_name=class_name,
+                import_bindings=dict(bindings),
+            )
+        )
+
+    for registration in _collect_ruby_tool_class_registrations(
+        source,
+        masked,
+        rel_path=rel_path,
+        bindings=bindings,
+        requires_mcp=requires_mcp,
+    ):
+        key = (registration.tool_name, registration.line_number)
+        if key in seen:
+            continue
+        seen.add(key)
+        registrations.append(registration)
+    return registrations
+
+
+def ruby_source_requires_mcp(source: str) -> bool:
+    """Return whether the file requires the official ``mcp`` gem."""
+    for match in _RUBY_REQUIRE_RE.finditer(source):
+        head = match.group("path").split("/", 1)[0].strip().lower()
+        if head in _RUBY_MCP_REQUIRE_HEADS:
+            return True
+    return False
+
+
+def _ruby_tool_name_from_class(class_name: str) -> str:
+    """Derive the gem's default tool name from a ``MCP::Tool`` subclass name."""
+    demodulized = class_name.split("::")[-1]
+    underscored = _RUBY_WORD_BOUNDARY_RE.sub("_", _RUBY_ACRONYM_BOUNDARY_RE.sub("_", demodulized))
+    return underscored.replace("-", "_").lower()
+
+
+def _is_ruby_mcp_tool_superclass(superclass: str, *, requires_mcp: bool) -> bool:
+    normalized = superclass.strip()
+    if normalized.lower().endswith("::tool"):
+        return normalized.lower().startswith(_RUBY_MCP_QUALIFIER)
+    return normalized == "Tool" and requires_mcp
+
+
+def _collect_ruby_tool_class_registrations(
+    source: str,
+    masked: str,
+    *,
+    rel_path: str,
+    bindings: dict[str, str],
+    requires_mcp: bool,
+) -> list[_RubyToolRegistration]:
+    """Collect ``class MyTool < MCP::Tool`` definitions as tool registrations."""
+    registrations: list[_RubyToolRegistration] = []
+    declarations = list(_RUBY_CLASS_DECL_RE.finditer(masked))
+    for index, match in enumerate(declarations):
+        if not _is_ruby_mcp_tool_superclass(match.group("superclass"), requires_mcp=requires_mcp):
+            continue
+        class_name = match.group("name")
+        body_end = declarations[index + 1].start() if index + 1 < len(declarations) else len(masked)
+        tool_name = _ruby_tool_name_from_class(class_name)
+        # ``tool_name "…"`` inside the class body overrides the derived name. The
+        # literal is blanked by masking, so the head is located in the masked
+        # text and the name read from the real source at the same offset.
+        declared = _RUBY_TOOL_NAME_DECL_START_RE.search(masked, match.end(), body_end)
+        if declared is not None:
+            explicit = _RUBY_TOOL_NAME_DECL_RE.match(source, declared.start())
+            if explicit is not None and explicit.group("name").strip():
+                tool_name = explicit.group("name").strip()
+        if not tool_name:
+            continue
         registrations.append(
             _RubyToolRegistration(
                 tool_name=tool_name,
@@ -435,6 +561,7 @@ def scan_ruby_file(
         class_name=class_name,
         bindings=bindings,
         methods=methods,
+        requires_mcp=ruby_source_requires_mcp(source),
     )
     tools: list[ToolSignature] = []
     for registration in tool_registrations:

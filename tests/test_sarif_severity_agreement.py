@@ -108,6 +108,27 @@ def test_informational_findings_render_as_sarif_level_none(label: str) -> None:
     assert _verdict(rules["finding/CIS_ERROR"]) == (_SARIF_SEVERITY_MAP[Severity.NONE], _SECURITY_SEVERITY_SCORE[Severity.NONE])
 
 
+def test_dedicated_cis_stream_agrees_with_the_unified_stream_on_an_unrated_check() -> None:
+    """A CIS check carrying no severity is unrated in both streams, or neither.
+
+    `cis_check_to_finding` stopped defaulting a severity-less control to
+    ``medium`` (#4631) — an unevaluated control is unrated, not middling. The
+    dedicated per-cloud CIS stream in `to_sarif` kept its own ``or "medium"``
+    default, so the same check is published as Medium here and unrated in the
+    JSON/CSV/markdown summaries built from the unified stream.
+    """
+    report = AIBOMReport()
+    report.cis_benchmark_data = {
+        "checks": [{"check_id": "1.4", "status": "fail", "title": "root access keys"}]
+    }
+
+    rules = {rule["id"]: rule for rule in to_sarif(report)["runs"][0]["tool"]["driver"]["rules"]}
+    level, score = _verdict(rules["cis/aws/1.4"])
+
+    assert float(score) < 4.0, (level, score)
+    assert level != "warning", (level, score)
+
+
 @pytest.mark.parametrize("severity", ["none", "unknown"])
 def test_unrated_findings_are_never_published_as_medium(severity: str) -> None:
     """GitHub reads security-severity 4.0–6.9 as Medium; unrated is not Medium."""

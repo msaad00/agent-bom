@@ -123,7 +123,18 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/PRODUCT_METRICS.md", re.compile(r"(- Version: `)\d+\.\d+\.\d+(`)"), r"\g<1>{v}\g<2>"),
     ("docs/PRODUCT_METRICS.json", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     ("docs/RELEASE_VERIFICATION.md", re.compile(r"^(TAG=v)\d+\.\d+\.\d+$", re.M), r"\g<1>{v}"),
+    # The storefront row carries one of TWO phrasings depending on where the
+    # release is: lifecycle-neutral before the image is published, "Current
+    # stable version (pinned)" after. Matching only the published phrasing meant
+    # a pre-release bump silently skipped this file, and the drift surfaced as a
+    # `check_release_consistency` failure at tag time instead of being fixed by
+    # the bump that was supposed to own it.
     ("DOCKER_HUB_README.md", re.compile(r"(\| `)\d+\.\d+\.\d+(` \| Current stable version \(pinned\) \|)"), r"\g<1>{v}\g<2>"),
+    (
+        "DOCKER_HUB_README.md",
+        re.compile(r"(\| `)\d+\.\d+\.\d+(` \| Version used by the examples below; verify registry availability before pinning \|)"),
+        r"\g<1>{v}\g<2>",
+    ),
     # PUBLISHING.md — version examples
     ("docs/PUBLISHING.md", re.compile(r'(--version\s+")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("docs/PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),

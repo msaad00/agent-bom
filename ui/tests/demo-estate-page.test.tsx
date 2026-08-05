@@ -207,20 +207,6 @@ describe("DemoEstatePage", () => {
     ).toBeInTheDocument();
   });
 
-<<<<<<< HEAD
-  it("states what the evidence timeline is bounded against", async () => {
-    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
-    render(<DemoEstatePage />);
-
-    // The timeline renders `events`, which the API bounds to its own limit while
-    // `summary.observations` keeps the estate total. Rendering the bounded list
-    // beside a strip reading the full total, with nothing saying the list is a
-    // slice, is the same defect the findings and correlations lists already
-    // guard against.
-    const timeline = await screen.findByTestId("demo-estate-timeline");
-    expect(timeline).toHaveTextContent(
-      `Showing ${story.events.length} of ${story.summary.observations}`,
-=======
   it("labels every bounded list, including the evidence timeline", async () => {
     apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
     render(<DemoEstatePage />);
@@ -247,7 +233,6 @@ describe("DemoEstatePage", () => {
     // of them are one event from one source. The tile must qualify itself.
     expect(strip).toHaveTextContent(
       `${story.summary.cross_source_correlations} cross-source`,
->>>>>>> origin/main
     );
   });
 

@@ -40,7 +40,7 @@
     },
     {
       "name": "UI app pages",
-      "value": 43,
+      "value": 41,
       "source": "ui/app",
       "notes": "Counts page.tsx and page.jsx files recursively."
     },

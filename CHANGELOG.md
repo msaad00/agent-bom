@@ -16,6 +16,22 @@ than it found, or to report it under the wrong name — the failure mode that lo
 clean. Read "Security" and "Fixed — wrong or missing output" before upgrading:
 some numbers you may already be reporting will move.
 
+### Fixed — wrong or missing output
+
+- RPM 4.16+ stores its package database as `rpmdb.sqlite`, which is the default
+  on RHEL 9+, UBI9, Fedora 33+, Amazon Linux 2023 and Rocky 9. agent-bom could
+  not read it, so **every one of those images reported zero OS packages and
+  therefore zero OS CVEs** — a clean-looking scan that had not looked. Two
+  independent causes: the header parser required the 8-byte magic that legacy
+  BerkeleyDB records carry and the sqlite blob column does not, and the live
+  RPM parser shelled out to the `rpm` binary with no file fallback (dpkg and apk
+  both already read their database files). A UBI9 image now yields 107 packages
+  and 18 findings where it previously yielded none.
+- `parse_rpm_packages` ignored its `root` argument while its docstring claimed
+  the database path was derived from it. On a host that *did* have `rpm`,
+  scanning a mounted snapshot reported the **host's** packages as the
+  snapshot's. It no longer consults the host binary for a non-live root.
+
 ### Security
 
 - `sanitize_env_vars` wrote credential **values** in cleartext for `SSH_KEY`,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import subprocess
@@ -183,12 +184,76 @@ def _parse_dpkg_status_file(path: Path, packages: list[Package]) -> None:
         )
 
 
-def parse_rpm_packages(root: Path = Path("/")) -> list[Package]:
-    """Read installed RPM packages via the ``rpm`` command.
+# Where an rpm database lives. RHEL/Fedora moved it under /usr/lib/sysimage;
+# /var/lib/rpm remains a symlink on most images but not all, so both are checked
+# rather than assuming either.
+_RPM_DB_PATHS = (
+    "usr/lib/sysimage/rpm/rpmdb.sqlite",
+    "var/lib/rpm/rpmdb.sqlite",
+)
 
-    Uses ``rpm -qa`` with the database path derived from *root* to support
-    both live systems and mounted filesystem snapshots.  Returns an empty list
-    without raising when the ``rpm`` binary is not available.
+
+def _parse_rpm_db_file(root: Path) -> list[Package]:
+    """Read installed RPM packages straight from ``rpmdb.sqlite``.
+
+    The command path cannot serve a mounted snapshot on a host that has no
+    ``rpm`` binary -- which is every macOS workstation and most Debian/Alpine CI
+    runners. Without this, scanning a RHEL/UBI/Amazon-Linux image reported
+    **zero** OS packages and therefore zero OS CVEs: a clean-looking result that
+    simply had not looked. dpkg and apk already fall back to reading their
+    database files; rpm was the one that did not.
+
+    Opened read-only and immutable so a live system's database is never locked
+    or modified by a scan.
+    """
+    import sqlite3
+
+    from agent_bom.oci_parser import _parse_rpm_header_blob
+
+    for relative in _RPM_DB_PATHS:
+        db_path = root / relative
+        if not db_path.is_file():
+            continue
+        packages: list[Package] = []
+        try:
+            uri = f"file:{db_path}?immutable=1"
+            with contextlib.closing(sqlite3.connect(uri, uri=True)) as conn:
+                for (blob,) in conn.execute("SELECT blob FROM Packages"):
+                    parsed = _parse_rpm_header_blob(bytes(blob))
+                    if not parsed:
+                        continue
+                    name, full_version = parsed
+                    if name == "gpg-pubkey":
+                        continue
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=full_version,
+                            ecosystem="rpm",
+                            purl=f"pkg:rpm/redhat/{name}@{full_version}",
+                        )
+                    )
+        except sqlite3.Error as exc:
+            # An rpm database that EXISTS but cannot be read is a silent
+            # under-report, which is the failure mode this fallback exists to
+            # end. Say so at warning level rather than returning a clean zero.
+            _logger.warning("rpm database %s could not be read: %s", db_path, exc)
+            return []
+        if packages:
+            return packages
+    return []
+
+
+def parse_rpm_packages(root: Path = Path("/")) -> list[Package]:
+    """Read installed RPM packages.
+
+    Resolution order mirrors :func:`parse_dpkg_packages`:
+
+    1. ``rpm -qa`` -- only when scanning the live root. The command reads the
+       host's own database and takes no ``--root`` here, so running it against a
+       mounted snapshot would report the HOST's packages as the snapshot's.
+    2. Read ``rpmdb.sqlite`` directly (works on snapshots, and on hosts with no
+       ``rpm`` binary at all).
 
     Args:
         root: Filesystem root to scan.
@@ -197,27 +262,30 @@ def parse_rpm_packages(root: Path = Path("/")) -> list[Package]:
         List of :class:`~agent_bom.models.Package` objects with ``ecosystem="rpm"``.
     """
     packages: list[Package] = []
-    try:
-        result = subprocess.run(
-            ["rpm", "-qa", "--queryformat", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                parts = line.strip().split("\t")
-                if len(parts) >= 2 and parts[0] and parts[1]:
-                    packages.append(
-                        Package(
-                            name=parts[0],
-                            version=parts[1],
-                            ecosystem="rpm",
-                            purl=f"pkg:rpm/redhat/{parts[0]}@{parts[1]}",
+    if root == Path("/"):
+        try:
+            result = subprocess.run(
+                ["rpm", "-qa", "--queryformat", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 2 and parts[0] and parts[1]:
+                        packages.append(
+                            Package(
+                                name=parts[0],
+                                version=parts[1],
+                                ecosystem="rpm",
+                                purl=f"pkg:rpm/redhat/{parts[0]}@{parts[1]}",
+                            )
                         )
-                    )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        _logger.debug("rpm command not available")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            _logger.debug("rpm command not available; falling back to the database file")
+    if not packages:
+        packages = _parse_rpm_db_file(root)
     return packages
 
 

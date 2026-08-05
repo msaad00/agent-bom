@@ -425,18 +425,34 @@ def _parse_rpm_header_blob(blob: bytes) -> Optional[tuple[str, str]]:
     """Parse a minimal RPM header blob and return (name, version) or None.
 
     RPM header layout (big-endian):
-    - 8 bytes magic
+    - 8 bytes magic  -- PRESENT on legacy BerkeleyDB/NDB records, ABSENT in the
+      ``rpmdb.sqlite`` ``Packages.blob`` column
     - 4 bytes nindex (number of tag entries)
     - 4 bytes hsize (size of data section)
     - nindex × 16-byte entries: tag(4) type(4) offset(4) count(4)
     - data section (hsize bytes)
+
+    Both framings are accepted. Requiring the magic meant every blob from a
+    ``rpmdb.sqlite`` returned None, so RHEL 9+, UBI9, Fedora 33+, Amazon Linux
+    2023 and Rocky 9 images -- everything on RPM >= 4.16, which is the default
+    backend -- reported **zero** OS packages and therefore zero OS CVEs. A
+    scanner that finds nothing on the most common enterprise base image is the
+    "reports less than it found" failure, and it looks clean.
     """
-    if len(blob) < 16 or blob[:8] != _RPM_HDR_MAGIC:
+    if len(blob) < 16:
         return None
     try:
-        nindex = struct.unpack_from(">I", blob, 8)[0]
-        # hsize = struct.unpack_from(">I", blob, 12)[0]  # unused
-        index_start = 16
+        if blob[:8] == _RPM_HDR_MAGIC:
+            nindex = struct.unpack_from(">I", blob, 8)[0]
+            index_start = 16
+        else:
+            # sqlite framing: the record begins at nindex directly.
+            nindex = struct.unpack_from(">I", blob, 0)[0]
+            index_start = 8
+        # A wild nindex means this is not a header at all; bound it before it
+        # becomes a multi-gigabyte slice.
+        if nindex == 0 or nindex > 100_000:
+            return None
         data_start = index_start + nindex * 16
 
         if data_start > len(blob):

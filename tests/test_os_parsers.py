@@ -223,16 +223,35 @@ def test_parse_dpkg_packages_empty_root(tmp_path: Path) -> None:
 # ─── parse_rpm_packages ───────────────────────────────────────────────────────
 
 
-def test_parse_rpm_packages_success(tmp_path: Path) -> None:
-    """Parses rpm -qa output correctly."""
+def test_parse_rpm_packages_success() -> None:
+    """Parses rpm -qa output correctly on the LIVE root.
+
+    The root matters. ``rpm -qa`` here takes no ``--root``/``--dbpath``, so it
+    always reports the host's own database — which is only the right answer when
+    the host IS what we are scanning.
+    """
     mock_stdout = "bash\t5.2.15-3.fc39\tx86_64\nglibc\t2.38-16.fc39\tx86_64\n"
     mock_result = type("R", (), {"returncode": 0, "stdout": mock_stdout})()
     with patch("subprocess.run", return_value=mock_result):
-        packages = parse_rpm_packages(tmp_path)
+        packages = parse_rpm_packages(Path("/"))
     assert len(packages) == 2
     assert packages[0].name == "bash"
     assert packages[0].version == "5.2.15-3.fc39"
     assert packages[0].ecosystem == "rpm"
+
+
+def test_parse_rpm_packages_never_queries_the_host_for_a_snapshot(tmp_path: Path) -> None:
+    """A snapshot scan must not report the HOST's packages as the snapshot's.
+
+    ``rpm -qa`` is passed no root here, so running it against a mounted
+    filesystem would attribute the scanning machine's inventory to the image
+    under scan — wrong data, which is worse than missing data. With a non-``/``
+    root the command must not be consulted at all.
+    """
+    with patch("subprocess.run", return_value=type("R", (), {"returncode": 0, "stdout": "bash\t5.2.15-3.fc39\tx86_64\n"})()) as run:
+        packages = parse_rpm_packages(tmp_path)
+    assert packages == [], "host rpm output leaked into a snapshot scan"
+    assert run.call_count == 0, "the rpm binary was queried for a non-live root"
 
 
 def test_parse_rpm_packages_not_available(tmp_path: Path) -> None:
@@ -251,11 +270,11 @@ def test_parse_rpm_packages_timeout(tmp_path: Path) -> None:
     assert packages == []
 
 
-def test_parse_rpm_packages_purl_format(tmp_path: Path) -> None:
+def test_parse_rpm_packages_purl_format() -> None:
     mock_stdout = "bash\t5.2.15-3.fc39\tx86_64\n"
     mock_result = type("R", (), {"returncode": 0, "stdout": mock_stdout})()
     with patch("subprocess.run", return_value=mock_result):
-        packages = parse_rpm_packages(tmp_path)
+        packages = parse_rpm_packages(Path("/"))
     assert packages[0].purl == "pkg:rpm/redhat/bash@5.2.15-3.fc39"
 
 

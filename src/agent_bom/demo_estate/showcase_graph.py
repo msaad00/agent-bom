@@ -27,8 +27,17 @@ ShowcaseProfile = Literal["baseline", "current"]
 SHOWCASE_TENANT = "default"
 SHOWCASE_SCAN_ID = "showcase"
 SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
-SHOWCASE_BASELINE_CREATED_AT = "2026-06-01T12:00:00+00:00"
-SHOWCASE_CURRENT_CREATED_AT = "2026-06-08T12:00:00+00:00"
+# Bumped when the seeded snapshot's *shape* changes so ``_showcase_seed_is_current``
+# treats an older seed as stale and refreshes it. A DB seeded before the
+# enterprise estate was projected in still holds the 112-node showcase; without a
+# bump it would keep it forever and the demo would silently under-report.
+SHOWCASE_BASELINE_CREATED_AT = "2026-08-01T12:00:00+00:00"
+SHOWCASE_CURRENT_CREATED_AT = "2026-08-08T12:00:00+00:00"
+
+# The estate's containment root, once projected, becomes the graph's single
+# top-level container. The hand-built showcase org hangs off it so the demo reads
+# as one estate rather than two unrelated roots.
+SHOWCASE_ORG_ID = "org:corp"
 
 _logger = logging.getLogger(__name__)
 
@@ -676,6 +685,10 @@ def seed_showcase_graph_if_empty(
     finalize_showcase_snapshot(baseline_graph, profile="baseline")
     _annotate_demo_identity_risk(baseline_graph)
     _materialize_showcase_attack_paths(baseline_graph)
+    # After the showcase's own attack paths are derived, so the hand-built hero
+    # chains stay first in the exposure-path queue and the estate's correlated
+    # chains extend it rather than displacing it.
+    project_estate_onto_showcase(baseline_graph, tenant_id=tenant_id, profile="baseline")
     graph_store.save_graph(baseline_graph)
 
     current_graph, identity_store, drift_store = build_showcase_graph(
@@ -694,8 +707,58 @@ def seed_showcase_graph_if_empty(
     finalize_showcase_snapshot(current_graph, profile="current")
     _annotate_demo_identity_risk(current_graph)
     _materialize_showcase_attack_paths(current_graph)
+    project_estate_onto_showcase(current_graph, tenant_id=tenant_id, profile="current")
     graph_store.save_graph(current_graph)
     return True
+
+
+def project_estate_onto_showcase(
+    graph: UnifiedGraph,
+    *,
+    tenant_id: str = SHOWCASE_TENANT,
+    profile: ShowcaseProfile = "current",
+) -> dict[str, object]:
+    """Extend a showcase snapshot with the enterprise estate.
+
+    *Extend*, not replace. The showcase's hand-built incident chain
+    (``agent:cursor`` → ``server:shell-runner-server`` → ``pkg:pyyaml@5.3`` →
+    ``vuln:CVE-2020-14343`` → ``cred:aws-secret``) is the demo's headline and is
+    asserted by ``tests/test_demo_estate_bootstrap.py``; it is untouched here.
+    Seeding the estate as a *separate* snapshot was the alternative and was
+    rejected: the read path serves the newest snapshot, so a prospect would land
+    on one of the two estates and the correlation between them — the AWS account
+    the hand-built chain runs in is an account the estate inventories — would
+    never be drawn.
+
+    ``profile`` follows the estate's own stage semantics: the baseline snapshot
+    predates the collection window, so it carries the inventory but neither the
+    posture findings nor the correlated chain that the window's evidence
+    produced. Both appear in ``current``, which is what makes the drift lens show
+    posture arriving rather than a relabelling of the same set.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+    from agent_bom.demo_estate.enterprise_correlation import build_estate_correlations
+    from agent_bom.demo_estate.enterprise_findings import build_estate_findings
+    from agent_bom.demo_estate.estate_graph import (
+        estate_org_node_id,
+        project_estate_into_graph,
+    )
+
+    estate = build_demo_estate(tenant_id=tenant_id)
+    is_baseline = profile == "baseline"
+    summary = project_estate_into_graph(
+        graph,
+        estate,
+        findings=() if is_baseline else build_estate_findings(estate),
+        correlations=() if is_baseline else build_estate_correlations(estate),
+    )
+    _ensure_showcase_edge(
+        graph,
+        estate_org_node_id(estate),
+        SHOWCASE_ORG_ID,
+        RelationshipType.CONTAINS,
+    )
+    return summary
 
 
 def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> None:

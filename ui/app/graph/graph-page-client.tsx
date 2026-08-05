@@ -142,6 +142,7 @@ import {
   rollupDismissedForPreference,
   rollupViewHasContainers,
 } from "@/lib/graph-rollup-default";
+import { graphResponseIsTruncated } from "@/lib/graph-truncation";
 import {
   applyFilters,
   decodeFiltersFromParams,
@@ -2396,9 +2397,13 @@ function GraphPageInner() {
   );
 
   // No numbered pagination — the full current-scan graph loads at once (see the
-  // fetch effect). `graphTruncated` only fires when a scan exceeds the render
-  // budget, in which case the overview aggregates rather than paging.
-  const graphTruncated = graphData?.pagination.has_more === true;
+  // fetch effect). Two independent cuts can still make that partial: the render
+  // budget (surfaces as `pagination.has_more`) and the API's load-time node
+  // budget, which trims the snapshot BEFORE paging and therefore leaves
+  // `has_more` false while `completeness.truncated` is the only record of the
+  // loss. `graphResponseIsTruncated` reads both so a bounded estate can never
+  // render as the whole one.
+  const graphTruncated = graphResponseIsTruncated(graphData);
   if (loadingSnapshots) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-[var(--text-secondary)]">

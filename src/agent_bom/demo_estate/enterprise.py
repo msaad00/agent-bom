@@ -337,8 +337,7 @@ _ASSET_SPECS: tuple[dict[str, Any], ...] = (
         "tags": {
             "cluster": "kubernetes:cluster:eks/member-ai-prod",
             "container_image": (
-                "cloud_resource:aws:ecr:image:member-copilot@sha256:"
-                "4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
+                "cloud_resource:aws:ecr:image:member-copilot@sha256:4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
             ),
             "uses_identity": "cloud_resource:aws:iam:role:member-copilot-prod",
             "reads_data": "snowflake:table:nh_prod/analytics/phi/patient_summary",

@@ -112,13 +112,9 @@ def test_observations_reference_many_distinct_assets(estate: EnterpriseEstate) -
     is to emit an audit event for a package — evidence the estate cannot justify.
     """
     touched = {asset_id for event in estate.observations for asset_id in event.resource_ids}
-    observable = [
-        asset for asset in estate.assets if asset.resource_type not in {"package", "organization"}
-    ]
+    observable = [asset for asset in estate.assets if asset.resource_type not in {"package", "organization"}]
 
-    assert len(touched) >= len(observable) // 2, (
-        f"only {len(touched)} of {len(observable)} observable assets carry any evidence"
-    )
+    assert len(touched) >= len(observable) // 2, f"only {len(touched)} of {len(observable)} observable assets carry any evidence"
 
 
 def test_every_observation_hash_verifies(estate: EnterpriseEstate) -> None:

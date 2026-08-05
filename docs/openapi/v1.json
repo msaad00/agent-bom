@@ -5337,6 +5337,11 @@
             "title": "Observed At",
             "type": "string"
           },
+          "policy_decision": {
+            "default": "",
+            "title": "Policy Decision",
+            "type": "string"
+          },
           "resource_ids": {
             "items": {
               "type": "string"

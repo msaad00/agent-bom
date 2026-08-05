@@ -623,6 +623,7 @@ def _paths_by_asset(correlations: tuple[EnterpriseCorrelation, ...]) -> dict[str
     Single-asset traces are excluded: a "path" through one node is not a path,
     and labelling it one would inflate the attack-path count with noise.
     """
+
     # Ranked, not first-wins. ``setdefault`` over an iteration order made the
     # choice a function of trace-id sort order, so any change to how trace ids
     # are derived silently reassigned assets to different correlations — and

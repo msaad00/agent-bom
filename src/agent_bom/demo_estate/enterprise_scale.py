@@ -164,6 +164,7 @@ def _event_types_for(asset: EstateAsset) -> tuple[str, ...]:
             return ai_types
     return _EVENT_TYPES[asset.provider]
 
+
 _DATA_CLASSES: dict[str, tuple[str, ...]] = {
     "bucket": ("confidential",),
     "storage_account": ("confidential",),
@@ -336,9 +337,7 @@ def _build_estate_assets(profile: ScaleProfile, tenant_id: str) -> tuple[EstateA
     """
     cloud = mark_cloud_exposure(_build_assets(profile, tenant_id))
     accounts = index_cloud_accounts(cloud)
-    first_party = build_first_party_ai_assets(
-        accounts, tenant_id=tenant_id, per_account=profile.ai_services_per_account
-    )
+    first_party = build_first_party_ai_assets(accounts, tenant_id=tenant_id, per_account=profile.ai_services_per_account)
     third_party = build_third_party_ai_assets(
         accounts,
         tenant_id=tenant_id,

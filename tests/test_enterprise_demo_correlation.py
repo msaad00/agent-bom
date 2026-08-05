@@ -62,10 +62,7 @@ def test_primary_incident_correlates_ci_cloud_workload_mcp_data_and_llm() -> Non
         "github:repository:northstar-health/member-copilot",
         "github:workflow:member-copilot/deploy-prod",
         "cloud_resource:aws:iam:role:member-copilot-prod",
-        (
-            "cloud_resource:aws:ecr:image:member-copilot@sha256:"
-            "4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
-        ),
+        ("cloud_resource:aws:ecr:image:member-copilot@sha256:4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"),
         "kubernetes:cluster:eks/member-ai-prod",
         "kubernetes:workload:member-ai-prod/ai-prod/member-copilot",
         "mcp:server:clinical-analytics",

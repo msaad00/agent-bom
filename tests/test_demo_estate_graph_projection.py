@@ -41,10 +41,7 @@ INCIDENT_CHAIN: tuple[str, ...] = (
     "github:repository:northstar-health/member-copilot",
     "github:workflow:member-copilot/deploy-prod",
     "cloud_resource:aws:iam:role:member-copilot-prod",
-    (
-        "cloud_resource:aws:ecr:image:member-copilot@sha256:"
-        "4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
-    ),
+    ("cloud_resource:aws:ecr:image:member-copilot@sha256:4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"),
     "kubernetes:cluster:eks/member-ai-prod",
     "kubernetes:workload:member-ai-prod/ai-prod/member-copilot",
     "mcp:server:clinical-analytics",
@@ -145,15 +142,9 @@ def test_findings_attach_to_the_inventoried_asset(projected, estate, estate_find
     # MISCONFIGURATION. Projecting all of them as misconfigurations left the
     # CNAPP overlay unable to see a single vulnerable resource, so its
     # internet-exposed-AND-vulnerable combination could never fire.
-    finding_nodes = [
-        n
-        for n in graph.nodes.values()
-        if n.entity_type in (EntityType.MISCONFIGURATION, EntityType.VULNERABILITY)
-    ]
+    finding_nodes = [n for n in graph.nodes.values() if n.entity_type in (EntityType.MISCONFIGURATION, EntityType.VULNERABILITY)]
     assert len(finding_nodes) == len(estate_findings), (len(finding_nodes), len(estate_findings))
-    assert any(n.entity_type is EntityType.VULNERABILITY for n in finding_nodes), (
-        "no CVE was projected as a vulnerability node"
-    )
+    assert any(n.entity_type is EntityType.VULNERABILITY for n in finding_nodes), "no CVE was projected as a vulnerability node"
     assert any(n.entity_type is EntityType.MISCONFIGURATION for n in finding_nodes)
 
     affected: set[str] = set()
@@ -362,8 +353,7 @@ def test_projected_finding_nodes_carry_readable_remediation_text(projected, esta
     finding_nodes = [
         node
         for node in graph.nodes.values()
-        if node.entity_type in (EntityType.MISCONFIGURATION, EntityType.VULNERABILITY)
-        and node.attributes.get("estate_id")
+        if node.entity_type in (EntityType.MISCONFIGURATION, EntityType.VULNERABILITY) and node.attributes.get("estate_id")
     ]
     assert len(finding_nodes) == len(estate_findings)
     for node in finding_nodes:

@@ -86,9 +86,7 @@ def test_scan_connection_queues_without_provider_io(monkeypatch, wired):
     )
     monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: dispatched.append(job.job_id))
 
-    result = asyncio.run(
-        cloud_connections.scan_connection(request=SimpleNamespace(headers={}), connection_id="conn-1")
-    )
+    result = asyncio.run(cloud_connections.scan_connection(request=SimpleNamespace(headers={}), connection_id="conn-1"))
 
     assert offloaded == []
     assert result.job_id == "s-1"
@@ -144,9 +142,7 @@ def test_scan_connection_durable_handoff_does_not_enter_request_backpressure(mon
     )
     monkeypatch.setattr(scan_routes, "dispatch_scan_job", lambda job: None)
 
-    accepted = asyncio.run(
-        cloud_connections.scan_connection(request=SimpleNamespace(headers={}), connection_id="conn-1")
-    )
+    accepted = asyncio.run(cloud_connections.scan_connection(request=SimpleNamespace(headers={}), connection_id="conn-1"))
 
     assert accepted.status == "pending"
     assert offloaded == []

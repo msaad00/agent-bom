@@ -118,9 +118,7 @@ def test_dedicated_cis_stream_agrees_with_the_unified_stream_on_an_unrated_check
     JSON/CSV/markdown summaries built from the unified stream.
     """
     report = AIBOMReport()
-    report.cis_benchmark_data = {
-        "checks": [{"check_id": "1.4", "status": "fail", "title": "root access keys"}]
-    }
+    report.cis_benchmark_data = {"checks": [{"check_id": "1.4", "status": "fail", "title": "root access keys"}]}
 
     rules = {rule["id"]: rule for rule in to_sarif(report)["runs"][0]["tool"]["driver"]["rules"]}
     level, score = _verdict(rules["cis/aws/1.4"])

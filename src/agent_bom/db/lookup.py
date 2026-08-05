@@ -367,13 +367,17 @@ def _alias_cluster_fix(row: sqlite3.Row, rows: list[sqlite3.Row], version: Optio
         # frequently share aliases while covering different releases; taking
         # a fix from an unrelated range makes an otherwise unfixable finding
         # look remediable (or, worse, hides a real finding after upgrade).
-        if version and _version_match_state(
-            version,
-            other["introduced"],
-            other["fixed"],
-            other["last_affected"],
-            other["ecosystem"],
-        ) != "affected":
+        if (
+            version
+            and _version_match_state(
+                version,
+                other["introduced"],
+                other["fixed"],
+                other["last_affected"],
+                other["ecosystem"],
+            )
+            != "affected"
+        ):
             continue
         fix = _resolve_fixed_version(other)
         if not fix or not is_valid_fix_version(fix):

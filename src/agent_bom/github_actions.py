@@ -227,8 +227,7 @@ def _workflow_hardening_warnings(content: str, filename: str, used_actions: list
     has_top_level_permissions = any(re.match(r"^permissions\s*:", line) for line in active_lines)
     if not has_top_level_permissions:
         warnings.append(
-            f"CI hardening in {filename}: missing top-level permissions: policy; "
-            "declare least-privilege GITHUB_TOKEN permissions"
+            f"CI hardening in {filename}: missing top-level permissions: policy; declare least-privilege GITHUB_TOKEN permissions"
         )
 
     has_pull_request_target = False
@@ -260,8 +259,7 @@ def _workflow_hardening_warnings(content: str, filename: str, used_actions: list
         revision = action.rsplit("@", 1)[1] if "@" in action else ""
         if not _FULL_COMMIT_SHA_RE.fullmatch(revision):
             warnings.append(
-                f"CI hardening in {filename}: unpinned action {action}; pin remote actions "
-                "and reusable workflows to a full commit SHA"
+                f"CI hardening in {filename}: unpinned action {action}; pin remote actions and reusable workflows to a full commit SHA"
             )
 
     return warnings

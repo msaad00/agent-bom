@@ -951,9 +951,7 @@ def exec_severity_counts(request: Request, jobs: list[Any]) -> dict[str, int]:
     ``_reconciled_exec_counts`` directly to avoid a second pass.
     """
     estate = _estate_rollup(jobs)
-    return _reconciled_exec_counts(
-        _exec_estate(estate, jobs), _hub_severity_snapshot(request), _hub_kev_snapshot(request)
-    )
+    return _reconciled_exec_counts(_exec_estate(estate, jobs), _hub_severity_snapshot(request), _hub_kev_snapshot(request))
 
 
 def _exec_posture(

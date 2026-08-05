@@ -429,9 +429,7 @@ def test_go_cross_subpackage_collision_via_model_by_path() -> None:
 
 
 def test_advisory_affected_symbols_by_path_groups_go_imports() -> None:
-    by_path = advisory_affected_symbols_by_path(
-        _go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"])
-    )
+    by_path = advisory_affected_symbols_by_path(_go_osv("github.com/aws/aws-sdk-go/service/s3/s3crypto", ["NewDecryptionClient"]))
     assert by_path == {"github.com/aws/aws-sdk-go/service/s3/s3crypto": ["NewDecryptionClient"]}
 
 

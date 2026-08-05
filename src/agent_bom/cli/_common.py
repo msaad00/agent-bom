@@ -374,8 +374,7 @@ def _check_for_update_bg() -> None:
         if _vt(latest) > _vt(__version__):
             _, upgrade_command = _detect_install_method()
             msg = (
-                f"[yellow]Update available:[/yellow] agent-bom {__version__} → [bold]{latest}[/bold]\n"
-                f"  Run: [cyan]{upgrade_command}[/cyan]"
+                f"[yellow]Update available:[/yellow] agent-bom {__version__} → [bold]{latest}[/bold]\n  Run: [cyan]{upgrade_command}[/cyan]"
             )
         else:
             msg = ""

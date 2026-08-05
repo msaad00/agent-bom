@@ -12,9 +12,7 @@ PRODUCT_NAME = "agent-bom"
 # Capability line for meta/prose — not shown under the nav lockup.
 POSITIONING_SHORT = "Open security scanner for AI infrastructure"
 # Longer meta line for OpenAPI / HTML <title> chrome (matches VISUAL_LANGUAGE).
-POSITIONING_META = (
-    "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure"
-)
+POSITIONING_META = "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure"
 TAGLINE_CHAIN = "agent → MCP server → packages → CVEs → blast radius"
 DOCS_URL = "https://github.com/msaad00/agent-bom"
 REPORT_TITLE = f"{PRODUCT_NAME} scan report"

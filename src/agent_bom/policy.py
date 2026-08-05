@@ -599,9 +599,7 @@ def evaluate_policy(policy: dict, blast_radii: list, *, report: object | None = 
         from agent_bom.finding import FindingType
 
         malicious_findings = [
-            finding
-            for finding in report.to_findings()
-            if getattr(finding, "finding_type", None) == FindingType.MALICIOUS_PACKAGE
+            finding for finding in report.to_findings() if getattr(finding, "finding_type", None) == FindingType.MALICIOUS_PACKAGE
         ]
 
     for rule in policy.get("rules", []):

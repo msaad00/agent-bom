@@ -39,9 +39,9 @@ def _scan_one(pkg: Package) -> set[str]:
 
 # (package, version, ecosystem, a CVE that MUST appear) — real OSV ground truth.
 _GROUND_TRUTH = [
-    ("requests", "2.25.0", "pypi", "CVE-2023-32681"),   # header leak on redirect
-    ("jinja2", "3.1.2", "pypi", "CVE-2024-22195"),      # xmlattr XSS
-    ("pyyaml", "5.3", "pypi", "CVE-2020-14343"),        # arbitrary code exec on load
+    ("requests", "2.25.0", "pypi", "CVE-2023-32681"),  # header leak on redirect
+    ("jinja2", "3.1.2", "pypi", "CVE-2024-22195"),  # xmlattr XSS
+    ("pyyaml", "5.3", "pypi", "CVE-2020-14343"),  # arbitrary code exec on load
 ]
 
 

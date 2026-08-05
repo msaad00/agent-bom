@@ -209,8 +209,6 @@ def _handle_failure(
     )
 
 
-
-
 def apply_registered_failure_mode(name: str, exc: BaseException) -> ScannerDriverRunResult | None:
     """Honor a registered driver's ``failure_mode`` for an already-caught error.
 
@@ -227,6 +225,7 @@ def apply_registered_failure_mode(name: str, exc: BaseException) -> ScannerDrive
         duration_ms=0.0,
         exc=exc if isinstance(exc, Exception) else None,
     )
+
 
 __all__ = [
     "ScannerDriverError",

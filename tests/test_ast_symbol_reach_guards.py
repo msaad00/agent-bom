@@ -86,13 +86,7 @@ def test_analyze_project_csharp_without_lock_emits_no_nuget_symbol_reach(tmp_pat
 
 def test_analyze_project_ruby_without_lock_emits_no_rubygems_symbol_reach(tmp_path: Path) -> None:
     (tmp_path / "server.rb").write_text(
-        "require 'faraday'\n"
-        "class Server\n"
-        "  def fetch_url(url)\n"
-        "    client = Faraday.new\n"
-        "    client.get(url)\n"
-        "  end\n"
-        "end\n"
+        "require 'faraday'\nclass Server\n  def fetch_url(url)\n    client = Faraday.new\n    client.get(url)\n  end\nend\n"
     )
     result = analyze_project(tmp_path)
     assert not [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "rubygems"]
@@ -100,13 +94,7 @@ def test_analyze_project_ruby_without_lock_emits_no_rubygems_symbol_reach(tmp_pa
 
 def test_analyze_project_rust_skips_std_and_unresolved_tool(tmp_path: Path) -> None:
     (tmp_path / "server.rs").write_text(
-        "use std::fs;\n\n"
-        "fn orphan() {\n"
-        "    fs::read_to_string(\"x\").unwrap();\n"
-        "}\n\n"
-        "fn main() {\n"
-        '    server.tool("orphan_tool");\n'
-        "}\n"
+        'use std::fs;\n\nfn orphan() {\n    fs::read_to_string("x").unwrap();\n}\n\nfn main() {\n    server.tool("orphan_tool");\n}\n'
     )
     result = analyze_project(tmp_path)
     assert not result.dependency_symbol_reach

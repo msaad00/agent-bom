@@ -115,10 +115,7 @@ def test_dual_write_findings_resync_carries_reachability_into_json() -> None:
     assert payload["blast_radius"][0]["symbol_reachability"] == FUNCTION_REACHABLE
     assert payload["findings"][0]["evidence"]["symbol_reachability"] == FUNCTION_REACHABLE
     # The two views must agree, not merely both be truthy.
-    assert (
-        payload["findings"][0]["evidence"]["symbol_reachability"]
-        == payload["blast_radius"][0]["symbol_reachability"]
-    )
+    assert payload["findings"][0]["evidence"]["symbol_reachability"] == payload["blast_radius"][0]["symbol_reachability"]
 
 
 def test_all_machine_views_agree_on_reachability_verdict() -> None:

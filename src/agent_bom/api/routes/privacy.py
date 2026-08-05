@@ -207,9 +207,7 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
         "exceptions": sum(1 for record in exceptions if _get_exception_store().delete(record.exception_id, tenant_id=tenant_id)),
         "cloud_connections": sum(1 for record in connections if get_connection_store().delete(tenant_id, record.id)),
         "credential_refs": sum(
-            1
-            for record in credentials
-            if _get_credential_ref_store().delete(record.credential_ref_id, tenant_id=tenant_id)
+            1 for record in credentials if _get_credential_ref_store().delete(record.credential_ref_id, tenant_id=tenant_id)
         ),
         "api_keys": get_key_store().delete_tenant(tenant_id),
         "tenant_quota_overrides": 1 if _get_tenant_quota_store().delete(tenant_id) else 0,

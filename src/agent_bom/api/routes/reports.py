@@ -58,11 +58,7 @@ def _enforce_active_report_quota(tenant_id: str) -> None:
     limit = _active_report_jobs_limit()
     if limit <= 0:
         return
-    active = sum(
-        1
-        for job in get_report_job_store().list_for_tenant(tenant_id)
-        if job.status in (JobStatus.PENDING, JobStatus.RUNNING)
-    )
+    active = sum(1 for job in get_report_job_store().list_for_tenant(tenant_id) if job.status in (JobStatus.PENDING, JobStatus.RUNNING))
     if active >= limit:
         raise HTTPException(
             status_code=429,

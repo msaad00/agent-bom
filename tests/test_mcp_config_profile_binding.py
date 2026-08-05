@@ -271,8 +271,7 @@ def test_sqlite_v1_upgrade_overlays_authoritative_profile_columns(tmp_path: Path
         "revoked INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL)"
     )
     conn.execute(
-        "INSERT INTO mcp_client_configs "
-        "(config_id, tenant_id, name, profile_id, created_at, revoked, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO mcp_client_configs (config_id, tenant_id, name, profile_id, created_at, revoked, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             legacy["config_id"],
             legacy["tenant_id"],

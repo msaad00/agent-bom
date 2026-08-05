@@ -464,7 +464,6 @@ def test_typed_gateway_events_survive_audit_ingest_and_feed_without_payloads() -
         assert by_id["evt-identity-block"]["reason_code"] == "profile_not_found"
         assert by_id["evt-identity-block"]["development_mode"] is False
 
-
         kpis = client.get("/v1/gateway/feed/kpis", headers=_headers(tenant)).json()
         assert kpis["tool_calls_authorized"] == 1
         assert kpis["blocked_today"] == 2

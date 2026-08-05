@@ -477,14 +477,10 @@ def model_file_findings(
                 max_len=2000,
             )
             dangerous_imports = [
-                sanitize_text(value, max_len=200)
-                for value in raw_flag.get("dangerous_imports", []) or []
-                if isinstance(value, str)
+                sanitize_text(value, max_len=200) for value in raw_flag.get("dangerous_imports", []) or [] if isinstance(value, str)
             ][:32]
             code_exec_opcodes = [
-                sanitize_text(value, max_len=80)
-                for value in raw_flag.get("code_exec_opcodes", []) or []
-                if isinstance(value, str)
+                sanitize_text(value, max_len=80) for value in raw_flag.get("code_exec_opcodes", []) or [] if isinstance(value, str)
             ][:32]
             finding = apply_hub_classification(
                 Finding(

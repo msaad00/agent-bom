@@ -74,6 +74,7 @@ _AI_ASSISTANT_HOSTS: list[str] = [
     "anthropic.com",
 ]
 
+
 @dataclass
 class BrowserExtension:
     """Parsed browser extension with security risk assessment."""

@@ -48,13 +48,7 @@ def _cleanup(store: PostgresGatewayActivityStore, tenant_id: str) -> None:
 
 
 def test_postgres_ledger_serializes_same_tenant_sequence_before_dedupe() -> None:
-    source = (
-        __import__("pathlib").Path(__file__).parents[1]
-        / "src"
-        / "agent_bom"
-        / "api"
-        / "postgres_gateway_activity.py"
-    ).read_text()
+    source = (__import__("pathlib").Path(__file__).parents[1] / "src" / "agent_bom" / "api" / "postgres_gateway_activity.py").read_text()
     lock_position = source.index("FOR UPDATE")
     active_lookup_position = source.index("SELECT event_id, event_digest FROM gateway_activity_events")
     assert lock_position < active_lookup_position
@@ -62,11 +56,7 @@ def test_postgres_ledger_serializes_same_tenant_sequence_before_dedupe() -> None
     assert 'ensure_postgres_schema_version(conn, "runtime_events", version=GATEWAY_ACTIVITY_STORAGE_VERSION)' in source
 
     legacy_source = (
-        __import__("pathlib").Path(__file__).parents[1]
-        / "src"
-        / "agent_bom"
-        / "api"
-        / "postgres_runtime_event.py"
+        __import__("pathlib").Path(__file__).parents[1] / "src" / "agent_bom" / "api" / "postgres_runtime_event.py"
     ).read_text()
     assert 'ensure_postgres_schema_version(conn, "runtime_events", version=GATEWAY_ACTIVITY_STORAGE_VERSION)' in legacy_source
     assert "bootstrap_postgres_gateway_activity_schema(conn)" in legacy_source

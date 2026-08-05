@@ -305,9 +305,7 @@ def test_cyclonedx_shared_discovery_is_globally_unique_and_schema_valid() -> Non
     vulnerabilities = {vulnerability["id"]: vulnerability for vulnerability in cdx["vulnerabilities"]}
     assert set(vulnerabilities) == {"CVE-2026-LATE", "CVE-2026-SHARED"}
     component_name_by_ref = {component["bom-ref"]: component["name"] for component in cdx["components"]}
-    assert {component_name_by_ref[item["ref"]] for item in vulnerabilities["CVE-2026-LATE"]["affects"]} == {
-        "local-plugin"
-    }
+    assert {component_name_by_ref[item["ref"]] for item in vulnerabilities["CVE-2026-LATE"]["affects"]} == {"local-plugin"}
     assert {component_name_by_ref[item["ref"]] for item in vulnerabilities["CVE-2026-SHARED"]["affects"]} == {
         "left",
         "right",
@@ -324,11 +322,7 @@ def test_cyclonedx_merges_repeated_dependency_edges_deterministically() -> None:
         assert dependency["dependsOn"] == sorted(set(dependency["dependsOn"]))
 
     shared = next(dependency for dependency in first["dependencies"] if dependency["ref"].startswith("mcp-server-"))
-    package_names_by_ref = {
-        component["bom-ref"]: component["name"]
-        for component in first["components"]
-        if component["type"] == "library"
-    }
+    package_names_by_ref = {component["bom-ref"]: component["name"] for component in first["components"] if component["type"] == "library"}
     assert {package_names_by_ref[ref] for ref in shared["dependsOn"]} == {"local-plugin", "left", "right"}
 
 

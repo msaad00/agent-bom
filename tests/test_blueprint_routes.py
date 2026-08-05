@@ -53,9 +53,7 @@ def _seed_pending(author: str, *, tenant: str = "default") -> str:
         composition=BlueprintComposition(agents=["planner"], tools=["repo_read"]),
         created_by=author,
     )
-    submit_version_for_approval(
-        store, tenant_id=tenant, blueprint_id=blueprint.blueprint_id, version=1, submitted_by=author
-    )
+    submit_version_for_approval(store, tenant_id=tenant, blueprint_id=blueprint.blueprint_id, version=1, submitted_by=author)
     return blueprint.blueprint_id
 
 

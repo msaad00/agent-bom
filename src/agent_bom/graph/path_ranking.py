@@ -30,11 +30,7 @@ def environment_weight(node: UnifiedNode) -> float:
     if criticality in {"medium", "tier2", "tier-2"}:
         return 1.05
 
-    env = str(
-        attrs.get("environment")
-        or getattr(getattr(node, "dimensions", None), "environment", "")
-        or ""
-    ).strip().lower()
+    env = str(attrs.get("environment") or getattr(getattr(node, "dimensions", None), "environment", "") or "").strip().lower()
     if env in _PROD_ENVIRONMENTS:
         return 1.15
     if env in _STAGING_ENVIRONMENTS:

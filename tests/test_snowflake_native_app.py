@@ -206,9 +206,7 @@ def test_manifest_declares_phase4_services_default_off(manifest: dict):
     assert f"{repository}/agent-bom-mcp-runtime:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
 
 
-def test_native_app_container_images_are_release_pinned(
-    manifest: dict, service_specs: dict[str, dict], core_service_spec: dict
-):
+def test_native_app_container_images_are_release_pinned(manifest: dict, service_specs: dict[str, dict], core_service_spec: dict):
     image_refs = list(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
     for spec in (*service_specs.values(), core_service_spec):
         image_refs.extend(
@@ -422,10 +420,7 @@ def test_image_build_contract_matches_every_manifest_image(manifest: dict):
         "agent-bom-scanner",
         "agent-bom-mcp-runtime",
     }
-    manifest_names = {
-        image.rsplit("/", 1)[-1].split(":", 1)[0]
-        for image in manifest["artifacts"]["container_services"]["images"]
-    }
+    manifest_names = {image.rsplit("/", 1)[-1].split(":", 1)[0] for image in manifest["artifacts"]["container_services"]["images"]}
     assert manifest_names == {item["name"] for item in images}
     repo_root = NATIVE_APP_DIR.parents[2]
     for item in images:

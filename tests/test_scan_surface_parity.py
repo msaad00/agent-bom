@@ -290,8 +290,7 @@ async def test_registry_outage_is_not_recorded_as_an_absent_attestation(monkeypa
     await verify_packages([package], client=None)
 
     assert package.provenance_attested is None, (
-        "a 503 from the registry was serialized as provenance_attested=False — "
-        "'we could not ask' is not 'we asked and the answer was no'"
+        "a 503 from the registry was serialized as provenance_attested=False — 'we could not ask' is not 'we asked and the answer was no'"
     )
     assert package.provenance_status == "unavailable", "the reason the verdict is unknown must be recorded, not just dropped"
 

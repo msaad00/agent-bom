@@ -286,8 +286,7 @@ class SQLiteBlueprintStore:
             """
         )
         self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_ai_system_blueprints_tenant "
-            "ON ai_system_blueprints(tenant_id, updated_at DESC, blueprint_id)"
+            "CREATE INDEX IF NOT EXISTS idx_ai_system_blueprints_tenant ON ai_system_blueprints(tenant_id, updated_at DESC, blueprint_id)"
         )
         self._conn.execute(
             """
@@ -311,8 +310,7 @@ class SQLiteBlueprintStore:
 
     def put_blueprint(self, blueprint: Blueprint) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO ai_system_blueprints (tenant_id, blueprint_id, name, updated_at, data) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO ai_system_blueprints (tenant_id, blueprint_id, name, updated_at, data) VALUES (?, ?, ?, ?, ?)",
             (
                 blueprint.tenant_id,
                 blueprint.blueprint_id,
@@ -332,8 +330,7 @@ class SQLiteBlueprintStore:
 
     def list_blueprints(self, tenant_id: str, *, limit: int = 50, offset: int = 0) -> BlueprintPage:
         rows = self._conn.execute(
-            "SELECT data FROM ai_system_blueprints WHERE tenant_id = ? "
-            "ORDER BY updated_at DESC, blueprint_id DESC LIMIT ? OFFSET ?",
+            "SELECT data FROM ai_system_blueprints WHERE tenant_id = ? ORDER BY updated_at DESC, blueprint_id DESC LIMIT ? OFFSET ?",
             (tenant_id, limit + 1, offset),
         ).fetchall()
         blueprints = [Blueprint.from_dict(json.loads(r[0])) for r in rows[:limit]]
@@ -372,8 +369,7 @@ class SQLiteBlueprintStore:
 
     def list_versions(self, tenant_id: str, blueprint_id: str, *, limit: int = 200) -> list[BlueprintVersion]:
         rows = self._conn.execute(
-            "SELECT data FROM ai_system_blueprint_versions WHERE tenant_id = ? AND blueprint_id = ? "
-            "ORDER BY version DESC LIMIT ?",
+            "SELECT data FROM ai_system_blueprint_versions WHERE tenant_id = ? AND blueprint_id = ? ORDER BY version DESC LIMIT ?",
             (tenant_id, blueprint_id, limit),
         ).fetchall()
         return [BlueprintVersion.from_dict(json.loads(r[0])) for r in rows]
@@ -582,8 +578,7 @@ def approve_version(
     authored_or_submitted = {p.strip() for p in (record.created_by, record.submitted_by) if p and p.strip()}
     if approver_id in authored_or_submitted:
         raise BlueprintSelfApprovalError(
-            "separation of duties: the author or submitter of a version cannot approve it — "
-            "a different approver is required"
+            "separation of duties: the author or submitter of a version cannot approve it — a different approver is required"
         )
     record.status = STATUS_APPROVED
     record.approver = approver_id[:200]
@@ -760,9 +755,7 @@ def promote_drift_to_draft_version(
         owners=list(base_comp.owners),
         guardrails=guardrails,
     )
-    version = create_draft_version(
-        store, tenant_id=tenant_id, blueprint_id=blueprint_id, composition=new_comp, created_by=created_by
-    )
+    version = create_draft_version(store, tenant_id=tenant_id, blueprint_id=blueprint_id, composition=new_comp, created_by=created_by)
     if version is None:
         return None
     if submit:

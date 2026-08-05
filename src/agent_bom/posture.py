@@ -139,9 +139,7 @@ def load_posture_policy(
             env_weights = {str(k): float(v) for k, v in maybe_weights.items() if _is_number(v)}
         maybe_thresholds = payload.get("grade_thresholds") or payload.get("thresholds")
         if isinstance(maybe_thresholds, dict):
-            env_thresholds = {
-                str(k).upper(): float(v) for k, v in maybe_thresholds.items() if _is_number(v)
-            }
+            env_thresholds = {str(k).upper(): float(v) for k, v in maybe_thresholds.items() if _is_number(v)}
 
     if weights is not None:
         env_weights = {**env_weights, **{str(k): float(v) for k, v in weights.items()}}

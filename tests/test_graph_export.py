@@ -304,9 +304,7 @@ def test_redacted_report_keeps_distinct_credential_nodes_and_no_phantom_edges():
         target_node = next(node for node in graph.nodes if node.id == edge.target)
         server_id = target_node.attributes.get("server")
         cred_node = next(node for node in graph.nodes if node.id == edge.source)
-        assert cred_node.attributes.get("server") == server_id, (
-            f"phantom cross-server edge {edge.source} -> {edge.target}"
-        )
+        assert cred_node.attributes.get("server") == server_id, f"phantom cross-server edge {edge.source} -> {edge.target}"
 
 
 def test_vulnerable_package_gets_pkg_vuln_kind():
@@ -767,15 +765,15 @@ def test_to_graphml_empty_graph():
 def test_to_graphml_round_trips_through_networkx_with_escaped_labels():
     nx = pytest.importorskip("networkx")
     graph = DepGraph()
-    graph.add_node("node<&\"", "Agent <prod> & ops", "agent")
+    graph.add_node('node<&"', "Agent <prod> & ops", "agent")
     graph.add_node("target", "Target", "server")
-    graph.add_edge("node<&\"", "target", "uses_server")
+    graph.add_edge('node<&"', "target", "uses_server")
 
     parsed = nx.read_graphml(io.BytesIO(to_graphml(graph).encode("utf-8")))
 
     assert parsed.is_directed()
-    assert set(parsed.nodes) == {"node<&\"", "target"}
-    assert parsed.nodes["node<&\""]["label"] == "Agent <prod> & ops"
+    assert set(parsed.nodes) == {'node<&"', "target"}
+    assert parsed.nodes['node<&"']["label"] == "Agent <prod> & ops"
 
 
 # ── to_cypher ──────────────────────────────────────────────────────────────

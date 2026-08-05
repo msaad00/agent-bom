@@ -105,11 +105,7 @@ def test_quickstart_run_offline_succeeds_with_empty_vulnerability_db(tmp_path, m
     sample_dir = tmp_path / "stack"
     graph_db = tmp_path / "graph.db"
     wrapper = tmp_path / "agent-bom"
-    wrapper.write_text(
-        f"#!{sys.executable}\n"
-        "from agent_bom.cli import main\n"
-        "main()\n"
-    )
+    wrapper.write_text(f"#!{sys.executable}\nfrom agent_bom.cli import main\nmain()\n")
     wrapper.chmod(0o755)
 
     monkeypatch.setattr("agent_bom.cli._quickstart._resolve_agent_bom", lambda: str(wrapper))

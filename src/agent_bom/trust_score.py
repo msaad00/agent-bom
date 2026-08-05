@@ -39,6 +39,7 @@ _CVE_WEIGHT_BY_RANK: dict[int, float] = {
 def _cve_severity_weight(severity: Severity) -> float:
     return _CVE_WEIGHT_BY_RANK.get(severity_rank(severity.value), 0.5)
 
+
 # Baseline category budgets. CVE deductions can exceed the historical
 # 35-point ceiling so heavily exposed servers no longer collapse into the
 # same score bucket.

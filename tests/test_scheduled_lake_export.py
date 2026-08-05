@@ -389,14 +389,10 @@ def test_snowflake_same_run_retry_deletes_then_replaces_in_one_transaction():
 
 def test_snowflake_zero_row_snapshot_replaces_whole_tenant_and_commits_marker():
     conn = FakeSnowflakeConnection()
-    result = SnowflakeWarehouseDestination(lambda: conn, database="DB").write_findings(
-        [], tenant_id="tenant", run_id="empty-run"
-    )
+    result = SnowflakeWarehouseDestination(lambda: conn, database="DB").write_findings([], tenant_id="tenant", run_id="empty-run")
     assert result.row_count == 0
     delete_idx = next(i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("DELETE FROM"))
-    marker_idx = next(
-        i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("INSERT INTO") and "_RUNS" in sql.upper()
-    )
+    marker_idx = next(i for i, sql in enumerate(conn.executed) if sql.lstrip().upper().startswith("INSERT INTO") and "_RUNS" in sql.upper())
     commit_idx = conn.executed.index("COMMIT")
     assert conn.execute_params[delete_idx] == ("tenant",)
     assert conn.execute_params[marker_idx][:2] == ("tenant", "empty-run")
@@ -435,9 +431,7 @@ def test_snowflake_lost_commit_response_reconciles_durable_marker():
         connections.append(conn)
         return conn
 
-    result = SnowflakeWarehouseDestination(factory, database="DB").write_findings(
-        [_finding(1)], tenant_id="tenant", run_id="run"
-    )
+    result = SnowflakeWarehouseDestination(factory, database="DB").write_findings([_finding(1)], tenant_id="tenant", run_id="run")
     assert result.row_count == 1
     assert len(connections) == 2
     assert markers
@@ -459,9 +453,7 @@ def test_snowflake_rollback_and_remove_failures_preserve_primary_error():
             return Cursor(self)
 
     with pytest.raises(RuntimeError, match="primary copy failure"):
-        SnowflakeWarehouseDestination(lambda: Conn(), database="DB").write_findings(
-            [_finding(1)], tenant_id="t", run_id="r"
-        )
+        SnowflakeWarehouseDestination(lambda: Conn(), database="DB").write_findings([_finding(1)], tenant_id="t", run_id="r")
 
 
 def test_clickhouse_failed_later_batch_is_cleaned_without_commit_marker():

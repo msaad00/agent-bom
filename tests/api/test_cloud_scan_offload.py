@@ -42,9 +42,7 @@ def test_cloud_inventory_offloads_provider_scan(monkeypatch):
 
     result = asyncio.run(cloud.cloud_inventory(request=object(), provider="aws", region=""))
 
-    assert "_build_inventory_payload" in offloaded, (
-        f"cloud_inventory must offload its provider scan; saw {offloaded}"
-    )
+    assert "_build_inventory_payload" in offloaded, f"cloud_inventory must offload its provider scan; saw {offloaded}"
     assert result["schema_version"] == "cloud.inventory.summary.v1"
     assert result["tenant_id"] == "t-inv"
     assert result["status"] == "disabled"
@@ -71,9 +69,7 @@ def test_cloud_cis_benchmark_offloads_evaluation(monkeypatch):
         )
     )
 
-    assert "_run_cis_benchmark" in offloaded, (
-        f"cloud_cis_benchmark must offload its evaluation; saw {offloaded}"
-    )
+    assert "_run_cis_benchmark" in offloaded, f"cloud_cis_benchmark must offload its evaluation; saw {offloaded}"
     # The offloaded result flows back through unchanged with the tenant threaded
     # in. The payload SHAPE is environment-dependent — with the cloud SDK present
     # the benchmark evaluates ("benchmark"/"evaluated" keys); without it, it

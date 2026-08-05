@@ -194,6 +194,7 @@ class TestSecretsScanning:
 # Modern secret token formats (gateway-DLP coverage)
 # ---------------------------------------------------------------------------
 
+
 # Each case: (id, sample text) where the sample MUST be detected as a secret
 # and, in enforce mode, marked blocked.
 def _sample(*parts: str) -> str:

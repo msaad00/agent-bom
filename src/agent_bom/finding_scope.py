@@ -112,9 +112,7 @@ def canonical_finding_severity_filter(value: object) -> str | None:
         raise ValueError("severity must be a string")
     normalized = value.strip().lower()
     if normalized not in FINDING_SEVERITY_FILTERS:
-        raise ValueError(
-            f"invalid severity '{value}'; accepted values: {', '.join(FINDING_SEVERITY_FILTERS)}"
-        )
+        raise ValueError(f"invalid severity '{value}'; accepted values: {', '.join(FINDING_SEVERITY_FILTERS)}")
     return "info" if normalized == "informational" else normalized
 
 
@@ -475,9 +473,7 @@ _FINDING_SEARCH_FIELDS = (
     "resource_name",
 )
 _CVSS_VECTOR_RE = re.compile(r"^[A-Za-z0-9.:/_-]{1,256}$")
-_LIFECYCLE_STATUSES = frozenset(
-    {"open", "reopened", "resolved", "suppressed", "accepted", "not_affected", "fixed"}
-)
+_LIFECYCLE_STATUSES = frozenset({"open", "reopened", "resolved", "suppressed", "accepted", "not_affected", "fixed"})
 
 
 def _safe_timestamp(value: Any) -> str | None:
@@ -591,11 +587,7 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(remediation_versions, list):
         fixed_version = row.get("fixed_version")
         remediation_versions = [fixed_version] if isinstance(fixed_version, str) else []
-    safe_versions = [
-        safe
-        for value in remediation_versions[:50]
-        if (safe := _safe_optional_text(value, max_len=128)) is not None
-    ]
+    safe_versions = [safe for value in remediation_versions[:50] if (safe := _safe_optional_text(value, max_len=128)) is not None]
     if safe_versions:
         payload["remediation_versions"] = safe_versions
 

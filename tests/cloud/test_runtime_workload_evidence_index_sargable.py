@@ -40,9 +40,7 @@ def test_stale_workload_time_index_is_dropped(tmp_path) -> None:
     try:
         names = {
             row[0]
-            for row in con.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='runtime_workload_evidence'"
-            ).fetchall()
+            for row in con.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='runtime_workload_evidence'").fetchall()
         }
     finally:
         con.close()

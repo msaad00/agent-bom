@@ -124,9 +124,7 @@ def test_ed25519_activated_when_env_set(monkeypatch: pytest.MonkeyPatch, clean_s
     public_key.verify(bytes.fromhex(sig.signature_hex), payload)  # raises on bad sig
 
 
-def test_ed25519_activated_from_mounted_file(
-    monkeypatch: pytest.MonkeyPatch, clean_signer_env: None, tmp_path
-) -> None:
+def test_ed25519_activated_from_mounted_file(monkeypatch: pytest.MonkeyPatch, clean_signer_env: None, tmp_path) -> None:
     # File-first: `*_FILE` points at a mounted secret; the inline var stays unset.
     pem, public_key = _generate_ed25519_pem()
     pem_file = tmp_path / "compliance_ed25519.pem"
@@ -145,9 +143,7 @@ def test_ed25519_activated_from_mounted_file(
     public_key.verify(bytes.fromhex(sig.signature_hex), payload)
 
 
-def test_file_variant_takes_precedence_over_inline_env(
-    monkeypatch: pytest.MonkeyPatch, clean_signer_env: None, tmp_path
-) -> None:
+def test_file_variant_takes_precedence_over_inline_env(monkeypatch: pytest.MonkeyPatch, clean_signer_env: None, tmp_path) -> None:
     # When both are set, the mounted file wins (resolve_secret is file-first).
     file_pem, file_public_key = _generate_ed25519_pem()
     inline_pem, _ = _generate_ed25519_pem()

@@ -25,8 +25,7 @@ def test_registered_mcp_tools_match_server_card_names() -> None:
     missing_from_card = sorted(registered - card)
     extra_in_card = sorted(card - registered)
     assert registered == card, (
-        f"@mcp.tool names diverge from _SERVER_CARD_TOOLS: "
-        f"missing_from_card={missing_from_card}, extra_in_card={extra_in_card}"
+        f"@mcp.tool names diverge from _SERVER_CARD_TOOLS: missing_from_card={missing_from_card}, extra_in_card={extra_in_card}"
     )
 
 

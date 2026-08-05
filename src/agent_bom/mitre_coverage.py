@@ -33,8 +33,7 @@ _MAX_REFS_PER_TECHNIQUE = 25
 
 COVERED_DEFINITION = "technique has >=1 finding with mapped evidence"
 UNCOVERED_DEFINITION = (
-    "no finding evidence yet; this is 'no evidence', NOT an assertion that the "
-    "technique is mitigated or that the estate is safe against it"
+    "no finding evidence yet; this is 'no evidence', NOT an assertion that the technique is mitigated or that the estate is safe against it"
 )
 
 # Candidate finding fields that may carry ATT&CK technique tags, in priority

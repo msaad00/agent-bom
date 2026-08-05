@@ -26,9 +26,7 @@ def _call_pull(monkeypatch: Any, body: dict, *, default_on: bool) -> dict:
     monkeypatch.setattr(obs, "_blast_radius_views_for_tenant", lambda tenant_id: [])
     monkeypatch.setattr(obs, "_nhi_by_credential_for_tenant", lambda tenant_id: {})
     # Deployment default for content screening.
-    monkeypatch.setattr(
-        "agent_bom.config.trace_content_screening_enabled", lambda: default_on
-    )
+    monkeypatch.setattr("agent_bom.config.trace_content_screening_enabled", lambda: default_on)
     # Stub the connector fetch + screening so we observe only the resolved flag.
     monkeypatch.setattr("agent_bom.trace_connectors.fetch_traces", lambda *a, **k: {"spans": []})
     monkeypatch.setattr(obs, "_screen_trace_content_events", lambda body, *, tenant_id: [{"detector": "x"}])

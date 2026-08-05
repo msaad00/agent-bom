@@ -56,11 +56,7 @@ def _data_sources(tenant_id: str) -> dict[str, Any]:
     sources = [source for source in source_store.list_all(tenant_id=tenant_id) if source.enabled]
     if not sources:
         return _entry("locked")
-    live = sum(
-        1
-        for source in sources
-        if source.last_run_at or (source.last_run_status or "").lower() in {"success", "ok", "done"}
-    )
+    live = sum(1 for source in sources if source.last_run_at or (source.last_run_status or "").lower() in {"success", "ok", "done"})
     if live > 0:
         return _entry("live", count=len(sources))
     return _entry("connected", count=len(sources))

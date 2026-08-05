@@ -91,8 +91,7 @@ def main() -> int:
         missing = ingress_hosts_missing_paths(rendered)
         if missing:
             print(
-                f"error: profile '{profile.name}' renders Ingress host(s) with no HTTP paths: "
-                f"{', '.join(missing)}",
+                f"error: profile '{profile.name}' renders Ingress host(s) with no HTTP paths: {', '.join(missing)}",
                 file=sys.stderr,
             )
             return 1

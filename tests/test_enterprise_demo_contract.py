@@ -59,9 +59,7 @@ def test_enterprise_estate_has_three_ordered_reproducible_snapshots() -> None:
         EstateStage.CURRENT,
         EstateStage.REMEDIATED,
     ]
-    assert [snapshot.observed_at for snapshot in first.snapshots] == sorted(
-        snapshot.observed_at for snapshot in first.snapshots
-    )
+    assert [snapshot.observed_at for snapshot in first.snapshots] == sorted(snapshot.observed_at for snapshot in first.snapshots)
     assert first.model_dump(mode="json") == replay.model_dump(mode="json")
     assert first.content_hash == replay.content_hash
 

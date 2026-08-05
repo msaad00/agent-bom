@@ -106,9 +106,7 @@ def test_nhi_governance_findings_reach_unified_stream():
     assert nhi, "NHI governance findings must reach the unified stream after wiring"
     # Over-grant right-sizing findings carry CIEM_OVER_PRIVILEGE; dormant/orphaned
     # credential findings carry CREDENTIAL_EXPOSURE.
-    assert all(
-        f.finding_type in (FindingType.CREDENTIAL_EXPOSURE, FindingType.CIEM_OVER_PRIVILEGE) for f in nhi
-    )
+    assert all(f.finding_type in (FindingType.CREDENTIAL_EXPOSURE, FindingType.CIEM_OVER_PRIVILEGE) for f in nhi)
 
 
 def test_builder_computes_nhi_governance_findings():

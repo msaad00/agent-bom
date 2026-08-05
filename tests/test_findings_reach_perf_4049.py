@@ -132,8 +132,7 @@ def test_sqlite_unfiltered_reach_uses_index_no_filesort(tmp_path) -> None:
     store = _seed_sqlite(tmp_path)
     detail = _plan(
         store._conn,
-        "SELECT payload FROM compliance_hub_findings WHERE tenant_id=? "
-        "ORDER BY effective_reach_score DESC, ordinal ASC LIMIT 51",
+        "SELECT payload FROM compliance_hub_findings WHERE tenant_id=? ORDER BY effective_reach_score DESC, ordinal ASC LIMIT 51",
         ("t",),
     )
     assert "TEMP B-TREE" not in detail.upper(), detail
@@ -144,8 +143,7 @@ def test_sqlite_unfiltered_cvss_uses_index_no_filesort(tmp_path) -> None:
     store = _seed_sqlite(tmp_path)
     detail = _plan(
         store._conn,
-        "SELECT payload FROM compliance_hub_findings WHERE tenant_id=? "
-        "ORDER BY cvss_score DESC, ordinal ASC LIMIT 51",
+        "SELECT payload FROM compliance_hub_findings WHERE tenant_id=? ORDER BY cvss_score DESC, ordinal ASC LIMIT 51",
         ("t",),
     )
     assert "TEMP B-TREE" not in detail.upper(), detail
@@ -156,8 +154,7 @@ def test_sqlite_unfiltered_severity_uses_index_no_filesort(tmp_path) -> None:
     store = _seed_sqlite(tmp_path)
     detail = _plan(
         store._conn,
-        "SELECT payload FROM compliance_hub_findings WHERE tenant_id=? "
-        "ORDER BY severity_rank DESC, ordinal ASC LIMIT 51",
+        "SELECT payload FROM compliance_hub_findings WHERE tenant_id=? ORDER BY severity_rank DESC, ordinal ASC LIMIT 51",
         ("t",),
     )
     assert "TEMP B-TREE" not in detail.upper(), detail

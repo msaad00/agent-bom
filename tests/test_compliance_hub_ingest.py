@@ -61,6 +61,7 @@ from agent_bom.models import (
 def test_cis_error_sarif_rule_keeps_distinct_finding_type():
     assert _pick_finding_type("finding/CIS_ERROR", [], "Unevaluable CIS control") == FindingType.CIS_ERROR
 
+
 # ─── Native-generator wiring ──────────────────────────────────────────────────
 
 

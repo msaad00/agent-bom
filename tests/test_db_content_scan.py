@@ -214,27 +214,21 @@ def test_live_postgres_scan_is_read_only_redacted_and_honest():
             cur.execute(f'CREATE SCHEMA "{schema}"')
             cur.execute(f'CREATE TABLE "{schema}"."customers" (email text, ssn text, pan text)')
             cur.execute(
-                f"INSERT INTO \"{schema}\".\"customers\" VALUES "
+                f'INSERT INTO "{schema}"."customers" VALUES '
                 "('alice@example.com','123-45-6789','4111111111111111'),"
                 "('bob@example.com','234-56-7890','5500005555555559')"
             )
             cur.execute(f'CREATE TABLE "{schema}"."api_secrets" (name text, token text)')
-            cur.execute(
-                f"INSERT INTO \"{schema}\".\"api_secrets\" VALUES "
-                "('stripe','api_key=abcdef0123456789abcdef0123456789')"
-            )
+            cur.execute(f"INSERT INTO \"{schema}\".\"api_secrets\" VALUES ('stripe','api_key=abcdef0123456789abcdef0123456789')")
             cur.execute(f'CREATE TABLE "{schema}"."metrics" (metric text, value double precision)')
             cur.execute(f"INSERT INTO \"{schema}\".\"metrics\" VALUES ('cpu',0.5),('mem',0.7)")
             cur.execute(f'CREATE TABLE "{schema}"."locked" (email text)')
-            cur.execute(f"INSERT INTO \"{schema}\".\"locked\" VALUES ('carol@example.com')")
+            cur.execute(f'INSERT INTO "{schema}"."locked" VALUES (\'carol@example.com\')')
             # A least-privilege reader that is DENIED the locked table → unevaluable.
             cur.execute(f'DROP ROLE IF EXISTS "{reader_role}"')
-            cur.execute(f'CREATE ROLE "{reader_role}" LOGIN PASSWORD \'readpw\'')
+            cur.execute(f"CREATE ROLE \"{reader_role}\" LOGIN PASSWORD 'readpw'")
             cur.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO "{reader_role}"')
-            cur.execute(
-                f'GRANT SELECT ON "{schema}"."customers","{schema}"."api_secrets",'
-                f'"{schema}"."metrics" TO "{reader_role}"'
-            )
+            cur.execute(f'GRANT SELECT ON "{schema}"."customers","{schema}"."api_secrets","{schema}"."metrics" TO "{reader_role}"')
             # "locked" is visible in the catalog (a non-SELECT privilege) but
             # SELECT is withheld → sampling is DENIED → the table is unevaluable,
             # never silently "clean".
@@ -242,9 +236,7 @@ def test_live_postgres_scan_is_read_only_redacted_and_honest():
 
     try:
         reader_url = _PG_URL.replace("postgres:abom@", f"{reader_role}:readpw@")
-        with psycopg.connect(
-            reader_url, autocommit=True, options="-c default_transaction_read_only=on"
-        ) as reader:
+        with psycopg.connect(reader_url, autocommit=True, options="-c default_transaction_read_only=on") as reader:
             result = scan_database_content(reader, source=f"postgres://abom/{schema}", schemas=[schema], max_rows=50)
             payload = result.to_dict()
 

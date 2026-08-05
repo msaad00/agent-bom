@@ -90,11 +90,7 @@ def is_nested_worktree_root(dirpath: Path) -> bool:
 
 def _prune_dirnames(dirpath: Path, dirnames: list[str], skip: frozenset[str]) -> None:
     """Filter *dirnames* in place, removing skip dirs and nested worktrees."""
-    dirnames[:] = [
-        name
-        for name in dirnames
-        if name not in skip and not is_nested_worktree_root(dirpath / name)
-    ]
+    dirnames[:] = [name for name in dirnames if name not in skip and not is_nested_worktree_root(dirpath / name)]
 
 
 def iter_discovery_files(

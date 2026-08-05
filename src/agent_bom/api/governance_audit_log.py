@@ -94,9 +94,7 @@ def derive_action_id(*, tenant_id: str, target_id: str, action: str, window_key:
     logical action on a same-named target derive *different* ids and can never
     collide on the composite ``UNIQUE(tenant_id, action_id)`` constraint.
     """
-    digest = hashlib.sha256(
-        f"{tenant_id}\x1f{action}\x1f{target_id}\x1f{window_key}".encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(f"{tenant_id}\x1f{action}\x1f{target_id}\x1f{window_key}".encode("utf-8")).hexdigest()
     return f"gov_{digest[:32]}"
 
 
@@ -245,9 +243,7 @@ class SQLiteGovernanceAuditLog:
         preserving ``seq`` (chain order) and every row's original bytes. A no-op
         when the table is absent or already migrated.
         """
-        row = self._conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='governance_audit_log'"
-        ).fetchone()
+        row = self._conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='governance_audit_log'").fetchone()
         if row is None:
             return  # fresh install — CREATE TABLE below builds the new shape
         normalized = (row[0] or "").replace(" ", "").lower()
@@ -372,9 +368,7 @@ def _verify_rows(rows: list[GovernanceAuditRecord]) -> dict[str, Any]:
     return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
 
 
-def _verify_rows_grouped(
-    rows: list[GovernanceAuditRecord], *, tenant_id: str | None = None
-) -> dict[str, Any]:
+def _verify_rows_grouped(rows: list[GovernanceAuditRecord], *, tenant_id: str | None = None) -> dict[str, Any]:
     """Verify each tenant's chain independently and sum the results.
 
     ``rows`` must be in global ``seq`` order; grouping preserves that order per
@@ -429,9 +423,7 @@ def make_governance_audit_record(
     if action not in _VALID_ACTIONS:
         raise ValueError(f"unknown governance action {action!r}; expected one of {sorted(_VALID_ACTIONS)}")
     return GovernanceAuditRecord(
-        action_id=derive_action_id(
-            tenant_id=tenant_id, target_id=target_id, action=action, window_key=window_key
-        ),
+        action_id=derive_action_id(tenant_id=tenant_id, target_id=target_id, action=action, window_key=window_key),
         tenant_id=tenant_id,
         actor=actor[:120],
         action=action,

@@ -603,9 +603,7 @@ def finalize_showcase_snapshot(graph: UnifiedGraph, *, profile: ShowcaseProfile)
         blocked_tool.attributes["evidence_tier"] = "runtime_blocked"
 
 
-def _existing_snapshots(
-    graph_store: GraphStoreProtocol, tenant_id: str
-) -> list[dict[str, Any]]:
+def _existing_snapshots(graph_store: GraphStoreProtocol, tenant_id: str) -> list[dict[str, Any]]:
     """Return the tenant's snapshots (scan_id + created_at) for staleness checks.
 
     Prefers ``list_snapshots`` so we can tell a real scan and a stale demo seed
@@ -628,9 +626,7 @@ def _existing_snapshots(
 
 def _showcase_seed_is_current(snapshots: list[dict[str, Any]]) -> bool:
     """True when both showcase snapshots are present at the expected timestamps."""
-    created_at_by_id = {
-        str(row.get("scan_id")): str(row.get("created_at") or "") for row in snapshots
-    }
+    created_at_by_id = {str(row.get("scan_id")): str(row.get("created_at") or "") for row in snapshots}
     return (
         created_at_by_id.get(SHOWCASE_SCAN_ID) == SHOWCASE_CURRENT_CREATED_AT
         and created_at_by_id.get(SHOWCASE_BASELINE_SCAN_ID) == SHOWCASE_BASELINE_CREATED_AT

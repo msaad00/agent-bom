@@ -87,10 +87,7 @@ async def test_osv_batches_run_with_configured_concurrency(monkeypatch):
     monkeypatch.setattr("agent_bom.scanners.osv._BATCH_SIZE", 1)
     monkeypatch.setattr("agent_bom.scanners.osv.OSV_BATCH_CONCURRENCY", 3)
 
-    packages = [
-        Package(name=f"pkg-{idx}", version="1.0.0", ecosystem="pypi")
-        for idx in range(6)
-    ]
+    packages = [Package(name=f"pkg-{idx}", version="1.0.0", ecosystem="pypi") for idx in range(6)]
     in_flight = 0
     peak_in_flight = 0
     batch_calls = 0

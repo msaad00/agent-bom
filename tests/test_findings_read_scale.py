@@ -86,9 +86,7 @@ def _seed_tenant(count: int) -> str:
     return tenant_id
 
 
-def _first_page_store_calls(
-    client: TestClient, tenant_id: str, expected_total: int
-) -> list[tuple[int | None, int]]:
+def _first_page_store_calls(client: TestClient, tenant_id: str, expected_total: int) -> list[tuple[int | None, int]]:
     """Return ``(limit_pushed_down, rows_returned)`` for each store call one page makes."""
     headers = proxy_headers(role="viewer", tenant=tenant_id)
     params = {"limit": _PAGE_LIMIT, "offset": 0}
@@ -110,12 +108,9 @@ def _first_page_store_calls(
     body = response.json()
     assert body["total"] == expected_total, f"total {body['total']} != seeded {expected_total}"
     assert body["count"] == _PAGE_LIMIT, (
-        f"page reported count={body['count']} for a {_PAGE_LIMIT}-row request at "
-        f"{expected_total} rows; the page limit was not honoured"
+        f"page reported count={body['count']} for a {_PAGE_LIMIT}-row request at {expected_total} rows; the page limit was not honoured"
     )
-    assert len(body["findings"]) == _PAGE_LIMIT, (
-        f"page returned {len(body['findings'])} findings for a {_PAGE_LIMIT}-row request"
-    )
+    assert len(body["findings"]) == _PAGE_LIMIT, f"page returned {len(body['findings'])} findings for a {_PAGE_LIMIT}-row request"
     return calls
 
 
@@ -128,17 +123,14 @@ def test_findings_first_page_is_paged_not_scanned() -> None:
         calls = _first_page_store_calls(client, _seed_tenant(total), total)
 
         assert len(calls) == 1, (
-            f"one first page issued {len(calls)} store reads at {total} rows; "
-            "the route is fetching in a loop rather than paging"
+            f"one first page issued {len(calls)} store reads at {total} rows; the route is fetching in a loop rather than paging"
         )
         limit, rows = calls[0]
         assert limit == _PAGE_LIMIT, (
-            f"route asked the store for limit={limit} at {total} rows, expected {_PAGE_LIMIT}; "
-            "the page limit is no longer pushed down"
+            f"route asked the store for limit={limit} at {total} rows, expected {_PAGE_LIMIT}; the page limit is no longer pushed down"
         )
         assert rows <= _PAGE_LIMIT, (
-            f"store returned {rows} rows for a {_PAGE_LIMIT}-row page at {total} rows; "
-            "the read path is scanning rather than paging"
+            f"store returned {rows} rows for a {_PAGE_LIMIT}-row page at {total} rows; the read path is scanning rather than paging"
         )
 
 

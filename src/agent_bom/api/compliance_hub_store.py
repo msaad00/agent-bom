@@ -405,10 +405,7 @@ def _payload_is_kev(payload: Mapping[str, Any] | None) -> bool:
 
 def _kev_json_cond_sqlite(col: str) -> str:
     """SQLite predicate: the KEV flag on a JSON column (bool ``true`` or string)."""
-    return (
-        f"json_extract({col}, '$.is_kev') IN (1, 'true', 'True', '1') "
-        f"OR json_extract({col}, '$.cisa_kev') IN (1, 'true', 'True', '1')"
-    )
+    return f"json_extract({col}, '$.is_kev') IN (1, 'true', 'True', '1') OR json_extract({col}, '$.cisa_kev') IN (1, 'true', 'True', '1')"
 
 
 def _current_kev_count_from_rows(rows: Iterable[dict[str, Any]]) -> int:
@@ -431,11 +428,7 @@ def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
     """Redact one hub finding payload for persistence."""
     from agent_bom.finding_scope import safe_finding_response_payload
 
-    clean = {
-        key: value
-        for key, value in safe_finding_response_payload(payload).items()
-        if value is not None
-    }
+    clean = {key: value for key, value in safe_finding_response_payload(payload).items() if value is not None}
     # The public finding contract uses an empty list for assessed-or-unknown
     # agent reachability, but persisting that default in every ledger row adds
     # no evidence and defeats reference-table compaction at scale. Non-empty
@@ -2236,9 +2229,7 @@ class SQLiteComplianceHubStore:
             where.append("c.origin = ?")
             params.append(origin)
         where_sql = " AND ".join(where)
-        kev_cond = " OR ".join(
-            _kev_json_cond_sqlite(col) for col in ("c.payload", "l.payload", "i.payload")
-        )
+        kev_cond = " OR ".join(_kev_json_cond_sqlite(col) for col in ("c.payload", "l.payload", "i.payload"))
         row = self._conn.execute(
             f"""
             SELECT COUNT(*)

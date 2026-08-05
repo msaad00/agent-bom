@@ -354,9 +354,7 @@ def display_rich(
     # summary.total_blocked counted). Align with display_json / module docs when
     # tool calls are in the active display scope. Relay errors stay filter-aware
     # via the table block below — do not fail closed on out-of-scope relays.
-    tools_in_scope = not alerts_only and (
-        type_filter_normalized is None or type_filter_normalized == "tools/call"
-    )
+    tools_in_scope = not alerts_only and (type_filter_normalized is None or type_filter_normalized == "tools/call")
     if exit_code == 0 and not s and tools_in_scope:
         scoped_calls = log.tool_calls
         if tool_filter:

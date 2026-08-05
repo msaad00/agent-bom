@@ -113,9 +113,7 @@ def test_verify_integrity_is_clean_after_concurrent_appends() -> None:
     def worker(index: int) -> None:
         token = set_current_tenant(tenant)
         try:
-            store.append(
-                pa.AuditEntry(action="scan", actor="probe", resource=f"pkg-{index}", details={"tenant_id": tenant})
-            )
+            store.append(pa.AuditEntry(action="scan", actor="probe", resource=f"pkg-{index}", details={"tenant_id": tenant}))
         finally:
             reset_current_tenant(token)
 

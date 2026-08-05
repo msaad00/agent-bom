@@ -161,9 +161,7 @@ def connections_key_configured() -> bool:
         return secret_is_configured(CONNECTIONS_KEY_ENV)
     if provider == PROVIDER_VAULT:
         return bool(
-            resolved_vault_addr()
-            and os.environ.get(VAULT_TOKEN_ENV, "").strip()
-            and os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip()
+            resolved_vault_addr() and os.environ.get(VAULT_TOKEN_ENV, "").strip() and os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip()
         )
     return False
 

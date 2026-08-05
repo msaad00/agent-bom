@@ -434,8 +434,7 @@ def test_store_backed_peak_is_sublinear_vs_full_in_ram() -> None:
     # ~1.0 and the bound above fails by a wide margin — which is the regression
     # this test exists to catch.
     assert ratio_large < ratio_small + 0.45, (
-        f"store peak approached the full in-RAM graph as N grew: "
-        f"{ratio_small:.3f} -> {ratio_large:.3f}"
+        f"store peak approached the full in-RAM graph as N grew: {ratio_small:.3f} -> {ratio_large:.3f}"
     )
 
 

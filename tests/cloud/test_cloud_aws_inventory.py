@@ -607,9 +607,7 @@ def test_multiregion_threads_injected_session(monkeypatch: pytest.MonkeyPatch) -
         raise AssertionError("discover_inventory_all_regions built its own session instead of using the injected one")
 
     with _install_multiregion_boto3(_boom_factory):
-        payload = aws_inventory.discover_inventory_all_regions(
-            regions=["us-east-1", "eu-west-1"], session=injected, force=True
-        )
+        payload = aws_inventory.discover_inventory_all_regions(regions=["us-east-1", "eu-west-1"], session=injected, force=True)
 
     assert payload["status"] == "ok"
     assert set(payload["regions"]) == {"us-east-1", "eu-west-1"}

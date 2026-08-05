@@ -37,9 +37,7 @@ FORBIDDEN_BASENAME_RES: tuple[re.Pattern[str], ...] = (
 )
 
 # Entire trees that must stay empty / absent in the public checkout.
-FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
-    "docs/audits/",
-)
+FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = ("docs/audits/",)
 
 # Content scan roots (markdown / copy surfaces strangers read).
 CONTENT_ROOTS: tuple[str, ...] = (
@@ -121,9 +119,7 @@ def _iter_tracked_ish() -> list[Path]:
             rel = p.relative_to(REPO_ROOT).as_posix()
             if _excluded(rel):
                 continue
-            if p.suffix.lower() in CONTENT_SUFFIXES or p.name.upper().startswith(
-                ("STRATEGIC", "AUDIT")
-            ):
+            if p.suffix.lower() in CONTENT_SUFFIXES or p.name.upper().startswith(("STRATEGIC", "AUDIT")):
                 out.append(p)
     # Also catch a resurrected docs/audits tree even if empty of md later.
     audits = REPO_ROOT / "docs" / "audits"
@@ -139,10 +135,7 @@ def main() -> int:
 
     audits_dir = REPO_ROOT / "docs" / "audits"
     if audits_dir.exists():
-        violations.append(
-            "docs/audits/: forbidden agent-session audit ledger directory "
-            "(keep persona reviews in private notes)"
-        )
+        violations.append("docs/audits/: forbidden agent-session audit ledger directory (keep persona reviews in private notes)")
 
     for path in _iter_tracked_ish():
         rel = path.relative_to(REPO_ROOT).as_posix()
@@ -172,16 +165,10 @@ def main() -> int:
                     break
 
     if violations:
-        print(
-            "Public-docs hygiene check FAILED — private strategy/scorecard "
-            "and agent audit ledgers must stay out of the OSS tree:\n"
-        )
+        print("Public-docs hygiene check FAILED — private strategy/scorecard and agent audit ledgers must stay out of the OSS tree:\n")
         for v in violations:
             print(f"  {v}")
-        print(
-            "\nKeep strategy, named-prospect lists, harsh scorecards, and "
-            "agent-session persona audits in private notes — not docs/."
-        )
+        print("\nKeep strategy, named-prospect lists, harsh scorecards, and agent-session persona audits in private notes — not docs/.")
         return 1
 
     scanned = len(_iter_tracked_ish())

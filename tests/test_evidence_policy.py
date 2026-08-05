@@ -159,6 +159,7 @@ def test_graph_finding_fks_are_tier_a():
     assert redacted["entity_type"] == "package"
     assert "description" not in redacted
 
+
 def test_classification_unknown_defaults_to_tier_b():
     """Unknown / novel field names are conservatively REPLAY_ONLY."""
     assert classify_field("brand_new_evidence_key") is EvidenceTier.REPLAY_ONLY
@@ -232,10 +233,7 @@ def test_redact_preserves_tier_a_fields():
 def test_tier_a_count_maps_are_deterministic_bounded_and_numeric_only():
     """Aggregate maps stay useful without becoming unbounded content channels."""
     expected_limit = 256
-    buckets: dict[str, object] = {
-        f"tool-{index:03d}-{'x' * 120}": index + 1
-        for index in range(expected_limit + 20)
-    }
+    buckets: dict[str, object] = {f"tool-{index:03d}-{'x' * 120}": index + 1 for index in range(expected_limit + 20)}
     buckets["reject-bool"] = True
     buckets["reject-string"] = "7"
 

@@ -94,9 +94,7 @@ def test_legacy_rows_backfill_and_old_writer_remains_compatible(monkeypatch) -> 
                  ORDER BY team_id
                 """
             ).fetchall()
-            indexdef = conn.execute(
-                "SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_policy_audit_log_entry'"
-            ).fetchone()
+            indexdef = conn.execute("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_policy_audit_log_entry'").fetchone()
             rls = conn.execute(
                 """
                 SELECT relrowsecurity, relforcerowsecurity

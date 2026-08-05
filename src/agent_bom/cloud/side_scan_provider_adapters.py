@@ -119,9 +119,7 @@ class _PersistedLifecycleAdapter:
     def _persist_failure(self, exc: Exception) -> None:
         denied = _is_denied(exc)
         cleanup = (
-            CleanupStatus.PENDING
-            if isinstance(exc, SideScanLifecycleTimeoutError) or self.execution.resources
-            else CleanupStatus.COMPLETE
+            CleanupStatus.PENDING if isinstance(exc, SideScanLifecycleTimeoutError) or self.execution.resources else CleanupStatus.COMPLETE
         )
         status = ExecutionStatus.DENIED if denied else ExecutionStatus.FAILED
         if denied:

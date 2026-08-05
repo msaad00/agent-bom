@@ -138,6 +138,4 @@ def test_persist_of_large_new_snapshot_adds_no_second_full_copy(tmp_path: Path, 
 
     # The advantage must not erode as the incoming snapshot grows 4x: if the persist
     # leg secretly scaled with N, the ratio would climb.
-    assert ratio_large <= ratio_small * 1.5, (
-        f"persist/full-copy ratio eroded with scale: {ratio_small:.3f} -> {ratio_large:.3f}"
-    )
+    assert ratio_large <= ratio_small * 1.5, f"persist/full-copy ratio eroded with scale: {ratio_small:.3f} -> {ratio_large:.3f}"

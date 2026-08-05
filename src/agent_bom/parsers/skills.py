@@ -500,6 +500,7 @@ def _is_test_material_path(path: Path) -> bool:
     """
     return any(part in _TEST_FIXTURE_ROOT_NAMES for part in path.parts[:-1])
 
+
 # Well-known instruction filenames recognised anywhere in the tree.
 _INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
     {

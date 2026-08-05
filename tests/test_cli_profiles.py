@@ -253,10 +253,7 @@ def test_active_profile_banner_fires_on_auto_active_json_redirect():
         auto_active=True,
         user_chose=False,
     )
-    assert banner == (
-        "Profile 'default' active (format=json → agent-bom-report.json). "
-        "Override with --format console."
-    )
+    assert banner == ("Profile 'default' active (format=json → agent-bom-report.json). Override with --format console.")
 
 
 def test_active_profile_banner_silent_when_console_default():
@@ -268,9 +265,7 @@ def test_active_profile_banner_silent_when_explicit_or_agent_mode():
     # Explicit --profile/env (not auto-active), explicit flag, or agent-mode all suppress.
     assert active_profile_banner("prod", "json", "r.json", auto_active=False, user_chose=False) is None
     assert active_profile_banner("prod", "json", "r.json", auto_active=True, user_chose=True) is None
-    assert (
-        active_profile_banner("prod", "json", "r.json", auto_active=True, user_chose=False, agent_mode=True) is None
-    )
+    assert active_profile_banner("prod", "json", "r.json", auto_active=True, user_chose=False, agent_mode=True) is None
 
 
 def test_scan_profile_defaults_emit_banner_on_silent_redirect(monkeypatch, tmp_path):
@@ -353,7 +348,7 @@ def test_profiles_init_writes_console_default_template(monkeypatch, tmp_path):
     # Console stays the default — the generated template must not manufacture the
     # silent-redirect footgun (format=json + output=file).
     assert 'format = "console"' in text
-    assert '\noutput = ' not in text  # no active output redirect (commented only)
+    assert "\noutput = " not in text  # no active output redirect (commented only)
     assert '# output = "agent-bom-report.json"' in text
 
     # And a bare scan under this fresh template stays on the console with no banner.

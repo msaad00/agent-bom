@@ -239,10 +239,7 @@ def test_list_current_page_enriches_lifecycle_fields(hub_store) -> None:
 def test_hub_findings_current_sort_indexes_exist(hub_store) -> None:
     conn = hub_store._conn
     index_names = {
-        row[0]
-        for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='hub_findings_current'"
-        ).fetchall()
+        row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='hub_findings_current'").fetchall()
     }
     assert "idx_hub_findings_current_tenant_reach" in index_names
     assert "idx_hub_findings_current_tenant_cvss" in index_names

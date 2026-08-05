@@ -110,9 +110,7 @@ def test_severity_filter_reaches_the_store_instead_of_a_python_walk(
     )
 
     assert state["kwargs"], "the facet pass never queried the store"
-    assert state["kwargs"][0]["severity"] == "critical", (
-        "severity was not pushed into the store query; the walk still filters in Python"
-    )
+    assert state["kwargs"][0]["severity"] == "critical", "severity was not pushed into the store query; the walk still filters in Python"
 
 
 def test_facet_walk_visits_only_rows_matching_the_severity_filter(
@@ -137,9 +135,7 @@ def test_facet_walk_visits_only_rows_matching_the_severity_filter(
 
     expected_matches = total_rows // len(SEVERITY_CYCLE)
     assert total == expected_matches
-    assert state["visited"] == expected_matches, (
-        f"walk visited {state['visited']} rows to count {expected_matches} critical findings"
-    )
+    assert state["visited"] == expected_matches, f"walk visited {state['visited']} rows to count {expected_matches} critical findings"
     assert metadata["scanned_rows"] == expected_matches
 
 
@@ -173,8 +169,7 @@ def test_facet_cost_stays_flat_as_the_non_matching_remainder_grows(
 
     for total_rows, visited in observed:
         assert visited == total_rows // len(SEVERITY_CYCLE), (
-            f"at {total_rows} rows the walk visited {visited}; the non-matching "
-            "remainder is still being paid for in Python"
+            f"at {total_rows} rows the walk visited {visited}; the non-matching remainder is still being paid for in Python"
         )
 
 
@@ -226,12 +221,7 @@ def test_aliased_severity_bands_are_never_pushed_down(band: str) -> None:
     """
     from agent_bom.api.routes.scan import _facet_severity_histogram
 
-    assert (
-        _facet_severity_histogram(
-            "tenant-alias", severity=band, scan_id=None, since=None, scope={}, status="all"
-        )
-        is None
-    )
+    assert _facet_severity_histogram("tenant-alias", severity=band, scan_id=None, since=None, scope={}, status="all") is None
 
 
 def test_severity_alias_rows_survive_a_filtered_facet_request() -> None:
@@ -245,9 +235,7 @@ def test_severity_alias_rows_survive_a_filtered_facet_request() -> None:
         {"id": "c", "finding_type": "CVE", "source": "SBOM", "severity": "critical", "origin": "bulk_ingest"},
     ]
     store.add("tenant-alias", rows)
-    store.upsert_current_batch(
-        "tenant-alias", rows, observed_at="2026-07-30T00:00:00Z", batch_id="b", source="fixture"
-    )
+    store.upsert_current_batch("tenant-alias", rows, observed_at="2026-07-30T00:00:00Z", batch_id="b", source="fixture")
     set_compliance_hub_store(store)
 
     _facets, total, _metadata = _finding_facets_bounded(
@@ -292,9 +280,7 @@ def test_truncated_walk_cannot_contradict_the_severity_facet(
     )
 
     assert metadata["status"] == "partial", "the budget did not truncate the walk"
-    assert facets["severity"]["critical"] == total, (
-        f"severity facet says {facets['severity']['critical']} but total says {total}"
-    )
+    assert facets["severity"]["critical"] == total, f"severity facet says {facets['severity']['critical']} but total says {total}"
 
 
 def test_truncated_walk_labels_which_dimensions_are_bounded(

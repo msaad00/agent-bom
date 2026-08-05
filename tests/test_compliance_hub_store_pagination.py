@@ -261,8 +261,7 @@ def test_sqlite_migration_backfills_sort_columns(tmp_path) -> None:
     )
     payload = {"id": "legacy-1", "severity": "critical", "cvss_score": 9.8, "origin": "bulk_ingest"}
     conn.execute(
-        "INSERT INTO compliance_hub_findings (tenant_id, finding_id, ingested_at, source, payload, ordinal) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO compliance_hub_findings (tenant_id, finding_id, ingested_at, source, payload, ordinal) VALUES (?, ?, ?, ?, ?, ?)",
         ("tenant-legacy", "legacy-1", "2026-01-01T00:00:00Z", "sarif", json.dumps(payload), 1),
     )
     conn.commit()

@@ -108,9 +108,7 @@ def test_scan_secrets_still_flags_literal_token_passed_to_a_call(tmp_path: Path)
 
     result = scan_secrets(tmp_path)
 
-    assert any(
-        finding.secret_type == "AWS Access Key" and finding.severity == "critical" for finding in result.findings
-    )
+    assert any(finding.secret_type == "AWS Access Key" and finding.severity == "critical" for finding in result.findings)
 
 
 def test_scan_secrets_warns_on_non_directory(tmp_path: Path):

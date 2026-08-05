@@ -306,9 +306,7 @@ def consume_managed_trial_scan_credit(tenant_id: str, *, now: float | None = Non
         return 0
     limit = _quota_limit(tenant_id, "scan_credits_24h")
     timestamp = time.time() if now is None else float(now)
-    accepted, current, _reset_at = _managed_trial_scan_credit_store().consume_if_below(
-        _scan_credit_key(tenant_id), timestamp, limit
-    )
+    accepted, current, _reset_at = _managed_trial_scan_credit_store().consume_if_below(_scan_credit_key(tenant_id), timestamp, limit)
     if not accepted:
         _raise_quota_exceeded(
             tenant_id=tenant_id,

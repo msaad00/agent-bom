@@ -169,8 +169,7 @@ def to_prometheus(
     per_finding, dropped = _cap_findings(findings, max_per_finding_series)
     if dropped:
         logger.warning(
-            "Prometheus export truncated per-finding series: emitting top %d of %d findings "
-            "(cap=%d) to bound scrape cardinality",
+            "Prometheus export truncated per-finding series: emitting top %d of %d findings (cap=%d) to bound scrape cardinality",
             len(per_finding),
             len(findings),
             max_per_finding_series,

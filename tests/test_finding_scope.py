@@ -172,12 +172,7 @@ def test_finding_class_for_row_uses_explicit_unclassified_fallback() -> None:
     assert finding_class_for_row({"finding_type": "CREDENTIAL_EXPOSURE", "source": "SECRET_SCAN"}) == "secret"
     assert finding_class_for_row({"finding_type": "CIEM_OVER_PRIVILEGE"}) == "identity"
     assert finding_class_for_row({"finding_type": "SAST", "source": "SAST"}) == "vulnerability"
-    assert (
-        finding_class_for_row(
-            {"finding_type": "FUTURE_RUNTIME_SIGNAL", "source": "FUTURE_RUNTIME"}
-        )
-        == "unclassified"
-    )
+    assert finding_class_for_row({"finding_type": "FUTURE_RUNTIME_SIGNAL", "source": "FUTURE_RUNTIME"}) == "unclassified"
     assert finding_class_for_row({"id": "untyped-finding"}) == "unclassified"
 
 

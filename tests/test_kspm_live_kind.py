@@ -80,9 +80,7 @@ def test_live_posture_produces_real_findings_with_honest_states():
 
     # The hardened namespace must NOT be flagged privileged / no-netpol (honest,
     # differentiated evidence — the hardened side is genuinely clean there).
-    hardened_privileged = [
-        f for f in result.findings if "kspm-hardened" in f.file_path and f.rule_id in {"K8S-LIVE-007", "K8S-LIVE-005"}
-    ]
+    hardened_privileged = [f for f in result.findings if "kspm-hardened" in f.file_path and f.rule_id in {"K8S-LIVE-007", "K8S-LIVE-005"}]
     assert not hardened_privileged, [f.rule_id for f in hardened_privileged]
 
 

@@ -768,7 +768,7 @@ def test_teardown_hook_cleanup_is_scoped_to_its_helm_release_instance() -> None:
     helpers = (HELM_DIR / "templates" / "_helpers.tpl").read_text(encoding="utf-8")
     template = (HELM_DIR / "templates" / "teardown-hook-job.yaml").read_text(encoding="utf-8")
 
-    assert 'app.kubernetes.io/instance: {{ .Release.Name | quote }}' in helpers
+    assert "app.kubernetes.io/instance: {{ .Release.Name | quote }}" in helpers
     assert "app.kubernetes.io/instance={{ $.Release.Name }}" in template
 
 
@@ -1024,11 +1024,7 @@ def test_production_render_projects_only_canonical_postgres_identities() -> None
     assert "envFrom" not in backup_container
 
     def projected_secret_names(container: dict) -> dict[str, str]:
-        return {
-            entry["name"]: entry["valueFrom"]["secretKeyRef"]["name"]
-            for entry in container["env"]
-            if "valueFrom" in entry
-        }
+        return {entry["name"]: entry["valueFrom"]["secretKeyRef"]["name"] for entry in container["env"] if "valueFrom" in entry}
 
     assert projected_secret_names(api_container) == {
         "AGENT_BOM_POSTGRES_URL": "agent-bom-control-plane-db",
@@ -1039,9 +1035,7 @@ def test_production_render_projects_only_canonical_postgres_identities() -> None
         "AGENT_BOM_POSTGRES_URL": "agent-bom-control-plane-db",
         "AGENT_BOM_POSTGRES_MAINTENANCE_URL": "agent-bom-control-plane-maintenance",
     }
-    assert projected_secret_names(backup_container) == {
-        "AGENT_BOM_POSTGRES_MAINTENANCE_URL": "agent-bom-control-plane-maintenance"
-    }
+    assert projected_secret_names(backup_container) == {"AGENT_BOM_POSTGRES_MAINTENANCE_URL": "agent-bom-control-plane-maintenance"}
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

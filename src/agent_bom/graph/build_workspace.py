@@ -363,9 +363,7 @@ class _PostgresWorkspaceBackend:
         ).fetchone()
         if not rows or rows[0] is None or rows[1] is None:
             self._conn.close()
-            raise RuntimeError(
-                "Postgres graph workspace schema is not migrated; run Alembic upgrade head before starting the service."
-            )
+            raise RuntimeError("Postgres graph workspace schema is not migrated; run Alembic upgrade head before starting the service.")
 
     def _bind_tenant(self, tenant_id: str) -> None:
         """Bind ``app.tenant_id`` for FORCE RLS (transaction-local).

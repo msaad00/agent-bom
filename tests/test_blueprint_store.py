@@ -36,9 +36,7 @@ def _composition() -> BlueprintComposition:
 
 def test_create_blueprint_starts_as_draft_version_one():
     store = InMemoryBlueprintStore()
-    blueprint, version = create_blueprint(
-        store, tenant_id="t1", name="Planner system", owner="appsec", composition=_composition()
-    )
+    blueprint, version = create_blueprint(store, tenant_id="t1", name="Planner system", owner="appsec", composition=_composition())
     assert blueprint.approval_status == STATUS_DRAFT
     assert blueprint.current_version == 0  # nothing approved yet
     assert blueprint.latest_version == 1
@@ -115,9 +113,7 @@ def test_approved_version_is_immutable():
 
 def test_author_cannot_approve_their_own_version():
     store = InMemoryBlueprintStore()
-    blueprint, _ = create_blueprint(
-        store, tenant_id="t1", name="bp", owner="o", composition=_composition(), created_by="alice"
-    )
+    blueprint, _ = create_blueprint(store, tenant_id="t1", name="bp", owner="o", composition=_composition(), created_by="alice")
     bid = blueprint.blueprint_id
     submit_version_for_approval(store, tenant_id="t1", blueprint_id=bid, version=1, submitted_by="bob")
     # The author (alice) may not approve their own version.
@@ -138,9 +134,7 @@ def test_self_approval_error_is_a_blueprint_approval_error():
 
 def test_a_different_admin_can_approve_after_self_approval_is_blocked():
     store = InMemoryBlueprintStore()
-    blueprint, _ = create_blueprint(
-        store, tenant_id="t1", name="bp", owner="o", composition=_composition(), created_by="alice"
-    )
+    blueprint, _ = create_blueprint(store, tenant_id="t1", name="bp", owner="o", composition=_composition(), created_by="alice")
     bid = blueprint.blueprint_id
     submit_version_for_approval(store, tenant_id="t1", blueprint_id=bid, version=1, submitted_by="alice")
     with pytest.raises(BlueprintSelfApprovalError):
@@ -151,9 +145,7 @@ def test_a_different_admin_can_approve_after_self_approval_is_blocked():
 
 def test_mandatory_approver_invariant_still_holds():
     store = InMemoryBlueprintStore()
-    blueprint, _ = create_blueprint(
-        store, tenant_id="t1", name="bp", owner="o", composition=_composition(), created_by="alice"
-    )
+    blueprint, _ = create_blueprint(store, tenant_id="t1", name="bp", owner="o", composition=_composition(), created_by="alice")
     bid = blueprint.blueprint_id
     submit_version_for_approval(store, tenant_id="t1", blueprint_id=bid, version=1, submitted_by="alice")
     # An empty approver is still rejected (before the four-eyes check runs).
@@ -308,13 +300,21 @@ def test_owner_index_is_tenant_isolated():
     # cross-tenant leakage: t1's index never attributes t2's agents/blueprints.
     store = InMemoryBlueprintStore()
     bp1, _ = create_blueprint(
-        store, tenant_id="t1", name="a", owner="alice",
-        composition=BlueprintComposition(agents=["planner"], tools=["repo_read"]), created_by="author",
+        store,
+        tenant_id="t1",
+        name="a",
+        owner="alice",
+        composition=BlueprintComposition(agents=["planner"], tools=["repo_read"]),
+        created_by="author",
     )
     _approve_v1(store, "t1", bp1.blueprint_id, author="author")
     bp2, _ = create_blueprint(
-        store, tenant_id="t2", name="b", owner="bob",
-        composition=BlueprintComposition(agents=["ranker"], tools=["repo_read"]), created_by="author",
+        store,
+        tenant_id="t2",
+        name="b",
+        owner="bob",
+        composition=BlueprintComposition(agents=["ranker"], tools=["repo_read"]),
+        created_by="author",
     )
     _approve_v1(store, "t2", bp2.blueprint_id, author="author")
     index_t1 = build_agent_owner_index(store, "t1")

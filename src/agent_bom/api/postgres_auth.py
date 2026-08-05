@@ -85,7 +85,7 @@ class RdsIamAuthTokenProvider:
 
 def postgres_auth_mode() -> str:
     """Return the configured Postgres auth mode; defaults to ``password``."""
-    return (os.environ.get(POSTGRES_AUTH_MODE_ENV, "").strip().lower() or AUTH_MODE_PASSWORD)
+    return os.environ.get(POSTGRES_AUTH_MODE_ENV, "").strip().lower() or AUTH_MODE_PASSWORD
 
 
 def resolve_postgres_auth_token_provider() -> PostgresAuthTokenProvider:
@@ -98,6 +98,5 @@ def resolve_postgres_auth_token_provider() -> PostgresAuthTokenProvider:
     if provider == IAM_PROVIDER_AWS_RDS:
         return RdsIamAuthTokenProvider()
     raise PostgresAuthError(
-        f"{POSTGRES_IAM_PROVIDER_ENV}={provider!r} is not a supported Postgres IAM token provider; "
-        f"expected {IAM_PROVIDER_AWS_RDS!r}."
+        f"{POSTGRES_IAM_PROVIDER_ENV}={provider!r} is not a supported Postgres IAM token provider; expected {IAM_PROVIDER_AWS_RDS!r}."
     )

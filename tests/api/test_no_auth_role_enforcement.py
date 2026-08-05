@@ -99,10 +99,13 @@ def test_pure_no_auth_analyst_uses_the_route_role_matrix(
     )
     assert created.status_code == 201
     source_id = created.json()["source_id"]
-    assert pure_no_auth_client.put(
-        f"/v1/sources/{source_id}",
-        json={"description": "updated"},
-    ).status_code == 200
+    assert (
+        pure_no_auth_client.put(
+            f"/v1/sources/{source_id}",
+            json={"description": "updated"},
+        ).status_code
+        == 200
+    )
     # Source deletion and job deletion are protected admin operations.
     assert pure_no_auth_client.delete(f"/v1/sources/{source_id}").status_code == 403
     assert pure_no_auth_client.delete("/v1/scan/missing").status_code == 403

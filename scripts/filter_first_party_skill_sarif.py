@@ -38,11 +38,7 @@ def filter_sarif(data: dict[str, Any]) -> int:
         if not isinstance(run, dict):
             continue
         driver = (run.get("tool") or {}).get("driver") or {}
-        rules = {
-            str(rule.get("id") or ""): rule
-            for rule in driver.get("rules", [])
-            if isinstance(rule, dict)
-        }
+        rules = {str(rule.get("id") or ""): rule for rule in driver.get("rules", []) if isinstance(rule, dict)}
         kept: list[dict[str, Any]] = []
         for result in run.get("results", []):
             if not isinstance(result, dict):

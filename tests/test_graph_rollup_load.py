@@ -42,9 +42,7 @@ def test_load_graph_can_filter_edges_for_rollup(tmp_path) -> None:
 
         g2 = UnifiedGraph(scan_id="rollup-owns", tenant_id="default")
         g2.add_node(UnifiedNode(id="account:aws:1", entity_type=EntityType.ACCOUNT, label="prod"))
-        g2.add_node(
-            UnifiedNode(id="cloud:aws:s3:b", entity_type=EntityType.CLOUD_RESOURCE, label="bucket")
-        )
+        g2.add_node(UnifiedNode(id="cloud:aws:s3:b", entity_type=EntityType.CLOUD_RESOURCE, label="bucket"))
         g2.add_edge(
             UnifiedEdge(
                 source="account:aws:1",

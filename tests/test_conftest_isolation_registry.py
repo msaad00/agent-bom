@@ -35,11 +35,7 @@ def test_store_singleton_modules_all_import_and_contribute() -> None:
         # fixture would otherwise swallow it, hiding the rot this test exists to
         # catch.
         mod = importlib.import_module(mod_path)
-        holders = [
-            name
-            for name, value in vars(mod).items()
-            if conftest._is_store_singleton_name(name) and not callable(value)
-        ]
+        holders = [name for name, value in vars(mod).items() if conftest._is_store_singleton_name(name) and not callable(value)]
         assert holders, (
             f"{mod_path} is listed in _STORE_SINGLETON_MODULES but exposes no "
             f"snapshot-eligible singleton (a non-callable global whose name ends "

@@ -38,8 +38,7 @@ def bootstrap_postgres_gateway_activity_schema(conn: Connection) -> None:
         if ddl:
             conn.execute(ddl)
     conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal "
-        "ON gateway_activity_events(tenant_id, ingest_ordinal)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal ON gateway_activity_events(tenant_id, ingest_ordinal)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_event_time "
@@ -96,16 +95,14 @@ class PostgresGatewayActivityStore:
         with _tenant_connection(self._pool) as conn:
             try:
                 conn.execute(
-                    "INSERT INTO gateway_activity_sequences(tenant_id, next_ordinal) VALUES (%s, 1) "
-                    "ON CONFLICT(tenant_id) DO NOTHING",
+                    "INSERT INTO gateway_activity_sequences(tenant_id, next_ordinal) VALUES (%s, 1) ON CONFLICT(tenant_id) DO NOTHING",
                     (tenant_id,),
                 )
                 # This per-tenant row is the serialization point. It is locked
                 # before dedupe reads, so a concurrent commit is visible before
                 # this transaction decides whether an event is new.
                 sequence_row = conn.execute(
-                    "SELECT next_ordinal FROM gateway_activity_sequences "
-                    "WHERE tenant_id = %s FOR UPDATE",
+                    "SELECT next_ordinal FROM gateway_activity_sequences WHERE tenant_id = %s FOR UPDATE",
                     (tenant_id,),
                 ).fetchone()
                 if sequence_row is None:

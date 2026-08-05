@@ -81,21 +81,14 @@ class PostgresGovernanceAuditLog:
             # Migrate away the old GLOBAL UNIQUE(action_id) if a pre-tenant-scope
             # table exists (Postgres auto-names an inline column unique
             # <table>_<column>_key); idempotent no-op on fresh installs.
-            conn.execute(
-                "ALTER TABLE governance_audit_log "
-                "DROP CONSTRAINT IF EXISTS governance_audit_log_action_id_key"
-            )
+            conn.execute("ALTER TABLE governance_audit_log DROP CONSTRAINT IF EXISTS governance_audit_log_action_id_key")
             # Tenant-scoped uniqueness — the ON CONFLICT arbiter and the
             # defense-in-depth against a caller crossing tenants with a pre-built
             # id. Idempotent for both fresh and migrated tables.
             conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action "
-                "ON governance_audit_log(tenant_id, action_id)"
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action ON governance_audit_log(tenant_id, action_id)"
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant "
-                "ON governance_audit_log(tenant_id, seq)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant ON governance_audit_log(tenant_id, seq)")
             _ensure_tenant_rls(conn, "governance_audit_log", "tenant_id")
             conn.commit()
 
@@ -116,8 +109,7 @@ class PostgresGovernanceAuditLog:
                 if existing is not None:
                     return existing
                 head_row = conn.execute(
-                    "SELECT record_hash FROM governance_audit_log "
-                    "WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
+                    "SELECT record_hash FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
                     (record.tenant_id,),
                 ).fetchone()
                 head = str(head_row[0]) if head_row else ""
@@ -156,8 +148,7 @@ class PostgresGovernanceAuditLog:
             try:
                 with _tenant_connection(self._pool) as conn:
                     rows = conn.execute(
-                        "SELECT data FROM governance_audit_log WHERE tenant_id = %s "
-                        "ORDER BY seq DESC LIMIT %s",
+                        "SELECT data FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq DESC LIMIT %s",
                         (tenant_id, limit),
                     ).fetchall()
             finally:
@@ -178,8 +169,7 @@ class PostgresGovernanceAuditLog:
             try:
                 with _tenant_connection(self._pool) as conn:
                     row = conn.execute(
-                        "SELECT record_hash FROM governance_audit_log "
-                        "WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
+                        "SELECT record_hash FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
                         (tenant_id,),
                     ).fetchone()
             finally:
@@ -204,8 +194,7 @@ class PostgresGovernanceAuditLog:
             try:
                 with _tenant_connection(self._pool) as conn:
                     rows = conn.execute(
-                        "SELECT data FROM governance_audit_log WHERE tenant_id = %s "
-                        "ORDER BY seq ASC LIMIT %s",
+                        "SELECT data FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq ASC LIMIT %s",
                         (tenant_id, max_rows),
                     ).fetchall()
             finally:

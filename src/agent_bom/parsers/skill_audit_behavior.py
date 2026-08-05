@@ -599,12 +599,7 @@ def _inside_fenced_code_block(content: str, offset: int) -> bool:
 def _block_bounds(lines: list[str], line_idx: int) -> tuple[int, int]:
     """Return the (start, end) line indices of the list item / paragraph block."""
     start = line_idx
-    while (
-        start > 0
-        and lines[start].startswith((" ", "\t"))
-        and lines[start].strip()
-        and not _LIST_ITEM_RE.match(lines[start])
-    ):
+    while start > 0 and lines[start].startswith((" ", "\t")) and lines[start].strip() and not _LIST_ITEM_RE.match(lines[start]):
         start -= 1
     end = line_idx
     while (

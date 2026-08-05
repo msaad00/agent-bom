@@ -299,10 +299,7 @@ def run_iac_only_scan(
             con.print("  [green]✓[/green] live cluster posture: no misconfigurations in evaluated collectors")
 
         if posture.status is K8sPostureStatus.PARTIAL:
-            con.print(
-                "  [yellow]partial coverage[/yellow] — some reads were unevaluable; "
-                "absence of findings there is not a pass"
-            )
+            con.print("  [yellow]partial coverage[/yellow] — some reads were unevaluable; absence of findings there is not a pass")
 
     iac_report = AIBOMReport(agents=[], blast_radii=[])
     iac_report.iac_findings_data = {

@@ -636,15 +636,13 @@ def _render_nist_catalog_markdown(lines: list, catalog: dict) -> None:
     if catalog.get("status") == "no_data":
         lines.extend(
             [
-                "No NIST 800-53 control was evaluated by this scan (no mapped evidence). "
-                "Reported as not evaluated, not compliant.",
+                "No NIST 800-53 control was evaluated by this scan (no mapped evidence). Reported as not evaluated, not compliant.",
                 "",
             ]
         )
         return
     lines.append(
-        f"Status: `{catalog.get('status')}` · Score: `{catalog.get('score')}/100` "
-        f"(over {summary.get('evaluated', 0)} evaluated controls)"
+        f"Status: `{catalog.get('status')}` · Score: `{catalog.get('score')}/100` (over {summary.get('evaluated', 0)} evaluated controls)"
     )
     lines.append(
         f"- Pass: {summary.get('pass', 0)} · Fail: {summary.get('fail', 0)} · "
@@ -664,17 +662,14 @@ def _render_nist_catalog_markdown(lines: list, catalog: dict) -> None:
         lines.append("| --- | --- | --- | --- |")
         for control in sorted(graded, key=lambda c: c["control_id"]):
             iso_ids = ", ".join(control.get("iso_27001_derived", [])) or "—"
-            lines.append(
-                f"| {control['control_id']} | {control['status']} | {control.get('findings', 0)} | {iso_ids} |"
-            )
+            lines.append(f"| {control['control_id']} | {control['status']} | {control.get('findings', 0)} | {iso_ids} |")
         lines.append("")
 
     iso_block = catalog.get("iso_27001_derived", {})
     iso_controls = iso_block.get("controls", []) if isinstance(iso_block, dict) else []
     if iso_controls:
         lines.append(
-            "ISO/IEC 27001:2022 Annex A control ids implicated via NIST's official crosswalk "
-            f"(identifiers only): {', '.join(iso_controls)}"
+            f"ISO/IEC 27001:2022 Annex A control ids implicated via NIST's official crosswalk (identifiers only): {', '.join(iso_controls)}"
         )
         lines.append("")
 

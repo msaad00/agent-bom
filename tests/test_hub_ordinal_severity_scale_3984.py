@@ -71,8 +71,7 @@ def test_ordinal_read_rides_ordinal_index_not_a_subquery(tmp_path) -> None:
     conn = store._conn
     clause = _sqlite_current_order_clause("ordinal")
     plan = conn.execute(
-        f"EXPLAIN QUERY PLAN SELECT canonical_id FROM hub_findings_current "
-        f"WHERE tenant_id=? {clause} LIMIT 20",
+        f"EXPLAIN QUERY PLAN SELECT canonical_id FROM hub_findings_current WHERE tenant_id=? {clause} LIMIT 20",
         ("t-3984",),
     ).fetchall()
     detail = " | ".join(row[3] for row in plan)
@@ -211,8 +210,7 @@ def test_migration_backfills_ledger_ordinal_for_preexisting_rows(tmp_path) -> No
     conn = sqlite3.connect(db)
     conn.executescript(_legacy_current_ddl())
     conn.executemany(
-        "INSERT INTO compliance_hub_findings (tenant_id, finding_id, ingested_at, source, payload, ordinal) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO compliance_hub_findings (tenant_id, finding_id, ingested_at, source, payload, ordinal) VALUES (?, ?, ?, ?, ?, ?)",
         [
             ("t", "f-a", "2026-01-01T00:00:00Z", "s", "{}", 7),
             ("t", "f-b", "2026-01-01T00:00:00Z", "s", "{}", 12),

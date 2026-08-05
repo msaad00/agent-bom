@@ -124,8 +124,22 @@ _RESOURCE_RULES: dict[str, _ResourceRule] = {
     ),
     "iam": _ResourceRule(
         check_ids=(
-            "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11", "1.12",
-            "1.13", "1.14", "1.15", "1.16", "1.17", "1.20", "1.22",
+            "1.4",
+            "1.5",
+            "1.6",
+            "1.7",
+            "1.8",
+            "1.9",
+            "1.10",
+            "1.11",
+            "1.12",
+            "1.13",
+            "1.14",
+            "1.15",
+            "1.16",
+            "1.17",
+            "1.20",
+            "1.22",
         ),
         inventory_kwargs=_only(include_iam=True),
         locators=(("roles", "name"), ("users", "name"), ("groups", "name")),
@@ -481,9 +495,7 @@ def consume_aws_events(
 
     max_messages = max(1, min(int(max_messages if max_messages is not None else config.AWS_EVENT_MAX_MESSAGES), 10))
     max_batches = max(1, int(max_batches if max_batches is not None else config.AWS_EVENT_MAX_BATCHES))
-    visibility_timeout = max(
-        0, int(visibility_timeout if visibility_timeout is not None else config.AWS_EVENT_VISIBILITY_TIMEOUT)
-    )
+    visibility_timeout = max(0, int(visibility_timeout if visibility_timeout is not None else config.AWS_EVENT_VISIBILITY_TIMEOUT))
     wait_seconds = max(0, min(int(wait_seconds if wait_seconds is not None else config.AWS_EVENT_WAIT_SECONDS), 20))
 
     if sqs_client is None:

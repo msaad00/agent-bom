@@ -294,20 +294,12 @@ def _correlation_kind(events: tuple[_CorrelationRow, ...]) -> tuple[str, str]:
 _PATH_TYPES = ("workflow", "iam_role", "deployment", "tool", "table", "hosted_model")
 
 
-def _asset_path(
-    events: tuple[_CorrelationRow, ...], assets_by_id: dict[str, EstateAsset]
-) -> tuple[str, ...]:
-    ordered_ids = _unique_in_order(
-        resource_id for event in events for resource_id in event.resource_ids
-    )
+def _asset_path(events: tuple[_CorrelationRow, ...], assets_by_id: dict[str, EstateAsset]) -> tuple[str, ...]:
+    ordered_ids = _unique_in_order(resource_id for event in events for resource_id in event.resource_ids)
     selected: list[str] = []
     for resource_type in _PATH_TYPES:
         match = next(
-            (
-                resource_id
-                for resource_id in ordered_ids
-                if assets_by_id[resource_id].resource_type == resource_type
-            ),
+            (resource_id for resource_id in ordered_ids if assets_by_id[resource_id].resource_type == resource_type),
             None,
         )
         if match is not None:
@@ -315,14 +307,8 @@ def _asset_path(
     return tuple(selected or ordered_ids)
 
 
-def _data_classifications(
-    asset_ids: tuple[str, ...], assets_by_id: dict[str, EstateAsset]
-) -> tuple[str, ...]:
-    classifications = {
-        classification
-        for asset_id in asset_ids
-        for classification in assets_by_id[asset_id].data_classifications
-    }
+def _data_classifications(asset_ids: tuple[str, ...], assets_by_id: dict[str, EstateAsset]) -> tuple[str, ...]:
+    classifications = {classification for asset_id in asset_ids for classification in assets_by_id[asset_id].data_classifications}
     regulated = classifications & {"phi", "pii", "pci", "restricted"}
     return tuple(sorted(regulated or classifications))
 
@@ -344,15 +330,9 @@ def _build_correlations(
         ordered = tuple(sorted(trace_events, key=lambda row: (row.observed_at, row.event_id)))
         kind, outcome = _correlation_kind(ordered)
         sources = tuple(event.source for event in ordered)
-        asset_ids = _unique_in_order(
-            resource_id for event in ordered for resource_id in event.resource_ids
-        )
+        asset_ids = _unique_in_order(resource_id for event in ordered for resource_id in event.resource_ids)
         incomplete_sources = tuple(
-            dict.fromkeys(
-                source
-                for source in sources
-                if status_by_source.get(source) is not CollectionStatus.COMPLETE
-            )
+            dict.fromkeys(source for source in sources if status_by_source.get(source) is not CollectionStatus.COMPLETE)
         )
         correlation_seed = f"{tenant_id}:{trace_id}:{CORRELATION_VERSION}".encode()
         correlations.append(
@@ -426,8 +406,7 @@ def correlate_enterprise_estate(estate: EnterpriseEstate) -> EnterpriseCorrelati
     """Normalize one estate and build deterministic, tenant-scoped correlations."""
     assets_by_id = {asset.asset_id: asset for asset in estate.assets}
     events = tuple(
-        _normalize_event(observation, tenant_id=estate.tenant_id, assets_by_id=assets_by_id)
-        for observation in estate.observations
+        _normalize_event(observation, tenant_id=estate.tenant_id, assets_by_id=assets_by_id) for observation in estate.observations
     )
     health = _collection_health(estate)
     status_by_source = {row.source: row.status for row in health}
@@ -446,9 +425,7 @@ def correlate_enterprise_estate(estate: EnterpriseEstate) -> EnterpriseCorrelati
         collection_health=health,
         content_hash="0" * 64,
     )
-    digest = hashlib.sha256(
-        _canonical_json(result.model_dump(mode="json", exclude={"content_hash"}))
-    ).hexdigest()
+    digest = hashlib.sha256(_canonical_json(result.model_dump(mode="json", exclude={"content_hash"}))).hexdigest()
     return result.model_copy(update={"content_hash": digest})
 
 

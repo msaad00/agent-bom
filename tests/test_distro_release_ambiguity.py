@@ -165,7 +165,7 @@ def test_deb_with_release_keeps_the_fix_and_full_confidence() -> None:
 
 
 def test_withheld_fix_is_not_mistaken_for_a_wont_fix_advisory() -> None:
-    """"We withheld the fix" is not "the distro will not fix it".
+    """ "We withheld the fix" is not "the distro will not fix it".
 
     Distro advisories with no fixed version are suppressed by default as the
     tracker's no-dsa / won't-fix verdicts. Clearing ``fixed_version`` to stop a

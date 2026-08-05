@@ -340,9 +340,7 @@ def test_managed_trial_oidc_start_uses_posted_secret_only(monkeypatch: pytest.Mo
         ),
         patch("agent_bom.api.oidc_browser.validate_url"),
     ):
-        response = asyncio.run(
-            enterprise.managed_trial_oidc_start(_request(path="/v1/auth/trial/oidc/start"), body)
-        )
+        response = asyncio.run(enterprise.managed_trial_oidc_start(_request(path="/v1/auth/trial/oidc/start"), body))
 
     assert issued.raw_token not in response.headers["location"]
     sealed = _cookie_value(response, "agent_bom_oidc_pkce")

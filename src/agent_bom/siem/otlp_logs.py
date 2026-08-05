@@ -203,9 +203,7 @@ def build_audit_otlp_exporter(endpoint: str, headers: dict[str, str] | None = No
 
     resource = Resource.create({SERVICE_NAME: "agent-bom", SERVICE_VERSION: __version__})
     provider = LoggerProvider(resource=resource)
-    provider.add_log_record_processor(
-        BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, headers=headers or None))
-    )
+    provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, headers=headers or None)))
     return AuditLogOtlpExporter(provider=provider)
 
 

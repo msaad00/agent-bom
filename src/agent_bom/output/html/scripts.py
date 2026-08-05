@@ -1,4 +1,5 @@
 """Embedded JavaScript layers and offline-asset post-processing."""
+
 from __future__ import annotations
 
 _EXTERNAL_SCRIPT_TAGS = (
@@ -162,9 +163,7 @@ SCALE_REPORT_SCRIPT = f"""<script>
 </script>"""
 
 
-def render_graph_script(
-    chart_data_json: str, elements_json: str, attack_flow_json: str
-) -> str:
+def render_graph_script(chart_data_json: str, elements_json: str, attack_flow_json: str) -> str:
     """Return the Chart.js + Cytoscape graph/interaction <script> block."""
     return f"""<script>
 (function() {{

@@ -102,9 +102,7 @@ def test_replay_is_deterministic_and_tenant_scoped() -> None:
 
     assert first.model_dump(mode="json") == replay.model_dump(mode="json")
     assert first.content_hash == replay.content_hash
-    assert {row.correlation_id for row in first.correlations}.isdisjoint(
-        {row.correlation_id for row in other.correlations}
-    )
+    assert {row.correlation_id for row in first.correlations}.isdisjoint({row.correlation_id for row in other.correlations})
     assert first.content_hash != other.content_hash
 
 

@@ -90,9 +90,7 @@ class TestPoetryLock:
         assert by_name["requests"].version == "2.31.0"
 
     def test_poetry_declarations_are_used_without_lock(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text(
-            "[tool.poetry.dependencies]\npython = \"^3.11\"\nrequests = \"^2.31\"\n"
-        )
+        (tmp_path / "pyproject.toml").write_text('[tool.poetry.dependencies]\npython = "^3.11"\nrequests = "^2.31"\n')
 
         pkgs = parse_pip_packages(tmp_path)
 
@@ -370,8 +368,7 @@ def test_pip_git_url_requirement_marked_floating_not_exact(tmp_path):
     confidence so downstream matching does not trust the coincidence.
     """
     (tmp_path / "requirements.txt").write_text(
-        "flask @ git+https://github.com/pallets/flask.git@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\n"
-        "requests==2.0.0\n",
+        "flask @ git+https://github.com/pallets/flask.git@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\nrequests==2.0.0\n",
         encoding="utf-8",
     )
     pkgs = {p.name: p for p in parse_pip_packages(tmp_path)}

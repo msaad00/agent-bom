@@ -159,8 +159,7 @@ def test_migration_from_old_single_column_unique(tmp_path):
     for i in range(3):
         sealed = _seal_record(_rec("acme", target=f"t{i}", window=str(i)), prev)
         conn.execute(
-            "INSERT INTO governance_audit_log (action_id, tenant_id, action, observed_at, record_hash, data) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO governance_audit_log (action_id, tenant_id, action, observed_at, record_hash, data) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 sealed.action_id,
                 sealed.tenant_id,
@@ -186,9 +185,7 @@ def test_migration_from_old_single_column_unique(tmp_path):
     assert log.verify_chain()["tampered"] == 0
 
     # Schema is now the composite unique.
-    sql = log._conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='governance_audit_log'"
-    ).fetchone()[0]
+    sql = log._conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='governance_audit_log'").fetchone()[0]
     normalized = sql.replace(" ", "").lower()
     assert "unique(tenant_id,action_id)" in normalized
 

@@ -67,11 +67,7 @@ def analysis_status_map_to_dict(statuses: Mapping[str, GraphAnalysisStatus]) -> 
 def analysis_status_map_from_dict(value: Any) -> dict[str, GraphAnalysisStatus]:
     if not isinstance(value, Mapping):
         value = {}
-    statuses = {
-        str(name): GraphAnalysisStatus.from_dict(payload)
-        for name, payload in value.items()
-        if isinstance(payload, Mapping)
-    }
+    statuses = {str(name): GraphAnalysisStatus.from_dict(payload) for name, payload in value.items() if isinstance(payload, Mapping)}
     if "attack_path_fusion" not in statuses:
         statuses["attack_path_fusion"] = not_recorded_analysis_status()
     return statuses

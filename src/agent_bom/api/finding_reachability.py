@@ -60,11 +60,7 @@ def _path_vulnerability_ids(path: AttackPath) -> set[str]:
     values: list[object] = list(path.vuln_ids)
     values.append(path.target)
     values.extend(path.hops)
-    return {
-        identifier
-        for value in values
-        if (identifier := _vulnerability_id(value)).startswith(("CVE-", "GHSA-", "MAL-"))
-    }
+    return {identifier for value in values if (identifier := _vulnerability_id(value)).startswith(("CVE-", "GHSA-", "MAL-"))}
 
 
 def _row_node_ids(row: Mapping[str, Any]) -> set[str]:

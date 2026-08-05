@@ -1,4 +1,5 @@
 """Top-level HTML document assembler and file exporter."""
+
 from __future__ import annotations
 
 from pathlib import Path

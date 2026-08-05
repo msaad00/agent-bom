@@ -3008,9 +3008,7 @@ def run_benchmark_all_regions(
         try:
             partial = run_benchmark(region=scan_region, profile=profile, checks=regional_ids)
         except Exception as exc:  # noqa: BLE001
-            merged.warnings.append(
-                f"CIS benchmark skipped region {scan_region}: {sanitize_discovery_warning(exc)}"
-            )
+            merged.warnings.append(f"CIS benchmark skipped region {scan_region}: {sanitize_discovery_warning(exc)}")
             continue
         for check in partial.checks:
             prev = by_id.get(check.check_id)

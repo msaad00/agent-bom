@@ -120,8 +120,7 @@ def ensure_sqlite_gateway_activity_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_SQLITE_SEQUENCES_DDL)
     conn.execute(_SQLITE_TOMBSTONES_DDL)
     conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal "
-        "ON gateway_activity_events(tenant_id, ingest_ordinal)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_ordinal ON gateway_activity_events(tenant_id, ingest_ordinal)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_gateway_activity_events_tenant_event_time "
@@ -138,6 +137,7 @@ def ensure_sqlite_gateway_activity_schema(conn: sqlite3.Connection) -> None:
     # and uniqueness guard above exists, regardless of which runtime store was
     # constructed first.
     ensure_sqlite_schema_version(conn, "runtime_events", version=GATEWAY_ACTIVITY_STORAGE_VERSION)
+
 
 _EVENT_TYPES = GATEWAY_ALLOWED_EVENT_TYPES | GATEWAY_BLOCKED_EVENT_TYPES | GATEWAY_DATA_FILTER_EVENT_TYPES
 _EXPECTED_DECISIONS = {
@@ -397,9 +397,7 @@ def _window_summary(
     blocked = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES)
     data_filters = sum(count for event_type, _reason, count in event_rows if event_type in GATEWAY_DATA_FILTER_EVENT_TYPES)
     shadow_blocked = sum(
-        count
-        for event_type, reason, count in event_rows
-        if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
+        count for event_type, reason, count in event_rows if event_type in GATEWAY_BLOCKED_EVENT_TYPES and _is_shadow_reason(reason)
     )
     return GatewayActivityWindowSummary(
         tenant_id=tenant_id,
@@ -550,9 +548,7 @@ def _page(
     bounded_limit = max(1, min(limit, MAX_ACTIVITY_PAGE_SIZE))
     has_more = len(records) > bounded_limit
     page_records = records[:bounded_limit]
-    next_cursor: str | None = (
-        _encode_cursor(tenant_id, page_records[-1].ingest_ordinal) if page_records else cursor
-    )
+    next_cursor: str | None = _encode_cursor(tenant_id, page_records[-1].ingest_ordinal) if page_records else cursor
     return GatewayActivityPage(
         tenant_id=tenant_id,
         events=[record.to_dict() for record in page_records],
@@ -664,9 +660,7 @@ class InMemoryGatewayActivityStore:
                 for (row_tenant, _), record in self._events.items()
                 if row_tenant == tenant_id and start <= record.event_timestamp <= end
             ]
-            all_tenant_rows = [
-                record for (row_tenant, _), record in self._events.items() if row_tenant == tenant_id
-            ]
+            all_tenant_rows = [record for (row_tenant, _), record in self._events.items() if row_tenant == tenant_id]
             latest = self._next_ordinal.get(tenant_id, 1) - 1
             floor = min((record.ingest_ordinal for record in all_tenant_rows), default=latest + 1)
         grouped: dict[tuple[str, str], int] = {}
@@ -727,8 +721,7 @@ class SQLiteGatewayActivityStore:
         try:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
-                "INSERT INTO gateway_activity_sequences(tenant_id, next_ordinal) VALUES (?, 1) "
-                "ON CONFLICT(tenant_id) DO NOTHING",
+                "INSERT INTO gateway_activity_sequences(tenant_id, next_ordinal) VALUES (?, 1) ON CONFLICT(tenant_id) DO NOTHING",
                 (tenant_id,),
             )
             event_ids = [record.event_id for record in prepared]
@@ -819,8 +812,7 @@ class SQLiteGatewayActivityStore:
                     )
                     tombstone_excess = max(0, tombstone_count - self.max_tombstones_per_tenant)
                     expired_ids = conn.execute(
-                        "SELECT event_id FROM gateway_activity_tombstones "
-                        "WHERE tenant_id = ? ORDER BY pruned_ordinal ASC LIMIT ?",
+                        "SELECT event_id FROM gateway_activity_tombstones WHERE tenant_id = ? ORDER BY pruned_ordinal ASC LIMIT ?",
                         (tenant_id, tombstone_excess),
                     ).fetchall()
                     conn.executemany(

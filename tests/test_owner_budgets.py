@@ -201,9 +201,7 @@ def _is_blocked(resp) -> bool:
 def test_gateway_blocks_when_owner_budget_exceeded(gateway_env):
     cost = gateway_env
     # agent-a is governed by team-alpha; team-alpha has already burned its cap.
-    cost.record_cost(
-        LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 20.0, True, "2026-06-01T00:00:00Z")
-    )
+    cost.record_cost(LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 20.0, True, "2026-06-01T00:00:00Z"))
     cost.set_budget(CostBudget(tenant_id="default", agent="", limit_usd=10.0, updated_at="now", mode="enforce", owner="team-alpha"))
     client = TestClient(create_gateway_app(_settings()))
     resp = client.post("/mcp/filesystem", json=_call())
@@ -213,9 +211,7 @@ def test_gateway_blocks_when_owner_budget_exceeded(gateway_env):
 
 def test_gateway_allows_when_owner_under_budget(gateway_env):
     cost = gateway_env
-    cost.record_cost(
-        LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 2.0, True, "2026-06-01T00:00:00Z")
-    )
+    cost.record_cost(LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 2.0, True, "2026-06-01T00:00:00Z"))
     cost.set_budget(CostBudget(tenant_id="default", agent="", limit_usd=10.0, updated_at="now", mode="enforce", owner="team-alpha"))
     client = TestClient(create_gateway_app(_settings()))
     resp = client.post("/mcp/filesystem", json=_call())
@@ -224,9 +220,7 @@ def test_gateway_allows_when_owner_under_budget(gateway_env):
 
 def test_gateway_report_mode_owner_budget_never_blocks(gateway_env):
     cost = gateway_env
-    cost.record_cost(
-        LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 99.0, True, "2026-06-01T00:00:00Z")
-    )
+    cost.record_cost(LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 99.0, True, "2026-06-01T00:00:00Z"))
     cost.set_budget(CostBudget(tenant_id="default", agent="", limit_usd=1.0, updated_at="now", mode="report", owner="team-alpha"))
     client = TestClient(create_gateway_app(_settings()))
     resp = client.post("/mcp/filesystem", json=_call())
@@ -252,9 +246,7 @@ def api():
     bp_store = InMemoryBlueprintStore()
     _approved_blueprint(bp_store, tenant="default", owner="team-alpha", agents=["agent-a"])
     cost = InMemoryCostStore()
-    cost.record_cost(
-        LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 7.0, True, "2026-06-01T00:00:00Z")
-    )
+    cost.record_cost(LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1, 1, 7.0, True, "2026-06-01T00:00:00Z"))
     set_blueprint_store(bp_store)
     set_cost_store(cost)
     try:

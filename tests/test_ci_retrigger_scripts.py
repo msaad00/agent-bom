@@ -52,7 +52,7 @@ def test_recovery_scripts_guard_queued_workflows_by_head_sha() -> None:
 
     for script, sha in ((dispatch, "head_sha"), (retrigger, "HEAD_SHA")):
         assert f"actions/runs?head_sha=${{{sha}}}" in script
-        assert ".status != \"completed\"" in script
+        assert '.status != "completed"' in script
         assert "not dispatching a duplicate" in script or "not retriggering" in script
 
 
@@ -62,8 +62,8 @@ def test_recovery_scripts_cancel_only_superseded_required_runs_on_branch() -> No
 
     for script in (dispatch, retrigger):
         assert 'actions/runs"' in script
-        assert '-f branch=' in script
-        assert '.head_sha != $current_sha' in script
+        assert "-f branch=" in script
+        assert ".head_sha != $current_sha" in script
         assert "cancel_superseded_run.sh" in script
         assert '"CI/CD Pipeline" or .name == "PR Security Gate" or .name == "CodeQL"' in script
 
@@ -73,7 +73,7 @@ def test_force_cancel_helper_has_bounded_grace_and_race_safe_fallback() -> None:
 
     assert "for attempt in 1 2 3 4 5" in helper
     assert 'gh run cancel "${RUN_ID}"' in helper
-    assert 'actions/runs/${RUN_ID}/force-cancel' in helper
+    assert "actions/runs/${RUN_ID}/force-cancel" in helper
     assert helper.count('if [ "${status}" = "completed" ]') == 3
 
 

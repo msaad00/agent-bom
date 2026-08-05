@@ -293,8 +293,7 @@ class OAuthAuthorizationServer:
             # base URL on a listener that has not opted into host derivation.
             raise OAuthError(
                 "server_error",
-                "OAuth AS issuer is not configured; set AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER "
-                "(--oauth-as-issuer) to the public base URL",
+                "OAuth AS issuer is not configured; set AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER (--oauth-as-issuer) to the public base URL",
                 status=500,
             )
         if self._observed_issuer:
@@ -554,9 +553,7 @@ class OAuthAuthorizationServer:
             request_base_url=request_base_url,
         )
 
-    def _issue_access_token(
-        self, *, subject: str, client_id: str, scopes: set[str], request_base_url: str | None
-    ) -> dict[str, Any]:
+    def _issue_access_token(self, *, subject: str, client_id: str, scopes: set[str], request_base_url: str | None) -> dict[str, Any]:
         now = int(time.time())
         issuer = self.resolve_issuer(request_base_url)
         claims = {

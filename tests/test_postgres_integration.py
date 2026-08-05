@@ -116,13 +116,10 @@ def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_te
             conn.execute("SELECT set_config('app.tenant_id', %s, false)", (other_tenant,))
             conn.execute("SELECT set_config('app.bypass_rls', '1', false)")
             assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (False,)
-            assert conn.execute(
-                "SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)
-            ).fetchone() is None
+            assert conn.execute("SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)).fetchone() is None
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 conn.execute(
-                    "INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status) "
-                    "VALUES (%s, %s, %s, 'pending')",
+                    "INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status) VALUES (%s, %s, %s, 'pending')",
                     (cross_write.job_id, tenant_id, cross_write.created_at),
                 )
             conn.rollback()
@@ -131,16 +128,14 @@ def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_te
             conn.execute("SELECT set_config('app.tenant_id', %s, false)", (other_tenant,))
             conn.execute("SELECT set_config('app.bypass_rls', '0', false)")
             assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (False,)
-            assert conn.execute(
-                "SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)
-            ).fetchone() is None
+            assert conn.execute("SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)).fetchone() is None
 
         with bypass_tenant_rls(audit=False):
             with _maintenance_connection() as conn:
                 assert conn.execute("SELECT public.abom_rls_bypass()").fetchone() == (True,)
-                assert conn.execute(
-                    "SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)
-                ).fetchone() == (queued.job_id,)
+                assert conn.execute("SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (queued.job_id,)).fetchone() == (
+                    queued.job_id,
+                )
 
         other_token = set_current_tenant(other_tenant)
         try:
@@ -171,9 +166,7 @@ def test_postgres_ticketing_store_real_dml_role_roundtrip_and_tenant_filter():
 
     pool = _get_pool()
     with pool.connection() as conn:
-        role = conn.execute(
-            "SELECT current_user, has_schema_privilege(current_user, current_schema(), 'CREATE')"
-        ).fetchone()
+        role = conn.execute("SELECT current_user, has_schema_privilege(current_user, current_schema(), 'CREATE')").fetchone()
     if role is None or role[1]:
         pytest.skip("Ticketing DML contract requires the migration-provisioned application role")
 
@@ -211,9 +204,7 @@ def test_postgres_ticketing_store_real_dml_role_roundtrip_and_tenant_filter():
     try:
         store.put_connection(record)
         won, claimed = store.claim_ticket_link(link)
-        replay_won, replayed = store.claim_ticket_link(
-            TicketLink(**{**link.to_public_dict(), "id": f"ticket-link-replay-{suffix}"})
-        )
+        replay_won, replayed = store.claim_ticket_link(TicketLink(**{**link.to_public_dict(), "id": f"ticket-link-replay-{suffix}"}))
         same_tenant = store.get_connection(tenant_id, connection_id)
     finally:
         reset_current_tenant(tenant_token)

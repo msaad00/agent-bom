@@ -32,9 +32,7 @@ class _FakeConnection:
             if params and len(params) == 2:
                 bucket_key, raw_cutoff = params
                 cutoff = float(raw_cutoff)
-                self.hits = [
-                    (key, hit_at) for key, hit_at in self.hits if key != bucket_key or hit_at >= cutoff
-                ]
+                self.hits = [(key, hit_at) for key, hit_at in self.hits if key != bucket_key or hit_at >= cutoff]
             else:
                 cutoff = float(params[0]) if params else 0.0
                 self.hits = [(key, hit_at) for key, hit_at in self.hits if hit_at >= cutoff]

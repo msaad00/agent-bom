@@ -672,8 +672,7 @@ def _classify_storage_account_blobs(credential: Any, account_record: dict[str, A
                 pass
     except Exception as exc:  # noqa: BLE001 — sampling is optional and must not sink inventory
         warnings.append(
-            f"Could not classify Azure Blob content for storage account "
-            f"{account_record.get('name')}: {sanitize_discovery_warning(exc)}"
+            f"Could not classify Azure Blob content for storage account {account_record.get('name')}: {sanitize_discovery_warning(exc)}"
         )
 
 

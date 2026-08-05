@@ -104,19 +104,11 @@ def test_postgres_workspace_cleanup_stays_tenant_bound() -> None:
 
     assert conn.closed is True
     assert not any("app.bypass_rls" in sql and params == ("1",) for sql, params in conn.executed)
-    assert [
-        params
-        for sql, params in conn.executed
-        if sql.startswith("DELETE FROM graph_build_workspace_nodes")
-    ] == [
+    assert [params for sql, params in conn.executed if sql.startswith("DELETE FROM graph_build_workspace_nodes")] == [
         ("workspace-1", "tenant-alpha"),
         ("workspace-1", "tenant-beta"),
     ]
-    assert all(
-        "tenant_id = %s" in sql
-        for sql, _params in conn.executed
-        if sql.startswith("DELETE FROM graph_build_workspace_")
-    )
+    assert all("tenant_id = %s" in sql for sql, _params in conn.executed if sql.startswith("DELETE FROM graph_build_workspace_"))
 
 
 def _synthetic_graph(scan: str, n: int, tenant: str = "t1") -> UnifiedGraph:

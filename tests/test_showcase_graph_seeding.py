@@ -30,17 +30,12 @@ def store(tmp_path: Path) -> SQLiteGraphStore:
 
 
 def _snapshot_created_at(store: SQLiteGraphStore) -> dict[str, str]:
-    return {
-        row["scan_id"]: row["created_at"]
-        for row in store.list_snapshots(tenant_id=SHOWCASE_TENANT)
-    }
+    return {row["scan_id"]: row["created_at"] for row in store.list_snapshots(tenant_id=SHOWCASE_TENANT)}
 
 
 def _minimal_graph(*, scan_id: str, created_at: str) -> UnifiedGraph:
     graph = UnifiedGraph(scan_id=scan_id, tenant_id=SHOWCASE_TENANT, created_at=created_at)
-    graph.add_node(
-        UnifiedNode(id="agent:probe", entity_type=EntityType.AGENT, label="Probe")
-    )
+    graph.add_node(UnifiedNode(id="agent:probe", entity_type=EntityType.AGENT, label="Probe"))
     return graph
 
 
@@ -66,17 +61,13 @@ def test_persisted_finding_nodes_serve_prose_not_a_python_repr(store: SQLiteGrap
 
     graph = store.load_graph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
     estate_findings = [
-        node
-        for node in graph.nodes.values()
-        if node.entity_type is EntityType.MISCONFIGURATION and node.attributes.get("estate_id")
+        node for node in graph.nodes.values() if node.entity_type is EntityType.MISCONFIGURATION and node.attributes.get("estate_id")
     ]
     assert len(estate_findings) >= 439, len(estate_findings)
     for node in estate_findings:
         recommendation = node.attributes.get("recommendation")
         assert isinstance(recommendation, str) and recommendation, node.id
-        assert "RemediationFix(" not in recommendation, (
-            f"{node.id} serves a Python repr as remediation: {recommendation[:80]!r}"
-        )
+        assert "RemediationFix(" not in recommendation, f"{node.id} serves a Python repr as remediation: {recommendation[:80]!r}"
 
 
 def test_a_seed_predating_this_build_is_treated_as_stale(store: SQLiteGraphStore) -> None:
@@ -100,9 +91,7 @@ def test_a_seed_predating_this_build_is_treated_as_stale(store: SQLiteGraphStore
     ), "the seed stamp did not move, so a deployed demo keeps the old snapshot"
 
     # And the mechanism still does its job for that exact pair of stamps.
-    store.save_graph(
-        _minimal_graph(scan_id=SHOWCASE_SCAN_ID, created_at=shipped_with_the_defect[SHOWCASE_SCAN_ID])
-    )
+    store.save_graph(_minimal_graph(scan_id=SHOWCASE_SCAN_ID, created_at=shipped_with_the_defect[SHOWCASE_SCAN_ID]))
     store.save_graph(
         _minimal_graph(
             scan_id=SHOWCASE_BASELINE_SCAN_ID,
@@ -125,9 +114,7 @@ def test_idempotent_when_current(store: SQLiteGraphStore) -> None:
 def test_reseeds_when_stale(store: SQLiteGraphStore) -> None:
     # A stale demo seed: right scan id, mismatched created_at (an older build's
     # timestamp), no baseline. Recent enough to survive retention purge.
-    store.save_graph(
-        _minimal_graph(scan_id=SHOWCASE_SCAN_ID, created_at="2026-07-13T00:00:00+00:00")
-    )
+    store.save_graph(_minimal_graph(scan_id=SHOWCASE_SCAN_ID, created_at="2026-07-13T00:00:00+00:00"))
     assert store.list_snapshots(tenant_id=SHOWCASE_TENANT), "precondition: stale seed present"
 
     assert seed_showcase_graph_if_empty(store) is True
@@ -139,9 +126,7 @@ def test_reseeds_when_stale(store: SQLiteGraphStore) -> None:
 
 def test_does_not_shadow_a_real_scan(store: SQLiteGraphStore) -> None:
     # A real scan lands with a non-showcase scan id and a current timestamp.
-    store.save_graph(
-        _minimal_graph(scan_id="aws-scan-2026-07-14", created_at="2026-07-14T09:00:00+00:00")
-    )
+    store.save_graph(_minimal_graph(scan_id="aws-scan-2026-07-14", created_at="2026-07-14T09:00:00+00:00"))
 
     assert seed_showcase_graph_if_empty(store) is False
 

@@ -56,8 +56,7 @@ def audit_chain_keys() -> list[bytes]:
             return keys
     if _env_truthy("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
         raise RuntimeError(
-            "AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY "
-            "(or AGENT_BOM_AUDIT_HMAC_KEY_FILE) is not set"
+            "AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY (or AGENT_BOM_AUDIT_HMAC_KEY_FILE) is not set"
         )
     if _AUDIT_CHAIN_EPHEMERAL_KEY is None:
         _AUDIT_CHAIN_EPHEMERAL_KEY = secrets.token_bytes(32)

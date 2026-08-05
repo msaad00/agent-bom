@@ -208,10 +208,13 @@ def test_file_api_key_remains_visible_in_runtime_auth_posture(tmp_path, monkeypa
         assert health["auth_required"] is True
         assert health["auth_configured"] is True
         assert "api_key" in health["configured_auth_modes"]
-        assert client.get(
-            "/v1/auth/policy",
-            headers={"Authorization": "Bearer mounted-control-plane-key"},
-        ).status_code == 200
+        assert (
+            client.get(
+                "/v1/auth/policy",
+                headers={"Authorization": "Bearer mounted-control-plane-key"},
+            ).status_code
+            == 200
+        )
     finally:
         monkeypatch.delenv("AGENT_BOM_API_KEY_FILE", raising=False)
         monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")

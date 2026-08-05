@@ -279,10 +279,7 @@ def test_sqlite_runtime_v2_schema_converges_in_both_initialization_orders(tmp_pa
             ("runtime_events",),
         ).fetchone()
         tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'gateway_activity_%'"
-            )
+            row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'gateway_activity_%'")
         }
     assert marker == (2,)
     assert tables == {
@@ -310,8 +307,7 @@ def test_sqlite_cursor_query_uses_tenant_ordinal_index(tmp_path) -> None:
     assert "idx_gateway_activity_events_tenant_ordinal" in plan
 
     window_plan = store._conn.execute(
-        "EXPLAIN QUERY PLAN SELECT data FROM gateway_activity_events "
-        "WHERE tenant_id = ? AND event_timestamp >= ? AND event_timestamp <= ?",
+        "EXPLAIN QUERY PLAN SELECT data FROM gateway_activity_events WHERE tenant_id = ? AND event_timestamp >= ? AND event_timestamp <= ?",
         ("tenant-a", "2026-07-28T00:00:00+00:00", "2026-07-28T23:59:59+00:00"),
     ).fetchall()
     rendered = " ".join(str(column) for row in window_plan for column in row)

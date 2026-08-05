@@ -132,12 +132,9 @@ def _live_password_policies(cursor: Any) -> list[dict[str, Any]]:
     policies = _run_query(cursor, "SHOW PASSWORD POLICIES IN ACCOUNT")
     live: list[dict[str, Any]] = []
     for policy in policies:
-        identifier = ".".join(
-            _quote_identifier(policy[key]) for key in ("database_name", "schema_name", "name")
-        )
+        identifier = ".".join(_quote_identifier(policy[key]) for key in ("database_name", "schema_name", "name"))
         properties = {
-            str(row.get("property", "")).upper(): row.get("value")
-            for row in _run_query(cursor, f"DESCRIBE PASSWORD POLICY {identifier}")
+            str(row.get("property", "")).upper(): row.get("value") for row in _run_query(cursor, f"DESCRIBE PASSWORD POLICY {identifier}")
         }
         live.append(
             {
@@ -238,12 +235,9 @@ def _control_plane_count(source: str, rows: list[dict[str, Any]]) -> int:
     if source == "grants_to_users":
         return sum(str(row.get("granted_to", "")).upper() == "USER" for row in rows)
     if source == "grants_to_roles":
-        return sum(
-            str(row.get("granted_on", "")).upper() != "ROLE"
-            and str(row.get("privilege", "")).upper() != "USAGE"
-            for row in rows
-        )
+        return sum(str(row.get("granted_on", "")).upper() != "ROLE" and str(row.get("privilege", "")).upper() != "USAGE" for row in rows)
     return len(rows)
+
 
 _CHECK_SOURCES = {
     "1.1": "users",
@@ -367,11 +361,7 @@ def _check_1_1(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Enable MFA for all users: ALTER USER <user> SET EXT_AUTHN_DUO = TRUE;",
     )
-    rows = [
-        row
-        for row in _run_query(cursor, "SHOW USERS")
-        if not _sf_truthy(row.get("disabled")) and _sf_truthy(row.get("has_password"))
-    ]
+    rows = [row for row in _run_query(cursor, "SHOW USERS") if not _sf_truthy(row.get("disabled")) and _sf_truthy(row.get("has_password"))]
     no_mfa = [r["name"] for r in rows if not _sf_truthy(r.get("ext_authn_duo"))]
 
     if no_mfa:
@@ -447,11 +437,7 @@ def _check_1_4(cursor: Any) -> CISCheckResult:
         cis_section=_AUTH_SECTION,
         recommendation="Limit ACCOUNTADMIN grants to a maximum of 2 users.",
     )
-    rows = [
-        row
-        for row in _run_query(cursor, "SHOW GRANTS OF ROLE ACCOUNTADMIN")
-        if str(row.get("granted_to", "")).upper() == "USER"
-    ]
+    rows = [row for row in _run_query(cursor, "SHOW GRANTS OF ROLE ACCOUNTADMIN") if str(row.get("granted_to", "")).upper() == "USER"]
     count = len(rows)
     users = [r["grantee_name"] for r in rows]
     if count > 2:
@@ -679,9 +665,7 @@ def _check_4_1(cursor: Any) -> CISCheckResult:
             result.status = CheckStatus.FAIL
             result.evidence = "No access history records in the 7-day lookback window ending 3 hours before scan time."
         else:
-            result.evidence = (
-                f"Access history active: {count} records in the 7-day lookback window ending 3 hours before scan time."
-            )
+            result.evidence = f"Access history active: {count} records in the 7-day lookback window ending 3 hours before scan time."
     except Exception:
         result.status = CheckStatus.ERROR
         result.evidence = "Cannot query ACCESS_HISTORY. Ensure IMPORTED PRIVILEGES on SNOWFLAKE database."
@@ -717,9 +701,7 @@ def _check_4_2(cursor: Any) -> CISCheckResult:
         result.evidence = f"Users with >10 failed logins in the 7-day lookback ending 2 hours before scan time: {', '.join(users)}"
         result.resource_ids = [r["user_name"] for r in rows[:20]]
     else:
-        result.evidence = (
-            "No users with excessive failed login attempts in the 7-day lookback ending 2 hours before scan time."
-        )
+        result.evidence = "No users with excessive failed login attempts in the 7-day lookback ending 2 hours before scan time."
     return result
 
 
@@ -743,8 +725,7 @@ def _check_5_1(cursor: Any) -> CISCheckResult:
     rows = [
         row
         for row in _run_query(cursor, "SHOW GRANTS TO ROLE PUBLIC")
-        if str(row.get("granted_on", "")).upper() != "ROLE"
-        and str(row.get("privilege", "")).upper() != "USAGE"
+        if str(row.get("granted_on", "")).upper() != "ROLE" and str(row.get("privilege", "")).upper() != "USAGE"
     ]
     if rows:
         result.status = CheckStatus.FAIL

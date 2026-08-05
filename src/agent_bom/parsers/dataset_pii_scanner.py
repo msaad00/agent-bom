@@ -205,11 +205,7 @@ class DirectoryPiiResult:
     @property
     def high_severity_count(self) -> int:
         pii_types_high = {"ssn", "credit_card", "iban", "passport", "nhs_number"}
-        return sum(
-            v
-            for k, v in self.findings_by_type.items()
-            if k in pii_types_high or k.startswith("secret:")
-        )
+        return sum(v for k, v in self.findings_by_type.items() if k in pii_types_high or k.startswith("secret:"))
 
     def to_dict(self) -> dict:
         return {
@@ -295,12 +291,7 @@ def _card_brand(digits: str) -> str | None:
     if n == 16:
         four = int(digits[:4])
         six = int(digits[:6])
-        if (
-            digits.startswith("6011")
-            or digits[:2] == "65"
-            or 644 <= int(digits[:3]) <= 649
-            or 622126 <= six <= 622925
-        ):
+        if digits.startswith("6011") or digits[:2] == "65" or 644 <= int(digits[:3]) <= 649 or 622126 <= six <= 622925:
             return "discover"
     return None
 
@@ -600,8 +591,7 @@ def scan_directory_for_pii(
     candidates = sorted(
         path
         for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS)
-        if not any(part in _SKIP_DIRS or part.startswith(".") for part in path.parts)
-        and path.suffix.lower() in _DATASET_EXTENSIONS
+        if not any(part in _SKIP_DIRS or part.startswith(".") for part in path.parts) and path.suffix.lower() in _DATASET_EXTENSIONS
     )
     files_checked = 0
     for path in candidates:

@@ -725,9 +725,7 @@ def _discover_ml_endpoints(
     try:
         from azure.ai.ml import MLClient
     except ImportError:
-        warnings.append(
-            "azure-ai-ml not installed. Skipping ML endpoint discovery. Install with: pip install azure-ai-ml"
-        )
+        warnings.append("azure-ai-ml not installed. Skipping ML endpoint discovery. Install with: pip install azure-ai-ml")
         return agents, warnings
 
     try:

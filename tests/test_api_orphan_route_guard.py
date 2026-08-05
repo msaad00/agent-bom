@@ -73,10 +73,7 @@ def test_soft_deprecated_orphans_have_no_ui_cli_mcp_literals() -> None:
         for route in SOFT_DEPRECATED_ORPHAN_PATHS:
             if route in text:
                 hits.append(f"{path.relative_to(ROOT)}:{route}")
-    assert not hits, (
-        "Soft-deprecated orphan routes must not gain UI/CLI/MCP callers; "
-        f"found: {hits}. See docs/design/API_ORPHAN_ROUTES.md."
-    )
+    assert not hits, f"Soft-deprecated orphan routes must not gain UI/CLI/MCP callers; found: {hits}. See docs/design/API_ORPHAN_ROUTES.md."
 
 
 def test_openapi_marks_soft_deprecated_orphans() -> None:
@@ -87,9 +84,7 @@ def test_openapi_marks_soft_deprecated_orphans() -> None:
         assert route in paths, f"missing OpenAPI path {route}"
         operations = [op for op in paths[route].values() if isinstance(op, dict)]
         assert operations, f"no operations documented for {route}"
-        assert all(op.get("deprecated") is True for op in operations), (
-            f"{route} must be marked deprecated:true in OpenAPI"
-        )
+        assert all(op.get("deprecated") is True for op in operations), f"{route} must be marked deprecated:true in OpenAPI"
 
     for route in KEEP_ACTIVE_PATHS:
         assert route in paths, f"missing OpenAPI path {route}"

@@ -39,7 +39,4 @@ def test_attribute_deltas_detect_public_exposure_flip() -> None:
 
 
 def test_summarize_attribute_delta_encryption_disabled() -> None:
-    assert (
-        summarize_attribute_delta("encryption_at_rest", True, False)
-        == "Encryption at rest disabled"
-    )
+    assert summarize_attribute_delta("encryption_at_rest", True, False) == "Encryption at rest disabled"

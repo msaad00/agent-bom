@@ -49,9 +49,7 @@ def test_project_has_notebooks_skips_checkpoints(tmp_path: Path) -> None:
     assert project_has_notebooks(tmp_path) is True
 
 
-def test_expand_project_scan_targets_auto_sast_when_semgrep_available(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_expand_project_scan_targets_auto_sast_when_semgrep_available(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "app.py").write_text("print('hi')\n", encoding="utf-8")
     monkeypatch.setattr("agent_bom.repo_auto_detect.semgrep_available", lambda: True)
 

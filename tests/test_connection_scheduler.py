@@ -355,9 +355,7 @@ async def test_scheduled_enqueue_failure_detail_is_fixed_and_sanitized(
 
     fetched = store.get(record.tenant_id, record.id)
     assert fetched is not None
-    assert fetched.status_detail == (
-        "Scheduled scan could not be queued. Retry after checking worker and database health."
-    )
+    assert fetched.status_detail == ("Scheduled scan could not be queued. Retry after checking worker and database health.")
     assert "AccessDenied" not in fetched.status_detail
     assert _LEAK_EXTERNAL_ID not in fetched.status_detail
     assert _LEAK_ACCOUNT_ARN not in fetched.status_detail

@@ -77,9 +77,7 @@ def test_compliance_tag_registry_covers_every_blast_radius_tag_field() -> None:
     from agent_bom.output.finding_views import compliance_row_dict
 
     model_fields = {item.name for item in fields(BlastRadius) if item.name.endswith("_tags")}
-    finding_fields = {
-        item.name for item in fields(Finding) if item.name.endswith("_tags") and item.name != "compliance_tags"
-    }
+    finding_fields = {item.name for item in fields(Finding) if item.name.endswith("_tags") and item.name != "compliance_tags"}
     assert set(COMPLIANCE_TAG_FIELDS) == model_fields
     assert set(COMPLIANCE_TAG_FIELDS) == finding_fields
     row = compliance_row_dict(

@@ -136,34 +136,31 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
                 updated_at=_ANCHOR,
             ),
         ):
-            existing_source_ids = {
-                record.source_id for record in source_store.list_all(tenant_id=tenant_id)
-            }
+            existing_source_ids = {record.source_id for record in source_store.list_all(tenant_id=tenant_id)}
             if source.source_id not in existing_source_ids:
                 source_store.put(source)
                 sources_seeded += 1
 
     cost_store = get_cost_store()
     cost_seeded = 0
-    if not any(
-        record.call_id == _DEMO_COST_CALL_ID
-        for record in cost_store.list_records(tenant_id, limit=1000)
-    ):
-        cost_store.record_cost(LLMCostRecord(
-            tenant_id=tenant_id,
-            call_id=_DEMO_COST_CALL_ID,
-            agent="cursor-demo-agent",
-            session_id="demo-estate",
-            provider="anthropic",
-            model="claude-sonnet",
-            input_tokens=128_000,
-            output_tokens=12_400,
-            cost_usd=4.82,
-            priced=True,
-            observed_at=_ANCHOR,
-            cost_center="ai-platform",
-            allocation_tags={"env": "demo", "team": "security"},
-        ))
+    if not any(record.call_id == _DEMO_COST_CALL_ID for record in cost_store.list_records(tenant_id, limit=1000)):
+        cost_store.record_cost(
+            LLMCostRecord(
+                tenant_id=tenant_id,
+                call_id=_DEMO_COST_CALL_ID,
+                agent="cursor-demo-agent",
+                session_id="demo-estate",
+                provider="anthropic",
+                model="claude-sonnet",
+                input_tokens=128_000,
+                output_tokens=12_400,
+                cost_usd=4.82,
+                priced=True,
+                observed_at=_ANCHOR,
+                cost_center="ai-platform",
+                allocation_tags={"env": "demo", "team": "security"},
+            )
+        )
         cost_seeded = 1
 
     summary: dict[str, Any] = {

@@ -108,9 +108,7 @@ def _build_report_lines(report: AIBOMReport, blast_radii: list[BlastRadius] | No
             pkg = package_name(finding)
             version = package_version(finding)
             risk = float(finding.risk_score or 0.0)
-            header = (
-                f"{index}. {vuln_id} | {pkg}@{version} | {severity_value(finding).upper()} | risk {risk:.1f}"
-            )
+            header = f"{index}. {vuln_id} | {pkg}@{version} | {severity_value(finding).upper()} | risk {risk:.1f}"
             _append_wrapped(lines, header)
             details: list[str] = []
             if finding.affected_agents:

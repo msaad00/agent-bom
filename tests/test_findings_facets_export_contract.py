@@ -166,10 +166,7 @@ def test_facets_exclude_only_their_own_active_dimension() -> None:
     _seed_resolved_repo_finding(tenant)
 
     response = TestClient(app).get(
-        (
-            "/v1/findings?finding_class=vulnerability&severity=high"
-            "&domain=aspm&status=open&include_facets=true&window_days=0"
-        ),
+        ("/v1/findings?finding_class=vulnerability&severity=high&domain=aspm&status=open&include_facets=true&window_days=0"),
         headers=_headers(tenant),
     )
 
@@ -352,9 +349,7 @@ def test_findings_envelope_total_never_contradicts_the_severity_facet(
         for index in range(24)
     ]
     store.add(tenant, rows)
-    store.upsert_current_batch(
-        tenant, rows, observed_at="2026-07-30T00:00:00Z", batch_id="contradiction", source="fixture"
-    )
+    store.upsert_current_batch(tenant, rows, observed_at="2026-07-30T00:00:00Z", batch_id="contradiction", source="fixture")
     set_compliance_hub_store(store)
     monkeypatch.setattr(scan_routes, "_FACET_SCAN_BUDGET", 3)
 
@@ -374,9 +369,7 @@ def test_findings_envelope_total_never_contradicts_the_severity_facet(
     assert any("lower bounds, not totals" in warning for warning in body["warnings"]), body["warnings"]
 
 
-def test_async_export_uses_the_same_finding_predicates(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_async_export_uses_the_same_finding_predicates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tenant = "default"
     _seed_scan(tenant)
     _seed_resolved_repo_finding(tenant)
@@ -415,9 +408,7 @@ def test_async_export_uses_the_same_finding_predicates(
     assert all(row["finding_class"] == "vulnerability" for row in exported)
 
 
-def test_list_and_report_share_safe_observation_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_list_and_report_share_safe_observation_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tenant = "default"
     monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))
     monkeypatch.setattr("agent_bom.api.routes.reports.submit_report_job", _run_report_job_sync)
@@ -508,9 +499,7 @@ def test_list_and_report_share_safe_observation_metadata(
     assert "description" not in exported[0]
 
 
-def test_server_search_uses_the_same_list_and_report_predicate(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_server_search_uses_the_same_list_and_report_predicate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tenant = "default"
     _seed_scan(tenant)
     monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))
@@ -549,12 +538,8 @@ def test_findings_remain_tenant_scoped_when_facets_are_requested() -> None:
     _seed_scan(tenant_a)
     from agent_bom.api.routes.scan import _finding_facets
 
-    own_facets, own_total = _finding_facets(
-        tenant_a, severity=None, scan_id=None, since=None, scope={}, status="open"
-    )
-    other_facets, other_total = _finding_facets(
-        tenant_b, severity=None, scan_id=None, since=None, scope={}, status="open"
-    )
+    own_facets, own_total = _finding_facets(tenant_a, severity=None, scan_id=None, since=None, scope={}, status="open")
+    other_facets, other_total = _finding_facets(tenant_b, severity=None, scan_id=None, since=None, scope={}, status="open")
 
     assert own_total == 6
     assert sum(own_facets["finding_class"].values()) == 6
@@ -585,17 +570,10 @@ def test_sast_is_a_vulnerability_and_unknown_runtime_signal_is_unclassified() ->
     from agent_bom.finding_scope import finding_class_for_row
 
     assert finding_class_for_row({"finding_type": "SAST", "source": "SAST"}) == "vulnerability"
-    assert (
-        finding_class_for_row(
-            {"finding_type": "FUTURE_RUNTIME_SIGNAL", "source": "FUTURE_RUNTIME"}
-        )
-        == "unclassified"
-    )
+    assert finding_class_for_row({"finding_type": "FUTURE_RUNTIME_SIGNAL", "source": "FUTURE_RUNTIME"}) == "unclassified"
 
 
-def test_list_and_report_share_severity_validation_and_alias_semantics(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_list_and_report_share_severity_validation_and_alias_semantics(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tenant = "default"
     _seed_scan(tenant)
     monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))

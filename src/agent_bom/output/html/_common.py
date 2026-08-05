@@ -1,4 +1,5 @@
 """Shared low-level helpers and colour constants for the HTML report."""
+
 from __future__ import annotations
 
 _SEV_COLOR = {

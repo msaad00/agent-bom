@@ -13,14 +13,7 @@ from agent_bom.ast_source_mask import mask_line_comments_and_strings
 
 
 def test_php_heredoc_body_is_masked():
-    src = (
-        "function handle() {\n"
-        "    $sql = <<<EOT\n"
-        "        $client->request('GET', $url);\n"
-        "    EOT;\n"
-        "    return $sql;\n"
-        "}\n"
-    )
+    src = "function handle() {\n    $sql = <<<EOT\n        $client->request('GET', $url);\n    EOT;\n    return $sql;\n}\n"
     masked = mask_line_comments_and_strings(src, hash_comments=True, heredoc=True)
     assert "request" not in masked
     assert "$client" not in masked
@@ -48,11 +41,7 @@ def test_heredoc_disabled_by_default_leaves_body():
 def test_php_reachability_no_false_edge_from_heredoc():
     from agent_bom.ast_php import _php_call_sites
 
-    body = (
-        "$html = <<<HTML\n"
-        "  see $client->request() docs\n"
-        "HTML;\n"
-    )
+    body = "$html = <<<HTML\n  see $client->request() docs\nHTML;\n"
     sites = _php_call_sites(body, line_offset=1)
     assert all("request" not in s.name for s in sites), [s.name for s in sites]
 

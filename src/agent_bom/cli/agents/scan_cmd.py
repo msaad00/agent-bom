@@ -1774,8 +1774,7 @@ def scan(
                                     con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — provenance service unavailable")
                                 elif prov_status == "not_provenance":
                                     con.print(
-                                        f"  [dim]  {pkg.name}@{pkg.version} — "
-                                        "attestations present, but none were SLSA provenance[/dim]"
+                                        f"  [dim]  {pkg.name}@{pkg.version} — attestations present, but none were SLSA provenance[/dim]"
                                     )
                                 else:
                                     con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")

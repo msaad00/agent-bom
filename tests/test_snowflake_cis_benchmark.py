@@ -640,9 +640,7 @@ def test_password_policy_and_access_history_sources_are_preflight_gated():
         current = _preflight_account_usage_source(_SourceAwareCursor(source_rows=0), source)
         assert denied["usable"] is False
         assert current["usable"] is True
-        assert current["freshness"] == (
-            "control_plane_reconciled" if source == "password_policies" else "bounded_as_of"
-        )
+        assert current["freshness"] == ("control_plane_reconciled" if source == "password_policies" else "bounded_as_of")
         assert source in _SOURCE_PROBES
 
 
@@ -720,8 +718,20 @@ class TestExceptionPathTitles:
         from agent_bom.cloud.snowflake_cis_benchmark import _CHECK_ERROR_METADATA
 
         expected_ids = {
-            "1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
-            "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2",
+            "1.1",
+            "1.2",
+            "1.3",
+            "1.4",
+            "1.5",
+            "1.6",
+            "2.1",
+            "2.2",
+            "3.1",
+            "3.2",
+            "4.1",
+            "4.2",
+            "5.1",
+            "5.2",
         }
         assert set(_CHECK_ERROR_METADATA) == expected_ids
 

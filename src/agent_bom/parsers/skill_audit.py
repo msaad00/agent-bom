@@ -540,10 +540,7 @@ def skill_audit_data_to_findings(skill_audit: dict) -> list:
         if severity == "false_positive":
             continue
         title = str(item.get("title") or "Skill security finding")
-        asset_name = (
-            str(item.get("server") or item.get("package") or "")
-            or (Path(source_file).name if source_file else "skill")
-        )
+        asset_name = str(item.get("server") or item.get("package") or "") or (Path(source_file).name if source_file else "skill")
         asset_type = "mcp_server" if item.get("server") else ("package" if item.get("package") else "skill_file")
         identifier = item.get("server") or item.get("package") or source_file or None
         unified.append(

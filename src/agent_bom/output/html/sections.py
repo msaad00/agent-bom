@@ -932,8 +932,7 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
                 else "&#x2705; No failed security checks."
             )
             panels.append(
-                f'<div class="panel" style="margin-bottom:16px">{header}'
-                f'<div class="empty-state" style="margin-top:12px">{body}</div></div>'
+                f'<div class="panel" style="margin-bottom:16px">{header}<div class="empty-state" style="margin-top:12px">{body}</div></div>'
             )
             continue
 

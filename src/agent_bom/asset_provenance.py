@@ -50,9 +50,7 @@ _VERSION_SOURCE_CONFIDENCE = {
 # Version sources where the reported version came from the running/installed
 # host rather than the declared reference — a git ref pinned here is a
 # coincidence, not an exact match.
-_HOST_RESOLVED_VERSION_SOURCES = frozenset(
-    {"installed_package", "runtime_process", "image_sbom", "tool_cache"}
-)
+_HOST_RESOLVED_VERSION_SOURCES = frozenset({"installed_package", "runtime_process", "image_sbom", "tool_cache"})
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
 

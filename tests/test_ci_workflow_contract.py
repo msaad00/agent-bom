@@ -54,9 +54,7 @@ def test_non_required_heavy_jobs_are_path_gated() -> None:
 def test_enterprise_demo_contract_is_gated_and_packaged() -> None:
     workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    deploy_workflow = (
-        ROOT / ".github" / "workflows" / "demo-deploy-cloudrun.yml"
-    ).read_text(encoding="utf-8")
+    deploy_workflow = (ROOT / ".github" / "workflows" / "demo-deploy-cloudrun.yml").read_text(encoding="utf-8")
 
     assert "scripts/check_enterprise_demo_surfaces.py" in workflow_text
     assert "scripts/check_enterprise_demo_surfaces.py" in makefile
@@ -84,9 +82,7 @@ def test_gitleaks_remains_unconditional_for_documentation_changes() -> None:
 
 def test_main_ui_smoke_covers_every_ui_classifier_surface() -> None:
     """The main-push smoke must mirror paths that make PR UI validation run."""
-    workflow = (ROOT / ".github" / "workflows" / "main-ui-smoke.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "main-ui-smoke.yml").read_text(encoding="utf-8")
     for path in (
         '"ui/**"',
         '"action.yml"',
@@ -141,9 +137,7 @@ def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:
 def test_pull_request_pytest_reports_slowest_tests() -> None:
     """PR runs surface the slowest tests so timeout regressions have evidence."""
     text = CI_WORKFLOW.read_text(encoding="utf-8")
-    run_tests = text.split("      - name: Run tests", 1)[1].split(
-        "      - name: Graph accuracy fixture guard", 1
-    )[0]
+    run_tests = text.split("      - name: Run tests", 1)[1].split("      - name: Graph accuracy fixture guard", 1)[0]
 
     pytest_lines = [line.strip() for line in run_tests.splitlines() if "uv run pytest tests/" in line]
     assert len(pytest_lines) == 2
@@ -161,17 +155,13 @@ def test_security_reuses_typescript_install_for_build() -> None:
 
 def test_graph_guard_does_not_rerun_full_graph_tests() -> None:
     text = CI_WORKFLOW.read_text(encoding="utf-8")
-    guard = text.split("      - name: Graph accuracy fixture guard", 1)[1].split(
-        "      - name: DCM scanner self-check", 1
-    )[0]
+    guard = text.split("      - name: Graph accuracy fixture guard", 1)[1].split("      - name: DCM scanner self-check", 1)[0]
     assert "pytest" not in guard
     assert "rebaseline_graph_edges.py --dry-run" in guard
 
 
 def test_stranded_ci_recovery_runs_on_pr_synchronize() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "auto-retrigger-stranded.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "auto-retrigger-stranded.yml").read_text(encoding="utf-8")
     assert "  pull_request:" in workflow
     assert "    types: [synchronize]" in workflow
     assert "scripts/dispatch_required_ci.sh" in workflow
@@ -197,11 +187,7 @@ def test_ci_lint_scope_is_defined_once_in_the_makefile() -> None:
     could see it.
     """
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    lint_paths = next(
-        line.split(":=", 1)[1].split()
-        for line in makefile.splitlines()
-        if line.startswith("LINT_PATHS")
-    )
+    lint_paths = next(line.split(":=", 1)[1].split() for line in makefile.splitlines() if line.startswith("LINT_PATHS"))
     for required in ("src/", "tests/", "scripts/"):
         assert required in lint_paths, f"{required} is outside the linted scope"
 

@@ -135,11 +135,7 @@ def test_webhook_channel_failure_does_not_log_secret_url(caplog, monkeypatch):
     log_text = caplog.text
     assert "SUPERSECRETTOKEN123" not in log_text
     assert "services/T00000" not in log_text
-    redacted_urls = [
-        record.args[0]
-        for record in caplog.records
-        if record.msg == "Webhook channel delivery failed for %s" and record.args
-    ]
+    redacted_urls = [record.args[0] for record in caplog.records if record.msg == "Webhook channel delivery failed for %s" and record.args]
     assert redacted_urls
     # Host is retained in the redacted URL so operators can still correlate.
     assert urlsplit(redacted_urls[-1]).hostname == "hooks.slack.example.com"

@@ -451,9 +451,7 @@ def self_posture(
 
     governance_checks: list[PostureCheck] = [_check_audit_hmac(resolved_env)]
     if audit_chain is not _OMIT_AUDIT_CHAIN:
-        governance_checks.append(
-            audit_chain_integrity_check(cast("Mapping[str, int] | None", audit_chain))
-        )
+        governance_checks.append(audit_chain_integrity_check(cast("Mapping[str, int] | None", audit_chain)))
 
     checks: list[PostureCheck] = [
         _check_deployment_env(resolved_env),

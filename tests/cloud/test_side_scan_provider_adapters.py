@@ -420,9 +420,7 @@ def test_gcp_orphan_sweep_deletes_only_matching_project_scope(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_runner_persists_scan_evidence_and_guaranteed_cleanup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_runner_persists_scan_evidence_and_guaranteed_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     adapter, store, _snapshots, _disks, _instances = _gcp_adapter(tmp_path)
     mount_path = tmp_path / "mount"
     mount_path.mkdir()

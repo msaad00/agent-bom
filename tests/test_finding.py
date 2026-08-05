@@ -440,9 +440,7 @@ def test_cloud_cis_check_without_a_severity_is_unrated_not_medium():
         assert severity_display_bucket(finding.severity) == "unrated"
 
     # A check that DOES report a severity keeps it, error or not.
-    rated = cloud_cis_check_to_finding(
-        {"check_id": "1.1", "title": "MFA coverage", "status": "ERROR", "severity": "high"}, "aws"
-    )
+    rated = cloud_cis_check_to_finding({"check_id": "1.1", "title": "MFA coverage", "status": "ERROR", "severity": "high"}, "aws")
     assert rated.severity == "high"
 
 

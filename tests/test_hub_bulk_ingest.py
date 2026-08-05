@@ -144,9 +144,7 @@ def test_bulk_ingest_reconcile_absent_matches_reference():
         _ingest(store, tenant, first, observed_at="2026-07-14T00:00:00Z", batch_id="b1")
         store.add(tenant, second)
         store.upsert_current_batch(tenant, second, observed_at="2026-07-16T00:00:00Z", batch_id="b2", source="connector")
-        store.reconcile_current_absent(
-            tenant, present_canonical_ids={"f-1"}, observed_at="2026-07-16T00:00:00Z", scope_source="connector"
-        )
+        store.reconcile_current_absent(tenant, present_canonical_ids={"f-1"}, observed_at="2026-07-16T00:00:00Z", scope_source="connector")
         return _current_snapshot(store, tenant)
 
     pg_tenant = f"pgrec-{uuid4().hex}"

@@ -46,6 +46,7 @@ class _CompliantKeyClient:
         class _K:
             name = "k1"
             expires_on = "2027-01-01"
+
         return [_K()]
 
 
@@ -91,10 +92,7 @@ def test_cis_8_2_all_vaults_denied_is_error_not_pass(monkeypatch):
 class _RbacVault:
     def __init__(self, name):
         self.name = name
-        self.id = (
-            f"/subscriptions/sub-1/resourceGroups/rg1/providers/"
-            f"Microsoft.KeyVault/vaults/{name}"
-        )
+        self.id = f"/subscriptions/sub-1/resourceGroups/rg1/providers/Microsoft.KeyVault/vaults/{name}"
 
 
 class _RbacKVMgmt:

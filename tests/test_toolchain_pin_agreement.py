@@ -68,11 +68,7 @@ def test_format_only_commits_are_skipped_by_blame() -> None:
     """The reformat touches ~240 files; blame must not stop there."""
     revs = ROOT / ".git-blame-ignore-revs"
     assert revs.is_file(), "a tree-wide reformat needs a blame-ignore list"
-    shas = [
-        line.split("#", 1)[0].strip()
-        for line in revs.read_text(encoding="utf-8").splitlines()
-        if line.split("#", 1)[0].strip()
-    ]
+    shas = [line.split("#", 1)[0].strip() for line in revs.read_text(encoding="utf-8").splitlines() if line.split("#", 1)[0].strip()]
     assert shas, ".git-blame-ignore-revs lists no revisions"
     for sha in shas:
         assert re.fullmatch(r"[0-9a-f]{40}", sha), f"not a full SHA: {sha!r}"

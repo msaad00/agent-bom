@@ -133,9 +133,9 @@ def _tenant(request: Request) -> str:
 
 
 def _actor(request: Request) -> str:
-    return getattr(getattr(request, "state", None), "actor", None) or getattr(
-        getattr(request, "state", None), "api_key_name", None
-    ) or "api"
+    return (
+        getattr(getattr(request, "state", None), "actor", None) or getattr(getattr(request, "state", None), "api_key_name", None) or "api"
+    )
 
 
 def _str_list(body: dict, key: str, *, max_items: int = 200, max_len: int = 200) -> list[str]:
@@ -273,9 +273,7 @@ async def update_mcp_config_assignment(
     identity = _bound_identity(tenant_id=tenant_id, identity_id=current.identity_id, profile_id=body.profile_id)
     if identity is not None and not body.environment:
         raise HTTPException(status_code=400, detail="environment is required for a managed identity binding")
-    if identity is None and any(
-        (body.environment, body.allowed_tools, body.required_scopes, body.policy_ids, body.expires_at)
-    ):
+    if identity is None and any((body.environment, body.allowed_tools, body.required_scopes, body.policy_ids, body.expires_at)):
         raise HTTPException(status_code=400, detail="Runtime profile constraints require identity_id")
     candidate = replace(
         current,
@@ -322,9 +320,7 @@ async def list_mcp_config_assignments(request: Request, include_revoked: bool = 
         "schema_version": "mcp.client.config.v1",
         "tenant_id": tenant_id,
         "count": len(rows),
-        "assignments": [
-            {**r.to_public_dict(), "config_url": _config_url(r.config_id)} for r in rows
-        ],
+        "assignments": [{**r.to_public_dict(), "config_url": _config_url(r.config_id)} for r in rows],
     }
 
 

@@ -407,7 +407,6 @@ def _run_async_sync(awaitable):
         return future.result()
 
 
-
 def _failed_skill_file_report(path: Path, exc: BaseException) -> SkillFileReport:
     """Build a warn-and-continue report when one skill target raises mid-batch."""
     safe = sanitize_error(exc if isinstance(exc, Exception) else str(exc))

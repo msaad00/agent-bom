@@ -41,8 +41,18 @@ SCAN_ROOTS: tuple[Path, ...] = (
 )
 
 _BINARY_SUFFIXES = {
-    ".gif", ".png", ".jpg", ".jpeg", ".svg", ".ico",
-    ".woff", ".woff2", ".ttf", ".pdf", ".zip", ".gz",
+    ".gif",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".svg",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".pdf",
+    ".zip",
+    ".gz",
 }
 _EXCLUDE_DIRS = {"node_modules", ".git", ".next", "dist", "build", "__pycache__"}
 
@@ -71,9 +81,7 @@ MANAGED_PATTERNS: tuple[ManagedPattern, ...] = (
 # Hosted-demo composes that must ALWAYS run ``:latest`` (redeployed on every
 # release), so they can never be silently frozen on a stale semver pin. Each
 # entry: (path relative to ROOT, literal image ref that must be present).
-LATEST_REQUIRED: tuple[tuple[str, str], ...] = (
-    ("deploy/docker-compose.platform.yml", "image: agent-bom:latest"),
-)
+LATEST_REQUIRED: tuple[tuple[str, str], ...] = (("deploy/docker-compose.platform.yml", "image: agent-bom:latest"),)
 
 
 def canonical_version() -> str:
@@ -108,10 +116,7 @@ def scan_text(rel_path: str, text: str, version: str) -> list[str]:
             for match in managed.regex.finditer(line):
                 found = match.group(2)
                 if found != version:
-                    drift.append(
-                        f"{rel_path}:{lineno}: {managed.label} pinned to "
-                        f"{found} (expected {version}) -> {line.strip()}"
-                    )
+                    drift.append(f"{rel_path}:{lineno}: {managed.label} pinned to {found} (expected {version}) -> {line.strip()}")
     return drift
 
 
@@ -130,10 +135,7 @@ def find_drift(version: str) -> list[str]:
         if not path.exists():
             drift.append(f"{rel}: hosted-demo compose missing (expected '{needle}')")
         elif needle not in path.read_text(encoding="utf-8", errors="ignore"):
-            drift.append(
-                f"{rel}: hosted-demo runtime must stay ':latest' "
-                f"('{needle}' not found) — do not pin the always-redeployed demo"
-            )
+            drift.append(f"{rel}: hosted-demo runtime must stay ':latest' ('{needle}' not found) — do not pin the always-redeployed demo")
     return sorted(drift)
 
 
@@ -191,8 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         for line in drift:
             print(f"  {line}")
         print(
-            f"\n{len(drift)} drifted reference(s). "
-            f"Fix with: python scripts/check_version_alignment.py --fix {version}",
+            f"\n{len(drift)} drifted reference(s). Fix with: python scripts/check_version_alignment.py --fix {version}",
             file=sys.stderr,
         )
         return 1

@@ -156,8 +156,7 @@ class InMemoryTenantLifecycleStore:
             return [
                 record
                 for record in self._records.values()
-                if record.state in {TenantLifecycleState.ACTIVE, TenantLifecycleState.SUSPENDED}
-                and record.trial_ends_at <= current
+                if record.state in {TenantLifecycleState.ACTIVE, TenantLifecycleState.SUSPENDED} and record.trial_ends_at <= current
             ]
 
     def list_due_cleanup(self, *, now: datetime) -> list[TenantLifecycleRecord]:
@@ -333,11 +332,7 @@ def delete_tenant_records(tenant_id: str) -> dict[str, int]:
                        FROM information_schema.columns
                        WHERE table_schema = current_schema() AND column_name = 'tenant_id'"""
                 ).fetchall()
-                tables = {
-                    str(row[0])
-                    for row in table_rows
-                    if str(row[0]) not in MANAGED_TRIAL_RETAINED_POSTGRES_TABLES
-                }
+                tables = {str(row[0]) for row in table_rows if str(row[0]) not in MANAGED_TRIAL_RETAINED_POSTGRES_TABLES}
                 ordered = [
                     *[table for table in _MANAGED_TRIAL_DELETE_FIRST if table in tables],
                     *sorted(tables.difference(_MANAGED_TRIAL_DELETE_FIRST)),

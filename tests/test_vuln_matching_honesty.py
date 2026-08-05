@@ -46,9 +46,7 @@ def test_range_requirement_not_emitted_as_exact_pin(tmp_path):
 
 
 def test_pyproject_range_not_emitted_as_exact_pin(tmp_path):
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "x"\nversion = "0"\ndependencies = ["flask>=1.0", "urllib3<2"]\n'
-    )
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "0"\ndependencies = ["flask>=1.0", "urllib3<2"]\n')
     pkgs = {p.name.lower(): p for p in parse_pip_packages(tmp_path)}
     assert pkgs["flask"].version != "1.0"
     assert pkgs["flask"].floating_reference is True

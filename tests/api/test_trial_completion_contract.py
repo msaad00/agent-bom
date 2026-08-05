@@ -76,24 +76,33 @@ def test_tenant_lifecycle_expiry_revokes_immediately_and_cleans_after_grace() ->
     assert expire_due_tenants(store, now=now, revoke=revoked.append) == 1
     assert revoked == ["trial-synthetic-001"]
     assert store.get("trial-synthetic-001").state is TenantLifecycleState.EXPIRED
-    assert run_due_tenant_cleanup(
-        store,
-        now=now + timedelta(days=6, hours=23),
-        delete=deleted.append,
-    ) == 0
-    assert run_due_tenant_cleanup(
-        store,
-        now=now + timedelta(days=7),
-        delete=deleted.append,
-    ) == 1
+    assert (
+        run_due_tenant_cleanup(
+            store,
+            now=now + timedelta(days=6, hours=23),
+            delete=deleted.append,
+        )
+        == 0
+    )
+    assert (
+        run_due_tenant_cleanup(
+            store,
+            now=now + timedelta(days=7),
+            delete=deleted.append,
+        )
+        == 1
+    )
     assert deleted == ["trial-synthetic-001"]
     assert store.get("trial-synthetic-001").state is TenantLifecycleState.DELETED
     # Cleanup is idempotent: a retry after success does not delete twice.
-    assert run_due_tenant_cleanup(
-        store,
-        now=now + timedelta(days=8),
-        delete=deleted.append,
-    ) == 0
+    assert (
+        run_due_tenant_cleanup(
+            store,
+            now=now + timedelta(days=8),
+            delete=deleted.append,
+        )
+        == 0
+    )
 
 
 def test_durable_connection_worker_revalidates_stored_trial_envelope(

@@ -245,11 +245,7 @@ def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
         vulns = getattr(pkg, "vulnerabilities", None)
         if not vulns:
             continue
-        kept = [
-            v
-            for v in vulns
-            if (v.fixed_version or "").strip() or v.match_confidence_tier == MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE
-        ]
+        kept = [v for v in vulns if (v.fixed_version or "").strip() or v.match_confidence_tier == MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE]
         removed += len(vulns) - len(kept)
         pkg.vulnerabilities = kept
     return removed

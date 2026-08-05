@@ -549,9 +549,7 @@ def test_gateway_activity_window_index_allows_legacy_schema_without_ledger(monke
     migration.op = SimpleNamespace(
         get_bind=lambda: _LegacyBind(),
         get_context=_unexpected_context,
-        execute=lambda _statement: (_ for _ in ()).throw(
-            AssertionError("no index DDL is valid without the ledger")
-        ),
+        execute=lambda _statement: (_ for _ in ()).throw(AssertionError("no index DDL is valid without the ledger")),
     )
 
     migration.upgrade()

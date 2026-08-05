@@ -38,11 +38,7 @@ def _minimal_aws_inventory(*, sg_exposed: bool) -> dict:
                 "name": "web-sg",
                 "vpc_id": "vpc-1",
                 "internet_exposed": sg_exposed,
-                "network_exposure": (
-                    [{"scope": "internet", "from_port": 443, "to_port": 443, "protocol": "tcp"}]
-                    if sg_exposed
-                    else []
-                ),
+                "network_exposure": ([{"scope": "internet", "from_port": 443, "to_port": 443, "protocol": "tcp"}] if sg_exposed else []),
             }
         ],
         "buckets": [],
@@ -87,9 +83,7 @@ def test_inventory_emits_cross_account_trust_edges() -> None:
     assert external_account_id in graph.nodes
     assert graph.nodes[external_account_id].entity_type == EntityType.ACCOUNT
     assert any(
-        edge.source == role_id
-        and edge.target == external_account_id
-        and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
+        edge.source == role_id and edge.target == external_account_id and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
         for edge in graph.edges
     )
 
@@ -100,16 +94,12 @@ def test_cloud_inventory_snapshots_diff_exposed_edges(tmp_path) -> None:
     conn.row_factory = sqlite3.Row
     _init_db(conn)
 
-    baseline = build_unified_graph_from_report(
-        {"cloud_inventory": _minimal_aws_inventory(sg_exposed=False)}
-    )
+    baseline = build_unified_graph_from_report({"cloud_inventory": _minimal_aws_inventory(sg_exposed=False)})
     baseline.scan_id = "cloud-scan-baseline"
     baseline.created_at = "2026-06-01T12:00:00+00:00"
     save_graph(conn, baseline)
 
-    current = build_unified_graph_from_report(
-        {"cloud_inventory": _minimal_aws_inventory(sg_exposed=True)}
-    )
+    current = build_unified_graph_from_report({"cloud_inventory": _minimal_aws_inventory(sg_exposed=True)})
     current.scan_id = "cloud-scan-current"
     current.created_at = "2026-06-08T12:00:00+00:00"
     save_graph(conn, current)
@@ -130,9 +120,7 @@ def test_cloud_inventory_snapshots_diff_exposed_edges(tmp_path) -> None:
     )
     assert changes["summary"]["added"] >= 1
     assert any(
-        edge["source_id"] == sg_id
-        and edge["target_id"] == inst_id
-        and edge["relationship"] == "exposed_to"
+        edge["source_id"] == sg_id and edge["target_id"] == inst_id and edge["relationship"] == "exposed_to"
         for edge in changes["edges_added"]
     )
 
@@ -231,10 +219,7 @@ def test_inventory_instance_profile_assumes_role_and_marks_exposed() -> None:
     inst_id = "cloud_resource:aws:ec2:instance:i-foothold"
     role_id = "role:aws:arn:aws:iam::111122223333:role/cross-account-role"
 
-    assert any(
-        edge.source == inst_id and edge.target == role_id and edge.relationship == RelationshipType.ASSUMES
-        for edge in graph.edges
-    )
+    assert any(edge.source == inst_id and edge.target == role_id and edge.relationship == RelationshipType.ASSUMES for edge in graph.edges)
     assert graph.nodes[role_id].attributes.get("internet_exposed") is True
 
 
@@ -262,9 +247,7 @@ def test_inventory_public_foothold_triggers_public_permission_lateral() -> None:
     # The trust edge itself is still present in the graph — we stopped walking
     # it as a lateral vector, we did not delete the relationship.
     assert any(
-        edge.source == role_id
-        and edge.target == external_account_id
-        and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
+        edge.source == role_id and edge.target == external_account_id and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
         for edge in graph.edges
     )
 
@@ -279,9 +262,7 @@ def test_inventory_fusion_reaches_sensitive_data_store() -> None:
     assert data_store_id in graph.nodes
     assert graph.nodes[data_store_id].attributes.get("data_sensitivity") == "sensitive"
     assert any(
-        edge.source == role_id
-        and edge.target == "account:aws:210987654321"
-        and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
+        edge.source == role_id and edge.target == "account:aws:210987654321" and edge.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
         for edge in graph.edges
     )
 

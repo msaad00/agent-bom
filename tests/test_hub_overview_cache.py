@@ -44,9 +44,7 @@ def _request(tenant: str) -> SimpleNamespace:
 def test_snapshot_memoised_and_counts_match_store(monkeypatch):
     store = _CountingStore({"critical": 3, "high": 5, "medium": 0, "low": 0, "info": 0, "unknown": 1})
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
-    monkeypatch.setattr(
-        "agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store
-    )
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
     first = overview._hub_severity_snapshot(_request("acme"))
     second = overview._hub_severity_snapshot(_request("acme"))
@@ -63,9 +61,7 @@ def test_snapshot_memoised_and_counts_match_store(monkeypatch):
 def test_ingest_invalidates_snapshot(monkeypatch):
     store = _CountingStore({"critical": 1, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0})
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
-    monkeypatch.setattr(
-        "agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store
-    )
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
 
     overview._hub_severity_snapshot(_request("acme"))
     assert store.calls == 1
@@ -82,9 +78,7 @@ def test_ttl_zero_disables_cache(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_HUB_OVERVIEW_CACHE_TTL_SECONDS", "0")
     store = _CountingStore({"critical": 1, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0})
     monkeypatch.setattr(overview, "_tenant_id", lambda request: "acme")
-    monkeypatch.setattr(
-        "agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store
-    )
+    monkeypatch.setattr("agent_bom.api.compliance_hub_store.get_compliance_hub_store", lambda: store)
     overview._hub_severity_snapshot(_request("acme"))
     overview._hub_severity_snapshot(_request("acme"))
     # TTL<=0 disables memoisation entirely (every read recomputes).

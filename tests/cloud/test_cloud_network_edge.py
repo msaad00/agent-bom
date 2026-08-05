@@ -353,11 +353,7 @@ def test_eni_public_ip_emits_exposed_to_instance() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     eni_id = "cloud_resource:aws:network:network_interface:eni-1"
     inst_id = "cloud_resource:aws:ec2:instance:i-1"
-    exposed = [
-        e
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO and e.source == eni_id and e.target == inst_id
-    ]
+    exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == eni_id and e.target == inst_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "eni_public_ip"
 
@@ -368,11 +364,7 @@ def test_elastic_ip_emits_exposed_to_attached_instance() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": payload})
     ip_id = "cloud_resource:aws:network:ip_address:52.9.9.9"
     inst_id = "cloud_resource:aws:ec2:instance:i-1"
-    exposed = [
-        e
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO and e.source == ip_id and e.target == inst_id
-    ]
+    exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == ip_id and e.target == inst_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "elastic_ip_attachment"
 
@@ -381,11 +373,7 @@ def test_internet_facing_lb_emits_exposed_to_reachable_instance() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     lb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
     inst_id = "cloud_resource:aws:ec2:instance:i-1"
-    exposed = [
-        e
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO and e.source == lb_id and e.target == inst_id
-    ]
+    exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == lb_id and e.target == inst_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "internet_facing_load_balancer"
 
@@ -394,11 +382,7 @@ def test_internet_facing_api_gateway_emits_exposed_to_frontend() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     api_id = "api_gateway:aws:rest1"
     alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
-    exposed = [
-        e
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO and e.source == api_id and e.target == alb_id
-    ]
+    exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == api_id and e.target == alb_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "internet_facing_api_gateway"
 
@@ -407,11 +391,7 @@ def test_waf_emits_internet_entry_exposed_to_frontend() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     waf_id = "cloud_resource:aws:waf:web_acl:acl-id"
     alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
-    exposed = [
-        e
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO and e.source == waf_id and e.target == alb_id
-    ]
+    exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == waf_id and e.target == alb_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "waf_internet_entry"
     assert g.nodes[waf_id].attributes.get("internet_exposed") is True
@@ -422,11 +402,7 @@ def test_internet_gateway_public_subnet_and_instance_paths() -> None:
     igw_id = "cloud_resource:aws:network:internet_gateway:igw-1"
     subnet_id = "cloud_resource:aws:network:subnet:subnet-pub"
     inst_id = "cloud_resource:aws:ec2:instance:i-1"
-    reasons = {
-        (e.source, e.target): (e.evidence or {}).get("reason")
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO
-    }
+    reasons = {(e.source, e.target): (e.evidence or {}).get("reason") for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO}
     assert reasons.get((igw_id, subnet_id)) == "internet_gateway_public_subnet"
     assert reasons.get((subnet_id, inst_id)) == "public_subnet_instance"
 
@@ -436,11 +412,7 @@ def test_permissive_network_acl_exposed_to_subnet_and_instance() -> None:
     nacl_id = "cloud_resource:aws:network:network_acl:acl-open"
     subnet_id = "cloud_resource:aws:network:subnet:subnet-pub"
     inst_id = "cloud_resource:aws:ec2:instance:i-1"
-    reasons = {
-        (e.source, e.target): (e.evidence or {}).get("reason")
-        for e in g.edges
-        if e.relationship == RelationshipType.EXPOSED_TO
-    }
+    reasons = {(e.source, e.target): (e.evidence or {}).get("reason") for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO}
     assert reasons.get((nacl_id, subnet_id)) == "permissive_network_acl"
     assert reasons.get((nacl_id, inst_id)) == "permissive_network_acl_instance"
 

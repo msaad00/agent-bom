@@ -15,9 +15,7 @@ import pytest
 from agent_bom.db.graph_store import default_graph_db_path
 
 
-def test_state_dir_places_graph_db_under_state_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_state_dir_places_graph_db_under_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("AGENT_BOM_GRAPH_DB", raising=False)
     monkeypatch.delenv("AGENT_BOM_DB", raising=False)
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
@@ -29,9 +27,7 @@ def test_state_dir_places_graph_db_under_state_dir(
     assert Path.home() not in resolved.parents
 
 
-def test_explicit_graph_db_overrides_state_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_explicit_graph_db_overrides_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     explicit = tmp_path / "explicit-graph.db"
     monkeypatch.setenv("AGENT_BOM_GRAPH_DB", str(explicit))
     monkeypatch.setenv("AGENT_BOM_DB", str(tmp_path / "shared.db"))
@@ -40,9 +36,7 @@ def test_explicit_graph_db_overrides_state_dir(
     assert default_graph_db_path() == explicit
 
 
-def test_shared_db_overrides_state_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_shared_db_overrides_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     shared = tmp_path / "shared.db"
     monkeypatch.delenv("AGENT_BOM_GRAPH_DB", raising=False)
     monkeypatch.setenv("AGENT_BOM_DB", str(shared))

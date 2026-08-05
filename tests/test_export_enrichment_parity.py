@@ -532,9 +532,7 @@ def _spdx2_package_comments(report: AIBOMReport) -> list[str]:
 def test_json_carries_integrity_and_provenance_verdict() -> None:
     from agent_bom.output.json_fmt import to_json
 
-    payload = to_json(
-        _report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="npm_slsa")
-    )
+    payload = to_json(_report_with_integrity(integrity_verified=True, provenance_attested=True, provenance_source="npm_slsa"))
     pkg = payload["agents"][0]["mcp_servers"][0]["packages"][0]
     assert pkg["integrity_verified"] is True
     assert pkg["provenance_attested"] is True
@@ -592,9 +590,7 @@ def test_cyclonedx_with_verdict_stays_schema_valid() -> None:
     schema_path = _FIXTURES / "cyclonedx-1.7.schema.json"
     if not schema_path.exists():
         pytest.skip("vendored CycloneDX 1.7 schema unavailable")
-    cdx = to_cyclonedx(
-        _report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source="npm_slsa")
-    )
+    cdx = to_cyclonedx(_report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source="npm_slsa"))
     validator = Draft7Validator(json.loads(schema_path.read_text()), registry=_cyclonedx_registry())
     errors = sorted(validator.iter_errors(cdx), key=lambda e: list(e.path))
     assert not errors, "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
@@ -641,9 +637,7 @@ def test_spdx2_with_verdict_stays_schema_valid() -> None:
     schema_path = _FIXTURES / "spdx-2.3.schema.json"
     if not schema_path.exists():
         pytest.skip("vendored SPDX 2.3 schema unavailable")
-    doc = to_spdx2(
-        _report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source="npm_slsa")
-    )
+    doc = to_spdx2(_report_with_integrity(integrity_verified=True, provenance_attested=False, provenance_source="npm_slsa"))
     validator = Draft7Validator(json.loads(schema_path.read_text()))
     errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
     assert not errors, "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])

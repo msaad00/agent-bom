@@ -89,12 +89,8 @@ _CLEANUP_TRANSITIONS: dict[CleanupStatus, frozenset[CleanupStatus]] = {
     CleanupStatus.NOT_STARTED: frozenset(
         {CleanupStatus.NOT_STARTED, CleanupStatus.PENDING, CleanupStatus.IN_PROGRESS, CleanupStatus.COMPLETE}
     ),
-    CleanupStatus.PENDING: frozenset(
-        {CleanupStatus.PENDING, CleanupStatus.IN_PROGRESS, CleanupStatus.COMPLETE, CleanupStatus.PARTIAL}
-    ),
-    CleanupStatus.IN_PROGRESS: frozenset(
-        {CleanupStatus.IN_PROGRESS, CleanupStatus.COMPLETE, CleanupStatus.PARTIAL}
-    ),
+    CleanupStatus.PENDING: frozenset({CleanupStatus.PENDING, CleanupStatus.IN_PROGRESS, CleanupStatus.COMPLETE, CleanupStatus.PARTIAL}),
+    CleanupStatus.IN_PROGRESS: frozenset({CleanupStatus.IN_PROGRESS, CleanupStatus.COMPLETE, CleanupStatus.PARTIAL}),
     CleanupStatus.PARTIAL: frozenset({CleanupStatus.PARTIAL, CleanupStatus.IN_PROGRESS, CleanupStatus.COMPLETE}),
     CleanupStatus.COMPLETE: frozenset({CleanupStatus.COMPLETE}),
 }
@@ -440,8 +436,7 @@ class SideScanExecutionRecord:
         return tuple(
             resource
             for resource in self.resources
-            if resource.status is not TemporaryResourceStatus.DELETED
-            and self.cleanup_ownership.owns(resource.ownership_tags)
+            if resource.status is not TemporaryResourceStatus.DELETED and self.cleanup_ownership.owns(resource.ownership_tags)
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -577,8 +572,7 @@ class SQLiteSideScanStateStore:
                 """
             )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_side_scan_cleanup ON side_scan_execution_state "
-                "(tenant_id, cleanup_status, updated_at)"
+                "CREATE INDEX IF NOT EXISTS idx_side_scan_cleanup ON side_scan_execution_state (tenant_id, cleanup_status, updated_at)"
             )
 
     def create_or_get(self, record: SideScanExecutionRecord) -> SideScanExecutionRecord:

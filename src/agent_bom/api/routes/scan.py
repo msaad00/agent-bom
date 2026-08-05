@@ -2793,9 +2793,7 @@ def _list_findings_impl(
         # understate a number that is exact.
         total_approximate = not facet_completeness["total_exact"]
         if facet_completeness["status"] != "complete":
-            bounded = sorted(
-                name for name, state in facet_completeness["dimensions"].items() if state == "bounded"
-            )
+            bounded = sorted(name for name, state in facet_completeness["dimensions"].items() if state == "bounded")
             warnings.append(
                 "Facet counting stopped after "
                 f"{facet_completeness['scanned_rows']} scanned rows ({facet_completeness['reason']}); "

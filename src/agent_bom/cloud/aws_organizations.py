@@ -117,9 +117,7 @@ def discover_organization(
                 import boto3
             except ImportError:
                 result["status"] = "boto3_missing"
-                result["warnings"] = [
-                    "boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"
-                ]
+                result["warnings"] = ["boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"]
                 return result
             session = boto3.Session(profile_name=profile) if profile else boto3.Session()
         org = session.client("organizations")

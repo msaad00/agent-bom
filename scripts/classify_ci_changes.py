@@ -62,9 +62,7 @@ def classify_paths(paths: Iterable[str]) -> ChangeClassification:
     raw_paths = list(paths)
     normalized = [_normalize_path(path) for path in raw_paths]
     valid_paths = [path for path in normalized if path is not None]
-    docs_only = bool(valid_paths) and len(valid_paths) == len(raw_paths) and all(
-        _is_documentation_path(path) for path in valid_paths
-    )
+    docs_only = bool(valid_paths) and len(valid_paths) == len(raw_paths) and all(_is_documentation_path(path) for path in valid_paths)
     return ChangeClassification(docs_only=docs_only, changed_count=len(valid_paths))
 
 
@@ -82,10 +80,7 @@ def main() -> int:
     import sys
 
     classification = classify_paths(sys.stdin.read().splitlines())
-    lines = (
-        f"docs_only={'true' if classification.docs_only else 'false'}\n"
-        f"changed_count={classification.changed_count}\n"
-    )
+    lines = f"docs_only={'true' if classification.docs_only else 'false'}\nchanged_count={classification.changed_count}\n"
     if args.github_output:
         with open(args.github_output, "a", encoding="utf-8") as output:
             output.write(lines)

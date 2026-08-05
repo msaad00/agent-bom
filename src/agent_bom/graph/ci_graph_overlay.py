@@ -50,11 +50,7 @@ def apply_ci_graph_overlay(
     if not isinstance(agents, list):
         return counts
 
-    gha_agents = [
-        agent
-        for agent in agents
-        if isinstance(agent, dict) and str(agent.get("source") or "") == _GHA_SOURCE
-    ]
+    gha_agents = [agent for agent in agents if isinstance(agent, dict) and str(agent.get("source") or "") == _GHA_SOURCE]
     if not gha_agents:
         return counts
 
@@ -67,11 +63,7 @@ def apply_ci_graph_overlay(
         if path:
             config_by_path[path] = node.id
 
-    tool_ids_by_label = {
-        node.label: node.id
-        for node in graph.nodes.values()
-        if node.entity_type == EntityType.TOOL
-    }
+    tool_ids_by_label = {node.label: node.id for node in graph.nodes.values() if node.entity_type == EntityType.TOOL}
 
     for agent in sorted(gha_agents, key=lambda item: str(item.get("name") or "")):
         name = str(agent.get("name") or "")

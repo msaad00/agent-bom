@@ -346,9 +346,7 @@ def test_self_hosted_provider_quota_is_configurable_without_trial_restrictions(m
         assert created["provider"] == "aws"
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            cloud_connections.create_connection(request=object(), body=_body(display_name="aws-three", auto_scan_on_create=False))
-        )
+        asyncio.run(cloud_connections.create_connection(request=object(), body=_body(display_name="aws-three", auto_scan_on_create=False)))
     assert exc_info.value.status_code == 429
     assert "cloud_connections_per_provider" in str(exc_info.value.detail)
 

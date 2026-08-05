@@ -260,10 +260,7 @@ _ASSET_SPECS: tuple[dict[str, Any], ...] = (
         "data_classifications": ["confidential"],
     },
     {
-        "asset_id": (
-            "cloud_resource:aws:ecr:image:member-copilot@sha256:"
-            "4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
-        ),
+        "asset_id": ("cloud_resource:aws:ecr:image:member-copilot@sha256:4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"),
         "provider": "aws",
         "resource_type": "container_image",
         "native_id": (
@@ -538,9 +535,7 @@ def _load_observations(tenant_id: str) -> tuple[RawObservation, ...]:
     return tuple(rows)
 
 
-def _collection_runs(
-    observations: tuple[RawObservation, ...], tenant_id: str
-) -> tuple[CollectionRun, ...]:
+def _collection_runs(observations: tuple[RawObservation, ...], tenant_id: str) -> tuple[CollectionRun, ...]:
     counts = {source: 0 for source in EvidenceSource}
     for observation in observations:
         counts[observation.source] += 1
@@ -569,9 +564,7 @@ def _collection_runs(
     return tuple(runs)
 
 
-def _snapshots(
-    assets: tuple[EstateAsset, ...], observations: tuple[RawObservation, ...]
-) -> tuple[EstateSnapshot, ...]:
+def _snapshots(assets: tuple[EstateAsset, ...], observations: tuple[RawObservation, ...]) -> tuple[EstateSnapshot, ...]:
     timestamps = {
         EstateStage.BASELINE: datetime.fromisoformat("2026-07-27T18:00:00+00:00"),
         EstateStage.CURRENT: datetime.fromisoformat("2026-08-03T18:05:00+00:00"),
@@ -589,9 +582,7 @@ def _snapshots(
             stage=stage,
             observed_at=timestamps[stage],
             asset_ids=asset_ids,
-            event_ids=tuple(
-                sorted(row.event_id for row in observations if row.stage is stage)
-            ),
+            event_ids=tuple(sorted(row.event_id for row in observations if row.stage is stage)),
             change_summary=summaries[stage],
         )
         for stage in (EstateStage.BASELINE, EstateStage.CURRENT, EstateStage.REMEDIATED)
@@ -612,17 +603,12 @@ def load_enterprise_estate(*, tenant_id: str = "default") -> EnterpriseEstate:
         display_name="Northstar Health AI",
         synthetic=True,
         fictional=True,
-        disclosure=(
-            "Synthetic fictional enterprise evidence for product demonstration; "
-            "it is not customer telemetry or an audit verdict."
-        ),
+        disclosure=("Synthetic fictional enterprise evidence for product demonstration; it is not customer telemetry or an audit verdict."),
         assets=assets,
         observations=observations,
         collection_runs=_collection_runs(observations, tenant_id),
         snapshots=_snapshots(assets, observations),
         content_hash="0" * 64,
     )
-    digest = hashlib.sha256(
-        _canonical_json(estate.model_dump(mode="json", exclude={"content_hash"}))
-    ).hexdigest()
+    digest = hashlib.sha256(_canonical_json(estate.model_dump(mode="json", exclude={"content_hash"}))).hexdigest()
     return estate.model_copy(update={"content_hash": digest})

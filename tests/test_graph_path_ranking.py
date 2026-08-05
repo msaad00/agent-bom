@@ -39,9 +39,7 @@ def test_tool_capability_boost_from_execute_tags() -> None:
         attributes={"capabilities": ["read", "execute"]},
     )
     assert tool_capability_boost(tool) > 0
-    assert tool_capability_boost(
-        UnifiedNode(id="a", entity_type=EntityType.AGENT, label="a")
-    ) == 0.0
+    assert tool_capability_boost(UnifiedNode(id="a", entity_type=EntityType.AGENT, label="a")) == 0.0
 
 
 def test_path_rank_tuple_raises_prod_paths_above_dev() -> None:

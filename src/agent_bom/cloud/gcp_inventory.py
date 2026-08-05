@@ -998,9 +998,7 @@ _GCP_SA_USAGE_DEFERRED: dict[str, Any] = {
 }
 
 
-def _service_account_usage_evidence(
-    email: str, roles: list[str], resolver: Any
-) -> dict[str, Any]:
+def _service_account_usage_evidence(email: str, roles: list[str], resolver: Any) -> dict[str, Any]:
     """Resolve read-only usage evidence for one service account (never fabricated).
 
     ``resolver`` is an optional callable ``(email, roles) -> Mapping`` supplying

@@ -587,9 +587,7 @@ class AgentBomClient:
     def submit_blueprint_version(self, blueprint_id: str, version: int) -> JsonObject:
         """Submit a draft blueprint version for approval (draft → pending)."""
 
-        return self._request(
-            "POST", f"/v1/governance/blueprints/{_quote_path(blueprint_id)}/versions/{int(version)}/submit"
-        )
+        return self._request("POST", f"/v1/governance/blueprints/{_quote_path(blueprint_id)}/versions/{int(version)}/submit")
 
     def approve_blueprint_version(self, blueprint_id: str, version: int, *, note: str | None = None) -> JsonObject:
         """Approve a pending blueprint version (requires the admin/governance role)."""

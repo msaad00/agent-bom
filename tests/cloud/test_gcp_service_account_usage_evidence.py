@@ -65,9 +65,7 @@ def _install_fake_iam(accounts: list[_FakeSA]) -> Any:
 def test_discover_emits_usage_evidence_deferred_by_default() -> None:
     accounts = [_FakeSA("svc@p.iam.gserviceaccount.com", "Svc", "u-1")]
     with _install_fake_iam(accounts):
-        records = gcp_inventory._discover_service_accounts(
-            "proj-1", credentials=None, warnings=[], iam_bindings={}
-        )
+        records = gcp_inventory._discover_service_accounts("proj-1", credentials=None, warnings=[], iam_bindings={})
     assert len(records) == 1
     usage = records[0]["usage_evidence"]
     # Fail-closed default: usage is unevaluable (no wired GCP usage source), NOT

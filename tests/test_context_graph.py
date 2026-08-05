@@ -235,10 +235,7 @@ class TestBuildGraph:
                 "credential_env_vars": ["SHARED_TOKEN"],
             }
 
-        agents = [
-            _agent(name=f"agent-{i}", servers=[_shared_server("shared-srv")])
-            for i in range(100)
-        ]
+        agents = [_agent(name=f"agent-{i}", servers=[_shared_server("shared-srv")]) for i in range(100)]
         graph = build_context_graph(agents, [])
 
         server_shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_SERVER]

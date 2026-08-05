@@ -57,6 +57,7 @@ def _tenant_scope(tenant_id: str | None) -> Iterator[None]:
     finally:
         _current_tenant.reset(token)
 
+
 # Name of the per-tenant chain-head uniqueness guard. A concurrent fork violates
 # it (SQLSTATE 23505), which `append` catches to re-read the head and re-link.
 _AUDIT_FORK_GUARD_INDEX = "audit_log_team_prevsig_uniq"

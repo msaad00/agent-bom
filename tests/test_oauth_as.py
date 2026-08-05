@@ -337,9 +337,7 @@ def test_validate_token_rejects_foreign_token() -> None:
             "token_endpoint_auth_method": "client_secret_post",
         }
     )
-    tokens = server_a.token(
-        {"grant_type": "client_credentials", "client_id": reg["client_id"], "client_secret": reg["client_secret"]}
-    )
+    tokens = server_a.token({"grant_type": "client_credentials", "client_id": reg["client_id"], "client_secret": reg["client_secret"]})
     # A token signed by server_a does not validate against server_b's key.
     assert server_b.validate_token(tokens["access_token"]) is None
     assert server_a.validate_token(tokens["access_token"]) is not None
@@ -388,9 +386,7 @@ def test_signing_key_loads_from_mounted_file(monkeypatch: pytest.MonkeyPatch, tm
     assert key.ephemeral is False
 
 
-def test_signing_key_file_takes_precedence_over_inline_env(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_signing_key_file_takes_precedence_over_inline_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     file_pem = _rsa_private_pem()
     inline_pem = _rsa_private_pem()
     pem_file = tmp_path / "oauth_as.pem"

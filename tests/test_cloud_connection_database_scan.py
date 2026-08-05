@@ -48,9 +48,7 @@ def test_live_database_connection_scan_is_redacted_and_honest(monkeypatch):
     with psycopg.connect(_PG_URL, autocommit=True) as admin, admin.cursor() as cur:
         cur.execute(f'CREATE SCHEMA "{schema}"')
         cur.execute(f'CREATE TABLE "{schema}".people (email text, ssn text)')
-        cur.execute(
-            f"INSERT INTO \"{schema}\".people VALUES ('dave@example.com','123-45-6789'),('erin@example.com','234-56-7890')"
-        )
+        cur.execute(f"INSERT INTO \"{schema}\".people VALUES ('dave@example.com','123-45-6789'),('erin@example.com','234-56-7890')")
         cur.execute(f'CREATE TABLE "{schema}".metrics (name text, value double precision)')
         cur.execute(f"INSERT INTO \"{schema}\".metrics VALUES ('cpu',0.9)")
 

@@ -62,8 +62,7 @@ def test_cvss_current_page_uses_index_no_temp_btree(tmp_path) -> None:
     conn = store._conn
     order_sql = "ORDER BY cvss_score DESC, last_seen DESC, canonical_id ASC"
     plan = conn.execute(
-        "EXPLAIN QUERY PLAN "
-        f"SELECT canonical_id FROM hub_findings_current WHERE tenant_id=? AND origin=? {order_sql} LIMIT 51",
+        f"EXPLAIN QUERY PLAN SELECT canonical_id FROM hub_findings_current WHERE tenant_id=? AND origin=? {order_sql} LIMIT 51",
         ("t-3641", "bulk_ingest"),
     ).fetchall()
     detail = " | ".join(row[3] for row in plan)
@@ -111,9 +110,9 @@ def test_origin_count_uses_index_not_json_scan(tmp_path) -> None:
     detail = " | ".join(row[3] for row in plan)
     assert "USING" in detail.upper() and "INDEX" in detail.upper(), detail
     assert "SCAN hub_findings_current" not in detail, detail
-    count = conn.execute(
-        "SELECT COUNT(*) FROM hub_findings_current WHERE tenant_id=? AND origin=?", ("t-3641", "bulk_ingest")
-    ).fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM hub_findings_current WHERE tenant_id=? AND origin=?", ("t-3641", "bulk_ingest")).fetchone()[
+        0
+    ]
     assert count == 400
 
 

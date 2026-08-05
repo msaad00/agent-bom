@@ -54,10 +54,7 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
 
 def _demo_report(client: TestClient) -> dict:
-    jobs = (
-        client.get("/v1/jobs", headers=VIEWER, params={"include_details": "true"}).json().get("jobs")
-        or []
-    )
+    jobs = client.get("/v1/jobs", headers=VIEWER, params={"include_details": "true"}).json().get("jobs") or []
     assert jobs, "expected at least one demo job after bootstrap"
     detail = client.get(f"/v1/scan/{jobs[0]['job_id']}", headers=VIEWER).json()
     return detail.get("result") or {}
@@ -221,14 +218,8 @@ def test_demo_estate_posture_findings_resolve_to_inventoried_assets(
 
     inventoried = {asset.asset_id for asset in build_demo_estate(tenant_id=SHOWCASE_TENANT).assets}
 
-    listing = demo_estate_client.get(
-        "/v1/findings", headers=VIEWER, params={"limit": 1000, "domain": "cspm"}
-    ).json()
-    rows = [
-        row
-        for row in listing["findings"]
-        if (row.get("evidence") or {}).get("resource_id", "") in inventoried
-    ]
+    listing = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 1000, "domain": "cspm"}).json()
+    rows = [row for row in listing["findings"] if (row.get("evidence") or {}).get("resource_id", "") in inventoried]
     assert len(rows) >= 400, f"only {len(rows)} estate posture findings reached the findings list"
 
     for row in rows:
@@ -241,9 +232,7 @@ def test_demo_estate_posture_findings_resolve_to_inventoried_assets(
         assert evidence.get("resource_name") and evidence.get("resource_type")
         assert row.get("provider"), sorted(row)
         assert row.get("severity"), sorted(row)
-    assert any((row.get("evidence") or {}).get("correlation_id") for row in rows), (
-        "no posture finding kept its correlated attack path"
-    )
+    assert any((row.get("evidence") or {}).get("correlation_id") for row in rows), "no posture finding kept its correlated attack path"
     assert len({(row.get("evidence") or {}).get("resource_id") for row in rows}) > 200, (
         "the estate's findings all land on a handful of assets"
     )
@@ -259,9 +248,7 @@ def test_demo_estate_finding_counts_reconcile_across_tile_list_and_facet(
     findings is exactly the change that makes them drift apart, so pin them
     together on the seeded estate rather than trusting that they agree.
     """
-    listing = demo_estate_client.get(
-        "/v1/findings", headers=VIEWER, params={"limit": 1, "include_facets": "true"}
-    ).json()
+    listing = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 1, "include_facets": "true"}).json()
     total = listing["total"]
     assert total > 400, total
 
@@ -275,8 +262,7 @@ def test_demo_estate_finding_counts_reconcile_across_tile_list_and_facet(
     assert "unrated" in counts, counts
     assert sum(counts[band] for band in ("critical", "high", "medium", "low", "unrated")) == counts["total"], counts
     assert counts["unrated"] > 0, (
-        "no unrated finding survives to the tiles, so an unevaluable control is "
-        "indistinguishable from one that passed"
+        "no unrated finding survives to the tiles, so an unevaluable control is indistinguishable from one that passed"
     )
 
     # The bounded page reports the unbounded total, never its own size.
@@ -457,11 +443,7 @@ def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: T
     assert "account:aws:123456789012" in node_ids
 
     edges = payload.get("edges") or []
-    contains = {
-        (row.get("source"), row.get("target"))
-        for row in edges
-        if row.get("relationship") == "contains"
-    }
+    contains = {(row.get("source"), row.get("target")) for row in edges if row.get("relationship") == "contains"}
     assert ("org:corp", "account:aws:123456789012") in contains
     assert ("account:aws:123456789012", "cloud:pii-bucket") in contains
     assert ("account:aws:123456789012", "cloud:bastion") in contains
@@ -469,9 +451,7 @@ def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: T
     exposed = [
         row
         for row in edges
-        if row.get("relationship") == "exposed_to"
-        and row.get("source") == "cloud:bastion"
-        and row.get("target") == "cloud:pii-bucket"
+        if row.get("relationship") == "exposed_to" and row.get("source") == "cloud:bastion" and row.get("target") == "cloud:pii-bucket"
     ]
     assert exposed, "expected bastion→PII EXPOSED_TO edge in showcase snapshot"
 
@@ -480,14 +460,9 @@ def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestC
     # Whole snapshot: runtime-evidence tiers sit on unrated tool/tool-call nodes,
     # which the estate's rated findings now outrank on the default page.
     payload = _full_graph(demo_estate_client)
-    attrs_by_id = {
-        node.get("id"): (node.get("attributes") or {}) for node in payload.get("nodes") or []
-    }
+    attrs_by_id = {node.get("id"): (node.get("attributes") or {}) for node in payload.get("nodes") or []}
     assert attrs_by_id.get("call:0", {}).get("evidence_tier") == "runtime_observed"
-    assert (
-        attrs_by_id.get("tool:shell-runner-server:run_shell", {}).get("evidence_tier")
-        == "runtime_blocked"
-    )
+    assert attrs_by_id.get("tool:shell-runner-server:run_shell", {}).get("evidence_tier") == "runtime_blocked"
 
 
 def test_demo_estate_catalog_seeds_connections_sources_and_spend(demo_estate_client: TestClient) -> None:
@@ -556,9 +531,7 @@ def test_showcase_catalog_needs_no_ephemeral_key_and_is_tenant_safe(
     tenant_a_connections = connection_store.list_for_tenant("tenant-a")
     tenant_b_connections = connection_store.list_for_tenant("tenant-b")
     assert len(tenant_a_connections) == len(tenant_b_connections) == 3
-    assert {row.id for row in tenant_a_connections}.isdisjoint(
-        {row.id for row in tenant_b_connections}
-    )
+    assert {row.id for row in tenant_a_connections}.isdisjoint({row.id for row in tenant_b_connections})
     assert all(not row.external_id_encrypted for row in tenant_a_connections)
     assert len(source_store.list_all("tenant-a")) == 2
     assert len(source_store.list_all("tenant-b")) == 2
@@ -658,22 +631,14 @@ def test_demo_estate_survives_job_ttl_cleanup(demo_estate_client: TestClient) ->
     from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
 
     store = api_stores._get_store()
-    demo_jobs = [
-        job
-        for job in store.list_all(tenant_id=SHOWCASE_TENANT)
-        if getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY
-    ]
+    demo_jobs = [job for job in store.list_all(tenant_id=SHOWCASE_TENANT) if getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY]
     assert demo_jobs, "precondition: bootstrap seeded a demo-estate job"
     for job in demo_jobs:
         job.completed_at = "2020-01-01T00:00:00+00:00"
         store.put(job)
 
     removed = store.cleanup_expired(ttl_seconds=1)
-    remaining = [
-        job
-        for job in store.list_all(tenant_id=SHOWCASE_TENANT)
-        if getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY
-    ]
+    remaining = [job for job in store.list_all(tenant_id=SHOWCASE_TENANT) if getattr(job, "triggered_by", None) == DEMO_ESTATE_TRIGGERED_BY]
     assert remaining, f"demo estate jobs were purged by TTL (removed={removed})"
 
     # Restore a current completed_at so the default findings window still sees them.
@@ -688,9 +653,7 @@ def test_demo_estate_survives_job_ttl_cleanup(demo_estate_client: TestClient) ->
 def test_demo_estate_exposure_paths_materialized(demo_estate_client: TestClient) -> None:
     """The materialized exposure-path queue (read by /v1/graph/exposure-paths) is
     non-empty and headlines the seeded hero chains."""
-    payload = demo_estate_client.get(
-        "/v1/graph/exposure-paths", headers=VIEWER, params={"limit": 10}
-    ).json()
+    payload = demo_estate_client.get("/v1/graph/exposure-paths", headers=VIEWER, params={"limit": 10}).json()
     assert payload.get("count", 0) >= 3, payload
     assert payload.get("total", 0) >= 3, payload
 
@@ -731,9 +694,7 @@ def test_demo_estate_overview_identity_tile_populated(demo_estate_client: TestCl
     assert identity["status"] != "idle", identity
 
 
-def test_demo_estate_agents_fall_back_to_demo_inventory(
-    demo_estate_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_demo_estate_agents_fall_back_to_demo_inventory(demo_estate_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """On a hosted server local discovery is empty; the demo estate falls back to
     the curated inventory so /v1/agents + /v1/agents/mesh are non-empty and
     correlated with the graph agents."""
@@ -823,11 +784,7 @@ def test_demo_estate_graph_carries_the_projected_estate(demo_estate_client: Test
     assert by_type["environment"] >= 100, by_type
     assert by_type["misconfiguration"] >= 439, by_type
 
-    contains = {
-        (row.get("source"), row.get("target"))
-        for row in payload.get("edges") or []
-        if row.get("relationship") == "contains"
-    }
+    contains = {(row.get("source"), row.get("target")) for row in payload.get("edges") or [] if row.get("relationship") == "contains"}
     assert ("organization:northstar-health-ai", "account:aws:123456789012") in contains
     assert ("account:aws:123456789012", "env:aws:123456789012:production") in contains
     assert (
@@ -915,13 +872,9 @@ def test_demo_estate_graph_rolls_up_to_a_readable_estate(demo_estate_client: Tes
     assert "account:aws:123456789012" in account_ids
     assert len(account_ids) >= 40, len(account_ids)
 
-    envs = demo_estate_client.get(
-        "/v1/graph/rollup", headers=VIEWER, params={"node": "account:aws:123456789012"}
-    ).json()
+    envs = demo_estate_client.get("/v1/graph/rollup", headers=VIEWER, params={"node": "account:aws:123456789012"}).json()
     env_children = {row.get("id"): row for row in envs.get("children") or []}
     assert "env:aws:123456789012:production" in env_children, list(env_children)
 
-    resources = demo_estate_client.get(
-        "/v1/graph/rollup", headers=VIEWER, params={"node": "env:aws:123456789012:production"}
-    ).json()
+    resources = demo_estate_client.get("/v1/graph/rollup", headers=VIEWER, params={"node": "env:aws:123456789012:production"}).json()
     assert resources.get("children"), resources

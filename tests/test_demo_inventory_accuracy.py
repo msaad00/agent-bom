@@ -76,9 +76,7 @@ def test_demo_agents_keep_unique_identity_across_all_inventory_exports() -> None
     assert len({agent["id"] for agent in entity_agents}) == 5
 
     cyclonedx = to_cyclonedx(AIBOMReport(agents=agents))
-    assert {prop["name"]: prop["value"] for prop in cyclonedx["metadata"]["properties"]}[
-        "agent-bom:canonical-id-schema-version"
-    ] == "2"
+    assert {prop["name"]: prop["value"] for prop in cyclonedx["metadata"]["properties"]}["agent-bom:canonical-id-schema-version"] == "2"
     agent_components = [
         component
         for component in cyclonedx["components"]
@@ -223,11 +221,7 @@ def test_demo_inventory_has_at_least_two_criticals() -> None:
     from agent_bom.demo_advisories import DEMO_ADVISORIES
 
     demo_pkgs = {(eco, name) for eco, name, _ in _all_demo_packages()}
-    criticals = {
-        adv.vuln_id
-        for adv in DEMO_ADVISORIES
-        if adv.severity == "critical" and (adv.ecosystem, adv.package) in demo_pkgs
-    }
+    criticals = {adv.vuln_id for adv in DEMO_ADVISORIES if adv.severity == "critical" and (adv.ecosystem, adv.package) in demo_pkgs}
     assert len(criticals) >= 2, f"expected >=2 critical advisories on demo packages, got {criticals}"
 
 

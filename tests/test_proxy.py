@@ -644,6 +644,7 @@ def test_gateway_policy_cache_signing_key_resolves_from_file_first(tmp_path: Pat
 
     assert _load_gateway_policy_cache_signer() is not None
 
+
 def test_gateway_policy_cache_rejects_signature_mismatch(tmp_path: Path, monkeypatch):
     cache_path = tmp_path / "gateway-policies.json"
     monkeypatch.setattr(proxy_mod.time, "time", lambda: 1234.0)

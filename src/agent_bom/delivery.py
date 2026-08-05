@@ -702,9 +702,7 @@ class DeliveryClient:
             last_http = outcome.http_status
             last_error = outcome.error
 
-            accepted = outcome.is_success and (
-                not destination.accepted_statuses or outcome.http_status in destination.accepted_statuses
-            )
+            accepted = outcome.is_success and (not destination.accepted_statuses or outcome.http_status in destination.accepted_statuses)
             if accepted:
                 self.store.log_attempt(
                     idempotency_key=key,

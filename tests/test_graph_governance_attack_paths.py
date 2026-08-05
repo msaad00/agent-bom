@@ -118,9 +118,7 @@ def test_inbound_trust_does_not_surface_governance_attack_path():
     g = UnifiedGraph(scan_id="s", tenant_id="t")
     g.add_node(UnifiedNode(id="role:R", entity_type=EntityType.ROLE, label="exposed-R", attributes={"internet_exposed": True}))
     g.add_node(UnifiedNode(id="prin:P", entity_type=EntityType.ROLE, label="P"))
-    g.add_node(
-        UnifiedNode(id="ds:X", entity_type=EntityType.DATA_STORE, label="ds-X", attributes={"data_sensitivity": "high"})
-    )
+    g.add_node(UnifiedNode(id="ds:X", entity_type=EntityType.DATA_STORE, label="ds-X", attributes={"data_sensitivity": "high"}))
     g.add_edge(UnifiedEdge(source="role:R", target="prin:P", relationship=RelationshipType.CROSS_ACCOUNT_TRUST))
     g.add_edge(UnifiedEdge(source="prin:P", target="ds:X", relationship=RelationshipType.CAN_ACCESS))
 

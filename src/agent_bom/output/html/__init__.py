@@ -4,6 +4,7 @@ Split into cohesive submodules (see #1522); this package re-exports the
 original public and semi-public symbols so ``agent_bom.output.html.X`` keeps
 working unchanged.
 """
+
 from __future__ import annotations
 
 from agent_bom.output.html._common import (

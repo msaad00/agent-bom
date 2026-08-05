@@ -324,7 +324,5 @@ def test_node_boost_deprioritizes_mitigated_toxic_but_keeps_it():
     # A WAF-fronted (mitigated) toxic node scores below a bare toxic node, yet is
     # not zeroed out — honesty: de-prioritized, not hidden.
     bare = UnifiedNode(id="a", entity_type=EntityType.CLOUD_RESOURCE, label="a", attributes={"toxic_exposed_vulnerable": True})
-    mitig = UnifiedNode(
-        id="b", entity_type=EntityType.CLOUD_RESOURCE, label="b", attributes={"toxic_exposed_vulnerable_mitigated": True}
-    )
+    mitig = UnifiedNode(id="b", entity_type=EntityType.CLOUD_RESOURCE, label="b", attributes={"toxic_exposed_vulnerable_mitigated": True})
     assert 0 < _node_boost(mitig) < _node_boost(bare)

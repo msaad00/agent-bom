@@ -283,9 +283,7 @@ def test_gcs_requires_a_bucket():
 @pytest.mark.parametrize("warehouse", ["clickhouse", "bigquery", "databricks"])
 def test_manifest_pointer_latest_tenant_snapshot_hides_findings_omitted_by_later_run(warehouse):
     """All manifest-backed consumers select one latest attempt per tenant, not per run."""
-    staged = [
-        {"tenant_id": "tenant", "run_id": "run-a", "publication_attempt_id": "attempt-a", "finding_id": "old"}
-    ]
+    staged = [{"tenant_id": "tenant", "run_id": "run-a", "publication_attempt_id": "attempt-a", "finding_id": "old"}]
     manifests = [
         {
             "tenant_id": "tenant",
@@ -406,9 +404,7 @@ def test_bigquery_manifest_failure_preserves_complete_staging_for_late_commit():
 
     client = Client()
     with pytest.raises(ExportPublicationIndeterminateError, match="indeterminate"):
-        BigQueryWarehouseDestination(client, project="p", dataset="d").write_findings(
-            [_finding(1)], tenant_id="t", run_id="r"
-        )
+        BigQueryWarehouseDestination(client, project="p", dataset="d").write_findings([_finding(1)], tenant_id="t", run_id="r")
     assert not any("DELETE FROM `p.d.findings_feed_staged`" in query["sql"] for query in client.queries)
     assert any(load["destination"].endswith("_staged") for load in client.loads)
 
@@ -499,10 +495,7 @@ def test_bigquery_concurrent_same_run_attempts_publish_only_complete_snapshots()
 
     client = ConcurrentClient()
     scope = lambda tenant, run, attempt: {"tenant": tenant, "run": run, "attempt": attempt}  # noqa: E731
-    destinations = [
-        BigQueryWarehouseDestination(client, project="proj", dataset="sec", cleanup_job_config_factory=scope)
-        for _ in range(2)
-    ]
+    destinations = [BigQueryWarehouseDestination(client, project="proj", dataset="sec", cleanup_job_config_factory=scope) for _ in range(2)]
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda dest: dest.write_findings([_finding(1)], tenant_id="t", run_id="same"), destinations))
     staged = [load for load in client.loads if load["destination"].endswith("_staged")]

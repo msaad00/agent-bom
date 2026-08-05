@@ -313,7 +313,6 @@ def create_from_env() -> SIEMConnector | None:
         url=os.environ.get("AGENT_BOM_SIEM_URL", ""),
         token=os.environ.get("AGENT_BOM_SIEM_TOKEN", ""),
         index=os.environ.get("AGENT_BOM_SIEM_INDEX", ""),
-        allow_private_networks=os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower()
-        in {"1", "true", "yes", "on"},
+        allow_private_networks=os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {"1", "true", "yes", "on"},
     )
     return create_connector(siem_type, config)

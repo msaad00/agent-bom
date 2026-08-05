@@ -46,9 +46,7 @@ _CONTAINMENT_RELS: frozenset[str] = frozenset({RelationshipType.CONTAINS.value})
 
 # Operational edges that roll up like CONTAINS when they link an account to a
 # cloud resource (inventory uses OWNS; some legacy paths use HOSTS).
-_ACCOUNT_RESOURCE_CONTAINMENT_RELS: frozenset[str] = frozenset(
-    {RelationshipType.HOSTS.value, RelationshipType.OWNS.value}
-)
+_ACCOUNT_RESOURCE_CONTAINMENT_RELS: frozenset[str] = frozenset({RelationshipType.HOSTS.value, RelationshipType.OWNS.value})
 _ACCOUNT_RESOURCE_CONTAINMENT_SOURCES: frozenset[str] = frozenset({EntityType.ACCOUNT.value})
 _ACCOUNT_RESOURCE_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CLOUD_RESOURCE.value})
 

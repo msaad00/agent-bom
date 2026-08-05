@@ -22,11 +22,7 @@ def _render_story(story: EnterpriseDemoStory) -> str:
     primary = story.primary_correlation
     sources = " → ".join(source.value.replace("_", " ") for source in primary.sources)
     asset_path = "\n    → ".join(primary.asset_path)
-    partial = [
-        f"{row.source.value} ({row.failure_code})"
-        for row in story.collection_health
-        if row.status.value == "partial"
-    ]
+    partial = [f"{row.source.value} ({row.failure_code})" for row in story.collection_health if row.status.value == "partial"]
     posture = story.finding_summary
     severity = " · ".join(f"{band} {posture.by_severity[band]}" for band in _SEVERITY_ORDER)
     return "\n".join(

@@ -208,9 +208,7 @@ def test_destination_policy_rejection_is_permanent(tmp_path: Path, monkeypatch: 
     assert clock.slept == []
 
 
-def test_private_http_destination_approval_reaches_transport(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_private_http_destination_approval_reaches_transport(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", raising=False)
     clock = FakeClock()
 

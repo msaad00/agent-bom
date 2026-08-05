@@ -22,17 +22,11 @@ def test_release_storefront_context_distinguishes_candidate_from_published_relea
     assert not check_release_consistency._is_matching_release_tag(
         version, {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": f"v{previous_version}"}
     )
-    assert check_release_consistency._is_matching_release_tag(
-        version, {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": f"v{version}"}
-    )
-    assert check_release_consistency._requires_published_storefront(
-        version, {"AGENT_BOM_RELEASE_FINALIZE": "true"}
-    )
+    assert check_release_consistency._is_matching_release_tag(version, {"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": f"v{version}"})
+    assert check_release_consistency._requires_published_storefront(version, {"AGENT_BOM_RELEASE_FINALIZE": "true"})
 
 
-def test_release_workflow_promotes_candidate_only_in_external_storefront_render(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_release_workflow_promotes_candidate_only_in_external_storefront_render(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     version = check_release_consistency._load_version()
     neutral = f"| `{version}` | Version used by the examples below; verify registry availability before pinning |\n"
     rendered = render_published_readme(neutral, version)
@@ -106,6 +100,6 @@ def test_capture_runbook_matches_the_local_authenticated_release_workflow() -> N
     assert f"Inspect all {len(manifest['screenshots'])} PNGs" in runbook
     assert "`CAPTURE_BASE_URL` is not supported" in runbook
     assert "export CAPTURE_BASE_URL" not in runbook
-    assert "--api-key \"$CAPTURE_API_KEY\"" in backend_smoke
+    assert '--api-key "$CAPTURE_API_KEY"' in backend_smoke
     assert "Authorization: Bearer $CAPTURE_API_KEY" in backend_smoke
     assert "--allow-insecure-no-auth" not in runbook

@@ -400,17 +400,13 @@ def discover_prompt_files(
     for path in iter_discovery_files(root, extra_skip_dirs=frozenset(_SKIP_DIRS)):
         relative_parts = path.relative_to(root).parts
         parent_parts = relative_parts[:-1]
-        prompt_dir_depths = [
-            index for index, part in enumerate(parent_parts) if part.lower() in PROMPT_DIR_NAMES
-        ]
+        prompt_dir_depths = [index for index, part in enumerate(parent_parts) if part.lower() in PROMPT_DIR_NAMES]
         in_reachable_prompt_dir = bool(prompt_dir_depths) and min(prompt_dir_depths) <= max_depth
         within_normal_depth = len(parent_parts) <= max_depth
 
         if in_reachable_prompt_dir and path.suffix.lower() in prompt_dir_extensions:
             found.append(path)
-        elif within_normal_depth and (
-            path.suffix.lower() in PROMPT_FILE_EXTENSIONS or path.name.lower() in PROMPT_FILE_NAMES
-        ):
+        elif within_normal_depth and (path.suffix.lower() in PROMPT_FILE_EXTENSIONS or path.name.lower() in PROMPT_FILE_NAMES):
             found.append(path)
 
     return sorted(found)

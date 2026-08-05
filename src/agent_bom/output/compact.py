@@ -688,10 +688,7 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
     console.print(Rule(lane_title("analyze", f"Graph & Policy Findings ({len(findings)})"), style="dim"))
     for finding in findings[:limit]:
         category = finding.finding_type.value
-        console.print(
-            f"  {_sev_badge(finding_severity(finding))} [dim]{escape(category)}[/dim] "
-            f"[bold]{escape(finding.title or '')}[/bold]"
-        )
+        console.print(f"  {_sev_badge(finding_severity(finding))} [dim]{escape(category)}[/dim] [bold]{escape(finding.title or '')}[/bold]")
         chain_parts: list[str] = []
         if finding.affected_agents:
             chain_parts.append(escape(", ".join(finding.affected_agents[:3])))

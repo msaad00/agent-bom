@@ -118,11 +118,7 @@ def match_discovered_fleet_agent(
         return current[0]
 
     natural_key = fleet_agent_natural_key(agent_type, name, config_path)
-    natural = [
-        agent
-        for agent in available
-        if fleet_agent_natural_key(agent.agent_type, agent.name, agent.config_path) == natural_key
-    ]
+    natural = [agent for agent in available if fleet_agent_natural_key(agent.agent_type, agent.name, agent.config_path) == natural_key]
     if len(natural) == 1:
         return natural[0]
 
@@ -133,9 +129,7 @@ def match_discovered_fleet_agent(
 
 def _fleet_agent_identifiers(agent: Any) -> tuple[str, ...]:
     """The names a relay caller may legitimately be known by, case-folded."""
-    return tuple(
-        (getattr(agent, field_name, "") or "").strip().lower() for field_name in ("name", "agent_id", "canonical_id")
-    )
+    return tuple((getattr(agent, field_name, "") or "").strip().lower() for field_name in ("name", "agent_id", "canonical_id"))
 
 
 def find_fleet_agent(store: Any, tenant_id: str, identifier: str) -> Any | None:

@@ -1208,11 +1208,7 @@ class TestModelProvenance:
         # Framework model_ref attribute lands on the same node.
         assert node.attributes.get("model_ref") == "gpt-4o"
         # serves_model edges point at that single node.
-        serves = [
-            e
-            for e in g.edges
-            if e.relationship == RelationshipType.SERVES_MODEL and e.target == node.id
-        ]
+        serves = [e for e in g.edges if e.relationship == RelationshipType.SERVES_MODEL and e.target == node.id]
         assert serves
         assert serves[0].source == "framework-agent:chain"
 
@@ -1390,10 +1386,7 @@ class TestFrameworkTopology:
         fw_nodes = [n for n in g.nodes.values() if n.entity_type == EntityType.FRAMEWORK]
         assert len(fw_nodes) == 1
         assert fw_nodes[0].label == "crewai"
-        assert any(
-            e.relationship == RelationshipType.USES_FRAMEWORK and e.source == "framework-agent:crew"
-            for e in g.edges
-        )
+        assert any(e.relationship == RelationshipType.USES_FRAMEWORK and e.source == "framework-agent:crew" for e in g.edges)
 
     def test_ai_stack_framework_and_model_components_enter_graph(self):
         report = _minimal_report()
@@ -1461,19 +1454,9 @@ class TestFrameworkTopology:
         assert "gpt-4o-mini" in models
         assert "claude-3-5-sonnet" in models
 
-        assert any(
-            e.relationship == RelationshipType.USES_FRAMEWORK and e.source == "framework-agent:chain"
-            for e in g.edges
-        )
-        assert any(
-            e.relationship == RelationshipType.SERVES_MODEL and e.source == "framework-agent:chain"
-            for e in g.edges
-        )
-        assert any(
-            e.relationship == RelationshipType.DEPENDS_ON
-            and g.nodes[e.source].entity_type == EntityType.FRAMEWORK
-            for e in g.edges
-        )
+        assert any(e.relationship == RelationshipType.USES_FRAMEWORK and e.source == "framework-agent:chain" for e in g.edges)
+        assert any(e.relationship == RelationshipType.SERVES_MODEL and e.source == "framework-agent:chain" for e in g.edges)
+        assert any(e.relationship == RelationshipType.DEPENDS_ON and g.nodes[e.source].entity_type == EntityType.FRAMEWORK for e in g.edges)
 
 
 class TestCrossEnvironmentCorrelation:

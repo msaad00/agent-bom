@@ -58,9 +58,7 @@ def test_promote_creates_pending_version_not_approved():
 
 def test_promote_missing_blueprint_returns_none():
     store = InMemoryBlueprintStore()
-    assert (
-        promote_drift_to_draft_version(store, tenant_id="t1", blueprint_id="nope", observed_categories=["x"]) is None
-    )
+    assert promote_drift_to_draft_version(store, tenant_id="t1", blueprint_id="nope", observed_categories=["x"]) is None
 
 
 # ── API surface ──────────────────────────────────────────────────────────────

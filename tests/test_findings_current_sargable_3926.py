@@ -95,8 +95,7 @@ def test_severity_count_uses_expression_index(tmp_path) -> None:
     store = _seed(tmp_path)
     conn = store._conn
     plan = conn.execute(
-        "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM hub_findings_current "
-        "WHERE tenant_id=? AND severity != '' AND LOWER(severity)=?",
+        "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM hub_findings_current WHERE tenant_id=? AND severity != '' AND LOWER(severity)=?",
         ("t-3926", "critical"),
     ).fetchall()
     detail = " | ".join(row[3] for row in plan)
@@ -134,8 +133,7 @@ def test_scan_id_column_backfilled_for_preexisting_rows(tmp_path) -> None:
         """
     )
     conn.executemany(
-        "INSERT INTO hub_findings_current (tenant_id, canonical_id, first_seen, last_seen, updated_at, payload) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO hub_findings_current (tenant_id, canonical_id, first_seen, last_seen, updated_at, payload) VALUES (?, ?, ?, ?, ?, ?)",
         [
             ("t", "c1", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", '{"batch_id": "b-legacy"}'),
             ("t", "c2", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", '{"scan_id": "s-legacy"}'),

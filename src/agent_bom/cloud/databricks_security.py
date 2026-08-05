@@ -569,8 +569,7 @@ def run_security_checks(
         from databricks.sdk import WorkspaceClient
     except ImportError:
         raise CloudDiscoveryError(
-            "databricks-sdk is required for Databricks security best-practices checks. "
-            "Install with: pip install 'agent-bom[databricks]'"
+            "databricks-sdk is required for Databricks security best-practices checks. Install with: pip install 'agent-bom[databricks]'"
         )
 
     ws_kwargs: dict = {}

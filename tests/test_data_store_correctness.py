@@ -40,9 +40,7 @@ class _FakeAuditPool:
         self.checkpoints: dict[str, tuple[int, str]] = shared_with.checkpoints if shared_with is not None else {}
         # (tenant, bypass) captured for every audit_log SELECT — lets a test
         # prove reads are bound to the right tenant rather than 'default'.
-        self.audit_read_sessions: list[tuple[str, bool]] = (
-            shared_with.audit_read_sessions if shared_with is not None else []
-        )
+        self.audit_read_sessions: list[tuple[str, bool]] = shared_with.audit_read_sessions if shared_with is not None else []
 
     def connection(self):
         return _FakeAuditConn(self)
@@ -279,8 +277,7 @@ class _TenantAwareSnowflakeCursor:
             self._result = [(r["data"],) for r in rows]
         else:  # list_summary columns
             self._result = [
-                (r["agent_id"], r["canonical_id"], r["name"], r["lifecycle_state"], r["trust_score"], r["updated_at"])
-                for r in rows
+                (r["agent_id"], r["canonical_id"], r["name"], r["lifecycle_state"], r["trust_score"], r["updated_at"]) for r in rows
             ]
         return self
 

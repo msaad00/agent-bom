@@ -73,11 +73,7 @@ def _induced_subgraph(
         if node is not None:
             scoped.add_node(node)
     matching_edges = sorted(
-        (
-            edge
-            for edge in graph.edges
-            if edge.source in node_ids and edge.target in node_ids
-        ),
+        (edge for edge in graph.edges if edge.source in node_ids and edge.target in node_ids),
         key=_edge_sort_key,
     )
     for edge in matching_edges[:max_edges]:
@@ -122,14 +118,10 @@ def _repository_subgraph(
         current, depth = queue.popleft()
         candidates: list[tuple[str, UnifiedEdge]] = []
         candidates.extend(
-            (edge.target, edge)
-            for edge in graph.adjacency.get(current, [])
-            if edge.relationship in _REPOSITORY_FORWARD_RELATIONSHIPS
+            (edge.target, edge) for edge in graph.adjacency.get(current, []) if edge.relationship in _REPOSITORY_FORWARD_RELATIONSHIPS
         )
         candidates.extend(
-            (edge.source, edge)
-            for edge in graph.reverse_adjacency.get(current, [])
-            if edge.relationship == RelationshipType.AFFECTS
+            (edge.source, edge) for edge in graph.reverse_adjacency.get(current, []) if edge.relationship == RelationshipType.AFFECTS
         )
         candidates.sort(key=lambda item: (item[0], _edge_sort_key(item[1])))
 
@@ -244,11 +236,7 @@ def select_observed_scope(
             edge_truncated=truncated,
         )
 
-    matches = {
-        node.id
-        for node in graph.nodes.values()
-        if _matches_persisted_scope(node, kind, scope_id)
-    }
+    matches = {node.id for node in graph.nodes.values() if _matches_persisted_scope(node, kind, scope_id)}
     if kind == "repository":
         return _repository_subgraph(
             graph,

@@ -255,7 +255,7 @@ def main() -> int:
             "Test (Python ${{ matrix.python-version }})",
             # PRs run 3.13 only; pushes to main must still exercise the full
             # advertised interpreter matrix.
-            "fromJSON('[\"3.11\", \"3.13\", \"3.14\"]')",
+            'fromJSON(\'["3.11", "3.13", "3.14"]\')',
         ],
         failures,
     )

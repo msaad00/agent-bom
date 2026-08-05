@@ -1600,9 +1600,7 @@ async def oidc_browser_callback(
                 store = get_managed_trial_invitation_store()
                 return store, store.get_by_digest(managed_invitation_digest)
 
-            managed_invitation_store, managed_invitation = await anyio.to_thread.run_sync(
-                _load_managed_invitation
-            )
+            managed_invitation_store, managed_invitation = await anyio.to_thread.run_sync(_load_managed_invitation)
             managed_verified_email = email
             role = Role.ANALYST.value
             tenant_id = managed_invitation.tenant_id
@@ -1647,6 +1645,7 @@ async def oidc_browser_callback(
         scopes=scopes,
     )
     if managed_invitation is not None and managed_invitation_store is not None and managed_verified_email is not None:
+
         def _accept_managed_invitation() -> Any:
             return managed_invitation_store.accept_digest(
                 managed_invitation.token_digest,

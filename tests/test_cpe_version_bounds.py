@@ -43,14 +43,14 @@ def test_exclusive_start_and_end(version, expected) -> None:
 def test_inclusive_start_includes_boundary() -> None:
     conn = init_db(Path(":memory:"))
     _seed(conn, start="1.0.0", start_op="including", end="2.0.0", end_op="excluding")
-    assert _hits(conn, "1.0.0") is True   # inclusive start -> boundary IS vulnerable
+    assert _hits(conn, "1.0.0") is True  # inclusive start -> boundary IS vulnerable
     assert _hits(conn, "0.9.9") is False
 
 
 def test_inclusive_end_includes_boundary() -> None:
     conn = init_db(Path(":memory:"))
     _seed(conn, start="1.0.0", start_op="including", end="2.0.0", end_op="including")
-    assert _hits(conn, "2.0.0") is True   # inclusive end -> boundary IS vulnerable
+    assert _hits(conn, "2.0.0") is True  # inclusive end -> boundary IS vulnerable
     assert _hits(conn, "2.0.1") is False
 
 

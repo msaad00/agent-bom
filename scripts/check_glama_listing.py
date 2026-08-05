@@ -280,9 +280,7 @@ def main(argv: list[str] | None = None) -> int:
                         raise ValueError("Glama public API tools field is not a list")
                     actual_tool_count = len(tools)
                     tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
-                    if len(tool_names) != actual_tool_count or any(
-                        not isinstance(name, str) or not name.strip() for name in tool_names
-                    ):
+                    if len(tool_names) != actual_tool_count or any(not isinstance(name, str) or not name.strip() for name in tool_names):
                         failures.append("Glama public API inventory contains a tool without a name")
                     elif len(set(tool_names)) != actual_tool_count:
                         failures.append("Glama public API inventory contains duplicate tool names")

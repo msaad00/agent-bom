@@ -166,10 +166,7 @@ def _run_quickstart(
         # analyze/persist the graph, and leave package-CVE proof to the bundled
         # `scan --demo --offline` lane printed by the quickstart.
         scan_args.extend(["--offline", "--no-scan"])
-        click.echo(
-            "[2/3] Offline first-run skips package-CVE lookup; "
-            "run `agent-bom scan --demo --offline` for bundled CVE proof."
-        )
+        click.echo("[2/3] Offline first-run skips package-CVE lookup; run `agent-bom scan --demo --offline` for bundled CVE proof.")
     else:
         scan_args.append("--enrich")
     click.echo(f"[2/3] Scanning sample stack: {' '.join(scan_args[1:])}")

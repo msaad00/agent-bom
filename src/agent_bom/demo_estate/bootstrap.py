@@ -177,11 +177,7 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
             "assets": len(enterprise.assets),
             "observations": len(enterprise.observations),
             "snapshots": len(enterprise.snapshots),
-            "partial_sources": sorted(
-                run.source.value
-                for run in enterprise.collection_runs
-                if run.status is CollectionStatus.PARTIAL
-            ),
+            "partial_sources": sorted(run.source.value for run in enterprise.collection_runs if run.status is CollectionStatus.PARTIAL),
         }
     except Exception:
         _logger.warning("demo enterprise contract validation failed", exc_info=True)

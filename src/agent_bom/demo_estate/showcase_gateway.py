@@ -48,6 +48,7 @@ _logger = logging.getLogger(__name__)
 # events are unmistakably demo data (never mixed with real ingested traffic).
 _DEMO_SOURCE_ID = "demo-estate-gateway"
 
+
 def _event_time(anchor: datetime, minutes_ago: int) -> datetime:
     """Return an event time inside the anchor's exact UTC-day KPI window."""
     start_of_day = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -91,8 +92,26 @@ _FEED_EVENTS: tuple[tuple[int, str, str, str, str, str, str, str], ...] = (
     (11, "Cursor IDE Agent", "shell-runner-server.run_shell", _BLOCKED, "policy", "deny", "destructive_command_blocked", "high"),
     (14, "Support Copilot", "email-server.send_email", _BLOCKED, "policy", "deny", "external_recipient_blocked", "medium"),
     # ── shadow / undeclared-agent blocks (the AI-firewall differentiator) ──
-    (8, "shadow-agent (unregistered)", "warehouse-server.export_csv", _BLOCKED, "undeclared_agent", "deny", "undeclared_agent_blocked", "critical"),  # noqa: E501
-    (13, "shadow-agent (unregistered)", "shell-runner-server.exec_command", _BLOCKED, "shadow_mcp", "deny", "shadow_server_blocked", "critical"),  # noqa: E501
+    (
+        8,
+        "shadow-agent (unregistered)",
+        "warehouse-server.export_csv",
+        _BLOCKED,
+        "undeclared_agent",
+        "deny",
+        "undeclared_agent_blocked",
+        "critical",
+    ),  # noqa: E501
+    (
+        13,
+        "shadow-agent (unregistered)",
+        "shell-runner-server.exec_command",
+        _BLOCKED,
+        "shadow_mcp",
+        "deny",
+        "shadow_server_blocked",
+        "critical",
+    ),  # noqa: E501
     # ── rate-limit / replay protection blocks ──
     (17, "LangChain Service Agent", "llm-orchestrator-server.http_get", _BLOCKED, "rate_limit", "deny", "rate_limited", "medium"),
     (20, "shadow-agent (unregistered)", "github-server.push_files", _BLOCKED, "replay", "deny", "replay_blocked", "high"),
@@ -199,7 +218,7 @@ def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT) -> dict[st
         return {"seeded": False, "reason": "already_present", "tenant_id": tenant_id}
 
     authorized = blocked = data_filters = shadow_blocked = 0
-    for (minutes_ago, agent_name, tool_name, event_type, detector, decision, reason_code, severity) in _FEED_EVENTS:
+    for minutes_ago, agent_name, tool_name, event_type, detector, decision, reason_code, severity in _FEED_EVENTS:
         alert = {
             "event_id": f"{_DEMO_SOURCE_ID}:{anchor.date().isoformat()}:{minutes_ago}:{tool_name}",
             "ts": _ts(anchor, minutes_ago),
@@ -230,7 +249,7 @@ def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT) -> dict[st
     push_proxy_metrics(_proxy_metrics_summary(tenant_id, anchor=anchor))
 
     firewall_store = _get_firewall_decision_store()
-    for (minutes_ago, source_agent, target_agent, decision, matched_rule) in _FIREWALL_DECISIONS:
+    for minutes_ago, source_agent, target_agent, decision, matched_rule in _FIREWALL_DECISIONS:
         firewall_store.record(
             tenant_id=tenant_id,
             event={

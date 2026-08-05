@@ -128,9 +128,7 @@ def _blast_exposure_path_id(br: BlastRadius) -> str:
     vuln = br.vulnerability
     package = br.package
     package_name_value = _display_package_name(package.name, package.version)
-    return "blast:" + ":".join(
-        _slug(part) for part in [vuln.id, package.ecosystem, package_name_value, package.version or "unknown"]
-    )
+    return "blast:" + ":".join(_slug(part) for part in [vuln.id, package.ecosystem, package_name_value, package.version or "unknown"])
 
 
 def exposure_path_for_report_finding(

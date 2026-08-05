@@ -248,9 +248,7 @@ def test_check_pypi_provenance_partial_release_is_not_verified():
 
 
 def test_cosign_defaults_pin_release_workflow_identity():
-    assert _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP == (
-        r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*"
-    )
+    assert _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP == (r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*")
     assert _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER == "https://token.actions.githubusercontent.com"
 
 
@@ -262,9 +260,9 @@ def test_instruction_file_digest_match_without_cosign_is_not_verified(tmp_path):
     sha = _compute_sha256(f)
     bundle_data = {
         "dsseEnvelope": {
-            "payload": __import__("base64").b64encode(
-                json.dumps({"subject": [{"digest": {"sha256": sha}}]}).encode("utf-8")
-            ).decode("ascii")
+            "payload": __import__("base64")
+            .b64encode(json.dumps({"subject": [{"digest": {"sha256": sha}}]}).encode("utf-8"))
+            .decode("ascii")
         }
     }
     (tmp_path / "SKILL.md.sigstore").write_text(json.dumps(bundle_data), encoding="utf-8")

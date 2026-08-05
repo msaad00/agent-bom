@@ -836,9 +836,7 @@ def _discover_snowflake_notebooks(
             except ValueError as exc:
                 warnings.append(f"Skipping Snowflake notebook with unsafe identifier: {sanitize_error(exc)}")
             except Exception as exc:
-                warnings.append(
-                    f"Could not describe Snowflake notebook {nb_name!r}: {sanitize_error(exc)}"
-                )
+                warnings.append(f"Could not describe Snowflake notebook {nb_name!r}: {sanitize_error(exc)}")
 
             server = MCPServer(
                 name=f"sf-notebook:{nb_name}",

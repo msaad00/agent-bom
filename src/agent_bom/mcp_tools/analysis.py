@@ -116,11 +116,7 @@ async def context_graph_impl(
         result["completeness"] = graph_completeness(
             returned=len(paths),
             sampled=paths_truncated,
-            reason=(
-                "multi-source path budget reached; request a source_agent for exhaustive local traversal"
-                if paths_truncated
-                else ""
-            ),
+            reason=("multi-source path budget reached; request a source_agent for exhaustive local traversal" if paths_truncated else ""),
         )
         return _truncate_response(json.dumps(result, indent=2, default=str))
     except Exception as exc:

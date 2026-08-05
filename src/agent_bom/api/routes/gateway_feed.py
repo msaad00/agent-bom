@@ -495,14 +495,10 @@ def _normalize_alert_event(alert: dict[str, Any], tenant_id: str) -> dict[str, A
         "tenant": tenant_id,
         "shadow": shadow,
         "source": (
-            "gateway_activity_ledger"
-            if str(alert.get("record_schema_version") or "").startswith("gateway.activity.record.")
-            else "proxy"
+            "gateway_activity_ledger" if str(alert.get("record_schema_version") or "").startswith("gateway.activity.record.") else "proxy"
         ),
         "ingest_ordinal": (
-            int(alert["ingest_ordinal"])
-            if isinstance(alert.get("ingest_ordinal"), int) and int(alert["ingest_ordinal"]) > 0
-            else None
+            int(alert["ingest_ordinal"]) if isinstance(alert.get("ingest_ordinal"), int) and int(alert["ingest_ordinal"]) > 0 else None
         ),
     }
 
@@ -879,9 +875,7 @@ async def _gather_kpi_inputs_async(
             observability_available = False
         llm_truncated = len(raw_llm) > 10_000
         llm_records = [
-            record
-            for record in raw_llm[:10_000]
-            if _timestamp_in_window(getattr(record, "observed_at", None), start=start, end=end)
+            record for record in raw_llm[:10_000] if _timestamp_in_window(getattr(record, "observed_at", None), start=start, end=end)
         ]
         return (
             compatibility_alerts,

@@ -150,15 +150,5 @@ def test_pushdown_is_actually_exercised_by_the_differential_cases() -> None:
 
     # And the documented bail-outs really do fall back to the walk.
     for scope in ({"provider": "aws"}, {"q": "log4j"}, {"domain": "vuln"}):
-        assert (
-            _facet_severity_histogram(
-                TENANT, severity="critical", scan_id=None, since=None, scope=scope, status="open"
-            )
-            is None
-        )
-    assert (
-        _facet_severity_histogram(
-            TENANT, severity=None, scan_id=None, since=None, scope={}, status="open"
-        )
-        is None
-    )
+        assert _facet_severity_histogram(TENANT, severity="critical", scan_id=None, since=None, scope=scope, status="open") is None
+    assert _facet_severity_histogram(TENANT, severity=None, scan_id=None, since=None, scope={}, status="open") is None

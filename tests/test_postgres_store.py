@@ -1144,9 +1144,7 @@ def test_resolve_postgres_url_decodes_username_before_reencoding(monkeypatch):
         "postgresql://ops%2Btenant%40example.com:p%40ss@db:5432/agent_bom?sslmode=require",
     )
 
-    assert resolve_postgres_url() == (
-        "postgresql://ops%2Btenant%40example.com@db:5432/agent_bom?sslmode=require"
-    )
+    assert resolve_postgres_url() == ("postgresql://ops%2Btenant%40example.com@db:5432/agent_bom?sslmode=require")
 
 
 def test_get_pool_missing_env(monkeypatch):
@@ -1594,9 +1592,7 @@ def test_graph_snapshot_stats_uses_bounded_unfiltered_edge_aggregation():
     store.snapshot_stats(tenant_id="tenant-a", scan_id="scan-a")
 
     relationship_sql = next(
-        " ".join(sql.strip().lower().split())
-        for sql, _ in pool._conn.executed
-        if "group by relationship" in sql.lower()
+        " ".join(sql.strip().lower().split()) for sql, _ in pool._conn.executed if "group by relationship" in sql.lower()
     )
     assert "from graph_edges" in relationship_sql
     assert "from graph_nodes" not in relationship_sql

@@ -107,8 +107,7 @@ class PostgresBlueprintStore:
     def list_blueprints(self, tenant_id: str, *, limit: int = 50, offset: int = 0) -> BlueprintPage:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                "SELECT data FROM ai_system_blueprints WHERE tenant_id = %s "
-                "ORDER BY updated_at DESC, blueprint_id DESC LIMIT %s OFFSET %s",
+                "SELECT data FROM ai_system_blueprints WHERE tenant_id = %s ORDER BY updated_at DESC, blueprint_id DESC LIMIT %s OFFSET %s",
                 (tenant_id, limit + 1, offset),
             ).fetchall()
         blueprints = [Blueprint.from_dict(json.loads(r[0])) for r in rows[:limit]]
@@ -157,8 +156,7 @@ class PostgresBlueprintStore:
     def list_versions(self, tenant_id: str, blueprint_id: str, *, limit: int = 200) -> list[BlueprintVersion]:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                "SELECT data FROM ai_system_blueprint_versions WHERE tenant_id = %s AND blueprint_id = %s "
-                "ORDER BY version DESC LIMIT %s",
+                "SELECT data FROM ai_system_blueprint_versions WHERE tenant_id = %s AND blueprint_id = %s ORDER BY version DESC LIMIT %s",
                 (tenant_id, blueprint_id, limit),
             ).fetchall()
         return [BlueprintVersion.from_dict(json.loads(r[0])) for r in rows]

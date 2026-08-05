@@ -19,6 +19,7 @@ from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
 
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

@@ -193,9 +193,7 @@ def test_store_upsert_keeps_latest():
 
 def test_apply_device_posture_fills_context():
     store = InMemoryDevicePostureStore()
-    store.put(
-        DeviceSignal(tenant_id="t", device_id="dev-1", source="intune", managed=True, compliant=True, disk_encrypted=True)
-    )
+    store.put(DeviceSignal(tenant_id="t", device_id="dev-1", source="intune", managed=True, compliant=True, disk_encrypted=True))
     ctx = AccessContext(device_id="dev-1")
     apply_device_posture(store, ctx, tenant_id="t")
     assert ctx.device_managed is True
@@ -221,20 +219,14 @@ def test_require_compliant_policy_denies_noncompliant_device():
         require_device_compliant=True,
     )
     # Compliant device → allowed.
-    ok, _reason, _pid = evaluate_conditional_access(
-        [policy], AccessContext(device_id="dev-1", device_compliant=True)
-    )
+    ok, _reason, _pid = evaluate_conditional_access([policy], AccessContext(device_id="dev-1", device_compliant=True))
     assert ok is True
     # Non-compliant device → denied (fail closed).
-    denied, reason, pid = evaluate_conditional_access(
-        [policy], AccessContext(device_id="dev-2", device_compliant=False)
-    )
+    denied, reason, pid = evaluate_conditional_access([policy], AccessContext(device_id="dev-2", device_compliant=False))
     assert denied is False
     assert pid == "p1"
     # Unknown posture (None) → denied (fail closed).
-    unknown, _reason, _pid = evaluate_conditional_access(
-        [policy], AccessContext(device_id="dev-3", device_compliant=None)
-    )
+    unknown, _reason, _pid = evaluate_conditional_access([policy], AccessContext(device_id="dev-3", device_compliant=None))
     assert unknown is False
 
 
@@ -254,9 +246,7 @@ def test_end_to_end_ingest_to_abac():
     )
     ctx = AccessContext(device_id="cs-1")
     apply_device_posture(store, ctx, tenant_id="t")
-    ok, _reason, _pid = evaluate_conditional_access(
-        ident_store.list_conditional_policies("t"), ctx
-    )
+    ok, _reason, _pid = evaluate_conditional_access(ident_store.list_conditional_policies("t"), ctx)
     assert ok is True
 
 

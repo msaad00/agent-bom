@@ -186,9 +186,7 @@ def test_future_client_timestamp_cannot_keep_transport_live(
 
 def test_gateway_feed_openapi_declares_health_contract() -> None:
     schema = app.openapi()
-    response_schema = schema["paths"]["/v1/gateway/feed"]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]
+    response_schema = schema["paths"]["/v1/gateway/feed"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
 
     assert response_schema["$ref"].endswith("/GatewayFeedResponseModel")
     health = schema["components"]["schemas"]["GatewayFeedHealthModel"]

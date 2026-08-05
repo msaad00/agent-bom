@@ -134,9 +134,7 @@ def test_investigation_scope_is_bounded_from_an_observed_root(scoped_graph_clien
     assert response.status_code == 200, response.text
     body = response.json()
     assert {node["id"] for node in body["nodes"]} == {"agent:prod", "server:prod"}
-    assert {(edge["source_id"], edge["target_id"]) for edge in body["edges"]} == {
-        ("agent:prod", "server:prod")
-    }
+    assert {(edge["source_id"], edge["target_id"]) for edge in body["edges"]} == {("agent:prod", "server:prod")}
     assert body["scope"]["basis"] == "persisted_graph_traversal"
     assert body["scope"]["observed"] is True
 
@@ -261,10 +259,7 @@ def test_repository_scope_traverses_observed_repo_overlays() -> None:
         "pkg:pypi:example@1.0.0",
         "misconfig:repo-file",
     } <= set(selected.graph.nodes)
-    assert {
-        (edge.source, edge.target, edge.relationship)
-        for edge in selected.graph.edges
-    } >= {
+    assert {(edge.source, edge.target, edge.relationship) for edge in selected.graph.edges} >= {
         ("directory:.", "directory:src", RelationshipType.CONTAINS),
         ("directory:.", "config_file:pyproject.toml", RelationshipType.CONTAINS),
         ("directory:src", "source_file:src/app.py", RelationshipType.CONTAINS),
@@ -353,11 +348,7 @@ def test_scoped_graph_openapi_declares_scope_and_completeness_contract() -> None
     response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
 
     assert response_schema["$ref"].endswith("/ScopedGraphResponse")
-    scope_values = next(
-        parameter["schema"]["enum"]
-        for parameter in operation["parameters"]
-        if parameter["name"] == "scope"
-    )
+    scope_values = next(parameter["schema"]["enum"] for parameter in operation["parameters"] if parameter["name"] == "scope")
     assert scope_values == ["estate", "account", "repository", "environment", "investigation"]
     properties = schema["components"]["schemas"]["ScopedGraphResponse"]["properties"]
     assert {"scope", "nodes", "edges", "completeness"} <= properties.keys()

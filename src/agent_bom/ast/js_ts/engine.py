@@ -12,7 +12,6 @@ Higher layers (skills SAST, ``ast_analyzer``) should go through the facade
 unless they specifically need raw block AST output from this engine.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -313,7 +313,7 @@ def register_specialized_ai_tools(
             str,
             Field(
                 description=(
-                    "JSON string: a list of signal objects, or {\"signals\": [...]} matching the "
+                    'JSON string: a list of signal objects, or {"signals": [...]} matching the '
                     "POST /v1/cloud/runtime-evidence/ingest body shape (metadata only)."
                 ),
             ),

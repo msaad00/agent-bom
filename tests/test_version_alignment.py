@@ -77,9 +77,7 @@ def test_latest_demo_image_must_not_be_pinned(tmp_path, monkeypatch) -> None:
 def test_rewrite_aligns_stale_refs(tmp_path, monkeypatch) -> None:
     cva = _load_script("check_version_alignment.py")
     stale = tmp_path / "guide.md"
-    stale.write_text(
-        "run: uses: msaad00/agent-bom@v0.90.0\nimage: agentbom/agent-bom:0.90.0\n"
-    )
+    stale.write_text("run: uses: msaad00/agent-bom@v0.90.0\nimage: agentbom/agent-bom:0.90.0\n")
     monkeypatch.setattr(cva, "SCAN_ROOTS", (stale,))
     monkeypatch.setattr(cva, "LATEST_REQUIRED", ())
     monkeypatch.setattr(cva, "ROOT", tmp_path)

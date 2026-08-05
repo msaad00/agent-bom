@@ -193,9 +193,7 @@ def test_unreachable_registry_does_not_penalise_supply_chain_trust():
 
     _, factors = compute_trust_score(unknown)
 
-    assert factors["supply_chain_provenance"] == 0.0, (
-        "a registry that never answered was scored as an unattested package"
-    )
+    assert factors["supply_chain_provenance"] == 0.0, "a registry that never answered was scored as an unattested package"
 
 
 def test_runtime_drift_and_stale_inventory_lower_score():

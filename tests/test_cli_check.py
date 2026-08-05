@@ -662,9 +662,7 @@ def test_check_malicious_package_blocks_without_cve(monkeypatch):
 def test_check_malicious_package_json_verdict(monkeypatch):
     _patch_check_scan_malicious(monkeypatch, reason="Dependency confusion risk")
 
-    result = CliRunner().invoke(
-        main, ["check", "internal-lib@1.0.0", "--ecosystem", "pypi", "--format", "json"]
-    )
+    result = CliRunner().invoke(main, ["check", "internal-lib@1.0.0", "--ecosystem", "pypi", "--format", "json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -678,9 +676,7 @@ def test_check_malicious_beats_exit_zero(monkeypatch):
     package through the pre-install gate."""
     _patch_check_scan_malicious(monkeypatch)
 
-    result = CliRunner().invoke(
-        main, ["check", "reqeusts@1.0.0", "--ecosystem", "pypi", "--exit-zero"]
-    )
+    result = CliRunner().invoke(main, ["check", "reqeusts@1.0.0", "--ecosystem", "pypi", "--exit-zero"])
 
     assert result.exit_code == 1
 
@@ -709,9 +705,7 @@ def test_check_offline_coverage_gap_exits_incomplete(monkeypatch):
     clean pass — it must exit 2 (incomplete), symmetric with deb/apk/rpm."""
     _patch_check_scan_offline_gap(monkeypatch)
 
-    result = CliRunner().invoke(
-        main, ["check", "somepypipkg@1.0.0", "--ecosystem", "pypi", "--offline"]
-    )
+    result = CliRunner().invoke(main, ["check", "somepypipkg@1.0.0", "--ecosystem", "pypi", "--offline"])
 
     assert result.exit_code == 2
     assert "No known vulnerabilities" not in result.output

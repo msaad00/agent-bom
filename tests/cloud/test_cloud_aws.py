@@ -510,6 +510,7 @@ def _empty_boto_stub():
     """Benign stub for AWS services a test doesn't explicitly mock (e.g. lambda
     now that discovery is default-on): empty paginators, no resources."""
     from unittest.mock import MagicMock
+
     m = MagicMock()
     m.get_paginator.return_value.paginate.return_value = []
     return m

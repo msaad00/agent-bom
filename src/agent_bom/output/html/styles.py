@@ -1,4 +1,5 @@
 """Embedded CSS/theme for the HTML report."""
+
 from __future__ import annotations
 
 

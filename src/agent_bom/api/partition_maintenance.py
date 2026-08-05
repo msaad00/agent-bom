@@ -311,10 +311,7 @@ def create_partition_ddl(table: str, year: int, month: int) -> str:
     """Return idempotent DDL for one monthly child partition of *table*."""
     start, end = month_range_bounds(year, month)
     child = partition_table_name(table, year, month)
-    return (
-        f"CREATE TABLE IF NOT EXISTS {child} PARTITION OF {table} "
-        f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}');"
-    )
+    return f"CREATE TABLE IF NOT EXISTS {child} PARTITION OF {table} FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}');"
 
 
 # ── Ensure-ahead + rollover engine ───────────────────────────────────────────

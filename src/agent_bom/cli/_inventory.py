@@ -191,9 +191,7 @@ def validate(inventory_file: str):
         # — mirrors models.classify_agent_kind so the count doesn't imply autonomy.
         clients = sum(1 for a in agents if a.get("agent_type") and a.get("agent_type") != "custom")
         background = sum(
-            1
-            for a in agents
-            if a.get("agent_type") == "custom" and not str(a.get("name") or "").startswith(("sbom:", "image:"))
+            1 for a in agents if a.get("agent_type") == "custom" and not str(a.get("name") or "").startswith(("sbom:", "image:"))
         )
         breakdown = f" ({clients} client(s), {background} background)" if (clients or background) else ""
         console.print(

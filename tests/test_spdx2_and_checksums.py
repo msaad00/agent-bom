@@ -111,10 +111,7 @@ def test_spdx2_json_has_required_document_fields():
 
     # Document must DESCRIBE its top-level elements.
     assert doc["documentDescribes"]
-    assert any(
-        r["spdxElementId"] == "SPDXRef-DOCUMENT" and r["relationshipType"] == "DESCRIBES"
-        for r in doc["relationships"]
-    )
+    assert any(r["spdxElementId"] == "SPDXRef-DOCUMENT" and r["relationshipType"] == "DESCRIBES" for r in doc["relationships"])
 
     # Round-trips through JSON.
     assert json.loads(json.dumps(doc)) == doc

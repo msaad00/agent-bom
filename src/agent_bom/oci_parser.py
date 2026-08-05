@@ -923,9 +923,7 @@ def _extract_packages_from_layer(
         break
 
     # --- Legacy rpm database (BerkeleyDB / NDB) ---
-    has_modern_rpm_source = any(
-        p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS)
-    )
+    has_modern_rpm_source = any(p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS))
     if not has_modern_rpm_source:
         legacy_rpmdb = next(
             (p for p in (*_RPM_BDB_PATHS, *_RPM_NDB_PATHS) if p in names and not _is_deleted(p)),

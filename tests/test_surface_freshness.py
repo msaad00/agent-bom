@@ -87,10 +87,7 @@ def test_glama_listing_accepts_exact_public_schema_when_directory_api_is_empty(m
     """The rendered Schema inventory is evidence even when the directory API lags."""
     script = _load_script("check_glama_listing.py")
     current_page = "v0.98.3 MCP server mode exposes 77 MCP tools"
-    schema_page = "".join(
-        f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>'
-        for index in range(77)
-    )
+    schema_page = "".join(f'<a href="/mcp/servers/msaad00/agent-bom/tools/tool_{index}">tool_{index}</a>' for index in range(77))
 
     def fetch(url, _timeout):
         return schema_page if url.endswith("/schema") else current_page

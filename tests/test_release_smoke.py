@@ -16,7 +16,7 @@ def test_release_smoke_isolates_local_state() -> None:
     assert 'AGENT_BOM_STATE_DIR="${AGENT_BOM_STATE_DIR:-$tmp/state}"' in script
     assert 'AGENT_BOM_DB_PATH="${AGENT_BOM_DB_PATH:-$AGENT_BOM_STATE_DIR/db/vulns.db}"' in script
     assert 'AGENT_BOM_SCAN_CACHE="${AGENT_BOM_SCAN_CACHE:-$AGENT_BOM_STATE_DIR/scan-cache.db}"' in script
-    assert "mkdir -p \"$AGENT_BOM_STATE_DIR/db\"" in script
+    assert 'mkdir -p "$AGENT_BOM_STATE_DIR/db"' in script
 
 
 def test_release_smoke_golden_path(tmp_path: Path) -> None:

@@ -42,6 +42,7 @@ def test_provider_capabilities_do_not_claim_unshipped_executors() -> None:
     assert capabilities["azure"].credentialed_smoke is False
     assert capabilities["gcp"].credentialed_smoke is False
 
+
 @pytest.mark.parametrize("status", [ExecutionStatus.DISABLED, ExecutionStatus.DENIED, ExecutionStatus.FAILED])
 def test_non_execution_states_are_unevaluable_not_clean(status: ExecutionStatus) -> None:
     record = _execution().transition(status=status, phase="finished", now="2026-07-17T20:01:00Z")
@@ -125,11 +126,14 @@ def test_resource_registration_and_cleanup_are_retry_safe() -> None:
         now="2026-07-17T20:03:00Z",
     )
     assert deleted.cleanup_candidates() == ()
-    assert deleted.mark_resource_cleanup(
-        "snap-1",
-        status=TemporaryResourceStatus.DELETED,
-        now="2026-07-17T20:04:00Z",
-    ) == deleted
+    assert (
+        deleted.mark_resource_cleanup(
+            "snap-1",
+            status=TemporaryResourceStatus.DELETED,
+            now="2026-07-17T20:04:00Z",
+        )
+        == deleted
+    )
     with pytest.raises(ValueError, match="invalid resource cleanup transition"):
         deleted.mark_resource_cleanup(
             "snap-1",

@@ -1061,11 +1061,7 @@ def _to_offline_graph_html(
             "</li>"
         )
     risk_html = "\n".join(risk_items) or "<li>No vulnerable paths were present in this graph export.</li>"
-    sev = (
-        {key: overview.get(key, 0) for key in ("critical", "high", "medium", "low")}
-        if isinstance(overview, dict)
-        else {}
-    )
+    sev = {key: overview.get(key, 0) for key in ("critical", "high", "medium", "low")} if isinstance(overview, dict) else {}
     sev_rows = ""
     if isinstance(sev, dict):
         sev_rows = "\n".join(f"<tr><th>{_html_escape(k)}</th><td>{_html_escape(v)}</td></tr>" for k, v in sorted(sev.items()))

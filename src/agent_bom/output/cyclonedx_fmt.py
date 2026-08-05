@@ -530,9 +530,7 @@ def _build_training_component(run: dict, comp_id: int) -> tuple[dict, str]:
 
     # considerations — security flags
     for flag in run.get("security_flags", []):
-        model_card.setdefault("considerations", {}).setdefault("technicalLimitations", []).append(
-            str(flag.get("description", ""))
-        )
+        model_card.setdefault("considerations", {}).setdefault("technicalLimitations", []).append(str(flag.get("description", "")))
 
     if model_card:
         component["modelCard"] = model_card
@@ -575,8 +573,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             {"name": "agent-bom:status", "value": agent.status.value},
         ]
         agent_properties.extend(
-            {"name": "agent-bom:previous-canonical-id", "value": legacy_id}
-            for legacy_id in agent.previous_canonical_ids
+            {"name": "agent-bom:previous-canonical-id", "value": legacy_id} for legacy_id in agent.previous_canonical_ids
         )
         _append_discovery_provenance_properties(agent_properties, agent_provenance)
 
@@ -682,21 +679,15 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 verdict = integrity_verdict(pkg)
                 if verdict is not None:
                     if "integrity_verified" in verdict:
-                        pkg_properties.append(
-                            {"name": "agent-bom:integrity-verified", "value": str(verdict["integrity_verified"]).lower()}
-                        )
+                        pkg_properties.append({"name": "agent-bom:integrity-verified", "value": str(verdict["integrity_verified"]).lower()})
                     if "provenance_attested" in verdict:
                         pkg_properties.append(
                             {"name": "agent-bom:provenance-attested", "value": str(verdict["provenance_attested"]).lower()}
                         )
                     if verdict.get("provenance_source"):
-                        pkg_properties.append(
-                            {"name": "agent-bom:provenance-source", "value": str(verdict["provenance_source"])}
-                        )
+                        pkg_properties.append({"name": "agent-bom:provenance-source", "value": str(verdict["provenance_source"])})
                     if verdict.get("provenance_status"):
-                        pkg_properties.append(
-                            {"name": "agent-bom:provenance-status", "value": str(verdict["provenance_status"])}
-                        )
+                        pkg_properties.append({"name": "agent-bom:provenance-status", "value": str(verdict["provenance_status"])})
 
                 pkg_component: dict = {
                     "type": "library",

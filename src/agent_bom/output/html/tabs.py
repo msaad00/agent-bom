@@ -1,4 +1,5 @@
 """Tab-bar post-processing for the assembled HTML report."""
+
 from __future__ import annotations
 
 # Tab grouping for the report. Each entry: (tab-key, label, [section ids]).
@@ -45,10 +46,7 @@ def _apply_tabs(html: str, tab_counts: dict[str, int]) -> str:
         count = tab_counts.get(tab_key, 0)
         badge = f'<span class="tab-count">{count}</span>' if count else ""
         active = " active" if idx == 0 else ""
-        buttons.append(
-            f'<button class="tab-btn{active}" data-tab="{tab_key}" '
-            f'role="tab">{label}{badge}</button>'
-        )
+        buttons.append(f'<button class="tab-btn{active}" data-tab="{tab_key}" role="tab">{label}{badge}</button>')
     tab_bar = '<nav class="tab-bar" role="tablist">' + "".join(buttons) + "</nav>\n"
 
     marker = '<div class="container">\n'

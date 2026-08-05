@@ -3,9 +3,11 @@
 Discovery that walks a project tree with ``Path.rglob("*")`` has two failure
 modes on real developer machines:
 
-* It descends into **nested VCS worktrees** — ``git worktree add`` checkouts and
-  submodules — each of which is a full copy of the repository. Inventory then
-  re-counts every manifest once per worktree (badly inflated package counts).
+* It descends into **nested VCS worktrees** — ``git worktree add`` checkouts,
+  each a full copy of the repository. Inventory then re-counts every manifest
+  once per worktree (badly inflated package counts). Submodules look the same
+  from the outside but are *not* copies, so they stay in scope; see
+  ``is_nested_worktree_root``.
 * ``sorted(root.rglob("*"))`` **materialises every path in the tree into memory**
   before any filtering. A repository that keeps agent worktrees under
   ``.claude/worktrees`` / ``.cursor/worktrees`` can expose millions of paths,
@@ -20,7 +22,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # Directory names never worth descending for source/manifest discovery: VCS
 # metadata, virtualenvs, vendored dependencies, build output, and tool caches.
@@ -53,16 +55,37 @@ DEFAULT_MAX_FILES: int = 500_000
 
 
 def is_nested_worktree_root(dirpath: Path) -> bool:
-    """Return True when *dirpath* is a linked git worktree or submodule root.
+    """Return True when *dirpath* is a linked git worktree root.
 
     A primary git checkout keeps its metadata in a ``.git`` **directory**. A
-    linked worktree (``git worktree add``) or a submodule checkout instead has a
-    ``.git`` **file** containing a ``gitdir:`` pointer. Matching the file form
-    lets us prune nested checkouts while never pruning the primary repository (or
-    a worktree the caller explicitly asked to scan, which is used as the walk
-    root and so is never tested here).
+    linked worktree (``git worktree add``) instead has a ``.git`` **file**
+    holding a ``gitdir:`` pointer into ``.git/worktrees/``. Pruning those is
+    pure dedup: the worktree is a second copy of the surrounding project, so
+    walking it counts every manifest twice. The primary repository is never
+    pruned (it has no pointer file), nor is a worktree the caller explicitly
+    passed as the walk root, which is never tested here.
+
+    A **submodule** carries the same pointer-file shape but points into
+    ``.git/modules/``, and the dedup rationale does not transfer: a submodule is
+    distinct vendored code that appears nowhere else in the tree and ships in the
+    build. Matching the file alone pruned both, silently dropping the
+    submodule's manifests — and their vulnerabilities — from the report. Only
+    the ``worktrees`` payload prunes; anything else is scanned, because for a
+    security scanner a duplicate is a lesser failure than a miss.
     """
-    return (dirpath / ".git").is_file()
+    pointer = dirpath / ".git"
+    if not pointer.is_file():
+        return False
+    try:
+        content = pointer.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in content.splitlines():
+        prefix, separator, target = line.partition("gitdir:")
+        if not separator or prefix.strip():
+            continue
+        return "worktrees" in PurePosixPath(target.strip().replace("\\", "/")).parts
+    return False
 
 
 def _prune_dirnames(dirpath: Path, dirnames: list[str], skip: frozenset[str]) -> None:

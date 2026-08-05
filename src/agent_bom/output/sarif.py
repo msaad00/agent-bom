@@ -1005,7 +1005,11 @@ def to_sarif(
         for check in bundle.get("checks", []):
             if check.get("status") != "fail":
                 continue
-            cis_severity = str(check.get("severity") or "medium").lower()
+            # Matches `cis_check_to_finding`: a control that reports no severity
+            # is unrated, not medium. Defaulting to a rated band here published
+            # the check to GitHub as Medium while every summary built from the
+            # unified stream called the same check unrated.
+            cis_severity = str(check.get("severity") or "unknown").lower()
             check_id = check.get("check_id") or "unknown"
             rule_id = f"cis/{cloud_key}/{check_id}"
             level, security_severity = _sarif_severity(cis_severity)

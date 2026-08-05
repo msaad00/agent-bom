@@ -139,13 +139,13 @@ serializing format, so a gate never has to scrape console text:
 
 | Surface | Where the verdict lands |
 | --- | --- |
-| JSON | `agents[].mcp_servers[].packages[].integrity_verified` / `.provenance_attested` / `.provenance_source` |
-| CycloneDX 1.7 | `component.evidence.identity[]` — `methods[].technique` is `hash-comparison` (integrity) and `attestation` (provenance), `confidence` 1.0 pass / 0.0 fail; plus `component.properties` `agent-bom:integrity-verified`, `agent-bom:provenance-attested`, `agent-bom:provenance-source` |
-| SPDX 3.0.1 | `software_Package.annotation[]` with `annotationType: other` — `agent-bom:integrity-verified=<bool>`, `agent-bom:provenance-attested=<bool> source=<src>` |
+| JSON | `agents[].mcp_servers[].packages[].integrity_verified` / `.provenance_attested` / `.provenance_source` / `.provenance_status` |
+| CycloneDX 1.7 | `component.evidence.identity[]` — `methods[].technique` is `hash-comparison` (integrity) and `attestation` (provenance), `confidence` 1.0 pass / 0.0 fail; plus `component.properties` `agent-bom:integrity-verified`, `agent-bom:provenance-attested`, `agent-bom:provenance-source`, `agent-bom:provenance-status` |
+| SPDX 3.0.1 | `software_Package.annotation[]` with `annotationType: other` — `agent-bom:integrity-verified=<bool>`, `agent-bom:provenance-attested=<bool> source=<src>`, `agent-bom:provenance-status=<status>` |
 | SPDX 2.2 / 2.3 | `packages[].annotations[]` with `annotationType: OTHER` and the same `comment` statements |
-| SARIF 2.1.0 | `runs[].results[].properties.package_integrity_verified` / `.package_provenance_attested` / `.package_provenance_source` |
-| CSV | appended `integrity_verified`, `provenance_attested`, `provenance_source` columns |
-| `GET /v1/findings` | `package_integrity_verified`, `package_provenance_attested`, `package_provenance_source` on each finding |
+| SARIF 2.1.0 | `runs[].results[].properties.package_integrity_verified` / `.package_provenance_attested` / `.package_provenance_source` / `.package_provenance_status` |
+| CSV | appended `integrity_verified`, `provenance_attested`, `provenance_source`, `provenance_status` columns |
+| `GET /v1/findings` | `package_integrity_verified`, `package_provenance_attested`, `package_provenance_source`, `package_provenance_status` on each finding |
 | MCP `scan` tool | the JSON payload above, from the same verification helper the CLI uses |
 
 Neither CycloneDX nor SPDX models a verification *verdict* as a first-class
@@ -154,9 +154,30 @@ tool-asserted statement: CycloneDX identity evidence plus namespaced
 `properties`, and SPDX annotations (`AnnotationType.other` — "extra information
 about an Element which is not part of a review").
 
-Absent means the check never ran. A failed verification is emitted explicitly
-as `false` / `confidence: 0.0`, so "not checked" and "checked and failed" are
-never conflated.
+The provenance verdict has three states, not two, and every format above carries
+all three:
+
+| State | `provenance_attested` | `provenance_status` | Meaning |
+| --- | --- | --- | --- |
+| not checked | absent / `null` | absent / `null` | `--verify-integrity` did not run, or the package version was unresolved so the registry was never asked |
+| checked | `true` / `false` | `verified` · `not_published` · `not_provenance` · `partial` | the registry answered |
+| could not check | absent / `null` | `unavailable` | the registry was asked and did not answer — a timeout, a 5xx, or an unparseable body |
+
+The third row is why `provenance_status` exists. Coercing an unreachable
+registry to `false` publishes "we asked and there is no attestation" — the
+verdict a release gate blocks on — out of an outage, so
+`integrity.PROVENANCE_UNKNOWN_STATUSES` leaves the boolean absent and records
+the reason instead. In CycloneDX that means no `attestation` identity evidence
+is emitted either: a `confidence: 0.0` method asserts a documented failure the
+lookup never established.
+
+`integrity_verified` needs no equivalent: its helpers return `None` rather than
+a dict when the registry is unreachable, so an outage already leaves the field
+absent.
+
+Absent therefore means the check produced no verdict; a failed verification is
+emitted explicitly as `false` / `confidence: 0.0`, so "not checked", "could not
+check" and "checked and failed" are never conflated.
 
 ## Where to inspect the current posture
 

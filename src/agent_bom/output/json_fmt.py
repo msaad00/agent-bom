@@ -1181,6 +1181,10 @@ def to_json(report: AIBOMReport) -> dict:
                                 "integrity_verified": pkg.integrity_verified,
                                 "provenance_attested": pkg.provenance_attested,
                                 "provenance_source": pkg.provenance_source,
+                                # Why the verdict is what it is. "unavailable"
+                                # means the registry never answered — not that
+                                # the attestation is missing.
+                                "provenance_status": pkg.provenance_status,
                                 "scorecard_score": pkg.scorecard_score,
                                 "scorecard_checks": pkg.scorecard_checks or None,
                                 "scorecard_repo": pkg.scorecard_repo,

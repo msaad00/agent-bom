@@ -428,6 +428,9 @@ _CANONICAL_NULLABLE_FINDING_FIELDS: tuple[str, ...] = (
     "package_integrity_verified",
     "package_provenance_attested",
     "package_provenance_source",
+    # ``unavailable`` beside a null ``package_provenance_attested`` is a
+    # registry that never answered, which is not a negative verdict.
+    "package_provenance_status",
 )
 
 _FINDING_RESPONSE_TIMESTAMPS = (
@@ -597,7 +600,7 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         payload["remediation_versions"] = safe_versions
 
     # Supply-chain verification verdict (--verify-integrity). Structural and
-    # non-sensitive — two booleans and a short enum-like source token — so it is
+    # non-sensitive — two booleans and two short enum-like tokens — so it is
     # restored past the default-deny redaction rather than lost with the raw
     # evidence bag it travels in.
     raw_evidence = row.get("evidence")
@@ -606,12 +609,10 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         value = row.get(key, verdict_evidence.get(key))
         if isinstance(value, bool):
             payload[key] = value
-    source = _safe_optional_text(
-        row.get("package_provenance_source", verdict_evidence.get("package_provenance_source")),
-        max_len=64,
-    )
-    if source is not None:
-        payload["package_provenance_source"] = source
+    for key in ("package_provenance_source", "package_provenance_status"):
+        token = _safe_optional_text(row.get(key, verdict_evidence.get(key)), max_len=64)
+        if token is not None:
+            payload[key] = token
 
     provenance = _safe_finding_provenance(row.get("provenance"))
     if provenance is not None:

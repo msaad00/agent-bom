@@ -12,9 +12,27 @@ agent-bom demo story --output enterprise-demo-story.json
 ```
 
 The terminal prints the primary incident path and collection limits. The JSON
-artifact contains the normalized events, cross-vendor correlations, source
-health, tenant ID, source-run IDs, evidence hashes, and graph projections. Raw
-provider payloads are intentionally excluded.
+artifact contains normalized events, cross-vendor correlations, source health,
+tenant ID, source-run IDs, evidence hashes, and graph projections. Raw provider
+payloads are intentionally excluded.
+
+The `events`, `correlations` and `findings` lists are **bounded, ranked slices**
+of an estate an order of magnitude larger — the incident first, then the top of
+the population — so the incident stays visible instead of being buried in a
+six-thousand-row dump. The artifact's `bounds` block states the limit, the
+returned count and the true total for each list, and `summary` /
+`finding_summary` always carry the unbounded totals:
+
+```json
+"bounds": {
+  "events":       {"returned": 200, "total": 6159, "limit": 200, "truncated": true},
+  "correlations": {"returned":  50, "total": 6148, "limit":  50, "truncated": true},
+  "findings":     {"returned": 100, "total":  439, "limit": 100, "truncated": true}
+}
+```
+
+The same bounds are served by `GET /v1/demo-estate/story` and rendered by the
+dashboard, so no surface reports a page size as a total.
 
 The primary story follows one trace through:
 

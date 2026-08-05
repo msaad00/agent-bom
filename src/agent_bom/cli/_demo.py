@@ -90,6 +90,24 @@ def _render_chain(story: EnterpriseDemoStory) -> list[str]:
     return lines
 
 
+def _render_bounds(story: EnterpriseDemoStory) -> str:
+    """Name what the written artifact holds, next to what the estate holds.
+
+    The file is a ranked slice — a few percent of the events and correlations —
+    so the line that announces it says so rather than leaving the operator to
+    infer completeness from a filename.
+    """
+    bounds = story.bounds
+    return " · ".join(
+        f"{bound.returned} of {bound.total} {label}"
+        for label, bound in (
+            ("events", bounds.events),
+            ("correlations", bounds.correlations),
+            ("findings", bounds.findings),
+        )
+    )
+
+
 @click.group("demo", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def demo_group(ctx: click.Context) -> None:
@@ -106,12 +124,16 @@ def demo_group(ctx: click.Context) -> None:
     type=click.Choice(["table", "json"], case_sensitive=False),
     default="table",
     show_default=True,
-    help="Render a concise operator view or the complete normalized JSON evidence.",
+    help="Render a concise operator view or the normalized JSON evidence artifact.",
 )
 @click.option(
     "--output",
     type=click.Path(path_type=Path, dir_okay=False, writable=True),
-    help="Write the complete normalized JSON evidence artifact to this path.",
+    help=(
+        "Write the normalized JSON evidence artifact to this path. Its event, "
+        "correlation and finding lists are bounded slices of the estate — the "
+        "payload's `bounds` block names each limit and the true total."
+    ),
 )
 @click.option("--tenant-id", default="demo-tenant", show_default=True)
 def demo_story_cmd(output_format: str, output: Path | None, tenant_id: str) -> None:
@@ -127,7 +149,7 @@ def demo_story_cmd(output_format: str, output: Path | None, tenant_id: str) -> N
     else:
         click.echo(_render_story(story))
         if output is not None:
-            click.echo(f"Artifact: {output}")
+            click.echo(f"Artifact: {output} — {_render_bounds(story)}")
 
 
 demo_group.add_command(demo_story_cmd, "story")

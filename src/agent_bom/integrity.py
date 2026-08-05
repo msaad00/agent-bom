@@ -352,6 +352,15 @@ async def check_go_provenance(
     return {"has_provenance": False, "status": "unavailable", "http_status": response.status_code}
 
 
+#: Provenance statuses that mean the registry never gave us an answer: the
+#: request timed out, returned 5xx, or came back unparseable. Coercing any of
+#: them to ``False`` publishes "we asked and the attestation is missing" — the
+#: verdict a release gate blocks on — out of an outage. They leave
+#: ``provenance_attested`` at ``None`` and record the reason in
+#: ``provenance_status`` instead, so a consumer can tell the two apart.
+PROVENANCE_UNKNOWN_STATUSES = frozenset({"unavailable"})
+
+
 @dataclass
 class PackageVerification:
     """One package's verification outcome, plus the raw registry responses.
@@ -380,7 +389,9 @@ async def verify_packages(
 
     Packages whose version is unresolved are skipped: they leave the verdict
     ``None`` ("never checked") rather than recording a failure the registry was
-    never asked about.
+    never asked about. A registry that was asked but did not answer
+    (``PROVENANCE_UNKNOWN_STATUSES``) is treated the same way, with the reason
+    kept on ``provenance_status`` so the two are still distinguishable.
     """
     by_key: dict[str, list[Package]] = {}
     for package in packages:
@@ -397,9 +408,15 @@ async def verify_packages(
             if integrity is not None:
                 package.integrity_verified = bool(integrity.get("verified"))
             if provenance is not None:
-                package.provenance_attested = bool(provenance.get("has_provenance"))
-                if package.provenance_attested:
-                    package.provenance_source = str(provenance.get("source") or f"{package.ecosystem}_attestation")
+                status = str(provenance.get("status") or "").strip() or None
+                package.provenance_status = status
+                if status in PROVENANCE_UNKNOWN_STATUSES:
+                    # The registry did not answer. Leave the verdict unknown.
+                    package.provenance_attested = None
+                else:
+                    package.provenance_attested = bool(provenance.get("has_provenance"))
+                    if package.provenance_attested:
+                        package.provenance_source = str(provenance.get("source") or f"{package.ecosystem}_attestation")
         results.append(PackageVerification(package=primary, integrity=integrity, provenance=provenance))
     return results
 

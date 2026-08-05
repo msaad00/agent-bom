@@ -55,6 +55,34 @@ class EnterpriseDemoSummary(BaseModel):
     findings: int = Field(default=0, ge=0)
 
 
+class EnterpriseDemoListBound(BaseModel):
+    """What one truncated list holds, and what it was truncated out of."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    returned: int = Field(ge=0)
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    truncated: bool
+
+
+class EnterpriseDemoBounds(BaseModel):
+    """The bound on every list the story returns.
+
+    ``events``, ``correlations`` and ``findings`` are ranked slices of an estate
+    an order of magnitude larger — the artifact holds single-digit percentages
+    of the first two. A consumer holding only the payload has no other way to
+    learn that, so the bound travels with it: a page size that does not name
+    what it is a page of is the same defect as a page size reported as a total.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    events: EnterpriseDemoListBound
+    correlations: EnterpriseDemoListBound
+    findings: EnterpriseDemoListBound
+
+
 class EnterpriseDemoStory(BaseModel):
     """One read model for every operator-facing synthetic-demo surface."""
 
@@ -71,6 +99,7 @@ class EnterpriseDemoStory(BaseModel):
     estate_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     story_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary: EnterpriseDemoSummary
+    bounds: EnterpriseDemoBounds
     primary_correlation: EnterpriseCorrelation
     events: tuple[NormalizedEnterpriseEvent, ...]
     correlations: tuple[EnterpriseCorrelation, ...]
@@ -79,9 +108,9 @@ class EnterpriseDemoStory(BaseModel):
     findings: tuple[EstateFindingView, ...] = ()
 
 
-# Bounded so the story stays legible at estate scale. The summary still reports
-# the unbounded totals, so the view is smaller than the estate but never claims
-# to be the whole of it.
+# Bounded so the story stays legible at estate scale. The summary reports the
+# unbounded totals and ``bounds`` names each limit, so the view is smaller than
+# the estate and says so rather than passing for the whole of it.
 _STORY_CORRELATION_LIMIT = 50
 _STORY_EVENT_LIMIT = 200
 _STORY_FINDING_LIMIT = 100
@@ -125,6 +154,9 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
     )
     findings = tuple(to_finding_view(finding) for finding in ranked_findings[:_STORY_FINDING_LIMIT])
 
+    def _bound(returned: int, total: int, limit: int) -> EnterpriseDemoListBound:
+        return EnterpriseDemoListBound(returned=returned, total=total, limit=limit, truncated=returned < total)
+
     return EnterpriseDemoStory(
         disclosure=estate.disclosure,
         estate_id=estate.estate_id,
@@ -143,6 +175,11 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
             snapshots=len(estate.snapshots),
             findings=finding_summary.total,
         ),
+        bounds=EnterpriseDemoBounds(
+            events=_bound(len(events), len(estate.observations), _STORY_EVENT_LIMIT),
+            correlations=_bound(len(correlations), len(result.correlations), _STORY_CORRELATION_LIMIT),
+            findings=_bound(len(findings), finding_summary.total, _STORY_FINDING_LIMIT),
+        ),
         primary_correlation=primary,
         events=events,
         correlations=correlations,
@@ -155,6 +192,8 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
 __all__ = [
     "ENTERPRISE_STORY_SCENARIO",
     "ENTERPRISE_STORY_SCHEMA_VERSION",
+    "EnterpriseDemoBounds",
+    "EnterpriseDemoListBound",
     "EnterpriseDemoStory",
     "EnterpriseDemoSummary",
     "build_enterprise_demo_story",

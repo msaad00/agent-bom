@@ -719,10 +719,26 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
         path (when ``fix_cli`` is ``None``), and a ``review`` flag when
         ``requires_human_review`` is true.
 
+    The verdict comes from ``agent_bom.output.cis_posture`` — the one
+    derivation the HTML report and the verbose console panel already share —
+    so the same scan can never read PASS here and NOT EVALUATED there.
+
     Respects the same compact/one-screen style as
     ``print_compact_blast_radius`` and ``print_compact_remediation``.
     """
     from agent_bom.output import console
+    from agent_bom.output.cis_posture import (
+        ERROR,
+        INCOMPLETE,
+        NOT_EVALUATED,
+        PASS,
+        cis_check_tally,
+        cis_pass_rate,
+        cis_verdict,
+    )
+
+    verdict_style = {NOT_EVALUATED: "dim", ERROR: "red bold", INCOMPLETE: "yellow bold", PASS: "green bold"}
+    sev_verdict_style = {"CRITICAL": "red bold", "HIGH": "#e67e22 bold", "MEDIUM": "yellow", "LOW": "dim"}
 
     bundles = list(_iter_cis_bundles(report))
     if not bundles:
@@ -733,25 +749,35 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
 
     for cloud, bundle in bundles:
         checks = bundle.get("checks") or []
-        failed = [c for c in checks if c.get("status") == "fail"]
-        errored = [c for c in checks if c.get("status") == "error"]
+        tally = cis_check_tally(checks)
+        failed, errored = tally["failed"], tally["errored"]
         actionable = failed + errored
-        total_eval = sum(1 for c in checks if c.get("status") in ("pass", "fail"))
-        pass_rate = bundle.get("pass_rate", 0.0)
+        total_eval = len(tally["evaluated"])
+        pass_rate = cis_pass_rate(bundle, checks)
+
+        verdict_text = cis_verdict(checks)
+        vstyle = verdict_style.get(verdict_text) or sev_verdict_style.get(verdict_text.split()[0], "red bold")
 
         band = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 70 else "red"
+        # A pass rate over zero evaluated controls is not a score, so it never
+        # gets a score's colour.
+        if verdict_text == NOT_EVALUATED:
+            band = "dim"
         cloud_label = {"aws": "AWS", "azure": "Azure", "gcp": "GCP", "snowflake": "Snowflake"}.get(cloud, cloud)
+        rate_cell = f"[{band}]{pass_rate:.0f}%[/{band}] pass" if total_eval else "[dim]no pass rate[/dim]"
         console.print(
             f"  [bold]{cloud_label}[/bold]  "
-            f"[{band}]{pass_rate:.0f}%[/{band}] pass  "
-            f"[dim]({bundle.get('passed', 0)}/{total_eval} checks, "
+            f"[{vstyle}]{verdict_text}[/{vstyle}]  "
+            f"{rate_cell}  "
+            f"[dim]({len(tally['passed'])}/{total_eval} checks, "
             f"{len(failed)} failed, {len(errored)} unevaluable)[/dim]"
         )
 
-        if errored and not failed:
-            console.print("    [red bold]ERROR[/red bold] [dim]benchmark evidence is incomplete[/dim]")
         if not actionable:
-            console.print("    [green]✓[/green] [dim]no failed checks[/dim]")
+            if verdict_text == NOT_EVALUATED:
+                console.print("    [dim]no control produced a pass or a fail — nothing was evaluated[/dim]")
+            else:
+                console.print("    [green]✓[/green] [dim]no failed checks[/dim]")
             continue
 
         # Sort by remediation priority (1 = fix first), then severity.

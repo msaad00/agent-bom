@@ -61,6 +61,9 @@ _COLUMNS = [
     "integrity_verified",
     "provenance_attested",
     "provenance_source",
+    # Why: "unavailable" here beside an empty ``provenance_attested`` is a
+    # registry that never answered, not an attestation that is missing.
+    "provenance_status",
 ]
 
 
@@ -120,6 +123,7 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "integrity_verified": _verdict_cell(finding, "package_integrity_verified"),
                 "provenance_attested": _verdict_cell(finding, "package_provenance_attested"),
                 "provenance_source": _verdict_cell(finding, "package_provenance_source"),
+                "provenance_status": _verdict_cell(finding, "package_provenance_status"),
             }
         writer.writerow({key: _excel_safe_cell(value) for key, value in row.items()})
 

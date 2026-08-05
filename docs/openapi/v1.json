@@ -2743,10 +2743,68 @@
         "title": "EnterpriseCorrelation",
         "type": "object"
       },
+      "EnterpriseDemoBounds": {
+        "additionalProperties": false,
+        "description": "The bound on every list the story returns.\n\n``events``, ``correlations`` and ``findings`` are ranked slices of an estate\nan order of magnitude larger \u2014 the artifact holds single-digit percentages\nof the first two. A consumer holding only the payload has no other way to\nlearn that, so the bound travels with it: a page size that does not name\nwhat it is a page of is the same defect as a page size reported as a total.",
+        "properties": {
+          "correlations": {
+            "$ref": "#/components/schemas/EnterpriseDemoListBound"
+          },
+          "events": {
+            "$ref": "#/components/schemas/EnterpriseDemoListBound"
+          },
+          "findings": {
+            "$ref": "#/components/schemas/EnterpriseDemoListBound"
+          }
+        },
+        "required": [
+          "events",
+          "correlations",
+          "findings"
+        ],
+        "title": "EnterpriseDemoBounds",
+        "type": "object"
+      },
+      "EnterpriseDemoListBound": {
+        "additionalProperties": false,
+        "description": "What one truncated list holds, and what it was truncated out of.",
+        "properties": {
+          "limit": {
+            "minimum": 0.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "returned": {
+            "minimum": 0.0,
+            "title": "Returned",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "returned",
+          "total",
+          "limit",
+          "truncated"
+        ],
+        "title": "EnterpriseDemoListBound",
+        "type": "object"
+      },
       "EnterpriseDemoStory": {
         "additionalProperties": false,
         "description": "One read model for every operator-facing synthetic-demo surface.",
         "properties": {
+          "bounds": {
+            "$ref": "#/components/schemas/EnterpriseDemoBounds"
+          },
           "collection_health": {
             "items": {
               "$ref": "#/components/schemas/EnterpriseCollectionHealth"
@@ -2842,6 +2900,7 @@
           "estate_content_hash",
           "story_content_hash",
           "summary",
+          "bounds",
           "primary_correlation",
           "events",
           "correlations",

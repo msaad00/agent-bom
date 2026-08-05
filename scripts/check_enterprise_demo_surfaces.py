@@ -74,6 +74,17 @@ def main_check() -> None:
     # The view is bounded so the incident stays visible; the summary must still
     # report the unbounded truth, never the page size.
     _require(len(story.correlations) <= story.summary.correlations, "story claims more rows than it holds")
+    # ... and the payload has to say so on its own, since a consumer holding
+    # only the artifact cannot otherwise tell a slice from the whole estate.
+    for name, returned, total in (
+        ("events", len(story.events), story.summary.observations),
+        ("correlations", len(story.correlations), story.summary.correlations),
+        ("findings", len(story.findings), story.summary.findings),
+    ):
+        bound = getattr(story.bounds, name)
+        _require(bound.returned == returned, f"bounds.{name}.returned disagrees with the list it describes")
+        _require(bound.total == total, f"bounds.{name}.total disagrees with the estate total")
+        _require(bound.truncated is (returned < total), f"bounds.{name}.truncated is not derived from the counts")
     _require(story.correlations[0] == story.primary_correlation, "the incident is no longer surfaced first")
     _require(story.summary.snapshots == 3, "snapshot count changed")
     _require(story.primary_correlation.outcome == "blocked", "primary outcome is no longer blocked")

@@ -496,6 +496,7 @@ def _report_with_integrity(
     integrity_verified: bool | None,
     provenance_attested: bool | None,
     provenance_source: str | None = None,
+    provenance_status: str | None = None,
 ) -> AIBOMReport:
     report = _report_with_vuln(_kev_epss_cwe_vuln())
     pkg = report.agents[0].mcp_servers[0].packages[0]
@@ -503,6 +504,7 @@ def _report_with_integrity(
     pkg.integrity_verified = integrity_verified
     pkg.provenance_attested = provenance_attested
     pkg.provenance_source = provenance_source
+    pkg.provenance_status = provenance_status
     return report
 
 
@@ -690,3 +692,88 @@ def test_integrity_verdict_reaches_every_serializing_format() -> None:
     }
     missing = sorted(name for name, text in rendered.items() if "npm_slsa" not in text)
     assert not missing, f"provenance verdict dropped by: {missing}"
+
+
+# ── Instance 6: a registry outage is not a negative attestation ─────────────
+#
+# ``check_package_provenance`` returns ``status: unavailable`` for a timeout, a
+# 5xx or an unparseable body. The verdict then has to stay unknown AND say why,
+# or a consumer reads an outage as "this package ships no attestation" — the
+# verdict a release gate blocks on.
+
+
+def _outage_report() -> AIBOMReport:
+    return _report_with_integrity(
+        integrity_verified=True,
+        provenance_attested=None,
+        provenance_status="unavailable",
+    )
+
+
+def test_json_distinguishes_an_unreachable_registry_from_a_missing_attestation() -> None:
+    from agent_bom.output.json_fmt import to_json
+
+    pkg = to_json(_outage_report())["agents"][0]["mcp_servers"][0]["packages"][0]
+    assert pkg["provenance_attested"] is None
+    assert pkg["provenance_status"] == "unavailable"
+
+
+def test_cyclonedx_carries_the_provenance_status() -> None:
+    component = _cdx_package_component(_outage_report())
+    props = {p["name"]: p["value"] for p in component.get("properties", [])}
+    assert props.get("agent-bom:provenance-status") == "unavailable"
+    assert "agent-bom:provenance-attested" not in props, "an unanswered registry must not be published as a boolean verdict"
+    # A 0.0-confidence attestation method means "documented failure" in CDX 1.7;
+    # an unanswered question earns no identity evidence at all.
+    identities = component.get("evidence", {}).get("identity", [])
+    techniques = {m["technique"] for entry in identities for m in entry.get("methods", [])}
+    assert "attestation" not in techniques
+
+
+def test_spdx_annotations_carry_the_provenance_status() -> None:
+    assert any("agent-bom:provenance-status=unavailable" in s for s in _spdx3_package_statements(_outage_report()))
+    assert any("agent-bom:provenance-status=unavailable" in c for c in _spdx2_package_comments(_outage_report()))
+
+
+def test_sarif_and_csv_and_findings_carry_the_provenance_status() -> None:
+    from agent_bom.output.csv_fmt import to_csv
+
+    report = _outage_report()
+    result = next(r for r in to_sarif(report)["runs"][0]["results"] if r["ruleId"] == "CVE-2026-0001")
+    assert result["properties"].get("package_provenance_status") == "unavailable"
+    assert "package_provenance_attested" not in result["properties"]
+
+    csv_text = to_csv(report)
+    header, *rows = csv_text.splitlines()
+    columns = header.split(",")
+    assert "provenance_status" in columns
+    cell = rows[0].split(",")[columns.index("provenance_status")]
+    assert cell == "unavailable"
+    assert rows[0].split(",")[columns.index("provenance_attested")] == "", (
+        "an unanswered registry must leave the boolean column empty, not 'no'"
+    )
+
+    finding = cve_findings(report)[0]
+    assert finding.evidence.get("package_provenance_status") == "unavailable"
+    assert "package_provenance_attested" not in finding.evidence
+
+
+def test_findings_api_payload_carries_the_provenance_status() -> None:
+    """``/v1/findings`` redacts by default; this field has to survive that."""
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    payload = safe_finding_response_payload(
+        {
+            "id": "f-1",
+            "finding_type": "cve",
+            "evidence": {
+                "package_integrity_verified": True,
+                "package_provenance_status": "unavailable",
+            },
+        }
+    )
+    assert payload["package_integrity_verified"] is True
+    assert payload["package_provenance_status"] == "unavailable"
+    # The response model carries every field explicitly, so the unknown verdict
+    # is an explicit null beside the status that explains it.
+    assert payload["package_provenance_attested"] is None

@@ -265,6 +265,69 @@ async def test_verify_packages_fetches_each_identity_once_and_applies_to_every_i
     assert floating.provenance_attested is None
 
 
+@pytest.mark.asyncio
+async def test_registry_outage_is_not_recorded_as_an_absent_attestation(monkeypatch):
+    """A registry we could not reach has not told us the package is unattested.
+
+    ``check_package_provenance`` returns ``{"has_provenance": False, "status":
+    "unavailable"}`` for a timeout, a 5xx or an unparseable body. Coercing that
+    to ``bool(False)`` publishes "we asked and the answer was no" — the verdict a
+    release gate blocks on — from an outage.
+    """
+    import agent_bom.integrity as integrity_mod
+    from agent_bom.integrity import verify_packages
+
+    async def _integrity(_package, _client):
+        return {"verified": False, "status": "unavailable"}
+
+    async def _provenance(_package, _client):
+        return {"has_provenance": False, "status": "unavailable", "http_status": 503}
+
+    monkeypatch.setattr(integrity_mod, "verify_package_integrity", _integrity)
+    monkeypatch.setattr(integrity_mod, "check_package_provenance", _provenance)
+
+    package = Package(name="requests", version="2.31.0", ecosystem="pypi")
+    await verify_packages([package], client=None)
+
+    assert package.provenance_attested is None, (
+        "a 503 from the registry was serialized as provenance_attested=False — "
+        "'we could not ask' is not 'we asked and the answer was no'"
+    )
+    assert package.provenance_status == "unavailable", "the reason the verdict is unknown must be recorded, not just dropped"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "expected_attested"),
+    [
+        ("verified", True),
+        ("not_published", False),
+        ("not_provenance", False),
+        ("partial", False),
+        ("unavailable", None),
+    ],
+)
+async def test_provenance_status_maps_to_the_verdict_it_earns(monkeypatch, status, expected_attested):
+    """Only an answered question yields a boolean."""
+    import agent_bom.integrity as integrity_mod
+    from agent_bom.integrity import verify_packages
+
+    async def _integrity(_package, _client):
+        return None
+
+    async def _provenance(_package, _client):
+        return {"has_provenance": status == "verified", "status": status}
+
+    monkeypatch.setattr(integrity_mod, "verify_package_integrity", _integrity)
+    monkeypatch.setattr(integrity_mod, "check_package_provenance", _provenance)
+
+    package = Package(name="requests", version="2.31.0", ecosystem="pypi")
+    await verify_packages([package], client=None)
+
+    assert package.provenance_attested is expected_attested
+    assert package.provenance_status == status
+
+
 def test_default_cli_toxic_count_is_single_honest_number():
     """The console must not print a legacy toxic count that contradicts the
     unified stream (never 11 vs 5 vs 0). Only the unified graph count shows."""

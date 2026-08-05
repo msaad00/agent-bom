@@ -97,6 +97,60 @@ def test_demo_story_cli_writes_an_inspectable_artifact(tmp_path) -> None:
     assert payload["schema_version"] == "enterprise_demo_story.v1"
 
 
+def test_story_artifact_states_the_bound_on_every_list_it_truncates() -> None:
+    """A bounded view has to say what it is bounded against, inside the payload.
+
+    ``events``/``correlations``/``findings`` are slices of an estate an order of
+    magnitude larger. A consumer reading the artifact alone has no way to know
+    that, so the payload names the limit, the returned count and the true total
+    for each list.
+    """
+    story = build_enterprise_demo_story(tenant_id="tenant-bounds")
+    payload = json.loads(story.model_dump_json())
+
+    bounds = payload["bounds"]
+    assert set(bounds) == {"events", "correlations", "findings"}
+
+    for name, returned, total in (
+        ("events", len(story.events), story.summary.observations),
+        ("correlations", len(story.correlations), story.summary.correlations),
+        ("findings", len(story.findings), story.summary.findings),
+    ):
+        bound = bounds[name]
+        assert bound["returned"] == returned, name
+        assert bound["total"] == total, name
+        assert bound["returned"] <= bound["limit"], name
+        assert bound["truncated"] is (returned < total), name
+
+    # The estate is big enough that each list really is a slice — otherwise this
+    # test would pass on an estate that never truncates and prove nothing.
+    assert all(bounds[name]["truncated"] for name in bounds)
+
+
+def test_demo_story_help_does_not_promise_the_complete_evidence() -> None:
+    """The artifact carries a bounded view, so the help cannot say "complete"."""
+    result = CliRunner().invoke(main, ["demo", "story", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "complete normalized JSON evidence" not in result.output, (
+        "--output ships a few percent of the events and correlations; the help calls it complete"
+    )
+    assert "bounded" in result.output.lower()
+
+
+def test_demo_story_cli_names_the_artifact_bound_on_screen(tmp_path) -> None:
+    """The operator who wrote the file is told what is in it."""
+    artifact = tmp_path / "story.json"
+    result = CliRunner().invoke(main, ["demo", "story", "--output", str(artifact)])
+
+    assert result.exit_code == 0, result.output
+    story = build_enterprise_demo_story()
+    line = next(line for line in result.output.splitlines() if line.startswith("Artifact:"))
+    assert f"{len(story.events)} of {story.summary.observations} events" in line, line
+    assert f"{len(story.correlations)} of {story.summary.correlations} correlations" in line, line
+    assert f"{len(story.findings)} of {story.summary.findings} findings" in line, line
+
+
 def test_demo_story_cli_prints_the_chain_and_counts_honestly() -> None:
     """Every printed row is a complete chain, and the header counts what it prints.
 

@@ -187,6 +187,17 @@ def test_supply_chain_provenance_affects_score():
     assert unattested_factors["supply_chain_provenance"] == -5.0
 
 
+def test_unreachable_registry_does_not_penalise_supply_chain_trust():
+    """An outage is absent evidence, so it must score as absent, not as a fail."""
+    unknown = _agent(servers=[_server(provenance_attested=None)])
+
+    _, factors = compute_trust_score(unknown)
+
+    assert factors["supply_chain_provenance"] == 0.0, (
+        "a registry that never answered was scored as an unattested package"
+    )
+
+
 def test_runtime_drift_and_stale_inventory_lower_score():
     """Runtime drift and stale inventory are explicit trust penalties."""
     agent = _agent(servers=[_server()], metadata={"inventory_age_hours": 240})

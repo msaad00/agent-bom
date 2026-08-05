@@ -121,6 +121,30 @@ CREATE INDEX IF NOT EXISTS idx_gn_tenant_scan ON graph_nodes(tenant_id, scan_id)
 -- sort columns in the index makes the scan pre-ordered, so a page is a range
 -- read. Column order and direction must keep matching the ORDER BY exactly or
 -- SQLite silently falls back to the temp B-tree.
+--
+-- This index and idx_gn_tenant_scan above are a deliberate pair, and BOTH are
+-- required. They share the (tenant_id, scan_id) prefix, so either can answer
+-- the unordered full-snapshot read that load_graph() issues -- but they hold
+-- their rows in different orders, and that decides the cost. This one is
+-- ordered by severity, so walking it to fetch the non-indexed columns hits the
+-- table in scattered rowid order; idx_gn_tenant_scan is ordered by rowid within
+-- a snapshot and hits it sequentially. Measured at 300k rows:
+--
+--     read              idx_gn_tenant_scan only   both indexes, with stats
+--     full snapshot                    533.8 ms                   528.4 ms
+--     one 500-row page                  35.1 ms                     1.0 ms
+--
+-- Adding this index therefore fixed paging (35.1 -> 1.0 ms) and, until the
+-- planner was given statistics, regressed the full read to 640.1 ms, because
+-- SQLite's documented behaviour when two indexes tie on the leading prefix is
+-- that "the choice of which index to use is arbitrary" -- and the arbitrary
+-- choice was this one. refresh_query_planner_stats() supplies sqlite_stat1 so
+-- the choice is made on cost instead, per query.
+--
+-- Do NOT "simplify" by dropping idx_gn_tenant_scan as a redundant prefix of
+-- this index. That is the general SQLite guidance and it is wrong here:
+-- measured, dropping it costs the full read 533.8 -> 652.9 ms, because the
+-- prefix rule assumes lookup cost and this read is dominated by table locality.
 CREATE INDEX IF NOT EXISTS idx_gn_tenant_scan_rank
     ON graph_nodes(tenant_id, scan_id, severity_id DESC, risk_score DESC, label ASC, id ASC);
 
@@ -558,6 +582,43 @@ def _executemany_batched(
     return total
 
 
+# ``PRAGMA optimize`` runs ANALYZE only where SQLite judges the statistics
+# stale, so the steady-state cost is nil (measured: 96.8 ms on the first pass
+# over a 300k-node store, 0.02 ms on every pass after it). The 0x10000 bit asks
+# it to consider every table rather than only those this connection happened to
+# query, which SQLite's documentation recommends for a connection that has no
+# query history — the write connections here are short-lived and open with
+# none. 0x00002 is "actually run ANALYZE" and is on by default; it is named
+# explicitly so the intent survives a future default change.
+#
+# Since SQLite 3.46 the command self-limits its own scope, so this stays bounded
+# on an arbitrarily large store without ``PRAGMA analysis_limit``.
+_PLANNER_STATS_PRAGMA = "PRAGMA optimize=0x10002"
+
+
+def refresh_query_planner_stats(conn: sqlite3.Connection) -> None:
+    """Record/refresh planner statistics for this database.
+
+    Without ``sqlite_stat1`` the planner's choice between two indexes that share
+    a leading column prefix is — in SQLite's own words — *arbitrary*, and
+    ``graph_nodes`` deliberately carries such a pair: ``idx_gn_tenant_scan`` for
+    reads that want a snapshot in rowid order, ``idx_gn_tenant_scan_rank`` for
+    the paged reads that want it in severity order. Neither index can serve both
+    orders, so the read path cannot be made correct by index shape alone; it
+    needs the planner to be able to tell the two queries apart. Measured at 300k
+    rows, an arbitrary tie-break cost the full-snapshot read 533.8 ms -> 640.1 ms.
+
+    Never fatal. Statistics are an optimisation, and a store that cannot record
+    them (a read-only mount, a concurrent writer holding the lock) must still
+    serve reads rather than fail the write that triggered the refresh.
+    """
+    try:
+        conn.execute(_PLANNER_STATS_PRAGMA)
+        conn.commit()
+    except sqlite3.Error:  # pragma: no cover - defensive, see docstring
+        pass
+
+
 @contextmanager
 def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, None]:
     """Open (or create) a graph database with schema initialisation."""
@@ -571,10 +632,22 @@ def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, No
         Path(target).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target, timeout=10)
     conn.row_factory = sqlite3.Row
+    completed = False
     try:
         _init_db(conn)
         yield conn
+        completed = True
     finally:
+        # Only on a clean exit. The refresh commits, so running it unconditionally
+        # would turn a failed partial graph write into a committed one —
+        # save_graph_streaming relies on closing without a commit to restore the
+        # prior snapshot when a producer raises mid-flush.
+        #
+        # A clean exit is also where the row counts have just changed, and it
+        # matches the refresh-before-close pattern SQLite documents for
+        # short-lived connections. Readers open afterwards, so they see it.
+        if completed:
+            refresh_query_planner_stats(conn)
         conn.close()
 
 

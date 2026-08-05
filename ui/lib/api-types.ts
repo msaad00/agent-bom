@@ -2942,6 +2942,23 @@ export interface EnterpriseDemoCollectionHealth {
   failure_code: string;
 }
 
+/** What one truncated story list holds, and what it was truncated out of. */
+export interface EnterpriseDemoListBound {
+  returned: number;
+  total: number;
+  limit: number;
+  truncated: boolean;
+}
+
+/** The bound on every list the story returns. `events` and `correlations` are
+ * single-digit percentages of the estate, so the payload names each limit
+ * rather than leaving a consumer to read a page size as a total. */
+export interface EnterpriseDemoBounds {
+  events: EnterpriseDemoListBound;
+  correlations: EnterpriseDemoListBound;
+  findings: EnterpriseDemoListBound;
+}
+
 /** GET /v1/demo-estate/story — normalized, fictional enterprise evidence. */
 export interface EnterpriseDemoStory {
   schema_version: string;
@@ -2955,6 +2972,8 @@ export interface EnterpriseDemoStory {
   estate_content_hash: string;
   story_content_hash: string;
   summary: EnterpriseDemoSummary;
+  /** Limit + true total for each bounded list below. */
+  bounds: EnterpriseDemoBounds;
   primary_correlation: EnterpriseDemoCorrelation;
   events: EnterpriseDemoEvent[];
   correlations: EnterpriseDemoCorrelation[];

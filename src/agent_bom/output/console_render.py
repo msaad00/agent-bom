@@ -1756,7 +1756,10 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
         )
 
         if not actionable:
-            con.print(f"    [green]{safe_emoji('✓', 'OK')}[/green] [dim]no failed checks[/dim]")
+            if verdict_text == NOT_EVALUATED:
+                con.print("    [dim]no control produced a pass or a fail — nothing was evaluated[/dim]")
+            else:
+                con.print(f"    [green]{safe_emoji('✓', 'OK')}[/green] [dim]no failed checks[/dim]")
             if show_passed and passed:
                 _print_cis_passed(con, passed)
             continue

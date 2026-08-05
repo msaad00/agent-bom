@@ -853,19 +853,49 @@ def _analyze_file(
                             )
                         )
 
+    # Pass 3a: Tools a low-level ``Server`` declares in its ListTools handler.
+    low_level_tools: list[tuple[str, int]] = []
+    if _source_imports_mcp_module(tree) and _has_list_tools_handler(tree):
+        low_level_tools = _list_tools_declarations(tree)
+    for tool_name, tool_line in low_level_tools:
+        tools.append(
+            ToolSignature(
+                name=tool_name,
+                parameters=[],
+                return_type="unknown",
+                description="Python MCP low-level ListTools declaration",
+                file_path=rel_path,
+                line_number=tool_line,
+                decorators=["tools/list"],
+                is_async=False,
+            )
+        )
+
     # Pass 3: Extract tool signatures from decorated functions
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             decorators = []
             is_tool = False
+            is_dispatch_handler = False
             for dec in node.decorator_list:
                 dec_name = _get_decorator_name(dec)
                 if dec_name:
                     decorators.append(dec_name)
                     if _is_agent_tool_decorator(dec_name):
                         is_tool = True
+                    if dec_name.rsplit(".", 1)[-1] in _MCP_DISPATCH_SEGMENTS:
+                        is_dispatch_handler = True
 
-            if is_tool:
+            # ``@server.call_tool()`` dispatches to every tool; it is not itself
+            # one. Suppressing its signature only once the real names are known
+            # means a server whose names are built dynamically keeps the signal
+            # it has today rather than going silent.
+            if is_dispatch_handler and low_level_tools:
+                is_tool_signature = False
+            else:
+                is_tool_signature = is_tool
+
+            if is_tool_signature:
                 params = _extract_params(node)
                 return_type = _get_return_annotation(node)
                 docstring = ast.get_docstring(node) or ""
@@ -1023,6 +1053,95 @@ def _analyze_file(
             )
 
     return prompts, guardrails, tools, frameworks, function_analyses, flow_findings
+
+
+# Servers built on the low-level ``Server`` class declare their tools in a
+# ListTools handler rather than one ``@mcp.tool()`` per function, so no decorator
+# on any function carries a tool name. The JS/TS analyzer reads the same shape
+# from ``setRequestHandler(ListToolsRequestSchema, ...)`` and Swift from
+# ``withMethodHandler(ListTools.self)``; this is the Python equivalent.
+#
+# ``list_tools`` and ``call_tool`` are protocol dispatch handlers, not tool
+# markers, so neither name is trusted on its own -- the file must also import an
+# MCP module, the same discriminator the Go analyzer applies to ``NewTool`` and
+# Swift to ``Tool(name:)``. That keeps an ordinary ``@registry.list_tools``
+# method on a plugin registry out.
+_MCP_ROOT_MODULES = frozenset({"mcp", "modelcontextprotocol"})
+_MCP_LIST_TOOLS_SEGMENT = "list_tools"
+_MCP_LIST_TOOLS_KEYWORD = "on_list_tools"
+# ``@server.call_tool()`` reaches the tool-decorator predicate through the
+# ``*_tool`` suffix, which named the dispatcher itself as a tool called
+# "call_tool". It stays a tool entrypoint for sink analysis; it just must not be
+# emitted as a tool name once the real names are known.
+_MCP_DISPATCH_SEGMENTS = frozenset({_MCP_LIST_TOOLS_SEGMENT, "call_tool"})
+
+
+def _imported_module_names(tree: ast.Module) -> list[str]:
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.append(node.module or "")
+    return names
+
+
+def _source_imports_mcp_module(tree: ast.Module) -> bool:
+    """Return whether the file imports an MCP SDK module.
+
+    Whole dotted segments only, so ``mcp.server.lowlevel`` and
+    ``modelcontextprotocol.server`` resolve while a project-local
+    ``mcp_client_utils`` or ``mcpherson.tools`` does not.
+    """
+    for module in _imported_module_names(tree):
+        if any(segment.lower() in _MCP_ROOT_MODULES for segment in module.split(".") if segment):
+            return True
+    return False
+
+
+def _decorator_last_segment(node: ast.expr) -> str:
+    """Last dotted segment of a decorator, unwrapping the applied form ``@x.y()``."""
+    return (_get_decorator_name(node) or "").rsplit(".", 1)[-1]
+
+
+def _has_list_tools_handler(tree: ast.Module) -> bool:
+    """Return whether the file wires a low-level ListTools handler.
+
+    Both SDK generations count: v1 registers the handler with a
+    ``@server.list_tools()`` decorator (bare or applied), v2 passes it to the
+    ``Server`` constructor as ``on_list_tools=``.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if any(_decorator_last_segment(dec) == _MCP_LIST_TOOLS_SEGMENT for dec in node.decorator_list):
+                return True
+        elif isinstance(node, ast.Call):
+            if any(kw.arg == _MCP_LIST_TOOLS_KEYWORD for kw in node.keywords):
+                return True
+    return False
+
+
+def _list_tools_declarations(tree: ast.Module) -> list[tuple[str, int]]:
+    """Return ``(tool_name, line_number)`` for every ``types.Tool(name="…")``."""
+    declarations: list[tuple[str, int]] = []
+    seen: set[tuple[str, int]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node.func).rsplit(".", 1)[-1] != "Tool":
+            continue
+        for keyword in node.keywords:
+            # A non-literal name cannot be resolved statically; guessing one
+            # would put a fabricated tool in the inventory.
+            if keyword.arg != "name" or not isinstance(keyword.value, ast.Constant):
+                continue
+            name = keyword.value.value
+            if not isinstance(name, str) or not name.strip():
+                continue
+            entry = (name.strip(), node.lineno)
+            if entry in seen:
+                continue
+            seen.add(entry)
+            declarations.append(entry)
+    return declarations
 
 
 def _get_decorator_name(node: ast.expr) -> str | None:

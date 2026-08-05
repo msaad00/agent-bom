@@ -51,6 +51,11 @@ const story: EnterpriseDemoStory = {
     snapshots: 3,
     findings: 439,
   },
+  bounds: {
+    events: { returned: 1, total: 15, limit: 200, truncated: true },
+    correlations: { returned: 1, total: 4, limit: 50, truncated: true },
+    findings: { returned: 1, total: 439, limit: 100, truncated: true },
+  },
   primary_correlation: correlation,
   events: [
     {

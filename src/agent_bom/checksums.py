@@ -135,12 +135,20 @@ def integrity_verdict(package: Any) -> dict[str, Any] | None:
     a different claim from "ran and failed" — so this returns ``None`` only in
     that case and every emitter omits the verdict rather than implying a pass.
 
+    ``provenance_status`` carries the registry's own answer (``verified`` /
+    ``not_published`` / ``not_provenance`` / ``partial`` / ``unavailable``). It
+    is what separates the third state from the other two: a registry that was
+    asked but did not answer leaves ``provenance_attested`` absent and reports
+    ``unavailable`` here, so an outage can never be read as "this package ships
+    no attestation".
+
     Single source of truth for the JSON, CycloneDX, SPDX 2.x, SPDX 3.0, SARIF
     and CSV emitters so no two of them can disagree about the same package.
     """
     verified = getattr(package, "integrity_verified", None)
     attested = getattr(package, "provenance_attested", None)
-    if verified is None and attested is None:
+    status = str(getattr(package, "provenance_status", None) or "").strip()
+    if verified is None and attested is None and not status:
         return None
     verdict: dict[str, Any] = {}
     if verified is not None:
@@ -150,6 +158,8 @@ def integrity_verdict(package: Any) -> dict[str, Any] | None:
         source = str(getattr(package, "provenance_source", None) or "").strip()
         if source:
             verdict["provenance_source"] = source
+    if status:
+        verdict["provenance_status"] = status
     return verdict
 
 
@@ -172,4 +182,8 @@ def integrity_verdict_statements(verdict: dict[str, Any] | None) -> list[str]:
         if source:
             statement += f" source={source}"
         statements.append(statement)
+    if verdict.get("provenance_status"):
+        # Emitted alongside the boolean (why it is what it is) and on its own
+        # when there is no boolean (why there is none).
+        statements.append(f"agent-bom:provenance-status={verdict['provenance_status']}")
     return statements

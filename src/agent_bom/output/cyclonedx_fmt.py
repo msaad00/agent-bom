@@ -282,7 +282,10 @@ def _integrity_identity_evidence(pkg: Any, verdict: dict[str, Any], purl: str | 
     ``methods[].technique``, whose enum includes ``hash-comparison`` (the
     registry-digest check) and ``attestation`` (the SLSA / PEP 740 /
     sum.golang.org lookup). ``confidence`` is 1.0 for a pass and 0.0 for a
-    documented failure — absent entirely when the check never ran.
+    documented failure — absent entirely when the check never ran, and equally
+    absent when the registry was asked but did not answer, because a 0.0 here
+    asserts a failure the lookup never established. That third state is carried
+    by the ``agent-bom:provenance-status`` property instead.
     """
     identities: list[dict[str, Any]] = []
     verified = verdict.get("integrity_verified")
@@ -689,6 +692,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     if verdict.get("provenance_source"):
                         pkg_properties.append(
                             {"name": "agent-bom:provenance-source", "value": str(verdict["provenance_source"])}
+                        )
+                    if verdict.get("provenance_status"):
+                        pkg_properties.append(
+                            {"name": "agent-bom:provenance-status", "value": str(verdict["provenance_status"])}
                         )
 
                 pkg_component: dict = {

@@ -405,8 +405,13 @@ class Package:
 
     # Provenance / supply chain attestation (populated by --verify-integrity)
     integrity_verified: Optional[bool] = None  # SHA256/SRI verified against registry
+    # ``None`` = the registry never answered (not asked, or asked and it was
+    # unreachable). ``provenance_status`` says which; see
+    # ``integrity.PROVENANCE_UNKNOWN_STATUSES``.
     provenance_attested: Optional[bool] = None  # SLSA/PEP740/sum.golang.org attestation found
     provenance_source: Optional[str] = None  # "npm_slsa", "pypi_pep740", "go_sumdb"
+    # Registry's own answer: verified | not_published | not_provenance | partial | unavailable
+    provenance_status: Optional[str] = None
 
     # Auto-discovery metadata (populated when not in bundled registry)
     auto_risk_level: Optional[str] = None

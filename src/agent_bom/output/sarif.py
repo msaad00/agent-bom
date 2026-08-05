@@ -665,7 +665,12 @@ def _cve_sarif_result(
     version_provenance = evidence(finding, "package_version_provenance")
     if version_provenance is not None:
         result_properties["package_version_provenance"] = _sanitize_sarif_property(version_provenance)
-    for verdict_key in ("package_integrity_verified", "package_provenance_attested", "package_provenance_source"):
+    for verdict_key in (
+        "package_integrity_verified",
+        "package_provenance_attested",
+        "package_provenance_source",
+        "package_provenance_status",
+    ):
         # --verify-integrity verdict. Omitted when the check never ran, so a
         # missing key never reads as "verification failed".
         verdict_value = evidence(finding, verdict_key, None)

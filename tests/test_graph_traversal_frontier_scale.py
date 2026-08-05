@@ -41,6 +41,7 @@ from typing import Any
 import pytest
 
 from agent_bom.api.graph_store import SQLiteGraphStore
+from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -122,15 +123,43 @@ def _walk_ticks(store: SQLiteGraphStore, *, scan_id: str, source: str, max_depth
 
 
 class TestFrontierQueryCostsTheWalkNotTheSnapshot:
-    def test_frontier_query_is_driven_by_an_endpoint_index(self, tmp_path):
+    @pytest.mark.parametrize("with_statistics", [False, True], ids=["without-stats", "with-stats"])
+    def test_frontier_query_is_driven_by_an_endpoint_index(self, tmp_path, with_statistics):
         """The per-hop query must SEARCH by ``source_id``/``target_id``, never scan the snapshot.
 
         Asserted on the plan rather than the clock so it holds on a loaded host,
-        and asserted without ``ANALYZE`` so it cannot be satisfied by
-        ``sqlite_stat1`` statistics that a fresh customer database will not have.
+        and asserted in BOTH statistics states.
+
+        The ``without-stats`` case is the original and stricter one: the endpoint
+        indexes must carry this plan on their own, so it can never be satisfied
+        merely by ``sqlite_stat1``. It used to be written as "assert sqlite_stat1
+        does not exist", which held only because nothing recorded statistics.
+        The graph store now records them deliberately -- the node read path needs
+        them to choose between two indexes sharing a leading prefix -- so absence
+        is no longer a property of a real database and asserting it would test
+        the fixture rather than the code. Dropping the table explicitly keeps the
+        original guarantee provable, and the ``with-stats`` case adds the state
+        production actually runs in.
         """
         store = SQLiteGraphStore(tmp_path / "graph.db")
         store.save_graph(_tree_with_ballast(scan_id="plan", reachable_nodes=8, ballast_edges=200))
+
+        # Settle the store's own once-per-process schema init first: it opens a
+        # write connection and records statistics, so dropping them before this
+        # point would simply see them recreated.
+        primer = store._open_ro_conn()
+        assert primer is not None
+        primer.close()
+
+        writable = sqlite3.connect(tmp_path / "graph.db")
+        try:
+            if with_statistics:
+                sqlite_graph_store.refresh_query_planner_stats(writable)
+            else:
+                writable.execute("DROP TABLE IF EXISTS sqlite_stat1")
+                writable.commit()
+        finally:
+            writable.close()
 
         conn = store._open_ro_conn()
         assert conn is not None
@@ -145,9 +174,11 @@ class TestFrontierQueryCostsTheWalkNotTheSnapshot:
                 dynamic_only=False,
             )
             plan_rows = conn.execute(f"EXPLAIN QUERY PLAN {sql}", params).fetchall()
-            assert conn.execute("SELECT count(*) FROM sqlite_master WHERE name = 'sqlite_stat1'").fetchone()[0] == 0
+            recorded = conn.execute("SELECT count(*) FROM sqlite_master WHERE name = 'sqlite_stat1'").fetchone()[0]
         finally:
             conn.close()
+
+        assert bool(recorded) is with_statistics, "the statistics precondition for this case did not hold"
 
         details = [str(row[3]) for row in plan_rows]
         graph_edge_steps = [detail for detail in details if "graph_edges" in detail]

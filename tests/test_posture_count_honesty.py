@@ -225,6 +225,127 @@ def test_console_cis_verdict_matches_the_html_verdict(checks, monkeypatch):
     )
 
 
+def _report_with_aws_cis(checks: list[dict]):
+    """A report carrying the AWS CIS bundle the compact renderer reads."""
+    from agent_bom.models import AIBOMReport
+
+    report = AIBOMReport()
+    report.cis_benchmark_data = {
+        "checks": checks,
+        "passed": sum(1 for c in checks if c["status"] == "pass"),
+        "failed": sum(1 for c in checks if c["status"] == "fail"),
+        "pass_rate": 0.0,
+    }
+    return report
+
+
+@pytest.mark.parametrize(
+    "checks",
+    [
+        _ALL_NOT_APPLICABLE,
+        _PASS_PLUS_ERROR,
+        [{"check_id": "2.1", "title": "t", "status": "error", "severity": "low"}],
+        [{"check_id": "3.1", "title": "t", "status": "pass", "severity": "low"}],
+        [{"check_id": "4.1", "title": "t", "status": "fail", "severity": "critical"}],
+    ],
+)
+def test_compact_cis_verdict_matches_the_html_verdict(checks, monkeypatch):
+    """The default console panel is a third surface on the same derivation.
+
+    ``print_compact_cis_posture`` is what a bare ``agent-bom scan`` prints. It
+    computed its own answer and had no verdict at all, so an estate where
+    nothing was evaluated got a green tick and no qualifier.
+    """
+    import re
+
+    from rich.console import Console
+
+    from agent_bom import output as output_mod
+    from agent_bom.output.compact import print_compact_cis_posture
+
+    recorder = Console(record=True, width=200, no_color=True, force_terminal=False)
+    monkeypatch.setattr(output_mod, "console", recorder)
+
+    print_compact_cis_posture(_report_with_aws_cis(checks))
+    out = recorder.export_text()
+    match = re.search(r"(NOT EVALUATED|INCOMPLETE|ERROR|PASS|\w+ GAPS)", out)
+    compact_verdict = match.group(1) if match else ""
+
+    assert compact_verdict, f"the compact CIS panel rendered no verdict at all for {checks}"
+    assert compact_verdict == _rendered_html_verdict(checks), (
+        f"compact rendered {compact_verdict!r} where HTML rendered {_rendered_html_verdict(checks)!r} for the same checks"
+    )
+
+
+def test_compact_cis_panel_does_not_tick_an_unevaluated_estate(monkeypatch):
+    """Zero controls evaluated is not a clean bill of health."""
+    from rich.console import Console
+
+    from agent_bom import output as output_mod
+    from agent_bom.output.compact import print_compact_cis_posture
+
+    recorder = Console(record=True, width=200, no_color=True, force_terminal=False)
+    monkeypatch.setattr(output_mod, "console", recorder)
+
+    print_compact_cis_posture(_report_with_aws_cis(_ALL_NOT_APPLICABLE))
+    out = recorder.export_text()
+
+    assert "no failed checks" not in out, (
+        "the compact panel prints a green tick and 'no failed checks' beside '0/0 checks' — nothing was evaluated"
+    )
+    assert "NOT EVALUATED" in out
+
+
+def test_verbose_console_cis_panel_does_not_tick_an_unevaluated_estate(monkeypatch):
+    """The verbose panel carried the verdict but still ticked the body line."""
+    from rich.console import Console
+
+    from agent_bom import output as output_mod
+    from agent_bom.output import console_render
+
+    recorder = Console(record=True, width=200, no_color=True, force_terminal=False)
+    monkeypatch.setattr(output_mod, "console", recorder)
+
+    console_render.print_cis_findings(_report_with_cis(_ALL_NOT_APPLICABLE))
+    out = recorder.export_text()
+
+    assert "NOT EVALUATED" in out
+    assert "no failed checks" not in out, "a NOT EVALUATED verdict cannot sit above a green 'no failed checks' tick"
+
+
+def test_html_cis_panel_does_not_tick_an_unevaluated_estate():
+    """Same body line in the HTML report."""
+    from agent_bom.output.html.sections import _cis_benchmark_section
+
+    html = _cis_benchmark_section(_report_with_cis(_ALL_NOT_APPLICABLE))
+
+    assert "NOT EVALUATED" in html
+    assert "No failed security checks" not in html, (
+        "a NOT EVALUATED verdict cannot sit above a green 'No failed security checks' empty state"
+    )
+
+
+def test_renderers_still_tick_a_genuinely_clean_estate(monkeypatch):
+    """The tick is honest when controls were evaluated and none failed."""
+    from rich.console import Console
+
+    from agent_bom import output as output_mod
+    from agent_bom.output import console_render
+    from agent_bom.output.compact import print_compact_cis_posture
+    from agent_bom.output.html.sections import _cis_benchmark_section
+
+    clean = [{"check_id": "3.1", "title": "t", "status": "pass", "severity": "low"}]
+
+    recorder = Console(record=True, width=200, no_color=True, force_terminal=False)
+    monkeypatch.setattr(output_mod, "console", recorder)
+    console_render.print_cis_findings(_report_with_cis(clean))
+    print_compact_cis_posture(_report_with_aws_cis(clean))
+    out = recorder.export_text()
+
+    assert out.count("no failed checks") == 2, out
+    assert "No failed security checks" in _cis_benchmark_section(_report_with_cis(clean))
+
+
 # ── Markdown report: severity rows never sum to the totals above them ──────
 
 

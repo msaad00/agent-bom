@@ -38,7 +38,10 @@ def _render_story(story: EnterpriseDemoStory) -> str:
                 f"Evidence: {story.summary.assets} assets · "
                 f"{story.summary.observations} observations · "
                 f"{story.summary.evidence_sources} sources · "
-                f"{story.summary.correlations} correlations"
+                # Qualified, because the bare row count reads as a cross-vendor
+                # claim it cannot support: most rows are a single-source trace.
+                f"{story.summary.correlations} correlations "
+                f"({story.summary.cross_source_correlations} cross-source)"
             ),
             (
                 f"Posture: {posture.total} findings on {posture.assets_affected} of "

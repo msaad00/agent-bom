@@ -9,6 +9,163 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-08-05
+
+A correctness release. Several defects here caused agent-bom to report *less*
+than it found, or to report it under the wrong name — the failure mode that looks
+clean. Read "Security" and "Fixed — wrong or missing output" before upgrading:
+some numbers you may already be reporting will move.
+
+### Security
+
+- `sanitize_env_vars` wrote credential **values** in cleartext for `SSH_KEY`,
+  `ENCRYPTION_KEY`, `PRIVATE_KEY` and `CA_CERT` while the same report listed the
+  variable as an exposed credential. Four separate answers to "is this name a
+  credential" existed; they now share one predicate.
+- `sanitize_text` redacted an AWS access key **id** and printed the 40-char
+  secret beside it. It also leaked a keyed value in eight shapes — quoted,
+  spaced, JSON, YAML, and base64 `=` padding.
+- OpenSSH, ENCRYPTED and PGP private keys survived redaction entirely; only
+  PKCS#1/SEC1 labels matched. `OPENSSH` has been `ssh-keygen`'s default since
+  OpenSSH 7.8.
+- The Docker Hub retention tool followed whatever `next` URL the registry
+  returned **with the Docker Hub bearer token attached**, so a redirected
+  pagination link would have carried the credential off-origin. It now refuses
+  any pagination URL that leaves `hub.docker.com`, bounds the loop, and fails
+  rather than planning deletions against a partial tag list.
+- Configuration was being counted as credentials (`CERTIFICATE_PATH`,
+  `DB_CONNECTION_POOL_SIZE`), and real credentials were being missed
+  (`PGPASSWORD`, `ID_RSA`, `GOOGLE_APPLICATION_CREDENTIALS`, and every plural
+  form). Six copies of that predicate existed across Python, the CLI and the UI;
+  one server reported 25 credentials in the mesh view and 21 in the graph export.
+
+### Breaking
+
+- `Package.provenance_attested` is now `None` when the registry could not be
+  reached, rather than `False`. "We could not ask" and "we asked and the answer
+  was no" were indistinguishable in every machine format. The reason is on the
+  new `Package.provenance_status` (`verified` · `not_published` ·
+  `not_provenance` · `partial` · `unavailable`). Consumers treating `false` as a
+  negative attestation should now check `provenance_status`.
+- Compliance framework statuses are now evidence-scoped — `evidence_current` ·
+  `review` · `action_required` — replacing the narrative `passing` · `at_risk` ·
+  `failing`. The old wording asserted that a mapped vulnerability established
+  framework failure or a regulatory breach; it does not. An explicit
+  non-certification boundary is now carried through CLI JSON, Markdown and the
+  REST responses. agent-bom supplies review evidence; it does not issue an audit,
+  certification, legal or regulatory verdict. The underlying finding-to-control
+  mappings, severities, remediation and freshness are unchanged.
+
+### Fixed — wrong or missing output
+
+- **The secret scanner spent its entire file budget on a shadow copy.** It
+  walked with a name-based skip list, and `.` sorts early, so on a checkout
+  containing a gitignored nested worktree the 1000-file cap was consumed before
+  the primary tree was reached. Scanning agent-bom itself reported **177
+  credential findings that were all in the shadow copy** while the real tree went
+  unscanned — a false negative wearing a false positive's clothes.
+- Five walkers enumerated the tree themselves rather than going through the
+  shared traversal, and descended into linked worktrees. A worktree is a full
+  second copy of the project, so everything inside it was reported twice.
+- **Git submodule dependencies were silently dropped from the SBOM.** Nested
+  checkout pruning keyed on the `.git` pointer file, which a linked worktree and
+  a submodule share — but a worktree is a duplicate while a submodule is vendored
+  code that ships. Its manifests and their CVEs disappeared.
+- **Low-level MCP servers were inventoried under the dispatcher's name.** On the
+  official `fetch` reference server, agent-bom reported a tool called
+  `call_tool` instead of `fetch`.
+- Django REST `@action` viewset methods, `@transaction.atomic`, `@property` and
+  `@staticmethod` were reported as agent tools. Agent-tool detection existed in
+  four places that disagreed; a test now asserts they cannot drift apart.
+- **TypeScript `registerTool` matched nothing** — the current API of the official
+  `@modelcontextprotocol/sdk`, and the largest MCP ecosystem.
+- PCI DSS was never tagged by any scan: its tagger had zero production callers
+  while every other framework was stamped, so a framework counted among the
+  advertised compliance surfaces could only ever report `not_evaluated`.
+  FedRAMP could not match its own catalog (namespaced tags against bare keys).
+- `scan(package="flask==0.12.2")` returned a false clean over MCP: an
+  unrecognised launcher was forced to `npx`, so a PyPI spec was scanned as npm —
+  0 packages presented as a complete AI-BOM while `check()` reported 4 CVEs.
+- Unrated and `none`-severity findings were published to GitHub code scanning as
+  **Medium**. One SARIF document carried five severity tables; four lacked
+  `none` and `unknown` keys and defaulted to `warning`.
+- A green CIS **PASS** was printed at zero controls evaluated, in three separate
+  renderers, beside "0% pass (0/0 checks)".
+- A "Clean" badge rendered next to a non-zero vulnerability count, because any
+  advisory without a CVSS vector fell out of the severity histogram while still
+  counting toward the total.
+- `/v1/proxy/alerts` summarised the page rather than the estate, so `total_alerts`
+  collapsed to the page size and a filtered view described itself as the whole.
+- A graph trimmed by the node budget serialised byte-identically to the whole
+  estate; a secret scan that hit its file cap reported `total: 0` with no partial
+  marker; `WITH GRANT OPTION` never left the process.
+- `agent-bom connect` exited 0 on failure and truncated the control plane's
+  remediation guidance mid-word.
+- `agent-bom scan .` produced nameless assets, because `Path(".").name` is `""`.
+- CSPM findings never landed on the inventoried asset: one S3 bucket produced
+  three disjoint nodes, breaking finding→asset correlation on every provider.
+- A partial `[gcp]` extra took down the entire inventory scan instead of
+  degrading: `except ImportError` cannot catch the `AttributeError` a
+  real-but-incomplete SDK raises.
+- `environment` was populated for Azure and silently `null` for AWS and GCP —
+  only two of roughly twelve emission sites derived it, and the one normalizer
+  that did was Azure-only. GCP compounded it by labelling resources with
+  `labels`, which nothing read. A Snowflake account drill-down returned 1 node of
+  6, and the canvas silently discarded `api_gateway` nodes.
+- Three of the sixteen advertised compliance surfaces could not produce evidence
+  at all, and the default signed bundle was unverifiable — found by walking each
+  README persona's journey with real commands rather than by reading code.
+- The UI's `graphTruncated` banner keyed on `pagination.has_more` alone, which is
+  false on the last page of an already-trimmed estate, so a snapshot cut by the
+  load-time budget rendered with no banner.
+- Integrity and provenance verdicts reached no machine-readable output at all —
+  console only. They now appear in JSON, CycloneDX, SPDX 2.x/3.0, SARIF, CSV and
+  `/v1/findings`.
+
+### Added
+
+- **Kotlin analyzer.** An official `modelcontextprotocol/kotlin-sdk` exists and
+  Kotlin MCP servers were previously invisible.
+- MCP tool detection for the idioms the official SDKs actually use: Go composite
+  literals, TypeScript `registerTool` and low-level `setRequestHandler`, C#
+  attribute lists, Java `Tool.builder`, PHP `#[McpTool]`, Ruby `define_tool` and
+  `MCP::Tool`, Swift `Tool(name:)`, and Python low-level `list_tools`.
+- A synthetic enterprise demo estate: **2,068 assets, 6,159 observations across
+  nine log sources, 439 findings on 407 assets, 45 controls**, with the graph
+  growing from 112 to 2,766 nodes. GCP audit collection is deliberately
+  `partial`, so incomplete evidence is shown as incomplete.
+
+### Changed
+
+- `/v1/demo-estate/story` went from 1,643 ms with the event loop parked for
+  1,648 ms to 28 ms warm; a warm read behind an eight-tenant burst went from
+  16,873 ms to 342 ms.
+- The SQLite graph store now records planner statistics. Both indexes shared a
+  prefix, and SQLite documents the tie-break without statistics as arbitrary; it
+  had been picking the wrong one for full-snapshot reads.
+- Release-tag container rebuilds now overlay the current security contract, so
+  refreshing `latest` from an older tag cannot reintroduce a fixed dependency.
+  `cryptography` is pinned to 50.0.0 with platform-specific wheel hashes, and
+  container SARIF paths are normalised before upload.
+- The registry publish workflow verifies the public catalog's tool count instead
+  of treating an HTTP 202 as freshness, and fails closed on a mismatch. The
+  hosted MCP endpoint now requires a scoped, revocable `bearerToken` rather than
+  being reachable unauthenticated.
+- `make preflight` now checks the product-metrics snapshot, so drift is caught
+  locally instead of nine minutes into CI.
+
+### Known limitations
+
+- The event loop is still parked for roughly 75% of a **cold** demo-story
+  request. The build is GIL-bound; offloading to a thread does not stop it
+  starving the loop, and eliminating it needs process offload or a cheaper build.
+- `summary.cross_source_correlations` is 3 of 6,148 correlation groups. The demo generator gives
+  each synthetic observation its own trace, so most correlation groups contain a
+  single event. The figure is now reported explicitly rather than left implied by
+  the raw total.
+- The 2,766-node demo graph has not been verified in a browser.
+
+
 ## [0.98.3] - 2026-08-02
 
 Behaviour changes in this release move numbers you may already be reporting.
@@ -2806,6 +2963,7 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 ---
 
 [Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.98.3...HEAD
+[0.99.0]: https://github.com/msaad00/agent-bom/compare/v0.98.3...v0.99.0
 [0.98.3]: https://github.com/msaad00/agent-bom/compare/v0.98.2...v0.98.3
 [0.98.2]: https://github.com/msaad00/agent-bom/compare/v0.98.1...v0.98.2
 [0.98.1]: https://github.com/msaad00/agent-bom/compare/v0.98.0...v0.98.1

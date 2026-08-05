@@ -26,6 +26,7 @@ while still surfacing drift through the issue tracker.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -45,12 +46,31 @@ GLAMA_SCRIPT = ROOT / "scripts" / "check_glama_listing.py"
 PYPI_PACKAGE = "agent-bom"
 DEFAULT_DOCKER_IMAGE = "ghcr.io/msaad00/agent-bom"
 DEFAULT_SMITHERY_SERVER = "agent-bom/agent-bom"
+# Requests to this origin carry an anonymous-pull bearer token, so pagination
+# links must never move off it.
+GHCR_ORIGIN = "https://ghcr.io"
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_ATTEMPTS = 3
 DEFAULT_BACKOFF = 5.0
 
 OK_STATUSES = {"fresh"}
 ALERT_STATUSES = {"stale", "not_configured", "unreachable"}
+
+
+def expected_tool_count() -> int:
+    """Return the shipped MCP tool inventory size, from the one place it lives.
+
+    ``check_glama_listing.py`` already derives this from the README contract
+    sentence. Re-deriving it here would be a second answer to one question, and
+    the two would eventually disagree — so this delegates to that module rather
+    than re-reading the README.
+    """
+    spec = importlib.util.spec_from_file_location("_glama_listing_contract", GLAMA_SCRIPT)
+    if spec is None or spec.loader is None:  # pragma: no cover - packaging accident
+        raise SystemExit(f"could not load {GLAMA_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return int(module._load_readme_tool_count())
 
 
 def _env_or(name: str, default: str) -> str:
@@ -159,6 +179,19 @@ def probe_pypi(expected: str, **kw: Any) -> dict[str, Any]:
         return _classify("PyPI", None, expected, error=str(exc))
 
 
+def _require_origin(url: str, origin: str) -> str:
+    """Return ``url`` only if it stays on ``origin``.
+
+    Anything we follow while holding a token has to be pinned to the origin that
+    issued it. ``scripts/dockerhub_tag_cleanup.py`` makes the same check for
+    Docker Hub; this is the second caller, not a second rule.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if f"{parts.scheme}://{parts.netloc}" != origin:
+        raise RuntimeError(f"refusing to follow off-origin pagination URL: {url!r}")
+    return url
+
+
 def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
     """Confirm the expected tag exists on the registry.
 
@@ -178,7 +211,7 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
                 **kw,
             )
             token = token_data.get("token", "")
-            tags = set()
+            tags: set[str] = set()
             next_url = f"https://ghcr.io/v2/{path_repo}/tags/list?n=100"
             auth_headers = {"Authorization": f"Bearer {token}"} if token else None
             for _page in range(20):
@@ -188,9 +221,13 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
                 match = re.search(r'<([^>]+)>;\s*rel="next"', link)
                 if not match:
                     break
-                next_url = urllib.parse.urljoin("https://ghcr.io", match.group(1))
+                # urljoin returns an absolute URL unchanged, so a registry-supplied
+                # ``Link: <https://elsewhere/…>`` would move the host while the
+                # bearer token stayed attached. Every page of this walk is
+                # authenticated, so every page must stay on the registry.
+                next_url = _require_origin(urllib.parse.urljoin(GHCR_ORIGIN, match.group(1)), GHCR_ORIGIN)
         else:
-            tags: set[str] = set()
+            tags = set()
             url = f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=100"
             data = _http_json(url, **kw)
             for entry in data.get("results", []):
@@ -304,13 +341,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     expected = (args.expected or _expected_version()).lstrip("v").strip()
+    # Default it rather than leaving it None. An unset expectation used to turn
+    # the tool-count assertion off for Smithery entirely, so a bare local run
+    # reported a catalog advertising 36 of 77 tools as fresh — the drift this
+    # monitor exists to catch, invisible to the person most likely to look.
+    tool_count = args.expected_tool_count if args.expected_tool_count is not None else expected_tool_count()
     kw = {"timeout": args.timeout, "attempts": args.attempts, "backoff": args.backoff_seconds}
 
     surfaces = [
         probe_pypi(expected, **kw),
         probe_docker(expected, args.docker_image, **kw),
-        probe_glama(expected, expected_tool_count=args.expected_tool_count, **kw),
-        probe_smithery(expected, args.smithery_server, expected_tool_count=args.expected_tool_count, **kw),
+        probe_glama(expected, expected_tool_count=tool_count, **kw),
+        probe_smithery(expected, args.smithery_server, expected_tool_count=tool_count, **kw),
     ]
 
     drift = [s for s in surfaces if s["status"] in ALERT_STATUSES]

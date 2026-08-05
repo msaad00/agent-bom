@@ -435,3 +435,101 @@ def test_surface_freshness_main_skips_blank_docker_and_smithery_env(monkeypatch,
     assert report["all_fresh"] is True
     assert seen["docker"] == script.DEFAULT_DOCKER_IMAGE
     assert seen["smithery"] == script.DEFAULT_SMITHERY_SERVER
+
+
+def test_default_invocation_derives_the_expected_tool_count(monkeypatch, tmp_path):
+    """Running the monitor with no flags must still gate the tool count.
+
+    ``--expected-tool-count`` defaulted to ``None``, and only the Glama probe
+    fell back to deriving it from the README. So the workflows — which pass the
+    flag — gated the count, while a bare ``python scripts/check_surface_freshness.py``
+    reported Smithery **fresh at 36 of 77**: the exact drift the sibling test
+    above calls "invisible". One shipped inventory means one derivation, not one
+    derivation and one caller-supplied argument that silently defaults to off.
+    """
+    script = _load_script("check_surface_freshness.py")
+    seen = {}
+
+    def record(name):
+        def probe(expected, *args, **kwargs):
+            seen[name] = kwargs.get("expected_tool_count")
+            return {"surface": name, "status": "fresh", "version": expected, "expected": expected}
+
+        return probe
+
+    for name, attribute in (
+        ("PyPI", "probe_pypi"),
+        ("Docker", "probe_docker"),
+        ("Glama", "probe_glama"),
+        ("Smithery", "probe_smithery"),
+    ):
+        monkeypatch.setattr(script, attribute, record(name))
+
+    out = tmp_path / "report.json"
+    script.main(["--expected", "0.98.3", "--out", str(out)])
+
+    expected = int(script.expected_tool_count())
+    assert expected > 1, "the README contract should be a real inventory, not a placeholder"
+    assert seen["Glama"] == expected
+    assert seen["Smithery"] == expected
+
+
+def test_expected_tool_count_has_a_single_derivation():
+    """Both scripts must read the same sentence, not keep separate copies."""
+    freshness = _load_script("check_surface_freshness.py")
+    glama = _load_script("check_glama_listing.py")
+
+    assert int(freshness.expected_tool_count()) == int(glama._load_readme_tool_count())
+
+
+def test_ghcr_pagination_never_carries_the_token_off_origin(monkeypatch):
+    """A registry-supplied ``next`` link must not redirect our bearer token.
+
+    The GHCR tag walk resolved each page with
+    ``urljoin("https://ghcr.io", link)``, and ``urljoin`` returns an absolute
+    URL unchanged — so a ``Link: <https://attacker.example/...>; rel="next"``
+    header replaced the host while ``auth_headers`` kept the GHCR bearer token
+    attached. #4626 closed exactly this on the Docker Hub cleanup path; the
+    monitor kept the second copy.
+    """
+    script = _load_script("check_surface_freshness.py")
+    dialled = []
+
+    monkeypatch.setattr(script, "_http_json", lambda url, **_kw: {"token": "ghcr-secret"})
+
+    def fake_http_json_response(url, headers=None, **_kw):
+        dialled.append((url, dict(headers or {})))
+        if "attacker.example" in url:
+            return {"tags": ["9.9.9"]}, {}
+        return {"tags": ["0.98.3"]}, {"Link": '<https://attacker.example/v2/x/tags/list?n=100>; rel="next"'}
+
+    monkeypatch.setattr(script, "_http_json_response", fake_http_json_response)
+
+    result = script.probe_docker("0.98.3", "ghcr.io/msaad00/agent-bom", timeout=1, attempts=1, backoff=0)
+
+    off_origin = [url for url, _ in dialled if "ghcr.io" not in url]
+    assert not off_origin, f"followed a link off ghcr.io: {off_origin}"
+    leaked = [url for url, sent in dialled if "ghcr.io" not in url and sent.get("Authorization")]
+    assert not leaked, f"bearer token sent off-origin to {leaked}"
+    # Fail closed rather than judging on the pages we did get. The expected tag
+    # was on page one here, so a laxer probe would report "fresh" and bury the
+    # fact that the registry handed back a link pointing somewhere else.
+    assert result["status"] == "unreachable"
+    assert "off-origin" in result["error"]
+
+
+def test_ghcr_pagination_still_follows_a_same_origin_next_link(monkeypatch):
+    """The guard must not break real pagination — the tag is on page two."""
+    script = _load_script("check_surface_freshness.py")
+    monkeypatch.setattr(script, "_http_json", lambda url, **_kw: {"token": "ghcr-secret"})
+    pages = iter(
+        [
+            ({"tags": ["0.98.1"]}, {"Link": '</v2/msaad00/agent-bom/tags/list?n=100&last=0.98.1>; rel="next"'}),
+            ({"tags": ["0.98.3"]}, {}),
+        ]
+    )
+    monkeypatch.setattr(script, "_http_json_response", lambda url, headers=None, **_kw: next(pages))
+
+    result = script.probe_docker("0.98.3", "ghcr.io/msaad00/agent-bom", timeout=1, attempts=1, backoff=0)
+
+    assert result["status"] == "fresh"

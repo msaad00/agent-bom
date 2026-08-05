@@ -45,6 +45,35 @@ def test_story_builds_one_canonical_cross_vendor_read_model() -> None:
     assert all(not hasattr(event, "raw_payload") for event in story.events)
 
 
+def test_story_never_presents_single_source_traces_as_cross_vendor_correlations() -> None:
+    """The headline correlation count must not be read as the cross-vendor claim.
+
+    ``_build_correlations`` groups evidence by ``trace_id``. The generated
+    population gives every observation its own trace, so almost every row is one
+    event from one source correlated with nothing — a labelled event, not a
+    correlation. At estate scale that inflates the number the demo leads with
+    from single digits into the thousands.
+
+    The graph already publishes the honest figure: ``project_estate_into_graph``
+    draws a chain only where a correlation spans at least two inventoried assets,
+    and ``/v1/graph/attack-paths`` returns those. The story must carry the same
+    reconcilable number rather than leaving the two surfaces to disagree.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+    from agent_bom.demo_estate.enterprise_correlation import build_estate_correlations
+
+    tenant = "tenant-honest"
+    story = build_enterprise_demo_story(tenant_id=tenant)
+    rows = build_estate_correlations(build_demo_estate(tenant_id=tenant))
+    cross_source = sum(1 for row in rows if len(set(row.sources)) >= 2)
+
+    # Precondition: the gap this test exists for is real on the shipped estate.
+    assert 0 < cross_source < story.summary.correlations / 100, (cross_source, story.summary.correlations)
+
+    assert story.summary.cross_source_correlations == cross_source
+    assert story.summary.cross_source_correlations <= story.summary.correlations
+
+
 def test_demo_story_cli_emits_complete_machine_readable_evidence() -> None:
     result = CliRunner().invoke(main, ["demo", "story", "--format", "json", "--tenant-id", "tenant-cli"])
 
@@ -104,6 +133,13 @@ def test_demo_story_cli_prints_the_chain_and_counts_honestly() -> None:
 
     assert "Posture:" in result.output
     assert "Severity: critical" in result.output and "unrated" in result.output
+
+    # The evidence line leads with the correlation row count; it must qualify it
+    # rather than let a reader take thousands of single-source traces as
+    # thousands of cross-vendor correlations.
+    evidence_line = next(line for line in result.output.splitlines() if line.startswith("Evidence:"))
+    assert f"{story.summary.correlations} correlations" in evidence_line, evidence_line
+    assert f"{story.summary.cross_source_correlations} cross-source" in evidence_line, evidence_line
 
 
 def test_demo_story_api_fails_closed_when_demo_mode_is_off(monkeypatch: pytest.MonkeyPatch) -> None:

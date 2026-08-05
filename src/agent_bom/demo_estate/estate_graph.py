@@ -340,7 +340,14 @@ def project_estate_into_graph(
                     "check_id": str(finding.evidence.get("control_id") or ""),
                     "cloud_provider": finding.provider or "",
                     "resource_ids": [asset_id],
-                    "recommendation": finding.remediation or "",
+                    # The prose, not the structured advisory. ``Finding.remediation``
+                    # is a ``Remediation`` dataclass; the graph store persists
+                    # attributes with ``json.dumps(..., default=str)``, so putting
+                    # it here did not fail — it froze the object's Python ``repr``
+                    # into the snapshot and served it as the node's remediation
+                    # text. ``remediation_guidance`` is the plain string the live
+                    # cloud builder already puts under this key.
+                    "recommendation": finding.remediation_guidance or "",
                     "configuration": finding.evidence.get("configuration") or {},
                     "synthetic": True,
                     "estate_id": estate.estate_id,

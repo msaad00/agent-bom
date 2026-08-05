@@ -190,23 +190,23 @@ def test_readme_flow_diagrams_keep_a_ten_pixel_rendered_text_floor() -> None:
 
 
 def test_dense_diagrams_hold_their_improved_rendered_text_floor() -> None:
-    """The two diagrams the 10px floor never covered — and still cannot.
+    """The floor these two can hold without clipping — which is lower than before.
 
-    `architecture` (960px) and `persona-value` (1280px) are authored wider than
-    GitHub's ~900px README column, so their type is downscaled on screen. They
-    rendered at 6.09px and 5.98px: correct at full size, unreadable in the
-    README, and invisible to the floor above because that test only lists the
-    two near-1:1 flow diagrams.
+    An earlier pass scaled type up to reach 7.92px and 7.05px rendered. That was
+    measured against a fit audit that only bounded text against the *canvas*, so
+    it never saw labels running past the card borders they sit in. They did:
+    "15 ecosystems · EPSS/KEV · distro-aware", "Self-hosted control plane" and
+    "381 API ops · 77 MCP tools · SARIF" all clipped in the README.
 
-    Type is now scaled as far as `_audit_text_fit` allows without relaying out
-    the boxes, reaching 7.92px and 7.05px. That is a real improvement and still
-    short of 10px — reaching the flow diagrams' floor needs fewer cards per row
-    or a narrower canvas, which is a design change, not a scale factor. This
-    pins what was achieved so it cannot silently regress, and records the gap.
+    With a box-aware audit the honest ceiling is lower. Legibility was traded
+    back for text that stays inside its box, which is the right way round — a
+    clipped label is unreadable at any size. Reaching the flow diagrams' 10px
+    floor needs fewer cards per row or a narrower canvas, which is a design
+    change rather than a scale factor.
     """
     for name, (svg, readme_scale, floor) in {
-        "architecture": (architecture("light"), 900 / 960, 7.5),
-        "persona-value": (persona_value("light"), 900 / 1280, 7.0),
+        "architecture": (architecture("light"), 900 / 960, 6.5),
+        "persona-value": (persona_value("light"), 900 / 1280, 5.9),
     }.items():
         sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]
         rendered = min(sizes) * readme_scale
@@ -214,10 +214,13 @@ def test_dense_diagrams_hold_their_improved_rendered_text_floor() -> None:
 
 
 def test_dense_diagram_text_stays_inside_the_canvas() -> None:
-    """Scaling type for legibility needs a check that actually looks at type.
+    """Scaling type for legibility needs a check that looks at type *and* boxes.
 
     `_audit_layout` bounds `<rect>` elements only, so it reported no issues at
-    every font scale tried, including ones that would clip.
+    every font scale tried. The first version of this audit then bounded text
+    against the canvas only, which passed while labels ran past the cards they
+    sit in — the clipping visible in the README. It now attributes each run to
+    its tightest containing rect.
     """
     from scripts.generate_doc_architecture_svgs import _audit_text_fit
 

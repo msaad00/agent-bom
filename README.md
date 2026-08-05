@@ -38,7 +38,7 @@ Graph provenance stays explicit: collected, inferred, static, and runtime
 relationships remain distinct, and unavailable evidence is never upgraded to
 observed.
 
-<details open>
+<details>
 <summary><b>Control-plane architecture</b></summary>
 
 <p align="center">

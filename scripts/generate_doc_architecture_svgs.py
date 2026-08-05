@@ -1471,7 +1471,7 @@ PERSONA_LANES: tuple[PersonaLane, ...] = (
         "Developers",
         "local scan · images · CI gates",
         "Accurate SCA",
-        "15 ecosystems · EPSS/KEV · distro-aware",
+        "15 ecosystems · EPSS/KEV · distro",
         "dev",
     ),
     PersonaLane(
@@ -1515,8 +1515,9 @@ PERSONA_CARD_PAD_X = 14
 # not wrapped, so an over-long line runs past its pill and into the next card —
 # how the 49-char GRC value line shipped overflowing. Widest strings verified to
 # stay inside a card: "Security engineers" (title), "Self-hosted control plane"
-# (value title), and "15 ecosystems · EPSS/KEV · distro-aware" (value sub),
-# which sits flush against the pill edge — treat 39 as the hard ceiling.
+# (value title). The 39-char sub line that used to sit flush against the pill
+# edge was shortened after the box-aware fit audit showed it clipping; 33 is the
+# widest that now ships, and the audit fails anything past its box.
 PERSONA_TITLE_MAX_CHARS = 18
 PERSONA_VALUE_TITLE_MAX_CHARS = 25
 PERSONA_VALUE_SUB_MAX_CHARS = 39
@@ -1697,7 +1698,13 @@ def persona_value(theme: str) -> str:
 # Average glyph advance for Inter/system-ui at a given font-size, in em. Used to
 # estimate rendered text width; deliberately generous so the audit errs toward
 # reporting an overflow that turns out to fit rather than passing one that clips.
-_GLYPH_ADVANCE_EM = 0.58
+# Calibrated against the persona band, whose copy budgets were measured by
+# actually rendering it: "15 ecosystems · EPSS/KEV · distro-aware" is documented
+# as sitting flush inside its pill. At 0.58 the estimator called that 7% over,
+# so it would have failed the very design it is meant to protect. These strings
+# are dense with narrow glyphs — digits, spaces, "·", "/" — which a single
+# average over-weights.
+_GLYPH_ADVANCE_EM = 0.54
 
 # GitHub renders README images at roughly 900px wide. These two diagrams are
 # authored at 960 and 1280, so their type is downscaled to ~6px on screen —
@@ -1705,8 +1712,8 @@ _GLYPH_ADVANCE_EM = 0.58
 # why they read as unreadable in the README while being correct at full size.
 # Scaled as far as `_audit_text_fit` allows without a relayout; persona-value
 # runs out of room first because its five cards share one 1280px row.
-_ARCHITECTURE_TYPE_SCALE = 1.3
-_PERSONA_TYPE_SCALE = 1.18
+_ARCHITECTURE_TYPE_SCALE = 1.1
+_PERSONA_TYPE_SCALE = 1.0
 
 
 def _scale_type(svg: str, factor: float) -> str:
@@ -1719,31 +1726,57 @@ def _scale_type(svg: str, factor: float) -> str:
 
 
 def _audit_text_fit(svg: str, *, margin: int = 4) -> list[str]:
-    """Return text runs whose estimated width escapes the canvas.
+    """Return text runs whose estimated width escapes their containing box.
 
-    ``_audit_layout`` only bounds ``<rect>`` elements, so it reported "OK" for
-    every font size tried — including ones that would clip. Type cannot be scaled
-    for legibility behind a check that never looks at type.
+    An earlier version only bounded text against the canvas edge. That let a
+    label grow past the card it sits in while still being "inside the SVG", so
+    scaling type up for legibility silently clipped persona chips and outcome
+    lines against their own borders — visible in the README, invisible here.
 
-    This estimates width from glyph count and honours ``text-anchor``. It is an
-    estimate, not a shaping engine: it catches a label growing past the canvas
-    edge, not one overlapping a neighbouring box.
+    Each text is now attributed to the tightest ``<rect>`` that contains its
+    anchor, and measured against that box. Width is estimated from glyph count,
+    so the margin is a small allowance for estimator error, not a tolerance for
+    copy that does not fit. The band's widest value line was previously written
+    to sit flush against its pill; it was shortened rather than widening this
+    number, because raising the margin until the warning disappears silences the
+    audit instead of fixing the overflow it found.
     """
     vb = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg)
     if not vb:
         return ["missing viewBox"]
-    width, _height = map(int, vb.groups())
+    canvas_w, canvas_h = map(int, vb.groups())
+
+    boxes: list[tuple[float, float, float, float]] = []
+    for rect in re.finditer(r'<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg):
+        x, y, w, h = (float(v) for v in rect.groups())
+        boxes.append((x, y, w, h))
+
+    def container(px: float, py: float) -> tuple[float, float, float, float]:
+        """Tightest rect containing the point, else the canvas."""
+        best: tuple[float, float, float, float] | None = None
+        for x, y, w, h in boxes:
+            if x <= px <= x + w and y <= py <= y + h:
+                if best is None or w * h < best[2] * best[3]:
+                    best = (x, y, w, h)
+        return best or (0.0, 0.0, float(canvas_w), float(canvas_h))
+
     issues: list[str] = []
-    for match in re.finditer(r'<text x="([\d.]+)"[^>]*?font-size="([\d.]+)"[^>]*?>([^<]*)</text>', svg):
-        x, size, content = float(match.group(1)), float(match.group(2)), match.group(3)
+    for match in re.finditer(r'<text x="([\d.]+)" y="([\d.]+)"[^>]*?font-size="([\d.]+)"[^>]*?>([^<]*)</text>', svg):
+        x, y, size, content = (
+            float(match.group(1)),
+            float(match.group(2)),
+            float(match.group(3)),
+            match.group(4),
+        )
         if not content.strip():
             continue
         run = len(content) * size * _GLYPH_ADVANCE_EM
         anchor = re.search(r'text-anchor="(\w+)"', match.group(0))
         kind = anchor.group(1) if anchor else "start"
         left = x - run / 2 if kind == "middle" else x - run if kind == "end" else x
-        if left < -margin or left + run > width + margin:
-            issues.append(f"text {content[:24]!r} at x={x} spans {round(run)}px, outside 0..{width}")
+        bx, _by, bw, _bh = container(x, y)
+        if left < bx - margin or left + run > bx + bw + margin:
+            issues.append(f"text {content[:28]!r} spans {round(run)}px, escapes box at x={bx} w={bw}")
     return issues
 
 

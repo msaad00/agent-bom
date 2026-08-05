@@ -1680,7 +1680,7 @@ def persona_value(theme: str) -> str:
     w, h = PERSONA_BAND_WIDTH, 236
     persona_bg = "#16161d" if theme == "dark" else t["bg"]
 
-    margin_x, margin_y = PERSONA_BAND_MARGIN_X, 18
+    margin_y = 18
     gap = PERSONA_BAND_GAP
     card_w = PERSONA_CARD_WIDTH
     card_h = 174

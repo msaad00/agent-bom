@@ -415,13 +415,15 @@ jobs:
         # two calls to SDK methods that do not exist shipped and stayed green.
         run: uv sync --frozen --extra dev --extra aws --extra azure --extra gcp
 
+      # Paths live in the Makefile (LINT_PATHS) so CI and `make lint` cannot
+      # disagree about what is linted. They did: CI checked src/ only.
       - name: Ruff
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
-        run: uv run ruff check src/
+        run: uv run make lint-ruff
 
       - name: MyPy
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
-        run: uv run mypy src/ --ignore-missing-imports --disable-error-code import-untyped
+        run: uv run make lint-mypy
 
       - name: Env-var reference is current (config.py + allowlist gate)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'

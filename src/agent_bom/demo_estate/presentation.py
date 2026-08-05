@@ -77,13 +77,6 @@ _STORY_EVENT_LIMIT = 200
 _STORY_FINDING_LIMIT = 100
 
 
-# Bounded so the story stays legible at estate scale. The summary still reports
-# the unbounded totals, so the view is smaller than the estate but never claims
-# to be the whole of it.
-_STORY_CORRELATION_LIMIT = 50
-_STORY_EVENT_LIMIT = 200
-
-
 def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> EnterpriseDemoStory:
     """Load, verify, normalize, and present the bundled fictional estate."""
 

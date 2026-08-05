@@ -156,8 +156,11 @@ def main_check() -> None:
         "configuration_expected",
         "on a correlated attack path",
         # The bounded lists must keep saying what they are bounded against.
+        # All three: the timeline renders `events`, which the API bounds to 200
+        # while the strip above it reports every observation in the estate.
         "of {posture.total} — incident first",
         "of {story.summary.correlations} — the incident first",
+        "of {story.summary.observations} — the incident first",
     ):
         _require(marker in dashboard, f"dashboard lost required marker: {marker}")
 

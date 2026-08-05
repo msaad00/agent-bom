@@ -302,12 +302,21 @@ export default function DemoEstatePage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_0.6fr]">
-        <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 elev-1">
+        <section
+          className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 elev-1"
+          data-testid="demo-estate-timeline"
+        >
           <div className="flex items-center gap-2">
             <GitBranch className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
             <h2 className="text-base font-semibold text-[color:var(--foreground)]">Normalized evidence timeline</h2>
           </div>
           <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Every row retains its source run and evidence hash; raw provider payloads are not returned.</p>
+          {/* Bounded like the findings and correlations lists, and labelled for
+              the same reason: the strip above reports every observation in the
+              estate, so an unlabelled slice beside it reads as the whole. */}
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+            Showing {orderedEvents.length} of {story.summary.observations} — the incident first
+          </p>
           <ol className="mt-5 space-y-3">
             {orderedEvents.map((event) => (
               <li key={event.event_id} className="grid gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 sm:grid-cols-[8rem_1fr]">

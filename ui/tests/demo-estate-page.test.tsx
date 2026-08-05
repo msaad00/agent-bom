@@ -204,6 +204,21 @@ describe("DemoEstatePage", () => {
     ).toBeInTheDocument();
   });
 
+  it("states what the evidence timeline is bounded against", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    render(<DemoEstatePage />);
+
+    // The timeline renders `events`, which the API bounds to its own limit while
+    // `summary.observations` keeps the estate total. Rendering the bounded list
+    // beside a strip reading the full total, with nothing saying the list is a
+    // slice, is the same defect the findings and correlations lists already
+    // guard against.
+    const timeline = await screen.findByTestId("demo-estate-timeline");
+    expect(timeline).toHaveTextContent(
+      `Showing ${story.events.length} of ${story.summary.observations}`,
+    );
+  });
+
   it("does not substitute live data when demo mode is unavailable", async () => {
     apiMock.getEnterpriseDemoStory.mockRejectedValue(new Error("Demo estate is not enabled"));
     render(<DemoEstatePage />);

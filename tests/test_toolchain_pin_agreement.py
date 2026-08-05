@@ -12,6 +12,7 @@ Nothing compared the two, so the divergence was invisible.
 from __future__ import annotations
 
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -64,11 +65,24 @@ def test_ci_checks_formatting_from_the_shared_path_list() -> None:
     assert "make format-check" in step["run"]
 
 
-def test_format_only_commits_are_skipped_by_blame() -> None:
-    """The reformat touches ~240 files; blame must not stop there."""
+def test_blame_ignore_list_holds_only_resolvable_full_shas() -> None:
+    """A bogus entry here is silent — git skips nothing and says nothing.
+
+    The list is allowed to be empty: this repository squash-merges, so a
+    reformat's final SHA does not exist until its pull request lands, and an
+    entry written before the squash names a commit that is already gone. What
+    must never happen is an abbreviation (git errors out) or a SHA that does not
+    resolve (git skips nothing, silently).
+    """
     revs = ROOT / ".git-blame-ignore-revs"
     assert revs.is_file(), "a tree-wide reformat needs a blame-ignore list"
     shas = [line.split("#", 1)[0].strip() for line in revs.read_text(encoding="utf-8").splitlines() if line.split("#", 1)[0].strip()]
-    assert shas, ".git-blame-ignore-revs lists no revisions"
     for sha in shas:
         assert re.fullmatch(r"[0-9a-f]{40}", sha), f"not a full SHA: {sha!r}"
+        resolved = subprocess.run(
+            ["git", "cat-file", "-t", sha],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert resolved.stdout.strip() == "commit", f"{sha} does not resolve to a commit in this repository"

@@ -1,9 +1,14 @@
-# Revisions that changed formatting only. Configure git to skip them:
+# Revisions that changed formatting only, so `git blame` attributes lines to the
+# change that actually wrote them. Enable it once per clone:
 #
 #   git config blame.ignoreRevsFile .git-blame-ignore-revs
 #
-# Entries must be full 40-character SHAs — git rejects abbreviations here, and
-# tests/test_toolchain_pin_agreement.py asserts the same.
-
-# style: reformat with ruff 0.16.1
-7cb88b5351cea07b3d734ff48d6850d080bf1195
+# Entries must be full 40-character SHAs **that exist in this repository**. Git
+# errors out on an abbreviation and there is no other signal that an entry is
+# bogus, so a stale SHA is invisible until someone wonders why blame stopped
+# skipping. tests/test_toolchain_pin_agreement.py enforces both properties.
+#
+# This repository squash-merges, so a reformat's final SHA does not exist until
+# its pull request lands. Add the entry in a follow-up commit on main rather
+# than in the pull request doing the reformatting — a SHA recorded before the
+# squash is already dead by the time anyone reads it.

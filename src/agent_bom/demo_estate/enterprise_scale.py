@@ -39,6 +39,19 @@ from agent_bom.demo_estate.enterprise import (
 from agent_bom.demo_estate.enterprise import (
     _observation_hash as _canonical_observation_hash,
 )
+from agent_bom.demo_estate.enterprise_ai import (
+    AI_LANE_TAG,
+    build_delivery_assets,
+    build_first_party_ai_assets,
+    build_third_party_ai_assets,
+    index_cloud_accounts,
+    mark_cloud_exposure,
+)
+from agent_bom.demo_estate.enterprise_journeys import (
+    actor_for,
+    build_journeys,
+    session_trace_id,
+)
 
 # Clouds that must show real depth: several accounts, every environment. The
 # graph audit found `environment` silently null for AWS and GCP and Snowflake
@@ -101,14 +114,56 @@ _SOURCE_FOR_PROVIDER: dict[str, EvidenceSource] = {
     "azure": EvidenceSource.AZURE_ACTIVITY,
     "gcp": EvidenceSource.GCP_AUDIT,
     "snowflake": EvidenceSource.SNOWFLAKE_ACCESS_HISTORY,
+    "github": EvidenceSource.GITHUB_ACTIONS,
+    "kubernetes": EvidenceSource.KUBERNETES_AUDIT,
+    "mcp": EvidenceSource.MCP_GATEWAY,
+    "agent": EvidenceSource.OTEL_LLM,
+    "openai": EvidenceSource.OTEL_LLM,
+    "anthropic": EvidenceSource.OTEL_LLM,
+    "huggingface": EvidenceSource.OTEL_LLM,
 }
+
+# Inventory rows a log never names on their own. A package appears in an SBOM
+# and in a vulnerability finding, never in CloudTrail; emitting a control-plane
+# event for one would be evidence the estate cannot justify.
+_UNOBSERVED_RESOURCE_TYPES: frozenset[str] = frozenset({"package"})
 
 _EVENT_TYPES: dict[str, tuple[str, ...]] = {
     "aws": ("AssumeRole", "GetObject", "PutBucketPolicy", "CreateAccessKey"),
     "azure": ("Microsoft.Authorization/roleAssignments/write", "Microsoft.Storage/storageAccounts/listKeys"),
     "gcp": ("storage.objects.get", "iam.serviceAccounts.getAccessToken"),
     "snowflake": ("QUERY", "GRANT_ROLE", "COPY_INTO"),
+    "github": ("workflow_run.completed", "workflow_job.queued"),
+    "kubernetes": ("deployments.update", "pods/exec.create", "secrets.get"),
+    "mcp": ("tools/call", "tools/list", "initialize"),
+    "agent": ("gen_ai.chat", "gen_ai.execute_tool"),
+    "openai": ("gen_ai.chat", "gen_ai.embeddings"),
+    "anthropic": ("gen_ai.chat", "gen_ai.execute_tool"),
+    "huggingface": ("gen_ai.embeddings",),
 }
+
+# Control-plane calls a first-party AI service actually produces. Without these
+# a Bedrock agent in an AWS account would emit ``GetObject`` — plausible-looking
+# evidence that names the wrong API, which is worse than none.
+_AI_SERVICE_EVENT_TYPES: dict[str, tuple[str, ...]] = {
+    "aws": ("bedrock:InvokeModelWithResponseStream", "bedrock:Retrieve", "sagemaker:InvokeEndpoint"),
+    "azure": (
+        "Microsoft.CognitiveServices/accounts/deployments/action",
+        "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/score/action",
+    ),
+    "gcp": ("aiplatform.endpoints.predict", "aiplatform.models.get"),
+    "snowflake": ("CORTEX_COMPLETE", "CORTEX_SEARCH_QUERY"),
+}
+
+
+def _event_types_for(asset: EstateAsset) -> tuple[str, ...]:
+    """Which API calls this asset's own control plane emits."""
+    if asset.tags.get(AI_LANE_TAG) == "first_party":
+        ai_types = _AI_SERVICE_EVENT_TYPES.get(asset.provider)
+        if ai_types:
+            return ai_types
+    return _EVENT_TYPES[asset.provider]
+
 
 _DATA_CLASSES: dict[str, tuple[str, ...]] = {
     "bucket": ("confidential",),
@@ -135,6 +190,13 @@ MIN_ENTERPRISE_EVENTS = 6000
 MIN_ACCOUNTS_PER_CLOUD = 5
 MIN_RESOURCES_PER_ACCOUNT = 20
 
+# Floors for the properties that make the estate *demonstrate* rather than
+# assert. Each replaces a number that looked healthy while the thing it stood
+# for was absent: 6,148 correlations of which 3 spanned a second vendor, and 439
+# findings every one of which was the same CIS scanner.
+MIN_CROSS_SOURCE_CORRELATIONS = 300
+MIN_ESTATE_FINDINGS = 2000
+
 
 @dataclass(frozen=True)
 class ScaleProfile:
@@ -152,6 +214,30 @@ class ScaleProfile:
     resources_per_account: int = 64
     events_per_asset: int = 3
 
+    # The AI estate. ``ai_services_per_account`` are FIRST-PARTY services inside
+    # the cloud accounts above — Bedrock, Azure OpenAI, Vertex, Cortex — sharing
+    # those accounts' identities and data. The third-party counts below are
+    # deliberately smaller in total: external providers are the minority of an
+    # enterprise's AI surface, and modelling them as the whole of it is what made
+    # nine standalone assets read as the entire AI story.
+    ai_services_per_account: int = 14
+    mcp_servers: int = 24
+    agents: int = 48
+    external_models: int = 24
+
+    # Delivery and runtime — the spine a cross-vendor trace walks. One
+    # repository, one workflow and one deployment (what the estate had) means
+    # every journey converges on the same three nodes.
+    repositories: int = 56
+    clusters: int = 16
+    workloads_per_cluster: int = 8
+    packages_per_image: int = 6
+
+    # Multi-source traces. Each is one actor walking CI -> cloud identity ->
+    # Kubernetes -> MCP -> warehouse -> model, so this is very nearly the
+    # cross-source correlation count.
+    journeys: int = 420
+
     def __post_init__(self) -> None:
         if self.accounts_per_cloud < 2:
             raise ValueError("a cloud needs at least two accounts for drill-down to mean anything")
@@ -159,6 +245,10 @@ class ScaleProfile:
             raise ValueError("each account needs at least one resource per environment")
         if self.events_per_asset < 1:
             raise ValueError("an asset with no evidence cannot participate in correlation")
+        if self.journeys < 0:
+            raise ValueError("journey count cannot be negative")
+        if self.mcp_servers < 1 or self.agents < 1:
+            raise ValueError("the AI lane needs at least one server and one agent to correlate")
 
 
 def _stable_index(*parts: str) -> int:
@@ -236,6 +326,36 @@ def _build_assets(profile: ScaleProfile, tenant_id: str) -> tuple[EstateAsset, .
     return tuple(assets)
 
 
+def _build_estate_assets(profile: ScaleProfile, tenant_id: str) -> tuple[EstateAsset, ...]:
+    """Cloud population, then everything that runs on it, in one inventory.
+
+    Order matters: the AI and delivery lanes are generated *from* the cloud
+    accounts, reading back the identities and data stores actually inventoried
+    rather than re-deriving them. A second derivation would be free to name a
+    principal the estate never created, and the contract would only catch it if
+    the principal happened to be referenced by an event.
+    """
+    cloud = mark_cloud_exposure(_build_assets(profile, tenant_id))
+    accounts = index_cloud_accounts(cloud)
+    first_party = build_first_party_ai_assets(accounts, tenant_id=tenant_id, per_account=profile.ai_services_per_account)
+    third_party = build_third_party_ai_assets(
+        accounts,
+        tenant_id=tenant_id,
+        mcp_servers=profile.mcp_servers,
+        agents=profile.agents,
+        external_models=profile.external_models,
+    )
+    delivery = build_delivery_assets(
+        accounts,
+        tenant_id=tenant_id,
+        repositories=profile.repositories,
+        clusters=profile.clusters,
+        workloads_per_cluster=profile.workloads_per_cluster,
+        packages_per_image=profile.packages_per_image,
+    )
+    return (*cloud, *first_party, *third_party, *delivery)
+
+
 _PLACEHOLDER_HASH = "0" * 64
 _READ_ONLY_EVENTS = frozenset({"GetObject", "QUERY", "storage.objects.get"})
 
@@ -261,23 +381,38 @@ def _seal(observation: RawObservation) -> RawObservation:
 
 
 def _build_observations(assets: tuple[EstateAsset, ...], profile: ScaleProfile, tenant_id: str) -> tuple[RawObservation, ...]:
+    """Per-asset activity, grouped into per-principal daily sessions.
+
+    Two changes from the shape this replaces, and both exist to stop the
+    correlation layer from reporting work it never did.
+
+    **The actor comes from one shared pool**, not from ``f"{provider}-principal-…"``.
+    A principal that only ever appears in one cloud can never produce a
+    cross-vendor grouping, so the old estate could not have correlated across
+    vendors even in principle.
+
+    **The trace id is a session, not the event.** Minting a trace per event made
+    every group a group of one, which is how 6,148 "correlations" contained 3
+    that joined anything. A session — one identity, one day, whatever it touched
+    — is a grouping the evidence actually supports.
+    """
     observations: list[RawObservation] = []
     occurrences = range(profile.events_per_asset)
     for asset in assets:
         source = _SOURCE_FOR_PROVIDER.get(asset.provider)
-        if source is None:
+        if source is None or asset.resource_type in _UNOBSERVED_RESOURCE_TYPES:
             continue
         # Hoisted: these are constant for every event on this asset, and at
         # scale the per-event recomputation dominated the loop body.
-        source_value = source.value
-        run_id = f"demo-run-scaled-{source_value}"
-        event_types = _EVENT_TYPES[asset.provider]
+        run_id = f"demo-run-scaled-{source.value}"
+        event_types = _event_types_for(asset)
         type_count = len(event_types)
         asset_id = asset.asset_id
         for occurrence in occurrences:
             seed = _stable_index(asset_id, str(occurrence))
             event_type = event_types[seed % type_count]
             observed_at = _EPOCH + timedelta(minutes=seed % 40320)
+            actor_id = actor_for(asset, occurrence)
             event_id = f"evt-{hashlib.sha256(f'{asset_id}:{occurrence}'.encode()).hexdigest()[:20]}"
             observations.append(
                 _seal(
@@ -287,9 +422,9 @@ def _build_observations(assets: tuple[EstateAsset, ...], profile: ScaleProfile, 
                         source=source,
                         event_type=event_type,
                         observed_at=observed_at,
-                        actor_id=f"{asset.provider}-principal-{seed % 37:02d}@{_TENANT_DOMAIN}",
+                        actor_id=actor_id,
                         resource_ids=(asset_id,),
-                        trace_id=hashlib.sha256(event_id.encode()).hexdigest()[:32],
+                        trace_id=session_trace_id(actor_id, observed_at, tenant_id),
                         raw_payload={
                             "eventName": event_type,
                             "accountScope": asset.account_scope,
@@ -382,8 +517,11 @@ def build_scaled_estate(profile: ScaleProfile | None = None, *, tenant_id: str =
     if not tenant_id:
         raise ValueError("tenant_id must not be empty")
 
-    assets = _build_assets(profile, tenant_id)
-    observations = _build_observations(assets, profile, tenant_id)
+    assets = _build_estate_assets(profile, tenant_id)
+    observations = (
+        *_build_observations(assets, profile, tenant_id),
+        *build_journeys(assets, tenant_id=tenant_id, count=profile.journeys, epoch=_EPOCH),
+    )
     estate = EnterpriseEstate(
         schema_version=ENTERPRISE_SCHEMA_VERSION,
         estate_id="northstar-health-ai-scaled-v1",

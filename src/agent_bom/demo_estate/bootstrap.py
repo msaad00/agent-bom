@@ -65,7 +65,7 @@ def _tenant_has_demo_jobs(store: Any, tenant_id: str) -> bool:
 
 
 def _estate_findings(tenant_id: str) -> list[Any]:
-    """Return the composed estate's posture findings for the demo scan job.
+    """Return the composed estate's findings for the demo scan job.
 
     Seeded through the SAME ``findings`` list every other generator uses, so the
     findings list, the severity facets, the exec tiles, SARIF and every export
@@ -77,6 +77,23 @@ def _estate_findings(tenant_id: str) -> list[Any]:
     from agent_bom.demo_estate.enterprise_findings import build_estate_findings
 
     return list(build_estate_findings(build_demo_estate(tenant_id=tenant_id)))
+
+
+def _estate_blast_radii(tenant_id: str) -> list[Any]:
+    """Return the blast radii behind the estate's CVE findings.
+
+    Not optional, and not a duplicate of the findings above.
+    ``output.finding_views.cve_findings`` resolves the report's CVE array from
+    ``report.blast_radii`` whenever that list is non-empty, and the unified
+    ``findings`` array excludes ``CVE`` by design. An estate that contributed
+    CVE findings but no blast radii therefore had its entire vulnerability lane
+    dropped between the seeder and the API — ``/v1/findings`` reported 1,833 of
+    2,601 seeded rows and no surface said a lane was missing.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+    from agent_bom.demo_estate.enterprise_risk import build_vulnerability_blast_radii
+
+    return list(build_vulnerability_blast_radii(build_demo_estate(tenant_id=tenant_id)))
 
 
 def _run_demo_scan_report(*, tenant_id: str) -> dict[str, Any]:
@@ -101,6 +118,9 @@ def _run_demo_scan_report(*, tenant_id: str) -> dict[str, Any]:
     findings.extend(blocklist_findings_for_agents(agents))
     findings.extend(evaluate_mcp_auth_posture(agents))
     findings.extend(_estate_findings(tenant_id))
+    # Both halves of the vulnerability lane, or neither surfaces (see
+    # ``_estate_blast_radii``).
+    blast_radii = [*blast_radii, *_estate_blast_radii(tenant_id)]
     report = to_json(
         AIBOMReport(
             agents=agents,

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_bom.demo_estate.enterprise import EnterpriseEstate
+from agent_bom.demo_estate.enterprise import NARRATIVE_INCIDENT_TRACE_ID, EnterpriseEstate
 from agent_bom.demo_estate.enterprise_composition import build_demo_estate
 from agent_bom.demo_estate.enterprise_correlation import (
     build_estate_correlations,
@@ -23,6 +23,7 @@ from agent_bom.demo_estate.enterprise_findings import (
     build_estate_findings,
     summarize_estate_findings,
 )
+from agent_bom.demo_estate.enterprise_risk import estate_asset_type
 from agent_bom.finding import Finding, FindingSource, FindingType
 
 TENANT = "estate-findings-tenant"
@@ -60,14 +61,22 @@ def test_findings_reuse_the_inventory_asset_id_and_never_a_stub(estate, findings
         identifier = finding.asset.identifier
         assert identifier in by_id, f"{finding.id} targets a stub asset {identifier!r}"
         asset = by_id[identifier]
-        # The canonical id must be a pure function of the inventory asset id, so
-        # every finding on one asset joins to the same node.
+        # The canonical id must be a pure function of (asset_type, asset_id),
+        # and the estate must use ONE asset_type per inventoried row — that is
+        # what makes every finding on one asset join to one node. The expected
+        # asset_type comes from ``estate_asset_type``, the single place every
+        # lane reads it from; hardcoding "cloud_resource" here would assert that
+        # a package and an EC2 instance are the same kind of thing.
         assert (
             finding.asset.canonical_id
             == Finding(
                 finding_type=FindingType.CIS_FAIL,
                 source=FindingSource.CLOUD_CIS,
-                asset=type(finding.asset)(name=asset.asset_id, asset_type="cloud_resource", identifier=asset.asset_id),
+                asset=type(finding.asset)(
+                    name=asset.asset_id,
+                    asset_type=estate_asset_type(asset),
+                    identifier=asset.asset_id,
+                ),
                 severity="medium",
                 title="probe",
             ).asset.canonical_id
@@ -116,7 +125,11 @@ def test_every_finding_carries_an_identity_edge_backed_by_the_estate(estate, fin
             identity = by_id.get(identity_id)
             assert identity is not None, f"{finding.id} names an identity outside the inventory: {identity_id}"
             assert identity.resource_type in IDENTITY_RESOURCE_TYPES
-            assert identity.provider == subject.provider
+            # Same ACCOUNT boundary — deliberately not the same provider. A GKE
+            # workload assumes a GCP service account and an EKS pod assumes an
+            # IAM role: the principal legitimately belongs to the cloud that
+            # owns the account, while the workload is inventoried under
+            # ``kubernetes``. The boundary that must hold is the account.
             assert identity.account_scope == subject.account_scope, (
                 f"{finding.id} crosses an account boundary: {identity.account_scope} != {subject.account_scope}"
             )
@@ -149,8 +162,18 @@ def test_the_phi_data_surfaces_on_the_attack_path_carry_findings(estate, finding
     assert by_id["snowflake:table:nh_prod/analytics/phi/patient_summary"].data_classifications
 
 
-def test_every_finding_carries_a_configuration_edge_with_observed_and_expected(findings):
-    for finding in findings:
+def test_every_posture_finding_carries_a_configuration_edge_with_observed_and_expected(findings):
+    """The configuration edge is what a POSTURE finding is; other lanes differ.
+
+    A CIS control failure is a statement about a setting, so observed/expected
+    is the finding. A CVE is a statement about a package version, a secret about
+    a file and line: demanding a ``configuration`` block from them would force
+    every lane to fabricate one. The lane-specific evidence each carries is
+    asserted by its own test below.
+    """
+    posture = [f for f in findings if f.source is FindingSource.CLOUD_CIS]
+    assert posture, "the posture lane disappeared"
+    for finding in posture:
         configuration = finding.evidence.get("configuration")
         assert isinstance(configuration, dict), f"{finding.id} has no configuration evidence"
         for key in ("setting", "observed", "expected"):
@@ -164,7 +187,12 @@ def test_every_finding_carries_a_configuration_edge_with_observed_and_expected(f
 
 
 def test_the_incident_chain_assets_carry_findings_linked_to_their_attack_path(estate, findings):
-    correlation = next(row for row in correlate_enterprise_estate(estate).correlations if row.kind == "data_egress_attempt")
+    # The narrative incident by name. "The first data-egress correlation" picked
+    # it out only while it was the only one; the generated population produces
+    # hundreds, sorted by trace id, so that selector now returns an arbitrary
+    # journey and the test would assert nothing about the incident.
+    correlation = correlate_enterprise_estate(estate).correlation_by_trace(NARRATIVE_INCIDENT_TRACE_ID)
+    assert correlation is not None and correlation.kind == "data_egress_attempt"
     on_path = {f.asset.identifier for f in findings} & set(correlation.asset_path)
     assert on_path, f"no finding lands on the primary attack path — the incident chain is still a diagram, path={correlation.asset_path}"
     linked = [f for f in findings if f.asset.identifier in on_path and f.evidence.get("correlation_id") == correlation.correlation_id]
@@ -178,6 +206,13 @@ def test_the_incident_chain_assets_carry_findings_linked_to_their_attack_path(es
 
 
 def test_every_finding_maps_to_at_least_one_compliance_control(findings):
+    """Holds across every lane, not only posture.
+
+    Three converters had to be brought up to it: ``blast_radius_to_finding``
+    needs ``apply_framework_tags`` run over the blast radius first (a live scan
+    does), and neither ``secret_dict_to_finding`` nor ``iac_finding_to_finding``
+    classifies into the hub on its own.
+    """
     for finding in findings:
         controls = finding.normalized_controls()
         assert controls, f"{finding.id} evidences no compliance control"
@@ -371,7 +406,7 @@ def test_two_tenants_holding_identical_finding_ids_both_persist():
         )
 
     for tenant in ("tenant-left", "tenant-right"):
-        page = store.list_current_page(tenant, limit=1000)
+        page = store.list_current_page(tenant, limit=len(left_ids) + 100)
         rows = page[0] if isinstance(page, tuple) else page
         assert len(rows) == len(left_ids), f"{tenant} kept {len(rows)} of {len(left_ids)} findings"
 

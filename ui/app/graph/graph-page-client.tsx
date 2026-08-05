@@ -162,6 +162,20 @@ import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation"
 // The bound matches the interactive render budget: past it, the overview
 // aggregates dense neighborhoods rather than splitting the topology across
 // pages, so edges never vanish across a page boundary.
+//
+// Deliberately NOT raised to `/v1/graph`'s own `limit <= 5000` ceiling, though
+// the demo estate now projects ~6,700 nodes and 5,000 would show more of them.
+// Measured against the seeded estate, `limit=5000` costs **3.19 s** versus
+// **0.77 s** at 3,000 — the response carries ~19k edges rather than ~9k — and
+// the WebGL overview can only draw
+// `LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES` of whatever arrives. Paying three
+// seconds of page load for nodes the canvas then discards is a worse trade than
+// showing fewer.
+//
+// Past this budget the canvas is the wrong surface, and the honest ones are
+// already fast: `/v1/graph/rollup` aggregates the COMPLETE snapshot in ~136 ms
+// (~387 ms drilling into the org), and `/v1/findings` carries every finding.
+// The completeness banner below names the budget and points at them.
 const GRAPH_FULL_FETCH_LIMIT = LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES;
 
 const GraphDriftLegend = dynamic(
@@ -3404,7 +3418,7 @@ function GraphPageInner() {
                     complete: false,
                     sampled: false,
                     returned: displayNodes.length,
-                    reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes. Dense neighborhoods are aggregated — filter or focus rather than treating this canvas as the full estate.`,
+                    reason: `Interactive render budget is ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes, ranked by severity. Dense neighborhoods are aggregated — filter or focus here, or open the estate roll-up, which aggregates the complete graph. This canvas is not the full estate.`,
                   }
                 }
                 visibleCount={displayNodes.length}

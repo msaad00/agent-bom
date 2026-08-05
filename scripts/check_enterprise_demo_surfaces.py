@@ -20,6 +20,10 @@ if str(REPO_ROOT / "src") not in sys.path:
 
 from agent_bom.cli import main  # noqa: E402
 from agent_bom.demo_estate.enterprise_findings import ESTATE_FINDING_SEVERITY_BUCKETS  # noqa: E402
+from agent_bom.demo_estate.enterprise_scale import (  # noqa: E402
+    MIN_CROSS_SOURCE_CORRELATIONS,
+    MIN_ESTATE_FINDINGS,
+)
 from agent_bom.demo_estate.presentation import build_enterprise_demo_story  # noqa: E402
 
 EXPECTED_FIXTURES = {
@@ -71,6 +75,18 @@ def main_check() -> None:
     _require(story.summary.evidence_sources == 9, "evidence-source count changed")
     # Floor, not a fixed count: the composed estate correlates thousands of rows.
     _require(story.summary.correlations >= 4, "the narrative correlations are gone")
+    # ...and the number that actually carries the claim. ``correlations`` counts
+    # trace groups; only these join evidence across vendors. The estate once
+    # reported 6,148 correlations of which 3 were cross-source, and no gate
+    # noticed, because nothing checked the second number.
+    _require(
+        story.summary.cross_source_correlations >= MIN_CROSS_SOURCE_CORRELATIONS,
+        f"only {story.summary.cross_source_correlations} correlations span more than one vendor",
+    )
+    _require(
+        story.summary.cross_source_correlations <= story.summary.correlations,
+        "more cross-source correlations than correlations",
+    )
     # The view is bounded so the incident stays visible; the summary must still
     # report the unbounded truth, never the page size.
     _require(len(story.correlations) <= story.summary.correlations, "story claims more rows than it holds")
@@ -106,7 +122,13 @@ def main_check() -> None:
     # configuration and a control — and that the bounded list never reports its
     # own length as the estate's total.
     posture = story.finding_summary
-    _require(posture.total >= 300, "the estate lost its posture findings")
+    _require(posture.total >= MIN_ESTATE_FINDINGS, "the estate lost its findings")
+    # More than one scanner. Every one of the estate's 439 findings used to be a
+    # CIS check, so the demo's risk grew with control coverage rather than with
+    # the estate and an AI service, a leaked credential and a vulnerable image
+    # all read as "nothing found".
+    lanes = {finding.finding_type for finding in story.findings}
+    _require(len(lanes) >= 3, f"the rendered findings come from too few lanes: {sorted(lanes)}")
     _require(story.summary.findings == posture.total, "the summary and the posture total disagree")
     _require(
         sum(posture.by_severity.values()) == posture.total,

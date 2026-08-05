@@ -46,18 +46,20 @@ def test_story_builds_one_canonical_cross_vendor_read_model() -> None:
 
 
 def test_story_never_presents_single_source_traces_as_cross_vendor_correlations() -> None:
-    """The headline correlation count must not be read as the cross-vendor claim.
+    """The headline correlation count and the cross-vendor claim must reconcile.
 
-    ``_build_correlations`` groups evidence by ``trace_id``. The generated
-    population gives every observation its own trace, so almost every row is one
-    event from one source correlated with nothing — a labelled event, not a
-    correlation. At estate scale that inflates the number the demo leads with
-    from single digits into the thousands.
+    This test used to assert ``cross_source < correlations / 100`` as its
+    *precondition* — it encoded the defect it was written beside. The estate gave
+    every observation its own ``trace_id``, so 6,145 of 6,148 "correlations" were
+    one event grouped with itself and only 3 joined a second vendor; the
+    assertion made that permanent.
 
-    The graph already publishes the honest figure: ``project_estate_into_graph``
-    draws a chain only where a correlation spans at least two inventoried assets,
-    and ``/v1/graph/attack-paths`` returns those. The story must carry the same
-    reconcilable number rather than leaving the two surfaces to disagree.
+    The generator no longer works that way: activity is grouped into per-principal
+    session traces, journeys walk CI → cloud → Kubernetes → MCP → warehouse →
+    model on one trace, and a single-event trace yields no correlation at all. So
+    the property to hold is not a ratio — it is that ``cross_source_correlations``
+    is an independent recount of the rows that genuinely span vendors, never
+    exceeds the total, and that the total contains no single-event row.
     """
     from agent_bom.demo_estate.enterprise_composition import build_demo_estate
     from agent_bom.demo_estate.enterprise_correlation import build_estate_correlations
@@ -67,11 +69,18 @@ def test_story_never_presents_single_source_traces_as_cross_vendor_correlations(
     rows = build_estate_correlations(build_demo_estate(tenant_id=tenant))
     cross_source = sum(1 for row in rows if len(set(row.sources)) >= 2)
 
-    # Precondition: the gap this test exists for is real on the shipped estate.
-    assert 0 < cross_source < story.summary.correlations / 100, (cross_source, story.summary.correlations)
-
     assert story.summary.cross_source_correlations == cross_source
-    assert story.summary.cross_source_correlations <= story.summary.correlations
+    assert 0 < cross_source <= story.summary.correlations
+
+    # No row may be a single event wearing a trace id — that is what made the
+    # old headline meaningless.
+    assert all(len(row.event_ids) >= 2 for row in rows), "a single-event trace is being served as a correlation"
+
+    # Every row the summary counts as cross-source really spans two sources.
+    for row in rows:
+        if len(set(row.sources)) < 2:
+            continue
+        assert len(row.event_ids) >= 2
 
 
 def test_demo_story_cli_emits_complete_machine_readable_evidence() -> None:

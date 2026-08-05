@@ -31,11 +31,22 @@ from agent_bom.graph.types import EntityType, RelationshipType
 # The correlated incident the estate exists to demonstrate: a workflow assumes a
 # role, the role runs a workload, the workload calls an MCP tool, the tool reads
 # a PHI table, and the table's rows leave through a hosted model.
+# The hand-authored incident, hop by hop. Longer than the six it used to be:
+# the correlation's ordering table now includes the repository behind the
+# workflow, the image the role deploys, the cluster the workload runs on, the
+# MCP server that owns the tool and the database above the table. All five were
+# always in the incident's evidence — the rendered chain simply jumped over
+# them, so the canvas drew a workflow reaching straight into an IAM role.
 INCIDENT_CHAIN: tuple[str, ...] = (
+    "github:repository:northstar-health/member-copilot",
     "github:workflow:member-copilot/deploy-prod",
     "cloud_resource:aws:iam:role:member-copilot-prod",
+    ("cloud_resource:aws:ecr:image:member-copilot@sha256:4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"),
+    "kubernetes:cluster:eks/member-ai-prod",
     "kubernetes:workload:member-ai-prod/ai-prod/member-copilot",
+    "mcp:server:clinical-analytics",
     "mcp:tool:clinical-analytics/execute_sql",
+    "snowflake:database:nh_prod/analytics",
     "snowflake:table:nh_prod/analytics/phi/patient_summary",
     "model:openai:gpt-4.1",
 )
@@ -127,19 +138,35 @@ def test_findings_attach_to_the_inventoried_asset(projected, estate, estate_find
     graph, summary = projected
     asset_ids = {asset.asset_id for asset in estate.assets}
 
-    finding_nodes = [n for n in graph.nodes.values() if n.entity_type is EntityType.MISCONFIGURATION]
-    assert len(finding_nodes) == len(estate_findings) == 439, len(finding_nodes)
+    # Findings split by kind: a CVE is a VULNERABILITY node, everything else a
+    # MISCONFIGURATION. Projecting all of them as misconfigurations left the
+    # CNAPP overlay unable to see a single vulnerable resource, so its
+    # internet-exposed-AND-vulnerable combination could never fire.
+    finding_nodes = [n for n in graph.nodes.values() if n.entity_type in (EntityType.MISCONFIGURATION, EntityType.VULNERABILITY)]
+    assert len(finding_nodes) == len(estate_findings), (len(finding_nodes), len(estate_findings))
+    assert any(n.entity_type is EntityType.VULNERABILITY for n in finding_nodes), "no CVE was projected as a vulnerability node"
+    assert any(n.entity_type is EntityType.MISCONFIGURATION for n in finding_nodes)
 
     affected: set[str] = set()
     for edge in graph.edges:
         if edge.relationship is not RelationshipType.AFFECTS:
             continue
-        if graph.nodes[edge.source].entity_type is not EntityType.MISCONFIGURATION:
+        if graph.nodes[edge.source].entity_type not in (
+            EntityType.MISCONFIGURATION,
+            EntityType.VULNERABILITY,
+        ):
             continue
         assert edge.target in asset_ids, f"finding attached to a non-inventoried node: {edge.target}"
         affected.add(edge.target)
-    assert len(affected) == 407, len(affected)
-    assert summary["findings"] == 439
+    # Derived, not pinned: what must hold is that every finding lands on an
+    # inventoried asset and that the affected set is a real subset of the estate
+    # — "all assets" or "no assets" would both mean the posture is not being
+    # evaluated. Pinning 407 turned every estate change into a gate failure and
+    # said nothing extra.
+    assert 0 < len(affected) < len(asset_ids), (len(affected), len(asset_ids))
+    assert summary["findings"] == len(estate_findings)
+    assert summary["findings_total"] == len(estate_findings)
+    assert summary["findings_truncated"] is False
 
     # Every finding node carries the Finding.id it was projected from, so the
     # findings list and the graph join without a heuristic.
@@ -149,7 +176,7 @@ def test_findings_attach_to_the_inventoried_asset(projected, estate, estate_find
 
 
 def test_incident_chain_is_traversable_end_to_end(projected) -> None:
-    """The six-hop correlated chain renders as consecutive edges, not prose."""
+    """The correlated chain renders as consecutive edges, not prose."""
     graph, summary = projected
     pairs = {(source, target) for source, target, _ in _edge_pairs(graph)}
     for node_id in INCIDENT_CHAIN:
@@ -202,12 +229,17 @@ def test_rollup_collapses_the_estate_to_one_readable_root(projected, estate) -> 
     assert root["entity_type"] == EntityType.ORG.value
     assert root["aggregate"]["descendant_count"] >= 2000, root["aggregate"]["descendant_count"]
 
-    # 40 account scopes, not the 46 (provider, scope) pairs the inventory holds:
-    # an EKS cluster and the S3 buckets beside it share one AWS account number,
-    # and the projection must not split one account into two nodes.
+    # One node per account SCOPE, not one per (provider, scope) pair: an EKS
+    # cluster, the S3 buckets beside it, the Kubernetes workloads, the MCP
+    # servers and the Bedrock agents all share one AWS account number, and the
+    # projection must not split that into six nodes. Derived rather than pinned
+    # so growing the estate does not require editing the number — the property
+    # is the collapse, and it is strictly fewer nodes than pairs.
     accounts = drill_down(graph, org_id)["children"]
-    assert len(accounts) == 40, len(accounts)
-    assert len({(a.provider, a.account_scope) for a in estate.assets}) == 46
+    pairs = {(a.provider, a.account_scope) for a in estate.assets}
+    scopes = {a.account_scope for a in estate.assets if a.resource_type != "organization"}
+    assert len(accounts) == len(scopes), (len(accounts), len(scopes))
+    assert len(accounts) < len(pairs), (len(accounts), len(pairs))
     assert {row["entity_type"] for row in accounts} == {EntityType.ACCOUNT.value}
 
     envs = drill_down(graph, "account:aws:123456789012")["children"]
@@ -319,7 +351,9 @@ def test_projected_finding_nodes_carry_readable_remediation_text(projected, esta
     """
     graph, _ = projected
     finding_nodes = [
-        node for node in graph.nodes.values() if node.entity_type is EntityType.MISCONFIGURATION and node.attributes.get("estate_id")
+        node
+        for node in graph.nodes.values()
+        if node.entity_type in (EntityType.MISCONFIGURATION, EntityType.VULNERABILITY) and node.attributes.get("estate_id")
     ]
     assert len(finding_nodes) == len(estate_findings)
     for node in finding_nodes:

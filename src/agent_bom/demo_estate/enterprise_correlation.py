@@ -52,6 +52,11 @@ class NormalizedEnterpriseEvent(BaseModel):
     source_run_id: str
     event_relationships: dict[str, Any]
     graph_projection: dict[str, Any]
+    # The enforcement verdict this event recorded, normalized out of the
+    # provider payload. A scalar, not the payload: normalized output still
+    # carries no raw provider body, but a correlation that has to report whether
+    # an egress was blocked cannot do it by guessing from the event's source.
+    policy_decision: str = ""
 
 
 class EnterpriseCorrelation(BaseModel):
@@ -128,6 +133,39 @@ def _actor_type(actor_id: str) -> str:
     if lowered.startswith("snowflake_role:"):
         return "service_account"
     return "user"
+
+
+_BLOCKED_DECISIONS = frozenset({"block", "blocked", "deny", "denied"})
+_ALLOWED_DECISIONS = frozenset({"allow", "allowed", "permit"})
+
+
+def normalize_policy_decision(observation: RawObservation) -> str:
+    """Read the enforcement verdict a provider recorded, in that provider's spelling.
+
+    An MCP gateway writes ``{"decision": "block"}`` at the top level; an OTel
+    GenAI span writes ``attributes["agent_bom.decision"]``. Both mean the same
+    thing and neither is inferable from the event's source — which is exactly
+    what :func:`_correlation_kind` used to do, labelling *every* trace that
+    touched an LLM span ``blocked``. That published a verdict the evidence did
+    not support on traces where nothing was blocked at all.
+
+    Returns ``""`` when the payload carries no verdict, so "not enforced" and
+    "allowed" stay distinguishable.
+    """
+    payload = observation.raw_payload
+    raw = payload.get("decision")
+    if raw is None:
+        attributes = payload.get("attributes")
+        if isinstance(attributes, dict):
+            raw = attributes.get("agent_bom.decision")
+    if raw is None:
+        return ""
+    lowered = str(raw).strip().casefold()
+    if lowered in _BLOCKED_DECISIONS:
+        return "blocked"
+    if lowered in _ALLOWED_DECISIONS:
+        return "allowed"
+    return ""
 
 
 def _asset_ref_type(asset: EstateAsset) -> str:
@@ -224,6 +262,7 @@ def _normalize_event(
         source_run_id=observation.provenance.run_id,
         event_relationships=relationships,
         graph_projection=projection,
+        policy_decision=normalize_policy_decision(observation),
     )
 
 
@@ -251,6 +290,7 @@ class _CorrelationRow:
     trace_id: str
     resource_ids: tuple[str, ...]
     evidence_hash: str
+    policy_decision: str = ""
 
     @classmethod
     def from_normalized(cls, event: NormalizedEnterpriseEvent) -> _CorrelationRow:
@@ -263,6 +303,7 @@ class _CorrelationRow:
             trace_id=event.trace_id,
             resource_ids=event.resource_ids,
             evidence_hash=event.evidence_hash,
+            policy_decision=event.policy_decision,
         )
 
     @classmethod
@@ -276,22 +317,97 @@ class _CorrelationRow:
             trace_id=observation.trace_id,
             resource_ids=observation.resource_ids,
             evidence_hash=observation.provenance.evidence_hash,
+            policy_decision=normalize_policy_decision(observation),
         )
 
 
 def _correlation_kind(events: tuple[_CorrelationRow, ...]) -> tuple[str, str]:
+    """Name what a trace is, and report the outcome its evidence recorded.
+
+    The outcome used to be a constant per kind — any trace touching an LLM span
+    was ``blocked``. On the hand-authored incident that was true; on a generated
+    estate where most model calls succeed it published a verdict nothing had
+    reached. Outcomes now come from the enforcement decision the span or gateway
+    actually wrote, and a trace with no decision recorded reports ``observed``
+    rather than picking one.
+    """
     if any(event.stage is EstateStage.REMEDIATED for event in events):
         return "remediation", "enforced"
+    decisions = {event.policy_decision for event in events if event.policy_decision}
     if any(event.source is EvidenceSource.OTEL_LLM for event in events):
-        return "data_egress_attempt", "blocked"
+        if "blocked" in decisions:
+            return "data_egress_attempt", "blocked"
+        if "allowed" in decisions:
+            return "data_egress_attempt", "allowed"
+        return "model_invocation", "observed"
     if any("roleAssignments/write" in event.event_type for event in events):
         return "privilege_change", "observed"
     if any("CreateServiceAccountKey" in event.event_type for event in events):
         return "credential_issuance", "observed"
-    return "activity_sequence", "observed"
+    if len({event.source for event in events}) >= 2:
+        return "cross_vendor_trace", "observed"
+    # One principal, one window, one system. A real grouping — and named so
+    # nobody reads a causal chain into it.
+    return "identity_session", "observed"
 
 
-_PATH_TYPES = ("workflow", "iam_role", "deployment", "tool", "table", "hosted_model")
+# The order a path is walked in, so consecutive hops are drawn as consecutive
+# edges: code, then the identity it federates into, then the runtime, then the
+# tool, then the AI service, then the data, then the model the data reaches.
+# A type missing from this list is not excluded from the estate — it is excluded
+# from the *path*, because a path that visits nodes in inventory order is a list.
+_PATH_TYPES = (
+    "repository",
+    "workflow",
+    "iam_role",
+    "service_principal",
+    "service_account",
+    "role",
+    "container_image",
+    "cluster",
+    "deployment",
+    "server",
+    "tool",
+    "bedrock_agent",
+    "vertex_agent",
+    "sagemaker_endpoint",
+    "vertex_endpoint",
+    "azure_openai_deployment",
+    "cognitive_services_account",
+    "cortex_function",
+    "cortex_search_service",
+    "spcs_service",
+    "gemini_api",
+    "bedrock_knowledge_base",
+    "ai_search_index",
+    "bucket",
+    "storage_account",
+    "database",
+    "sql_database",
+    "table",
+    "hosted_model",
+    "model_artifact",
+    "foundation_model",
+    "vertex_model",
+    "sagemaker_model",
+)
+
+# A path longer than this is a roster, not a route. Sessions can touch dozens of
+# assets; drawing all of them as one chain produces an unreadable edge and an
+# attack path nobody can act on.
+#
+# Twelve, not eight: the full pipeline is repository → workflow → identity →
+# image → cluster → workload → MCP server → tool → AI service → data store →
+# table → model. At eight the cap truncated from the tail, which is where the
+# *destination* lives — the incident's own path stopped at the MCP tool and
+# dropped the PHI table and the model it was trying to reach, turning the one
+# chain the demo exists to show into a chain that goes nowhere.
+_MAX_PATH_HOPS = 12
+
+# A trace containing one event is not a correlation — it is an event. Emitting
+# one anyway is what let the estate report 6,148 correlations of which 6,145
+# were a single row grouped with itself.
+_MIN_TRACE_EVENTS = 2
 
 
 def _asset_path(events: tuple[_CorrelationRow, ...], assets_by_id: dict[str, EstateAsset]) -> tuple[str, ...]:
@@ -304,7 +420,7 @@ def _asset_path(events: tuple[_CorrelationRow, ...], assets_by_id: dict[str, Est
         )
         if match is not None:
             selected.append(match)
-    return tuple(selected or ordered_ids)
+    return tuple((selected or list(ordered_ids))[:_MAX_PATH_HOPS])
 
 
 def _data_classifications(asset_ids: tuple[str, ...], assets_by_id: dict[str, EstateAsset]) -> tuple[str, ...]:
@@ -327,6 +443,8 @@ def _build_correlations(
 
     correlations: list[EnterpriseCorrelation] = []
     for trace_id, trace_events in sorted(by_trace.items()):
+        if len(trace_events) < _MIN_TRACE_EVENTS:
+            continue
         ordered = tuple(sorted(trace_events, key=lambda row: (row.observed_at, row.event_id)))
         kind, outcome = _correlation_kind(ordered)
         sources = tuple(event.source for event in ordered)

@@ -1,4 +1,4 @@
-.PHONY: help install test lint lint-ruff lint-mypy preflight preflight-fix docker-build docker-run scan clean build-ui release-build publish-test publish analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
+.PHONY: help install test lint lint-ruff lint-mypy format format-check preflight preflight-fix docker-build docker-run scan clean build-ui release-build publish-test publish analytics dev check-dupes clean-dupes secrets platform-up fullstack-up
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -44,7 +44,10 @@ lint-mypy:  ## MyPy over the shipped package
 lint: lint-ruff lint-mypy  ## Run linters (ruff + mypy)
 
 format:  ## Format code with ruff
-	ruff format src/ tests/
+	ruff format $(LINT_PATHS)
+
+format-check:  ## Fail if anything is unformatted (what CI runs)
+	ruff format --check $(LINT_PATHS)
 
 preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do this before pushing a PR
 	@echo "→ OpenAPI artifacts (docs/openapi/)";   python scripts/export_openapi.py --check

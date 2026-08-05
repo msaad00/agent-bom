@@ -19,8 +19,12 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
 
+  # Must match the ruff pinned in uv.lock, which is what CI resolves. They
+  # diverged (0.9.7 here, 0.16.1 there) and the formatter's style changed
+  # between those releases, so the hook and CI were formatting to two different
+  # targets with nothing comparing them. `make format-check` now does.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.7
+    rev: v0.16.1
     hooks:
       - id: ruff
         args: [--fix]

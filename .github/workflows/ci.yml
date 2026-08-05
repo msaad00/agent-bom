@@ -421,6 +421,10 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run make lint-ruff
 
+      - name: Ruff format
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
+        run: uv run make format-check
+
       - name: MyPy
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run make lint-mypy

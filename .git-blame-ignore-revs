@@ -1,0 +1,9 @@
+# Revisions that changed formatting only. Configure git to skip them:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Entries must be full 40-character SHAs — git rejects abbreviations here, and
+# tests/test_toolchain_pin_agreement.py asserts the same.
+
+# style: reformat with ruff 0.16.1
+7cb88b5351cea07b3d734ff48d6850d080bf1195

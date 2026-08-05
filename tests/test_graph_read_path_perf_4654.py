@@ -62,25 +62,37 @@ def test_demo_story_route_does_not_block_the_event_loop(story_client: TestClient
     a single worker. The route is ``async def``; calling the synchronous builder
     inside it hands the loop no yield point at all.
 
-    Asserted by **thread identity, not by timing**. Two earlier versions measured
-    loop stalls with a heartbeat and both went red on CI for reasons unrelated to
-    the code — a fixed 500 ms ceiling lost to 542 ms of xdist scheduler noise,
-    then a noise-calibrated ceiling lost to a 921 ms stall on a contended runner.
-    A wall-clock threshold cannot separate "the route parked the loop" from "the
-    machine was busy", so it was testing the runner.
+    Asserted structurally rather than by timing or by a second event loop, after
+    three versions that each failed for reasons unrelated to the code:
 
-    The comparison has to be made against the thread running the *event loop*,
-    captured from inside the app. A third version compared against the pytest
-    thread and was vacuous: ``TestClient`` drives the app on its own loop in
-    another thread, so an on-loop build still looked "off-thread" and the test
-    passed with the offload removed.
+    * a fixed 500 ms ceiling lost to 542 ms of xdist scheduler noise;
+    * a noise-calibrated ceiling lost to a 921 ms stall on a contended runner;
+    * comparing against the pytest thread was vacuous, because ``TestClient``
+      drives the app on its own loop in another thread;
+    * driving a second loop with ``asyncio.run`` to capture the real loop thread
+      hung CI for 25 minutes — the module-level ``CapacityLimiter`` binds to the
+      loop that first uses it, so a second loop deadlocks against it.
+
+    What this asserts instead: the offload is actually invoked, and the builder
+    runs on a different thread than the caller. Work on a worker thread cannot
+    block the loop, by construction, and removing the offload removes the call.
     """
     import threading
 
+    import anyio.to_thread
+
     from agent_bom.api.routes import demo_estate as demo_routes
 
+    caller_threads: list[int] = []
     build_threads: list[int] = []
     real_builder = demo_routes.build_enterprise_demo_story
+    real_run_sync = anyio.to_thread.run_sync
+
+    async def recording_run_sync(func, *args, **kwargs):
+        # Runs on the event loop, so this is the thread a blocking build would
+        # have occupied.
+        caller_threads.append(threading.get_ident())
+        return await real_run_sync(func, *args, **kwargs)
 
     def recording_builder(*, tenant_id: str):
         build_threads.append(threading.get_ident())
@@ -88,30 +100,18 @@ def test_demo_story_route_does_not_block_the_event_loop(story_client: TestClient
 
     demo_routes.reset_demo_story_cache()
 
-    async def exercise() -> tuple[int, int]:
-        import httpx
-
-        from agent_bom.api.server import app
-
-        # Captured on the loop itself, which is the thread a blocking build would
-        # occupy. Driving the ASGI app directly keeps the request on this loop.
-        loop_thread = threading.get_ident()
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://probe") as client:
-            response = await client.get("/v1/demo-estate/story")
-        assert response.status_code == 200, response.text
-        return loop_thread, response.status_code
-
     with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(demo_routes.anyio.to_thread, "run_sync", recording_run_sync)
         mp.setattr(demo_routes, "build_enterprise_demo_story", recording_builder)
-        loop_thread, _status = asyncio.run(exercise())
+        response = story_client.get("/v1/demo-estate/story")
 
+    assert response.status_code == 200, response.text
     assert build_threads, "the builder should have run at least once"
-    on_loop = [tid for tid in build_threads if tid == loop_thread]
-    assert not on_loop, (
-        f"the estate build ran on the event-loop thread ({loop_thread}) — it must be offloaded, "
-        "otherwise the whole ~1.6s build parks the loop for the entire request"
+    assert caller_threads, (
+        "the route never offloaded — anyio.to_thread.run_sync was not called, so the ~1.6s estate build ran inline on the event loop"
     )
+    on_loop = [tid for tid in build_threads if tid in set(caller_threads)]
+    assert not on_loop, f"the estate build ran on the calling (event-loop) thread {on_loop[0]} — it must be offloaded"
 
 
 def test_demo_story_is_built_once_per_tenant_and_reused(story_client: TestClient) -> None:

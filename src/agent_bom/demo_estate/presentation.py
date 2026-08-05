@@ -41,6 +41,16 @@ class EnterpriseDemoSummary(BaseModel):
     complete_sources: int = Field(ge=0)
     partial_sources: int = Field(ge=0)
     correlations: int = Field(ge=0)
+    # Correlation rows that actually span more than one evidence source.
+    #
+    # ``correlations`` counts trace groups, and the generated population gives
+    # almost every observation its own trace — so at estate scale that number
+    # runs into the thousands while the rows that join evidence *across vendors*
+    # stay in single digits. Publishing only the first invites every surface to
+    # read a labelled event as a cross-vendor correlation. This is the figure the
+    # graph already agrees with: ``project_estate_into_graph`` draws a chain only
+    # for a correlation with more than one inventoried asset.
+    cross_source_correlations: int = Field(default=0, ge=0)
     snapshots: int = Field(ge=0)
     findings: int = Field(default=0, ge=0)
 
@@ -129,6 +139,7 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
             complete_sources=result.complete_source_count,
             partial_sources=result.partial_source_count,
             correlations=len(result.correlations),
+            cross_source_correlations=sum(1 for row in result.correlations if len(set(row.sources)) >= 2),
             snapshots=len(estate.snapshots),
             findings=finding_summary.total,
         ),

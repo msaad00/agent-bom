@@ -27,12 +27,17 @@ ShowcaseProfile = Literal["baseline", "current"]
 SHOWCASE_TENANT = "default"
 SHOWCASE_SCAN_ID = "showcase"
 SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
-# Bumped when the seeded snapshot's *shape* changes so ``_showcase_seed_is_current``
-# treats an older seed as stale and refreshes it. A DB seeded before the
-# enterprise estate was projected in still holds the 112-node showcase; without a
-# bump it would keep it forever and the demo would silently under-report.
-SHOWCASE_BASELINE_CREATED_AT = "2026-08-01T12:00:00+00:00"
-SHOWCASE_CURRENT_CREATED_AT = "2026-08-08T12:00:00+00:00"
+# Bumped when the seeded snapshot's *shape or content* changes so
+# ``_showcase_seed_is_current`` treats an older seed as stale and refreshes it. A
+# DB seeded before the enterprise estate was projected in still holds the
+# 112-node showcase; without a bump it would keep it forever and the demo would
+# silently under-report. The same applies to what the projection *writes*: the
+# 08-01/08-08 pair shipped estate finding nodes whose ``recommendation`` was a
+# ``Remediation`` object frozen to its Python repr, and a running demo would have
+# served that snapshot forever. The seven-day gap is the drift lens's window and
+# is preserved on every bump.
+SHOWCASE_BASELINE_CREATED_AT = "2026-08-08T12:00:00+00:00"
+SHOWCASE_CURRENT_CREATED_AT = "2026-08-15T12:00:00+00:00"
 
 # The estate's containment root, once projected, becomes the graph's single
 # top-level container. The hand-built showcase org hangs off it so the demo reads

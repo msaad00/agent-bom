@@ -183,17 +183,25 @@ def test_baseline_snapshot_carries_inventory_without_the_collection_window() -> 
 
     That is what makes the drift lens show posture *arriving* between the two
     snapshots rather than relabelling the same set.
+
+    Asserted as the relationship between the two snapshots rather than against
+    two frozen totals. The contract is that baseline and current inventory the
+    SAME estate and differ only in evidence; pinning the literal asset count
+    made this a size test, so growing the estate failed it while the property it
+    names held perfectly.
     """
     from agent_bom.demo_estate.showcase_graph import project_estate_onto_showcase
 
     baseline = UnifiedGraph(scan_id=SHOWCASE_BASELINE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
     summary = project_estate_onto_showcase(baseline, tenant_id=SHOWCASE_TENANT, profile="baseline")
-    assert summary["assets"] == 2068
+    assert summary["assets"] > 0
     assert summary["findings"] == 0
     assert summary["chain_edges"] == 0
     assert not [n for n in baseline.nodes.values() if n.entity_type is EntityType.MISCONFIGURATION]
 
     current = UnifiedGraph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
     current_summary = project_estate_onto_showcase(current, tenant_id=SHOWCASE_TENANT, profile="current")
-    assert current_summary["findings"] == 439
+    # Same inventory in both snapshots — only the evidence window differs.
+    assert current_summary["assets"] == summary["assets"]
+    assert current_summary["findings"] > 0
     assert len(current.nodes) > len(baseline.nodes)

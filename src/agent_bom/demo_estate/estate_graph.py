@@ -1,10 +1,10 @@
 """Project the enterprise demo estate into the unified graph.
 
-:mod:`agent_bom.demo_estate.enterprise_composition` inventories 2,068 assets and
-:mod:`agent_bom.demo_estate.enterprise_findings` raises 439 findings on 407 of
-them, but that evidence reached only the demo story endpoint. The graph a
-prospect actually clicks was seeded independently from a 112-node hand-built
-showcase, so "one correlated graph at enterprise scale" rested on the 112.
+:mod:`agent_bom.demo_estate.enterprise_composition` inventories the estate and
+:mod:`agent_bom.demo_estate.enterprise_findings` raises its findings, but that
+evidence reached only the demo story endpoint. The graph a prospect actually
+clicks was seeded independently from a 112-node hand-built showcase, so "one
+correlated graph at enterprise scale" rested on the 112.
 
 This module closes the gap. Three decisions carry the weight:
 
@@ -90,11 +90,36 @@ _RESOURCE_ENTITY_TYPES: dict[str, EntityType] = {
     # Code / CI.
     "repository": EntityType.APPLICATION,
     "workflow": EntityType.CI_JOB,
-    # AI estate.
+    "package": EntityType.PACKAGE,
+    # AI estate — third party.
     "hosted_model": EntityType.MODEL,
     "model_artifact": EntityType.MODEL,
     "server": EntityType.SERVER,
     "tool": EntityType.TOOL,
+    "agent": EntityType.AGENT,
+    # AI estate — first party, inside the cloud accounts. Mapped explicitly for
+    # the same reason as everything above: an unmapped type silently renders as a
+    # generic cloud resource, so a Bedrock agent and an EC2 instance would be
+    # indistinguishable on the canvas that is supposed to show the AI estate.
+    "bedrock_agent": EntityType.AGENT,
+    "vertex_agent": EntityType.AGENT,
+    "bedrock_knowledge_base": EntityType.DATASET,
+    "ai_search_index": EntityType.DATASET,
+    "training_dataset": EntityType.DATASET,
+    "bedrock_guardrail": EntityType.ACCESS_POLICY,
+    "prompt_template": EntityType.CONFIG_FILE,
+    "foundation_model": EntityType.MODEL,
+    "sagemaker_model": EntityType.MODEL,
+    "vertex_model": EntityType.MODEL,
+    "azure_openai_deployment": EntityType.MODEL,
+    "sagemaker_endpoint": EntityType.SERVER,
+    "vertex_endpoint": EntityType.SERVER,
+    "gemini_api": EntityType.SERVER,
+    "cognitive_services_account": EntityType.SERVER,
+    "cortex_function": EntityType.SERVER,
+    "cortex_search_service": EntityType.SERVER,
+    "spcs_service": EntityType.SERVER,
+    "ai_foundry_project": EntityType.APPLICATION,
 }
 
 _DEFAULT_ENTITY_TYPE = EntityType.CLOUD_RESOURCE
@@ -112,10 +137,33 @@ _ACCOUNT_PROVIDER_PREFERENCE: tuple[str, ...] = (
     "kubernetes",
     "github",
     "mcp",
+    "agent",
     "openai",
     "anthropic",
     "huggingface",
     "enterprise",
+)
+
+# The node budget the graph canvas fetches with (``GRAPH_FULL_FETCH_LIMIT`` in
+# ``ui/app/graph/graph-page-client.tsx``, itself capped by ``/v1/graph``'s own
+# ``limit <= 5000``). The projection does NOT trim itself to fit: the estate is
+# the estate, and shrinking it so one view never truncates would be tuning the
+# data to flatter the picture. What it does is *report* its size against the
+# budget, so a caller can say how much of the graph a canvas is showing instead
+# of implying it is showing all of it.
+GRAPH_CANVAS_NODE_BUDGET = 5000
+
+# Asset tags that describe a relationship to another inventoried asset. Each
+# becomes a real edge, which is the difference between "we have AI assets" and
+# "this AI service reaches that data through that identity".
+_TOPOLOGY_TAGS: tuple[tuple[str, RelationshipType], ...] = (
+    ("uses_identity", RelationshipType.ASSUMES),
+    ("reads_data", RelationshipType.CAN_ACCESS),
+    ("delegates_to", RelationshipType.DELEGATED_TO),
+    ("mcp_server", RelationshipType.PART_OF),
+    ("container_image", RelationshipType.DEPENDS_ON),
+    ("cluster", RelationshipType.PART_OF),
+    ("repository", RelationshipType.PART_OF),
 )
 
 # Correlation kinds whose asset path is a real multi-hop chain worth drawing.
@@ -179,12 +227,20 @@ def _asset_node(asset: EstateAsset, estate: EnterpriseEstate) -> UnifiedNode:
     count the same risk twice and stop it reconciling with
     ``summarize_estate_findings``.
     """
+    exposed = asset.tags.get("internet_facing") == "true"
     return UnifiedNode(
         id=asset.asset_id,
         entity_type=entity_type_for_resource_type(asset.resource_type),
         label=asset.display_name,
         attributes={
             "asset_id": asset.asset_id,
+            # The CNAPP overlay's own spelling for exposure, not a demo-only
+            # one, so the estate's exposed resources take part in the same
+            # toxic-combination and exposure-path logic a live scan does.
+            "internet_exposed": exposed,
+            "publicly_accessible": asset.tags.get("public_access") == "true",
+            "over_permissive": asset.tags.get("over_permissive") == "true",
+            "ai_lane": asset.tags.get("ai_lane", ""),
             "native_id": asset.native_id,
             "resource_id": asset.native_id,
             "resource_name": asset.display_name,
@@ -212,8 +268,23 @@ def _asset_node(asset: EstateAsset, estate: EnterpriseEstate) -> UnifiedNode:
     )
 
 
+# Finding types that are a VULNERABILITY on the graph rather than a
+# MISCONFIGURATION. The distinction is not cosmetic: ``cnapp_overlay`` builds its
+# set of vulnerable resources from ``VULNERABLE_TO`` edges, and its toxic
+# combination — internet-exposed AND vulnerable — cannot fire for a resource
+# whose CVEs were all projected as misconfigurations. Projecting 768 CVEs under
+# the wrong entity type would have made the estate's exposure story quietly
+# weaker than the evidence it holds.
+_VULNERABILITY_FINDING_TYPES: frozenset[str] = frozenset({"CVE", "MALICIOUS_PACKAGE", "MALICIOUS_MODEL"})
+
+
+def _is_vulnerability(finding: Finding) -> bool:
+    return finding.finding_type.value in _VULNERABILITY_FINDING_TYPES
+
+
 def _finding_node_id(finding: Finding) -> str:
-    return f"misconfig:demo-estate:{finding.id}"
+    prefix = "vuln" if _is_vulnerability(finding) else "misconfig"
+    return f"{prefix}:demo-estate:{finding.id}"
 
 
 def project_estate_into_graph(
@@ -307,9 +378,47 @@ def project_estate_into_graph(
         graph.add_node(_asset_node(asset, estate))
         _edge(env_id, asset.asset_id, RelationshipType.CONTAINS)
 
+    # Topology: the edges the estate's own inventory declares. Containment alone
+    # renders a tree, and a tree cannot express "this AI service assumes that
+    # role and reads that table" — which is the whole reason the AI estate was
+    # generated inside the cloud accounts rather than beside them.
+    known_asset_ids = {asset.asset_id for asset in estate.assets}
+    topology_edges = 0
+    exposure_edges = 0
+    for asset in estate.assets:
+        for tag, relationship in _TOPOLOGY_TAGS:
+            target = asset.tags.get(tag, "")
+            if not target or target not in known_asset_ids or target == asset.asset_id:
+                continue
+            _edge(
+                asset.asset_id,
+                target,
+                relationship,
+                evidence={"reason": f"estate_{tag}"},
+                provenance={"source": ESTATE_DATA_SOURCE},
+            )
+            topology_edges += 1
+        # An internet-facing service in front of regulated data is the shape an
+        # exposure path exists to surface. Drawn only when BOTH ends are real:
+        # exposure without a reachable data store is a property of one node, not
+        # a path, and inventing the far end would be the over-claim the graph
+        # must never make.
+        if asset.tags.get("internet_facing") == "true":
+            data_target = asset.tags.get("reads_data", "")
+            if data_target and data_target in known_asset_ids:
+                _edge(
+                    asset.asset_id,
+                    data_target,
+                    RelationshipType.EXPOSED_TO,
+                    weight=6.0,
+                    evidence={"reason": "internet_exposed_data_store"},
+                    provenance={"source": ESTATE_DATA_SOURCE},
+                )
+                exposure_edges += 1
+
     finding_count = 0
     identity_edges = 0
-    known_assets = {asset.asset_id for asset in estate.assets}
+    known_assets = known_asset_ids
     # Worst finding risk per asset. The asset node itself stays unrated (see
     # ``_asset_node``), so this is the only place the posture on a hop is
     # available to score a chain.
@@ -326,10 +435,11 @@ def project_estate_into_graph(
         risk = SEVERITY_RISK_SCORE.get(severity, 0.0)
         risk_by_asset[asset_id] = max(risk_by_asset.get(asset_id, 0.0), risk)
         node_id = _finding_node_id(finding)
+        vulnerability = _is_vulnerability(finding)
         graph.add_node(
             UnifiedNode(
                 id=node_id,
-                entity_type=EntityType.MISCONFIGURATION,
+                entity_type=EntityType.VULNERABILITY if vulnerability else EntityType.MISCONFIGURATION,
                 label=finding.title,
                 severity=severity,
                 risk_score=SEVERITY_RISK_SCORE.get(severity, 0.0),
@@ -369,6 +479,11 @@ def project_estate_into_graph(
         # account → environment → resource → finding.
         _edge(node_id, asset_id, RelationshipType.AFFECTS)
         _edge(asset_id, node_id, RelationshipType.CONTAINS)
+        if vulnerability:
+            # The reverse edge the live builder emits for a vulnerable
+            # component, and the one ``cnapp_overlay`` reads to decide which
+            # resources are vulnerable at all.
+            _edge(asset_id, node_id, RelationshipType.VULNERABLE_TO)
         finding_count += 1
 
         principal = str(finding.evidence.get("identity_asset_id") or "")
@@ -383,6 +498,7 @@ def project_estate_into_graph(
 
     chain_edges, paths = _project_incident_chains(graph, correlations, known_assets, risk_by_asset)
 
+    node_count = len(graph.nodes)
     return {
         "version": ESTATE_GRAPH_VERSION,
         "estate_id": estate.estate_id,
@@ -390,9 +506,26 @@ def project_estate_into_graph(
         "accounts": len(accounts),
         "environments": len(environments),
         "findings": finding_count,
+        # Projection is total: every finding on an inventoried asset becomes a
+        # node. These fields exist so a consumer can prove that rather than
+        # assume it, and so the day a bound IS introduced it has to be declared
+        # in the same breath rather than silently dropping rows.
+        "findings_total": len(findings),
+        "findings_truncated": finding_count < len(findings),
+        "findings_bound_reason": "" if finding_count == len(findings) else "asset_not_inventoried",
         "identity_edges": identity_edges,
+        "topology_edges": topology_edges,
+        "exposure_edges": exposure_edges,
         "chain_edges": chain_edges,
         "attack_paths": paths,
+        "nodes": node_count,
+        "edges": len(graph.edges),
+        # What one canvas fetch can hold, and whether this graph exceeds it. The
+        # canvas is a working surface with a render budget; the roll-up and the
+        # findings list carry the whole estate. Reporting the relationship is
+        # what keeps a truncated canvas from reading as the complete picture.
+        "node_budget": GRAPH_CANVAS_NODE_BUDGET,
+        "exceeds_canvas_budget": node_count > GRAPH_CANVAS_NODE_BUDGET,
     }
 
 
@@ -472,6 +605,7 @@ def _chain_risk(graph: UnifiedGraph, hops: Sequence[str], risk_by_asset: dict[st
 __all__ = [
     "ESTATE_DATA_SOURCE",
     "ESTATE_GRAPH_VERSION",
+    "GRAPH_CANVAS_NODE_BUDGET",
     "entity_type_for_resource_type",
     "estate_account_node_id",
     "estate_environment_node_id",

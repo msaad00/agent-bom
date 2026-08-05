@@ -758,6 +758,78 @@ def _rel_value(edge: UnifiedEdge) -> str:
     return edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
 
 
+# org → account → environment → resource. Four is the estate's containment depth
+# plus a level of slack; the loop stops early when a level yields no new parent,
+# so this only bounds a cycle.
+_MAX_CONTAINMENT_LEVELS = 5
+
+
+async def _containment_ancestors(
+    graph_store: Any,
+    *,
+    scan_id: str,
+    tenant_id: str,
+    node_ids: set[str],
+    known_edges: list[UnifiedEdge],
+) -> tuple[list[UnifiedNode], list[UnifiedEdge]]:
+    """Return the containment parents of a node page, and the edges reaching them.
+
+    Node pages are ordered by severity. That is right for "show me the worst
+    first" and wrong for structure: once an estate carries more high-severity
+    findings than the page holds, every org, account and environment falls off
+    page one, and the default graph response describes an estate with no shape.
+    It read as correct only while the estate was small enough that the spine
+    happened to fit.
+
+    Containment ancestors are bounded by the page, not by the estate: each page
+    node contributes at most one parent per level, and levels collapse fast
+    because pages share parents (measured on the demo estate: a 500-node page
+    resolves 552 ancestors, of which 104 are env/account/org). Adding them grows
+    the payload by roughly the page size — it does not scale with the estate —
+    so the page stays bounded while gaining a shape. ``completeness.ranked`` and
+    ``completeness.context_nodes`` report the split.
+    """
+    if not node_ids:
+        return [], []
+
+    ancestor_ids: set[str] = set()
+    ancestor_edges: dict[tuple[str, str], UnifiedEdge] = {}
+    frontier = set(node_ids)
+    frontier_edges = known_edges
+
+    for _level in range(_MAX_CONTAINMENT_LEVELS):
+        parents: set[str] = set()
+        for edge in frontier_edges:
+            # The roll-up already defines what containment means (contains /
+            # hosts / owns). Answering it again here is how the two drift.
+            if _rel_value(edge) not in ROLLUP_CONTAINMENT_RELATIONSHIPS:
+                continue
+            if edge.target in frontier and edge.source not in node_ids:
+                parents.add(edge.source)
+                ancestor_edges[(edge.source, edge.target)] = edge
+        parents -= ancestor_ids
+        if not parents:
+            break
+        ancestor_ids |= parents
+        frontier = parents
+        frontier_edges = await _graph_store_call(
+            graph_store.edges_for_node_ids,
+            scan_id=scan_id,
+            tenant_id=tenant_id,
+            node_ids=parents,
+        )
+
+    if not ancestor_ids:
+        return [], []
+    nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=scan_id,
+        tenant_id=tenant_id,
+        node_ids=ancestor_ids,
+    )
+    return list(nodes), list(ancestor_edges.values())
+
+
 def _edge_relationships_for_hops(hops: list[str], edges: list[UnifiedEdge]) -> list[str]:
     """Return relationship names for consecutive hop pairs when topology is available."""
     if len(hops) < 2:
@@ -2155,7 +2227,14 @@ async def get_graph(
         tenant_id=tenant,
         node_ids=attack_path_hop_ids - paged_ids,
     )
-    nodes_by_id = {node.id: node for node in [*paged_nodes, *attack_path_nodes]}
+    ancestor_nodes, ancestor_edges = await _containment_ancestors(
+        graph_store,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        node_ids=paged_ids,
+        known_edges=paged_edges,
+    )
+    nodes_by_id = {node.id: node for node in [*paged_nodes, *attack_path_nodes, *ancestor_nodes]}
     snapshot_stats = await _graph_store_call(
         graph_store.snapshot_stats,
         scan_id=effective_scan_id,
@@ -2171,24 +2250,34 @@ async def get_graph(
         **snapshot_stats,
         "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
     }
+    response_nodes = [*paged_nodes, *ancestor_nodes]
+    page_truncated = bool(next_cursor) or offset + len(paged_nodes) < total
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
         "created_at": created_at,
-        "nodes": [n.to_dict() for n in paged_nodes],
-        "edges": [e.to_dict() for e in paged_edges],
+        "nodes": [n.to_dict() for n in response_nodes],
+        "edges": [e.to_dict() for e in [*paged_edges, *ancestor_edges]],
         "attack_paths": [
             _serialize_attack_path(path, paged_edges, nodes_by_id=nodes_by_id, scan_id=effective_scan_id) for path in source_attack_paths
         ],
         "interaction_risks": [],
         "stats": snapshot_stats,
         "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
-        "completeness": graph_completeness(
-            returned=len(paged_nodes),
-            total=total,
-            truncated=bool(next_cursor) or offset + len(paged_nodes) < total,
-            reason="node_page_limit" if bool(next_cursor) or offset + len(paged_nodes) < total else "",
-        ),
+        "completeness": {
+            **graph_completeness(
+                returned=len(response_nodes),
+                total=total,
+                truncated=page_truncated,
+                reason="node_page_limit" if page_truncated else "",
+            ),
+            # ``returned`` counts every node in the payload; ``pagination`` counts
+            # only the ranked page. Containment ancestors are added on top of the
+            # page, so without naming them the two numbers cannot be reconciled
+            # and the extra nodes read as a paging bug.
+            "ranked": len(paged_nodes),
+            "context_nodes": len(ancestor_nodes),
+        },
     }
 
 

@@ -19,6 +19,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ENTERPRISE_SCHEMA_VERSION = "1.0.0"
 _FIXTURE_NAME = "enterprise_observations.jsonl"
 
+# The hand-authored incident's trace, named rather than discovered.
+#
+# The presentation layer used to surface "the first correlation of kind
+# ``data_egress_attempt``", which was unambiguous only while the incident was the
+# estate's sole egress attempt. Once the generated population produces hundreds
+# of them, correlations sort by trace id and an arbitrary generated journey
+# becomes the headline. ``tests/test_enterprise_demo_contract.py`` asserts this
+# id still exists in the fixture, so a renumbered incident fails loudly instead
+# of silently promoting a different story.
+NARRATIVE_INCIDENT_TRACE_ID = "7f3a9b12c4d5e6f7890abcde12345678"
+
 
 class EstateStage(StrEnum):
     BASELINE = "baseline"
@@ -255,6 +266,7 @@ _ASSET_SPECS: tuple[dict[str, Any], ...] = (
         "display_name": "Deploy member copilot",
         "environment": "production",
         "account_scope": "northstar-health",
+        "tags": {"repository": "github:repository:northstar-health/member-copilot"},
         "owner": "ai-platform@northstar.example",
         "cost_center": "AI-410",
         "data_classifications": ["confidential"],
@@ -322,6 +334,14 @@ _ASSET_SPECS: tuple[dict[str, Any], ...] = (
         "display_name": "member-copilot",
         "environment": "production",
         "account_scope": "member-ai-prod",
+        "tags": {
+            "cluster": "kubernetes:cluster:eks/member-ai-prod",
+            "container_image": (
+                "cloud_resource:aws:ecr:image:member-copilot@sha256:4f2c8d66a10b490c6f5e7a2f91f7eb04cf9b1001df06d422ad2c42c5bc82f20a"
+            ),
+            "uses_identity": "cloud_resource:aws:iam:role:member-copilot-prod",
+            "reads_data": "snowflake:table:nh_prod/analytics/phi/patient_summary",
+        },
         "region": "us-east-1",
         "owner": "ai-platform@northstar.example",
         "cost_center": "AI-410",
@@ -347,6 +367,11 @@ _ASSET_SPECS: tuple[dict[str, Any], ...] = (
         "display_name": "execute_sql",
         "environment": "production",
         "account_scope": "member-ai-prod",
+        "tags": {
+            "mcp_server": "mcp:server:clinical-analytics",
+            "write_capable": "false",
+            "reads_data": "snowflake:table:nh_prod/analytics/phi/patient_summary",
+        },
         "owner": "data-platform@northstar.example",
         "cost_center": "DATA-320",
         "data_classifications": ["phi", "pii"],

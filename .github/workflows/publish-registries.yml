@@ -3,11 +3,18 @@ name: Publish to Registries
 # Auto-publishes to Smithery and ClawHub after a successful Release workflow.
 # Secrets needed (add via Settings → Secrets):
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
-#   SMITHERY_UPSTREAM_TOKEN — bearer token Smithery presents to our own MCP
-#     endpoint. Without it Smithery cannot enumerate tools and the release
-#     settles as AUTH_REQUIRED, which is why the public catalog listed 36 of
-#     the 77 tools the server actually serves.
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
+#
+# NOT wired, deliberately: a `SMITHERY_UPSTREAM_TOKEN` was once documented here
+# as the way to let Smithery's scanner authenticate against our MCP endpoint.
+# No such secret exists and nothing in this file ever read one, so the note
+# described a fix that was never implemented. The consequence is real and
+# accepted: Smithery cannot enumerate our tools, the release settles as
+# AUTH_REQUIRED, and the public catalog lists fewer tools than the server
+# serves. Closing that gap means handing a third-party scanner a working bearer
+# token for a production endpoint — a product decision, not a CI fix. Until it
+# is made, AUTH_REQUIRED is the expected terminal state and must not fail the
+# job (see "Wait for Smithery release" below).
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
 # Optional secret:
@@ -268,7 +275,23 @@ jobs:
             echo "Smithery release attempt ${ATTEMPT}/18 — ${STATUS}"
             case "$STATUS" in
               SUCCESS) exit 0 ;;
-              FAILURE|FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
+              # The agent-bom MCP endpoint authenticates every request — that is
+              # the point of it, and the published configSchema marks
+              # `bearerToken` as required so a Smithery user supplies their own.
+              # Smithery's scanner therefore cannot enumerate our tools, and
+              # reports AUTH_REQUIRED / AUTH_TIMEOUT. The RELEASE ITSELF
+              # succeeded; only the optional post-publish scan did not.
+              #
+              # Failing here failed the whole Publish to Registries job on every
+              # release and opened a release-blocker issue for a server that had
+              # in fact published. The alternative — handing a third-party
+              # scanner our production bearer token so it can pass — is not a
+              # trade worth making for a green check.
+              AUTH_REQUIRED|AUTH_TIMEOUT)
+                echo "::warning::Smithery published the release but could not scan it (${STATUS}); the endpoint requires a caller-supplied bearerToken by design"
+                exit 0
+                ;;
+              FAILURE|FAILURE_SCAN|CANCELLED|INTERNAL_ERROR)
                 echo "::error::Smithery release did not complete successfully (${STATUS})"
                 exit 1
                 ;;

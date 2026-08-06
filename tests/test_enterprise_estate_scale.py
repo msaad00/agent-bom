@@ -218,3 +218,62 @@ def test_the_shipped_estate_keeps_every_shape_guarantee(shipped: EnterpriseEstat
 
     unverified = [e.event_id for e in shipped.observations if not verify_observation_hash(e)]
     assert not unverified, f"{len(unverified)} observations fail their own provenance check at scale"
+
+
+def test_resources_are_named_after_workloads_not_coordinates() -> None:
+    """An inventory of coordinates cannot be reasoned about.
+
+    Resource names were ``f"{provider}-{service}-{account:02d}-{slot:03d}"`` —
+    ``aws-iam-03-020``. That is a position in a loop, not a name: an
+    over-privileged role called ``aws-iam-03-020`` tells an operator nothing
+    about blast radius, and a whole estate of them reads as generated rather
+    than discovered.
+
+    Asserted as "no asset carries the coordinate shape" rather than against a
+    name list, so adding workloads cannot quietly reintroduce the pattern.
+    """
+    import re
+
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+
+    estate = build_demo_estate(tenant_id="default")
+    coordinate = re.compile(r"^(aws|azure|gcp|snowflake)-[a-z]+-\d{2}-\d{3}$")
+    offenders = [a.display_name for a in estate.assets if coordinate.match(a.display_name)]
+
+    assert not offenders, f"{len(offenders)} assets still carry coordinate names, e.g. {offenders[:5]}"
+
+
+def test_workload_names_stay_unique_and_deterministic() -> None:
+    """Names must not collide, and must not move between builds.
+
+    Naming by workload means a pool can wrap within an account; if that dropped
+    uniqueness, two different resources would share an asset id and silently
+    collapse into one row. The drift lens also compares snapshots by id, so a
+    name that changes between builds would read as churn.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+
+    first = build_demo_estate(tenant_id="default")
+    second = build_demo_estate(tenant_id="default")
+
+    ids = [a.asset_id for a in first.assets]
+    assert len(ids) == len(set(ids)), f"{len(ids) - len(set(ids))} duplicate asset ids"
+    assert [a.display_name for a in first.assets] == [a.display_name for a in second.assets]
+
+
+def test_the_narrative_assets_keep_their_names() -> None:
+    """Generated naming must not rename the hero incident chain.
+
+    The chain is referenced by id across the graph, the correlations and the
+    demo story; renaming those assets would break the one path the demo is
+    built to walk.
+    """
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+
+    ids = {a.asset_id for a in build_demo_estate(tenant_id="default").assets}
+    for expected in (
+        "cloud_resource:aws:iam:role:member-copilot-prod",
+        "kubernetes:workload:member-ai-prod/ai-prod/member-copilot",
+        "snowflake:table:nh_prod/analytics/phi/patient_summary",
+    ):
+        assert expected in ids, f"narrative asset lost: {expected}"

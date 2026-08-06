@@ -437,7 +437,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
     <div className="pt-1" data-testid="overview-security-coverage">
       <h3 className="mb-1 text-xs font-semibold text-[color:var(--foreground)]">Security disciplines</h3>
       <p className="mb-2 text-[11px] leading-4 text-[color:var(--text-tertiary)]">
-        Coverage by discipline — lenses can overlap, so a repo CVE counts under both Vuln mgmt and ASPM. Lanes are not additive.
+        Open findings per posture discipline — not assets or accounts. Lenses overlap, so one repo CVE counts under both Vuln mgmt and ASPM; lanes are not additive and will not sum to the total.
       </p>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         {coverage.map((lane) => {
@@ -452,8 +452,20 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-xs font-semibold text-[color:var(--foreground)]">{lane.label}</span>
-                <span className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
-                  {total > 0 ? lane.count : "—"}
+                {/* The unit is not decoration. A bare "1610" under a heading
+                    called CSPM reads as assets, accounts, VMs or data stores
+                    depending on the reader — every one of which is wrong. These
+                    are FINDINGS in that posture lane, which is also what the
+                    severity chips below sum to. */}
+                <span className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
+                    {total > 0 ? lane.count.toLocaleString() : "—"}
+                  </span>
+                  {total > 0 ? (
+                    <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]">
+                      {lane.count === 1 ? "finding" : "findings"}
+                    </span>
+                  ) : null}
                 </span>
               </div>
               {/* Stacked severity strip — widths reflect share of the lane count. */}

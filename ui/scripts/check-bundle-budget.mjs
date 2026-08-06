@@ -70,7 +70,13 @@ const BUDGETS = {
   // The enterprise evidence story adds one intentionally client-rendered route
   // and measures 3633.2 KiB in Linux CI. Keep ~15 KiB of bounded headroom at
   // 3648 KiB; largest-chunk and shared-runtime budgets remain unchanged.
-  totalClientJsBytes: 3_735_552,
+  // @dagrejs/dagre 3.0.0 -> 3.1.0 measures 3654.7 KiB in Linux CI — 6.7 KiB
+  // over the 3648 KiB line. dagre is the layout engine behind the graph and
+  // DAG views, so staying current on it is worth the space, but the overrun is
+  // the LIBRARY's, not a new route of ours. Restore ~16 KiB to 3664 KiB on the
+  // same terms as every raise above: bounded headroom for routine bundler
+  // variance, largest-chunk and shared-runtime budgets unchanged.
+  totalClientJsBytes: 3_751_936,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

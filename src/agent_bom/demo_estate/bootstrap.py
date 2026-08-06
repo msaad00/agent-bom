@@ -12,6 +12,7 @@ from agent_bom.api.pipeline import _now
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 from agent_bom.demo_estate.showcase_graph import (
     SHOWCASE_TENANT,
+    seed_showcase_fleet_and_runtime,
     seed_showcase_graph_if_empty,
     seed_showcase_identities,
 )
@@ -223,6 +224,16 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     except Exception:
         _logger.warning("demo estate identity seeding failed", exc_info=True)
         summary["identity_error"] = True
+
+    # The AI BOM page reads the fleet registry and the MCP observation store —
+    # neither of which the graph/findings seeds touch, so it rendered every
+    # count as 0 on a fully populated estate. Same isolation as the identity
+    # seed above: its failure must not block the rest of the bootstrap.
+    try:
+        summary["fleet_runtime"] = seed_showcase_fleet_and_runtime(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate fleet/runtime seeding failed", exc_info=True)
+        summary["fleet_runtime_error"] = True
 
     # Seed the runtime gateway feed (proxy alerts + metrics + firewall
     # decisions) so the gateway/proxy/runtime dashboards show the AI-firewall in

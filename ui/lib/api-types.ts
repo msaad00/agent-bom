@@ -540,6 +540,9 @@ export interface GraphRollupResponse {
   top_level?: GraphRollupContainer[];
   orphan_summary?: GraphRollupOrphanSummary;
   children?: GraphRollupContainer[];
+  /** Container-to-container relationships, aggregated. Containment is excluded
+   *  — that is the nesting the roll-up already expresses. */
+  edges?: GraphRollupEdge[];
   node?: {
     id: string;
     label: string;
@@ -547,6 +550,14 @@ export interface GraphRollupResponse {
     severity: string;
   } | null;
   summary: GraphRollupSummary;
+}
+
+export interface GraphRollupEdge {
+  source: string;
+  target: string;
+  /** How many underlying edges collapsed into this one. */
+  count: number;
+  relationships: string[];
 }
 
 export interface GraphSearchResponse {

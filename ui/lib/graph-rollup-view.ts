@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
-import type { GraphRollupContainer } from "@/lib/api-types";
+import type { GraphRollupContainer, GraphRollupEdge } from "@/lib/api-types";
 import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
@@ -108,9 +108,18 @@ function rollupContainerToNodeData(
   };
 }
 
+/** Stroke width scaled to how many underlying edges collapsed into this one, so
+ *  a 35-edge relationship reads as heavier than a 1-edge one at a glance. */
+function rollupEdgeWidth(count: number): number {
+  if (count >= 25) return 3;
+  if (count >= 10) return 2.25;
+  if (count >= 3) return 1.6;
+  return 1;
+}
+
 export function buildRollupFlowGraph(
   containers: GraphRollupContainer[],
-  options?: { columns?: number },
+  options?: { columns?: number; edges?: GraphRollupEdge[] },
 ): { nodes: Node<LineageNodeData>[]; edges: Edge[] } {
   const columns = Math.max(1, options?.columns ?? DEFAULT_COLUMNS);
   const nodes: Node<LineageNodeData>[] = containers.map((container, index) => {
@@ -125,5 +134,23 @@ export function buildRollupFlowGraph(
       ...(container.has_children ? { className: "cursor-pointer" } : {}),
     };
   });
-  return { nodes, edges: [] };
+  // The roll-up used to return no edges at all, so the canvas drew a grid of
+  // disconnected cards and the view had to tell the reader that "aggregate
+  // cards are not rendered relationship evidence" — a security graph admitting
+  // it was not showing a graph. The API now aggregates the non-containment
+  // edges between containers; drawing them is what makes this a topology.
+  const present = new Set(nodes.map((node) => node.id));
+  const edges: Edge[] = (options?.edges ?? [])
+    .filter((edge) => present.has(edge.source) && present.has(edge.target))
+    .map((edge) => ({
+      id: `rollup:${edge.source}->${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+      // The relationship names, not just a number: "accessed x35" says what the
+      // weight is made of, where a bare 35 does not.
+      label: edge.count > 1 ? `${edge.relationships[0] ?? "related"} ×${edge.count}` : (edge.relationships[0] ?? "related"),
+      animated: false,
+      style: { strokeWidth: rollupEdgeWidth(edge.count) },
+    }));
+  return { nodes, edges };
 }

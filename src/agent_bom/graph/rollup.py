@@ -19,8 +19,9 @@ follow-up consumes.
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.container import UnifiedGraph
@@ -339,6 +340,87 @@ def _container_for(node: UnifiedNode, child_map: dict[str, list[str]]) -> bool:
     return _node_type_value(node) in _CONTAINER_TYPES or bool(child_map.get(node.id))
 
 
+# Cap on aggregated cross-container edges returned. Ordered by weight, so the
+# cut keeps the heaviest relationships — the ones a reviewer would look at first.
+_MAX_CROSS_CONTAINER_EDGES = 400
+
+
+def _container_of(node_ids: Iterable[str], children: dict[str, list[str]]) -> dict[str, str]:
+    """Map every descendant to the visible container it rolls up into."""
+    owner: dict[str, str] = {}
+    for container_id in node_ids:
+        owner[container_id] = container_id
+        for descendant in _descendants(container_id, children):
+            owner.setdefault(descendant, container_id)
+    return owner
+
+
+def cross_container_edges(
+    graph: UnifiedGraph,
+    container_ids: Sequence[str],
+    children: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    """Aggregate NON-containment edges into container-to-container relationships.
+
+    The roll-up collapses thousands of nodes into a handful of containers, but
+    it collapsed the edges to nothing: the canvas received containers with an
+    empty edge list and drew a grid of disconnected cards. The view then had to
+    tell the reader that "aggregate cards are not rendered relationship
+    evidence" -- a security graph admitting it is not showing a graph.
+
+    Containment is not the interesting relationship here; it is the tree the
+    roll-up already expresses through nesting. What a reviewer needs at estate
+    scale is the OTHER edges -- an account whose workload reaches another
+    account's data store, an identity that assumes a role across a boundary.
+    Those exist in the graph; nothing was projecting them onto the collapsed
+    view.
+
+    Self-edges (both endpoints inside one container) are dropped: they are
+    internal detail the container already stands for, and drawing them would
+    put a loop on every card.
+    """
+    owner = _container_of(container_ids, children)
+    if not owner:
+        return []
+
+    aggregated: dict[tuple[str, str], dict[str, Any]] = {}
+    for edge in graph.edges:
+        if _edge_is_containment(graph, edge):
+            continue
+        source_container = owner.get(edge.source)
+        target_container = owner.get(edge.target)
+        if not source_container or not target_container:
+            continue
+        if source_container == target_container:
+            continue
+        key = (source_container, target_container)
+        entry = aggregated.get(key)
+        relationship = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+        if entry is None:
+            aggregated[key] = {
+                "source": source_container,
+                "target": target_container,
+                "count": 1,
+                "relationships": {relationship},
+            }
+            continue
+        entry["count"] = int(entry["count"]) + 1
+        cast(set, entry["relationships"]).add(relationship)
+
+    rows = [
+        {
+            "source": entry["source"],
+            "target": entry["target"],
+            "count": entry["count"],
+            "relationships": sorted(cast(set, entry["relationships"])),
+        }
+        for entry in aggregated.values()
+    ]
+    # Heaviest first, then deterministic by endpoint so the truncation is stable.
+    rows.sort(key=lambda row: (-int(row["count"]), str(row["source"]), str(row["target"])))
+    return rows[:_MAX_CROSS_CONTAINER_EDGES]
+
+
 def rollup_view(
     graph: UnifiedGraph,
     *,
@@ -457,6 +539,10 @@ def rollup_view(
         "mode": "rollup",
         "filters": _filters_dict(filters),
         "top_level": [c.to_dict() for c in top_level],
+        # Container-to-container relationships, so the collapsed view renders as
+        # a graph rather than a grid of disconnected cards. Containment is
+        # excluded: it is the nesting the roll-up already expresses.
+        "edges": cross_container_edges(graph, [c.id for c in top_level], children),
         "orphan_summary": orphan_summary,
         "summary": {
             "total_nodes": len(graph.nodes),
@@ -558,6 +644,10 @@ def drill_down(
         },
         "filters": _filters_dict(filters),
         "children": [c.to_dict() for c in child_entries],
+        # Same edges one level down. This is where they matter most: an org has
+        # one root, so nothing crosses at the top, while its accounts reach each
+        # other constantly.
+        "edges": cross_container_edges(graph, [c.id for c in child_entries], children),
         "summary": {
             "direct_child_count": len(direct),
             "returned_child_count": len(child_entries),

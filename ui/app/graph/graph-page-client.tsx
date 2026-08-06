@@ -1293,7 +1293,7 @@ function GraphPageInner() {
         rollupView.mode === "drilldown"
           ? (rollupView.children ?? [])
           : (rollupView.top_level ?? []);
-      const rollupFlow = buildRollupFlowGraph(items);
+      const rollupFlow = buildRollupFlowGraph(items, { edges: rollupView.edges });
       return {
         nodes: rollupFlow.nodes,
         edges: rollupFlow.edges,
@@ -3771,8 +3771,9 @@ function RollupNavigationPanel({
             </p>
             {active && (
               <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-200/80">
-                Aggregate cards help navigate scope; they are not rendered
-                relationship evidence. Open node view for the real topology.
+                Containers are collapsed by containment; the links between them
+                are real relationships, aggregated. Open node view for
+                individual nodes.
               </p>
             )}
             {error && (

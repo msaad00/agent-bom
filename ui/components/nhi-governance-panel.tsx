@@ -37,8 +37,32 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
     };
   }, [scanId]);
 
-  const counts = posture?.counts ?? {};
+  const rawCounts = posture?.counts ?? {};
   const identities = Array.isArray(posture?.identities) ? posture.identities : [];
+
+  // `/v1/graph/nhi/governance` returns scalar rollups alongside at least one
+  // NESTED breakdown (`by_risk_band` → {critical, medium, low}). Rendering a
+  // value with String() turned that object into the literal text
+  // "[object Object]" on the Identity page. Flatten one level so a breakdown
+  // becomes its own pills — which is the useful reading anyway: "critical 1"
+  // says something, "[object Object]" says the page is broken.
+  const counts: Array<{ key: string; label: string; value: string }> = [];
+  for (const [key, value] of Object.entries(rawCounts)) {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const prefix = key.replace(/^by_/, "").replaceAll("_", " ");
+      for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+        if (childValue === null || typeof childValue === "object") continue;
+        counts.push({
+          key: `${key}.${childKey}`,
+          label: `${prefix} · ${childKey.replaceAll("_", " ")}`,
+          value: String(childValue),
+        });
+      }
+      continue;
+    }
+    if (value === null || value === undefined) continue;
+    counts.push({ key, label: key.replaceAll("_", " "), value: String(value) });
+  }
 
   return (
     <section
@@ -63,18 +87,18 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
       ) : (
         <>
           <div className="mt-3 flex flex-wrap gap-2">
-            {Object.entries(counts).slice(0, 6).map(([key, value]) => (
+            {counts.slice(0, 8).map((entry) => (
               <div
-                key={key}
+                key={entry.key}
                 className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5"
               >
                 <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
-                  {key.replaceAll("_", " ")}
+                  {entry.label}
                 </p>
-                <p className="font-mono text-sm text-[color:var(--foreground)]">{String(value)}</p>
+                <p className="font-mono text-sm text-[color:var(--foreground)]">{entry.value}</p>
               </div>
             ))}
-            {!loading && Object.keys(counts).length === 0 ? (
+            {!loading && counts.length === 0 ? (
               <p className="text-xs text-[color:var(--text-tertiary)]">
                 No NHI count rollups for this snapshot.
               </p>

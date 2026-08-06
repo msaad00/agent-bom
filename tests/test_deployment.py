@@ -719,7 +719,18 @@ def test_smithery_publish_is_gated_on_server_card_and_catalog_parity():
     assert "(.tools | length) == $tool_count" in workflow
     assert '(.inputSchema | type == "object")' in workflow
     assert "Wait for Smithery release" in workflow
-    assert "FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT" in workflow
+    # The terminal statuses are split deliberately (#4687). Our MCP endpoint
+    # authenticates every request by design and the published configSchema marks
+    # `bearerToken` required, so Smithery's scanner CANNOT enumerate our tools
+    # and settles the release as AUTH_REQUIRED. The release itself succeeded;
+    # only the optional post-publish scan did not. Treating that as fatal failed
+    # every release and auto-opened a release-blocker for a server that had in
+    # fact published.
+    assert "AUTH_REQUIRED|AUTH_TIMEOUT" in workflow, "auth statuses must be handled as their own non-fatal case"
+    assert "FAILURE|FAILURE_SCAN|CANCELLED|INTERNAL_ERROR" in workflow, "real failures must still fail the job"
+    # Guard the split itself: if AUTH_REQUIRED is ever folded back in with the
+    # fatal statuses, releases start failing again for a publish that worked.
+    assert "FAILURE_SCAN|AUTH_REQUIRED" not in workflow, "AUTH_REQUIRED must not be grouped with the fatal statuses"
     assert "Verify Smithery catalog inventory" in workflow
     assert 'if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ]; then' in workflow
 

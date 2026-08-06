@@ -27,7 +27,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.0.0",
+    "@dagrejs/dagre": "^3.1.0",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.9",
     "@xyflow/react": "^12.11.2",

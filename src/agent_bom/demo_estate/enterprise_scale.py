@@ -100,6 +100,111 @@ _RESOURCE_MIX: dict[str, tuple[tuple[str, str], ...]] = {
     ),
 }
 
+# What the workloads are FOR. Resource names were previously
+# ``f"{provider}-{service}-{account:02d}-{slot:03d}"`` -> ``aws-iam-03-020``,
+# which is a coordinate, not a name. Nothing in the estate could be reasoned
+# about: an over-privileged role called ``aws-iam-03-020`` tells an operator
+# nothing about blast radius, and a whole inventory of them reads as generated
+# rather than discovered — which is exactly the impression a demo must avoid.
+#
+# These are the workloads a payer/provider AI platform actually runs, so a role
+# named ``prior-auth-reviewer`` failing least-privilege is a sentence a reviewer
+# can act on. Kept as one pool per resource CLASS rather than per provider, so
+# the same business capability shows up across clouds the way it does in a real
+# multi-cloud estate.
+_WORKLOAD_NAMES: dict[str, tuple[str, ...]] = {
+    "compute": (
+        "member-eligibility-api",
+        "claims-intake-worker",
+        "prior-auth-reviewer",
+        "care-gap-scorer",
+        "provider-directory-sync",
+        "appeals-drafter",
+        "clinical-notes-indexer",
+        "risk-adjustment-batch",
+        "formulary-lookup",
+        "benefits-quote-engine",
+    ),
+    "storage": (
+        "member-exports",
+        "claims-archive",
+        "clinical-attachments",
+        "eob-statements",
+        "provider-rosters",
+        "audit-evidence",
+        "model-artifacts",
+        "training-corpora",
+    ),
+    "identity": (
+        "member-eligibility-api",
+        "claims-etl",
+        "prior-auth-reviewer",
+        "care-gap-scorer",
+        "phi-export-approver",
+        "provider-directory-sync",
+        "clinical-analytics-reader",
+        "appeals-drafter",
+        "risk-adjustment-batch",
+        "break-glass-admin",
+    ),
+    "data": (
+        "patient-summary",
+        "claims-ledger",
+        "eligibility-spans",
+        "encounters",
+        "provider-network",
+        "authorizations",
+        "pharmacy-fills",
+        "care-gaps",
+        "quality-measures",
+        "risk-scores",
+    ),
+    "serverless": (
+        "eligibility-webhook",
+        "claim-status-callback",
+        "phi-redactor",
+        "fhir-normalizer",
+        "eob-renderer",
+        "consent-checker",
+        "member-match",
+        "coverage-notifier",
+        "attachment-virus-scan",
+        "audit-log-shipper",
+    ),
+    # No environment token in these: the suffix is appended below, and a pool
+    # entry carrying its own would read "member-ai-prod-development".
+    "cluster": (
+        "member-ai",
+        "claims-platform",
+        "clinical-intelligence",
+        "provider-services",
+        "population-health",
+        "revenue-cycle",
+    ),
+}
+
+# Which name pool a resource type draws from. A type with no entry falls back to
+# the compute pool rather than silently reverting to a coordinate.
+_RESOURCE_NAME_POOL: dict[str, str] = {
+    "instance": "compute",
+    "virtual_machine": "compute",
+    "warehouse": "compute",
+    "bucket": "storage",
+    "storage_account": "storage",
+    "stage": "storage",
+    "share": "storage",
+    "iam_role": "identity",
+    "service_principal": "identity",
+    "service_account": "identity",
+    "role": "identity",
+    "database": "data",
+    "sql_database": "data",
+    "table": "data",
+    "function": "serverless",
+    "function_app": "serverless",
+    "cluster": "cluster",
+}
+
 _REGIONS: dict[str, tuple[str, ...]] = {
     "aws": ("us-east-1", "us-west-2", "eu-west-1"),
     "azure": ("eastus", "westeurope", "centralus"),
@@ -261,6 +366,26 @@ def _stable_index(*parts: str) -> int:
     return int.from_bytes(digest[:4], "big")
 
 
+def _workload_name(provider: str, scope: str, resource_type: str, environment: str, slot: int) -> str:
+    """Name a resource after the workload it serves, not its coordinates.
+
+    Deterministic: the same (provider, account, type, slot) always yields the
+    same name, so snapshots, the drift lens and every pinned test stay stable.
+
+    The environment suffix carries real information — ``claims-etl-prod`` and
+    ``claims-etl-staging`` are genuinely different blast radii — and the numeric
+    tail only appears when a pool wraps within one account, so the common case
+    reads as a name rather than a serial number.
+    """
+    pool_key = _RESOURCE_NAME_POOL.get(resource_type, "compute")
+    pool = _WORKLOAD_NAMES[pool_key]
+    offset = _stable_index(provider, scope, resource_type) % len(pool)
+    index = (offset + slot) % len(pool)
+    wrap = (offset + slot) // len(pool)
+    base = f"{pool[index]}-{environment}"
+    return base if wrap == 0 else f"{base}-{wrap + 1}"
+
+
 def _account_scope(provider: str, index: int) -> str:
     if provider == "aws":
         return f"{100000000000 + index:012d}"
@@ -300,7 +425,7 @@ def _build_assets(profile: ScaleProfile, tenant_id: str) -> tuple[EstateAsset, .
                 # Environment cycles per slot so every account carries all three;
                 # a provider missing an environment collapses its drill-down.
                 environment = ENVIRONMENTS[slot % len(ENVIRONMENTS)]
-                name = f"{provider}-{service}-{account_index:02d}-{slot:03d}"
+                name = _workload_name(provider, scope, resource_type, environment, slot)
                 region = regions[_stable_index(provider, scope, name) % len(regions)]
                 assets.append(
                     EstateAsset(

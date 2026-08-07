@@ -205,10 +205,11 @@ observed."""
     assert "persona-value-dark.svg" in readme
     assert "persona-value-light.svg" in readme
 
-    # Persona surfaces keep AppSec and GRC as separate lanes (never one card).
+    # Persona surfaces keep security engineering and GRC as separate lanes
+    # (never one card) — findings and reachability are not audit certification.
     assert "AppSec/GRC" not in readme
     assert "AppSec / GRC" not in readme
-    assert "| AppSec |" in readme
+    assert "| Security engineer |" in readme
     assert "| GRC / audit |" in readme
 
     # Persona proof stays directly visible. Architecture and product

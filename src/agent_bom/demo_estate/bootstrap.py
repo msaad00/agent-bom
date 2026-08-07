@@ -255,6 +255,19 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate catalog seeding failed", exc_info=True)
         summary["catalog_error"] = True
 
+    # Governance blueprints and LLM spend live in their own stores, which the
+    # graph/findings seeds never touch — the same gap the fleet/runtime seed
+    # above closed for the AI BOM page. Without this the governance page showed
+    # `count: 0` and the cost page a single call on an estate with thousands of
+    # assets, which reads as a broken product rather than an unconfigured one.
+    try:
+        from agent_bom.demo_estate.showcase_governance import seed_showcase_governance_and_cost
+
+        summary["governance_cost"] = seed_showcase_governance_and_cost(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate governance/cost seeding failed", exc_info=True)
+        summary["governance_cost_error"] = True
+
     if not force and _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
         return summary

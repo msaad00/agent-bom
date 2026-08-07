@@ -27,12 +27,6 @@
       "notes": "Counts .yml and .yaml workflow definitions."
     },
     {
-      "name": "Test files",
-      "value": 1145,
-      "source": "tests/",
-      "notes": "Counts files matching test_*.py."
-    },
-    {
       "name": "API route modules",
       "value": 46,
       "source": "src/agent_bom/api/routes",

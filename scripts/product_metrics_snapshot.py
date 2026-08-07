@@ -166,17 +166,19 @@ def build_snapshot() -> dict[str, object]:
                 "source": "src/agent_bom/mcp_server_metadata.py",
                 "notes": "Counted from the advertised server-card workflow prompts.",
             },
+            # "Test files" was deliberately removed. It changed on every merge that
+            # added a test, and CI checks the snapshot against refs/pull/N/merge
+            # rather than the branch head — so a branch could regenerate a correct
+            # snapshot, pass locally, and still fail CI the moment main gained an
+            # unrelated test file. It broke four PRs and main itself in a single
+            # day, and the fix each time was a mechanical regeneration that
+            # asserted nothing. A metric nobody acts on is not worth a gate that
+            # blocks everybody; `pytest --collect-only` counts tests on demand.
             {
                 "name": "GitHub workflow files",
                 "value": _count_workflows(),
                 "source": ".github/workflows",
                 "notes": "Counts .yml and .yaml workflow definitions.",
-            },
-            {
-                "name": "Test files",
-                "value": _count_test_files(),
-                "source": "tests/",
-                "notes": "Counts files matching test_*.py.",
             },
             {
                 "name": "API route modules",

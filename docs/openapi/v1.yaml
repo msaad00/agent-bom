@@ -5929,12 +5929,20 @@ paths:
       - meta
   /v1/activity:
     get:
-      description: 'Agent activity timeline from Snowflake QUERY_HISTORY + AI_OBSERVABILITY_EVENTS.
-
-
-        Reconstructs agent execution history from 365-day query history
-
-        and AI observability traces.'
+      description: "Agent activity timeline across every configured runtime source.\n\
+        \n\"Activity\" is the agent/MCP runtime story: which agents ran, which tools\n\
+        they called, and what the gateway decided. Snowflake query history is ONE\n\
+        source of that, not the definition of it.\n\nThis used to hard-fail with 400\
+        \ when ``SNOWFLAKE_ACCOUNT`` was unset, which\nmade the whole Activity surface\
+        \ unreachable for the large majority of\ndeployments that run agents and MCP\
+        \ servers without Snowflake at all. A\nself-hosted install scanning its own\
+        \ fleet has genuine runtime activity to\nshow and was told to go configure\
+        \ a data warehouse.\n\nEvery source now reports its own state \u2014 ``active``,\
+        \ ``empty``, or\n``not_configured`` \u2014 the same contract ``nhi_discover``\
+        \ and\n``cloud_inventory`` already use for optional providers. An unconfigured\n\
+        source contributes zero events and a clear reason; it never fails the\nrequest,\
+        \ and it is never silently omitted either, so an empty timeline can\nalways\
+        \ be told apart from an unconfigured one."
       operationId: activity_timeline_v1_activity_get
       parameters:
       - in: query

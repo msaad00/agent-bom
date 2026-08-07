@@ -185,7 +185,17 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         report_label="MITRE ATLAS",
         bundled_unit="techniques",
         source_standard_size="~90",
-        coverage="LLM/AI techniques: prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse",
+        coverage=(
+            "Applicability overlay (not scored): LLM/AI techniques — prompt injection, jailbreak, "
+            "supply-chain, exfiltration, agent tool abuse — that the observed findings make applicable"
+        ),
+        # ATLAS is the AI counterpart of ATT&CK: an adversary TECHNIQUE matrix,
+        # which is why this entry's own catalog and unit are "techniques". The
+        # argument that keeps ATT&CK unscored applies verbatim — a technique is
+        # APPLICABLE or not, it cannot be passed or failed. Scoring all 65 as
+        # controls asserted 65 unevidenced failures and, being the single largest
+        # scored framework, dominated overall_score with them.
+        scored=False,
     ),
     ComplianceFrameworkMetadata(
         family="MITRE",

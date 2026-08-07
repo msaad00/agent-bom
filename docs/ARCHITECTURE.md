@@ -413,7 +413,7 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 | NIST / FedRAMP | CSF 2.0 | 14 categories | ~108 | Supply-chain, identity, asset, monitoring categories |
 | NIST / FedRAMP | 800-53 Rev 5 | 29 controls | ~1,006 | Vulnerability-driven mapping (RA-5, SI-2, etc.); not a complete catalog |
 | NIST / FedRAMP | FedRAMP Moderate | 25 controls | ~325 | Subset of 800-53 controls in the Moderate baseline |
-| MITRE | ATLAS | 65 techniques | ~90 | LLM/AI techniques: prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse |
+| MITRE | ATLAS | 65 techniques | ~90 | Applicability overlay (not scored): LLM/AI techniques — prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse — that the observed findings make applicable |
 | MITRE | ATT&CK Enterprise | 691 techniques | ~700 | Applicability overlay (not scored): techniques MITRE's CWE → CAPEC → ATT&CK data associates with the weaknesses observed in the estate |
 | Regulatory | EU AI Act | 6 articles | ~113 | Articles 5/6/9/10/15/17 (prohibited practices, high-risk classification, risk mgmt, data governance, accuracy/cybersecurity, QMS) |
 | Regulatory | ISO/IEC 27001:2022 | 9 Annex A controls | 93 | Supplier, vulnerability, cryptography, secure-dev, evidence collection |

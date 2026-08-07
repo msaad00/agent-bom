@@ -718,6 +718,17 @@ A2A_AUTH_SHARED_TOKEN_MIN_AGENTS = _int("AGENT_BOM_A2A_AUTH_SHARED_TOKEN_MIN_AGE
 A2A_AUTH_REQUIRE_SIGNED_TOKENS = _bool("AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS", True)
 
 
+# ── MCP server: how remote clients are told to reach us ───────────────────
+# The externally reachable base URL of a hosted MCP deployment, used for the
+# OAuth issuer / resource-server URL advertised in the 401 challenge.
+#
+# The server otherwise derives that from the socket it binds. Behind any proxy
+# (Railway, Cloud Run, a load balancer) that is http://0.0.0.0:8080 — an address
+# no client can route to — so OAuth discovery HANGS rather than failing fast.
+# Blank falls back to the bind address, which is correct for local runs where
+# the two are the same thing.
+MCP_PUBLIC_URL = _str("AGENT_BOM_MCP_PUBLIC_URL", "")
+
 # ── MCP / agent→MCP auth posture ──────────────────────────────────────────
 # Governance thresholds for the MCP server auth posture evaluator
 # (agent_bom.mcp_auth_posture). This is the complement of the A2A evaluator:

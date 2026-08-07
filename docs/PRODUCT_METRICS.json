@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-08-06",
+  "generated_on": "2026-08-07",
   "version": "0.99.0",
   "metrics": [
     {
@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 1142,
+      "value": 1143,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },

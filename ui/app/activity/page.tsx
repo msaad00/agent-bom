@@ -93,10 +93,17 @@ export default function ActivityPage() {
   // Snowflake is one source of activity, not the definition of it. Its
   // query-history views render only when it is actually wired up; everything
   // above them comes from the runtime store, which every deployment has.
-  const snowflake = timeline.sources.find((s) => s.source === "snowflake");
+  // Defensive: a payload missing `sources`/`events` must degrade to an empty
+  // page, not throw. This surface is fed by whatever version of the API the
+  // deployment happens to be running, and a render crash is a far worse
+  // failure mode than a sparse page.
+  const sources = timeline.sources ?? [];
+  const events = timeline.events ?? [];
+
+  const snowflake = sources.find((s) => s.source === "snowflake");
   const warehouse = snowflake?.timeline;
 
-  const runtimeEvents = timeline.events.filter(
+  const runtimeEvents = events.filter(
     (e) =>
       !search ||
       e.agent_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -130,7 +137,7 @@ export default function ActivityPage() {
             Agent Activity Timeline
           </h1>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            {timeline.event_count.toLocaleString()} events across the last {timeline.window_days} days
+            {(timeline.event_count ?? events.length).toLocaleString()} events across the last {timeline.window_days} days
             {timeline.truncated ? " (showing the most recent 500)" : ""}
           </p>
         </div>
@@ -150,26 +157,26 @@ export default function ActivityPage() {
 
       {/* Which sources are feeding this page, and which are not. An operator
           who cannot tell "quiet" from "unconfigured" cannot act on either. */}
-      <SourceStrip sources={timeline.sources} />
+      <SourceStrip sources={sources} />
 
       {/* Summary cards — runtime first, because that source needs no warehouse. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard
           icon={Zap}
           label="Runtime Events"
-          value={timeline.events.filter((e) => e.source === "runtime").length}
+          value={events.filter((e) => e.source === "runtime").length}
           color="text-emerald-400"
         />
         <StatCard
           icon={Bot}
           label="Agents Seen"
-          value={new Set(timeline.events.map((e) => e.agent_name).filter(Boolean)).size}
+          value={new Set(events.map((e) => e.agent_name).filter(Boolean)).size}
           color="text-amber-400"
         />
         <StatCard
           icon={Wrench}
           label="Tools Called"
-          value={new Set(timeline.events.map((e) => e.tool_name).filter(Boolean)).size}
+          value={new Set(events.map((e) => e.tool_name).filter(Boolean)).size}
           color="text-cyan-400"
         />
         <StatCard

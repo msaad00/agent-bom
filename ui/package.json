@@ -10,11 +10,11 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "bundle:check": "node scripts/check-bundle-budget.mjs",
+    "bundle:check": "node scripts/assert-install-matches-lockfile.mjs && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "lock:normalize": "npm install --package-lock-only --ignore-scripts",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/assert-install-matches-lockfile.mjs && node scripts/assert-build-is-current.mjs && playwright test",
     "verify:toolchain": "node scripts/verify-toolchain.mjs",
     "headers:sync": "node scripts/sync-vercel-headers.mjs",
     "headers:check": "node scripts/sync-vercel-headers.mjs --check",
@@ -24,7 +24,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "install:verify": "node scripts/assert-install-matches-lockfile.mjs",
+    "build:verify": "node scripts/assert-build-is-current.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.0",

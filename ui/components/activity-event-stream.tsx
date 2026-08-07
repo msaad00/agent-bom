@@ -7,12 +7,12 @@ import { Drawer } from "@/components/drawer";
 import {
   api,
   formatDate,
-  type ActivityTimeline,
+  type SnowflakeActivityTimeline,
   type GatewayFeedEvent,
   type GatewayFeedHealth,
 } from "@/lib/api";
 
-type ObservabilityEvent = ActivityTimeline["observability_events"][number];
+type ObservabilityEvent = SnowflakeActivityTimeline["observability_events"][number];
 
 interface ActivityEvent {
   id: string;

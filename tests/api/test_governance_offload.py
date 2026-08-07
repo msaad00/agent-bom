@@ -56,11 +56,14 @@ def test_governance_findings_offloads(monkeypatch, offload_spy):
 def test_activity_timeline_offloads(monkeypatch, offload_spy):
     timeline = SimpleNamespace(to_dict=lambda: {"events": []})
     monkeypatch.setattr("agent_bom.cloud.discover_activity", lambda **kw: timeline)
+    # Activity is now multi-source, so it takes the request to resolve a tenant.
+    request = SimpleNamespace(headers={}, state=SimpleNamespace(), scope={"headers": []})
+    monkeypatch.setattr(governance, "require_request_tenant_id", lambda _request: "default")
 
-    result = asyncio.run(governance.activity_timeline(days=30))
+    result = asyncio.run(governance.activity_timeline(request, days=30))
 
-    assert result == {"events": []}
-    assert offload_spy, "activity_timeline must offload its Snowflake mining"
+    assert result["schema_version"] == "activity.timeline.v2"
+    assert offload_spy, "activity_timeline must offload its source mining"
 
 
 def test_cortex_telemetry_offloads(monkeypatch, offload_spy):

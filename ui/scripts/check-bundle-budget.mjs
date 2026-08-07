@@ -76,7 +76,12 @@ const BUDGETS = {
   // the LIBRARY's, not a new route of ours. Restore ~16 KiB to 3664 KiB on the
   // same terms as every raise above: bounded headroom for routine bundler
   // variance, largest-chunk and shared-runtime budgets unchanged.
-  totalClientJsBytes: 3_751_936,
+  // Next 16.2.12 -> 16.3.0 measures 3678.0 KiB, 14 KiB over the 3664 KiB line.
+  // The growth is the FRAMEWORK's, not a route of ours: no page was added and
+  // both the largest-chunk and shared-runtime budgets still pass with margin.
+  // Restore ~18 KiB of headroom on the same terms as every raise above —
+  // bounded room for routine bundler variance, other budgets unchanged.
+  totalClientJsBytes: 3_784_704,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

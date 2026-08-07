@@ -106,7 +106,7 @@ Current SVG inventory:
 | `brand/logo-{light,dark}.svg` | Brand lockup (mark + wordmark); see Brand basics above | hero |
 | `architecture-{light,dark}.svg` | Layered flow: sources → scan/enrich → unified Finding + UnifiedGraph → self-hosted API, scheduler/events, gateway, and MCP surfaces → people, agents, and artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
 | `how-it-works-{light,dark}.svg` | Three product lanes — Scan → Centralize → Enforce — local/CI evidence, the self-hosted control plane, and optional runtime gateway on one Finding + UnifiedGraph model | README "How It Works" |
-| `persona-value-{light,dark}.svg` | Five buyer personas in a compact single-row band — Developers, AppSec, Platform / SRE, GRC / audit, AI / MCP owners (AppSec ≠ GRC / audit), the same five names and order as the README "Who it is for" table; neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "Who it is for" |
+| `persona-value-{light,dark}.svg` | Four buyer personas in a compact single-row band — AI engineer, Security engineer, GRC / audit, Leadership / CISO (security engineering ≠ GRC / audit), the same four names and order as the README "Who it is for" table; neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "Who it is for" |
 | `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | README "What Is agent-bom", collapsed drilldown |
 | `demo-latest.gif` | Terminal demo (1100×1000; compressed, exact size may change per render) | "Try the demo" |
 

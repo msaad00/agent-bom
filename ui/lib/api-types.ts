@@ -3164,7 +3164,52 @@ export interface SelfPostureReport {
   checks: SelfPostureCheck[];
 }
 
+/** One activity source and whether it is actually contributing events.
+ *
+ * `not_configured` is deliberately distinct from `empty`: "nothing happened"
+ * and "nothing is wired up" need different next steps from the operator, and
+ * collapsing them into one empty state is what makes a dashboard read as broken.
+ */
+export interface ActivitySource {
+  source: string;
+  status: "active" | "empty" | "not_configured" | "unavailable";
+  event_count: number;
+  detail: string;
+  /** Present only for Snowflake, carrying its full query-history payload. */
+  timeline?: SnowflakeActivityTimeline | undefined;
+}
+
+/** A source-agnostic activity event — the shape every source normalises into. */
+export interface ActivityEvent {
+  observed_at: string;
+  source: string;
+  event_type: string;
+  agent_name: string;
+  tool_name: string;
+  severity: string;
+  verdict: string;
+  session_id?: string | undefined;
+  trace_id?: string | undefined;
+}
+
+/** The Activity surface: agent/MCP runtime activity from every wired source.
+ *
+ * Snowflake used to BE this endpoint, so an install without a data warehouse
+ * saw a "configure Snowflake" wall instead of the runtime activity it already
+ * had. Snowflake is now one source among several.
+ */
 export interface ActivityTimeline {
+  schema_version: string;
+  tenant_id: string;
+  window_days: number;
+  event_count: number;
+  events: ActivityEvent[];
+  truncated: boolean;
+  sources: ActivitySource[];
+  status: "active" | "empty" | "no_sources_configured";
+}
+
+export interface SnowflakeActivityTimeline {
   account: string;
   discovered_at: string;
   summary: {

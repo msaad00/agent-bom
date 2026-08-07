@@ -62,12 +62,14 @@ def test_architecture_includes_core_surfaces() -> None:
 
 def test_persona_value_renders_buyer_lanes() -> None:
     svg = persona_value("dark")
-    assert "AppSec" in svg
-    assert "GRC / audit" in svg
-    assert "AppSec / GRC" not in svg
+    for title in ("AI engineer", "Security engineer", "GRC / audit", "Leadership / CISO"):
+        assert title in svg
+    # The old lane titles must not linger anywhere in the artwork.
+    for retired in ("AppSec", "Developers", "Platform / SRE", "AI / MCP owners"):
+        assert retired not in svg, retired
     assert f"{REST_OPERATION_COUNT} API ops" in svg
-    assert "Self-hosted control plane" in svg
-    assert "Accurate SCA" in svg
+    assert "Agent-native surface" in svg
+    assert "Triage by reachability" in svg
     assert "Audit-ready exports" in svg
     assert _audit_layout(svg) == []
 
@@ -75,16 +77,20 @@ def test_persona_value_renders_buyer_lanes() -> None:
 def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
     """Public onboarding stays accessible while retaining visual workflow proof."""
     titles = [row[0] for row in _readme_persona_rows()]
-    for title in (
-        "Developers",
-        "AppSec",
-        "Security engineers",
-        "Platform / SRE",
+    # The table and the artwork must name the SAME audiences. They had drifted
+    # to seven rows against five illustrated lanes, so the picture and the text
+    # described different products. Pinned as equality, not membership, so a new
+    # row cannot be added to one without the other.
+    assert titles == [
+        "AI engineer",
+        "Security engineer",
         "GRC / audit",
         "Leadership / CISO",
-        "AI / MCP owners",
-    ):
-        assert title in titles
+    ]
+
+    from scripts.generate_doc_architecture_svgs import PERSONA_LANES
+
+    assert [lane.title for lane in PERSONA_LANES] == titles
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     who_it_is_for = readme.index("## Who it is for")

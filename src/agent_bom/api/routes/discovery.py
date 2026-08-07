@@ -55,20 +55,27 @@ def _tenant_id(request: Request) -> str:
 
 
 def _discover_agents_with_demo_fallback() -> list[Any]:
-    """Live local-disk discovery, with a demo-estate fallback.
+    """Live local-disk discovery, plus the curated inventory in demo-estate mode.
 
-    On a hosted/anonymous demo server there are no local agent configs to
-    discover, so ``discover_all()`` returns nothing and the Agents page + the
-    Overview NHI/agents tile read empty. When (and only when) demo-estate mode is
-    enabled AND live discovery found nothing, fall back to the curated demo
-    inventory so the correlated demo story renders. Real deployments — env unset
-    — always get live discovery only; the fallback is never injected there.
+    This used to fall back only when live discovery found *nothing*, justified by
+    "on a hosted demo server there are no local agent configs to discover". That
+    assumption was wrong: the hosted image ships the ``mcp`` CLI at
+    ``/app/.venv/bin/mcp``, so discovery returned exactly ONE agent, the
+    ``if agents: return agents`` guard short-circuited, and the curated inventory
+    never loaded. ``/v1/agents/mesh`` then served a single unlinked node and the
+    Agent Topology page rendered a "trust mesh" of one dot on a 4,101-asset
+    estate. One incidental binary in the image defeated the whole demo estate.
+
+    In demo-estate mode the curated inventory IS the story, so it is always
+    included, merged with anything genuinely discovered (by agent name, live
+    discovery winning) rather than gated on discovery being empty.
+
+    Real deployments — env unset — still get live discovery only, including when
+    it finds nothing. Demo rows must never appear in a real tenant's topology.
     """
     from agent_bom.discovery import discover_all
 
     agents = discover_all()
-    if agents:
-        return agents
 
     from agent_bom.demo_estate.bootstrap import demo_estate_enabled
 
@@ -78,7 +85,9 @@ def _discover_agents_with_demo_fallback() -> list[Any]:
     from agent_bom.cli._common import _build_agents_from_inventory
     from agent_bom.demo import DEMO_INVENTORY
 
-    return _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+    demo_agents = _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+    discovered_names = {getattr(agent, "name", "") for agent in agents}
+    return [*agents, *(a for a in demo_agents if getattr(a, "name", "") not in discovered_names)]
 
 
 def _merge_strings(*values: list[str]) -> list[str]:

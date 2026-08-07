@@ -11,7 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { api, formatDate } from "@/lib/api";
-import type { ActivityTimeline } from "@/lib/api";
+import type { ActivitySource, ActivityTimeline } from "@/lib/api";
 import { useChartTheme } from "@/lib/theme-colors";
 import { IntegrationRequiredState } from "@/components/integration-required-state";
 import { ActivityEventStream } from "@/components/activity-event-stream";
@@ -67,14 +67,14 @@ export default function ActivityPage() {
       <div className="space-y-6">
         <ActivityEventStream observabilityEvents={[]} />
         <IntegrationRequiredState
-        title="Activity timeline integration is not configured"
-        summary="This page reconstructs agent and tool activity from query history and AI observability events. Core scanning and graph workflows work without it. The current cloud integration for this page uses Snowflake."
-        requirement="Cloud telemetry integration on the API host"
-        command={"pip install 'agent-bom[cloud]'\nexport SNOWFLAKE_ACCOUNT=...\nagent-bom api"}
+        title="Activity timeline is unavailable"
+        summary="This page shows agent and MCP tool activity from every connected source. Runtime activity needs no external warehouse — it comes from the proxy, gateway, and OTel ingest. Snowflake query history is an optional additional source."
+        requirement="A reachable API host"
+        command={"agent-bom proxy -- <your-mcp-server>\n# optional warehouse source:\nexport SNOWFLAKE_ACCOUNT=..."}
         capabilities={[
-          "Query history grouped by agent pattern and user",
+          "Agent and MCP tool calls with verdicts and severity",
           "Tool-call and model-usage activity over time",
-          "Latency, status, and event volume from observability traces",
+          "Warehouse query history, when a warehouse is connected",
         ]}
           detail={error}
           onRetry={load}
@@ -90,7 +90,28 @@ export default function ActivityPage() {
       </div>
     );
 
-  const filteredQueries = timeline.query_history.filter(
+  // Snowflake is one source of activity, not the definition of it. Its
+  // query-history views render only when it is actually wired up; everything
+  // above them comes from the runtime store, which every deployment has.
+  // Defensive: a payload missing `sources`/`events` must degrade to an empty
+  // page, not throw. This surface is fed by whatever version of the API the
+  // deployment happens to be running, and a render crash is a far worse
+  // failure mode than a sparse page.
+  const sources = timeline.sources ?? [];
+  const events = timeline.events ?? [];
+
+  const snowflake = sources.find((s) => s.source === "snowflake");
+  const warehouse = snowflake?.timeline;
+
+  const runtimeEvents = events.filter(
+    (e) =>
+      !search ||
+      e.agent_name.toLowerCase().includes(search.toLowerCase()) ||
+      e.tool_name.toLowerCase().includes(search.toLowerCase()) ||
+      e.event_type.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredQueries = (warehouse?.query_history ?? []).filter(
     (q) =>
       !search ||
       q.query_text.toLowerCase().includes(search.toLowerCase()) ||
@@ -100,7 +121,7 @@ export default function ActivityPage() {
 
   // Aggregate query patterns
   const patternCounts: Record<string, number> = {};
-  for (const q of timeline.query_history) {
+  for (const q of warehouse?.query_history ?? []) {
     if (q.agent_pattern) {
       patternCounts[q.agent_pattern] = (patternCounts[q.agent_pattern] || 0) + 1;
     }
@@ -116,7 +137,8 @@ export default function ActivityPage() {
             Agent Activity Timeline
           </h1>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            Account: {timeline.account} | Discovered: {formatDate(timeline.discovered_at)}
+            {(timeline.event_count ?? events.length).toLocaleString()} events across the last {timeline.window_days} days
+            {timeline.truncated ? " (showing the most recent 500)" : ""}
           </p>
         </div>
         <select
@@ -131,51 +153,105 @@ export default function ActivityPage() {
         </select>
       </div>
 
-      <ActivityEventStream observabilityEvents={timeline.observability_events} />
+      <ActivityEventStream observabilityEvents={warehouse?.observability_events ?? []} />
 
-      {/* Summary cards */}
+      {/* Which sources are feeding this page, and which are not. An operator
+          who cannot tell "quiet" from "unconfigured" cannot act on either. */}
+      <SourceStrip sources={sources} />
+
+      {/* Summary cards — runtime first, because that source needs no warehouse. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard
+          icon={Zap}
+          label="Runtime Events"
+          value={events.filter((e) => e.source === "runtime").length}
+          color="text-emerald-400"
+        />
+        <StatCard
+          icon={Bot}
+          label="Agents Seen"
+          value={new Set(events.map((e) => e.agent_name).filter(Boolean)).size}
+          color="text-amber-400"
+        />
+        <StatCard
+          icon={Wrench}
+          label="Tools Called"
+          value={new Set(events.map((e) => e.tool_name).filter(Boolean)).size}
+          color="text-cyan-400"
+        />
+        <StatCard
           icon={Terminal}
-          label="Total Queries"
-          value={timeline.summary.total_queries}
+          label="Warehouse Queries"
+          value={warehouse?.summary.total_queries ?? 0}
           color="text-blue-400"
         />
         <StatCard
           icon={Bot}
           label="Agent Queries"
-          value={timeline.summary.agent_queries}
-          color="text-emerald-400"
-        />
-        <StatCard
-          icon={Zap}
-          label="AI Events"
-          value={timeline.summary.observability_events}
+          value={warehouse?.summary.agent_queries ?? 0}
           color="text-purple-400"
-        />
-        <StatCard
-          icon={Bot}
-          label="Unique Agents"
-          value={timeline.summary.unique_agents}
-          color="text-amber-400"
-        />
-        <StatCard
-          icon={Wrench}
-          label="Tool Calls"
-          value={timeline.summary.tool_calls}
-          color="text-cyan-400"
         />
       </div>
 
       {/* Warnings */}
-      {timeline.warnings.length > 0 && (
+      {(warehouse?.warnings?.length ?? 0) > 0 && (
         <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-4">
           <p className="text-xs font-medium text-yellow-400 mb-2">Warnings</p>
-          {timeline.warnings?.map((w, i) => (
+          {warehouse?.warnings?.map((w, i) => (
             <p key={i} className="text-xs text-yellow-300/70">{w}</p>
           ))}
         </div>
       )}
+
+      {/* Runtime activity — the agent/MCP story, present without any warehouse. */}
+      <div>
+        <h2 className="text-sm font-semibold text-[var(--foreground)]">
+          Runtime activity ({runtimeEvents.length})
+        </h2>
+        <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+          Agent and MCP tool calls observed by the proxy, gateway, and OTel ingest.
+        </p>
+      </div>
+      <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-subtle)] bg-[var(--surface)]">
+                <th className="text-left py-2 px-3">Time</th>
+                <th className="text-left py-2 px-3">Agent</th>
+                <th className="text-left py-2 px-3">Tool</th>
+                <th className="text-left py-2 px-3">Event</th>
+                <th className="text-left py-2 px-3">Verdict</th>
+                <th className="text-left py-2 px-3">Severity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runtimeEvents.slice(0, 100).map((e, i) => (
+                <tr
+                  key={`${e.session_id ?? ""}-${e.observed_at}-${i}`}
+                  className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--surface-elevated)]/30"
+                >
+                  <td className="py-1.5 px-3 text-[var(--text-tertiary)] whitespace-nowrap">
+                    {formatDate(e.observed_at)}
+                  </td>
+                  <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">{e.agent_name || "-"}</td>
+                  <td className="py-1.5 px-3 text-[var(--text-secondary)] font-mono">{e.tool_name || "-"}</td>
+                  <td className="py-1.5 px-3 text-[var(--text-secondary)]">{e.event_type}</td>
+                  <td className="py-1.5 px-3">
+                    <StatusBadge status={e.verdict} />
+                  </td>
+                  <td className="py-1.5 px-3 text-[var(--text-tertiary)]">{e.severity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {runtimeEvents.length === 0 && (
+            <div className="text-center py-8 text-[var(--text-tertiary)] text-sm">
+              No runtime activity in this window.
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Activity bar chart */}
       {Object.keys(patternCounts).length > 0 && (
@@ -206,11 +282,14 @@ export default function ActivityPage() {
         </div>
       )}
 
-      {/* Query history remains a distinct evidence type. */}
+      {/* Query history remains a distinct evidence type — and only renders when
+          the warehouse it comes from is actually connected. */}
+      {warehouse && (
+      <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[var(--foreground)]">
-            Query history ({timeline.query_history.length})
+            Query history ({warehouse.query_history.length})
           </h2>
           <p className="mt-1 text-xs text-[var(--text-tertiary)]">
             Warehouse query evidence is kept separate from runtime decisions and AI telemetry.
@@ -286,6 +365,44 @@ export default function ActivityPage() {
             )}
           </div>
         </div>
+      </>
+      )}
+    </div>
+  );
+}
+
+/** Per-source state, so an unconfigured source is visible rather than absent.
+ *
+ * Omitting a source that is not wired up would make a partial timeline look
+ * complete — the operator would have no way to know what they are missing.
+ */
+function SourceStrip({ sources }: { sources: ActivitySource[] }) {
+  const tone: Record<string, string> = {
+    active: "text-emerald-400 bg-emerald-950/40 border-emerald-800",
+    empty: "text-[var(--text-secondary)] bg-[var(--surface-elevated)] border-[var(--border-subtle)]",
+    not_configured: "text-amber-400 bg-amber-950/30 border-amber-800/60",
+    unavailable: "text-red-400 bg-red-950/30 border-red-800/60",
+  };
+  const label: Record<string, string> = {
+    active: "active",
+    empty: "no events",
+    not_configured: "not connected",
+    unavailable: "unavailable",
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {sources.map((s) => (
+        <span
+          key={s.source}
+          title={s.detail || undefined}
+          className={`px-2.5 py-1 rounded-md text-xs border ${tone[s.status] ?? tone.empty}`}
+        >
+          <span className="font-medium capitalize">{s.source}</span>
+          <span className="opacity-70"> · {label[s.status] ?? s.status}</span>
+          {s.event_count > 0 && <span className="opacity-70"> · {s.event_count.toLocaleString()}</span>}
+        </span>
+      ))}
     </div>
   );
 }

@@ -19,11 +19,13 @@ any unrelated request; a burst sheds with a 429 + ``Retry-After`` instead.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, TypeVar, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.security import sanitize_error
 
@@ -143,28 +145,138 @@ async def governance_findings(
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/activity", tags=["governance"])
-async def activity_timeline(days: int = 30) -> dict[str, Any]:
-    """Agent activity timeline from Snowflake QUERY_HISTORY + AI_OBSERVABILITY_EVENTS.
+_ACTIVITY_EVENT_LIMIT = 500
 
-    Reconstructs agent execution history from 365-day query history
-    and AI observability traces.
+
+def _runtime_activity_events(tenant_id: str, *, days: int, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Agent / MCP tool-call activity from the durable runtime store.
+
+    This is the source that exists in every deployment: it is populated by the
+    proxy, the gateway, and OTel ingest, with no external warehouse involved.
     """
+    from agent_bom.api.runtime_event_store import get_runtime_event_store
+
+    try:
+        records = get_runtime_event_store().list_observations(tenant_id, limit=_ACTIVITY_EVENT_LIMIT)
+    except Exception as exc:  # a runtime-store outage must not sink the whole timeline
+        _logger.warning("Runtime activity source unavailable: %s", exc)
+        sources.append({"source": "runtime", "status": "unavailable", "event_count": 0, "detail": sanitize_error(exc)})
+        return []
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    events = [
+        {
+            "observed_at": record.observed_at,
+            "source": "runtime",
+            "event_type": record.event_type,
+            "agent_name": record.agent_name,
+            "tool_name": record.tool_name,
+            "severity": record.severity,
+            "verdict": record.verdict,
+            "session_id": record.session_id,
+            "trace_id": record.trace_id,
+        }
+        for record in records
+        if str(record.observed_at) >= cutoff
+    ]
+    sources.append(
+        {
+            "source": "runtime",
+            "status": "active" if events else "empty",
+            "event_count": len(events),
+            "detail": "" if events else f"no runtime observations in the last {days} days",
+        }
+    )
+    return events
+
+
+def _snowflake_activity_events(*, days: int, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Snowflake QUERY_HISTORY activity — optional, and reported as such."""
     import os
 
-    days = max(1, min(days, 365))
-
     if not os.environ.get("SNOWFLAKE_ACCOUNT"):
-        raise HTTPException(
-            status_code=400,
-            detail="SNOWFLAKE_ACCOUNT env var not set. Activity requires Snowflake.",
+        sources.append(
+            {
+                "source": "snowflake",
+                "status": "not_configured",
+                "event_count": 0,
+                "detail": "SNOWFLAKE_ACCOUNT is not set; Snowflake query history is not included",
+            }
         )
+        return []
+
+    from agent_bom.cloud import discover_activity
+
+    try:
+        timeline = cast(dict[str, Any], discover_activity(provider="snowflake", days=days).to_dict())
+    except Exception as exc:  # one provider failing must not fail the request
+        _logger.warning("Snowflake activity source unavailable: %s", exc)
+        sources.append({"source": "snowflake", "status": "unavailable", "event_count": 0, "detail": sanitize_error(exc)})
+        return []
+
+    raw = timeline.get("events") or timeline.get("activity") or timeline.get("query_history") or []
+    events = [{**event, "source": "snowflake"} for event in raw if isinstance(event, dict)]
+    sources.append(
+        {
+            "source": "snowflake",
+            "status": "active" if events else "empty",
+            "event_count": len(events),
+            "detail": "",
+            # The full Snowflake timeline rides along so the query-history and
+            # per-account views keep everything they had before this became a
+            # multi-source endpoint. Nesting it under the source keeps the
+            # top-level envelope source-agnostic.
+            "timeline": timeline,
+        }
+    )
+    return events
+
+
+@router.get("/activity", tags=["governance"])
+async def activity_timeline(request: Request, days: int = 30) -> dict[str, Any]:
+    """Agent activity timeline across every configured runtime source.
+
+    "Activity" is the agent/MCP runtime story: which agents ran, which tools
+    they called, and what the gateway decided. Snowflake query history is ONE
+    source of that, not the definition of it.
+
+    This used to hard-fail with 400 when ``SNOWFLAKE_ACCOUNT`` was unset, which
+    made the whole Activity surface unreachable for the large majority of
+    deployments that run agents and MCP servers without Snowflake at all. A
+    self-hosted install scanning its own fleet has genuine runtime activity to
+    show and was told to go configure a data warehouse.
+
+    Every source now reports its own state — ``active``, ``empty``, or
+    ``not_configured`` — the same contract ``nhi_discover`` and
+    ``cloud_inventory`` already use for optional providers. An unconfigured
+    source contributes zero events and a clear reason; it never fails the
+    request, and it is never silently omitted either, so an empty timeline can
+    always be told apart from an unconfigured one.
+    """
+    days = max(1, min(days, 365))
+    tenant_id = require_request_tenant_id(request)
 
     def _run() -> dict[str, Any]:
-        from agent_bom.cloud import discover_activity
+        sources: list[dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
-        timeline = discover_activity(provider="snowflake", days=days)
-        return cast(dict[str, Any], timeline.to_dict())
+        events.extend(_runtime_activity_events(tenant_id, days=days, sources=sources))
+        events.extend(_snowflake_activity_events(days=days, sources=sources))
+
+        events.sort(key=lambda event: str(event.get("observed_at") or ""), reverse=True)
+        active = [s for s in sources if s["status"] == "active"]
+        return {
+            "schema_version": "activity.timeline.v2",
+            "tenant_id": tenant_id,
+            "window_days": days,
+            "event_count": len(events),
+            "events": events[:_ACTIVITY_EVENT_LIMIT],
+            "truncated": len(events) > _ACTIVITY_EVENT_LIMIT,
+            "sources": sources,
+            # Distinguishes "nothing happened" from "nothing is wired up" so the
+            # UI can offer the right next step instead of a bare empty state.
+            "status": "active" if active else ("empty" if events else "no_sources_configured"),
+        }
 
     try:
         return await _offload(_run)

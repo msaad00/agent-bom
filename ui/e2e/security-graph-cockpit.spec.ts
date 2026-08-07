@@ -460,7 +460,12 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await expect(page).toHaveURL(/rollup=1/);
   await rollupRequest;
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
-  await expect(page.getByText(/not rendered relationship evidence/i)).toBeVisible();
+  // The roll-up used to emit no edges, so this banner had to disclaim that the
+  // cards were "not rendered relationship evidence". It now draws the real
+  // aggregated relationships between containers, so the banner says so and the
+  // old disclaimer must NOT come back.
+  await expect(page.getByText(/real relationships, aggregated/i)).toBeVisible();
+  await expect(page.getByText(/not rendered relationship evidence/i)).toHaveCount(0);
   await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
   await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
   const cards = page.locator('[data-rollup-container="true"]');

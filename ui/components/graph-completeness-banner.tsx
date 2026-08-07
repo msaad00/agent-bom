@@ -28,13 +28,33 @@ export function GraphCompletenessBanner({
   onLoadMore?: (() => void) | undefined;
   loadMoreLabel?: string;
 }) {
-  const returned = completeness?.returned ?? visibleCount;
-  const total =
-    completeness?.total ??
-    (returned != null && omittedCount != null ? returned + omittedCount : undefined);
+  // ONE derivation per sentence. These three numbers appear together, so they
+  // must come from the same source: mixing an API `returned`/`total` with a
+  // locally-computed `omitted` produced "Showing 5,264 of 4,904 · 4,798
+  // omitted" — more shown than exist, and no two figures reconciling.
+  //
+  // The envelope wins wholesale when it carries counts; the local props are the
+  // fallback for callers that have no envelope, never a supplement to one.
+  const hasEnvelopeCounts = completeness?.returned != null || completeness?.total != null;
+
+  const returned = hasEnvelopeCounts ? completeness?.returned : visibleCount;
+  const rawTotal = hasEnvelopeCounts
+    ? completeness?.total
+    : returned != null && omittedCount != null
+      ? returned + omittedCount
+      : undefined;
+
+  // A total below what was returned is upstream incoherence, not something to
+  // render as fact. Widen to what we can actually stand behind rather than
+  // printing an impossibility.
+  const total = rawTotal != null && returned != null ? Math.max(rawTotal, returned) : rawTotal;
+
   const omitted =
-    omittedCount ??
-    (returned != null && total != null ? Math.max(0, total - returned) : 0);
+    returned != null && total != null
+      ? Math.max(0, total - returned)
+      : !hasEnvelopeCounts && omittedCount != null
+        ? omittedCount
+        : 0;
   const truncated =
     Boolean(completeness?.truncated) ||
     completeness?.status === "truncated" ||

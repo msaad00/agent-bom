@@ -531,3 +531,35 @@ test("eligible roll-up shows a loading surface without raw-topology counts", asy
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
 });
+
+test("ranked paths reach the first viewport instead of sitting under a tower of bands", async ({ page }) => {
+  // The investigation page stacked eight full-width bands above the content:
+  // title, lens row, investigation loop, deploy gate, exposure paths, snapshot,
+  // large-estate notice, metric tiles. The graph and the ranked paths — the
+  // reason the page exists — began below the fold on a 900px-tall viewport.
+  //
+  // Controls recede, content is the hero. This pins that the paths panel starts
+  // within the first viewport at a standard desktop height.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await routeCockpit(page);
+
+  await page.goto("/security-graph");
+  await page.waitForLoadState("networkidle");
+
+  const paths = page.getByText(/ranked paths of/).first();
+  await expect(paths).toBeVisible();
+  const box = await paths.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeLessThan(900);
+});
+
+test("the deploy gate is disclosure-gated rather than always expanded", async ({ page }) => {
+  // "Should I deploy?" is a deliberate, occasional action — not something that
+  // should cost a full band of vertical space on every visit.
+  await routeCockpit(page);
+
+  await page.goto("/security-graph");
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByPlaceholder(/agent:claude-desktop/)).toBeHidden();
+});

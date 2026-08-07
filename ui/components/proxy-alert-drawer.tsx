@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 
+import { useDrawerWidth } from "@/lib/use-drawer-width";
 import { useEscToClose } from "@/hooks/use-esc-to-close";
 import type { ProxyAlert } from "@/lib/api";
 import { formatDate } from "@/lib/api";
@@ -24,6 +25,7 @@ export function ProxyAlertDrawer({
 }) {
   useEscToClose(true, onClose);
   const rows = proxyAlertDetailEntries(alert);
+  const { width, onHandlePointerDown, onHandleKeyDown } = useDrawerWidth();
 
   return (
     <div
@@ -38,7 +40,22 @@ export function ProxyAlertDrawer({
         aria-label="Close proxy alert details"
         onClick={onClose}
       />
-      <aside className="relative h-full w-full max-w-lg overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)] p-5 shadow-2xl">
+      <aside
+        style={{ width }}
+        className="relative h-full w-full max-w-full overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)] p-5 shadow-2xl"
+      >
+        {/* A fixed 32rem drawer forces long values to wrap and short ones to
+            waste the row. Let the reader size it to what they are reading. */}
+        <div
+          role="separator"
+          aria-label="Resize drawer"
+          aria-orientation="vertical"
+          tabIndex={0}
+          onKeyDown={onHandleKeyDown}
+          onPointerDown={onHandlePointerDown}
+          title="Drag to resize"
+          className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-[color:var(--accent-border)] focus:bg-[color:var(--accent-border)] focus:outline-none"
+        />
         <div className="mb-4 flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] pb-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
@@ -72,16 +89,16 @@ export function ProxyAlertDrawer({
           </button>
         </div>
 
-        <dl className="space-y-3">
+        {/* Two columns of label/value pairs instead of one bordered card per
+            field: nine short values cost roughly five rows rather than nine,
+            and the eye scans a column instead of a mile of boxes. */}
+        <dl data-testid="proxy-alert-fields" className="grid grid-cols-2 gap-x-5 gap-y-3">
           {rows.map((row) => (
-            <div
-              key={`${row.label}:${row.value}`}
-              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/60 px-3 py-2"
-            >
+            <div key={`${row.label}:${row.value}`} className="min-w-0">
               <dt className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
                 {row.label}
               </dt>
-              <dd className="mt-1 break-words font-mono text-xs text-[var(--foreground)]">{row.value}</dd>
+              <dd className="mt-0.5 break-words font-mono text-xs text-[var(--foreground)]">{row.value}</dd>
             </div>
           ))}
         </dl>

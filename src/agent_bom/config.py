@@ -718,7 +718,6 @@ A2A_AUTH_SHARED_TOKEN_MIN_AGENTS = _int("AGENT_BOM_A2A_AUTH_SHARED_TOKEN_MIN_AGE
 A2A_AUTH_REQUIRE_SIGNED_TOKENS = _bool("AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS", True)
 
 
-
 # ── MCP server: how remote clients are told to reach us ───────────────────
 # The externally reachable base URL of a hosted MCP deployment, used for the
 # OAuth issuer / resource-server URL advertised in the 401 challenge.

@@ -1466,28 +1466,27 @@ class PersonaLane(NamedTuple):
     accent_key: str
 
 
-# The five personas. One entry per README table row, in the same order.
+# The four personas. One entry per README table row, in the same order.
+#
+# This was five lanes against seven README rows -- the artwork and the table had
+# drifted apart, so the picture and the text described different products.
+# Consolidated to the four audiences the evidence layer actually serves, with
+# "AI engineer" naming the person who builds agents and MCP servers rather than
+# the vaguer "AI / MCP owner".
 PERSONA_LANES: tuple[PersonaLane, ...] = (
     PersonaLane(
-        "Developers",
-        "local scan · images · CI gates",
-        "Accurate SCA",
-        "15 ecosystems · EPSS/KEV · distro-aware",
-        "dev",
+        "AI engineer",
+        "agents · MCP servers · models",
+        "Agent-native surface",
+        f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools · SARIF",
+        "mcp",
     ),
     PersonaLane(
-        "AppSec",
-        "SARIF · reachability · graph paths",
+        "Security engineer",
+        "exposure paths · reachability · identities",
         "Triage by reachability",
-        "blast radius · CI gates · exit codes",
+        "blast radius · CI gates · 15 ecosystems",
         "appsec",
-    ),
-    PersonaLane(
-        "Platform / SRE",
-        "fleet sync · Helm · CI · SBOM",
-        "Self-hosted control plane",
-        "your VPC · Postgres · signed audit",
-        "platform",
     ),
     PersonaLane(
         "GRC / audit",
@@ -1497,11 +1496,11 @@ PERSONA_LANES: tuple[PersonaLane, ...] = (
         "grc",
     ),
     PersonaLane(
-        "AI / MCP owners",
-        "MCP inventory · allow/warn/block",
-        "Agent-native surface",
-        f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools · SARIF",
-        "mcp",
+        "Leadership / CISO",
+        "posture · coverage · change over time",
+        "One correlated view",
+        "material risk · trend · explicit gaps",
+        "platform",
     ),
 )
 

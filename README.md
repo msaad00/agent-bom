@@ -55,21 +55,18 @@ observed.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="Developer, AppSec, platform, GRC, and AI or MCP owner workflows on the shared evidence model" width="1000" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="AI engineer, security engineer, GRC, and leadership workflows on the shared evidence model" width="1000" />
   </picture>
 </p>
 
 | Role | Start here | Primary outcome |
 |---|---|---|
-| Developers | `agent-bom scan .` | Find and explain issues before code leaves the workstation |
-| AppSec | `agent-bom scan . -f sarif -o findings.sarif` | Triage reachable findings and enforce CI gates |
-| Security engineers | `pip install 'agent-bom[ui]' && agent-bom serve` | Investigate exposure paths, identities, and evidence provenance |
-| Platform / SRE | `agent-bom connect aws` | Centralize estate inventory, jobs, and runtime controls |
+| AI engineer | `agent-bom scan .` | Inventory agents, MCP servers, and models, and catch issues before they ship |
+| Security engineer | `pip install 'agent-bom[ui]' && agent-bom serve` | Investigate exposure paths, identities, and evidence provenance |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Review control mappings and export evidence with explicit gaps |
 | Leadership / CISO | `pip install 'agent-bom[ui]' && agent-bom serve` | Review posture, coverage, material risk, and change over time |
-| AI / MCP owners | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | Inventory tools and apply allow, warn, or block decisions |
 
-AppSec and GRC remain separate workflows: findings and reachability are not
+Security engineering and GRC remain separate workflows: findings and reachability are not
 presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
 <details open>

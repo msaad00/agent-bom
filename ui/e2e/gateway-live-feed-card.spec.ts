@@ -89,18 +89,36 @@ test("unified activity stream renders without overflow at both widths", async ({
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        account: "synthetic-responsive-fixture",
-        discovered_at: "2026-06-26T14:31:07Z",
-        summary: {
-          total_queries: 0,
-          agent_queries: 0,
-          observability_events: 0,
-          unique_agents: 5,
-          tool_calls: 5,
-        },
-        query_history: [],
-        observability_events: [],
-        warnings: [],
+        schema_version: "activity.timeline.v2",
+        tenant_id: "default",
+        window_days: 30,
+        event_count: 0,
+        truncated: false,
+        status: "empty",
+        events: [],
+        sources: [
+          { source: "runtime", status: "empty", event_count: 0, detail: "" },
+          {
+            source: "snowflake",
+            status: "active",
+            event_count: 0,
+            detail: "",
+            timeline: {
+              account: "synthetic-responsive-fixture",
+              discovered_at: "2026-06-26T14:31:07Z",
+              summary: {
+                total_queries: 0,
+                agent_queries: 0,
+                observability_events: 0,
+                unique_agents: 5,
+                tool_calls: 5,
+              },
+              query_history: [],
+              observability_events: [],
+              warnings: [],
+            },
+          },
+        ],
       }),
     }),
   );

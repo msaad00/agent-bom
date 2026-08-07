@@ -246,6 +246,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_MCP_MAX_TOOL_METRICS` | `int` | `128` | — |
 | `AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS` | `float` | `30.0` | — |
 
+## MCP server: how remote clients are told to reach us
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_MCP_PUBLIC_URL` | `str` | `''` | The externally reachable base URL of a hosted MCP deployment, used for the OAuth issuer / resource-server URL advertised in the 401 challenge.  The server otherwise derives that from the socket it binds. Behind any proxy (Railway, Cloud Run |
+
 ## Multi-provider LLM harness (issue #3206)
 | Env var | Type | Default | Description |
 |---|---|---|---|

@@ -7,6 +7,7 @@ import {
   ArrowRight,
   GitBranch,
   Loader2,
+  Rocket,
   Route,
 } from "lucide-react";
 
@@ -658,28 +659,37 @@ function SecurityGraphPageContent() {
 
       <GraphLensSwitcher variant="compact" />
 
+      {/* The loop is a control, not content: it rides in the toolbar row rather
+          than owning a full-width band with an explanatory paragraph. The page
+          stacked eight such bands above the graph, pushing the ranked paths —
+          the reason the page exists — below the fold. */}
       {!captureMode ? (
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-              Investigation loop
-            </p>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-              Path → Expand → Impact → Fix. Step is query-param driven (`step=`).
-              {pinnedNodeId ? ` Pinned ${pinnedNodeId.slice(0, 12)}…` : ""}
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <InvestigationStepStrip
             step={investigationStep}
             onStepChange={setInvestigationStep}
             completed={completedSteps}
           />
+          {pinnedNodeId ? (
+            <span className="text-xs text-[color:var(--text-tertiary)]">
+              Pinned {pinnedNodeId.slice(0, 12)}…
+            </span>
+          ) : null}
         </div>
-      </section>
       ) : null}
 
-      {!captureMode && <DeployGatePanel scanId={selectedScanId || undefined} />}
+      {/* "Should I deploy?" is a deliberate, occasional action. It does not earn
+          a permanent band of vertical space on every visit. */}
+      {!captureMode && (
+        <Collapsible
+          title="Should I deploy?"
+          subtitle="Check an agent, service, image, or package against this snapshot's exposure paths."
+          icon={Rocket}
+          defaultOpen={false}
+        >
+          <DeployGatePanel scanId={selectedScanId || undefined} />
+        </Collapsible>
+      )}
 
       <Collapsible
         title="Exposure paths"

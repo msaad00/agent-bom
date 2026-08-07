@@ -119,7 +119,7 @@ function rollupEdgeWidth(count: number): number {
 
 export function buildRollupFlowGraph(
   containers: GraphRollupContainer[],
-  options?: { columns?: number; edges?: GraphRollupEdge[] },
+  options?: { columns?: number; edges?: GraphRollupEdge[] | undefined },
 ): { nodes: Node<LineageNodeData>[]; edges: Edge[] } {
   const columns = Math.max(1, options?.columns ?? DEFAULT_COLUMNS);
   const nodes: Node<LineageNodeData>[] = containers.map((container, index) => {

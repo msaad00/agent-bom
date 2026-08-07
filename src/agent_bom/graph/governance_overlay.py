@@ -60,12 +60,19 @@ def apply_governance_overlay(
     tenant_id: str,
     identity_store: Any = None,
     drift_store: Any = None,
+    blueprint_store: Any = None,
 ) -> dict[str, int]:
     """Add managed-identity / JIT / conditional-policy / drift nodes+edges in place.
 
     Returns a count of added nodes and edges. Reads from the global stores when
-    ``identity_store`` / ``drift_store`` are not supplied. Never raises: a store
-    failure degrades to a partial overlay.
+    ``identity_store`` / ``drift_store`` / ``blueprint_store`` are not supplied.
+    Never raises: a store failure degrades to a partial overlay.
+
+    All three stores are injectable for the same reason: a caller that supplies
+    empty stores must get an empty overlay. ``blueprint_store`` used to be read
+    from the process singleton with no injection point, so a test passing empty
+    identity and drift stores still picked up whatever blueprints another test
+    had seeded — an "empty stores" case that was not actually empty.
     """
     if identity_store is None:
         from agent_bom.api.agent_identity_store import get_agent_identity_store
@@ -213,9 +220,11 @@ def apply_governance_overlay(
     blueprint_node_by_seed: dict[str, str] = {}
     blueprint_node_by_id: dict[str, str] = {}
     try:
-        from agent_bom.api.blueprint_store import get_blueprint_store
+        if blueprint_store is None:
+            from agent_bom.api.blueprint_store import get_blueprint_store
 
-        blueprints = get_blueprint_store().list_blueprints(tenant_id, limit=200).blueprints
+            blueprint_store = get_blueprint_store()
+        blueprints = blueprint_store.list_blueprints(tenant_id, limit=200).blueprints
     except Exception:  # noqa: BLE001
         blueprints = []
     for blueprint in blueprints:

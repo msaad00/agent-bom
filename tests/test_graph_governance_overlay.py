@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from agent_bom.api.agent_identity_store import (
@@ -109,11 +111,27 @@ def test_overlay_projects_drift_incident_and_links_violated_tool():
     assert (did, "tool:srv:read_file") in _rels(graph, RelationshipType.SCOPED_TO)
 
 
+class _EmptyBlueprintStore:
+    """An explicitly empty blueprint store.
+
+    Injected rather than relying on the process singleton being empty: the
+    singleton is shared, so a test seeding blueprints elsewhere leaked five
+    nodes into this "empty stores" case and turned it red.
+    """
+
+    def list_blueprints(self, *_args, **_kwargs):
+        return SimpleNamespace(blueprints=[])
+
+
 def test_overlay_is_resilient_to_missing_matches_and_empty_stores():
     graph = _base_graph()
-    # No identities/drift → no-op, no raise.
+    # No identities/drift/blueprints → no-op, no raise.
     stats = apply_governance_overlay(
-        graph, tenant_id="default", identity_store=InMemoryAgentIdentityStore(), drift_store=_FakeDriftStore([])
+        graph,
+        tenant_id="default",
+        identity_store=InMemoryAgentIdentityStore(),
+        drift_store=_FakeDriftStore([]),
+        blueprint_store=_EmptyBlueprintStore(),
     )
     assert stats == {"nodes_added": 0, "edges_added": 0}
 

@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
+from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
 from agent_bom.api.stores import _get_firewall_decision_store, _get_policy_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -37,7 +38,7 @@ from agent_bom.security import sanitize_error
 if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 _REPLAY_ONLY_ARGUMENT_VALUE = "[replay-only]"
 _FIREWALL_POLICY_CACHE_LOCK = threading.RLock()
 _FIREWALL_POLICY_CACHE: dict[str, Any] = {

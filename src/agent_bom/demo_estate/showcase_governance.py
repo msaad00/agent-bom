@@ -22,6 +22,18 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+# Marker on every seeded cost row, so a rollover top-up can tell the demo's own
+# spend from an operator's without touching theirs.
+_DEMO_CALL_ID_PREFIX = "demo-"
+
+# Trailing days of spend the cost/forecast surfaces read.
+_SPEND_WINDOW_DAYS = 14
+
+# Weekday shape (Mon..Sun): real LLM spend dips over the weekend. Deterministic
+# per absolute date, so a day written by a backfill and a day written by a
+# rollover top-up agree on what that date cost.
+_WEEKDAY_SPEND_SCALE: tuple[float, ...] = (1.0, 1.02, 1.05, 1.03, 0.98, 0.62, 0.48)
+
 # Blueprints mirror the archetypes the runtime blueprint library already ships,
 # so a demo viewer sees the same vocabulary the product uses everywhere else.
 _BLUEPRINTS: tuple[dict[str, Any], ...] = (
@@ -128,11 +140,15 @@ def _price(model: str, input_tokens: int, output_tokens: int) -> float:
     return round(input_tokens / 1_000_000 * rate_in + output_tokens / 1_000_000 * rate_out, 2)
 
 
-def seed_showcase_governance_and_cost(*, tenant_id: str) -> dict[str, int]:
-    """Seed blueprints and priced LLM calls. Idempotent per tenant."""
+def seed_showcase_governance_and_cost(*, tenant_id: str, now: datetime | None = None) -> dict[str, int]:
+    """Seed blueprints and priced LLM calls. Idempotent per tenant.
+
+    ``now`` overrides the UTC clock so the trailing spend window is testable
+    across a day rollover without a frozen clock.
+    """
     return {
         "blueprints": _seed_blueprints(tenant_id=tenant_id),
-        "cost_records": _seed_cost_records(tenant_id=tenant_id),
+        "cost_records": _seed_cost_records(tenant_id=tenant_id, now=now),
     }
 
 
@@ -202,24 +218,44 @@ def _seed_blueprints(*, tenant_id: str) -> int:
     return seeded
 
 
-def _seed_cost_records(*, tenant_id: str) -> int:
+def _seed_cost_records(*, tenant_id: str, now: datetime | None = None) -> int:
+    """Seed a trailing window of priced LLM calls, topping up on a day rollover.
+
+    The cost page and the gateway ``calls_today`` KPI window on
+    ``[UTC midnight, request time]``. Seeding once and never again left the
+    newest record stamped with the boot day, so those surfaces read 0 from the
+    first midnight onward and — unlike the gateway feed, which the bootstrap
+    loop re-seeds — never recovered, because the old guard treated "any records
+    exist" as "already seeded". Days are keyed by absolute date, so a later pass
+    inserts only the missing ones and never rewrites a day already stored.
+    """
     from agent_bom.api.cost_store import LLMCostRecord, get_cost_store
 
     store = get_cost_store()
-    # Spread each agent's spend over 14 days so forecast/burn-rate has a slope
-    # to fit rather than a single point.
-    now = datetime.now(timezone.utc)
-    existing = len(store.list_records(tenant_id, limit=2))
-    if existing > 1:
+    now = now or datetime.now(timezone.utc)
+
+    existing = store.list_records(tenant_id, limit=5000)
+    demo_records = [record for record in existing if record.call_id.startswith(_DEMO_CALL_ID_PREFIX)]
+    # An operator's own spend must never be joined by demo rows.
+    if existing and not demo_records:
         return 0
+    # Keyed on the stored date rather than the id, so days written by an earlier
+    # relative-index format are still recognised as covered and not duplicated.
+    covered_days = {record.observed_at[:10] for record in demo_records}
 
     seeded = 0
-    for day in range(14):
-        observed = (now - timedelta(days=13 - day)).isoformat()
+    for day in range(_SPEND_WINDOW_DAYS):
+        observed_at = now - timedelta(days=_SPEND_WINDOW_DAYS - 1 - day)
+        date_key = observed_at.date().isoformat()
+        if date_key in covered_days:
+            continue
+        observed = observed_at.isoformat()
+        # Ramp older days slightly so burn-rate has a slope to fit and the
+        # forecast is not extrapolating from a flat line. The weekday shape
+        # carries that variation once the ramp has aged out of the window and
+        # every day is being topped up at full scale.
+        scale = ((day + 8) / 21) * _WEEKDAY_SPEND_SCALE[observed_at.weekday()]
         for agent, provider, model, cost_center, in_tokens, out_tokens in _SPEND:
-            # Ramp older days slightly so burn-rate has a slope to fit and the
-            # forecast is not extrapolating from a flat line.
-            scale = (day + 8) / 21
             daily_in = int(in_tokens * scale)
             daily_out = int(out_tokens * scale)
             if daily_in <= 0:
@@ -230,10 +266,13 @@ def _seed_cost_records(*, tenant_id: str) -> int:
                     # The model belongs in the key: one agent legitimately calls
                     # more than one model (clinical-summarizer uses both), and
                     # keying on agent+day alone made the second overwrite the
-                    # first, silently dropping a whole provider's spend.
-                    call_id=f"demo-{agent}-{model}-{day:02d}",
+                    # first, silently dropping a whole provider's spend. The
+                    # absolute date — not a relative index — keys the day, so a
+                    # rollover top-up inserts a new row instead of colliding
+                    # with an id the store would ignore.
+                    call_id=f"{_DEMO_CALL_ID_PREFIX}{agent}-{model}-{date_key}",
                     agent=agent,
-                    session_id=f"demo-session-{agent}-{model}-{day:02d}",
+                    session_id=f"demo-session-{agent}-{model}-{date_key}",
                     provider=provider,
                     model=model,
                     input_tokens=daily_in,

@@ -19,10 +19,11 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
+from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.runtime_event_store import (
@@ -48,7 +49,7 @@ from agent_bom.security import (
     sanitize_url,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 infra_router = APIRouter()
 _logger = logging.getLogger(__name__)
 

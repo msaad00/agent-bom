@@ -26,6 +26,12 @@ deterministic, while timestamps are anchored to the current UTC day so exact
 daily KPI windows remain truthful. Seeding is idempotent within that day, so
 repeated bootstraps do not inflate the counters.
 
+Anchoring to a day means the seed expires with it: the KPI surfaces window on
+``[UTC midnight, request time]``, so evidence written on one day is invisible
+the moment the next begins. ``bootstrap.refresh_demo_daily_evidence`` re-seeds
+on that rollover and every day-windowed route depends on it — without which the
+demo spends each new UTC day reporting no traffic at all.
+
 The event records are shaped exactly like alerts ingested through
 ``/v1/proxy/audit`` (they are pushed through ``push_proxy_alert``, which applies
 the same secret-sanitization + evidence-tier redaction), so the classification
@@ -208,12 +214,19 @@ def _tenant_has_demo_gateway_events(tenant_id: str, *, anchor: datetime) -> bool
     return False
 
 
-def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
-    """Seed the curated runtime gateway feed for the demo tenant (idempotent)."""
+def seed_showcase_gateway_events(*, tenant_id: str = SHOWCASE_TENANT, now: datetime | None = None) -> dict[str, Any]:
+    """Seed the curated runtime gateway feed for the demo tenant (idempotent).
+
+    ``now`` overrides the UTC clock the events are anchored to. Seeded evidence
+    is scoped to the anchor's UTC day because the KPI surfaces window on
+    ``[UTC midnight, request time]``, so a seed made on one day is invisible on
+    the next — see ``refresh_demo_daily_evidence``, which re-seeds on rollover.
+    The override exists so that rollover is testable without a frozen clock.
+    """
     from agent_bom.api.routes.proxy import push_proxy_alert, push_proxy_metrics
     from agent_bom.api.stores import _get_firewall_decision_store
 
-    anchor = datetime.now(timezone.utc).replace(microsecond=0)
+    anchor = (now or datetime.now(timezone.utc)).replace(microsecond=0)
     if _tenant_has_demo_gateway_events(tenant_id, anchor=anchor):
         return {"seeded": False, "reason": "already_present", "tenant_id": tenant_id}
 

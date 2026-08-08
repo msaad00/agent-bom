@@ -13,6 +13,7 @@ closed for the AI BOM page.
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -139,3 +140,78 @@ def test_seeding_is_idempotent(seeded, monkeypatch: pytest.MonkeyPatch) -> None:
     assert again == {"blueprints": 0, "cost_records": 0}
     assert len(_blueprints()) == before_blueprints
     assert len(_costs()) == before_costs
+
+
+# ── UTC day rollover ────────────────────────────────────────────────────────
+
+
+def test_spend_tops_up_on_a_day_rollover_without_duplicating(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seeded spend went permanently dark at the first midnight.
+
+    The old guard treated "any records exist" as "already seeded", so the
+    trailing window kept the boot day's timestamps forever: the cost page and
+    the gateway's ``calls_today`` both counted 0 LLM calls from then on, and no
+    restart short of wiping the store brought them back. Records are keyed by
+    absolute date now, so a later pass fills only the days that are missing.
+    """
+    monkeypatch.setenv("AGENT_BOM_HOME", tempfile.mkdtemp())
+    monkeypatch.setenv("AGENT_BOM_EPHEMERAL_STORE", "1")
+
+    from agent_bom.api import cost_store
+    from agent_bom.demo_estate.showcase_governance import _seed_cost_records
+
+    cost_store._COST_STORE = None
+    try:
+        today = datetime.now(timezone.utc)
+        yesterday = today - timedelta(days=1)
+
+        seeded_yesterday = _seed_cost_records(tenant_id="default", now=yesterday)
+        assert seeded_yesterday > 0
+        stored = cost_store.get_cost_store().list_records("default", limit=5000)
+        assert not [r for r in stored if r.observed_at.startswith(today.date().isoformat())]
+
+        topped_up = _seed_cost_records(tenant_id="default", now=today)
+
+        assert topped_up > 0, "the day that rolled over was never filled in"
+        after = cost_store.get_cost_store().list_records("default", limit=5000)
+        assert [r for r in after if r.observed_at.startswith(today.date().isoformat())]
+        # Only the new day is written — the thirteen days already stored are
+        # left exactly as they were rather than re-priced under new ids.
+        assert len(after) == len(stored) + topped_up
+        assert len({r.call_id for r in after}) == len(after)
+    finally:
+        cost_store._COST_STORE = None
+
+
+def test_operator_spend_is_never_joined_by_demo_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rollover top-up must not turn into a licence to write on real data."""
+    monkeypatch.setenv("AGENT_BOM_HOME", tempfile.mkdtemp())
+    monkeypatch.setenv("AGENT_BOM_EPHEMERAL_STORE", "1")
+
+    from agent_bom.api import cost_store
+    from agent_bom.api.cost_store import LLMCostRecord
+    from agent_bom.demo_estate.showcase_governance import _seed_cost_records
+
+    cost_store._COST_STORE = None
+    try:
+        store = cost_store.get_cost_store()
+        store.record_cost(
+            LLMCostRecord(
+                tenant_id="default",
+                call_id="operator-call-1",
+                agent="real-agent",
+                session_id="real-session",
+                provider="anthropic",
+                model="claude-sonnet-5",
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.01,
+                priced=True,
+                observed_at=datetime.now(timezone.utc).isoformat(),
+            )
+        )
+
+        assert _seed_cost_records(tenant_id="default") == 0
+        assert len(store.list_records("default", limit=100)) == 1
+    finally:
+        cost_store._COST_STORE = None

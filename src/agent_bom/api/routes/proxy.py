@@ -22,8 +22,9 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 
+from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.gateway_activity_store import (
     GatewayActivityConflictError,
     GatewayActivityRecord,
@@ -46,7 +47,7 @@ from agent_bom.runtime.gateway_events import (
 )
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 ws_router = APIRouter()
 
 # ── In-process ring buffer for proxy alerts/metrics ──────────────────────────

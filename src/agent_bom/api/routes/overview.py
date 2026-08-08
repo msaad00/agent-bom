@@ -43,8 +43,9 @@ from typing import Any, cast
 from urllib.parse import urlencode
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -58,7 +59,12 @@ from agent_bom.graph.severity import (
 )
 from agent_bom.rbac import require_authenticated_permission
 
-router = APIRouter(dependencies=[cast(Any, require_authenticated_permission("read"))])
+router = APIRouter(
+    dependencies=[
+        Depends(demo_daily_evidence_dependency),
+        cast(Any, require_authenticated_permission("read")),
+    ]
+)
 _logger = logging.getLogger(__name__)
 
 # Per-tenant overview cache (#3963 follow-up). ``_build_overview`` folds every

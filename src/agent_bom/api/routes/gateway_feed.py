@@ -37,9 +37,10 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.gateway_activity_store import (
     GatewayActivityCursorError,
     GatewayActivityCursorExpiredError,
@@ -55,7 +56,7 @@ from agent_bom.runtime.gateway_events import (
     GATEWAY_DATA_FILTER_EVENT_TYPES,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 
 _FEED_SCHEMA_VERSION = "gateway.feed.v1"
 _FEED_STALE_AFTER_SECONDS = 120

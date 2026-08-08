@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -986,3 +987,108 @@ def test_default_graph_page_carries_the_containment_spine(demo_estate_client: Te
     }
     linked = [pair for pair in contains if pair[0] in node_ids and pair[1] in node_ids]
     assert linked, "containment nodes arrived with no edge joining them to the page"
+
+
+# ── UTC day rollover ────────────────────────────────────────────────────────
+#
+# CI caught this the hard way: a run whose demo bootstrap landed at 23:59 and
+# whose request landed at 00:00:04 read ``calls_today: 0`` and failed
+# ``assert 0 >= 12``. The same clock makes the hosted demo claim no traffic on
+# an estate the tile beside it describes as busy, and left the seeded LLM spend
+# permanently invisible — its guard treated "any records exist" as "already
+# seeded", so it never re-seeded at all.
+#
+# Running these once proves nothing, so nothing below reads the wall clock for
+# the behaviour under test: evidence is seeded against an explicit yesterday and
+# is read back through the real ``[UTC midnight, now]`` window.
+
+
+def _seed_only_yesterdays_evidence() -> datetime:
+    """Reset the day-scoped stores and leave them holding yesterday's demo data.
+
+    Covers both halves of the rollover: the gateway feed (which the maintenance
+    loop reseeds, so it was merely late) and the seeded LLM spend (which was
+    guarded on "any records exist" and so never came back at all).
+    """
+    from agent_bom.api import cost_store
+    from agent_bom.api import stores as api_stores
+    from agent_bom.api.gateway_activity_store import get_gateway_activity_store
+    from agent_bom.api.routes.proxy import _reset_proxy_runtime_for_tests
+    from agent_bom.demo_estate.bootstrap import reset_daily_evidence_day
+    from agent_bom.demo_estate.showcase_gateway import seed_showcase_gateway_events
+    from agent_bom.demo_estate.showcase_governance import _seed_cost_records
+
+    _reset_proxy_runtime_for_tests()
+    api_stores._get_firewall_decision_store().reset()
+    reset_gateway_activity = getattr(get_gateway_activity_store(), "reset", None)
+    if callable(reset_gateway_activity):
+        reset_gateway_activity()
+    cost_store._COST_STORE = None
+    reset_daily_evidence_day()
+
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    seeded = seed_showcase_gateway_events(now=yesterday)
+    assert seeded.get("seeded") is True, seeded
+    assert _seed_cost_records(tenant_id="default", now=yesterday) > 0
+    return yesterday
+
+
+def test_yesterdays_gateway_evidence_is_outside_todays_kpi_window() -> None:
+    """The mechanism itself: day-scoped evidence goes dark when the day turns.
+
+    Pinned separately from the fix so a future change that stops scoping the
+    seed to a single UTC day fails here loudly rather than quietly making the
+    rollover test below tautological.
+    """
+    from agent_bom.demo_estate.showcase_gateway import _event_time
+
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    todays_window_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    for minutes_ago in (0, 1, 20):
+        assert _event_time(yesterday, minutes_ago) < todays_window_start
+
+
+def test_gateway_kpis_recover_after_a_utc_day_rollover(demo_estate_client: TestClient) -> None:
+    """A request landing on the far side of midnight still reports the estate."""
+    _seed_only_yesterdays_evidence()
+
+    # Pre-state: the stores hold demo evidence, but none of it is inside the
+    # window the KPI header reports on. This is precisely what CI saw.
+    from agent_bom.api.routes.proxy import _load_proxy_alerts
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    assert not [alert for alert in _load_proxy_alerts("default") if str(alert.get("ts") or "").startswith(today)]
+
+    kpis = demo_estate_client.get("/v1/gateway/feed/kpis").json()
+
+    assert kpis.get("calls_today", 0) >= 12, kpis
+    assert kpis.get("blocked_today", 0) >= 5, kpis
+    assert kpis.get("shadow_ai_blocked", 0) >= 2, kpis
+    assert kpis.get("data_filters_applied", 0) >= 2, kpis
+    # The spend half of the same rollover: this one never self-healed.
+    assert kpis.get("llm_calls", 0) > 0, kpis
+
+
+def test_daily_refresh_does_not_reseed_twice_in_one_day(demo_estate_client: TestClient) -> None:
+    """The per-request hook must cost one comparison, not a reseed each time."""
+    from agent_bom.demo_estate.bootstrap import refresh_demo_daily_evidence
+
+    _seed_only_yesterdays_evidence()
+    demo_estate_client.get("/v1/gateway/feed/kpis")
+
+    assert refresh_demo_daily_evidence() == {
+        "refreshed": False,
+        "reason": "current",
+        "day": datetime.now(timezone.utc).date().isoformat(),
+    }
+
+
+def test_daily_refresh_is_a_no_op_outside_demo_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every deployment pays for this hook; only the demo may act on it."""
+    from agent_bom.demo_estate.bootstrap import refresh_demo_daily_evidence, reset_daily_evidence_day
+
+    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
+    reset_daily_evidence_day()
+
+    assert refresh_demo_daily_evidence() == {"refreshed": False, "reason": "disabled"}

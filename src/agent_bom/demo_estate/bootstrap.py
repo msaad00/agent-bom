@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
@@ -21,9 +23,65 @@ _logger = logging.getLogger(__name__)
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
+# The UTC day the day-scoped demo evidence was last refreshed for. Guards the
+# per-request hook down to one string compare once the day is current.
+_daily_evidence_lock = threading.Lock()
+_daily_evidence_day: str | None = None
+
 
 def demo_estate_enabled() -> bool:
     return os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in _TRUTHY
+
+
+def reset_daily_evidence_day() -> None:
+    """Forget which day the evidence was refreshed for. For tests and resets."""
+    global _daily_evidence_day
+    with _daily_evidence_lock:
+        _daily_evidence_day = None
+
+
+def refresh_demo_daily_evidence(*, tenant_id: str = SHOWCASE_TENANT, now: datetime | None = None) -> dict[str, Any]:
+    """Re-seed the demo evidence that is scoped to a single UTC day.
+
+    The gateway KPI header, proxy status, firewall stats and the cost page all
+    window on ``[UTC midnight, request time]``. Evidence seeded at boot carries
+    the boot day's timestamps, so the moment the UTC day advances every one of
+    those surfaces reads 0 — a demo that claims no traffic on an estate the same
+    page describes as busy. Seeding once was never enough; the day has to be
+    re-checked, and the 60s maintenance loop alone leaves a visible window right
+    after midnight.
+
+    The day marker is claimed BEFORE seeding, so a concurrent burst of requests
+    at rollover produces one reseed rather than a stampede, and a seeding
+    failure is retried by the maintenance loop rather than by every request.
+    """
+    global _daily_evidence_day
+
+    if not demo_estate_enabled():
+        return {"refreshed": False, "reason": "disabled"}
+
+    today = (now or datetime.now(timezone.utc)).date().isoformat()
+    with _daily_evidence_lock:
+        if _daily_evidence_day == today:
+            return {"refreshed": False, "reason": "current", "day": today}
+        _daily_evidence_day = today
+
+    summary: dict[str, Any] = {"refreshed": True, "day": today, "tenant_id": tenant_id}
+    try:
+        from agent_bom.demo_estate.showcase_gateway import seed_showcase_gateway_events
+
+        summary["gateway_feed"] = seed_showcase_gateway_events(tenant_id=tenant_id, now=now)
+    except Exception:
+        _logger.warning("demo estate daily gateway refresh failed", exc_info=True)
+        summary["gateway_feed_error"] = True
+    try:
+        from agent_bom.demo_estate.showcase_governance import seed_showcase_governance_and_cost
+
+        summary["governance_cost"] = seed_showcase_governance_and_cost(tenant_id=tenant_id, now=now)
+    except Exception:
+        _logger.warning("demo estate daily cost refresh failed", exc_info=True)
+        summary["governance_cost_error"] = True
+    return summary
 
 
 def demo_estate_force_reseed() -> bool:

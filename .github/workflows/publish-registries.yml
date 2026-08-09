@@ -8,13 +8,25 @@ name: Publish to Registries
 # NOT wired, deliberately: a `SMITHERY_UPSTREAM_TOKEN` was once documented here
 # as the way to let Smithery's scanner authenticate against our MCP endpoint.
 # No such secret exists and nothing in this file ever read one, so the note
-# described a fix that was never implemented. The consequence is real and
-# accepted: Smithery cannot enumerate our tools, the release settles as
-# AUTH_REQUIRED, and the public catalog lists fewer tools than the server
-# serves. Closing that gap means handing a third-party scanner a working bearer
-# token for a production endpoint — a product decision, not a CI fix. Until it
-# is made, AUTH_REQUIRED is the expected terminal state and must not fail the
-# job (see "Wait for Smithery release" below).
+# described a fix that was never implemented. The consequence is real: Smithery
+# cannot enumerate our tools, the release settles as AUTH_REQUIRED, and the
+# public catalog lists fewer tools than the server serves (36 of 77 as of
+# 0.99.0 — see the supply-chain-drift tracker).
+#
+# This note used to end "handing a third-party scanner a working bearer token
+# for a production endpoint — a product decision, not a CI fix." That framing is
+# obsolete, and it was quietly making an unfixable-looking problem out of a
+# fixable one. A static shared token is not the only way in: OAuth 2.1 dynamic
+# client registration with PKCE lets Smithery obtain its own scoped token and
+# shares no secret at all — and agent-bom already ships a complete AS for it in
+# `src/agent_bom/api/oauth_as.py`. It is mounted on the gateway and NOT on the
+# MCP server, so `/.well-known/oauth-protected-resource` advertises an
+# authorization server whose `/authorize` and `/token` return 404. That, not an
+# absent bearer token, is why the scanner cannot authenticate.
+#
+# So AUTH_REQUIRED remains the expected terminal state that must not fail the
+# job (see "Wait for Smithery release" below) — but it is a bug with a known
+# fix, not an accepted cost. Serving the AS on the MCP server is what closes it.
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
 # Optional secret:

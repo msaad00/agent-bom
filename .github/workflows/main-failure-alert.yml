@@ -14,6 +14,66 @@ on:
 permissions: {}
 
 jobs:
+  # A tracker that can only ever open is not a tracker — it is a permanent
+  # accusation. #4712 sat open as a `release-blocker` for days after its cause
+  # (a stale PRODUCT_METRICS snapshot) had been fixed, because nothing here ever
+  # closed it. Since the release gate is "no tag while a release-blocker is
+  # open", an issue that cannot self-close can never be satisfied and has to be
+  # closed by hand — which is exactly how a real regression gets closed by
+  # reflex. The supply-chain drift trackers already self-close on green; this
+  # makes the CI tracker behave the same way.
+  resolve:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      issues: write
+      actions: read
+      contents: read
+    steps:
+      - name: Close the regression issue once main is green again
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const workflow = context.payload.workflow_run.name;
+            const htmlUrl = context.payload.workflow_run.html_url;
+            const sha = context.payload.workflow_run.head_sha.slice(0, 7);
+            const title = `ci-regression: ${workflow} failing on main`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              labels: "ci-regression",
+              per_page: 100,
+            });
+            const match = existing.find((issue) => issue.title === title);
+            if (!match) {
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: match.number,
+              body: [
+                `**${workflow}** is green on \`main\` again.`,
+                "",
+                `- SHA: \`${sha}\``,
+                `- Run: ${htmlUrl}`,
+                "",
+                "Closed automatically. Reopens on the next failure.",
+              ].join("\n"),
+            });
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: match.number,
+              state: "closed",
+              state_reason: "completed",
+            });
+
   alert:
     if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest

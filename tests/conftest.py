@@ -45,6 +45,43 @@ os.environ.setdefault("AGENT_BOM_EPHEMERAL_STORE", "1")
 
 
 @pytest.fixture(autouse=True)
+def _restore_agent_bom_logging():
+    """Undo any global logging reconfiguration a test leaves behind.
+
+    ``setup_logging`` mutates the process-global ``agent_bom`` logger: it sets
+    the level and replaces the handler list. ``monkeypatch.setenv`` restores
+    ``AGENT_BOM_LOG_LEVEL`` but cannot restore the logger, so one test calling
+    ``setup_logging(level="ERROR")`` silently raises the level for every test
+    that runs after it in the same process.
+
+    Anything later asserting on a warning through ``caplog`` then fails: the
+    record is dropped at the logger's own level before any handler sees it, and
+    the assertion reads as "the warning was never emitted". With
+    ``pytest-randomly`` shuffling order on every run, whether a given test lands
+    after the polluter changes run to run — which is what made this look like
+    flaky CI rather than order dependence. Reproduced deterministically by
+    running a ``setup_logging(level="ERROR")`` test immediately before
+    ``test_unreadable_database_does_not_masquerade_as_a_clean_scan``.
+
+    Restoring here fixes the whole class at once rather than hardening each
+    assertion against a polluter it cannot see.
+    """
+    logger = logging.getLogger("agent_bom")
+    saved_level = logger.level
+    saved_handlers = list(logger.handlers)
+    saved_propagate = logger.propagate
+    root = logging.getLogger()
+    saved_root_level = root.level
+    try:
+        yield
+    finally:
+        logger.setLevel(saved_level)
+        logger.handlers = saved_handlers
+        logger.propagate = saved_propagate
+        root.setLevel(saved_root_level)
+
+
+@pytest.fixture(autouse=True)
 def _no_vuln_db_download(request):
     """Keep the suite off the network when a CLI scan decides to refresh.
 

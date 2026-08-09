@@ -209,3 +209,44 @@ def test_no_authorization_server_is_mounted_when_auth_is_off(monkeypatch: pytest
 
     assert "/oauth/token" not in mounted
     assert "/.well-known/oauth-authorization-server" not in mounted
+
+
+def test_a_malformed_signing_key_degrades_instead_of_crashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A configuration typo must not crash-loop the MCP server.
+
+    Observed in production: the key was pasted into a hosting dashboard, which
+    stored its newlines as literal `\\n`, and `load_pem_private_key` raised on
+    boot. Before #12 nothing built a signing key at MCP startup, so this turned
+    a bad secret into a total outage the moment the AS was mounted.
+
+    Losing token persistence is recoverable. Losing the server is not.
+    """
+    from agent_bom.api.oauth_as import OAuthSigningKey
+
+    monkeypatch.setenv("AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM", "-----BEGIN PRIVATE KEY-----\\nnot-a-key\\n-----END PRIVATE KEY-----")
+
+    key = OAuthSigningKey()
+
+    assert key.ephemeral is True, "a rejected key must fall back, not be silently trusted"
+    assert key.kid
+
+
+def test_the_server_still_serves_the_as_with_a_malformed_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Degraded means degraded, not absent — discovery must still resolve."""
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+    from agent_bom.mcp_server_factory import create_fastmcp_server
+
+    monkeypatch.setenv("AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM", "garbage")
+    monkeypatch.setenv("AGENT_BOM_MCP_PUBLIC_URL", "https://agent-bom.example.com")
+
+    mcp = create_fastmcp_server(
+        host="0.0.0.0",
+        port=8080,
+        bearer_token="secret",
+        version="0.99.0",
+        token_verifier_factory=lambda token: _StaticBearerTokenVerifier(token),
+    )
+    mounted = {getattr(route, "path", "") for route in mcp.streamable_http_app().routes}
+
+    assert "/oauth/token" in mounted
+    assert "/.well-known/oauth-authorization-server" in mounted

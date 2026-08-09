@@ -138,8 +138,28 @@ class OAuthSigningKey:
 
         pem = private_pem if private_pem is not None else resolve_secret("AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM").strip()
         if pem:
-            self._private_key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
-            self._ephemeral = False
+            # A malformed PEM must not take the process down. Since the MCP
+            # server began building an AS at startup, an unloadable key turned a
+            # configuration typo into a crash-loop of the whole server — observed
+            # in production, where a dashboard-pasted key stored its newlines as
+            # literal ``\n`` and `load_pem_private_key` raised on boot. The AS is
+            # an enhancement; losing token persistence is recoverable, losing the
+            # server is not. Escalated to ERROR (not the ephemeral WARNING) because
+            # an operator who configured a key deserves to be told it was rejected
+            # rather than silently running degraded.
+            try:
+                self._private_key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+                self._ephemeral = False
+            except Exception:
+                logger.error(
+                    "AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM could not be parsed and was IGNORED; falling back "
+                    "to an ephemeral key. Issued access tokens will not survive a restart or be shared "
+                    "across replicas. Check that the value contains real newlines — a literal '\\n' "
+                    "sequence is the usual cause when the key is pasted into a hosting dashboard.",
+                    exc_info=True,
+                )
+                self._private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+                self._ephemeral = True
         else:
             self._private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
             self._ephemeral = True

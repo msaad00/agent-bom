@@ -16,21 +16,25 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _tracked_files(*pathspecs: str) -> list[Path]:
-    """Return tracked files for metrics so local ignored artifacts do not skew counts.
+    """Return files for metrics so local ignored artifacts do not skew counts.
 
     Falls back to a filesystem walk when git cannot answer. The Alpine/musl CI
     job runs where ``git -C <root> ls-files`` exits 128 — git declines a
     repository whose ownership it considers dubious — and a hard failure there
     took down the whole metrics snapshot for a reason unrelated to any metric.
 
-    The fallback is equivalent on the checkout that matters: a fresh CI clone
-    has no untracked or ignored files, so the walk yields the same set. It is
-    only a divergence risk in a dirty working tree, which is exactly where the
-    git path still works.
+    ``--others --exclude-standard`` is not optional. Plain ``ls-files`` lists
+    only what is already in the index, so a module you have written but not yet
+    ``git add``-ed is invisible: ``--check`` passes locally, you commit, and CI
+    counts the file and fails the snapshot 18 minutes into the test job. Every
+    PR that adds a Python file hit this. Including untracked-but-not-ignored
+    files makes the local answer match the CI checkout, where that file is
+    committed — while ignored build artifacts stay excluded, which is the
+    reason this consults git at all rather than walking the tree.
     """
     try:
         result = subprocess.run(
-            ["git", "-C", str(ROOT), "ls-files", "--", *pathspecs],
+            ["git", "-C", str(ROOT), "ls-files", "--cached", "--others", "--exclude-standard", "--", *pathspecs],
             check=True,
             capture_output=True,
             text=True,

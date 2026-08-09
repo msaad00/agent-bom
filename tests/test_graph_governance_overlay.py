@@ -138,7 +138,16 @@ def test_overlay_is_resilient_to_missing_matches_and_empty_stores():
     # Identity whose agent has no matching node still adds the node (unlinked).
     store = InMemoryAgentIdentityStore()
     issue_identity(store, agent_id="ghost-agent", tenant_id="default")
-    stats = apply_governance_overlay(graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]))
+    # Explicit empty store: omitting it read whatever the process-global
+    # blueprint store happened to hold, so an unrelated demo-estate test
+    # seeding 5 blueprints earlier in the run turned this into 6 == 1.
+    stats = apply_governance_overlay(
+        graph,
+        tenant_id="default",
+        identity_store=store,
+        drift_store=_FakeDriftStore([]),
+        blueprint_store=_EmptyBlueprintStore(),
+    )
     assert stats["nodes_added"] == 1
     assert not [e for e in graph.edges if e.relationship == RelationshipType.AUTHENTICATES_AS]
 

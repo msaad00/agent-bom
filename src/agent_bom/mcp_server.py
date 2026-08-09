@@ -194,6 +194,43 @@ class _StaticBearerTokenVerifier:
             operator_token_expires_at,
             "AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT",
         )
+        self._authorization_server: Any = None
+
+    def accept_tokens_issued_by(self, authorization_server: Any) -> None:
+        """Also honour access tokens minted by our own OAuth 2.1 AS.
+
+        A client that completes the PKCE flow holds a token this verifier has
+        never seen. Without this it authenticates successfully and then every
+        MCP call returns 401 — authorize succeeds on their side and fails a
+        moment later on ours, which is the shape of the reported Smithery
+        failure. Advertising an authorization server whose tokens we then
+        reject is worse than advertising none.
+        """
+        self._authorization_server = authorization_server
+
+    def _verify_issued_token(self, token: str):
+        """Validate an AS-issued RS256 token against our own signing key."""
+        from mcp.server.auth.provider import AccessToken
+
+        server = self._authorization_server
+        if server is None or not token:
+            return None
+        try:
+            claims = server.signing_key.verify(token, issuer=server.resolve_issuer())
+        except Exception:  # noqa: BLE001 - any failure is simply "not our token"
+            return None
+        # Scope comes from the token, never from the caller. The AS is pinned to
+        # ``read`` (see build_mcp_authorization_server), so a registered client
+        # cannot reach a write tool by asking for a broader scope.
+        scopes = [scope for scope in str(claims.get("scope") or "").split(" ") if scope]
+        expires_at = claims.get("exp")
+        return AccessToken(
+            token=token,
+            client_id=str(claims.get("client_id") or claims.get("sub") or "agent-bom-oauth-client"),
+            scopes=scopes or ["read"],
+            expires_at=int(expires_at) if isinstance(expires_at, int | float) else None,
+            resource=None,
+        )
 
     async def verify_token(self, token: str):
         from mcp.server.auth.provider import AccessToken
@@ -224,7 +261,7 @@ class _StaticBearerTokenVerifier:
                 expires_at=_mcp_token_expiry_epoch(self._token_expires_at),
                 resource=None,
             )
-        return None
+        return self._verify_issued_token(token)
 
 
 def _parse_mcp_token_expiry(value: str | None, env_name: str) -> datetime | None:

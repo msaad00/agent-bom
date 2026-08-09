@@ -268,7 +268,17 @@ class OAuthAuthorizationServer:
         supported_scopes: list[str] | None = None,
         allow_host_derived_issuer: bool = True,
     ) -> None:
-        self._configured_issuer = issuer.rstrip("/") if issuer else None
+        # Kept verbatim rather than rstripped. RFC 8414 §3.3 / RFC 9728 require
+        # the ``issuer`` this AS returns to be byte-identical to the identifier
+        # the client used to find it, and the MCP SDK advertises us through
+        # pydantic ``AnyHttpUrl``, which renders a bare host WITH a trailing
+        # slash (``https://host/``). Stripping it here made the two documents
+        # disagree by one character — enough for a strict client to reject the
+        # AS after a successful authorize. Endpoint URLs below are built from a
+        # stripped base so a configured slash never yields ``//oauth/token``.
+        # Callers that configure a slash-free issuer (the gateway) are
+        # unaffected: stripping was a no-op for them.
+        self._configured_issuer = issuer or None
         # When False, the issuer is never derived (TOFU-cached) from the
         # client-controlled request base URL. A non-loopback listener without an
         # explicit issuer would otherwise let the first caller poison token
@@ -310,12 +320,16 @@ class OAuthAuthorizationServer:
 
     def metadata(self, request_base_url: str | None = None) -> dict[str, Any]:
         issuer = self.resolve_issuer(request_base_url)
+        # ``issuer`` is echoed exactly as configured (see __init__); endpoints
+        # are built from a stripped base so a trailing slash cannot produce
+        # ``https://host//oauth/token``.
+        base = issuer.rstrip("/")
         return {
             "issuer": issuer,
-            "authorization_endpoint": f"{issuer}/oauth/authorize",
-            "token_endpoint": f"{issuer}/oauth/token",
-            "registration_endpoint": f"{issuer}/oauth/register",
-            "jwks_uri": f"{issuer}/oauth/jwks.json",
+            "authorization_endpoint": f"{base}/oauth/authorize",
+            "token_endpoint": f"{base}/oauth/token",
+            "registration_endpoint": f"{base}/oauth/register",
+            "jwks_uri": f"{base}/oauth/jwks.json",
             "scopes_supported": list(self.supported_scopes),
             "response_types_supported": ["code"],
             "response_modes_supported": ["query"],

@@ -49,9 +49,22 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
         # process-global; the demo bootstrap seeds them, so clear them here to
         # keep the seeded gateway feed from leaking into later tests.
         from agent_bom.api.routes.proxy import _reset_proxy_runtime_for_tests
+        from agent_bom.demo_estate.bootstrap import reset_daily_evidence_day
 
         _reset_proxy_runtime_for_tests()
         api_stores._get_firewall_decision_store().reset()
+        # The governance seed writes 5 blueprints and a fortnight of LLM spend
+        # into two more process-global singletons. Leaving them populated made
+        # test_graph_governance_overlay fail with `assert 6 == 1` — its overlay
+        # call omits `blueprint_store`, so it read the demo's 5 blueprints plus
+        # its own 1 identity. That is a real leak, not that test's bug, and with
+        # pytest-randomly it only surfaces when the two land in this order.
+        from agent_bom.api import blueprint_store as blueprint_store_mod
+        from agent_bom.api import cost_store as cost_store_mod
+
+        blueprint_store_mod.set_blueprint_store(None)
+        cost_store_mod._COST_STORE = None
+        reset_daily_evidence_day()
 
 
 def _demo_report(client: TestClient) -> dict:

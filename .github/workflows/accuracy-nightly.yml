@@ -1,0 +1,54 @@
+name: Accuracy Nightly
+
+# Two different accuracy questions, and PR CI answers neither of them fully.
+#
+# `make preflight` gates offline CVE range-matching accuracy on every PR
+# (scripts/cve_matching_accuracy.py --check), which catches a matcher
+# regression against a committed corpus without touching the network.
+#
+# It cannot catch the other failure: upstream advisory data changing, or our
+# OSV query/parsing pipeline breaking against the live API. Those tests exist
+# (tests/test_accuracy_baseline.py, 12 of them) but carry `pytest.mark.network`,
+# and every CI invocation runs `-m "not network and not slow"` — so they have
+# never executed in CI. A suite that is deselected reads exactly like a suite
+# that passes, which is how "no known vulnerabilities" became an assumption
+# rather than a measurement.
+#
+# This runs them nightly against the live network, where a failure means the
+# upstream world moved rather than the PR being wrong — which is why it does not
+# belong on the PR path.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-extras
+
+      - name: Refresh the advisory database
+        # A green scan on a stale DB is a false clean — that is the whole reason
+        # this job exists. Measuring accuracy against stale advisories would
+        # reproduce the exact defect it is meant to detect.
+        run: uv run agent-bom db update
+
+      - name: Offline CVE range-matching accuracy
+        run: uv run python scripts/cve_matching_accuracy.py --check
+
+      - name: Live advisory pipeline regression tests
+        run: uv run pytest tests/test_accuracy_baseline.py -v --tb=short -m "network"

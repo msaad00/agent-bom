@@ -99,7 +99,7 @@ metadata:
       calls to cloud providers (AWS/Azure/GCP/Snowflake) using your locally
       configured credentials, only when explicitly invoked. What stays local:
       all config file contents, env var values, credentials, scan results,
-      compliance tags, and SBOM data. Registry lookups (1059 MCP servers) are
+      compliance tags, and SBOM data. Registry lookups (1081 MCP servers) are
       bundled in-package with zero network calls. Credential-like and sensitive
       values in discovered config are redacted by sanitize_env_vars(); benign
       configuration values may remain in memory.
@@ -278,7 +278,7 @@ agent-bom where             # show all discovery paths
 ### Registry & Trust
 | Tool | Description |
 |------|-------------|
-| `registry_lookup` | Look up MCP server in the 1059-entry security metadata registry |
+| `registry_lookup` | Look up MCP server in the 1081-entry security metadata registry |
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
 | `fleet_scan` | Batch registry lookup + risk scoring for MCP server inventories |
 | `tool_risk_assessment` | Score live-introspected MCP tool capabilities and server risk (READ/WRITE/EXECUTE/NETWORK classification + dangerous-combination flags) |
@@ -314,7 +314,7 @@ agent-bom where             # show all discovery paths
 ### Resources
 | Resource | Description |
 |----------|-------------|
-| `registry://servers` | Browse the 1059-entry MCP server security metadata registry |
+| `registry://servers` | Browse the 1081-entry MCP server security metadata registry |
 
 ## Example Workflows
 

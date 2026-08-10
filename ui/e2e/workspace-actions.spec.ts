@@ -67,20 +67,7 @@ const campaign = {
   membership_provisional: false,
 };
 
-async function routeRemediation(page: Page) {
-  await routeShell(page);
-  await page.route("**/v1/jobs**", (route) => route.fulfill({ json: {
-    jobs: [{ job_id: "job-remediation", status: "done", created_at: CREATED_AT, completed_at: CREATED_AT, request: {}, summary: {} }],
-    count: 1, total: 1, limit: 25, offset: 0, status_counts: { done: 1 },
-  } }));
-  await page.route("**/v1/scan/job-remediation", (route) => route.fulfill({ json: {
-    job_id: "job-remediation",
-    status: "done",
-    created_at: CREATED_AT,
-    completed_at: CREATED_AT,
-    request: {},
-    progress: [],
-    result: { remediation_plan: [{
+const REMEDIATION_PLAN = [{
       package: "openssl",
       ecosystem: "generic",
       current_version: "3.0.13",
@@ -103,7 +90,33 @@ async function routeRemediation(page: Page) {
       atlas_tags: [],
       references: [],
       risk_narrative: "Patch the package, then regenerate evidence.",
-    }] },
+    }];
+
+async function routeRemediation(page: Page) {
+  await routeShell(page);
+  await page.route("**/v1/jobs**", (route) => route.fulfill({ json: {
+    jobs: [{ job_id: "job-remediation", status: "done", created_at: CREATED_AT, completed_at: CREATED_AT, request: {}, summary: {} }],
+    count: 1, total: 1, limit: 25, offset: 0, status_counts: { done: 1 },
+  } }));
+  // The page reads the plan from `/v1/scan/{id}/remediation`, which serves the
+  // plan alone rather than the whole 8.7 MB scan document. Playwright's
+  // `**/v1/scan/job-remediation` glob does NOT match that sub-path, so this
+  // route has to be declared separately -- and it is declared FIRST, because
+  // the broader pattern would otherwise claim the request and answer it with a
+  // whole-job payload the caller no longer reads.
+  await page.route("**/v1/scan/job-remediation/remediation", (route) => route.fulfill({ json: {
+    job_id: "job-remediation",
+    remediation_plan: REMEDIATION_PLAN,
+    total: REMEDIATION_PLAN.length,
+  } }));
+  await page.route("**/v1/scan/job-remediation", (route) => route.fulfill({ json: {
+    job_id: "job-remediation",
+    status: "done",
+    created_at: CREATED_AT,
+    completed_at: CREATED_AT,
+    request: {},
+    progress: [],
+    result: { remediation_plan: REMEDIATION_PLAN },
   } }));
   await page.route("**/v1/ticketing/tickets", (route) => route.fulfill({ json: {
     schema_version: "ticketing.tickets.v1", tenant_id: "default", tickets: [], count: 0,

@@ -40,6 +40,7 @@ from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.rollup import (
     ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES,
     ROLLUP_CONTAINMENT_RELATIONSHIPS,
+    ROLLUP_RELATIONSHIPS,
     RollupFilters,
     drill_down,
 )
@@ -86,6 +87,12 @@ def _estate(tenant: str = TENANT) -> UnifiedGraph:
                 )
                 graph.add_edge(UnifiedEdge(source=app, target=res, relationship=RelationshipType.CONTAINS))
             graph.add_edge(UnifiedEdge(source=app, target="orphan-0", relationship=RelationshipType.USES))
+    # A relationship between two resources under *different* applications of one
+    # account. Drilling into that account is where it must appear, aggregated
+    # onto the two application cards — so a scoped fetch that skips it, as the
+    # containment-only walk did, differs from the full load rather than passing
+    # because the fixture happened to have no sibling relationship to draw.
+    graph.add_edge(UnifiedEdge(source="res-0-0-0", target="res-0-1-0", relationship=RelationshipType.USES))
     # account -> cloud resource via OWNS: the inventory shape drill-down rolls up
     # even though the relationship is not CONTAINS.
     graph.add_node(UnifiedNode(id="owned-0", entity_type=EntityType.CLOUD_RESOURCE, label="owned-0", severity="high"))
@@ -117,8 +124,13 @@ def api_store(tmp_path) -> SQLiteGraphStore:
 
 
 def _full_materialisation(store: SQLiteGraphStore, tenant: str = TENANT) -> UnifiedGraph:
-    """The shipped fetch: every node and edge of the snapshot."""
-    return store.load_graph(tenant_id=tenant, scan_id=SCAN, relationship_types=ROLLUP_CONTAINMENT_RELATIONSHIPS)
+    """The reference fetch: every node and edge of the snapshot.
+
+    Loaded with ``ROLLUP_RELATIONSHIPS``, not the containment subset. A
+    reference narrowed to containment cannot show that a scoped read dropped
+    the relationships between the children it returns — it dropped them too.
+    """
+    return store.load_graph(tenant_id=tenant, scan_id=SCAN, relationship_types=ROLLUP_RELATIONSHIPS)
 
 
 DRILL_TARGETS = [

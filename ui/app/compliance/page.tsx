@@ -45,6 +45,7 @@ import { FrameworkIcon } from "@/components/framework-icon";
 import {
   complianceFrameworkSummaries,
   compliancePassRate,
+  complianceScoredTotals,
   controlMatchesQuery,
   type ComplianceFrameworkSummary,
 } from "@/lib/compliance-frameworks";
@@ -112,8 +113,16 @@ function CoverageBar({
 type CategoryFilter = "all" | "ai" | "governance" | "cloud";
 
 function categoryFor(id: string): "ai" | "governance" | "cloud" {
-  if (id === "cis" || id === "cmmc") return "cloud";
-  if (id === "eu-ai-act" || id === "nist-csf" || id === "iso27001" || id === "soc2")
+  if (id === "cis" || id === "cmmc" || id === "cis-foundations") return "cloud";
+  if (
+    id === "eu-ai-act" ||
+    id === "nist-csf" ||
+    id === "iso27001" ||
+    id === "soc2" ||
+    id === "nist-800-53" ||
+    id === "pci-dss" ||
+    id === "fedramp"
+  )
     return "governance";
   return "ai";
 }
@@ -240,6 +249,33 @@ function CompliancePageContent() {
         catalog: CMMC_PRACTICES,
         emptyMessage: undefined,
       },
+      // Scored on every response and counted by the headline, previously shown
+      // in no section. The API returns each control's code and name, so these
+      // need no bundled catalog.
+      {
+        id: "nist-800-53",
+        title: "NIST SP 800-53 Rev 5",
+        subtitle: "Controls with mapped evidence",
+        controls: data.nist_800_53,
+        catalog: {},
+        emptyMessage: undefined,
+      },
+      {
+        id: "pci-dss",
+        title: "PCI DSS 4.0",
+        subtitle: "Requirements with mapped evidence",
+        controls: data.pci_dss,
+        catalog: {},
+        emptyMessage: undefined,
+      },
+      {
+        id: "fedramp",
+        title: "FedRAMP Moderate",
+        subtitle: "Baseline controls",
+        controls: data.fedramp,
+        catalog: {},
+        emptyMessage: undefined,
+      },
     ];
   }, [data, hasMcp]);
 
@@ -345,9 +381,11 @@ function CompliancePageContent() {
 
   if (!data) return null;
 
-  const totalPass = frameworks.reduce((sum, f) => sum + f.pass, 0);
-  const totalWarn = frameworks.reduce((sum, f) => sum + f.warn, 0);
-  const totalFail = frameworks.reduce((sum, f) => sum + f.fail, 0);
+  // Scored rows only, which is the same basis as `evaluated_controls`: the two
+  // reconcile by construction (ui/tests/compliance-reconciliation.test.ts).
+  // Technique catalogs have no pass/fail to add, and the independently scored
+  // NIST catalog rescores evidence these rows already counted.
+  const { pass: totalPass, warn: totalWarn, fail: totalFail } = complianceScoredTotals(frameworks);
   const evaluatedFrameworks = frameworks.filter((f) => !f.disabled).length;
   const overallNotEvaluated = isNotEvaluated(data.overall_status);
 
@@ -369,7 +407,17 @@ function CompliancePageContent() {
       value: evaluatedFrameworks,
       hint: `${frameworks.length} tracked`,
     },
-    { label: "Passing", value: totalPass, accent: "success" },
+    {
+      label: "Passing",
+      value: totalPass,
+      accent: "success",
+      // Passing + Attention + Failing is exactly `evaluated_controls` above.
+      // Say so, because the page also shows a NIST 800-53 catalog line scored
+      // independently over the same evidence — a reader who adds it to these
+      // gets a larger number than the headline and no way to tell which is
+      // wrong.
+      hint: "of the evaluated controls",
+    },
     { label: "Attention", value: totalWarn, accent: "warn", accentThreshold: 0 },
     { label: "Failing", value: totalFail, accent: "critical", accentThreshold: 0 },
   ];
@@ -397,6 +445,13 @@ function CompliancePageContent() {
           <span className="text-[11px] text-[color:var(--text-tertiary)]">
             {f.disabledReason ?? "Not evaluated"}
           </span>
+        ) : f.kind === "applicability" ? (
+          // A technique catalog reports which techniques the evidence puts in
+          // play. Rendering that as a pass/fail bar would claim the estate
+          // passed the ones nothing matched.
+          <span className="text-[11px] text-[color:var(--text-tertiary)]">
+            {f.applicable ?? 0} of {f.total} applicable
+          </span>
         ) : (
           <div className="flex items-center gap-2">
             <CoverageBar pass={f.pass} warn={f.warn} fail={f.fail} total={f.total} />
@@ -412,15 +467,18 @@ function CompliancePageContent() {
       align: "right",
       sortable: true,
       width: "4rem",
-      cell: (f) => (
-        <span
-          className={
-            f.fail > 0 ? "font-semibold text-[color:var(--status-danger)]" : "text-[color:var(--text-tertiary)]"
-          }
-        >
-          {f.fail}
-        </span>
-      ),
+      cell: (f) =>
+        f.kind === "applicability" ? (
+          <span className="text-[color:var(--text-tertiary)]">—</span>
+        ) : (
+          <span
+            className={
+              f.fail > 0 ? "font-semibold text-[color:var(--status-danger)]" : "text-[color:var(--text-tertiary)]"
+            }
+          >
+            {f.fail}
+          </span>
+        ),
     },
   ];
 
@@ -449,6 +507,11 @@ function CompliancePageContent() {
         selectedKey={selectedSection?.id}
         onRowClick={(f) => {
           if (f.disabled) return;
+          // Benchmark rows are in the table because the headline counts them,
+          // but their evidence has its own drill-down below rather than a
+          // control list here. Selecting one would show a different framework's
+          // controls under its name.
+          if (!detailSections.some((section) => section.id === f.id)) return;
           setSelectedFrameworkId(f.id);
         }}
         maxHeight="calc(100vh - 22rem)"

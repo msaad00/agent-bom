@@ -405,13 +405,13 @@ def containment_drilldown_graph(
     adapter implements only part of the protocol) takes the same fallback, so
     its answer is unchanged rather than a 501.
     """
-    from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES, ROLLUP_CONTAINMENT_RELATIONSHIPS
+    from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES, ROLLUP_RELATIONSHIPS
 
     def _full_load() -> UnifiedGraph:
         return store.load_graph(
             tenant_id=tenant_id,
             scan_id=scan_id,
-            relationship_types=ROLLUP_CONTAINMENT_RELATIONSHIPS,
+            relationship_types=ROLLUP_RELATIONSHIPS,
         )
 
     budget = node_budget if node_budget is not None else _drilldown_subtree_budget()
@@ -434,7 +434,46 @@ def containment_drilldown_graph(
         return _full_load()
     if truncated:
         return _full_load()
+    _attach_sibling_relationships(store, graph, tenant_id=tenant_id, scan_id=scan_id)
     return graph
+
+
+def _attach_sibling_relationships(
+    store: Any,
+    graph: UnifiedGraph,
+    *,
+    tenant_id: str,
+    scan_id: str,
+) -> None:
+    """Add the non-containment edges *between* the subtree's nodes.
+
+    The walk above deliberately follows containment only — following ``USES``
+    would leave the subtree and stop being a drill-down. But ``drill_down`` also
+    aggregates the relationships *between* the children it returns, and those
+    are exactly the edges the walk excluded, so the drill-down drew a row of
+    disconnected cards for the same reason the top level did.
+
+    Scoped to the subtree's own node ids, so the read stays proportional to the
+    answer rather than to the estate — the property
+    :func:`containment_drilldown_graph` exists to protect. Edges with one
+    endpoint outside the subtree come back from the store (the query matches on
+    either endpoint) and are dropped here; the roll-up would discard them
+    anyway, having nothing at this level to attribute them to.
+
+    A backend that cannot answer a scoped edge query keeps the subtree it
+    already has: fewer relationships drawn, never a failed drill-down.
+    """
+    node_ids = set(graph.nodes)
+    if not node_ids:
+        return
+    unsupported: tuple[type[BaseException], ...] = (*_unsupported_traversal_errors(), AttributeError)
+    try:
+        edges = store.edges_for_node_ids(tenant_id=tenant_id, scan_id=scan_id, node_ids=node_ids)
+    except unsupported:
+        return
+    for edge in edges:
+        if edge.source in node_ids and edge.target in node_ids:
+            graph.add_edge(edge)
 
 
 def _drilldown_subtree_budget() -> int:

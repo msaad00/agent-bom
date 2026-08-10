@@ -1,16 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { flexRender } from "@tanstack/react-table";
+// v9 removed `useReactTable` and `createColumnHelper` from the package root and
+// moved the row-model factories behind `/legacy`. This component keeps the v8
+// table shape through that compat layer; porting it to v9's `useTable` is a
+// separate change, and doing both at once would leave nothing to bisect if the
+// matrix regressed.
 import {
-  useReactTable,
+  useLegacyTable,
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
-  flexRender,
-  createColumnHelper,
-  SortingState,
-  ColumnFiltersState,
-} from "@tanstack/react-table";
+  legacyCreateColumnHelper,
+  type LegacyColumnDef,
+} from "@tanstack/react-table/legacy";
+import type { SortingState, ColumnFiltersState } from "@tanstack/table-core";
 import {
   ComplianceResponse,
   ComplianceControl,
@@ -86,7 +91,7 @@ function flattenControls(data: ComplianceResponse): MatrixRow[] {
 
 // ─── Column definitions ──────────────────────────────────────────────────────
 
-const col = createColumnHelper<MatrixRow>();
+const col = legacyCreateColumnHelper<MatrixRow>();
 
 const columns = [
   col.accessor("framework", {
@@ -239,9 +244,14 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
 
   const rows = useMemo(() => flattenControls(data), [data]);
 
-  const table = useReactTable({
+  const table = useLegacyTable({
     data: rows,
-    columns,
+    // `ColumnDef` is invariant in its value type, so an array mixing string,
+    // number and string[] columns has no common annotation; the table erases
+    // that type to `unknown` at runtime. v8 tolerated the mismatch, v9 under
+    // `exactOptionalPropertyTypes` does not, so the erasure is stated here
+    // rather than hidden behind `any`.
+    columns: columns as unknown as LegacyColumnDef<MatrixRow>[],
     state: { sorting, columnFilters, globalFilter },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,

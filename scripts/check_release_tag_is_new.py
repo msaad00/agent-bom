@@ -29,15 +29,33 @@ should say it out loud rather than leave it to be discovered.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
+# git must never wait for a human here. Without this, `ls-remote` against a
+# private remote blocks on a credential prompt — which is exactly what happened
+# in the Alpine CI container: the test suite produced no output for 44 minutes
+# and the job hit its timeout with no failing test to point at.
+_GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "true", "GCM_INTERACTIVE": "never"}
+# Generous: a slow network should still answer. Short enough that a wedged
+# process fails the check rather than the job.
+_GIT_TIMEOUT_S = 30
+
+
+def _run_git(args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Run git, returning None when it fails, times out, or is absent."""
+    try:
+        return subprocess.run(["git", *args], capture_output=True, text=True, env=_GIT_ENV, timeout=_GIT_TIMEOUT_S)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
 
 def _git(*args: str) -> str:
-    result = subprocess.run(["git", *args], capture_output=True, text=True)
-    return result.stdout.strip() if result.returncode == 0 else ""
+    result = _run_git(list(args))
+    return result.stdout.strip() if result is not None and result.returncode == 0 else ""
 
 
 def _normalize(version: str) -> str:
@@ -57,8 +75,8 @@ def _remote_tags() -> tuple[set[str], bool]:
     exactly like a clean one, which is how a shipped version can look new. The
     caller says so out loud instead.
     """
-    result = subprocess.run(["git", "ls-remote", "--tags", "origin"], capture_output=True, text=True)
-    if result.returncode != 0:
+    result = _run_git(["ls-remote", "--tags", "origin"])
+    if result is None or result.returncode != 0:
         return set(), False
     return {
         ref.split("refs/tags/", 1)[1].removesuffix("^{}") for line in result.stdout.splitlines() if "refs/tags/" in line for ref in [line]

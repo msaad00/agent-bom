@@ -37,9 +37,12 @@ function sampleCompliance(overrides: Partial<ComplianceResponse> = {}): Complian
       owasp_mcp_pass: 2,
       owasp_mcp_warn: 0,
       owasp_mcp_fail: 8,
-      atlas_pass: 25,
-      atlas_warn: 0,
-      atlas_fail: 40,
+      // ATLAS is an applicability overlay (#4709): the API reports which
+      // techniques the evidence puts in play, never pass/fail. This fixture
+      // asserted the scored form long after the server stopped sending it,
+      // which is why a page rendering NaN kept a green suite.
+      atlas_applicable: 40,
+      atlas_not_applicable: 25,
       nist_pass: 2,
       nist_warn: 0,
       nist_fail: 12,

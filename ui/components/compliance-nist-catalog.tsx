@@ -182,6 +182,15 @@ export function ComplianceNistCatalog() {
               </>
             )}
           </p>
+          {/* Without this the panel reads as more evaluated controls, and adding
+              its count to the page total produces a number larger than the
+              headline with nothing to explain the gap. It is the same CVE and
+              CIS evidence, scored a second way. */}
+          <p className="mt-1 text-[11px] text-[color:var(--text-tertiary)]">
+            An alternate view of the evidence above, not additional controls — these
+            controls are rescored from the same findings, so they are excluded from
+            the page total and from the overall score.
+          </p>
         </div>
         <div className="flex items-center gap-1.5 self-start whitespace-nowrap">
           <StatusIcon status={drill.status} className="h-4 w-4" />

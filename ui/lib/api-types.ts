@@ -2318,9 +2318,16 @@ export interface ComplianceResponse {
     owasp_mcp_pass: number;
     owasp_mcp_warn: number;
     owasp_mcp_fail: number;
-    atlas_pass: number;
-    atlas_warn: number;
-    atlas_fail: number;
+    /**
+     * ATLAS and ATT&CK are technique catalogs, so they report which techniques
+     * the evidence puts in play — never pass/fail. #4709 removed the scored
+     * form from the API; the page kept reading `atlas_pass` and rendered
+     * `NaN` across every tile until the fields here matched the response.
+     */
+    atlas_applicable?: number | undefined;
+    atlas_not_applicable?: number | undefined;
+    attack_applicable?: number | undefined;
+    attack_not_applicable?: number | undefined;
     nist_pass: number;
     nist_warn: number;
     nist_fail: number;
@@ -2364,6 +2371,12 @@ export interface ComplianceResponse {
     aisvs_fail: number;
     aisvs_error: number;
     aisvs_not_applicable: number;
+    /** Benchmark evidence, counted by `evaluated_controls` like a framework row. */
+    cis_foundations_pass?: number | undefined;
+    cis_foundations_fail?: number | undefined;
+    cis_foundations_error?: number | undefined;
+    cis_foundations_not_applicable?: number | undefined;
+    cis_foundations_evaluated?: number | undefined;
   };
 }
 

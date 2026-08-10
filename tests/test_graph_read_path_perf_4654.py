@@ -333,11 +333,11 @@ def test_warm_story_hit_is_served_without_a_worker_thread(story_client: TestClie
     first = story_client.get("/v1/demo-estate/story")
     assert first.status_code == 200, first.text
 
-    offloads: list[str] = []
+    offloads: list[object] = []
     real_run_sync = anyio.to_thread.run_sync
 
     async def counting_run_sync(func, *args, **kwargs):
-        offloads.append(getattr(func, "__name__", repr(func)))
+        offloads.append(func)
         return await real_run_sync(func, *args, **kwargs)
 
     with pytest.MonkeyPatch.context() as mp:
@@ -346,7 +346,15 @@ def test_warm_story_hit_is_served_without_a_worker_thread(story_client: TestClie
 
     assert warm.status_code == 200, warm.text
     assert warm.json() == first.json()
-    assert offloads == [], f"a warm cache hit still offloaded to a worker thread: {offloads}"
+    # Patching `anyio.to_thread.run_sync` mutates the shared module, so this sees
+    # every offload in the request — including the framework's. Starlette 1.6.0
+    # moved large-body gzip onto a worker thread ("compressing large chunks
+    # inline would block the event loop"), which is the same rule this suite
+    # exists to enforce; counting it as a violation would fail us for a
+    # dependency doing the right thing. The claim is about OUR read path, so
+    # narrow it to our own callables.
+    ours = [getattr(func, "__name__", repr(func)) for func in offloads if getattr(func, "__module__", "").startswith("agent_bom")]
+    assert ours == [], f"a warm cache hit still offloaded to a worker thread: {ours}"
 
 
 def test_demo_story_is_built_once_per_tenant_and_reused(story_client: TestClient) -> None:

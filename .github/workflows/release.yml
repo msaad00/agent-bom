@@ -415,7 +415,7 @@ jobs:
         run: cosign sign --yes "agentbom/agent-bom@${{ steps.build-api-image.outputs.digest }}"
 
       - name: Attest API image provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/agentbom/agent-bom
           subject-digest: ${{ steps.build-api-image.outputs.digest }}
@@ -528,7 +528,7 @@ jobs:
         run: cosign sign --yes "agentbom/agent-bom-collector@${{ steps.build-collector-image.outputs.digest }}"
 
       - name: Attest collector image provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/agentbom/agent-bom-collector
           subject-digest: ${{ steps.build-collector-image.outputs.digest }}
@@ -650,7 +650,7 @@ jobs:
         run: cosign sign --yes "agentbom/agent-bom-ui@${{ steps.build-ui-image.outputs.digest }}"
 
       - name: Attest UI image provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/agentbom/agent-bom-ui
           subject-digest: ${{ steps.build-ui-image.outputs.digest }}
@@ -821,7 +821,7 @@ jobs:
         run: helm push "dist/helm/agent-bom-${{ steps.meta.outputs.version }}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
 
       - name: Attest Helm chart package
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/helm/agent-bom-${{ steps.meta.outputs.version }}.tgz
 
@@ -1215,7 +1215,7 @@ jobs:
           path: dist/
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
 

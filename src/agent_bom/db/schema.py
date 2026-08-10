@@ -197,11 +197,16 @@ def _set_db_permissions(db_path: Path) -> None:
 
 
 def _check_integrity(conn: sqlite3.Connection, db_path: Path) -> None:
-    """Run SQLite quick_check (fast header-only validation).
+    """Run SQLite ``quick_check`` over the database.
 
-    Full ``integrity_check`` scans every page (~4s on 700K records) —
-    too expensive for every scan.  Use ``quick_check`` which validates
-    the B-tree structure without reading every row.
+    **This is not cheap.** The previous docstring claimed ``quick_check``
+    "validates the B-tree structure without reading every row"; that is wrong.
+    ``quick_check`` walks every page of every btree — what it omits, relative to
+    ``integrity_check``, is the index-vs-table cross-check. Measured on a fully
+    synced 1.95 GB ``vulns.db``: **191 s cold, 10-21 s warm.**
+
+    So it belongs on maintenance paths that already touch the whole file (a DB
+    update), never on an open. See :func:`init_db`.
     """
     result = conn.execute("PRAGMA quick_check").fetchone()
     if result and result[0] != "ok":
@@ -212,12 +217,22 @@ def _check_integrity(conn: sqlite3.Connection, db_path: Path) -> None:
         )
 
 
-def init_db(path: Path | None = None) -> sqlite3.Connection:
+def init_db(path: Path | None = None, *, verify_integrity: bool = False) -> sqlite3.Connection:
     """Open (and initialise if needed) the local vuln DB.
 
-    Creates the DB file and parent directories if they don't exist.
-    Applies 0600 file permissions and runs an integrity check on open.
-    Returns an open connection with WAL mode and foreign keys enabled.
+    Creates the DB file and parent directories if they don't exist, applies 0600
+    permissions, and returns an open connection with WAL mode and foreign keys
+    enabled.
+
+    ``verify_integrity`` runs :func:`_check_integrity`, which reads the entire
+    file. It used to run on **every** open, and ``intel_lookup`` opens the DB
+    once per request in four places — so on a fully synced 1.95 GB database
+    every ``/v1/intel/*`` call re-validated the whole thing (measured: 22-58 s
+    per request, on a UI panel whose client cache is explicitly disabled).
+
+    Invisible in dev and CI because the cost scales with the size of
+    ``vulns.db``, not with the estate. Callers that already rewrite the database
+    — the sync/update path and the ``db`` CLI — opt in; readers do not.
     """
     db_path = path or DB_PATH
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -229,8 +244,10 @@ def init_db(path: Path | None = None) -> sqlite3.Connection:
     # Lock down file permissions after first creation
     _set_db_permissions(db_path)
 
-    # Integrity check — warn on corrupt DB, don't crash (read-only callers are safe)
-    _check_integrity(conn, db_path)
+    # Integrity check — warn on corrupt DB, don't crash (read-only callers are safe).
+    # Opt-in: it reads the whole file, so it must never sit on an open.
+    if verify_integrity:
+        _check_integrity(conn, db_path)
 
     # Seed schema_version on first creation
     row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()

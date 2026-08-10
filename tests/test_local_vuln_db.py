@@ -547,8 +547,10 @@ def test_sync_db_runs_wal_checkpoint(tmp_path, monkeypatch):
     proxies: list[_ConnProxy] = []
     real_init = schema_mod.init_db
 
-    def fake_init(path=None):
-        proxy = _ConnProxy(real_init(path))
+    def fake_init(path=None, **kwargs):
+        # `verify_integrity` is passed by the sync path (it rewrites the DB, so
+        # it is the one caller that still pays for a full integrity check).
+        proxy = _ConnProxy(real_init(path, **kwargs))
         proxies.append(proxy)
         return proxy
 

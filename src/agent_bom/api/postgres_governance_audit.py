@@ -50,6 +50,28 @@ from agent_bom.api.postgres_common import (
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
+# The fork-guard index this store relies on. Named so a unique violation can be
+# attributed to a chain race rather than to the (tenant_id, action_id) dedupe.
+_GOVERNANCE_FORK_GUARD_INDEX = "governance_audit_log_tenant_prevhash_uniq"
+# Bounded: a genuine fork race resolves in one or two rounds. An unbounded loop
+# would turn a persistent constraint problem into a hang on the request path.
+_MAX_APPEND_RETRIES = 5
+
+
+def _is_chain_fork_conflict(exc: Exception) -> bool:
+    """True when ``exc`` is a unique violation on the chain fork-guard index.
+
+    Deliberately narrow: the same INSERT also carries
+    ``ON CONFLICT (tenant_id, action_id) DO NOTHING``, so a dedupe collision
+    never raises. Anything that is not this index is a real error and must not
+    be retried into a loop.
+    """
+    if getattr(exc, "sqlstate", None) != "23505":
+        return False
+    diag = getattr(exc, "diag", None)
+    constraint = getattr(diag, "constraint_name", None) if diag else None
+    return constraint in (None, "", _GOVERNANCE_FORK_GUARD_INDEX)
+
 
 class PostgresGovernanceAuditLog:
     """Shared, tenant-scoped, append-only governance audit chain on Postgres."""
@@ -100,6 +122,19 @@ class PostgresGovernanceAuditLog:
         return GovernanceAuditRecord(**json.loads(row[0])) if row else None
 
     def append(self, record: GovernanceAuditRecord) -> GovernanceAuditRecord:
+        """Append one record to this tenant's chain, re-sealing on a fork race.
+
+        Reading the head and inserting against it is not atomic: two writers
+        that read the same head both seal against it, and the chain forks. An
+        in-process lock cannot help, because the writers are separate uvicorn
+        workers or replicas. Measured before the guard: 6 processes x 8 appends
+        produced 48 rows over 15 distinct predecessors.
+
+        ``UNIQUE (tenant_id, prev_hash)`` makes the database reject the loser,
+        which is then re-sealed against the winner's hash and retried — the same
+        shape ``PostgresAuditLog.append`` has used since 20260719_01. Retrying
+        is what keeps the guard from turning a race into a dropped audit record.
+        """
         # Bind the record's own tenant so the head lookup and RLS WITH CHECK
         # resolve to that tenant's chain — never the ambient request tenant.
         token = _current_tenant.set(record.tenant_id)
@@ -108,27 +143,40 @@ class PostgresGovernanceAuditLog:
                 existing = self._get_within_tenant(conn, record.action_id)
                 if existing is not None:
                     return existing
-                head_row = conn.execute(
-                    "SELECT record_hash FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
-                    (record.tenant_id,),
-                ).fetchone()
-                head = str(head_row[0]) if head_row else ""
-                sealed = _seal_record(record, head)
-                conn.execute(
-                    "INSERT INTO governance_audit_log "
-                    "(action_id, tenant_id, action, observed_at, record_hash, data) "
-                    "VALUES (%s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (tenant_id, action_id) DO NOTHING",
-                    (
-                        sealed.action_id,
-                        sealed.tenant_id,
-                        sealed.action,
-                        sealed.observed_at,
-                        sealed.record_hash,
-                        json.dumps(asdict(sealed), sort_keys=True),
-                    ),
-                )
-                conn.commit()
+                attempts = 0
+                while True:
+                    attempts += 1
+                    head_row = conn.execute(
+                        "SELECT record_hash FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
+                        (record.tenant_id,),
+                    ).fetchone()
+                    head = str(head_row[0]) if head_row else ""
+                    sealed = _seal_record(record, head)
+                    try:
+                        conn.execute(
+                            "INSERT INTO governance_audit_log "
+                            "(action_id, tenant_id, action, observed_at, record_hash, prev_hash, data) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                            "ON CONFLICT (tenant_id, action_id) DO NOTHING",
+                            (
+                                sealed.action_id,
+                                sealed.tenant_id,
+                                sealed.action,
+                                sealed.observed_at,
+                                sealed.record_hash,
+                                sealed.prev_hash,
+                                json.dumps(asdict(sealed), sort_keys=True),
+                            ),
+                        )
+                        conn.commit()
+                        break
+                    except Exception as exc:  # noqa: BLE001 - narrowed by _is_chain_fork_conflict
+                        conn.rollback()
+                        if _is_chain_fork_conflict(exc) and attempts <= _MAX_APPEND_RETRIES:
+                            # Another writer took our predecessor. Re-read the
+                            # head and seal against theirs instead of ours.
+                            continue
+                        raise
                 # A concurrent replica may have won the UNIQUE race between our
                 # existence check and insert; re-read so the canonical row wins.
                 stored = self._get_within_tenant(conn, sealed.action_id)

@@ -44,6 +44,11 @@ RUNTIME_SCHEMA_SQL = POSTGRES_DIR / "runtime-schema.sql"
 _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_uniqonaudit_log(team_id,prev_signature)"
 
 
+# The newest migration. One place to update when a revision lands, so the
+# single-head property and the head's identity do not drift apart.
+ALEMBIC_HEAD = "20260810_01"
+
+
 def _canonical_sql(text: str) -> str:
     return re.sub(r"[\s\"]+", "", text).lower()
 
@@ -436,22 +441,27 @@ def test_teams_tenant_rls_is_chained_idempotent_and_irreversible() -> None:
     assert "NO FORCE ROW LEVEL SECURITY" not in sql
 
 
-def test_fleet_agents_tenant_scoped_key_is_the_alembic_head() -> None:
-    """Nothing may chain past the new revision without being noticed."""
+def test_there_is_exactly_one_alembic_head() -> None:
+    """Nothing may chain past the newest revision without being noticed.
+
+    Named by property rather than by revision id: this test previously pinned
+    `20260801_01` literally, so every new migration edited the assertion and the
+    *reason* for it — one head, no forks — drifted out of the name. The current
+    head is asserted separately below, in one place.
+    """
     revisions = {
         path.name: re.search(r'down_revision\s*=\s*"([^"]+)"', path.read_text())
         for path in VERSIONS_DIR.glob("*.py")
         if path.name != "__init__.py"
     }
     parents = {match.group(1) for match in revisions.values() if match}
-    assert "20260801_01" not in parents
-    # And exactly one head: every other revision is some revision's parent.
     all_revisions = {
         match.group(1)
         for match in (re.search(r'^revision\s*=\s*"([^"]+)"', path.read_text(), re.M) for path in VERSIONS_DIR.glob("*.py"))
         if match
     }
-    assert all_revisions - parents == {"20260801_01"}
+    heads = all_revisions - parents
+    assert heads == {ALEMBIC_HEAD}, f"expected a single head {ALEMBIC_HEAD!r}, found {sorted(heads)}"
 
 
 def test_fleet_agents_tenant_key_is_chained_concurrent_and_irreversible() -> None:

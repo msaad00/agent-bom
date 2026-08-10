@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
@@ -48,6 +49,8 @@ from agent_bom.runtime.gateway_events import (
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
+
+_logger = logging.getLogger(__name__)
 ws_router = APIRouter()
 
 # ── In-process ring buffer for proxy alerts/metrics ──────────────────────────
@@ -993,34 +996,59 @@ def _role_allows(actual: str, required: str = "viewer") -> bool:
     return role_rank(actual_role) >= role_rank(required_role)
 
 
-def _ws_auth_required() -> bool:
-    import os as _os
+def _key_store_has_keys() -> bool:
+    from agent_bom.api.auth import get_key_store
 
-    from agent_bom.api.oidc import oidc_enabled_from_env
+    return bool(get_key_store().has_keys())
+
+
+def _ws_auth_required() -> bool:
+    """Whether these websocket streams must authenticate before accepting.
+
+    ``APIKeyMiddleware`` is a ``BaseHTTPMiddleware`` and never runs on websocket
+    scopes, so this gate is the only thing standing in front of
+    ``/ws/proxy/metrics`` and ``/ws/proxy/alerts`` — and a negative answer here
+    accepts anonymously as ``role="admin"``. Two rules follow from that.
+
+    **Use the shared derivation, do not hand-roll a second one.** This used to
+    sweep the environment itself and missed Snowflake OAuth entirely, so a
+    Snowflake-OAuth-only deployment served both sockets anonymously while its
+    HTTP surface was authenticated. ``derive_auth_posture`` is the single
+    env-based derivation every other reader already consumes; a second,
+    narrower copy of the same question is how the two answers drifted apart.
+
+    **Fail closed.** The previous ``except Exception: return False`` turned a
+    store outage into an anonymous admin stream — the moment a control plane is
+    least able to afford one. An error means we could not establish that auth is
+    unnecessary, which is not the same as establishing that it is.
+
+    This is not a lockout: a genuinely unconfigured single-user deployment still
+    streams, because the posture reports no sources and the key store is empty.
+    """
+    from agent_bom.api.middleware import derive_auth_posture
     from agent_bom.api.secret_source import secret_is_configured
 
-    configured = any(
-        (
-            secret_is_configured("AGENT_BOM_API_KEY"),
-            secret_is_configured("AGENT_BOM_API_KEYS"),
-            oidc_enabled_from_env(),
-            _os.environ.get("AGENT_BOM_SAML_IDP_ENTITY_ID", "").strip(),
-            _os.environ.get("AGENT_BOM_SAML_IDP_SSO_URL", "").strip(),
-            _os.environ.get("AGENT_BOM_SAML_IDP_X509_CERT", "").strip(),
-            _os.environ.get("AGENT_BOM_SAML_SP_ENTITY_ID", "").strip(),
-            _os.environ.get("AGENT_BOM_SAML_SP_ACS_URL", "").strip(),
-            secret_is_configured("AGENT_BOM_SCIM_BEARER_TOKEN"),
-            _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"},
-        )
-    )
-    if configured:
-        return True
     try:
-        from agent_bom.api.auth import get_key_store
+        api_key_configured = (
+            secret_is_configured("AGENT_BOM_API_KEY") or secret_is_configured("AGENT_BOM_API_KEYS") or _key_store_has_keys()
+        )
+        posture = derive_auth_posture(
+            api_key_configured=api_key_configured,
+            allow_unauthenticated=False,
+        )
+        if posture.auth_configured:
+            return True
+        # `posture.trusted_proxy` reports whether trusted-proxy auth is
+        # *usable* — it is false for a misconfigured one (missing or weak
+        # secret). An operator who switched it on has asked for authentication,
+        # and a broken configuration is not an invitation to stream anonymously,
+        # so intent alone keeps the socket closed.
+        import os as _os
 
-        return get_key_store().has_keys()
+        return _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
     except Exception:
-        return False
+        _logger.warning("websocket auth posture unavailable; requiring authentication", exc_info=True)
+        return True
 
 
 def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext | None:

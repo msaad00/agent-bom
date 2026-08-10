@@ -57,7 +57,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
-from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS
+from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS, ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.security import sanitize_error
@@ -3937,10 +3937,11 @@ async def delete_preset(request: Request, name: str) -> dict:
 # Estate-scale roll-up (CONTAINS) — backend for the UI graph-nav drill-down
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Containment-only edge load for /v1/graph/rollup (default mode). Taken from the
-# roll-up itself rather than restated here, so the set fetched can never be
-# narrower than the set rolled up.
-_ROLLUP_CONTAINMENT_RELATIONSHIPS = ROLLUP_CONTAINMENT_RELATIONSHIPS
+# Edge load for /v1/graph/rollup (default mode). Taken from the roll-up itself
+# rather than restated here, so the set fetched can never be narrower than the
+# set rolled up — which is precisely what a containment-only fetch made it: the
+# roll-up draws the NON-containment edges, so it received nothing to draw.
+_ROLLUP_RELATIONSHIPS = ROLLUP_RELATIONSHIPS
 
 
 @router.get("/graph/rollup", tags=["graph"])
@@ -3997,7 +3998,7 @@ async def get_graph_rollup(
                 "tenant_id": tenant,
             }
             if mode != "attack_path":
-                load_kwargs["relationship_types"] = _ROLLUP_CONTAINMENT_RELATIONSHIPS
+                load_kwargs["relationship_types"] = _ROLLUP_RELATIONSHIPS
             graph = await _graph_store_call(graph_store.load_graph, **load_kwargs)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc

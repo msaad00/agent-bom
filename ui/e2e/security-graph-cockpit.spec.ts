@@ -320,6 +320,20 @@ async function routeCockpit(
             },
           },
         ],
+        // The server aggregates every non-containment edge onto the containers
+        // its endpoints roll up into, so a collapsed estate arrives as a
+        // topology. This fixture used to omit the key entirely, which made the
+        // canvas draw a grid of disconnected cards and let an "edge-free
+        // roll-up" assertion look like a deliberate decision rather than a
+        // fixture that could not have shown an edge either way.
+        edges: options.emptyRollup ? [] : [
+          {
+            source: "account:development",
+            target: "account:production",
+            count: 35,
+            relationships: ["can_access", "uses"],
+          },
+        ],
         summary: {
           total_nodes: snapshotNodeCount ?? 1241,
           total_edges: graph.edges.length,
@@ -466,6 +480,9 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   // old disclaimer must NOT come back.
   await expect(page.getByText(/real relationships, aggregated/i)).toBeVisible();
   await expect(page.getByText(/not rendered relationship evidence/i)).toHaveCount(0);
+  // The banner claims aggregated relationships; the canvas has to hold one, or
+  // the claim is the disclaimer it replaced with the word "not" removed.
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
   await expect(page.getByText(/2 containers at this level.*1241 nodes in snapshot/)).toBeVisible();
   const cards = page.locator('[data-rollup-container="true"]');
@@ -481,7 +498,7 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
 });
 }
 
-test("36-node snapshots default to real topology and forced roll-up stays edge-free", async ({ page }) => {
+test("36-node snapshots default to real topology and forced roll-up still draws relationships", async ({ page }) => {
   await routeCockpit(page, 36);
 
   await page.goto(`/graph?scan=${scanId}`);
@@ -493,7 +510,10 @@ test("36-node snapshots default to real topology and forced roll-up stays edge-f
   await page.waitForLoadState("networkidle");
   await expect(page.getByText("Scope navigation", { exact: true })).toBeVisible();
   await expect(page.locator('[data-rollup-container="true"]')).toHaveCount(2);
-  await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+  // Collapsing the estate changes what a relationship is drawn *between*, never
+  // whether one is drawn. A roll-up with no edges is the grid of disconnected
+  // cards this view was built to stop being.
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   await expect(page.getByTestId("graph-compression-summary")).toHaveCount(0);
 });
 

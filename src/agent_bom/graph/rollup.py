@@ -60,6 +60,14 @@ ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES: frozenset[RelationshipType] = frozenset(
     RelationshipType(value) for value in ROLLUP_CONTAINMENT_RELATIONSHIPS
 )
 
+# What a roll-up must *fetch*, which is not what it walks. The containment set
+# above builds the tree; ``cross_container_edges`` then aggregates the edges
+# that are NOT in it, so a fetch narrowed to containment starves exactly the
+# relationships the collapsed view draws. Spelled out as every relationship
+# rather than passed as "no filter" because "no filter" also pulls attack paths
+# and interaction risks, which no roll-up reads.
+ROLLUP_RELATIONSHIPS: frozenset[str] = frozenset(rel.value for rel in RelationshipType)
+
 # Container entity types form the readable top-level scaffold of the estate.
 # A node of one of these types is a candidate roll-up container; everything else
 # is a leaf that aggregates into its nearest container ancestor.
@@ -771,6 +779,7 @@ def _filters_dict(filters: Optional[RollupFilters]) -> dict[str, Any]:
 __all__ = [
     "ROLLUP_CONTAINMENT_RELATIONSHIPS",
     "ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES",
+    "ROLLUP_RELATIONSHIPS",
     "RollupAggregate",
     "RollupContainer",
     "RollupFilters",

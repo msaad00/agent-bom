@@ -104,7 +104,17 @@ def test_it_reports_how_far_main_has_moved_past_the_last_tag(repo: Path) -> None
 
 
 def test_the_real_repo_refuses_the_version_that_already_shipped() -> None:
-    """The regression itself, against this repository rather than a fixture."""
+    """The regression itself, against this repository rather than a fixture.
+
+    Skipped where the checkout has no tags. CI's Alpine job clones without
+    them, so `v0.99.0` is genuinely absent there and the script is right to
+    accept it — asserting a refusal would be asserting that the *runner*
+    fetched tags, not that the gate works. The fixture-backed cases above
+    create their own tags and cover the behaviour unconditionally.
+    """
     root = Path(__file__).resolve().parents[1]
+    tags = subprocess.run(["git", "tag", "--list", "v0.99.0"], cwd=root, capture_output=True, text=True)
+    if not tags.stdout.strip():
+        pytest.skip("checkout has no tags, so there is no already-shipped version to refuse")
     result = subprocess.run([sys.executable, str(SCRIPT), "0.99.0"], cwd=root, capture_output=True, text=True)
     assert result.returncode != 0, result.stdout

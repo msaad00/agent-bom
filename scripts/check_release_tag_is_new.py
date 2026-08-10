@@ -49,11 +49,20 @@ def _local_tags() -> set[str]:
     return {line.strip() for line in _git("tag", "--list").splitlines() if line.strip()}
 
 
-def _remote_tags() -> set[str]:
-    # Never fatal: an offline pre-flight still checks local tags rather than
-    # reporting a green verdict it cannot support.
-    out = _git("ls-remote", "--tags", "origin")
-    return {ref.split("refs/tags/", 1)[1].removesuffix("^{}") for line in out.splitlines() if "refs/tags/" in line for ref in [line]}
+def _remote_tags() -> tuple[set[str], bool]:
+    """Return (tags, reachable).
+
+    Never fatal: an offline pre-flight still checks local tags. But it must not
+    report the *failure* as "no tags there" — a silently empty answer reads
+    exactly like a clean one, which is how a shipped version can look new. The
+    caller says so out loud instead.
+    """
+    result = subprocess.run(["git", "ls-remote", "--tags", "origin"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return set(), False
+    return {
+        ref.split("refs/tags/", 1)[1].removesuffix("^{}") for line in result.stdout.splitlines() if "refs/tags/" in line for ref in [line]
+    }, True
 
 
 def _commits_since_newest_tag() -> tuple[str, int]:
@@ -78,7 +87,16 @@ def main() -> int:
     tag = f"v{version}"
     problems: list[str] = []
 
-    existing = _local_tags() | _remote_tags()
+    local = _local_tags()
+    remote, remote_reachable = _remote_tags()
+    existing = local | remote
+    if not remote_reachable:
+        print(
+            "WARNING: could not reach 'origin' to list tags; this check saw only the "
+            f"{len(local)} local tag(s). A shallow or tagless checkout can make a "
+            "shipped version look new.",
+            file=sys.stderr,
+        )
     if tag in existing:
         problems.append(
             f"{tag} has ALREADY been tagged. Re-tagging republishes a shipped version.\n"

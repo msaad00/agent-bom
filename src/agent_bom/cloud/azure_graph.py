@@ -25,6 +25,7 @@ Required delegated/application permissions (all read-only):
 from __future__ import annotations
 
 from typing import Any, Final
+from urllib.parse import urlsplit
 
 GRAPH_BASE_URL: Final = "https://graph.microsoft.com/v1.0"
 GRAPH_TOKEN_SCOPE: Final = "https://graph.microsoft.com/.default"
@@ -40,6 +41,29 @@ ACCESS_REVIEW_DEFINITIONS_PATH: Final = "/identityGovernance/accessReviews/defin
 RESTRICTED_GUEST_ROLE_TEMPLATE_ID: Final = "2af84b1e-32c8-42b7-82bc-daa82404023b"
 # Windows Azure Service Management API (the "Microsoft Azure Management" cloud app).
 AZURE_MANAGEMENT_APP_ID: Final = "797f4846-ba00-4fd7-ba43-dac1f8f63013"
+
+
+def require_graph_origin(url: str, base_url: str = GRAPH_BASE_URL) -> str:
+    """Return ``url`` only if it stays on the origin that issued the token.
+
+    Microsoft Graph paginates with an absolute ``@odata.nextLink``. Following it
+    verbatim re-sends a directory-scoped bearer token to whatever host the
+    response body names, so a tenant-controlled or tampered page could collect
+    it. #4626 fixed this exact shape once already, for a different paginated
+    API.
+
+    Scheme is part of the origin: an ``http://`` link to the right host would
+    put the token on the wire in cleartext, so a downgrade is refused too.
+
+    Same rule as ``db/sync.py``'s redirect allowlist and
+    ``scripts/check_surface_freshness.py``'s ``_require_origin`` — a third
+    caller, not a third rule.
+    """
+    expected = urlsplit(base_url)
+    actual = urlsplit(url)
+    if (actual.scheme, actual.netloc) != (expected.scheme, expected.netloc):
+        raise GraphUnavailableError(f"refusing to follow an off-origin Microsoft Graph pagination link: {actual.scheme}://{actual.netloc}")
+    return url
 
 
 class GraphError(Exception):
@@ -131,7 +155,8 @@ class AzureGraphClient:
             if isinstance(values, list):
                 items.extend(v for v in values if isinstance(v, dict))
             next_link = payload.get("@odata.nextLink")
-            url = str(next_link) if next_link else None
+            # Pinned before the next iteration re-sends the token to it.
+            url = require_graph_origin(str(next_link), self._base_url) if next_link else None
             seen += 1
             if seen > 1000:  # defensive bound against a pathological pagination loop
                 raise GraphUnavailableError("Microsoft Graph pagination exceeded the safety bound.")

@@ -81,6 +81,7 @@ class EntraClient:
         self._base_url = base_url.rstrip("/")
 
     def _get(self, path: str) -> list[dict[str, Any]]:
+        from agent_bom.cloud.azure_graph import require_graph_origin
         from agent_bom.http_client import fetch_json
 
         items: list[dict[str, Any]] = []
@@ -102,7 +103,11 @@ class EntraClient:
                 if isinstance(item, dict):
                     items.append(item)
             next_link = payload.get("@odata.nextLink")
-            url = next_link if isinstance(next_link, str) and next_link else None
+            # Pinned to the origin that issued the token, using the shared guard
+            # rather than a second copy of the rule. Following the link verbatim
+            # re-sent a directory-scoped bearer token to whatever host the
+            # response body named.
+            url = require_graph_origin(next_link, self._base_url) if isinstance(next_link, str) and next_link else None
         return items
 
     def list_service_principals(self) -> list[dict[str, Any]]:

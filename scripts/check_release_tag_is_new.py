@@ -53,12 +53,7 @@ def _remote_tags() -> set[str]:
     # Never fatal: an offline pre-flight still checks local tags rather than
     # reporting a green verdict it cannot support.
     out = _git("ls-remote", "--tags", "origin")
-    return {
-        ref.split("refs/tags/", 1)[1].removesuffix("^{}")
-        for line in out.splitlines()
-        if "refs/tags/" in line
-        for ref in [line]
-    }
+    return {ref.split("refs/tags/", 1)[1].removesuffix("^{}") for line in out.splitlines() if "refs/tags/" in line for ref in [line]}
 
 
 def _commits_since_newest_tag() -> tuple[str, int]:

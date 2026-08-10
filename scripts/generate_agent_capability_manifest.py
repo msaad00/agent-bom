@@ -83,9 +83,15 @@ Not a managed MCP connector catalog. Primary wedge: scan → graph → prove pat
 ## Description
 
 `agent-bom` inventories agents, MCP servers, packages, credentials, and cloud
-estate into one evidence model (`Finding` + `UnifiedGraph`). Humans use CLI, API,
-and dashboard; AI clients use strict-argument MCP tools over the same findings,
-attack paths, compliance tags, and runtime audit chain.
+estate into one evidence model (`Finding` + `UnifiedGraph`). Every surface —
+dashboard, CLI, REST API, and strict-argument MCP tools — reads that same model:
+the same findings, attack paths, compliance tags, and runtime audit chain.
+
+Surfaces differ by interaction style, not by who is on the other end. The
+dashboard is interactive; the API, CLI and MCP tools are programmatic. People
+drive MCP tools constantly (every Claude Desktop or Cursor session is a person),
+and agents drive the CLI and REST API in pipelines. Choose a surface by whether
+the caller wants to explore or to invoke — not by whether it is human.
 
 ## Capabilities
 

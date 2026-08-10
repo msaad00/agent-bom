@@ -65,10 +65,11 @@ agent-bom
 3. **Enforce runtime behavior** — MCP server mode, proxy/gateway, and Shield
    SDK turn the same model into agentic workflow controls.
 
-The release story should treat humans and agents as peer consumers. Humans use
-the CLI, reports, and browser cockpit. AI agents use the MCP/API/CLI surfaces
-to request the same `ExposurePath` evidence, skill verdicts, and deploy
-decisions under the same auth, tenant, and audit boundary.
+The release story should treat interactive and programmatic use as peer
+consumers, not humans and agents. The browser cockpit is interactive; the CLI,
+REST API and MCP tools are programmatic — and both people and agents reach for
+either. Every one of them requests the same `ExposurePath` evidence, skill
+verdicts, and deploy decisions under the same auth, tenant, and audit boundary.
 
 The useful lesson from developer-observability products is that the cockpit is
 valuable, but the product primitive must be callable. `agent-bom` gives humans

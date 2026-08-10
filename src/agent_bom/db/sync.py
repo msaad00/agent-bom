@@ -1993,7 +1993,9 @@ def sync_db(
     from agent_bom.db.schema import DB_PATH, init_db
 
     db_path = path or DB_PATH
-    conn = init_db(db_path)
+    # The update rewrites the database, so it is the right place to pay for a
+    # full integrity check — and the only place that still does.
+    conn = init_db(db_path, verify_integrity=True)
     enabled = set(sources or ["osv", "alpine", "debian", "epss", "kev"])
     results: dict[str, int] = {}
 

@@ -224,11 +224,38 @@ def _normalize_detector_text(text: str) -> str:
     return normalized.replace('\\"', '"').replace("\\'", "'")
 
 
-def _redact_excerpt(match_text: str, max_len: int = 12) -> str:
-    """Return a safely redacted preview of a match."""
-    if len(match_text) <= 4:
+# How much of a matched value an excerpt may reveal. Four is the PCI DSS 3.4
+# allowance for a PAN and is the most any rule here needs; it exists so an
+# operator can correlate one alert with another, never so the value can be read.
+_EXCERPT_TAIL = 4
+# Fixed-width mask: a mask that mirrored the input would leak its length, which
+# is itself identifying for many credential formats.
+_EXCERPT_MASK = "*" * 8
+
+
+def _redact_excerpt(match_text: str, max_len: int = _EXCERPT_TAIL) -> str:
+    """Return a masked preview of a match, never the match itself.
+
+    This used to be ``match_text[:12] + "***"`` — a *truncation*. Every pattern
+    shorter than the cut therefore survived in full: an SSN redacted to
+    ``123-45-6789***``, a phone number to ``415-555-1234***``, a private address
+    to ``10.1.2.3***``, and 12 of a card's 16 digits. The excerpt *was* the
+    finding.
+
+    That matters well beyond the log line: redaction is applied at the durable
+    storage boundary, but the same alert object also reaches the alert webhook,
+    the control-plane push, disk spillover, and the ``/ws/proxy/alerts`` stream.
+
+    An excerpt exists so a human can tell *which* rule fired and correlate
+    repeats — so it keeps a short tail and masks the rest. A value too short for
+    a tail to be non-identifying is masked outright.
+    """
+    tail = max(0, min(max_len, _EXCERPT_TAIL))
+    # Below ~3x the tail, the revealed characters are a large fraction of a
+    # short secret, so reveal nothing at all.
+    if not match_text or len(match_text) < tail * 3:
         return "***"
-    return match_text[:max_len] + "***"
+    return _EXCERPT_MASK + match_text[-tail:]
 
 
 def _scan_patterns(

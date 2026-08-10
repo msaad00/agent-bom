@@ -16,6 +16,7 @@ import {
   OWASP_LLM_TOP10,
   MITRE_ATLAS,
 } from "@/lib/api";
+import { FrameworkTagChips } from "@/components/framework-tag-chips";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   ReactFlow,
@@ -1232,17 +1233,9 @@ function AgentDetail({ agentName }: { agentName: string }) {
                     )}
                   </div>
                   {/* Framework tags */}
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {(br.owasp_tags ?? []).map((t) => (
-                      <span key={t} className="bg-indigo-950 border border-indigo-800 text-indigo-300 px-1.5 py-0.5 rounded text-[10px]">
-                        {t} {OWASP_LLM_TOP10[t] ?? ""}
-                      </span>
-                    ))}
-                    {(br.atlas_tags ?? []).map((t) => (
-                      <span key={t} className="bg-rose-950 border border-rose-800 text-rose-300 px-1.5 py-0.5 rounded text-[10px]">
-                        {t} {MITRE_ATLAS[t] ?? ""}
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-1 mt-2">
+                    <FrameworkTagChips tags={br.owasp_tags} catalog={OWASP_LLM_TOP10} tone="owasp" />
+                    <FrameworkTagChips tags={br.atlas_tags} catalog={MITRE_ATLAS} tone="atlas" />
                   </div>
                 </div>
               ))}

@@ -8,6 +8,7 @@ import { mergePipelineSteps, parsePipelineStepsFromProgress } from "@/lib/scan-p
 import { domainFindingsForScan } from "@/lib/scan-domain-findings";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { RepoScanOverviewPanel } from "@/components/repo-scan-overview-panel";
+import { FrameworkTagChips } from "@/components/framework-tag-chips";
 import { SeverityBadge } from "@/components/severity-badge";
 import { StatCard } from "@/components/stat-card";
 import {
@@ -613,17 +614,9 @@ function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
         <ImpactPill icon={Wrench} label="Tools reachable" items={blast.reachable_tools ?? blast.exposed_tools ?? []} />
       </div>
       {((blast.owasp_tags && blast.owasp_tags.length > 0) || (blast.atlas_tags && blast.atlas_tags.length > 0)) && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {blast.owasp_tags?.map((tag) => (
-            <span key={tag} title={OWASP_LLM_TOP10[tag] ?? tag} className="text-xs font-mono bg-purple-950 border border-purple-800 text-purple-400 rounded px-1.5 py-0.5 cursor-help">
-              {tag}<span className="ml-1 text-purple-600 font-sans">{OWASP_LLM_TOP10[tag]}</span>
-            </span>
-          ))}
-          {blast.atlas_tags?.map((tag) => (
-            <span key={tag} title={MITRE_ATLAS[tag] ?? tag} className="text-xs font-mono bg-cyan-950 border border-cyan-800 text-cyan-400 rounded px-1.5 py-0.5 cursor-help">
-              {tag}<span className="ml-1 text-cyan-600 font-sans">{MITRE_ATLAS[tag]}</span>
-            </span>
-          ))}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <FrameworkTagChips tags={blast.owasp_tags} catalog={OWASP_LLM_TOP10} tone="owasp" showNames />
+          <FrameworkTagChips tags={blast.atlas_tags} catalog={MITRE_ATLAS} tone="atlas" showNames />
         </div>
       )}
     </div>
@@ -684,14 +677,10 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
             <ImpactBox label="Tools secured" items={item.reachable_tools} pct={item.tools_pct} color="blue" />
           </div>
           {(item.owasp_tags.length > 0 || item.atlas_tags.length > 0) && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
               <span className="text-xs text-[color:var(--text-tertiary)] mr-1">mitigates:</span>
-              {item.owasp_tags?.map((tag) => (
-                <span key={tag} title={OWASP_LLM_TOP10[tag] ?? tag} className="text-xs font-mono bg-purple-950 border border-purple-800 text-purple-400 rounded px-1.5 py-0.5 cursor-help">{tag}</span>
-              ))}
-              {item.atlas_tags?.map((tag) => (
-                <span key={tag} title={MITRE_ATLAS[tag] ?? tag} className="text-xs font-mono bg-cyan-950 border border-cyan-800 text-cyan-400 rounded px-1.5 py-0.5 cursor-help">{tag}</span>
-              ))}
+              <FrameworkTagChips tags={item.owasp_tags} catalog={OWASP_LLM_TOP10} tone="owasp" />
+              <FrameworkTagChips tags={item.atlas_tags} catalog={MITRE_ATLAS} tone="atlas" />
             </div>
           )}
           <div className="flex items-start gap-2 bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2">

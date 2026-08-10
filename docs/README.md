@@ -56,7 +56,7 @@ Two hubs cover the clustered material — start at the hub, then follow it to th
 - [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
 - [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
 - [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification
-- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (322 paths / 381 operations)
+- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (323 paths / 382 operations)
 
 ## AI / agent developers (MCP · clients · tools)
 

@@ -1584,10 +1584,17 @@ export const api = {
   exportFindingTriageVex: () => get<FindingTriageVexResponse>("/v1/findings/triage/vex"),
 
   // ── Remediation ──
-  /** Extract remediation plan from the latest completed scan */
+  /** Remediation plan for a completed scan.
+   *
+   * Reads the dedicated endpoint rather than `/v1/scan/{id}`. The whole-job
+   * read carried every finding, blast radius, asset and exposure path so the
+   * page could use one field: 8.7 MB fetched and parsed for a 41 KB plan on the
+   * demo estate. */
   getRemediation: async (jobId: string): Promise<RemediationItem[]> => {
-    const job = await get<ScanJob>(`/v1/scan/${jobId}`);
-    return job.result?.remediation_plan ?? [];
+    const response = await get<{ remediation_plan?: RemediationItem[] }>(
+      `/v1/scan/${jobId}/remediation`,
+    );
+    return response.remediation_plan ?? [];
   },
 
   // ── Audit Log ──

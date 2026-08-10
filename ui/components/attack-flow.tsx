@@ -18,6 +18,7 @@ import {
   OWASP_LLM_TOP10, OWASP_MCP_TOP10, MITRE_ATLAS,
 } from "@/lib/api";
 import type { AttackFlowNodeData, AttackFlowResponse } from "@/lib/api";
+import { FrameworkTagChips } from "@/components/framework-tag-chips";
 import { SeverityBadge } from "@/components/severity-badge";
 import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, ATTACK_FLOW_MINIMAP_COLORS, graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
@@ -127,9 +128,9 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
             </div>
             {data.is_kev && <div className="attack-flow-kev-banner"><AlertTriangle className="w-3 h-3" />CISA Known Exploited Vulnerability</div>}
             {data.fixed_version && <div className="text-xs text-[var(--text-secondary)]">Fix available: <span className="text-emerald-400 font-mono font-semibold">{data.fixed_version}</span></div>}
-            {data.owasp_tags && data.owasp_tags.length > 0 && <FrameworkTags title="OWASP LLM Top 10" tags={data.owasp_tags} catalog={OWASP_LLM_TOP10} color="purple" />}
-            {data.owasp_mcp_tags && data.owasp_mcp_tags.length > 0 && <FrameworkTags title="OWASP MCP Top 10" tags={data.owasp_mcp_tags} catalog={OWASP_MCP_TOP10} color="amber" />}
-            {data.atlas_tags && data.atlas_tags.length > 0 && <FrameworkTags title="MITRE ATLAS" tags={data.atlas_tags} catalog={MITRE_ATLAS} color="cyan" />}
+            {data.owasp_tags && data.owasp_tags.length > 0 && <FrameworkTags title="OWASP LLM Top 10" tags={data.owasp_tags} catalog={OWASP_LLM_TOP10} tone="owasp" />}
+            {data.owasp_mcp_tags && data.owasp_mcp_tags.length > 0 && <FrameworkTags title="OWASP MCP Top 10" tags={data.owasp_mcp_tags} catalog={OWASP_MCP_TOP10} tone="mcp" />}
+            {data.atlas_tags && data.atlas_tags.length > 0 && <FrameworkTags title="MITRE ATLAS" tags={data.atlas_tags} catalog={MITRE_ATLAS} tone="atlas" />}
             {data.risk_score != null && <div className="text-xs text-[var(--text-secondary)]">Risk score: <span className="text-red-400 font-mono font-bold">{data.risk_score}</span></div>}
             {osvUrl && (
               <a href={osvUrl} target="_blank" rel="noopener noreferrer" className="attack-flow-external-link">
@@ -148,16 +149,14 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
   );
 }
 
-function FrameworkTags({ title, tags, catalog, color }: { title: string; tags: string[]; catalog: Record<string, string>; color: string }) {
+function FrameworkTags({ title, tags, catalog, tone }: { title: string; tags: string[]; catalog: Record<string, string>; tone: "owasp" | "mcp" | "atlas" }) {
   return (
     <div>
       <div className="attack-flow-filter-label">{title}</div>
-      <div className="space-y-1">
-        {tags?.map((tag) => (
-          <div key={tag} className={`text-xs font-mono bg-${color}-950/40 border border-${color}-800/50 text-${color}-400 rounded px-2 py-1`}>
-            {tag} <span className={`text-${color}-600 font-sans`}>{catalog[tag]}</span>
-          </div>
-        ))}
+      {/* One row per technique put 36 rows in a node panel for a single CVE.
+          Wrapped chips behind a disclosure keep the panel a panel. */}
+      <div className="flex flex-wrap items-center gap-1">
+        <FrameworkTagChips tags={tags} catalog={catalog} tone={tone} showNames visible={4} />
       </div>
     </div>
   );

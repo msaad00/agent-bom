@@ -16,10 +16,10 @@ properties that matter for a multi-replica control plane:
 
 from __future__ import annotations
 
-import pytest
-
 import json
 from typing import Any
+
+import pytest
 
 from agent_bom.api.governance_audit_log import (
     ACTION_IDENTITY_DORMANT_REVOKE,
@@ -44,7 +44,7 @@ class _FakeCursor:
         return self.rows
 
 
-class _FakeUniqueViolation(Exception):
+class _FakeUniqueViolationError(Exception):
     """Shaped like psycopg's UniqueViolation: sqlstate 23505 + a named constraint."""
 
     def __init__(self, constraint: str) -> None:
@@ -100,7 +100,7 @@ class _FakeConnection:
             # never claim the same predecessor within one tenant. Modelled here
             # because it is the constraint the store's retry loop exists for.
             if any(r["tenant_id"] == tenant_id and r["prev_hash"] == prev_hash for r in rows):
-                raise _FakeUniqueViolation("governance_audit_log_tenant_prevhash_uniq")
+                raise _FakeUniqueViolationError("governance_audit_log_tenant_prevhash_uniq")
             self._state["seq"] += 1
             rows.append(
                 {

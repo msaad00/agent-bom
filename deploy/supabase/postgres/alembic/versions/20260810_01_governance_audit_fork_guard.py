@@ -41,27 +41,55 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE governance_audit_log ADD COLUMN IF NOT EXISTS prev_hash TEXT NOT NULL DEFAULT ''")
-    # Backfill from the sealed payload, which has always carried prev_hash —
-    # it simply had no column of its own. Guarded so a malformed row cannot
-    # abort the migration.
+    # `governance_audit_log` is created by runtime-schema.sql and by the store's
+    # own _init_tables() — no migration creates it. A database upgraded from an
+    # older revision (the legacy contract starts at 20260728_02 with only the
+    # scan tables) therefore may not have it yet, and an unguarded ALTER would
+    # abort the whole chain. Fresh deployments already take the column and the
+    # index from runtime-schema.sql, so this block is the catch-up path only.
     op.execute(
         """
-        UPDATE governance_audit_log
-           SET prev_hash = COALESCE(data::jsonb ->> 'prev_hash', '')
-         WHERE prev_hash = ''
-           AND data IS NOT NULL
-           AND jsonb_typeof(data::jsonb) = 'object'
+        DO $$
+        BEGIN
+            IF to_regclass('public.governance_audit_log') IS NULL THEN
+                RETURN;
+            END IF;
+
+            ALTER TABLE governance_audit_log ADD COLUMN IF NOT EXISTS prev_hash TEXT NOT NULL DEFAULT '';
+
+            -- Backfill from the sealed payload, which has always carried
+            -- prev_hash — it simply had no column of its own. Guarded so a
+            -- malformed row cannot abort the migration.
+            UPDATE governance_audit_log
+               SET prev_hash = COALESCE(data::jsonb ->> 'prev_hash', '')
+             WHERE prev_hash = ''
+               AND data IS NOT NULL
+               AND jsonb_typeof(data::jsonb) = 'object';
+
+            -- IF NOT EXISTS keeps this idempotent and a no-op where
+            -- runtime-schema.sql already created it. Pre-existing forks in older
+            -- data would make creation fail; that mirrors 20260719_01's posture —
+            -- the store's append retries, so a deployment carrying historical
+            -- forks is not left unable to migrate.
+            CREATE UNIQUE INDEX IF NOT EXISTS governance_audit_log_tenant_prevhash_uniq
+                ON governance_audit_log (tenant_id, prev_hash);
+        END
+        $$;
         """
     )
-    # IF NOT EXISTS keeps this idempotent and a no-op on deployments that
-    # already took the index from runtime-schema.sql. Pre-existing forks in
-    # older data would make creation fail; that mirrors 20260719_01's posture —
-    # the store's append retries, so a deployment carrying historical forks is
-    # not left unable to migrate.
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS governance_audit_log_tenant_prevhash_uniq ON governance_audit_log (tenant_id, prev_hash)")
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS governance_audit_log_tenant_prevhash_uniq")
-    op.execute("ALTER TABLE governance_audit_log DROP COLUMN IF EXISTS prev_hash")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF to_regclass('public.governance_audit_log') IS NULL THEN
+                RETURN;
+            END IF;
+            DROP INDEX IF EXISTS governance_audit_log_tenant_prevhash_uniq;
+            ALTER TABLE governance_audit_log DROP COLUMN IF EXISTS prev_hash;
+        END
+        $$;
+        """
+    )

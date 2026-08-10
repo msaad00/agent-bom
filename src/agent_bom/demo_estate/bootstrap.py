@@ -305,6 +305,18 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate gateway feed seeding failed", exc_info=True)
         summary["gateway_feed_error"] = True
 
+    # build_showcase_graph computes drift incidents into a private store it hands
+    # back to its caller, while every drift surface reads the process-global
+    # drift store. Without this the demo described drift in its own graph and
+    # reported 0 incidents on every tile above it.
+    try:
+        from agent_bom.demo_estate.showcase_drift import seed_showcase_drift_incidents
+
+        summary["drift_incidents"] = seed_showcase_drift_incidents(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate drift seeding failed", exc_info=True)
+        summary["drift_error"] = True
+
     try:
         from agent_bom.demo_estate.showcase_catalog import seed_showcase_catalog_if_empty
 

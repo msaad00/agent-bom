@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Refuse a release version that has already shipped.
+
+On 2026-08-10 ``scripts/preflight_release.sh 0.99.0`` printed
+**"Pre-flight OK — safe to tag"**. ``v0.99.0`` had been tagged five days
+earlier and was already live on PyPI, Docker Hub and Glama, with 24 further
+commits sitting on ``main``.
+
+Every gate the pre-flight runs was green, and every one of them answers the
+same shape of question: *are the managed files consistent with the version
+string I was handed?* None of them asked the question that separates a release
+from a re-release — *does this tag already exist?* — so the one script
+positioned as the release go/no-go could not detect the most consequential
+release error there is.
+
+Two checks, both cheap, both otherwise discovered too late:
+
+* **The tag must not exist**, locally or on the remote. Annotated or
+  lightweight is irrelevant; a tag is a tag.
+* **The CHANGELOG must already carry the heading.** ``release.yml``'s
+  version-guard requires ``## [<version>]``, so a tag pushed without one fails
+  in CI *after the tag exists*, which is the expensive place to find out.
+
+It also prints how far ``main`` has moved past the newest tag. That number is
+what made the 0.99.0 situation obvious once someone looked, so the pre-flight
+should say it out loud rather than leave it to be discovered.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _git(*args: str) -> str:
+    result = subprocess.run(["git", *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _normalize(version: str) -> str:
+    """``0.99.0`` and ``v0.99.0`` name the same release."""
+    return version[1:] if version.startswith("v") else version
+
+
+def _local_tags() -> set[str]:
+    return {line.strip() for line in _git("tag", "--list").splitlines() if line.strip()}
+
+
+def _remote_tags() -> set[str]:
+    # Never fatal: an offline pre-flight still checks local tags rather than
+    # reporting a green verdict it cannot support.
+    out = _git("ls-remote", "--tags", "origin")
+    return {
+        ref.split("refs/tags/", 1)[1].removesuffix("^{}")
+        for line in out.splitlines()
+        if "refs/tags/" in line
+        for ref in [line]
+    }
+
+
+def _commits_since_newest_tag() -> tuple[str, int]:
+    newest = _git("describe", "--tags", "--abbrev=0")
+    if not newest:
+        return "", 0
+    count = _git("rev-list", "--count", f"{newest}..HEAD")
+    return newest, int(count) if count.isdigit() else 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("version", help="the version you intend to tag, e.g. 0.99.1")
+    parser.add_argument(
+        "--changelog",
+        default="CHANGELOG.md",
+        help="path to the changelog that must already carry the heading",
+    )
+    args = parser.parse_args()
+
+    version = _normalize(args.version)
+    tag = f"v{version}"
+    problems: list[str] = []
+
+    existing = _local_tags() | _remote_tags()
+    if tag in existing:
+        problems.append(
+            f"{tag} has ALREADY been tagged. Re-tagging republishes a shipped version.\n"
+            f"    Pick the next version instead, and check what has landed since:\n"
+            f"      git log --oneline {tag}..HEAD"
+        )
+
+    changelog = Path(args.changelog)
+    if not changelog.exists():
+        problems.append(f"{changelog} not found, so the release notes cannot be checked.")
+    elif not re.search(rf"^## \[{re.escape(version)}\]", changelog.read_text(), re.MULTILINE):
+        problems.append(
+            f"{changelog} has no '## [{version}]' heading.\n"
+            f"    release.yml's version-guard requires it, so the tag would fail in CI\n"
+            f"    after it already exists. Move the [Unreleased] entries under it."
+        )
+
+    newest, ahead = _commits_since_newest_tag()
+    if newest:
+        print(f"newest tag: {newest} · main is {ahead} commit{'' if ahead == 1 else 's'} ahead")
+
+    if problems:
+        print("\nRELEASE TAG CHECK FAILED:", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+
+    print(f"OK: {tag} is new and {changelog} documents it.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

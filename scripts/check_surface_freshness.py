@@ -338,6 +338,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--attempts", type=int, default=DEFAULT_ATTEMPTS)
     parser.add_argument("--backoff-seconds", type=float, default=DEFAULT_BACKOFF)
     parser.add_argument("--out", default=None, help="Write the consolidated JSON report to this path.")
+    parser.add_argument(
+        "--fail-on-stale",
+        action="store_true",
+        help=(
+            "Exit non-zero when any surface has drifted. Without it this script always "
+            "exits 0, so a stale surface is reported and no gate can act on it — which "
+            "is how Smithery sat at 36 of 77 tools through a release."
+        ),
+    )
     args = parser.parse_args(argv)
 
     expected = (args.expected or _expected_version()).lstrip("v").strip()
@@ -366,6 +375,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.out:
         Path(args.out).write_text(out + "\n")
     print(out)
+    if drift and args.fail_on_stale:
+        names = ", ".join(f"{s['surface']} ({s['status']})" for s in drift)
+        print(f"\nSurface drift: {names}", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -36,6 +36,13 @@ if [ -z "$VERSION" ]; then
   exit 2
 fi
 python scripts/bump-version.py "$VERSION" --check || fail=1
+
+step "tag is new + changelog documents it"
+# Every check above answers "are the managed files consistent with the version
+# string I was handed?" — none of them asks whether that version already
+# shipped. This script printed "safe to tag" for 0.99.0 five days after
+# v0.99.0 was tagged and published, with 24 commits since.
+python scripts/check_release_tag_is_new.py "$VERSION" || fail=1
 python scripts/check_release_consistency.py || fail=1
 python scripts/check_product_surface_contract.py || fail=1
 python scripts/export_openapi.py --check || fail=1

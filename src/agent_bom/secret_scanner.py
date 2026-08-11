@@ -86,6 +86,11 @@ _SCAN_EXTENSIONS = frozenset(
         ".conf",
         ".properties",
         ".tf",
+        # Terraform *state* and variable files were absent while ".tf" was
+        # present, so the two files in a Terraform repo most likely to hold a
+        # plaintext provider credential were the two never opened.
+        ".tfstate",
+        ".tfvars",
         ".hcl",
         ".sh",
         ".bash",
@@ -110,6 +115,7 @@ _SCAN_FILENAMES = frozenset(
         ".pypirc",
         ".netrc",
         ".gitconfig",
+        "terraform.tfstate.backup",
     }
 )
 
@@ -131,6 +137,11 @@ _PII_CODE_EXTENSIONS = frozenset(
         ".cfg",
         ".properties",
         ".tf",
+        # Terraform *state* and variable files were absent while ".tf" was
+        # present, so the two files in a Terraform repo most likely to hold a
+        # plaintext provider credential were the two never opened.
+        ".tfstate",
+        ".tfvars",
         ".hcl",
         ".sh",
         ".bash",
@@ -143,7 +154,12 @@ _PII_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_MAX_FILE_SIZE = 1024 * 1024  # 1MB
+# The ceiling bounds how much work one pathological file can cost; it is not a
+# statement that larger files are uninteresting. At 1MB it silently excluded the
+# terraform state files and lockfiles most likely to carry a real credential.
+# 10MB still holds one file in memory at a time, which is the cost of keeping
+# this simple — raise it further only alongside a line-streaming read.
+_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 _MAX_FILES = 1000
 
 # Additional patterns specific to file scanning (not in runtime patterns)
@@ -317,15 +333,33 @@ def _is_agent_bom_report(content: str) -> bool:
     return head.startswith("cve_id,package,version,ecosystem,severity") or head.startswith("﻿cve_id,package,version,ecosystem,severity")
 
 
+class FileNotScannedError(Exception):
+    """A file the scanner could not read. Never the same as a clean file.
+
+    Raised rather than returning ``[]`` so the caller cannot mistake "we did not
+    look" for "we looked and found nothing" — the distinction the size cap and
+    the read error used to erase.
+    """
+
+
 def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) -> list[SecretFinding]:
-    """Scan a single file for secrets."""
+    """Scan a single file for secrets.
+
+    Raises:
+        FileNotScannedError: the file was not read, and no claim is made about it.
+    """
+    try:
+        size = file_path.stat().st_size
+    except OSError as exc:
+        raise FileNotScannedError(f"{rel_path}: could not stat ({exc.strerror or exc})") from exc
+
+    if size > _MAX_FILE_SIZE:
+        raise FileNotScannedError(f"{rel_path}: not scanned, {size:,} bytes exceeds the {_MAX_FILE_SIZE:,}-byte ceiling")
+
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-
-    if len(content) > _MAX_FILE_SIZE:
-        return []
+    except OSError as exc:
+        raise FileNotScannedError(f"{rel_path}: not scanned, could not be read ({exc.strerror or exc})") from exc
 
     if _is_agent_bom_report(content):
         return []
@@ -449,9 +483,15 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
             result.warnings.append(f"Stopped at {_MAX_FILES} files")
             break
 
-        file_count += 1
         rel = str(f.relative_to(project))
-        findings = _scan_file(f, rel, detect_entropy=detect_entropy)
+        try:
+            findings = _scan_file(f, rel, detect_entropy=detect_entropy)
+        except FileNotScannedError as skipped:
+            # Named, and deliberately not counted: `files_scanned` is a coverage
+            # claim, and a file nobody opened is not coverage.
+            result.warnings.append(str(skipped))
+            continue
+        file_count += 1
         result.findings.extend(findings)
 
     result.files_scanned = file_count

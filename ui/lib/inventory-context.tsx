@@ -55,7 +55,22 @@ function classifyError(err: unknown): { message: string; kind: InventoryErrorKin
   };
 }
 
-export function InventoryProvider({ children }: { children: ReactNode }) {
+export function InventoryProvider({
+  children,
+  entityTypes,
+}: {
+  children: ReactNode;
+  /** Scope the read to one asset kind's graph entity types.
+   *
+   * Omitted on the index page, which needs every kind at once and takes its
+   * card counts from `stats.node_types` rather than from the rows.
+   *
+   * Supplied on an asset-type page, because a ranked page of the estate is not
+   * a page of THAT type: agents, MCP servers and container images all rank
+   * below a misconfiguration-dominated cut, so those pages rendered "nothing
+   * discovered yet" while their own card advertised hundreds. */
+  entityTypes?: readonly string[] | undefined;
+}) {
   const [graph, setGraph] = useState<UnifiedGraphResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -64,6 +79,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [nonce, setNonce] = useState(0);
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
+  // Stable dependency: the array identity changes on every render, the
+  // membership does not.
+  const entityTypesKey = (entityTypes ?? []).join(",");
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +90,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setError("");
     setGraph(null);
     api
-      .getGraph({ limit: GRAPH_NODE_PAGE, offset: 0 })
+      .getGraph({
+        limit: GRAPH_NODE_PAGE,
+        offset: 0,
+        ...(entityTypes && entityTypes.length > 0 ? { entityTypes: [...entityTypes] } : {}),
+      })
       .then((page) => {
         if (cancelled) return;
         setGraph(page);
@@ -90,7 +112,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [nonce]);
+  }, [nonce, entityTypesKey]);
 
   const hasMore = Boolean(graph?.pagination?.has_more);
   const model = useMemo(() => (graph ? buildInventory(graph) : null), [graph]);
@@ -100,11 +122,16 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setLoadingMore(true);
     try {
       const nextCursor = graph.pagination.next_cursor?.trim();
+      // The scope has to travel with the page. Without it the second page
+      // widens back to a ranked read of the whole estate, so a kind page would
+      // start correct and then fill with other people's rows.
+      const scope = entityTypes && entityTypes.length > 0 ? { entityTypes: [...entityTypes] } : {};
       const nextPage = nextCursor
-        ? await api.getGraph({ limit: GRAPH_NODE_PAGE, cursor: nextCursor })
+        ? await api.getGraph({ limit: GRAPH_NODE_PAGE, cursor: nextCursor, ...scope })
         : await api.getGraph({
             limit: GRAPH_NODE_PAGE,
             offset: (graph.pagination.offset ?? 0) + (graph.pagination.limit ?? GRAPH_NODE_PAGE),
+            ...scope,
           });
       setGraph((current) => (current ? mergeGraphPages(current, nextPage) : nextPage));
     } catch (err: unknown) {
@@ -114,7 +141,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingMore(false);
     }
-  }, [graph, loadingMore]);
+  }, [graph, loadingMore, entityTypesKey]);
 
   const value = useMemo<InventoryState>(
     () => ({

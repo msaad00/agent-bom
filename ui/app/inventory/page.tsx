@@ -1,8 +1,13 @@
 import { InventoryIndex } from "@/components/inventory/inventory-index";
+import { InventoryProvider } from "@/lib/inventory-context";
 
 // Unified Asset Inventory landing — one card per asset type, correlated back to
-// findings and the security graph. Supersedes the former /inventory → /manifest
-// redirect (the AI BOM now lives under this section as "AI agents").
+// findings and the security graph. Unscoped on purpose: the index needs every
+// kind at once, and its counts come from `stats.node_types` rather than rows.
 export default function InventoryPage() {
-  return <InventoryIndex />;
+  return (
+    <InventoryProvider>
+      <InventoryIndex />
+    </InventoryProvider>
+  );
 }

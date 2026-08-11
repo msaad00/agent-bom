@@ -161,9 +161,10 @@ CREATE INDEX IF NOT EXISTS idx_model_virtual_keys_hash ON model_virtual_keys(tok
 -- Simple JSON-record stores.
 CREATE TABLE IF NOT EXISTS risk_campaign_workflows (tenant_id TEXT NOT NULL,campaign_id TEXT NOT NULL,owner TEXT,sla_due_at TEXT,state TEXT NOT NULL,verification_status TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',member_ids TEXT NOT NULL DEFAULT '[]',membership_fingerprint TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1,active BOOLEAN NOT NULL DEFAULT TRUE,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(tenant_id,campaign_id));
 CREATE INDEX IF NOT EXISTS idx_risk_campaign_workflows_tenant_state ON risk_campaign_workflows(tenant_id,state,updated_at DESC);
-CREATE TABLE IF NOT EXISTS governance_audit_log (seq BIGSERIAL PRIMARY KEY,action_id TEXT NOT NULL,tenant_id TEXT NOT NULL,action TEXT NOT NULL,observed_at TEXT NOT NULL,record_hash TEXT NOT NULL,data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS governance_audit_log (seq BIGSERIAL PRIMARY KEY,action_id TEXT NOT NULL,tenant_id TEXT NOT NULL,action TEXT NOT NULL,observed_at TEXT NOT NULL,record_hash TEXT NOT NULL,prev_hash TEXT NOT NULL DEFAULT '',data TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant ON governance_audit_log(tenant_id,seq);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action ON governance_audit_log(tenant_id,action_id);
+CREATE UNIQUE INDEX IF NOT EXISTS governance_audit_log_tenant_prevhash_uniq ON governance_audit_log(tenant_id,prev_hash);
 CREATE TABLE IF NOT EXISTS scan_dispatch_queue (job_id TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,tenant_id TEXT NOT NULL,created_at TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',claimed_by TEXT,lease_expires_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON scan_dispatch_queue(status,created_at);
 ALTER TABLE scan_dispatch_queue ENABLE ROW LEVEL SECURITY;

@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 
 import { AssetInventoryView } from "@/components/inventory/asset-inventory-view";
+import { InventoryProvider } from "@/lib/inventory-context";
 import { PageEmptyState } from "@/components/states/page-state";
 import { ASSET_KIND_BY_ID, type AssetKindId } from "@/lib/inventory";
 
@@ -20,5 +21,12 @@ export default function InventoryKindClient() {
     );
   }
 
-  return <AssetInventoryView kind={raw as AssetKindId} />;
+  const kind = raw as AssetKindId;
+  // Scoped to this kind's entity types so the rows are of the type the page is
+  // about, rather than whatever survived a ranked cut of the whole estate.
+  return (
+    <InventoryProvider entityTypes={ASSET_KIND_BY_ID[kind].entityTypes}>
+      <AssetInventoryView kind={kind} />
+    </InventoryProvider>
+  );
 }

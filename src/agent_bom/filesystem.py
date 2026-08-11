@@ -313,45 +313,50 @@ def _parse_rpm_sqlite(db_path: Path) -> list[Package]:
     """
     import sqlite3
 
+    from agent_bom.oci_parser import _parse_rpm_header_blob
+
     if not db_path.exists():
         return []
 
+    # RHEL 9+ stores `Packages(hnum INTEGER PRIMARY KEY, blob BLOB)` — one binary
+    # RPM header per row. This used to select `name, version, release, epoch,
+    # arch`, columns that exist in no rpmdb; the query raised, the except
+    # swallowed it, and every RHEL/UBI/Fedora/Amazon filesystem scanned clean.
+    #
+    # `oci_parser._parse_rpm_header_blob` already decodes this format correctly
+    # (#4684 fixed the same defect there). Reusing it means one decoder, so the
+    # two paths cannot disagree about the same bytes again.
     packages: list[Package] = []
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            cur = con.execute("SELECT name, version, release, epoch, arch FROM Packages")
-            rows = cur.fetchall()
+            rows = con.execute("SELECT blob FROM Packages").fetchall()
         finally:
             con.close()
     except Exception as exc:  # noqa: BLE001
         logger.debug("RPM SQLite parse failed for %s: %s", db_path, exc)
         return []
 
-    for row in rows:
-        name, version, release, epoch, arch = row
-        if not name or not version:
+    seen: set[tuple[str, str]] = set()
+    for (blob,) in rows:
+        if not isinstance(blob, bytes):
             continue
-
-        # Build version string: epoch:version-release (omit epoch when 0)
-        epoch_str = str(epoch).strip() if epoch is not None else "0"
-        ver_release = f"{version}-{release}" if release else version
-        if epoch_str and epoch_str != "0":
-            full_version = f"{epoch_str}:{ver_release}"
-        else:
-            full_version = ver_release
-
-        # PURL: pkg:rpm/rhel/name@epoch:version-release?arch=x86_64
-        purl = f"pkg:rpm/rhel/{name}@{full_version}"
-        if arch:
-            purl += f"?arch={arch}"
-
+        parsed = _parse_rpm_header_blob(blob)
+        if not parsed:
+            continue
+        name, full_version = parsed
+        # A signing key in the rpmdb, not installed software.
+        if name == "gpg-pubkey":
+            continue
+        if (name, full_version) in seen:
+            continue
+        seen.add((name, full_version))
         packages.append(
             Package(
                 name=name,
                 version=full_version,
                 ecosystem="rpm",
-                purl=purl,
+                purl=f"pkg:rpm/rhel/{name}@{full_version}",
                 is_direct=True,
             )
         )

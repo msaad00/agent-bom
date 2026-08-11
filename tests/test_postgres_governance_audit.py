@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from agent_bom.api.governance_audit_log import (
     ACTION_IDENTITY_DORMANT_REVOKE,
     InMemoryGovernanceAuditLog,
@@ -40,6 +42,19 @@ class _FakeCursor:
 
     def fetchall(self):
         return self.rows
+
+
+class _FakeUniqueViolationError(Exception):
+    """Shaped like psycopg's UniqueViolation: sqlstate 23505 + a named constraint."""
+
+    def __init__(self, constraint: str) -> None:
+        super().__init__(f'duplicate key value violates unique constraint "{constraint}"')
+        self.sqlstate = "23505"
+
+        class _Diag:
+            constraint_name = constraint
+
+        self.diag = _Diag()
 
 
 class _FakeConnection:
@@ -76,11 +91,16 @@ class _FakeConnection:
             return _FakeCursor()
 
         if s.startswith("insert into governance_audit_log"):
-            action_id, tenant_id, action, observed_at, record_hash, data = params
+            action_id, tenant_id, action, observed_at, record_hash, prev_hash, data = params
             rows = self._state["rows"]
             # ON CONFLICT (tenant_id, action_id) DO NOTHING — composite arbiter.
             if any(r["action_id"] == action_id and r["tenant_id"] == tenant_id for r in rows):
                 return _FakeCursor()
+            # UNIQUE (tenant_id, prev_hash) — the fork guard. Two records may
+            # never claim the same predecessor within one tenant. Modelled here
+            # because it is the constraint the store's retry loop exists for.
+            if any(r["tenant_id"] == tenant_id and r["prev_hash"] == prev_hash for r in rows):
+                raise _FakeUniqueViolationError("governance_audit_log_tenant_prevhash_uniq")
             self._state["seq"] += 1
             rows.append(
                 {
@@ -90,6 +110,7 @@ class _FakeConnection:
                     "action": action,
                     "observed_at": observed_at,
                     "record_hash": record_hash,
+                    "prev_hash": prev_hash,
                     "data": data,
                 }
             )
@@ -135,6 +156,12 @@ class _FakeConnection:
         return _FakeCursor()
 
     def commit(self):
+        pass
+
+    def rollback(self):
+        # The store rolls back before re-sealing on a fork race. Nothing to undo
+        # here (the failed INSERT never mutated state), but the method must
+        # exist or the retry path raises AttributeError instead of retrying.
         pass
 
     def __enter__(self):
@@ -353,3 +380,65 @@ def test_backend_selection_memory_and_sqlite(monkeypatch, tmp_path):
         assert isinstance(mod.get_governance_audit_log(), SQLiteGovernanceAuditLog)
     finally:
         set_governance_audit_log(None)
+
+
+# ─── Chain fork guard under concurrency ──────────────────────────────────────
+
+
+def test_a_stale_head_read_is_re_sealed_instead_of_forking() -> None:
+    """The race, made deterministic.
+
+    Threads alone do not reproduce this: the fake is fast enough that the GIL
+    serialises them and each writer happens to read a fresh head, so a threaded
+    test passes even with the guard removed — it proves nothing.
+
+    So the race is injected instead. The second append is served ONE stale head
+    (the value the first writer saw), which is exactly what a concurrent replica
+    observes. The insert then collides on ``UNIQUE (tenant_id, prev_hash)`` and
+    the store must re-read, re-seal against the real head, and land a linear
+    chain rather than a fork or a dropped record.
+    """
+    state = {"rows": [], "seq": 0}
+    pool = _FakePool(state=state)
+    store = _postgres_store(pool)
+
+    first = store.append(_rec("acme", "identity-a", "w1"))
+
+    stale_head = {"served": False}
+    real_execute = _FakeConnection.execute
+
+    def stale_head_once(self, sql, params=None):
+        s_norm = " ".join(sql.lower().split())
+        if "select record_hash from governance_audit_log" in s_norm and not stale_head["served"]:
+            stale_head["served"] = True
+            # What the first writer saw before it committed: an empty chain.
+            return _FakeCursor([])
+        return real_execute(self, sql, params)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(_FakeConnection, "execute", stale_head_once)
+        second = store.append(_rec("acme", "identity-b", "w2"))
+
+    assert stale_head["served"], "the stale head was never served — the race was not exercised"
+
+    rows = [r for r in state["rows"] if r["tenant_id"] == "acme"]
+    assert len(rows) == 2, f"both records must persist, got {len(rows)}"
+    predecessors = [r["prev_hash"] for r in rows]
+    assert len(set(predecessors)) == 2, f"the chain forked: two records claim {predecessors}"
+    assert second.prev_hash == first.record_hash, "the loser must be re-sealed onto the winner"
+
+
+def test_a_fork_race_never_drops_the_record() -> None:
+    """The guard must reject the row, not the write.
+
+    A constraint without the retry would turn a race into a silently missing
+    audit record — worse than the fork it prevents.
+    """
+    state = {"rows": [], "seq": 0}
+    store = _postgres_store(_FakePool(state=state))
+
+    first = store.append(_rec("acme", "identity-a", "w1"))
+    second = store.append(_rec("acme", "identity-b", "w2"))
+
+    assert second.prev_hash == first.record_hash, "the second record must chain onto the first"
+    assert len([r for r in state["rows"] if r["tenant_id"] == "acme"]) == 2

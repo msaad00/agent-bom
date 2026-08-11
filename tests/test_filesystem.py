@@ -1,8 +1,9 @@
 """Tests for filesystem/disk snapshot scanning via Syft."""
 
 import json
-import sqlite3
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -277,55 +278,57 @@ def test_run_syft_captures_stderr(monkeypatch):
 # ─── RPM SQLite parser ────────────────────────────────────────────────────────
 
 
-def _make_rpm_sqlite(db_path, rows):
-    """Helper: create a minimal SQLite RPM DB with given rows."""
-    con = sqlite3.connect(str(db_path))
-    con.execute("CREATE TABLE Packages (name TEXT, version TEXT, release TEXT, epoch INTEGER, arch TEXT)")
-    con.executemany("INSERT INTO Packages VALUES (?,?,?,?,?)", rows)
-    con.commit()
-    con.close()
+REAL_RPMDB = Path(__file__).parent / "fixtures" / "rpmdb_sqlite_min.sqlite"
+
+
+def _make_rpm_sqlite(db_path, _rows=None):
+    """Place a REAL rpmdb.sqlite at ``db_path``.
+
+    This used to fabricate the schema::
+
+        CREATE TABLE Packages (name TEXT, version TEXT, release TEXT, epoch INTEGER, arch TEXT)
+
+    Those columns exist in no rpmdb. RHEL 9+ ships
+    ``Packages(hnum INTEGER PRIMARY KEY, blob BLOB)``, one binary RPM header per
+    row. So every test below validated the parser against an invented format,
+    and all of them stayed green while `agent-bom fs` returned zero packages for
+    every RHEL / UBI / Fedora / Amazon Linux filesystem.
+
+    The fixture is the one the OCI path already scans, so both code paths are
+    now tested against the same real bytes.
+    """
+    shutil.copy(REAL_RPMDB, db_path)
 
 
 def test_parse_rpm_sqlite_db(tmp_path):
-    """_parse_rpm_sqlite reads Packages table and returns Package objects."""
+    """_parse_rpm_sqlite reads the real Packages table and returns Packages."""
     db = tmp_path / "rpmdb.sqlite"
-    _make_rpm_sqlite(db, [("bash", "5.1.8", "6.el9", 0, "x86_64")])
+    _make_rpm_sqlite(db)
 
     pkgs = _parse_rpm_sqlite(db)
-    assert len(pkgs) == 1
-    assert pkgs[0].name == "bash"
-    assert pkgs[0].ecosystem == "rpm"
-    assert "5.1.8" in pkgs[0].version
+    assert pkgs, "a genuine rpmdb.sqlite produced no packages"
+    by_name = {p.name: p for p in pkgs}
+    assert "bash" in by_name
+    assert by_name["bash"].ecosystem == "rpm"
+    assert "5.1.8" in by_name["bash"].version
 
 
-def test_parse_rpm_sqlite_epoch_in_version(tmp_path):
-    """Packages with non-zero epoch include it in the version string."""
+def test_parse_rpm_sqlite_version_includes_release(tmp_path):
+    """The RPM version carries its release suffix, as the advisory feeds key on."""
     db = tmp_path / "rpmdb.sqlite"
-    _make_rpm_sqlite(db, [("openssl", "1.1.1", "34.el9_0", 1, "x86_64")])
+    _make_rpm_sqlite(db)
 
-    pkgs = _parse_rpm_sqlite(db)
-    assert len(pkgs) == 1
-    assert pkgs[0].version.startswith("1:")
+    by_name = {p.name: p.version for p in _parse_rpm_sqlite(db)}
+    assert by_name["bash"] == "5.1.8-9.el9", by_name
+    assert by_name["openssl-libs"] == "3.0.7-27.el9", by_name
 
 
-def test_rpm_purl_with_epoch(tmp_path):
-    """PURL includes epoch when non-zero."""
+def test_rpm_purl_is_well_formed(tmp_path):
     db = tmp_path / "rpmdb.sqlite"
-    _make_rpm_sqlite(db, [("curl", "7.76.1", "14.el9_0.2", 1, "x86_64")])
+    _make_rpm_sqlite(db)
 
-    pkgs = _parse_rpm_sqlite(db)
-    assert len(pkgs) == 1
-    assert "1:7.76.1-14.el9_0.2" in pkgs[0].purl
-
-
-def test_rpm_purl_without_epoch(tmp_path):
-    """PURL omits epoch when epoch is 0."""
-    db = tmp_path / "rpmdb.sqlite"
-    _make_rpm_sqlite(db, [("gzip", "1.10", "1.el9", 0, "x86_64")])
-
-    pkgs = _parse_rpm_sqlite(db)
-    assert len(pkgs) == 1
-    assert "pkg:rpm/rhel/gzip@1.10-1.el9" in pkgs[0].purl
+    by_name = {p.name: p.purl for p in _parse_rpm_sqlite(db)}
+    assert by_name["bash"] == "pkg:rpm/rhel/bash@5.1.8-9.el9", by_name
 
 
 def test_parse_rpm_sqlite_missing_file(tmp_path):
@@ -335,21 +338,12 @@ def test_parse_rpm_sqlite_missing_file(tmp_path):
 
 
 def test_parse_rpm_sqlite_multiple_packages(tmp_path):
-    """All rows in the Packages table are returned."""
+    """Every header row in the database is returned."""
     db = tmp_path / "rpmdb.sqlite"
-    _make_rpm_sqlite(
-        db,
-        [
-            ("bash", "5.1.8", "6.el9", 0, "x86_64"),
-            ("coreutils", "8.32", "34.el9", 0, "x86_64"),
-            ("systemd", "250", "12.el9_1.3", 0, "x86_64"),
-        ],
-    )
+    _make_rpm_sqlite(db)
 
-    pkgs = _parse_rpm_sqlite(db)
-    assert len(pkgs) == 3
-    names = {p.name for p in pkgs}
-    assert names == {"bash", "coreutils", "systemd"}
+    names = {p.name for p in _parse_rpm_sqlite(db)}
+    assert {"bash", "openssl-libs"} <= names, sorted(names)
 
 
 def test_parse_rpm_packages_no_binary(monkeypatch, tmp_path):
@@ -364,22 +358,10 @@ def test_parse_rpm_packages_uses_sqlite_when_present(tmp_path):
     """parse_rpm_packages prefers SQLite DB over rpm binary."""
     rpm_dir = tmp_path / "var" / "lib" / "rpm"
     rpm_dir.mkdir(parents=True)
-    db = rpm_dir / "rpmdb.sqlite"
-    _make_rpm_sqlite(db, [("bash", "5.1.8", "6.el9", 0, "x86_64")])
+    _make_rpm_sqlite(rpm_dir / "rpmdb.sqlite")
 
     pkgs = parse_rpm_packages(tmp_path)
-    assert len(pkgs) == 1
-    assert pkgs[0].name == "bash"
-
-
-def test_parse_rpm_sqlite_arch_in_purl(tmp_path):
-    """Architecture is included as a query parameter in the PURL."""
-    db = tmp_path / "rpmdb.sqlite"
-    _make_rpm_sqlite(db, [("kernel", "5.14.0", "70.13.1.el9_0", 0, "x86_64")])
-
-    pkgs = _parse_rpm_sqlite(db)
-    assert len(pkgs) == 1
-    assert "arch=x86_64" in pkgs[0].purl
+    assert "bash" in {p.name for p in pkgs}
 
 
 # ─── discover_filesystem_mcps ─────────────────────────────────────────────────

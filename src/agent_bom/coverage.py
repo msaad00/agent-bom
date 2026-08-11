@@ -132,6 +132,28 @@ def _release_key(pkg: "Package") -> Optional[tuple[str, str]]:
         from agent_bom.package_utils import alpine_release_branch
 
         return ("alpine", f"alpine:{alpine_release_branch(distro_version)}")
+    if eco == "rpm":
+        # RPM distros had no branch here at all, so `detect_release_coverage_gaps`
+        # could never fire for one — an RPM parser that silently produced nothing
+        # had no backstop, which is how a RHEL false-clean went unnoticed.
+        #
+        # Keyed on the major release, which is how the advisory rows are stored.
+        # Only the families the DB actually carries are mapped; anything else
+        # returns None rather than inventing a key that would report a real feed
+        # as missing.
+        major = distro_version.split(".", 1)[0].strip()
+        if not major:
+            return None
+        rpm_families = {
+            "rhel": ("rhel", f"red hat:enterprise_linux:{major}"),
+            "redhat": ("rhel", f"red hat:enterprise_linux:{major}"),
+            "red hat enterprise linux": ("rhel", f"red hat:enterprise_linux:{major}"),
+            "almalinux": ("almalinux", f"almalinux:{major}"),
+            "alma": ("almalinux", f"almalinux:{major}"),
+            "rocky": ("rocky", f"rocky linux:{major}"),
+            "rocky linux": ("rocky", f"rocky linux:{major}"),
+        }
+        return rpm_families.get(distro_name)
     return None
 
 

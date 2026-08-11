@@ -51,17 +51,19 @@ def test_cis_fails_become_findings_across_providers() -> None:
     cis = [f for f in _report().to_findings() if f.finding_type.value == "CIS_FAIL"]
     assert len(cis) == 2  # AWS 1.7 + Azure 3.2; the PASS excluded
     by_title = {f.title: f for f in cis}
-    assert "CIS 1.7: Root used" in by_title
-    assert by_title["CIS 1.7: Root used"].attack_tags == ["T1078"]
-    assert "CIS-1.7" in by_title["CIS 1.7: Root used"].compliance_tags
-    az = by_title["CIS 3.2: Storage open"]
+    # The title carries the outcome: a FAIL is not titled with the state the
+    # control failed to reach.
+    assert "CIS 1.7 not met: Root used" in by_title
+    assert by_title["CIS 1.7 not met: Root used"].attack_tags == ["T1078"]
+    assert "CIS-1.7" in by_title["CIS 1.7 not met: Root used"].compliance_tags
+    az = by_title["CIS 3.2 not met: Storage open"]
     assert az.severity == "critical"
     assert az.asset.identifier == "/sub/x/sa/foo"
 
 
 def test_pass_checks_not_findings() -> None:
     titles = {f.title for f in _report().to_findings()}
-    assert "CIS 2.1: S3 block" not in titles  # PASS never becomes a finding
+    assert not any("S3 block" in title for title in titles)  # PASS never becomes a finding
 
 
 def _gate(report: AIBOMReport) -> int:

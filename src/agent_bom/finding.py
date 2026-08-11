@@ -863,6 +863,18 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     severity = sanitize_text(str(check.get("severity") or "unknown"), max_len=40)
     evidence_text = sanitize_text(str(check.get("evidence", "") or ""), max_len=600)
     recommendation = sanitize_text(str(check.get("recommendation", "") or ""), max_len=600)
+    # A benchmark check carries its fix under "remediation" (a structured block)
+    # while the prose summary lives under "recommendation". The live scanner
+    # emits both; the demo overlay and several vendor payloads emit only the
+    # former, so reading "recommendation" alone left every one of those findings
+    # with no guidance at all and no copy-pasteable command.
+    check_fix = check.get("remediation")
+    check_fix = check_fix if isinstance(check_fix, dict) else {}
+    if not recommendation:
+        recommendation = sanitize_text(
+            str(check_fix.get("fix_console") or check_fix.get("fix_cli") or ""),
+            max_len=600,
+        )
     resource_ids = [sanitize_text(str(r), max_len=300) for r in (check.get("resource_ids") or []) if str(r).strip()]
     primary = resource_ids[0] if resource_ids else f"{provider}-account"
     attack = [str(t) for t in (check.get("attack_techniques") or []) if str(t).strip()]
@@ -921,6 +933,9 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
             "provider": provider,
             "check_id": check_id,
             "control_title": title,
+            # The check's own fix outranks a generic catalog entry keyed only by
+            # check id: it names this resource, in this account.
+            **({"remediation_fix": check_fix} if check_fix else {}),
             "status": status,
             "cis_section": cis_section,
             "benchmark_version": benchmark_version,

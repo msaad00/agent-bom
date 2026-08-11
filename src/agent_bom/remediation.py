@@ -300,8 +300,12 @@ def _build_cis_remediation(finding: "Finding") -> Remediation:
         benchmark_version=benchmark_version,
     )
 
-    cli = catalog.get("fix_cli")
-    console = catalog.get("fix_console") or None
+    # The check's own remediation block wins where present — it was produced for
+    # this resource, where the catalog entry is generic to the control id.
+    own_fix = evidence.get("remediation_fix")
+    own_fix = own_fix if isinstance(own_fix, dict) else {}
+    cli = own_fix.get("fix_cli") or catalog.get("fix_cli")
+    console = own_fix.get("fix_console") or catalog.get("fix_console") or None
     summary = recommendation or str(catalog.get("why") or "") or finding.title
     fix = RemediationFix(
         summary=summary,
@@ -309,14 +313,14 @@ def _build_cis_remediation(finding: "Finding") -> Remediation:
         console=console if isinstance(console, str) else None,
         diff=None,
         docs=str(catalog.get("docs") or "") or None,
-        requires_human_review=bool(catalog.get("requires_human_review", True)),
+        requires_human_review=bool(own_fix.get("requires_human_review", catalog.get("requires_human_review", True))),
     )
 
     privilege = _required_privilege_for_cis(finding, provider, fix.cli)
     artifact = _runbook_artifact_for_cis(finding, provider, fix, privilege)
-    guardrails = [str(g) for g in (catalog.get("guardrails") or [])]
-    effort = str(catalog.get("effort") or "manual")
-    priority = int(catalog.get("priority") or _priority_for(finding.effective_severity()))
+    guardrails = [str(g) for g in (own_fix.get("guardrails") or catalog.get("guardrails") or [])]
+    effort = str(own_fix.get("effort") or catalog.get("effort") or "manual")
+    priority = int(own_fix.get("priority") or catalog.get("priority") or _priority_for(finding.effective_severity()))
 
     return Remediation(
         fix=fix,

@@ -2128,6 +2128,7 @@ def _canonical_scope_filters(
     domain: str | None,
     finding_class: str | None = None,
     q: str | None = None,
+    kev: bool | None = None,
 ) -> dict[str, str]:
     """Normalize the optional scope/domain filters into an active-filter map.
 
@@ -2152,6 +2153,8 @@ def _canonical_scope_filters(
         filters["domain"] = _LEGACY_DOMAIN_ALIASES.get(key, key)
     if finding_class:
         filters["finding_class"] = finding_class
+    if kev is not None:
+        filters["kev"] = "true" if kev else "false"
     if q and q.strip():
         filters["q"] = q.strip()
     return filters
@@ -2408,6 +2411,7 @@ async def list_findings(
     window_days: Annotated[int | None, Query(ge=0, le=3650)] = None,
     status: Annotated[str, Query(max_length=16)] = _DEFAULT_FINDING_STATUS,
     finding_class: FindingClass | None = None,
+    kev: Annotated[bool | None, Query(description="Only known-exploited (KEV) findings, or only non-KEV when false")] = None,
     include_facets: bool = False,
 ) -> dict:
     """List unified findings aggregated from completed scan results.
@@ -2452,6 +2456,7 @@ async def list_findings(
                 window_days,
                 status,
                 finding_class,
+                kev,
                 include_facets,
             )
     except BackpressureRejectedError as exc:
@@ -2479,6 +2484,7 @@ def _list_findings_impl(
     window_days: int | None = None,
     status: str = _DEFAULT_FINDING_STATUS,
     finding_class: str | None = None,
+    kev: bool | None = None,
     include_facets: bool = False,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
@@ -2605,7 +2611,7 @@ def _list_findings_impl(
     # returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings
 
-    scope_filters = _canonical_scope_filters(provider, account, environment, domain, finding_class, q)
+    scope_filters = _canonical_scope_filters(provider, account, environment, domain, finding_class, q, kev=kev)
 
     store = get_compliance_hub_store()
     bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)

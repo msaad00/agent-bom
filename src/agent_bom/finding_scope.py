@@ -765,6 +765,13 @@ def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
     wanted_class = filters.get("finding_class")
     if wanted_class is not None and finding_class_for_row(row) != wanted_class:
         return False
+    # KEV leads the executive headline — "actively exploited, fix these first" —
+    # so the list has to be able to answer it. An absent verdict is not a match:
+    # a row nobody checked must never be presented as known-exploited.
+    wanted_kev = filters.get("kev")
+    if wanted_kev is not None:
+        if (row.get("is_kev") is True) is not (str(wanted_kev).strip().lower() in {"true", "1", "yes"}):
+            return False
     if not row_matches_search(row, filters.get("q")):
         return False
     return True

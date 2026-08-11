@@ -1438,6 +1438,9 @@ export const api = {
     domain?: string;
     findingClass?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
     status?: "open" | "resolved" | "all";
+    // Known-exploited only, or explicitly everything else. Omit for no filter —
+    // `false` is the inverse, not the default.
+    kev?: boolean;
     includeFacets?: boolean;
     // Default read-window in days (#4009). Omit for the server default (~90d);
     // pass 0 to widen to all retained history.
@@ -1457,6 +1460,7 @@ export const api = {
     if (filters?.environment) params.set("environment", filters.environment);
     if (filters?.domain) params.set("domain", filters.domain);
     if (filters?.findingClass) params.set("finding_class", filters.findingClass);
+    if (filters?.kev != null) params.set("kev", String(filters.kev));
     if (filters?.status) params.set("status", filters.status);
     if (filters?.includeFacets) params.set("include_facets", "true");
     if (filters?.windowDays != null) params.set("window_days", String(filters.windowDays));

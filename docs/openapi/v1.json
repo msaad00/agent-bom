@@ -17165,6 +17165,24 @@
             }
           },
           {
+            "description": "Only known-exploited (KEV) findings, or only non-KEV when false",
+            "in": "query",
+            "name": "kev",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only known-exploited (KEV) findings, or only non-KEV when false",
+              "title": "Kev"
+            }
+          },
+          {
             "in": "query",
             "name": "include_facets",
             "required": false,

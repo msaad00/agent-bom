@@ -1,7 +1,7 @@
 {
   "name": "@agent-bom/runtime",
   "version": "0.1.0",
-  "description": "Runtime security detectors for MCP traffic — credential leak, prompt injection, tool drift, rate limiting",
+  "description": "Runtime security detectors for MCP traffic \u2014 credential leak, prompt injection, tool drift, rate limiting",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -39,7 +39,7 @@
     "directory": "sdks/typescript"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "typescript": "^7.0.2"
   }
 }

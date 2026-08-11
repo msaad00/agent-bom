@@ -1031,10 +1031,18 @@ def _node_type_value(node: UnifiedNode) -> str:
 
 
 def _node_risk_100(node: UnifiedNode) -> float:
-    risk = float(getattr(node, "risk_score", 0.0) or 0.0)
-    if risk <= 10.0:
-        risk *= 10.0
+    """A node's risk on the canonical 0-100 scale.
+
+    The normalisation itself lives in `graph.risk_scale` so this and
+    `estate_graph._chain_risk` cannot drift apart again — they did, and the
+    exposure-path queue ended up sorting two unit systems as one.
+    """
+    from agent_bom.graph.risk_scale import normalize_risk_to_100
+
+    risk = normalize_risk_to_100(getattr(node, "risk_score", 0.0))
     if risk <= 0:
+        # Unrated inventory nodes fall back to severity rank, which is already
+        # expressed on the 0-100 scale (rank 5 -> 100).
         risk = float(SEVERITY_RANK.get(str(getattr(node, "severity", "") or "").lower(), 0) * 20)
     return max(0.0, min(100.0, risk))
 

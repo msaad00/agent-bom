@@ -245,7 +245,9 @@ class TestDeltaAlerts:
                 source="package:demo",
                 target="agent:prod",
                 hops=["package:demo", "agent:prod"],
-                composite_risk=8.0,
+                # 0-100 scale (see `graph.risk_scale`): 80 is the 8.0-CVSS
+                # risk this fixture has always meant.
+                composite_risk=80.0,
                 summary="demo-pkg -> prod-agent",
             )
         )

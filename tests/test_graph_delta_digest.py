@@ -51,7 +51,7 @@ def _old_graph() -> UnifiedGraph:
     g.add_node(_agent("agent:gone", "gone-agent", severity="high", risk=7.5))
     g.add_node(_vuln("vuln:old", "critical", "CVE-OLD"))
     g.add_node(_misconfig("mis:old", "high"))
-    g.attack_paths.append(AttackPath(source="agent:keep", target="vuln:old", hops=["agent:keep", "vuln:old"], composite_risk=8.0))
+    g.attack_paths.append(AttackPath(source="agent:keep", target="vuln:old", hops=["agent:keep", "vuln:old"], composite_risk=80.0))
     g.interaction_risks.append(
         InteractionRisk(pattern="loop", agents=["keep", "gone"], risk_score=8.0, description="d", owasp_agentic_tag="AA1")
     )
@@ -68,8 +68,8 @@ def _new_graph() -> UnifiedGraph:
     # carried-over old vuln (present in old -> no new-vuln alert)
     g.add_node(_vuln("vuln:old", "critical", "CVE-OLD"))
     # new high-risk attack path + interaction risk (exercise those branches)
-    g.attack_paths.append(AttackPath(source="agent:keep", target="vuln:new", hops=["agent:keep", "vuln:new"], composite_risk=9.5))
-    g.attack_paths.append(AttackPath(source="agent:keep", target="vuln:old", hops=["agent:keep", "vuln:old"], composite_risk=8.0))
+    g.attack_paths.append(AttackPath(source="agent:keep", target="vuln:new", hops=["agent:keep", "vuln:new"], composite_risk=95.0))
+    g.attack_paths.append(AttackPath(source="agent:keep", target="vuln:old", hops=["agent:keep", "vuln:old"], composite_risk=80.0))
     g.interaction_risks.append(
         InteractionRisk(pattern="new-loop", agents=["keep"], risk_score=9.1, description="d2", owasp_agentic_tag="AA2")
     )

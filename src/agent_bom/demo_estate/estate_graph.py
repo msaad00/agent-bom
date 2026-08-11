@@ -593,13 +593,18 @@ def _chain_risk(graph: UnifiedGraph, hops: Sequence[str], risk_by_asset: dict[st
     ``node.risk_score`` alone always returned 0.0 and sorted the estate's own
     incident below every hand-built path in the exposure-path queue.
     """
+    from agent_bom.graph.risk_scale import cvss_to_risk_100
+
     worst = 0.0
     for hop in hops:
         worst = max(worst, risk_by_asset.get(hop, 0.0))
         node = graph.nodes.get(hop)
         if node is not None:
             worst = max(worst, float(node.risk_score or 0.0))
-    return worst
+    # `composite_risk` is a 0-100 field. Returning a raw CVSS here put the
+    # correlated estate on a different scale from the showcase paths it is
+    # ranked against, so it sorted 74th behind every hand-built path.
+    return cvss_to_risk_100(worst)
 
 
 __all__ = [

@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 from agent_bom.event_normalization import build_event_ref, build_event_relationships
 from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.risk_scale import RISK_SCALE_MAX
 from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
 from agent_bom.posture_streaming import PostureEvent, WebhookDestination, WebhookOutbox, default_webhook_outbox
@@ -92,6 +93,16 @@ def _dispatch_outbound_alert(dispatcher: Any, alert: dict[str, Any], outbound_ch
 
     dispatcher.dispatch_sync(alert)
     return 0, outbound_channels
+
+
+# `composite_risk` is a 0-100 field (see `graph.risk_scale`). These thresholds
+# were 7.0 and 9.0 — values on the 0-10 scale — so a shipped alert read
+# "Composite risk 100.0/10", anything scoring 9 out of 100 was labelled
+# critical, and on the demo snapshot 1,065 of 2,144 paths cleared the emit
+# threshold. Restated on the scale the field actually uses, preserving the
+# original intent: alert on the top ~30%, escalate the top ~10%.
+_NEW_PATH_ALERT_RISK = 70.0
+_NEW_PATH_CRITICAL_RISK = 90.0
 
 
 def compute_delta_alerts(
@@ -177,7 +188,7 @@ def compute_delta_alerts(
     if old_graph:
         old_path_keys = {(p.source, p.target) for p in old_graph.attack_paths}
     for path in new_graph.attack_paths:
-        if (path.source, path.target) not in old_path_keys and path.composite_risk >= 7.0:
+        if (path.source, path.target) not in old_path_keys and path.composite_risk >= _NEW_PATH_ALERT_RISK:
             details = {
                 "node_ids": path.hops,
                 "scan_id": new_graph.scan_id,
@@ -191,10 +202,10 @@ def compute_delta_alerts(
                 {
                     "type": "new_attack_path",
                     "detector": "graph_new_attack_path",
-                    "severity": "critical" if path.composite_risk >= 9.0 else "high",
+                    "severity": "critical" if path.composite_risk >= _NEW_PATH_CRITICAL_RISK else "high",
                     "message": f"New high-risk attack path: {path.summary or f'{path.source} → {path.target}'}",
                     "title": f"New high-risk attack path: {path.summary or f'{path.source} → {path.target}'}",
-                    "description": f"Composite risk {path.composite_risk}/10, {len(path.hops)} hops",
+                    "description": f"Composite risk {path.composite_risk}/{RISK_SCALE_MAX:.0f}, {len(path.hops)} hops",
                     "node_ids": path.hops,
                     "scan_id": new_graph.scan_id,
                     "details": details,

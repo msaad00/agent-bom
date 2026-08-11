@@ -88,11 +88,19 @@ function StatCard({
   label,
   value,
   color,
+  scope,
 }: {
   icon: React.ElementType;
   label: string;
   value: number;
   color: string;
+  /** What population this number counts.
+   *
+   * This page shows three identity counts from three different populations —
+   * managed agent identities here, discovered NHIs in the governance panel
+   * below, and every identity-typed asset on /inventory. Unlabelled, they read
+   * as one number contradicting itself three ways. */
+  scope?: string;
 }) {
   return (
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
@@ -103,6 +111,7 @@ function StatCard({
       <p className="text-2xl font-bold text-[var(--foreground)]">
         {value.toLocaleString()}
       </p>
+      {scope ? <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">{scope}</p> : null}
     </div>
   );
 }
@@ -506,6 +515,7 @@ export default function IdentityPage() {
           label="Active identities"
           value={activeIdentities}
           color="text-indigo-400"
+          scope="issued and managed here"
         />
         <StatCard
           icon={Clock}
@@ -524,6 +534,7 @@ export default function IdentityPage() {
           label="Revoked / expired"
           value={inactiveIdentities}
           color="text-[var(--text-secondary)]"
+          scope="issued and managed here"
         />
       </div>
 

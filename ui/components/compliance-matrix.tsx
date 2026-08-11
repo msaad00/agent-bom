@@ -122,20 +122,35 @@ const columns = [
   col.accessor("status", {
     header: "Status",
     cell: (info) => {
-      const s = info.getValue();
-      const styles = {
+      const status = String(info.getValue() ?? "");
+      // Keyed on every status the API can send, not just the scored three.
+      // #4709 made ATLAS an applicability overlay, so its controls arrive as
+      // `applicable` / `not_applicable`; other frameworks send `not_evaluated`.
+      // Those fell through `styles[s]` / `labels[s]` as `undefined`, rendering
+      // an EMPTY pill with the literal string "undefined" in its class list.
+      const styles: Record<string, string> = {
         pass: "bg-emerald-950 text-emerald-300 border-emerald-800",
         warning: "bg-yellow-950 text-yellow-300 border-yellow-800",
         fail: "bg-red-950 text-red-300 border-red-800",
+        error: "bg-yellow-950 text-yellow-300 border-yellow-800",
+        applicable: "bg-cyan-950 text-cyan-300 border-cyan-800",
+        not_applicable: "bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)] border-[color:var(--border-subtle)]",
+        not_evaluated: "bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)] border-[color:var(--border-subtle)]",
       };
-      const labels = { pass: "Pass", warning: "Warning", fail: "Fail" };
-      return (
-        <span
-          className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${styles[s]}`}
-        >
-          {labels[s]}
-        </span>
-      );
+      const labels: Record<string, string> = {
+        pass: "Pass",
+        warning: "Warning",
+        fail: "Fail",
+        error: "Error",
+        applicable: "Applicable",
+        not_applicable: "Not applicable",
+        not_evaluated: "Not evaluated",
+      };
+      // An unknown status is shown de-namespaced rather than dropped: a blank
+      // cell hides that the API sent something this table does not model.
+      const label = labels[status] ?? status.replace(/_/g, " ") ?? "Unknown";
+      const style = styles[status] ?? styles.not_evaluated;
+      return <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${style}`}>{label}</span>;
     },
     filterFn: "equals",
   }),
@@ -350,7 +365,15 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
 
       {/* Count */}
       <div className="text-xs text-[color:var(--text-tertiary)]">
-        {table.getFilteredRowModel().rows.length} of {rows.length} controls
+        {table.getFilteredRowModel().rows.length} of {rows.length} controls across{" "}
+        {FRAMEWORK_MAP.length} AI frameworks
+        <span className="ml-2 text-[color:var(--text-tertiary)]">
+          {/* The tiles above count every tracked framework, including the
+              governance and cloud ones this matrix deliberately excludes. Two
+              honest numbers measuring different things need to say so, or the
+              smaller one reads as the larger one shrinking. */}
+          — governance and cloud frameworks are summarised in the tiles above, not in this matrix
+        </span>
       </div>
 
       {/* Table */}

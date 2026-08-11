@@ -78,6 +78,14 @@ export function NhiGovernancePanel({ scanId }: { scanId?: string | undefined }) 
             Graph-backed non-human identity risk from{" "}
             <span className="font-mono">/v1/graph/nhi/governance</span>
           </p>
+          {/* Counts DISCOVERED non-human identities across the estate — a
+              different population from the managed agent identities in the
+              tiles above, which agent-bom issues itself. Both numbers are
+              correct; without saying which is which they read as one number
+              disagreeing with itself. */}
+          <p className="mt-0.5 text-[11px] text-[color:var(--text-tertiary)]">
+            Discovered across the estate — not the agent identities issued above
+          </p>
         </div>
         {loading ? <Loader2 className="h-4 w-4 animate-spin text-[color:var(--text-tertiary)]" /> : null}
       </div>

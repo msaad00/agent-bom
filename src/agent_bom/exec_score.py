@@ -41,6 +41,7 @@ normalized back into range.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,11 +103,19 @@ DEFAULT_DISPLAY_FORMAT = "percent"
 # override can neither invert the score (negative) nor overflow it.
 _MAX_WEIGHT = 100.0
 # Diminishing-returns scale for the pressure→score curve
-# ``score = 100 × scale / (scale + pressure)``. At ``scale = 70`` the historical
-# anchor holds exactly (2 critical + 1 high = 30 pressure → score 70 → grade C),
-# a clean estate scores 100, and the score decays toward — but never reaches — 0
-# so ever-larger estates keep earning distinct (still-failing) scores.
-_PENALTY_SCALE = 70.0
+# ``score = 100 × scale / (scale + scale × ln(1 + pressure/scale))``.
+#
+# Re-derived from the historical anchor when pressure became log-compressed.
+# The anchor is unchanged and still exact: 2 critical + 1 high = 30 pressure →
+# score 70.0 → grade C, the value ``scale = 70`` produced under the old linear
+# curve. Solving ``1 / (1 + ln(1 + 30/s)) = 0.70`` gives s ≈ 56.07, so 56 keeps
+# that calibration point where it has always been while the compression fixes
+# the far end.
+#
+# The low end is preserved too, not just the anchor: 3 criticals still grades D
+# and 5 still grades F, exactly as before. What changes is only the region the
+# old curve had collapsed — see the note on the curve in ``compute_exec_score``.
+_PENALTY_SCALE = 56.0
 
 
 @dataclass(frozen=True)
@@ -341,10 +350,30 @@ def compute_exec_score(
             }
         )
 
-    # Diminishing-returns curve: unbounded pressure maps to a (0, 100] score that
-    # never floors at 0, so a 20-critical and a 2000-critical estate stay
-    # distinguishable instead of both saturating to F/0. score(0) == 100.
-    count_score = max(0.0, round(100.0 * _PENALTY_SCALE / (_PENALTY_SCALE + pressure), 1))
+    # Diminishing-returns curve over LOG-COMPRESSED pressure.
+    #
+    # The curve alone was not enough. `100 * scale / (scale + pressure)` with a
+    # constant scale, against a pressure that grows linearly with estate size,
+    # collapses on any real estate: the measured demo estate (pressure ~15,292)
+    # scored 0.46% and displayed "0%", and eliminating HALF of everything moved
+    # it to 0.91% — still "0%". The scores were distinct in the arithmetic and
+    # identical to a reader, which is the only place the grade exists.
+    #
+    # Compressing pressure logarithmically first makes the grade respond to
+    # ORDERS OF MAGNITUDE of risk rather than to raw counts, which is the shape
+    # a leadership metric needs: halving an estate should be visible, and the
+    # difference between 20 and 2,000 criticals should survive rendering.
+    #
+    # Everything the model promised is preserved: score(0) == 100, the mapping
+    # is still strictly monotonic (log is strictly increasing, so more findings
+    # only ever lower the score), and the documented anchor (2 critical + 1
+    # high) still grades C. Adopters still steepen or soften by scaling the
+    # weights.
+    #
+    # This does NOT make a large failing estate score well — thousands of open
+    # criticals remain an F. They simply stop being an unreadable F.
+    compressed = _PENALTY_SCALE * math.log1p(pressure / _PENALTY_SCALE)
+    count_score = max(0.0, round(100.0 * _PENALTY_SCALE / (_PENALTY_SCALE + compressed), 1))
     # Effective points removed to reach the count score (score + penalty == 100).
     penalty = round(100.0 - count_score, 1)
 

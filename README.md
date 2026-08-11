@@ -139,7 +139,7 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 |---|---|
 | Docker Compose | [Platform compose](deploy/docker-compose.platform.yml) — PostgreSQL, split secrets, migration job |
 | Docker Compose (evaluation) | [Pilot compose](deploy/docker-compose.pilot.yml) — loopback only, SQLite, no auth |
-| Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.99.0` |
+| Helm / Kubernetes | `helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom --version 0.100.0` |
 | EKS | [Terraform module](deploy/terraform/platform-eks) |
 | Snowflake SPCS / Native App | `scripts/deploy/install.sh snowflake-native` · [install guide](docs/snowflake-native-app/INSTALL.md) |
 | Air-gapped | [Image bundle guide](site-docs/deployment/airgapped-image-bundle.md) |
@@ -156,7 +156,7 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 
 | Need | First action | Artifact or next step |
 |---|---|---|
-| GitHub CI | `uses: msaad00/agent-bom@v0.99.0` | SARIF, PR summary, and a policy exit code |
+| GitHub CI | `uses: msaad00/agent-bom@v0.100.0` | SARIF, PR summary, and a policy exit code |
 | Cloud evidence | `agent-bom connect aws` | Stored connection reference; run scans from the control plane |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
 | Agent interface | `agent-bom mcp server` | 77 MCP tools, 6 resources, and 8 workflow prompts |

@@ -89,7 +89,7 @@ npx playwright test e2e/route-catalog-smoke.spec.ts e2e/jobs-workflow.spec.ts \
 ## Download release assets
 
 ```bash
-TAG=v0.99.0
+TAG=v0.100.0
 VERSION="${TAG#v}"
 mkdir -p /tmp/agent-bom-release && cd /tmp/agent-bom-release
 gh release download "$TAG" --repo msaad00/agent-bom

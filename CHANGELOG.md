@@ -9,6 +9,85 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-08-11
+
+An output-honesty release. Every local gate was already green before this work
+started; nothing here fixes a crash or a build. What it fixes is the gap between
+what agent-bom found and what it told you — findings that were computed and never
+surfaced, bounded reads that claimed to be complete, and a scanner that reported
+clean where it had not looked.
+
+If you run agent-bom against RHEL/UBI images, or read the executive view, or use
+the graph, this release changes what you see.
+
+### Security
+
+- Secret scanning no longer reports a file it never opened as clean. Files over
+  the size ceiling and files that could not be read were returned as "no
+  findings" and counted toward `files_scanned`. They are now named in `warnings`
+  and excluded from the coverage count. `.tfstate` and `.tfvars` join the
+  scanned extensions — `.tf` was already there, so the two files in a Terraform
+  repo most likely to hold a plaintext provider credential were never opened at
+  any size.
+- WebSocket streams failed open when the auth posture could not be derived, and
+  DLP excerpts echoed the secret they were redacting.
+- Microsoft Graph pagination is pinned to the origin that issued the token, so a
+  bearer token can no longer follow a `@odata.nextLink` off-origin.
+- The governance audit chain gained the fork guard its sibling chain already had.
+- Ingested `graph_reachable: true` is rejected unless the row names an agent that
+  reaches the finding. `dependency_reach` defines reachable as
+  `bool(reachable_from)`; a claim with no path contradicted that definition and
+  still collected the reachability risk boost, outranking findings the engine had
+  actually proved.
+
+### Fixed — wrong or missing output
+
+- **RHEL / UBI / AlmaLinux / Rocky images read zero packages.** The scanner
+  queried an `rpmdb.sqlite` schema those images do not ship, so every scan of
+  them returned a false clean. This is the most consequential fix in the release.
+- The executive grade was pinned at 0% on any real estate, so eliminating half of
+  everything moved the headline by under one point. The curve now responds to
+  orders of magnitude rather than raw counts; a large failing estate is still an
+  F, just a readable one.
+- CIS findings were titled with the state they failed to reach — a critical
+  finding headlined "No full-admin IAM policies attached". Titles now carry the
+  outcome ("CIS 1.16 not met: ..."), and `ERROR` says "not evaluated" rather than
+  implying failure.
+- A bounded compliance or node-context read reported completeness in a word no
+  client understood, and one backend read unbounded while the other stopped at
+  50,000 nodes. Both now use the shared `complete` / `truncated` / `sampled`
+  vocabulary and the same budget.
+- `GET /v1/graph` returned the same edge twice whenever a page had a containment
+  parent outside it.
+- `composite_risk` meant two different things on two surfaces.
+- CIS remediation advisories silently dropped the check's own `fix_cli` /
+  `fix_console`, degrading a copy-pasteable command to prose.
+- Identity counts and the compliance matrix rendered as contradictions; an
+  asset-type page asked for the whole estate rather than its own type; a nested
+  count object rendered as `[object Object]`.
+
+### Added
+
+- `GET /v1/findings?kev=true` filters to known-exploited findings (and `false`
+  for the inverse). The executive view has always led with a KEV count; it is now
+  reachable from the list.
+- `GET /v1/scan/{job_id}/remediation` returns the remediation plan for a scan.
+- The MCP server serves the OAuth authorization server it advertises, and
+  advertises the reachable URL rather than its bind address.
+- CI runs the CVE accuracy measurements that already existed and had never been
+  wired to a workflow.
+
+### Changed
+
+- The graph canvas opens at a readable zoom. The roll-up grid was fixed at three
+  columns, turning 106 containers into a portrait tower that `fitView` correctly
+  resolved to 0.16 — roughly 2.6px labels. Column count now follows the estate
+  size; the demo estate opens at 0.40.
+- The collapsed estate is drawn as a topology rather than a grid of disconnected
+  cards.
+- ATLAS is an applicability overlay, not 65 failing controls.
+- TanStack Table upgraded to v9.
+
 ## [0.99.0] - 2026-08-05
 
 A correctness release. Several defects here caused agent-bom to report *less*

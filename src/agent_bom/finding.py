@@ -919,7 +919,17 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
         account_ref=account_ref,
         region=region,
         environment=environment,
-        title=f"{'Databricks best practice' if is_vendor_best_practice else 'CIS'} {check_id}: {title}",
+        # CIS phrases controls as assertions of the desired state ("No root
+        # account access keys"), which is right for a control name and wrong for
+        # a finding title: the finding exists because the assertion is false.
+        # Titling a critical FAIL with the state it failed to reach put 1,581
+        # findings on screen headlined as though nothing were wrong. "not met"
+        # rather than a negated control name, because every CIS title is an
+        # assertion and mechanical negation is not grammatical across them.
+        title=(
+            f"{'Databricks best practice' if is_vendor_best_practice else 'CIS'} {check_id} "
+            f"{'not evaluated' if status == 'ERROR' else 'not met'}: {title}"
+        ),
         description=evidence_text
         or (
             f"{benchmark_label} control {check_id} could not be evaluated for {provider}."

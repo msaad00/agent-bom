@@ -830,6 +830,27 @@ async def _containment_ancestors(
     return list(nodes), list(ancestor_edges.values())
 
 
+def _joined_edges(*groups: list[UnifiedEdge]) -> list[UnifiedEdge]:
+    """Concatenate edge lists without listing the same edge twice.
+
+    The containment-ancestor walk starts from the page's own edge list, so an
+    edge reaching the page from a parent outside it is found there *and* stays
+    in ``paged_edges`` — concatenating the two returned it twice. The key is the
+    one ``UnifiedGraph.add_edge`` already uses, so the response cannot disagree
+    with the graph about what makes an edge the same edge.
+    """
+    seen: set[tuple[str, str, str]] = set()
+    joined: list[UnifiedEdge] = []
+    for group in groups:
+        for edge in group:
+            key = (edge.source, edge.target, _rel_value(edge))
+            if key in seen:
+                continue
+            seen.add(key)
+            joined.append(edge)
+    return joined
+
+
 def _edge_relationships_for_hops(hops: list[str], edges: list[UnifiedEdge]) -> list[str]:
     """Return relationship names for consecutive hop pairs when topology is available."""
     if len(hops) < 2:
@@ -2265,7 +2286,7 @@ async def get_graph(
         "tenant_id": tenant,
         "created_at": created_at,
         "nodes": [n.to_dict() for n in response_nodes],
-        "edges": [e.to_dict() for e in [*paged_edges, *ancestor_edges]],
+        "edges": [e.to_dict() for e in _joined_edges(paged_edges, ancestor_edges)],
         "attack_paths": [
             _serialize_attack_path(path, paged_edges, nodes_by_id=nodes_by_id, scan_id=effective_scan_id) for path in source_attack_paths
         ],

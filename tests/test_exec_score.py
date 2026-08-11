@@ -108,7 +108,15 @@ def test_large_estate_grades_f_without_flooring_at_zero() -> None:
     no room to distinguish a bad estate from a catastrophic one)."""
     result = compute_exec_score(severity=_sev(critical=50))
     assert result["grade"] == "F"
-    assert 0.0 < result["score"] < 15.0
+    assert 0.0 < result["score"] < 60.0
+    # Distinguishable from a catastrophic estate, which is the whole point of
+    # not flooring: the bound used to be `< 15.0`, a number calibrated to the
+    # old linear curve. Pressure is log-compressed now, so the same estate
+    # scores higher while staying an unambiguous F — and the ordering, which is
+    # what this test is actually about, still holds by a wide margin.
+    catastrophic = compute_exec_score(severity=_sev(critical=5000))
+    assert catastrophic["score"] < result["score"]
+    assert round(result["score"]) != round(catastrophic["score"])
     # score + penalty_total reconcile to a full 100 points.
     assert round(result["score"] + result["penalty_total"], 1) == 100.0
 

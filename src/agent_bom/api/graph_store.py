@@ -35,7 +35,12 @@ from agent_bom.graph import (
     technique_mappings_from_json,
 )
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
-from agent_bom.graph.completeness import bounded_walk_reason, impact_completeness
+from agent_bom.graph.completeness import (
+    COMPLIANCE_NODE_BUDGET,
+    bounded_walk_reason,
+    graph_completeness,
+    impact_completeness,
+)
 from agent_bom.graph.container import apply_node_budget
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 
@@ -1389,23 +1394,28 @@ class SQLiteGraphStore:
         framework: str = "",
     ) -> dict[str, Any]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        # The same budget Postgres applies. This read used to be unbounded here
+        # and bounded there, so the two backends answered the same leadership
+        # question from different amounts of the estate — and only one of them
+        # said so.
+        compliance_node_budget = COMPLIANCE_NODE_BUDGET
+        empty = {
+            "scan_id": scan_id,
+            "framework_count": 0,
+            "total_tagged_findings": 0,
+            "frameworks": {},
+            "completeness": {
+                **graph_completeness(returned=0),
+                "node_budget": compliance_node_budget,
+            },
+        }
         conn = self._open_ro_conn()
         if conn is None:
-            return {
-                "scan_id": scan_id,
-                "framework_count": 0,
-                "total_tagged_findings": 0,
-                "frameworks": {},
-            }
+            return empty
         try:
             effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
             if not effective_scan_id:
-                return {
-                    "scan_id": scan_id,
-                    "framework_count": 0,
-                    "total_tagged_findings": 0,
-                    "frameworks": {},
-                }
+                return empty
 
             rows = conn.execute(
                 """
@@ -1413,9 +1423,12 @@ class SQLiteGraphStore:
                 FROM graph_nodes
                 WHERE tenant_id = ? AND scan_id = ? AND json_array_length(compliance_tags) > 0
                 ORDER BY id ASC
+                LIMIT ?
                 """,
-                [tenant_id, effective_scan_id],
+                [tenant_id, effective_scan_id, compliance_node_budget + 1],
             ).fetchall()
+            truncated = len(rows) > compliance_node_budget
+            rows = rows[:compliance_node_budget]
 
             framework_filter = framework.upper()
             framework_stats: dict[str, dict[str, Any]] = defaultdict(
@@ -1460,6 +1473,14 @@ class SQLiteGraphStore:
                 "framework_count": len(frameworks),
                 "total_tagged_findings": sum(stats["total_findings"] for stats in frameworks.values()),
                 "frameworks": frameworks,
+                "completeness": {
+                    **graph_completeness(
+                        returned=len(rows),
+                        truncated=truncated,
+                        reason="node_budget" if truncated else "",
+                    ),
+                    "node_budget": compliance_node_budget,
+                },
             }
         finally:
             conn.close()

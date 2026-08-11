@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+#: Tagged-node ceiling for a compliance summary read. Lives here rather than in
+#: either store so both backends bound the same question the same way.
+COMPLIANCE_NODE_BUDGET = 50_000
+
 
 def graph_completeness(
     *,

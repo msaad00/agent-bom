@@ -27,7 +27,12 @@ from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMEN
 from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_policy, normalize_graph_tenant_id
 from agent_bom.graph import EntityType, technique_mappings_from_json
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
-from agent_bom.graph.completeness import bounded_walk_reason, impact_completeness
+from agent_bom.graph.completeness import (
+    COMPLIANCE_NODE_BUDGET,
+    bounded_walk_reason,
+    graph_completeness,
+    impact_completeness,
+)
 from agent_bom.security import sanitize_text
 
 from .postgres_common import (
@@ -1870,9 +1875,16 @@ class PostgresGraphStore:
             "neighbors": neighbors,
             "sources": sources,
             "impact": self.impact_of(tenant_id=tenant_id, scan_id=effective_scan_id, node_id=node_id),
+            # This used to hand-roll a fourth status word into a vocabulary of
+            # three, so the completeness banner — which branches on
+            # complete/truncated/sampled and on the booleans — silently ignored
+            # it and rendered a bounded neighbourhood as the whole one.
             "completeness": {
-                "status": "partial" if truncated else "complete",
-                "reason": "edge_budget" if truncated else "",
+                **graph_completeness(
+                    returned=len(edges_in) + len(edges_out),
+                    truncated=truncated,
+                    reason="edge_budget" if truncated else "",
+                ),
                 "edge_budget": 10_000,
             },
         }
@@ -1895,12 +1907,11 @@ class PostgresGraphStore:
                 "total_tagged_findings": 0,
                 "frameworks": {},
                 "completeness": {
-                    "status": "complete",
-                    "reason": "",
-                    "node_budget": 50_000,
+                    **graph_completeness(returned=0),
+                    "node_budget": COMPLIANCE_NODE_BUDGET,
                 },
             }
-        compliance_node_budget = 50_000
+        compliance_node_budget = COMPLIANCE_NODE_BUDGET
         with _tenant_connection(self._pool) as conn:
             _apply_graph_search_timeout(conn)
             rows = conn.execute(
@@ -1960,8 +1971,11 @@ class PostgresGraphStore:
             "total_tagged_findings": sum(stats["total_findings"] for stats in frameworks.values()),
             "frameworks": frameworks,
             "completeness": {
-                "status": "partial" if truncated else "complete",
-                "reason": "node_budget" if truncated else "",
+                **graph_completeness(
+                    returned=min(len(rows), compliance_node_budget),
+                    truncated=truncated,
+                    reason="node_budget" if truncated else "",
+                ),
                 "node_budget": compliance_node_budget,
             },
         }

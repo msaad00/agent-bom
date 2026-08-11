@@ -46,13 +46,29 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   blueprint: "accessPolicyNode",
 };
 
-const DEFAULT_COLUMNS = 3;
+const MIN_COLUMNS = 3;
 // NodeCard renders up to 300px wide. Position columns by the rendered maximum
 // plus a deliberate gutter so long roll-up labels never overlap their neighbor.
 const NODE_CARD_MAX_WIDTH = 300;
 const NODE_COLUMN_GAP = 32;
 const NODE_WIDTH = NODE_CARD_MAX_WIDTH + NODE_COLUMN_GAP;
 const NODE_HEIGHT = 112;
+// A graph canvas is landscape — roughly 2.2:1 at a laptop viewport. A grid
+// whose own aspect ratio is far from that wastes the short axis and pays for it
+// in zoom, because `fitView` scales to whichever axis runs out first.
+const CANVAS_ASPECT = 2.2;
+
+/** Columns that shape the grid like the canvas rather than like a column.
+ *
+ *  A fixed 3 columns turned the demo estate's 106 containers into a 996x4000
+ *  tower, which `fitView` correctly resolved to scale 0.14 — labels at ~2.6px
+ *  and half the nodes below the fold. Solving `(c*w)/((n/c)*h) = aspect` for
+ *  `c` keeps the grid landscape at every estate size. */
+function fittingColumns(count: number): number {
+  if (count <= MIN_COLUMNS) return Math.max(1, count);
+  const ideal = Math.sqrt((count * CANVAS_ASPECT * NODE_HEIGHT) / NODE_WIDTH);
+  return Math.min(count, Math.max(MIN_COLUMNS, Math.round(ideal)));
+}
 
 export function rollupEntityToNodeType(entityType: string): LineageNodeType {
   return lineageNodeTypeForEntity(entityType) ?? "cloudResource";
@@ -121,7 +137,7 @@ export function buildRollupFlowGraph(
   containers: GraphRollupContainer[],
   options?: { columns?: number; edges?: GraphRollupEdge[] | undefined },
 ): { nodes: Node<LineageNodeData>[]; edges: Edge[] } {
-  const columns = Math.max(1, options?.columns ?? DEFAULT_COLUMNS);
+  const columns = Math.max(1, options?.columns ?? fittingColumns(containers.length));
   const nodes: Node<LineageNodeData>[] = containers.map((container, index) => {
     const nodeType = rollupEntityToNodeType(container.entity_type);
     const col = index % columns;

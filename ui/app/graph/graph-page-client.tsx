@@ -3266,8 +3266,12 @@ function GraphPageInner() {
         </details>
       </div>
 
-      <div className="flex-1 flex relative min-h-[68vh]">
-        <div className="flex-1 relative min-h-[60vh] flex flex-col">
+      {/* A full viewport, not a letterbox. The header above accumulates to
+          ~600px on arrival, so a 68vh canvas left the graph as a ~300px strip
+          with most of the estate below the fold. The canvas is the content;
+          it gets a screen of its own. */}
+      <div className="flex-1 flex relative min-h-[calc(100vh-3.5rem)]">
+        <div className="flex-1 relative min-h-0 flex flex-col">
           {selectedAttackPath && (
             <div className="graph-callout-orange-compact">
               <span>

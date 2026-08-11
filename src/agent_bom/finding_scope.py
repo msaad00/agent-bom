@@ -628,8 +628,6 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(row.get("is_kev"), bool):
         payload["is_kev"] = row["is_kev"]
 
-    graph_reachable = row.get("graph_reachable")
-    payload["graph_reachable"] = graph_reachable if isinstance(graph_reachable, bool) else None
     graph_distance = row.get("graph_min_hop_distance")
     payload["graph_min_hop_distance"] = (
         graph_distance
@@ -642,6 +640,27 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         for value in (graph_agents[:100] if isinstance(graph_agents, list) else [])
         if (agent_id := _safe_optional_text(value, max_len=512)) is not None
     ]
+
+    # "Reachable" is not a free-standing opinion: `dependency_reach` defines it
+    # as `bool(reachable_from)`, and the engine stamps the agent list from the
+    # same report that sets the flag. A row asserting reachability while naming
+    # nobody therefore contradicts the word, and would still collect
+    # RISK_REACHABLE_BOOST and outrank findings the engine actually proved.
+    # `None` is the model's documented "engine did not run" state and leaves
+    # scoring untouched, so an unsupported claim costs nothing rather than
+    # buying rank. Checked against the sanitised list, not the raw one.
+    #
+    # `False` is deliberately still accepted: a genuinely unreachable finding
+    # carries no corroborating fields either, so rejecting it would break
+    # round-trip of our own export. Telling those apart needs a provenance
+    # field saying the engine ran.
+    graph_reachable = row.get("graph_reachable")
+    if not isinstance(graph_reachable, bool):
+        payload["graph_reachable"] = None
+    elif graph_reachable and not payload["graph_reachable_from_agents"]:
+        payload["graph_reachable"] = None
+    else:
+        payload["graph_reachable"] = graph_reachable
 
     remediation_versions = row.get("remediation_versions")
     if not isinstance(remediation_versions, list):

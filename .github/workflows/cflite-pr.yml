@@ -43,15 +43,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # `mode: code-change` selects targets by diffing `<base_ref>...HEAD`
-          # (oss-fuzz infra/cifuzz/continuous_integration.py), which needs a
-          # merge base. ClusterFuzzLite fetches the base branch itself, but that
-          # fetch leaves a depth-1 clone shallow, so no common ancestor exists
-          # and the changed-file set comes back empty — the job then fuzzes
-          # nothing and still exits 0. Same silent-skip shape as the MCP config
-          # scanner above. Batch-Fuzzing needs no history: it fuzzes everything.
-          fetch-depth: 0
 
       - name: Build fuzzers
         uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1

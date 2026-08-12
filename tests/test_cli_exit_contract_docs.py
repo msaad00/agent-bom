@@ -58,14 +58,21 @@ def test_action_exposes_documented_exit_code_output() -> None:
 
 
 def test_first_run_guide_covers_the_exit_codes_and_ci_use_readme_promises() -> None:
-    """README sends readers to the first-run guide "for exit codes, formats, and CI use".
+    """A reader must reach the exit-code contract from the README and from the guide.
 
-    The guide must therefore actually reach that contract instead of dead-ending
-    at the demo's status `1`. It links the canonical reference rather than
-    restating the table, so the two can never drift.
+    The README used to promise this only in passing, inside the first-run-guide
+    link ("for exit codes, formats, and CI use"), which meant a first-time user
+    met a red `Exiting with code 1` before meeting any explanation of it. It now
+    states the contract at the front door and links the canonical reference
+    directly, so that link is what this guards. The guide must still reach the
+    same reference rather than dead-ending at the demo's status `1`, and both
+    link it instead of restating the table, so the three cannot drift.
     """
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "[first-run guide](docs/FIRST_RUN.md) for exit codes" in readme
+    assert "site-docs/reference/exit-codes.md" in readme
+    assert "[first-run guide](docs/FIRST_RUN.md)" in readme
+    # The front door must say what a non-zero exit means, not just link it.
+    assert "non-zero exit is a verdict, not a crash" in readme.lower()
 
     guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
     assert "../site-docs/reference/exit-codes.md" in guide

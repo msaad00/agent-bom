@@ -262,6 +262,34 @@ class TestMarkdownStats:
 
 
 # ---------------------------------------------------------------------------
+# Live registry resource freshness
+#
+# The registry-size sweep across shipping surfaces lives in
+# ``scripts/check_published_counts.py`` (gated by
+# ``tests/test_published_counts_gate.py``). This file deliberately does NOT
+# repeat it: a second sweep would be a second judgement about the same claim,
+# which is the defect class both gates exist to remove.
+#
+# What that sweep cannot see is the string the MCP server builds at runtime.
+# It is derived from the bundled registry rather than written down, so there is
+# no literal for a text sweep to check — this test is what holds it.
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryCountFreshness:
+    """The size an MCP client is told must be computed, not transcribed."""
+
+    def test_live_registry_resource_advertises_the_derived_count(self):
+        from agent_bom.mcp_server import create_mcp_server
+        from agent_bom.registry import registry_server_count
+
+        server = create_mcp_server()
+        resource = server._resource_manager._resources["registry://servers"]
+        description = resource.description or ""
+        assert f"{registry_server_count()} servers" in description, description
+
+
+# ---------------------------------------------------------------------------
 # Integration files alignment
 # ---------------------------------------------------------------------------
 

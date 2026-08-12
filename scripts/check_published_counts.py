@@ -52,6 +52,12 @@ SEARCH_ROOTS: tuple[Path, ...] = (
     ROOT / "src" / "agent_bom",
     ROOT / "ui" / "app",
     ROOT / "ui" / "components",
+    # Shipping surfaces an advertised count can also reach: deploy manifests and
+    # compose profiles are read by operators, and ui/lib holds the strings the
+    # dashboard renders. Folded in from a second sweep that was covering these
+    # two roots separately — one sweep, one judgement.
+    ROOT / "deploy",
+    ROOT / "ui" / "lib",
 )
 SEARCH_SUFFIXES = {".md", ".py", ".ts", ".tsx", ".json", ".svg", ".yaml", ".yml", ".txt"}
 # Generated API artifacts restate prose from elsewhere; fixing the source fixes

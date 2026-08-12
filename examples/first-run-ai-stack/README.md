@@ -34,7 +34,7 @@ agent-bom agents \
   --inventory examples/first-run-ai-stack/inventory.json \
   --project examples/first-run-ai-stack \
   --offline \
-  --no-update-db
+  --no-auto-update-db
 ```
 
 Export JSON for dashboard import or downstream review:

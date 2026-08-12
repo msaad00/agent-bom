@@ -1,6 +1,9 @@
 # Contributing to agent-bom
 
-agent-bom has 7,000+ monthly installs. Every contribution directly improves security for real AI agent deployments. This guide gets you from zero to merged PR.
+agent-bom runs against real AI agent deployments, so every contribution directly improves security for the people relying on it. This guide gets you from zero to merged PR.
+
+Not contributing code, just need help? [SUPPORT.md](SUPPORT.md) has the routing
+and what response to expect.
 
 The best ways to help:
 
@@ -47,21 +50,30 @@ code PRs.
 
 Browse [`good first issue`](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3A%22good+first+issue%22) on GitHub. No architecture knowledge required.
 
+**That queue is often empty.** Labelled starter issues get opened in batches and
+picked up quickly, so an empty result is normal and does not mean the project is
+closed to contributions. When it is empty, take one of the standing tasks below,
+or open an issue proposing what you want to do — describing it first is welcome
+and saves you writing the wrong thing.
+
 Typical good-first tasks:
-- **Add an MCP client** — 5–15 lines in [`src/agent_bom/discovery/__init__.py`](src/agent_bom/discovery/__init__.py). Each entry is a dict with a config path and parser.
-- **Add a registry entry** — Add a JSON object to `mcp_registry.json` (schema in `config/schemas/`).
-- **Fix a test** — search for `# TODO` or `pytest.mark.skip` in `tests/`.
-- **Improve a docstring** — Any function in `src/agent_bom/` without a clear docstring.
+- **Add an MCP client** — add an `AgentType` member in [`src/agent_bom/models.py`](src/agent_bom/models.py), its per-platform config paths to `CONFIG_LOCATIONS` in [`src/agent_bom/discovery/__init__.py`](src/agent_bom/discovery/__init__.py), and a display label to `_DISPLAY_NAMES` in [`src/agent_bom/discovery/coverage.py`](src/agent_bom/discovery/coverage.py). A `CONFIG_LOCATIONS` entry maps the agent type to `{"Darwin": [...], "Linux": [...], "Windows": [...]}`; clients whose config is not JSON are dispatched by an explicit branch in `discover_global_configs`, not by a field on the entry.
+- **Add a registry entry** — add a server object to [`src/agent_bom/mcp_registry.json`](src/agent_bom/mcp_registry.json), following the shape of its neighbours. Bump the `_total_servers` header to match: `tests/test_stats_alignment.py` asserts the two agree, so a new entry fails CI without it.
+- **Fix a stale doc reference** — several docs cite files that have moved or no longer exist. `grep` a path out of a `docs/**/*.md` table, confirm it resolves, and correct it where it does not.
+- **Improve a docstring** — any function in `src/agent_bom/` without a clear docstring. `src/agent_bom/repo_auto_detect.py` is a good place to start: the `project_has_*` predicates are undocumented except `project_has_iac`, which shows the format to copy.
 
 ### Medium — help wanted
 
 Browse [`help wanted`](https://github.com/msaad00/agent-bom/issues?q=is%3Aopen+label%3A%22help+wanted%22).
 
 Typical help-wanted tasks:
-- **New package ecosystem parsers** — Ruby Gemfile.lock, .NET packages.lock.json, Swift Package.resolved
-- **Cloud CIS benchmark** — GCP or Azure module following the pattern in `src/agent_bom/cloud/`
+- **A package ecosystem we do not parse yet** — check [`src/agent_bom/parsers/`](src/agent_bom/parsers/) first. Python, npm, Ruby, .NET, Swift, Go, Rust, PHP and others already ship; propose the gap you actually hit.
+- **A cloud CIS benchmark we do not cover** — AWS, GCP, Azure and Snowflake modules already exist in [`src/agent_bom/cloud/`](src/agent_bom/cloud/); a new provider follows their pattern.
 - **Dashboard improvements** — Next.js components in `ui/` (TypeScript, Tailwind)
-- **Output format** — New `--format` target (CSV, Markdown table, etc.) in `src/agent_bom/output/`
+- **A new `--format` target** — the current list is `SCAN_OUTPUT_FORMATS` in [`src/agent_bom/cli/options_sources.py`](src/agent_bom/cli/options_sources.py); implementations live in [`src/agent_bom/output/`](src/agent_bom/output/).
+
+Before starting any of these, confirm the gap is still open against the current
+tree. This list is periodically overtaken by shipped work.
 
 ### Critical — P0 issues
 

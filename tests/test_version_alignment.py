@@ -88,6 +88,54 @@ def test_rewrite_aligns_stale_refs(tmp_path, monkeypatch) -> None:
     assert cva.find_drift("0.97.1") == []
 
 
+# ---------------------------------------------------------------------------
+# sdks/ version policy — writer/checker pairing
+#
+# `sdks/python` sat at 0.92.0 while the platform shipped 0.100.0 because nothing
+# declared whether an SDK tracks the platform release or runs its own semver
+# line. The classification and the structural sweep now live in ONE place,
+# `scripts/check_release_consistency.py` (`INDEPENDENTLY_VERSIONED`), so this
+# file does not keep a second copy of that judgement to disagree with.
+#
+# What is left here is the half a checker cannot assert about itself: every
+# manifest the sweep expects to equal the release version must also be REWRITTEN
+# by `bump-version.py`. A checker without a matching writer does not remove the
+# manual step, it relocates it — which is how this drifted in the first place.
+# ---------------------------------------------------------------------------
+
+
+def _platform_tracking_sdk_manifests() -> list[str]:
+    """SDK manifests the release sweep requires to equal the platform version."""
+    consistency = _load_script("check_release_consistency.py")
+    independent = set(consistency.INDEPENDENTLY_VERSIONED)
+    found: list[str] = []
+    for path in sorted((ROOT / "sdks").rglob("*")):
+        if path.name not in {"pyproject.toml", "package.json"} or "node_modules" in path.parts:
+            continue
+        relative = str(path.relative_to(ROOT))
+        if relative not in independent:
+            found.append(relative)
+    return found
+
+
+def test_platform_tracking_sdks_are_owned_by_the_release_bump() -> None:
+    tracking = _platform_tracking_sdk_manifests()
+    assert tracking, "no platform-tracking SDK manifest found — the discovery below is broken"
+
+    bump = _load_script("bump-version.py")
+    managed = {rel for rel, _pattern, _template in bump.VERSION_LOCATIONS}
+    missing = sorted(set(tracking) - managed)
+    assert missing == [], f"SDK(s) checked by check_release_consistency but never written by bump-version.py: {missing}"
+
+
+def test_each_sdk_manifest_is_registered_exactly_once_for_the_bump() -> None:
+    """One registration per artifact — two that happen to agree still disagree later."""
+    bump = _load_script("bump-version.py")
+    sdk_entries = [rel for rel, _pattern, _template in bump.VERSION_LOCATIONS if rel.startswith("sdks/")]
+    duplicates = sorted({rel for rel in sdk_entries if sdk_entries.count(rel) > 1})
+    assert duplicates == [], f"bump-version.py registers the same SDK manifest more than once: {duplicates}"
+
+
 def test_main_exits_nonzero_on_drift(tmp_path, monkeypatch, capsys) -> None:
     cva = _load_script("check_version_alignment.py")
     stale = tmp_path / "deploy.yml"

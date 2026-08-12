@@ -158,7 +158,7 @@ Discovered 3 MCP clients:
   VS Code         — 1 server configured
 
 Servers: filesystem, brave-search, github, slack, postgres, linear, notion
-Registry: 5/7 servers found in registry (427+ entries)
+Registry: 5/7 servers found in registry
 ```
 
 ## Guardrails

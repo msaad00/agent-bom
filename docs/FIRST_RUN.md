@@ -182,8 +182,13 @@ fleet collector, SIEM export, or manually curated source of truth.
 
 ## 5. Gate CI on the result
 
-A scan exits `0` on its own: findings are reported, not blocked, until you say
-which ones matter. Opt into a gate with one of the fail flags:
+Severity gating is opt-in: a scan reports findings without blocking until you
+say which severities matter. Two gates are the exception and fail closed with no
+flag set — a known-malicious package (typosquat / dependency confusion) and a
+scan that did not complete. That is why section 1's demo exits `1` while
+`agent-bom scan -p .` against a repository with ordinary CVEs exits `0`.
+
+Opt into severity gating with one of the fail flags:
 
 ```bash
 agent-bom scan -p . --fail-on-severity high -f sarif -o findings.sarif

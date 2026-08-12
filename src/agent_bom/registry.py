@@ -110,6 +110,18 @@ def _load_registry_full() -> dict:
         return {"servers": {}}
 
 
+def registry_server_count() -> int:
+    """Number of MCP servers in the bundled registry.
+
+    Single source of truth for every surface that advertises the registry's
+    size. Advertised counts must be derived from this, never hardcoded — the
+    bundled registry grows every sync and hardcoded copies go stale silently.
+    Returns 0 if the registry cannot be read, so a callable description string
+    never fails server construction.
+    """
+    return len(_load_registry())
+
+
 def _parse_registry_timestamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None

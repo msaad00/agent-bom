@@ -210,6 +210,12 @@ jobs:
       - name: Published counts match the shipped build
         run: python scripts/check_published_counts.py
 
+      # Format and reachability only, deliberately not freshness: the release
+      # run moves the pin by PR *after* the tag exists, so between the tag and
+      # that merge the pin is legitimately one release behind.
+      - name: Docker MCP submission pin is a real commit
+        run: python scripts/sync_docker_mcp_pin.py --check
+
       - name: Docker base-image policy
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Source: scripts/check_docker_base_policy.py

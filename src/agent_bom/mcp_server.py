@@ -879,10 +879,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         query: Annotated[
             str,
             Field(
-                description=(
-                    "Free-text query for You.com web/news search, e.g. "
-                    "'CVE-2026-12345 exploit' or 'latest MCP security news'."
-                )
+                description=("Free-text query for You.com web/news search, e.g. 'CVE-2026-12345 exploit' or 'latest MCP security news'.")
             ),
         ],
         count: Annotated[int, Field(description="Results per section, 1-100.")] = 10,

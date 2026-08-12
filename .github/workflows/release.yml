@@ -1333,6 +1333,98 @@ jobs:
             echo "Updated floating tag $MAJOR → ${{ github.ref_name }}"
           fi
 
+  docker-mcp-pin:
+    name: Sync Docker MCP submission pin
+    # The pin must name the commit the tag points at, which does not exist
+    # until the tag does — so it cannot be written by bump-version.py with the
+    # other version-bearing artifacts. The release run owns it here instead of
+    # SUBMISSION.md asking a human to remember. Never blocks the release: the
+    # artifacts are already published by the time this runs.
+    needs: github-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-python
+
+      - name: Write the tagged commit into the submission pin
+        id: pin
+        run: |
+          python scripts/sync_docker_mcp_pin.py --set "${{ github.sha }}"
+          if git diff --quiet -- integrations/docker-mcp-registry/server.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure signed automation commits
+        id: signing
+        if: steps.pin.outputs.changed == 'true'
+        env:
+          AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
+        run: |
+          if [ -z "$AUTOMATION_SSH_SIGNING_KEY" ]; then
+            echo "AUTOMATION_SSH_SIGNING_KEY not configured — skipping PR creation."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$AUTOMATION_SSH_SIGNING_KEY" > "$HOME/.ssh/automation_signing_key"
+          chmod 600 "$HOME/.ssh/automation_signing_key"
+          ssh-keygen -y -f "$HOME/.ssh/automation_signing_key" > "$HOME/.ssh/automation_signing_key.pub"
+          eval "$(ssh-agent -s)"
+          ssh-add "$HOME/.ssh/automation_signing_key"
+          git config user.name "github-actions[bot]"
+          git config user.email "34316639+msaad00@users.noreply.github.com"
+          git config gpg.format ssh
+          git config user.signingkey "$HOME/.ssh/automation_signing_key.pub"
+          git config commit.gpgsign true
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pin-update PR
+        if: steps.pin.outputs.changed == 'true' && steps.signing.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          TAGGED_SHA: ${{ github.sha }}
+        run: |
+          BRANCH="chore/docker-mcp-pin-${TAG}"
+          git switch -C "$BRANCH" origin/main
+          python scripts/sync_docker_mcp_pin.py --set "$TAGGED_SHA"
+          git add integrations/docker-mcp-registry/server.yaml
+          git commit -S -m "chore(docker-mcp): pin the submission to ${TAG}"
+          git push --force-with-lease origin "$BRANCH"
+          TITLE="chore(docker-mcp): pin the submission to ${TAG}"
+          BODY="\`integrations/docker-mcp-registry/server.yaml\` builds the published
+          server from \`source.commit\`. That commit is the one \`${TAG}\` points at,
+          so it cannot be written before the tag exists — this PR is opened by the
+          release run instead of the step SUBMISSION.md used to ask a human to
+          remember.
+
+          **Pin:** \`${TAGGED_SHA}\` (\`${TAG}\`)
+
+          Merging this is what makes the next \`docker/mcp-registry\` submission
+          build the released code. Nothing else in the release depends on it."
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+            gh pr edit "$PR_NUMBER" --title "$TITLE" --body "$BODY"
+          else
+            gh pr create --title "$TITLE" --body "$BODY" --base main
+          fi
+
+      - name: Pin already current
+        if: steps.pin.outputs.changed == 'false'
+        run: echo "Docker MCP submission pin already names ${{ github.sha }}."
+
   deploy-mcp-sse:
     name: Deploy MCP SSE
     needs: github-release

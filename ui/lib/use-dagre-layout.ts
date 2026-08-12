@@ -34,8 +34,11 @@ function optionsKey(options: LayoutOptions): string {
     rankSep: options.rankSep ?? 80,
     nodeSep: options.nodeSep ?? 30,
     // Kept in the key so the min-separation guarantee survives the JSON
-    // round-trip into both the sync layout and the web worker.
+    // round-trip into both the sync layout and the web worker. The key IS the
+    // options object both paths run on, so anything omitted here is silently
+    // dropped before it ever reaches `applyDagreLayout`.
     minSeparation: options.minSeparation ?? null,
+    fitAspect: options.fitAspect ?? null,
   });
 }
 

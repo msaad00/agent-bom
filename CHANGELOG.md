@@ -192,6 +192,12 @@ the graph, this release changes what you see.
 - `GET /v1/graph` reports `completeness.boundary_edges` — the count of edges
   reaching past the returned node list — so a client cannot mistake the payload
   for an induced subgraph.
+- `youcom_search`, an optional MCP tool returning live web and news context
+  alongside the local threat-intel database, contributed by @mouse-value-add.
+  It is the only tool that sends a query to a third party, so it is off unless
+  `YDC_API_KEY` is set, and the credentialed request is pinned to the You.com
+  origin over TLS — `YOUCOM_BASE_URL` cannot redirect the key to another host.
+  This brings the MCP surface to 78 tools.
 - The release run owns the Docker MCP submission pin. `source.commit` names the
   commit a release tag points at, so it cannot be written before the tag exists
   and could not ride along with the version bump; it was a line in SUBMISSION.md

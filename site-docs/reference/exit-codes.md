@@ -31,7 +31,7 @@ named on the last line of the output. A scan exits `1` when any of these hold.
 | Gate | Opt-in? | What it means |
 | --- | --- | --- |
 | `--fail-on-severity` / `--fail-on-kev` / `--fail-if-ai-risk` matched | Yes — you set the flag | A finding met the threshold you asked to block on. |
-| A `--policy` rule failed | Yes — you passed `--policy` | Your policy file rejected the result. |
+| A policy rule failed | Yes — `--policy`, or `--model-policy-mode enforce` / `--require-model-signatures` / `--block-unsafe-model-formats` (all default off) | Your policy rejected the result. |
 | A known-malicious package was found | **No — fails closed** | A typosquat, dependency-confusion, or known-malicious advisory match. Exiting `0` here would let the package install. |
 | The scan did not complete | **No — fails closed** | A requested collector degraded or failed; `scan_run.issues` in the artifact says which. A partial artifact with zero findings must not read as clean. |
 

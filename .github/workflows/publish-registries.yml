@@ -503,6 +503,7 @@ jobs:
           clawhub --help > /dev/null
 
       - name: Publish to ClawHub
+        shell: bash
         if: steps.clawhub_config.outputs.enabled == 'true'
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}

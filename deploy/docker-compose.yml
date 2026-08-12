@@ -56,8 +56,11 @@ services:
       - ~/.agent-bom:/home/abom/.agent-bom
       # Mount current directory for output
       - ./reports:/workspace/reports
-      # Mount test configs
-      - ./tests:/workspace/tests:ro
+      # Mount test configs. Relative paths resolve against this file's directory,
+      # so `./tests` pointed at `deploy/tests` — a directory that does not exist.
+      # Docker creates a missing read-only bind source as an empty directory
+      # instead of failing, so the container silently scanned nothing.
+      - ../tests:/workspace/tests:ro
     command: scan --enrich --format json --output /workspace/reports/ai-bom.json
     networks:
       - backend

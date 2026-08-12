@@ -63,6 +63,8 @@ jobs:
           SERVICE: ${{ vars.DEMO_CLOUD_RUN_SERVICE }}
           PROJECT: ${{ vars.DEMO_GCP_PROJECT }}
           PROVIDER: ${{ secrets.DEMO_GCP_WIF_PROVIDER }}
+          IS_FORK: ${{ github.event.repository.fork }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           if [ -z "${SERVICE}" ] || [ -z "${PROJECT}" ] || [ -z "${PROVIDER}" ]; then
@@ -84,8 +86,20 @@ jobs:
               echo ""
               echo "See docs/HOSTED_POC.md → Demo redeploy."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::notice::Cloud Run demo deploy is inert — see job summary for the vars/secrets to configure."
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            # Staying inert is correct for a fork or an unconfigured clone —
+            # that is what the header promises. It is NOT correct for this
+            # repository after a release: the job reported `success` while
+            # deploying nothing for both 0.99.0 and 0.100.0, so the hosted demo
+            # silently sat a release behind and no signal ever said so. A green
+            # check that means "did nothing" is the defect class this project
+            # spent 0.100.0 removing, so on a release-triggered run in the
+            # upstream repo this now fails loudly instead.
+            if [ "${IS_FORK}" != "true" ] && [ "${EVENT_NAME}" = "workflow_run" ]; then
+              echo "::error::Hosted demo did NOT deploy for this release — the demo environment is not configured. See the job summary for the required vars/secrets."
+              exit 1
+            fi
+            echo "::notice::Cloud Run demo deploy is inert — see job summary for the vars/secrets to configure."
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi

@@ -29,7 +29,7 @@
     "build:verify": "node scripts/assert-build-is-current.mjs"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.1.0",
+    "@dagrejs/dagre": "^3.1.1",
     "@tanstack/react-table": "9.1.2",
     "@tanstack/react-virtual": "^3.14.9",
     "@xyflow/react": "^12.11.2",

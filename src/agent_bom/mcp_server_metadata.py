@@ -30,6 +30,11 @@ _SERVER_CARD_TOOLS = [
         "description": "Return a local analyst threat brief from governed intel sources",
         "annotations": {"readOnlyHint": True},
     },
+    {
+        "name": "youcom_search",
+        "description": "Search You.com for current web/news context when YDC_API_KEY is configured",
+        "annotations": {"readOnlyHint": True},
+    },
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
     {
         "name": "exposure_paths",

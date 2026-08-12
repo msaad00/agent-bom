@@ -5,13 +5,14 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (77):
+Tools (78):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel
     intel_match         — Match package inventory coordinates to local advisory intel
     intel_sources       — Return canonical intel sources and local feed-run freshness
     intel_daily_brief   — Return a local analyst threat brief from governed intel sources
+    youcom_search       — Search You.com for current web/news context when YDC_API_KEY is configured
     blast_radius        — Look up blast radius for a specific CVE
     exposure_paths      — Return ranked ExposurePath JSON for headless agents and MCP clients
     should_i_deploy     — Return allow/warn/block from ExposurePath risk
@@ -557,7 +558,13 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         policy_check_impl,
     )
     from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
-    from agent_bom.mcp_tools.intel import intel_daily_brief_impl, intel_lookup_impl, intel_match_impl, intel_sources_impl
+    from agent_bom.mcp_tools.intel import (
+        intel_daily_brief_impl,
+        intel_lookup_impl,
+        intel_match_impl,
+        intel_sources_impl,
+        youcom_search_impl,
+    )
     from agent_bom.mcp_tools.inventory import inventory_asset_impl, inventory_list_impl, inventory_summary_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
@@ -864,6 +871,44 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             epss_threshold=epss_threshold,
             kev_window_hours=kev_window_hours,
             limit=limit,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Threat Intel You.com Search")
+    async def youcom_search(
+        query: Annotated[
+            str,
+            Field(
+                description=(
+                    "Free-text query for You.com web/news search, e.g. "
+                    "'CVE-2026-12345 exploit' or 'latest MCP security news'."
+                )
+            ),
+        ],
+        count: Annotated[int, Field(description="Results per section, 1-100.")] = 10,
+        freshness: Annotated[
+            str | None,
+            Field(description="Optional freshness filter: day, week, month, year, or YYYY-MM-DDtoYYYY-MM-DD."),
+        ] = None,
+        country: Annotated[str | None, Field(description="Optional two-letter country code, e.g. US.")] = None,
+        language: Annotated[str | None, Field(description="Optional BCP 47 language code, e.g. en.")] = None,
+        safesearch: Annotated[str | None, Field(description="Optional safesearch level: off, moderate, strict.")] = None,
+        livecrawl: Annotated[str | None, Field(description="Optional livecrawl mode: web, news, or all.")] = None,
+        crawl_timeout: Annotated[int, Field(description="Optional livecrawl timeout in seconds, 1-60.")] = 10,
+    ) -> str:
+        """Search You.com for current web or news context."""
+
+        return await _execute_tool_async(
+            "youcom_search",
+            youcom_search_impl,
+            query=query,
+            count=count,
+            freshness=freshness,
+            country=country,
+            language=language,
+            safesearch=safesearch,
+            livecrawl=livecrawl,
+            crawl_timeout=crawl_timeout,
             _truncate_response=_truncate_response,
         )
 

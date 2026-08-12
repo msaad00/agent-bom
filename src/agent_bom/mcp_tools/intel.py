@@ -4,12 +4,51 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from typing import Any
 
+from agent_bom import __version__
+from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
-from agent_bom.mcp_errors import CODE_INTERNAL_UNEXPECTED, CODE_VALIDATION_INVALID_ARGUMENT, mcp_error_json
+from agent_bom.mcp_errors import (
+    CODE_INTERNAL_UNEXPECTED,
+    CODE_UPSTREAM_UNAVAILABLE,
+    CODE_VALIDATION_INVALID_ARGUMENT,
+    CODE_VALIDATION_MISSING_REQUIRED,
+    mcp_error_json,
+)
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
+
+_YDC_BASE_URL = "https://ydc-index.io"
+
+
+def _youcom_result_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """Return a compact, stable view of a You.com search result."""
+    snippets = result.get("snippets") or []
+    if not isinstance(snippets, list):
+        snippets = [snippets]
+
+    summary = {
+        "title": result.get("title", ""),
+        "url": result.get("url", ""),
+        "description": result.get("description", ""),
+        "snippets": [str(snippet) for snippet in snippets if snippet][:3],
+        "page_age": result.get("page_age", ""),
+        "favicon_url": result.get("favicon_url", ""),
+        "thumbnail_url": result.get("thumbnail_url", ""),
+    }
+
+    contents = result.get("contents")
+    if isinstance(contents, dict):
+        summary["contents"] = {
+            key: contents[key]
+            for key in ("markdown", "html")
+            if contents.get(key)
+        }
+
+    return summary
 
 
 async def intel_lookup_impl(*, advisory_id: str, _truncate_response=lambda value: value) -> str:
@@ -111,3 +150,120 @@ async def intel_daily_brief_impl(
     except Exception as exc:  # pragma: no cover - defensive redaction
         logger.exception("MCP intel daily brief failed")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "Intel daily brief failed.", details={"error": sanitize_error(exc)})
+
+
+async def youcom_search_impl(
+    *,
+    query: str,
+    count: int = 10,
+    freshness: str | None = None,
+    country: str | None = None,
+    language: str | None = None,
+    safesearch: str | None = None,
+    livecrawl: str | None = None,
+    crawl_timeout: int = 10,
+    _truncate_response=lambda value: value,
+) -> str:
+    """Search You.com for current web or news context."""
+
+    try:
+        q = (query or "").strip()
+        if not q:
+            return mcp_error_json(
+                CODE_VALIDATION_INVALID_ARGUMENT,
+                "query is required",
+                details={"argument": "query"},
+            )
+
+        api_key = (os.environ.get("YDC_API_KEY") or "").strip()
+        if not api_key:
+            return mcp_error_json(
+                CODE_VALIDATION_MISSING_REQUIRED,
+                "YDC_API_KEY is required for You.com search.",
+                details={"environment_variable": "YDC_API_KEY"},
+            )
+
+        base_url = (os.environ.get("YOUCOM_BASE_URL") or _YDC_BASE_URL).rstrip("/")
+        params: dict[str, Any] = {
+            "query": q,
+            "count": max(1, min(int(count or 10), 100)),
+        }
+        if freshness:
+            params["freshness"] = freshness.strip()
+        if country:
+            params["country"] = country.strip().upper()
+        if language:
+            params["language"] = language.strip()
+        if safesearch:
+            params["safesearch"] = safesearch.strip()
+        if livecrawl:
+            params["livecrawl"] = livecrawl.strip()
+        if crawl_timeout:
+            params["crawl_timeout"] = max(1, min(int(crawl_timeout), 60))
+
+        async with create_client(timeout=20.0) as client:
+            response = await request_with_retry(
+                client,
+                "GET",
+                f"{base_url}/v1/search",
+                headers={
+                    "X-API-Key": api_key,
+                    "User-Agent": f"agent-bom/{__version__} youdotcom-integration/agent-bom",
+                },
+                params=params,
+            )
+
+        if response is None:
+            return mcp_error_json(
+                CODE_UPSTREAM_UNAVAILABLE,
+                "You.com search request failed.",
+                details={"upstream": "youcom_search", "reason": "request_exhausted"},
+            )
+
+        if response.status_code != 200:
+            return mcp_error_json(
+                CODE_UPSTREAM_UNAVAILABLE,
+                "You.com search returned an error.",
+                details={
+                    "upstream": "youcom_search",
+                    "status_code": response.status_code,
+                    "response": (response.text or "")[:500],
+                },
+            )
+
+        payload = response.json()
+        results = payload.get("results") if isinstance(payload, dict) else {}
+        web_results = results.get("web") if isinstance(results, dict) else []
+        news_results = results.get("news") if isinstance(results, dict) else []
+        metadata = payload.get("metadata") if isinstance(payload, dict) else {}
+
+        compact = {
+            "schema_version": "youcom.search.v1",
+            "query": q,
+            "metadata": {
+                "search_uuid": metadata.get("search_uuid", "") if isinstance(metadata, dict) else "",
+                "latency": metadata.get("latency", None) if isinstance(metadata, dict) else None,
+                "count": params["count"],
+                "freshness": params.get("freshness"),
+                "country": params.get("country"),
+                "language": params.get("language"),
+                "safesearch": params.get("safesearch"),
+                "livecrawl": params.get("livecrawl"),
+                "crawl_timeout": params.get("crawl_timeout"),
+                "base_url": base_url,
+            },
+            "results": {
+                "web": [_youcom_result_summary(item) for item in web_results if isinstance(item, dict)],
+                "news": [_youcom_result_summary(item) for item in news_results if isinstance(item, dict)],
+            },
+        }
+        return _truncate_response(json.dumps(compact, indent=2, default=str))
+    except ValueError as exc:
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            sanitize_error(exc),
+            details={"argument": "youcom_search"},
+        )
+    except Exception as exc:  # pragma: no cover - defensive redaction
+        logger.exception("MCP You.com search failed")
+        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "You.com search failed.", details={"error": sanitize_error(exc)})

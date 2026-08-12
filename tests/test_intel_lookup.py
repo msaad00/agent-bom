@@ -16,7 +16,13 @@ from agent_bom.intel_fetch import (
     store_raw_artifact,
 )
 from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
-from agent_bom.mcp_tools.intel import intel_daily_brief_impl, intel_lookup_impl, intel_match_impl, intel_sources_impl
+from agent_bom.mcp_tools.intel import (
+    intel_daily_brief_impl,
+    intel_lookup_impl,
+    intel_match_impl,
+    intel_sources_impl,
+    youcom_search_impl,
+)
 from tests.auth_helpers import PROXY_SECRET
 
 VIEWER_HEADERS = {
@@ -376,6 +382,70 @@ async def test_mcp_intel_tools_return_agent_native_json(intel_db) -> None:  # no
 
     brief = json.loads(await intel_daily_brief_impl(packages=[{"purl": "pkg:pypi/requests@2.31.0"}]))
     assert brief["schema_version"] == "intel.daily_brief.v1"
+
+
+@pytest.mark.asyncio
+async def test_youcom_search_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("YDC_API_KEY", raising=False)
+
+    body = json.loads(await youcom_search_impl(query="agentic search"))
+
+    assert body["error"]["code"].endswith("VALIDATION_MISSING_REQUIRED")
+    assert body["error"]["message"] == "YDC_API_KEY is required for You.com search."
+    assert body["error"]["details"] == {"environment_variable": "YDC_API_KEY"}
+
+
+@pytest.mark.asyncio
+async def test_youcom_search_returns_compact_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    monkeypatch.setenv("YOUCOM_BASE_URL", "https://ydc-index.io")
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    payload = {
+        "results": {
+            "web": [
+                {
+                    "title": "Agentic Search",
+                    "url": "https://example.com/agentic-search",
+                    "description": "Search results for agents.",
+                    "snippets": ["First snippet", "Second snippet"],
+                    "page_age": "2026-08-11T00:00:00",
+                }
+            ],
+            "news": [
+                {
+                    "title": "You.com News",
+                    "url": "https://example.com/news",
+                    "description": "News snippet.",
+                    "snippets": ["News snippet"],
+                }
+            ],
+        },
+        "metadata": {"search_uuid": "abc-123", "latency": 0.321},
+    }
+
+    async def _fake_request(_client, _method, _url, **_kwargs):
+        return SimpleNamespace(status_code=200, json=lambda: payload, text=json.dumps(payload))
+
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.create_client", lambda timeout=20.0: _Client())
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.request_with_retry", _fake_request)
+
+    body = json.loads(await youcom_search_impl(query="agentic search", count=3, freshness="week", country="us"))
+
+    assert body["schema_version"] == "youcom.search.v1"
+    assert body["query"] == "agentic search"
+    assert body["metadata"]["search_uuid"] == "abc-123"
+    assert body["metadata"]["count"] == 3
+    assert body["metadata"]["country"] == "US"
+    assert body["results"]["web"][0]["title"] == "Agentic Search"
+    assert body["results"]["web"][0]["snippets"] == ["First snippet", "Second snippet"]
+    assert body["results"]["news"][0]["title"] == "You.com News"
 
 
 @pytest.mark.asyncio

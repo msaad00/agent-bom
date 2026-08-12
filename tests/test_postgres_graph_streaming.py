@@ -170,12 +170,15 @@ def test_streaming_snapshot_tally_matches_nodes(monkeypatch):
 
     # graph_snapshots row: counts plus serialized analysis execution state.
     assert conn.snapshot_params is not None
-    scan, tenant, _now, node_count, edge_count, risk_summary, analysis_status = conn.snapshot_params
+    scan, tenant, _now, node_count, edge_count, risk_summary, node_type_counts, analysis_status = conn.snapshot_params
     assert (scan, tenant, node_count, edge_count) == ("scan-2", "t1", 4, 0)
     import json
 
     # Two of four nodes carry "critical" severity (odd indices).
     assert json.loads(risk_summary) == {"critical": 2}
+    # The entity-type breakdown is accumulated in the same single pass, so an
+    # unfiltered stats read never has to GROUP BY graph_nodes again.
+    assert json.loads(node_type_counts) == {"agent": 2, "vulnerability": 2}
     assert json.loads(analysis_status)["attack_path_fusion"] == {
         "status": "skipped",
         "reason_codes": ["node_cap_exceeded"],

@@ -204,15 +204,31 @@ jobs:
           payload = json.loads(Path(os.environ["STORY_PATH"]).read_text())
           assert payload["synthetic"] is True and payload["fictional"] is True
           summary = payload["summary"]
-          assert summary == {
-              "assets": 20,
-              "observations": 15,
-              "evidence_sources": 9,
-              "complete_sources": 8,
-              "partial_sources": 1,
-              "correlations": 4,
-              "snapshots": 3,
+          # Exact-equality on the counts asserted a 20-asset estate that has
+          # since grown to thousands, so this gate described a demo that no
+          # longer existed. Counts are seeded data and will keep moving; what
+          # must hold is the SHAPE and a non-trivial floor, so the gate catches
+          # an empty or collapsed estate without rotting on every reseed.
+          expected_keys = {
+              "assets",
+              "observations",
+              "evidence_sources",
+              "complete_sources",
+              "partial_sources",
+              "correlations",
+              "snapshots",
           }
+          missing = expected_keys - set(summary)
+          assert not missing, f"demo story summary lost keys: {sorted(missing)}"
+          # The source split is a fixed fixture, not seeded volume — pin it.
+          assert summary["evidence_sources"] == 9, summary
+          assert summary["complete_sources"] == 8, summary
+          assert summary["partial_sources"] == 1, summary
+          assert summary["snapshots"] == 3, summary
+          # Volume floors: an estate that collapses to a handful of rows is the
+          # failure this gate exists to catch.
+          for key, floor in (("assets", 100), ("observations", 100), ("correlations", 10)):
+              assert int(summary[key]) >= floor, f"demo {key}={summary[key]} below floor {floor}: {summary}"
           assert payload["primary_correlation"]["outcome"] == "blocked"
           assert payload["primary_correlation"]["sources"] == [
               "github_actions",

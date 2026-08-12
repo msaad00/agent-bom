@@ -9,7 +9,59 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
+## [0.100.0] - 2026-08-11
+
+An output-honesty release. Every local gate was already green before this work
+started; nothing here fixes a crash or a build. What it fixes is the gap between
+what agent-bom found and what it told you — findings that were computed and never
+surfaced, bounded reads that claimed to be complete, a scanner that reported
+clean where it had not looked, and two gates on the release path that could not
+have failed if there had been something to catch.
+
+If you run agent-bom against RHEL/UBI images, or read the executive view, or use
+the graph, this release changes what you see.
+
+### Security
+
+- **Two gates on the release path could never fail.** GitHub runs an unqualified
+  `run:` step as `bash -e {0}` — without `-o pipefail` — so `osv-scanner … | tee`
+  exited with `tee`'s status and the `|| { … }` fixable-CVE branch below it was
+  unreachable. That dead branch was the blocking logic in `ci.yml` *and* in
+  `release.yml`, where the step is named "block release on fixable CVEs". Every
+  release that passed that step passed it vacuously. The same defect was found in
+  17 steps across 9 workflows. Both halves are worth stating plainly: the gate
+  could not have reported a vulnerable dependency — and, run for real against all
+  three lockfiles, it reports none, so nothing was shipped vulnerable.
+  `scripts/check_ci_pipefail.py` now blocks the class.
+- CI bootstrapped Postgres from `init.sql` alone while the Docker entrypoint
+  mounts `init.sql` *and* `runtime-schema.sql`. Both paths ended on the same
+  Alembic head with a different schema — `hub_findings_current_observations`
+  partitioned with `observed_at timestamptz` on one and plain with
+  `observed_at text` on the other. Matching heads never proved matching schemas;
+  a `pg_dump --schema-only` diff now does.
+- A read-only bind mount in `deploy/docker-compose.yml` pointed at `deploy/tests`
+  rather than the repository's `tests/`. Docker creates a missing read-only bind
+  source as an empty directory instead of failing, so the container scanned
+  nothing and had no way to say so.
+- Secret scanning no longer reports a file it never opened as clean. Files over
+  the size ceiling and files that could not be read were returned as "no
+  findings" and counted toward `files_scanned`. They are now named in `warnings`
+  and excluded from the coverage count. `.tfstate` and `.tfvars` join the
+  scanned extensions — `.tf` was already there, so the two files in a Terraform
+  repo most likely to hold a plaintext provider credential were never opened at
+  any size.
+- WebSocket streams failed open when the auth posture could not be derived, and
+  DLP excerpts echoed the secret they were redacting.
+- Microsoft Graph pagination is pinned to the origin that issued the token, so a
+  bearer token can no longer follow a `@odata.nextLink` off-origin.
+- The governance audit chain gained the fork guard its sibling chain already had.
+- Ingested `graph_reachable: true` is rejected unless the row names an agent that
+  reaches the finding. `dependency_reach` defines reachable as
+  `bool(reachable_from)`; a claim with no path contradicted that definition and
+  still collected the reachability risk boost, outranking findings the engine had
+  actually proved.
+
+### Fixed — wrong or missing output
 
 - A `min_severity` filter no longer deletes the graph it was meant to narrow.
   Only findings carry a severity, so applying the floor to every node dropped
@@ -32,40 +84,45 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Unfiltered graph statistics are served from the snapshot row on Postgres
   instead of re-aggregating every node on each page view, matching SQLite. At
   100k nodes: 73.5ms to 30.2ms.
-
-## [0.100.0] - 2026-08-11
-
-An output-honesty release. Every local gate was already green before this work
-started; nothing here fixes a crash or a build. What it fixes is the gap between
-what agent-bom found and what it told you — findings that were computed and never
-surfaced, bounded reads that claimed to be complete, and a scanner that reported
-clean where it had not looked.
-
-If you run agent-bom against RHEL/UBI images, or read the executive view, or use
-the graph, this release changes what you see.
-
-### Security
-
-- Secret scanning no longer reports a file it never opened as clean. Files over
-  the size ceiling and files that could not be read were returned as "no
-  findings" and counted toward `files_scanned`. They are now named in `warnings`
-  and excluded from the coverage count. `.tfstate` and `.tfvars` join the
-  scanned extensions — `.tf` was already there, so the two files in a Terraform
-  repo most likely to hold a plaintext provider credential were never opened at
-  any size.
-- WebSocket streams failed open when the auth posture could not be derived, and
-  DLP excerpts echoed the secret they were redacting.
-- Microsoft Graph pagination is pinned to the origin that issued the token, so a
-  bearer token can no longer follow a `@odata.nextLink` off-origin.
-- The governance audit chain gained the fork guard its sibling chain already had.
-- Ingested `graph_reachable: true` is rejected unless the row names an agent that
-  reaches the finding. `dependency_reach` defines reachable as
-  `bool(reachable_from)`; a claim with no path contradicted that definition and
-  still collected the reachability risk boost, outranking findings the engine had
-  actually proved.
-
-### Fixed — wrong or missing output
-
+- The hosted-demo deploy gate asserted an estate that no longer exists — exact
+  dict equality against 20 assets, 15 observations and 4 correlations, where the
+  seeded estate now builds 3,860 assets, 12,171 observations and 2,322
+  correlations. That gate runs *after* the Release workflow, so a tag would have
+  shipped the release and broken the demo deploy in the same run. It now asserts
+  the contract — shape, floors, and the source breakdown that is genuinely fixed
+  — rather than a snapshot of one day's numbers.
+- `agent-bom demo` printed `http://127.0.0.1:8000/demo-estate` while the API
+  serves 8422.
+- The advertised MCP registry size was stale on six surfaces, **two of them
+  strings the product emits at runtime**: the `registry://servers` resource
+  description every MCP client reads said 1,013 servers while the resource
+  returned 1,081. `docs/skills/mcp-server-review.md` additionally claimed 940
+  verified entries against an actual 60 — a 15x overstatement of verification
+  coverage on a security registry. The count is now derived from the bundled
+  registry at registration time, and a test sweeps whole shipping-surface trees
+  — including SVG diagrams, which the consistency check skipped entirely — rather
+  than a hand-maintained file list.
+- The documented first-run command did not run: `examples/` taught
+  `--no-update-db`, a flag that has never existed. The test written to catch
+  exactly this read `README.md` only and validated only *path* options, so
+  neither the file nor the flag name was in its reach. It now covers every
+  `examples/**.md` and asserts each flag it teaches resolves on the command.
+- `sdks/python` had been at `0.92.0` against a `0.100.0` platform since it was
+  bumped by hand once and then forgotten. It re-exports the client out of the
+  `agent-bom` wheel it depends on, so it tracks the platform and is now owned by
+  `bump-version.py`. The TypeScript SDKs stay independent on their own 0.x npm
+  line — retagging them to 0.100.0 would fabricate ~99 releases for their
+  consumers — and that split is now enforced rather than assumed.
+- The 2D graph canvas grew without bound: `drawGraph` wrote `canvas.height` from
+  `clientHeight` on an in-flow canvas, so each draw grew the element and the
+  `ResizeObserver` triggered the next. On a 1,241-node estate the canvas reached
+  21,604px and the operator was looking at an empty slice of it. Taking it out of
+  flow holds it at 680px.
+- CLI help and docs advertised registry coverage as "112 to 2800+" and a
+  "427-server" bundled registry. Both were long stale and are now stated without
+  a count rather than re-pinned to a new one.
+- `CONTRIBUTING.md` claimed "7,000+ monthly installs", which nothing in this
+  repository can substantiate. Removed rather than restated.
 - **RHEL / UBI / AlmaLinux / Rocky images read zero packages.** The scanner
   queried an `rpmdb.sqlite` schema those images do not ship, so every scan of
   them returned a false clean. This is the most consequential fix in the release.
@@ -100,6 +157,46 @@ the graph, this release changes what you see.
   advertises the reachable URL rather than its bind address.
 - CI runs the CVE accuracy measurements that already existed and had never been
   wired to a workflow.
+- **Pre-publish drift gates.** Every stale claim in this release existed because
+  a number or a contract was written once and never recomputed, so each gate
+  derives the truth from the artifact that ships: release-version consistency,
+  discovered structurally across `sdks/`, compose files, k8s manifests and
+  Dockerfiles, where a genuinely independent version must declare itself with a
+  reason and silence fails closed; external-surface freshness for registry and
+  MCP tool/resource/prompt counts; a runtime JSON-RPC check that boots the real
+  MCP server over stdio and compares *names* — not counts — against the wheel's
+  own server card; Postgres schema parity by `pg_dump` diff; and a rendered
+  `docker compose config` contract asserting every service resolves, every
+  `depends_on` names a real service, and every read-only bind source exists.
+  Nothing in CI had ever run `docker compose config` while the deploy docs told
+  operators the stack passes it. Every gate was watched failing on real input
+  before it was made to pass, and six of those failures were live on `main`.
+- A text equivalent for the graph canvas. Past 200 nodes / 500 edges the page
+  swaps React Flow for a 2D canvas or a WebGL stage, which offered a screen
+  reader only a widget label and a sentence about the draw budget — no node, no
+  relationship, no severity. Both stages now render a census by node and
+  relationship type, the nodes ranked by severity and connection count, and the
+  connections spelled out as sentences, wired to the canvas by `role="img"` and
+  `aria-describedby`. Every truncation is stated rather than applied silently.
+- **Continue offline with a report file**, on the auth failure screens and the
+  login page. The offline report importer was mounted inside the auth gate, so
+  the feature built for "no working backend" could not render in exactly that
+  situation. It is opt-in, grants no data — every API call behind it fails
+  exactly as it would have — and lives in `sessionStorage`, so it dies with the
+  tab.
+- `SUPPORT.md`, the one community-health file GitHub surfaces that this
+  repository lacked. The only support routing that existed was in
+  `docs/archive/`, a folder whose own README says it holds material that should
+  not crowd the primary documentation. It promises no new SLA: the only
+  committed response time remains the one `SECURITY.md` already makes.
+- `GET /v1/graph` reports `completeness.boundary_edges` — the count of edges
+  reaching past the returned node list — so a client cannot mistake the payload
+  for an induced subgraph.
+- The release run owns the Docker MCP submission pin. `source.commit` names the
+  commit a release tag points at, so it cannot be written before the tag exists
+  and could not ride along with the version bump; it was a line in SUBMISSION.md
+  asking a human to remember, and had not moved in several releases. The release
+  now opens a PR carrying the tagged SHA.
 
 ### Changed
 
@@ -111,6 +208,23 @@ the graph, this release changes what you see.
   cards.
 - ATLAS is an applicability overlay, not 65 failing controls.
 - TanStack Table upgraded to v9.
+- A non-zero `scan` exit reads as a verdict rather than a crash. The exit code
+  itself is unchanged; what changed is that the CLI names the gate that fired and
+  links the contract, `scan --help` documents the two gates that fail closed with
+  no flag set — a known-malicious package, and a scan that did not complete —
+  rather than implying exit 1 is reachable only via `--fail-on-*`, and
+  `docs/FIRST_RUN.md` no longer contradicts itself between §1 and §5. The note is
+  suppressed under `--quiet` so CI output stays machine-clean.
+- Dense lineage graphs open at a readable zoom. The roll-up grid had already been
+  fixed, but the raw lineage branch lays out through dagre, which stacks a wide,
+  shallow DAG into a portrait tower dropped into a landscape canvas — one agent
+  fanning out to 40 servers fit at 0.064. Ranks now reflow into sub-columns when
+  it materially improves the fit, preserving rank order; the same shape opens at
+  0.380.
+- The large graph surfaces render in light mode. Both overview renderers painted
+  a fixed `#050505` stage with light labels regardless of theme, so on a light
+  page the largest element on screen was a black rectangle with its own contrast
+  rules. The severity chips on those surfaces had the mirror-image problem.
 
 ## [0.99.0] - 2026-08-05
 

@@ -296,6 +296,13 @@ _REGISTRY_SKIP_NAMES = {"mcp_registry.json"}
 # sample scan output ("4 servers configured", "5/7 servers found in registry")
 # out of the sweep — the bundled registry has been four digits for many
 # releases and only grows.
+#
+# Deliberately NOT matched: rounded floors ("2,800+ servers") and third-party
+# registry sizes ("Glama's 18,000+ MCP servers"). Widening to catch those made
+# the sweep flag Smithery's and Glama's counts as if they were ours — prose
+# cannot reliably say whose registry a number describes. Surfaces that quoted a
+# rounded size for OUR registry had the number dropped instead, so there is
+# nothing left there to rot and nothing for a regex to guess at.
 _REGISTRY_LINE_RE = re.compile(r"registr", re.IGNORECASE)
 _REGISTRY_SERVER_COUNT_RES = (
     re.compile(r"\b(\d{3,})-entry\b"),
@@ -386,6 +393,11 @@ class TestRegistryCountFreshness:
     def test_sweep_ignores_unrelated_large_numbers(self):
         text = "old entries are evicted from the 1000-entry ring buffer\n250-agent estate with 604 servers\n"
         assert registry_count_drift(text, "src/example.py", servers=1081, verified=60) == []
+
+    def test_sweep_leaves_third_party_registry_sizes_alone(self):
+        """Smithery's and Glama's catalogue sizes are not ours to reconcile."""
+        text = "Extends agent-bom's bundled MCP registry with Glama's 18,000+ MCP servers.\n"
+        assert registry_count_drift(text, "src/agent_bom/glama.py", servers=1081, verified=60) == []
 
 
 # ---------------------------------------------------------------------------

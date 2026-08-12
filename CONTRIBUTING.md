@@ -1,6 +1,6 @@
 # Contributing to agent-bom
 
-agent-bom has 7,000+ monthly installs. Every contribution directly improves security for real AI agent deployments. This guide gets you from zero to merged PR.
+agent-bom runs against real AI agent deployments, so every contribution directly improves security for the people relying on it. This guide gets you from zero to merged PR.
 
 The best ways to help:
 

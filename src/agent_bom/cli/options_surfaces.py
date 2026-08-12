@@ -323,7 +323,7 @@ def ml_platform_options(fn):
                 "--smithery",
                 "smithery_flag",
                 is_flag=True,
-                help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage from 112 to 2800+ servers)",
+                help="Use Smithery.ai registry as fallback for unknown MCP servers (extends coverage beyond the bundled registry)",
             ),
             click.option(
                 "--smithery-token",

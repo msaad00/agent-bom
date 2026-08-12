@@ -274,3 +274,38 @@ def test_no_shipped_docstring_carries_an_issue_reference() -> None:
             if pattern.search(line):
                 offenders.append(f"{path.relative_to(root)}:{lineno}: {line.strip()}")
     assert not offenders, "tracker references in shipped source:\n" + "\n".join(offenders)
+
+
+def test_public_docs_make_no_unverifiable_adoption_claim() -> None:
+    """No shipped doc may assert an install/download/user count.
+
+    CONTRIBUTING.md opened with "agent-bom has 7,000+ monthly installs" — a
+    number nothing in this repo can derive or check, sitting in the first line a
+    prospective contributor reads. Registry download stats move constantly and
+    are not reproducible from a checkout, so the honest options are to cite the
+    live source or to make no claim; a hardcoded figure is neither, and an
+    unverifiable adoption number in a security tool is a trust problem rather
+    than a marketing one.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    surfaces = [
+        root / "README.md",
+        root / "PYPI_README.md",
+        root / "DOCKER_HUB_README.md",
+        root / "CONTRIBUTING.md",
+        *sorted((root / "docs").rglob("*.md")),
+        *sorted((root / "site-docs").rglob("*.md")),
+    ]
+    pattern = re.compile(r"\b\d[\d,]*\+?\s*(?:monthly\s+)?(?:installs|downloads|active users|stars)\b", re.IGNORECASE)
+
+    offenders: list[str] = []
+    for path in surfaces:
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if pattern.search(line):
+                offenders.append(f"{path.relative_to(root)}:{lineno}: {line.strip()}")
+    assert not offenders, "unverifiable adoption claim(s) in shipped docs:\n" + "\n".join(offenders)

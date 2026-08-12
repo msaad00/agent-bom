@@ -262,112 +262,24 @@ class TestMarkdownStats:
 
 
 # ---------------------------------------------------------------------------
-# Bundled-registry count sweep
+# Live registry resource freshness
 #
-# Six surfaces (two of them runtime strings an MCP client actually reads) still
-# advertised 1013 servers long after the bundled registry grew past 1080,
-# because only ONE doc was pinned to the registry file. Checking a hand-listed
-# set of files is what let the rest rot, so this sweeps whole shipping-surface
-# TREES: any file — including one added later — that claims a registry size is
-# compared against the bundled ``servers`` map itself.
+# The registry-size sweep across shipping surfaces lives in
+# ``scripts/check_published_counts.py`` (gated by
+# ``tests/test_published_counts_gate.py``). This file deliberately does NOT
+# repeat it: a second sweep would be a second judgement about the same claim,
+# which is the defect class both gates exist to remove.
+#
+# What that sweep cannot see is the string the MCP server builds at runtime.
+# It is derived from the bundled registry rather than written down, so there is
+# no literal for a text sweep to check — this test is what holds it.
 # ---------------------------------------------------------------------------
-
-REGISTRY_SURFACE_ROOTS: tuple[Path, ...] = (
-    ROOT / "README.md",
-    ROOT / "PYPI_README.md",
-    ROOT / "DOCKER_HUB_README.md",
-    ROOT / "docs",
-    ROOT / "site-docs",
-    ROOT / "integrations",
-    ROOT / "deploy",
-    ROOT / "src" / "agent_bom",
-    ROOT / "ui" / "app",
-    ROOT / "ui" / "components",
-    ROOT / "ui" / "lib",
-)
-
-_REGISTRY_SKIP_DIRS = {"node_modules", ".git", ".next", "dist", "build", "__pycache__"}
-_REGISTRY_SKIP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".pdf", ".zip", ".gz", ".lock"}
-# The registry file is the source of truth, not a surface that quotes it.
-_REGISTRY_SKIP_NAMES = {"mcp_registry.json"}
-
-# A claim about registry size always names a server/entry noun right after the
-# number and sits on a line that mentions the registry. The 3-digit floor keeps
-# sample scan output ("4 servers configured", "5/7 servers found in registry")
-# out of the sweep — the bundled registry has been four digits for many
-# releases and only grows.
-#
-# Deliberately NOT matched: rounded floors ("2,800+ servers") and third-party
-# registry sizes ("Glama's 18,000+ MCP servers"). Widening to catch those made
-# the sweep flag Smithery's and Glama's counts as if they were ours — prose
-# cannot reliably say whose registry a number describes. Surfaces that quoted a
-# rounded size for OUR registry had the number dropped instead, so there is
-# nothing left there to rot and nothing for a regex to guess at.
-_REGISTRY_LINE_RE = re.compile(r"registr", re.IGNORECASE)
-_REGISTRY_SERVER_COUNT_RES = (
-    re.compile(r"\b(\d{3,})-entry\b"),
-    re.compile(r"\b(\d{3,}) (?:MCP )?servers?\b"),
-)
-_REGISTRY_VERIFIED_COUNT_RE = re.compile(r"\b(\d{2,}) verified\b")
-
-
-def _registry_surface_files() -> list[Path]:
-    files: list[Path] = []
-    for root in REGISTRY_SURFACE_ROOTS:
-        if not root.exists():
-            continue
-        if root.is_file():
-            files.append(root)
-            continue
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            if any(part in _REGISTRY_SKIP_DIRS for part in path.parts):
-                continue
-            if path.suffix.lower() in _REGISTRY_SKIP_SUFFIXES or path.name in _REGISTRY_SKIP_NAMES:
-                continue
-            files.append(path)
-    return files
-
-
-def registry_count_drift(text: str, rel_path: str, *, servers: int, verified: int) -> list[str]:
-    """Return one line per registry-size claim in *text* that misstates the registry."""
-    drift: list[str] = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        if not _REGISTRY_LINE_RE.search(line):
-            continue
-        for regex in _REGISTRY_SERVER_COUNT_RES:
-            for match in regex.finditer(line):
-                if int(match.group(1)) != servers:
-                    drift.append(f"{rel_path}:{lineno}: claims {match.group(1)} registry servers (bundled has {servers}) -> {line.strip()}")
-        for match in _REGISTRY_VERIFIED_COUNT_RE.finditer(line):
-            if int(match.group(1)) != verified:
-                drift.append(f"{rel_path}:{lineno}: claims {match.group(1)} verified entries (bundled has {verified}) -> {line.strip()}")
-    return drift
-
-
-def _bundled_registry_counts() -> tuple[int, int]:
-    """(server count, verified count) read from the bundled registry itself."""
-    servers = json.loads((SRC / "mcp_registry.json").read_text()).get("servers", {})
-    return len(servers), sum(1 for entry in servers.values() if entry.get("verified") is True)
 
 
 class TestRegistryCountFreshness:
-    """Tie every advertised registry size to the bundled ``servers`` map."""
-
-    def test_no_surface_misstates_the_bundled_registry_size(self):
-        servers, verified = _bundled_registry_counts()
-        drift: list[str] = []
-        for path in _registry_surface_files():
-            try:
-                text = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                continue
-            drift.extend(registry_count_drift(text, str(path.relative_to(ROOT)), servers=servers, verified=verified))
-        assert drift == [], "stale registry-size claim(s):\n" + "\n".join(drift)
+    """The size an MCP client is told must be computed, not transcribed."""
 
     def test_live_registry_resource_advertises_the_derived_count(self):
-        """What an MCP client reads is computed from the registry, not a literal."""
         from agent_bom.mcp_server import create_mcp_server
         from agent_bom.registry import registry_server_count
 
@@ -375,29 +287,6 @@ class TestRegistryCountFreshness:
         resource = server._resource_manager._resources["registry://servers"]
         description = resource.description or ""
         assert f"{registry_server_count()} servers" in description, description
-
-    def test_sweep_flags_a_stale_claim(self):
-        drift = registry_count_drift(
-            "Browse the 1013-entry server security metadata registry\n",
-            "docs/example.md",
-            servers=1081,
-            verified=60,
-        )
-        assert len(drift) == 1
-        assert "1013" in drift[0] and "1081" in drift[0]
-
-    def test_sweep_ignores_sample_scan_output(self):
-        text = "Registry: 5/7 servers found in registry\nClaude Desktop — 4 servers configured\n"
-        assert registry_count_drift(text, "docs/example.md", servers=1081, verified=60) == []
-
-    def test_sweep_ignores_unrelated_large_numbers(self):
-        text = "old entries are evicted from the 1000-entry ring buffer\n250-agent estate with 604 servers\n"
-        assert registry_count_drift(text, "src/example.py", servers=1081, verified=60) == []
-
-    def test_sweep_leaves_third_party_registry_sizes_alone(self):
-        """Smithery's and Glama's catalogue sizes are not ours to reconcile."""
-        text = "Extends agent-bom's bundled MCP registry with Glama's 18,000+ MCP servers.\n"
-        assert registry_count_drift(text, "src/agent_bom/glama.py", servers=1081, verified=60) == []
 
 
 # ---------------------------------------------------------------------------

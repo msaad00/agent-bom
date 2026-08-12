@@ -357,6 +357,7 @@ jobs:
       contents: read
       id-token: write       # required for SLSA provenance attestation
       attestations: write   # required for SBOM + provenance attestations
+      packages: write       # required to push the same image to GHCR
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -387,6 +388,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # GHCR carried only a stale `latest`: no release ever pushed a versioned
+      # tag there. Nine OpenClaw SKILL.md files instruct users to run
+      # `ghcr.io/msaad00/agent-bom:<version>`, check_release_consistency.py
+      # asserts those pins equal the release version, and
+      # demo-deploy-cloudrun.yml pulls that exact reference to deploy the hosted
+      # demo — so a number was kept perfectly in sync with an artifact that did
+      # not exist. Publishing the same digest to both registries makes the
+      # documented command true rather than merely consistent.
+      - name: Login to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push
         id: build-api-image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -400,6 +416,8 @@ jobs:
           tags: |
             agentbom/agent-bom:${{ steps.meta.outputs.version }}
             agentbom/agent-bom:latest
+            ghcr.io/${{ github.repository_owner }}/agent-bom:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/agent-bom:latest
           labels: |
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

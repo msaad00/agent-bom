@@ -41,15 +41,7 @@ from agent_bom.graph.completeness import (
     graph_completeness,
     impact_completeness,
 )
-from agent_bom.graph.container import apply_node_budget
-from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
-
-# Only finding-like nodes (vulnerabilities, misconfigurations, drift) carry a
-# severity; a `min_severity` filter must narrow those findings without dropping
-# the topology/context nodes around them (agents, servers, resources, identities
-# all have rank 0). Matches the in-memory ``filtered_view`` / ``_node_matches_query``
-# behaviour so the SQL paging path and the in-memory path agree.
-_FINDING_ENTITY_VALUES: tuple[str, ...] = tuple(sorted(t.value for t in FINDING_ENTITY_TYPES))
+from agent_bom.graph.severity_floor import severity_floor_sql
 
 # Deep OFFSET paging is O(offset): the store still walks and discards every
 # skipped row, so ``offset=490000`` costs seconds even with the sort indexes.
@@ -58,21 +50,18 @@ _FINDING_ENTITY_VALUES: tuple[str, ...] = tuple(sorted(t.value for t in FINDING_
 MAX_NODE_PAGE_OFFSET = 10_000
 
 
-def _min_severity_clause(
-    min_severity_rank: int,
-    *,
-    column: str = "severity_id",
-    entity_column: str = "entity_type",
-) -> tuple[str, list[Any]]:
-    """Build a severity-floor WHERE fragment that exempts non-finding nodes.
+def _assert_offset_within_cap(offset: int, cursor: str | None) -> None:
+    """Refuse a deep OFFSET at the store, not only at the route.
 
-    Returns ``(sql, params)``; ``sql`` is empty when no floor is requested.
+    Every node-paging read shares the cap, so a caller that reaches a store
+    directly (MCP, a job, a future route) cannot buy an O(offset) scan the HTTP
+    surface would have refused.
     """
-    if not min_severity_rank:
-        return "", []
-    placeholders = ",".join("?" for _ in _FINDING_ENTITY_VALUES)
-    sql = f"({column} >= ? OR {entity_column} NOT IN ({placeholders}))"
-    return sql, [min_severity_rank, *_FINDING_ENTITY_VALUES]
+    if not cursor and offset > MAX_NODE_PAGE_OFFSET:
+        raise ValueError(
+            f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}); "
+            "use the cursor= keyset parameter from the previous page's next_cursor for deep pagination."
+        )
 
 
 _CREATE_PRESET_TABLE_SQLITE = """\
@@ -1611,18 +1600,18 @@ class SQLiteGraphStore:
         if conn is None:
             return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
         try:
-            graph = sqlite_graph_store.load_graph(
+            # The budget is pushed into the query, as Postgres does: bounding
+            # after materialization declared the right completeness while still
+            # having read every row.
+            return sqlite_graph_store.load_graph(
                 conn,
                 tenant_id=tenant_id,
                 scan_id=scan_id,
                 entity_types=entity_types,
                 min_severity_rank=min_severity_rank,
                 relationship_types=relationship_types,
+                node_budget=node_budget,
             )
-            # This backend has no query-side limit, so the cap is applied after
-            # the load. Memory is not saved, but the declared contract stays
-            # identical across backends.
-            return apply_node_budget(graph, node_budget)
         finally:
             conn.close()
 
@@ -1801,7 +1790,7 @@ class SQLiteGraphStore:
                 placeholders = ",".join("?" for _ in entity_types)
                 node_where.append(f"entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
-            sev_sql, sev_params = _min_severity_clause(min_severity_rank)
+            sev_sql, sev_params = severity_floor_sql(min_severity_rank)
             if sev_sql:
                 node_where.append(sev_sql)
                 params.extend(sev_params)
@@ -1918,11 +1907,7 @@ class SQLiteGraphStore:
         limit: int = 500,
     ) -> tuple[str, str, list[UnifiedNode], int, str | None]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
-        if not cursor and offset > MAX_NODE_PAGE_OFFSET:
-            raise ValueError(
-                f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}); "
-                "use the cursor= keyset parameter from the previous page's next_cursor for deep pagination."
-            )
+        _assert_offset_within_cap(offset, cursor)
         conn = self._open_ro_conn()
         if conn is None:
             return scan_id, "", [], 0, None
@@ -1936,7 +1921,7 @@ class SQLiteGraphStore:
                 placeholders = ",".join("?" for _ in entity_types)
                 where.append(f"entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
-            sev_sql, sev_params = _min_severity_clause(min_severity_rank)
+            sev_sql, sev_params = severity_floor_sql(min_severity_rank)
             if sev_sql:
                 where.append(sev_sql)
                 params.extend(sev_params)
@@ -2031,6 +2016,7 @@ class SQLiteGraphStore:
         limit: int = 50,
     ) -> tuple[list[UnifiedNode], int, str | None]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        _assert_offset_within_cap(offset, cursor)
         conn = self._open_ro_conn()
         if conn is None:
             return [], 0, None
@@ -2060,7 +2046,7 @@ class SQLiteGraphStore:
                     placeholders = ",".join("?" for _ in entity_types)
                     local_where.append(f"gn.entity_type IN ({placeholders})")
                     local_params.extend(sorted(entity_types))
-                sev_sql, sev_params = _min_severity_clause(min_severity_rank, column="gn.severity_id", entity_column="gn.entity_type")
+                sev_sql, sev_params = severity_floor_sql(min_severity_rank, column="gn.severity_id", entity_column="gn.entity_type")
                 if sev_sql:
                     local_where.append(sev_sql)
                     local_params.extend(sev_params)

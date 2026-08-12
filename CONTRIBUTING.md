@@ -1,6 +1,6 @@
 # Contributing to agent-bom
 
-This guide gets you from zero to merged PR.
+agent-bom runs against real AI agent deployments, so every contribution directly improves security for the people relying on it. This guide gets you from zero to merged PR.
 
 Not contributing code, just need help? [SUPPORT.md](SUPPORT.md) has the routing
 and what response to expect.

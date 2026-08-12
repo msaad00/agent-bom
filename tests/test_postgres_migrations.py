@@ -46,7 +46,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260810_01"
+ALEMBIC_HEAD = "20260812_01"
 
 
 def _canonical_sql(text: str) -> str:

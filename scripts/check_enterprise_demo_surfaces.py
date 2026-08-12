@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -217,6 +218,24 @@ def main_check() -> None:
         "python scripts/install_helm_profile.py synthetic-enterprise-story",
     ):
         _require(marker in runbook, f"runbook lost required operator evidence: {marker}")
+
+    # The runbook prints a sample `bounds` block whose whole point is that a page
+    # size is never reported as a total. Its totals were transcribed once and then
+    # sat unchanged while the estate grew — events 6159 -> 12171, findings 439 ->
+    # 2682 — so the doc that teaches "no surface reports a page size as a total"
+    # was itself understating the totals by up to 6x. Derive them from the story
+    # the doc is describing.
+    for list_name, bound in (
+        ("events", story.bounds.events),
+        ("correlations", story.bounds.correlations),
+        ("findings", story.bounds.findings),
+    ):
+        documented = re.search(rf'"{list_name}":\s*{{[^}}]*"total":\s*(\d+)', runbook)
+        _require(documented is not None, f"runbook lost the sample bounds total for {list_name}")
+        _require(
+            int(documented.group(1)) == bound.total,
+            f"runbook documents {list_name} total {documented.group(1)} but the demo story carries {bound.total}",
+        )
 
     print("enterprise demo surface contract passed")
 

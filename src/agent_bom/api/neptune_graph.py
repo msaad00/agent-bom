@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol, ca
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.container import apply_node_budget
+from agent_bom.graph.severity_floor import node_passes_severity_floor
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -359,7 +360,9 @@ class NeptuneGraphStore:
             entity_value = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
             if entity_types and entity_value not in entity_types:
                 continue
-            if min_severity_rank and int(node.severity_id or 0) < min_severity_rank:
+            if not node_passes_severity_floor(
+                entity_type=node.entity_type, severity_id=int(node.severity_id or 0), min_severity_rank=min_severity_rank
+            ):
                 continue
             graph.add_node(node)
         edge_rows = self._edge_rows(tenant_id=tenant, scan_id=scan)

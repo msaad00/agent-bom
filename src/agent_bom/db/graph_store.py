@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
 from agent_bom.graph import (
-    SEVERITY_RANK,
     AttackPath,
     EntityType,
     InteractionRisk,
@@ -42,6 +41,8 @@ from agent_bom.graph.analysis import (
     analysis_status_map_to_dict,
     not_recorded_analysis_status,
 )
+from agent_bom.graph.container import GraphCompleteness, resolve_node_budget
+from agent_bom.graph.severity_floor import severity_floor_sql
 from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -1078,8 +1079,15 @@ def load_graph(
     entity_types: set[str] | None = None,
     min_severity_rank: int = 0,
     relationship_types: frozenset[str] | None = None,
+    node_budget: int | None = None,
 ) -> UnifiedGraph:
-    """Load a UnifiedGraph from a specific scan snapshot."""
+    """Load a UnifiedGraph from a specific scan snapshot.
+
+    ``node_budget`` bounds the read in SQL and is reported on
+    ``graph.completeness``; it defaults to unbounded because callers that
+    compute differences (snapshot diff, compare) are only correct on a whole
+    graph — a trimmed one reads as deletions that never happened.
+    """
     tenant_id = normalize_graph_tenant_id(tenant_id)
     effective_scan_id, created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
     graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
@@ -1096,18 +1104,38 @@ def load_graph(
         if not graph.analysis_status:
             graph.analysis_status["attack_path_fusion"] = not_recorded_analysis_status()
 
-    query = "SELECT * FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?"
+    where = "tenant_id = ? AND scan_id = ?"
     params: list[Any] = [tenant_id, effective_scan_id]
     if entity_types:
         placeholders = ",".join("?" * len(entity_types))
-        query += f" AND entity_type IN ({placeholders})"
+        where += f" AND entity_type IN ({placeholders})"
         params.extend(entity_types)
+    sev_sql, sev_params = severity_floor_sql(min_severity_rank)
+    if sev_sql:
+        where += f" AND {sev_sql}"
+        params.extend(sev_params)
+
+    query = f"SELECT * FROM graph_nodes WHERE {where}"  # nosec B608 - where is built from static clause fragments
+    budget = resolve_node_budget(node_budget)
+    total_nodes = 0
+    if budget is not None:
+        # The budget has to bound the *read*, not the result. Trimming after a
+        # full materialization declares the same completeness while still having
+        # paid for every row: at 200k nodes that is ~783 MB the cap was
+        # introduced to avoid. Risk-ranked so a trimmed view keeps what matters,
+        # id breaking ties so the selection is deterministic — the same order
+        # Postgres uses, so the two backends return the same nodes.
+        count_row = conn.execute(
+            f"SELECT COUNT(*) FROM graph_nodes WHERE {where}",  # nosec B608 - where is built from static clause fragments
+            params,
+        ).fetchone()
+        total_nodes = int(count_row[0]) if count_row else 0
+        query += " ORDER BY risk_score DESC, id LIMIT ?"
+        params.append(budget)
 
     node_ids: set[str] = set()
     for row in conn.execute(query, params):
         sev = row["severity"] or ""
-        if min_severity_rank and SEVERITY_RANK.get(sev, 0) < min_severity_rank:
-            continue
         graph.add_node(
             UnifiedNode(
                 id=row["id"],
@@ -1129,6 +1157,17 @@ def load_graph(
             )
         )
         node_ids.add(row["id"])
+
+    returned_nodes = len(node_ids)
+    if budget is None:
+        total_nodes = returned_nodes
+    graph.completeness = GraphCompleteness(
+        truncated=budget is not None and total_nodes > returned_nodes,
+        node_budget=budget,
+        total_nodes=total_nodes,
+        returned_nodes=returned_nodes,
+        reason="node_budget" if budget is not None and total_nodes > returned_nodes else "",
+    )
 
     eq = "SELECT * FROM graph_edges WHERE tenant_id = ? AND scan_id = ?"
     eparams: list[Any] = [tenant_id, effective_scan_id]
@@ -1308,9 +1347,11 @@ def iter_graph_nodes(
         placeholders = ",".join("?" * len(entity_types))
         query += f" AND entity_type IN ({placeholders})"  # nosec B608 - placeholders are only "?" markers
         params.extend(sorted(entity_types))
+    sev_sql, sev_params = severity_floor_sql(min_severity_rank)
+    if sev_sql:
+        query += f" AND {sev_sql}"  # nosec B608 - fragment is built from a static template
+        params.extend(sev_params)
     for row in conn.execute(query, params):
-        if min_severity_rank and SEVERITY_RANK.get(row["severity"] or "", 0) < min_severity_rank:
-            continue
         yield _node_from_snapshot_row(row)
 
 

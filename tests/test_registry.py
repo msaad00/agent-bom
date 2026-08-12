@@ -17,9 +17,29 @@ from agent_bom.registry import (
     detect_version_drift,
     list_registry,
     registry_freshness_status,
+    registry_server_count,
     search_registry,
     update_registry_versions,
 )
+
+# ── Registry size ───────────────────────────────────────────────────────────
+
+
+def test_registry_server_count_matches_bundled_servers_map():
+    """The advertised size is derived from the bundled map, never hardcoded."""
+    from agent_bom.registry import _REGISTRY_PATH
+
+    bundled = json.loads(_REGISTRY_PATH.read_text())["servers"]
+    assert registry_server_count() == len(bundled)
+
+
+def test_registry_server_count_is_zero_when_registry_unreadable(tmp_path):
+    """A broken registry reports 0 rather than raising into the MCP server."""
+    broken = tmp_path / "mcp_registry.json"
+    broken.write_text("{ not json")
+    with patch("agent_bom.registry._REGISTRY_PATH", broken):
+        assert registry_server_count() == 0
+
 
 # ── Version comparison ──────────────────────────────────────────────────────
 

@@ -249,6 +249,9 @@ def run_integrations(
 # resolved must not silently pass CI.
 _FAIL_CLOSED_SEVERITIES = frozenset({"unknown", "none"})
 
+# Published home of the full CLI exit-code / HTTP-status contract.
+EXIT_CODE_CONTRACT_URL = "https://msaad00.github.io/agent-bom/reference/exit-codes/"
+
 
 def _fail_gate_meets(sev: str, threshold: int) -> bool:
     """Return True if a finding's severity should trip an active fail gate.
@@ -465,6 +468,16 @@ def compute_exit_code(
             if not quiet and not ctx.cloud_provider_failures:
                 con.print(f"\n  [red]Exiting with code 1: scan execution was {scan_outcome.value}; inspect scan_run.issues[/red]")
             exit_code = 1
+
+    # Every branch above prints the specific reason it tripped. What none of
+    # them say is that a non-zero exit is the scanner working as designed — to a
+    # first-time reader a red "Exiting with code 1" is indistinguishable from a
+    # crash. State the contract once, plainly, without changing the code itself.
+    if exit_code != 0 and not quiet:
+        con.print(
+            "\n  [dim]Exit code 1 is a scan verdict, not a scanner error — the reason is above and the "
+            f"report above is complete.\n  Exit-code contract: {EXIT_CODE_CONTRACT_URL}[/dim]"
+        )
 
     # Push results to central dashboard
     if push_url and report:

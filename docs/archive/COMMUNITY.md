@@ -1,5 +1,9 @@
 # Community
 
+> **Start at [`SUPPORT.md`](../../SUPPORT.md)**, not here. That file is the
+> surfaced support routing — which channel takes what, and what response to
+> expect. This page is retained for the Discord channel-by-channel detail below.
+
 `agent-bom` has a public Discord server for support, feedback, and contributor discussion:
 
 - Discord: https://discord.gg/3YmYPqKZh5

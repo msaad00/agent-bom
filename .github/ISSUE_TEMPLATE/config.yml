@@ -6,3 +6,6 @@ contact_links:
   - name: Discussions
     url: https://github.com/msaad00/agent-bom/discussions
     about: Ask questions or start a discussion.
+  - name: Where to ask, and what to expect
+    url: https://github.com/msaad00/agent-bom/blob/main/SUPPORT.md
+    about: Support routing, response expectations, and how to file a report we can act on.

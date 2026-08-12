@@ -93,16 +93,41 @@ product-state proof, not customer or advisory evidence.
 
 ## Quick start
 
-Run against the repository in your current directory:
+**Start here. This is the front door — two commands, no account, no config.**
+Every other surface below (demo, self-host, Docker, Helm, MCP, CI action, SDKs)
+is an expansion path you reach for once this works.
 
 ```bash
 pip install agent-bom
 agent-bom scan .
 ```
 
-The console shows inventory, findings, and reachable impact. Save an artifact
-with `agent-bom scan . -f sarif -o findings.sarif`, or follow the
-[first-run guide](docs/FIRST_RUN.md) for exit codes, formats, and CI use.
+The console shows inventory, findings, and reachable impact. `agent-bom scan .`
+and `agent-bom scan -p .` are the same command; `PATH` is an alias for
+`--project`.
+
+**A non-zero exit is a verdict, not a crash.** `scan` exits `0` when nothing
+matched a gate, and `1` when one did — a `--fail-on-*` threshold you set, a
+known-malicious package, or a scan that did not complete. The report is printed
+in full either way, and the last line names the gate that matched. Full
+[exit-code contract](site-docs/reference/exit-codes.md).
+
+Save an artifact with `agent-bom scan . -f sarif -o findings.sarif`, or follow
+the [first-run guide](docs/FIRST_RUN.md) for formats and CI use.
+
+<details>
+<summary><b>Expansion paths — pick one only after the front door works</b></summary>
+
+| You want to | Go to |
+|---|---|
+| See output without scanning your own code | `agent-bom scan --demo --offline` (expands "Try without a repository" below) |
+| A dashboard on your laptop | [Self-host](#self-host) |
+| A shared deployment (Docker, Helm, EKS, Snowflake) | [Self-host](#self-host) table |
+| Gate a pull request | [first-run guide §5](docs/FIRST_RUN.md#5-gate-ci-on-the-result) |
+| Give an AI agent the tools | `agent-bom mcp server` — [MCP server](docs/MCP_SERVER.md) |
+| Connect a cloud account | `agent-bom connect aws` — [cloud connections](docs/CLOUD_CONNECT.md) |
+
+</details>
 
 <details>
 <summary><b>Try without a repository</b></summary>
@@ -114,8 +139,8 @@ output shape:
 agent-bom scan --demo --offline
 ```
 
-The sample intentionally contains blocking findings, so exit status `1` is
-expected.
+The sample intentionally contains a known-malicious package, which fails closed,
+so exit status `1` is expected here and the printed report is complete.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="Synthetic agent-bom console scan showing inventory, findings, and remediation" width="820" />
@@ -201,9 +226,12 @@ and runtime integrations for the other deployment profiles.
 [Security policy](SECURITY.md) ·
 [MCP security model](docs/MCP_SECURITY_MODEL.md)
 
-## Contributing
+## Contributing and support
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the
-[open issues](https://github.com/msaad00/agent-bom/issues).
+Stuck, or not sure where a question belongs? [SUPPORT.md](SUPPORT.md) has the
+routing and an honest statement of what response to expect.
+
+To contribute, start with [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md),
+and the [open issues](https://github.com/msaad00/agent-bom/issues).
 
 Apache-2.0 licensed.

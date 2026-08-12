@@ -479,11 +479,17 @@ def scan(
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
     \b
-    Exit codes:
+    Exit codes (a non-zero exit is a scan verdict, not a crash — the report
+    is still printed and still complete):
       0  Clean — no violations, no vulnerabilities at or above threshold
            (also exits 0 when only --warn threshold is breached)
       1  Fail — policy failure, or vulnerabilities found at or above
-                --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
+                --fail-on-severity / --fail-on-kev / --fail-if-ai-risk.
+                Two gates also fail closed with no flag set: a known-malicious
+                package (typosquat / dependency confusion) and a scan that did
+                not complete. This is why `scan --demo` exits 1.
+    \b
+    Full contract: https://msaad00.github.io/agent-bom/reference/exit-codes/
     """
     import time as _time
 

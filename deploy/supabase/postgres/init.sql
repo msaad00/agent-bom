@@ -508,6 +508,7 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     node_count   INTEGER DEFAULT 0,
     edge_count   INTEGER DEFAULT 0,
     risk_summary TEXT DEFAULT '{}',
+    node_type_counts TEXT DEFAULT NULL,
     analysis_status TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (scan_id, tenant_id)
 );

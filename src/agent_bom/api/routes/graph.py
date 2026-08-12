@@ -749,11 +749,6 @@ def _path_matches_focus(graph: UnifiedGraph, path: AttackPath, *, cve: str, pack
     return True
 
 
-def _is_finding_like_node(node: UnifiedNode) -> bool:
-    entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
-    return entity_type in {EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value}
-
-
 def _rel_value(edge: UnifiedEdge) -> str:
     return edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
 
@@ -849,6 +844,22 @@ def _joined_edges(*groups: list[UnifiedEdge]) -> list[UnifiedEdge]:
             seen.add(key)
             joined.append(edge)
     return joined
+
+
+def _boundary_edge_count(edges: list[UnifiedEdge], node_ids: set[str]) -> int:
+    """How many returned edges have an endpoint the response did not return.
+
+    ``edges_for_node_ids`` matches ``source OR target`` deliberately: a page is
+    ranked by severity, so on a dense finding page the asset each finding hangs
+    off is usually not on the page, and dropping those edges would hand back a
+    scatter of unattached findings (and would break the containment-ancestor
+    walk, which finds parents precisely by looking at edges reaching in from
+    outside). So the payload is *not* an induced subgraph — but a client that
+    assumes it is will silently drop these edges or invent phantom endpoints.
+    Counting them is the fail-closed half: the response says how much of its
+    edge list reaches past its node list instead of leaving it to be discovered.
+    """
+    return sum(1 for edge in edges if edge.source not in node_ids or edge.target not in node_ids)
 
 
 def _edge_relationships_for_hops(hops: list[str], edges: list[UnifiedEdge]) -> list[str]:
@@ -1994,13 +2005,16 @@ def _node_matches_query(
     compliance_prefixes: set[str],
     data_sources: set[str],
 ) -> bool:
-    from agent_bom.graph import SEVERITY_RANK
+    from agent_bom.graph.severity_floor import node_passes_severity_floor
 
     if entity_types:
         entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
         if entity_type not in entity_types:
             return False
-    if min_severity_rank and _is_finding_like_node(node) and SEVERITY_RANK.get(node.severity.lower(), 0) < min_severity_rank:
+    # This used a local predicate that knew only two of the three rated entity
+    # types, so a drift incident below the floor stayed on the page here and was
+    # dropped by the stores.
+    if not node_passes_severity_floor(entity_type=node.entity_type, severity=node.severity, min_severity_rank=min_severity_rank):
         return False
     if compliance_prefixes:
         prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
@@ -2164,8 +2178,11 @@ async def get_graph(
 ) -> dict:
     """Load the unified graph with filters and pagination.
 
-    Nodes are paginated (offset/limit). Edges are filtered to only include
-    edges between returned nodes.
+    Nodes are paginated (offset/limit). ``edges`` carries every edge *incident*
+    to the page — including edges whose other endpoint is not on it, which is
+    what keeps a severity-ranked finding page attached to the assets it hangs
+    off. It is therefore not the subgraph induced by ``nodes``;
+    ``completeness.boundary_edges`` counts the edges that cross the boundary.
 
     ``stats`` describe the graph this response was computed from, NOT the page:
     ``stats.total_nodes`` is every node that survived loading, and
@@ -2280,13 +2297,15 @@ async def get_graph(
         "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
     }
     response_nodes = [*paged_nodes, *ancestor_nodes]
+    response_node_ids = {node.id for node in response_nodes}
+    response_edges = _joined_edges(paged_edges, ancestor_edges)
     page_truncated = bool(next_cursor) or offset + len(paged_nodes) < total
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
         "created_at": created_at,
         "nodes": [n.to_dict() for n in response_nodes],
-        "edges": [e.to_dict() for e in _joined_edges(paged_edges, ancestor_edges)],
+        "edges": [e.to_dict() for e in response_edges],
         "attack_paths": [
             _serialize_attack_path(path, paged_edges, nodes_by_id=nodes_by_id, scan_id=effective_scan_id) for path in source_attack_paths
         ],
@@ -2306,6 +2325,10 @@ async def get_graph(
             # and the extra nodes read as a paging bug.
             "ranked": len(paged_nodes),
             "context_nodes": len(ancestor_nodes),
+            # See ``_boundary_edge_count``: the edge list deliberately reaches
+            # one hop past the node list, so say by how much rather than letting
+            # a client read the payload as an induced subgraph.
+            "boundary_edges": _boundary_edge_count(response_edges, response_node_ids),
         },
     }
 
@@ -2781,6 +2804,7 @@ async def search_graph(
     limit: int = Query(50, ge=1, le=500, description="Max results"),
 ) -> dict:
     """Search graph nodes by label, type, tags, and attributes."""
+    _enforce_node_offset_cap(offset, cursor)
     entity_type_filters = _parse_entity_type_filter(entity_types)
     min_rank = SEVERITY_RANK.get(min_severity.lower(), 0) if min_severity else 0
     prefix_filters = {value.strip().upper() for value in compliance_prefixes.split(",") if value.strip()} if compliance_prefixes else None

@@ -6,6 +6,11 @@ import { Activity, GitBranch, Layers3, Network, ShieldAlert } from "lucide-react
 
 import type { LineageNodeData } from "@/components/lineage-nodes";
 import { GraphLegend } from "@/components/graph-chrome";
+import { GraphTextAlternative } from "@/components/graph-text-alternative";
+import {
+  useGraphCanvasPalette,
+  type GraphCanvasPalette,
+} from "@/lib/graph-canvas-theme";
 import type { LegendItem } from "@/lib/graph-utils";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
@@ -42,9 +47,9 @@ function StatPill({
 }) {
   const toneClass = {
     zinc: "border-[var(--border-subtle)] bg-[var(--background)]/70 text-[var(--text-secondary)]",
-    red: "border-red-500/30 bg-red-950/25 text-red-100",
-    amber: "border-amber-500/30 bg-amber-950/25 text-amber-100",
-    cyan: "border-cyan-500/30 bg-cyan-950/25 text-cyan-100",
+    red: "border-red-500/30 bg-red-500/10 dark:bg-red-950/25 text-red-800 dark:text-red-100",
+    amber: "border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/25 text-amber-800 dark:text-amber-100",
+    cyan: "border-cyan-500/30 bg-cyan-500/10 dark:bg-cyan-950/25 text-cyan-800 dark:text-cyan-100",
   }[tone];
 
   return (
@@ -112,6 +117,7 @@ function drawGraph(
   model: ReturnType<typeof buildLargeGraphOverviewModel>,
   viewport: Viewport,
   selectedNodeId: string | null,
+  palette: GraphCanvasPalette,
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -123,7 +129,7 @@ function drawGraph(
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  ctx.fillStyle = "#050505";
+  ctx.fillStyle = palette.stage;
   ctx.fillRect(0, 0, width, height);
   ctx.save();
   ctx.translate(viewport.offsetX, viewport.offsetY);
@@ -154,14 +160,14 @@ function drawGraph(
     const selected = selectedNodeId === node.id;
     const dimmed = selectedNodeId !== null && !selected;
     ctx.globalAlpha = dimmed ? 0.34 : 1;
-    ctx.fillStyle = selected ? "#f8fafc" : node.color;
+    ctx.fillStyle = selected ? palette.selected : node.color;
     ctx.beginPath();
     ctx.arc(node.x, node.y, selected ? node.size * 1.9 : node.size, 0, Math.PI * 2);
     ctx.fill();
     if (selected || node.forceLabel) {
       ctx.globalAlpha = selected ? 1 : 0.78;
       ctx.font = `${Math.max(10, 12 / viewport.scale)}px Inter, ui-sans-serif, system-ui, sans-serif`;
-      ctx.fillStyle = "#e4e4e7";
+      ctx.fillStyle = palette.label;
       ctx.fillText(node.label, node.x + node.size + 4 / viewport.scale, node.y - node.size);
     }
   }
@@ -177,6 +183,7 @@ export function LargeGraphOverview({
   onNodeSelect,
 }: LargeGraphOverviewProps) {
   const captureMode = useCaptureMode();
+  const palette = useGraphCanvasPalette();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const model = useMemo(() => buildLargeGraphOverviewModel(nodes, edges), [nodes, edges]);
@@ -198,8 +205,8 @@ export function LargeGraphOverview({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    drawGraph(canvas, model, viewport, selectedNodeId);
-  }, [model, selectedNodeId, viewport]);
+    drawGraph(canvas, model, viewport, selectedNodeId, palette);
+  }, [model, palette, selectedNodeId, viewport]);
 
   return (
     <div className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] shadow-2xl shadow-black/30" data-testid="large-graph-overview">
@@ -219,7 +226,7 @@ export function LargeGraphOverview({
             {model.edges.length.toLocaleString()}/{model.sourceEdgeCount.toLocaleString()} edges.
           </span>
           {isBudgeted && (
-            <span className="text-amber-300">
+            <span className="text-amber-700 dark:text-amber-300">
               Lower-signal items are omitted from this overview; use search, filters, or drill-in for exact detail.
             </span>
           )}
@@ -236,11 +243,22 @@ export function LargeGraphOverview({
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 bg-[radial-gradient(circle_at_25%_15%,rgba(16,185,129,0.10),transparent_28%),radial-gradient(circle_at_75%_65%,rgba(59,130,246,0.10),transparent_30%),#050505]">
+      {/*
+        The canvas is taken out of flow on purpose. `drawGraph` writes
+        `canvas.height` from `clientHeight`, and an in-flow canvas takes that
+        attribute as its intrinsic height — so each draw grew the element, the
+        ResizeObserver fired, and the next draw grew it again. Measured on the
+        1,241-node fixture: a 21,604px-tall canvas showing an empty slice of
+        stage. Absolute inset-0 makes the parent the sole source of size, which
+        breaks the loop.
+      */}
+      <div className="relative min-h-[58vh] flex-1 bg-[var(--background)]">
         <canvas
           ref={canvasRef}
-          className="h-full min-h-[58vh] w-full cursor-grab active:cursor-grabbing"
+          className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing"
+          role="img"
           aria-label="Large security graph overview"
+          aria-describedby="large-graph-overview-text"
           data-testid="large-graph-overview-canvas"
           onMouseDown={(event) => {
             dragRef.current = {
@@ -296,6 +314,12 @@ export function LargeGraphOverview({
               offsetY: event.clientY - rect.top - before.y * nextScale,
             });
           }}
+        />
+        <GraphTextAlternative
+          id="large-graph-overview-text"
+          renderer="2D canvas graph overview"
+          model={model}
+          summary={summary}
         />
         <div className="pointer-events-auto absolute right-3 top-3">
           <GraphLegend items={legendItems} />

@@ -21,6 +21,15 @@ export const LINEAGE_NODE_HEIGHT = 140;
 /** Minimum clear gap enforced between any two lineage cards, at any scale. */
 export const GRAPH_NODE_MIN_GAP = 48;
 
+/**
+ * Width:height ratio of a graph canvas. Measured at ~1322 x 610 on `/graph` at
+ * a 1440px viewport; the roll-up grid derives its column count from the same
+ * assumption. Dagre knows nothing about the viewport, so without this a wide
+ * fan-out becomes a portrait tower that `fitView` can only answer with an
+ * unreadable zoom.
+ */
+export const LINEAGE_CANVAS_ASPECT = 2.2;
+
 /** Collision footprint shared by the layout and the separation guarantee. */
 export const LINEAGE_MIN_SEPARATION: MinSeparationOptions = {
   width: LINEAGE_NODE_WIDTH,
@@ -41,6 +50,7 @@ export const READABLE_LINEAGE_DAGRE_LR: DagreLrOptions = {
   rankSep: 176,
   nodeSep: 56,
   minSeparation: LINEAGE_MIN_SEPARATION,
+  fitAspect: LINEAGE_CANVAS_ASPECT,
 };
 
 /**
@@ -55,5 +65,6 @@ export function readableLineageDagreLr(
     ...READABLE_LINEAGE_DAGRE_LR,
     ...overrides,
     minSeparation: overrides.minSeparation ?? LINEAGE_MIN_SEPARATION,
+    fitAspect: overrides.fitAspect ?? LINEAGE_CANVAS_ASPECT,
   };
 }

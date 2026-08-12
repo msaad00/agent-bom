@@ -154,7 +154,13 @@ DOCKER_MCP_TOOLS = ROOT / "integrations" / "docker-mcp-registry" / "tools.json"
 # ---------------------------------------------------------------------------
 VERSION_SWEEP: list[tuple[str, re.Pattern[str], str]] = [
     ("sdks/*/pyproject.toml", re.compile(r'^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', re.M), "SDK package version"),
-    ("sdks/*/package.json", re.compile(r'\A\{(?:[^{}]|\n)*?"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "SDK package version"),
+    # `\A\{` plus a brace-free run keeps this on the TOP-LEVEL "version" — once a
+    # nested object opens, `[^{}]` can no longer advance, so a dependency's
+    # version is never picked up. The run must NOT be written `(?:[^{}]|\n)*?`:
+    # a negated class already matches newline in Python, so the alternation gives
+    # the engine two ways to consume the same character and backtracking becomes
+    # exponential (CodeQL ReDoS, HIGH). We ship a scanner that flags this shape.
+    ("sdks/*/package.json", re.compile(r'\A\{[^{}]*?"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "SDK package version"),
     ("deploy/docker-compose*.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)"), "compose image tag"),
     ("deploy/k8s/*.yaml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)"), "k8s image tag"),
     ("deploy/docker/Dockerfile*", re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M), "Dockerfile ARG VERSION"),

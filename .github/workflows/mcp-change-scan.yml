@@ -25,6 +25,12 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The default shallow clone fetches one commit and no base ref, so the
+          # diff below could never resolve. Every other workflow that diffs
+          # against a base already sets this; this one was the outlier, and the
+          # old `git diff … || true` shape hid the failure as "nothing changed".
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-python
         with:
@@ -38,6 +44,8 @@ jobs:
         id: scan
         env:
           PR_NUMBER: "${{ github.event.pull_request.number }}"
+          BASE_SHA: "${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
         run: |
           set +e
 
@@ -45,8 +53,10 @@ jobs:
           # into one `|| true` pipeline made "git diff failed" (missing base ref
           # after a shallow fetch) indistinguishable from "nothing matched", so a
           # PR that did change MCP configs skipped this security scan silently.
-          if ! DIFF=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD"); then
-            echo "::error::could not diff against origin/${{ github.base_ref }} — refusing to report 'no MCP config changes' from a failed diff"
+          # Diffing the two PR SHAs — the same pattern ci.yml's path classifier
+          # uses — avoids depending on a remote branch ref being present.
+          if ! DIFF=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA"); then
+            echo "::error::could not diff $BASE_SHA..$HEAD_SHA — refusing to report 'no MCP config changes' from a failed diff"
             exit 1
           fi
           # Only the filter may legitimately match nothing.
@@ -72,8 +82,12 @@ jobs:
           echo "### Security Scan Results" >> scan-report.md
           echo "" >> scan-report.md
 
-          # Run agent-bom check on each config
-          VULN_COUNT=0
+          # Run agent-bom check on each config. A scanner that crashes must not
+          # look like a scanner that found nothing: the old `|| true` wrote the
+          # traceback into the report and reported success. Failures are counted
+          # and surfaced at the end.
+          SCANNED=0
+          FAILED=0
           for f in $CHANGED; do
             if [ -f "$f" ]; then
               echo "Scanning $f..."
@@ -81,19 +95,39 @@ jobs:
               echo "<summary><code>$f</code></summary>" >> scan-report.md
               echo "" >> scan-report.md
               echo '```' >> scan-report.md
-              uv run agent-bom agents --project "$(dirname "$f")" --format json 2>&1 | head -100 >> scan-report.md || true
+              scan_output="$(uv run agent-bom agents --project "$(dirname "$f")" --format json 2>&1)"
+              scan_status=$?
+              printf '%s\n' "$scan_output" | head -100 >> scan-report.md
               echo '```' >> scan-report.md
+              if [ "$scan_status" -ne 0 ]; then
+                FAILED=$((FAILED + 1))
+                echo "::error::agent-bom agents failed on ${f} (exit ${scan_status})"
+                echo "" >> scan-report.md
+                echo "> **Scan failed for \`$f\` (exit ${scan_status})** — results above are incomplete." >> scan-report.md
+              else
+                SCANNED=$((SCANNED + 1))
+              fi
               echo "</details>" >> scan-report.md
               echo "" >> scan-report.md
             fi
           done
+          echo "Scanned ${SCANNED} config(s); ${FAILED} failed."
 
           echo "" >> scan-report.md
           echo "---" >> scan-report.md
           echo "*Scanned by [agent-bom](https://github.com/msaad00/agent-bom) — AI supply chain and infrastructure security scanner*" >> scan-report.md
 
+          # Fail AFTER the report is complete so the PR comment still explains
+          # what happened. A security scan that could not run is not a pass.
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::${FAILED} MCP config scan(s) failed — not reporting this PR as scanned"
+            exit 1
+          fi
+
+      # `always()` so a failed scan still posts the report explaining itself;
+      # the job stays red either way.
       - name: Comment on PR
-        if: steps.scan.outputs.has_changes == 'true'
+        if: always() && steps.scan.outputs.has_changes == 'true'
         env:
           GH_TOKEN: "${{ github.token }}"
           PR_NUMBER: "${{ github.event.pull_request.number }}"

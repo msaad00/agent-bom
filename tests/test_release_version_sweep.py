@@ -10,8 +10,10 @@ so these tests pin that it stays structural and fails closed.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -69,6 +71,51 @@ class TestTheSweepIsStructural:
     def test_sdk_packages_are_covered_by_a_glob(self):
         globs = [glob for glob, _p, _l in crc.VERSION_SWEEP]
         assert any(glob.startswith("sdks/") for glob in globs)
+
+
+class TestPackageJsonPatternIsSafeAndScoped:
+    """The npm pattern must find the top-level version and nothing else — fast.
+
+    It originally read `(?:[^{}]|\\n)*?`. A negated character class already
+    matches newline in Python, so that alternation let the engine consume one
+    character two ways and backtracking went exponential (CodeQL ReDoS, HIGH).
+    """
+
+    @staticmethod
+    def _pattern():
+        return dict((glob, pattern) for glob, pattern, _label in crc.VERSION_SWEEP)["sdks/*/package.json"]
+
+    def test_top_level_version_is_matched(self):
+        package = '{\n  "name": "@agent-bom/client",\n  "version": "1.2.3"\n}\n'
+        assert {m.group(1) for m in self._pattern().finditer(package)} == {"1.2.3"}
+
+    def test_nested_dependency_version_is_not_matched(self):
+        """A dependency's version must never be mistaken for the package's own."""
+        package = '{\n  "name": "x",\n  "dependencies": {\n    "left-pad": "9.9.9",\n    "dep": { "version": "8.8.8" }\n  }\n}\n'
+        assert self._pattern().findall(package) == []
+
+    def test_nested_version_after_a_closed_object_is_not_matched(self):
+        """Once any brace appears, the brace-free run can no longer reach past it."""
+        package = '{\n  "engines": { "node": ">=20" },\n  "version": "7.7.7"\n}\n'
+        assert self._pattern().findall(package) == []
+
+    def test_real_sdk_manifests_match_their_declared_version(self):
+        for manifest in sorted((ROOT / "sdks").glob("*/package.json")):
+            text = manifest.read_text(encoding="utf-8")
+            declared = json.loads(text)["version"]
+            assert {m.group(1) for m in self._pattern().finditer(text)} == {declared}, manifest
+
+    def test_pathological_input_completes_promptly(self):
+        """A brace followed by many newlines and no version must not blow up."""
+        payload = "{" + "\n" * 4000
+        start = time.perf_counter()
+        assert self._pattern().search(payload) is None
+        assert time.perf_counter() - start < 1.0
+
+    def test_no_sweep_pattern_repeats_a_negated_class_alternated_with_newline(self):
+        """Pin the whole class, not just the one instance that was reported."""
+        for glob, pattern, _label in crc.VERSION_SWEEP:
+            assert not re.search(r"\(\?:\[\^[^\]]*\]\|\\n\)", pattern.pattern), glob
 
 
 class TestIndependentVersionsAreDeclared:

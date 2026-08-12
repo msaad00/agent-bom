@@ -1481,6 +1481,19 @@ async function installRoutes(page) {
       return false;
     }
   }, (route) => fulfill(route, contextGraph()));
+  // `/remediation` reads the dedicated plan endpoint rather than pulling the
+  // whole scan job for one field. Without this the page falls through to the
+  // live API, which has no such job, and the capture fails on missing content.
+  await page.route((url) => {
+    try {
+      return new URL(url).pathname === `/v1/scan/${SCAN_ID}/remediation`;
+    } catch {
+      return false;
+    }
+  }, (route) => {
+    const plan = scanJob().result.remediation_plan;
+    return fulfill(route, { job_id: SCAN_ID, remediation_plan: plan, total: plan.length });
+  });
   await page.route((url) => {
     try {
       return new URL(url).pathname === `/v1/scan/${SCAN_ID}`;

@@ -54,7 +54,7 @@ def _render_story(story: EnterpriseDemoStory) -> str:
             "",
             *_render_chain(story),
             "Next: agent-bom serve --demo-estate --allow-insecure-no-auth",
-            "Then open: http://127.0.0.1:8000/demo-estate",
+            "Then open: http://127.0.0.1:8422/demo-estate",
         ]
     )
 

@@ -6,7 +6,9 @@ import type { Edge, Node } from "@xyflow/react";
 import { Activity, GitBranch, Layers3, Network, ShieldAlert, Sparkles } from "lucide-react";
 
 import { GraphLegend } from "@/components/graph-chrome";
+import { GraphTextAlternative } from "@/components/graph-text-alternative";
 import type { LineageNodeData } from "@/components/lineage-nodes";
+import { useGraphCanvasPalette } from "@/lib/graph-canvas-theme";
 import type { LegendItem } from "@/lib/graph-utils";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import type { UnifiedGraphFlowFilters } from "@/lib/unified-graph-flow";
@@ -55,9 +57,9 @@ function StatPill({
 }) {
   const toneClass = {
     zinc: "border-[var(--border-subtle)] bg-[var(--background)]/70 text-[var(--text-secondary)]",
-    red: "border-red-500/30 bg-red-950/25 text-red-100",
-    amber: "border-amber-500/30 bg-amber-950/25 text-amber-100",
-    emerald: "border-emerald-500/30 bg-emerald-950/25 text-emerald-100",
+    red: "border-red-500/30 bg-red-500/10 dark:bg-red-950/25 text-red-800 dark:text-red-100",
+    amber: "border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/25 text-amber-800 dark:text-amber-100",
+    emerald: "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-100",
   }[tone];
 
   return (
@@ -97,6 +99,7 @@ export function SigmaGraphOverview({
   onNodeSelect,
 }: SigmaGraphOverviewProps) {
   const captureMode = useCaptureMode();
+  const palette = useGraphCanvasPalette();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
@@ -135,13 +138,13 @@ export function SigmaGraphOverview({
           allowInvalidContainer: true,
           autoCenter: true,
           autoRescale: true,
-          defaultEdgeColor: "#52525b",
-          defaultNodeColor: "#71717a",
+          defaultEdgeColor: palette.defaultEdge,
+          defaultNodeColor: palette.defaultNode,
           enableEdgeEvents: false,
           hideEdgesOnMove: true,
           hideLabelsOnMove: true,
           itemSizesReference: "positions",
-          labelColor: { color: "#e4e4e7" },
+          labelColor: { color: palette.label },
           labelDensity: 0.08,
           labelFont: "Inter, ui-sans-serif, system-ui, sans-serif",
           labelGridCellSize: 180,
@@ -159,13 +162,13 @@ export function SigmaGraphOverview({
             const dimmedBySelection = selectedNodeIdRef.current !== null && !selected;
             return {
               ...data,
-              color: selected ? "#f8fafc" : data.color,
+              color: selected ? palette.selected : data.color,
               forceLabel: selected || data.forceLabel,
               hidden: data.hidden,
               highlighted: selected || data.highlighted,
               size: selected ? data.size * 1.65 : data.size,
               zIndex: selected ? 4 : data.zIndex,
-              ...(dimmedBySelection ? { color: "#3f3f46" } : {}),
+              ...(dimmedBySelection ? { color: palette.dimmed } : {}),
             };
           },
           edgeReducer: (_edge, data) => {
@@ -175,7 +178,7 @@ export function SigmaGraphOverview({
               : false;
             return {
               ...data,
-              color: selectedEdge ? data.color : selected ? "#27272a" : data.color,
+              color: selectedEdge ? data.color : selected ? palette.dimmed : data.color,
               hidden: data.hidden,
               size: selectedEdge ? data.size * 2.3 : data.size,
               zIndex: selectedEdge ? 3 : data.zIndex,
@@ -207,7 +210,7 @@ export function SigmaGraphOverview({
       rendererRef.current = null;
       container.replaceChildren();
     };
-  }, [model]);
+  }, [model, palette]);
 
   return (
     <div
@@ -234,7 +237,7 @@ export function SigmaGraphOverview({
             {model.overview.edges.length.toLocaleString()}/{model.overview.sourceEdgeCount.toLocaleString()} edges.
           </span>
           {isBudgeted && (
-            <span className="text-amber-300">
+            <span className="text-amber-700 dark:text-amber-300">
               Lower-signal items are omitted from this overview; use search, filters, or drill-in for exact detail.
             </span>
           )}
@@ -251,15 +254,23 @@ export function SigmaGraphOverview({
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 bg-[#050505]">
+      <div className="relative min-h-0 flex-1 bg-[var(--background)]">
         <div
           ref={containerRef}
           className="h-full min-h-[58vh] w-full"
+          role="img"
           aria-label="WebGL security graph overview"
+          aria-describedby="sigma-graph-overview-text"
           data-testid="sigma-graph-overview-canvas"
         />
+        <GraphTextAlternative
+          id="sigma-graph-overview-text"
+          renderer="WebGL graph overview"
+          model={model.overview}
+          summary={model.summary}
+        />
         {renderError && (
-          <div className="absolute inset-4 flex items-center justify-center rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-100">
+          <div className="absolute inset-4 flex items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-100">
             WebGL renderer unavailable: {renderError}
           </div>
         )}

@@ -51,6 +51,7 @@ jobs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
       alpine_full: ${{ steps.classify.outputs.alpine_full }}
+      compose: ${{ steps.classify.outputs.compose }}
       docs: ${{ steps.classify.outputs.docs }}
       docs_only: ${{ steps.classify.outputs.docs_only }}
       endpoint: ${{ steps.classify.outputs.endpoint }}
@@ -81,6 +82,7 @@ jobs:
           action=false
           alpine=false
           alpine_full=false
+          compose=false
           docs=false
           endpoint=false
           helm=false
@@ -94,6 +96,11 @@ jobs:
           ui=false
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
+          fi
+          # Compose contract: every shipped compose file, the bootstrap SQL and
+          # secrets they mount, the Dockerfiles they build, and the gate itself.
+          if printf '%s\n' "$changed" | grep -Eq '^(deploy/docker-compose|deploy/[^/]+/[^/]*/?docker-compose|deploy/supabase/|deploy/docker/|deploy/secrets/|examples/docker-compose|Dockerfile$|ui/Dockerfile$|scripts/check_compose_contract\.py$|tests/test_compose_)'; then
+            compose=true
           fi
           # Changes to this workflow must exercise the Alpine job itself;
           # otherwise checkout/bootstrap fixes can merge without ever running
@@ -121,7 +128,7 @@ jobs:
           # are deliberately excluded: no integration test drives the ASGI app
           # against real Postgres, so the job could not observe a regression
           # there and gating those hot files would cost time for no signal.
-          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/(postgres_|storage_schema\.py|connection_store\.py|connection_scheduler\.py|proxy_replay_store\.py)|src/agent_bom/cloud/([a-z_]*event_ingest|runtime_workload_evidence_store)\.py|src/agent_bom/ticketing/postgres_store\.py|tests/test_postgres_|deploy/supabase/postgres/)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/(postgres_|storage_schema\.py|connection_store\.py|connection_scheduler\.py|proxy_replay_store\.py)|src/agent_bom/api/hub_observations_partition\.py|src/agent_bom/cloud/([a-z_]*event_ingest|runtime_workload_evidence_store)\.py|src/agent_bom/ticketing/postgres_store\.py|tests/test_postgres_|deploy/supabase/postgres/|scripts/check_postgres_schema_parity\.py$)'; then
             postgres=true
           fi
           # Python test suite: skip only when a PR clearly cannot affect it
@@ -148,6 +155,7 @@ jobs:
             echo "action=${action}"
             echo "alpine=${alpine}"
             echo "alpine_full=${alpine_full}"
+            echo "compose=${compose}"
             echo "docs=${docs}"
             echo "endpoint=${endpoint}"
             echo "helm=${helm}"
@@ -161,6 +169,7 @@ jobs:
             echo "- GitHub Action dogfood required: \`${action}\`"
             echo "- Alpine/musl compatibility required: \`${alpine}\`"
             echo "- Alpine/musl full-suite required: \`${alpine_full}\`"
+            echo "- Compose contract validation required: \`${compose}\`"
             echo "- Docs strict build required: \`${docs}\`"
             echo "- Documentation-only fast path: \`${docs_only}\`"
             echo "- Endpoint packaging required: \`${endpoint}\`"
@@ -191,6 +200,15 @@ jobs:
 
       - name: Block Finder duplicate artifacts
         run: python scripts/check_duplicate_artifacts.py
+
+      # Deliberately NOT gated on docs_only. A stale advertised count IS a
+      # docs-only change, and a masked pipeline can be introduced by a workflow
+      # edit that touches nothing else. Both checks run in ~2s combined.
+      - name: CI pipefail policy — no shell pipeline may mask a failure
+        run: python scripts/check_ci_pipefail.py
+
+      - name: Published counts match the shipped build
+        run: python scripts/check_published_counts.py
 
       - name: Docker base-image policy
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
@@ -287,6 +305,12 @@ jobs:
 
       - name: OSV Scanner (all lockfiles)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
+        # `shell: bash` runs `bash --noprofile --norc -eo pipefail {0}`. Without
+        # pipefail every `osv-scanner ... | tee` below exited with tee's status,
+        # so the `|| { ... }` fixable-CVE branch was unreachable and this gate
+        # passed unconditionally on all three lockfiles. See
+        # scripts/check_ci_pipefail.py, which now blocks the whole class.
+        shell: bash
         run: |
           OSV_SCANNER_VERSION="v2.3.3"
           OSV_SCANNER_SHA256="777b4bb7ddd10bdcc8a1aa398d37d05e91e866e7586f9cff3fca2f72b8153033"
@@ -294,39 +318,32 @@ jobs:
             "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
           echo "${OSV_SCANNER_SHA256}  /tmp/osv-scanner" | sha256sum -c -
           install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
-          # Scan main lockfile (all pinned deps for every extra, including transitive)
-          # osv-scanner v2 syntax: scan --lockfile=<path>
-          # Scan main lockfile — pass if only unfixable CVEs remain (FIXED VERSION = --)
-          osv-scanner scan --config osv-scanner.toml --lockfile=uv.lock 2>&1 | tee /tmp/osv-uv.txt || {
-            FIXABLE=$(grep -E "^\|" /tmp/osv-uv.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
-            if [ -n "$FIXABLE" ]; then
-              echo "::error::osv-scanner found vulnerabilities with available fixes:"
-              echo "$FIXABLE"
-              exit 1
+
+          # Pass only when every remaining CVE is unfixable (FIXED VERSION = --).
+          # Status is captured explicitly rather than inferred from a pipeline so
+          # the branch cannot silently stop being taken again.
+          osv_gate() {
+            lockfile="$1"; label="$2"; report="$3"
+            status=0
+            osv-scanner scan --config osv-scanner.toml --lockfile="$lockfile" 2>&1 | tee "$report" || status=$?
+            if [ "$status" -eq 0 ]; then
+              return 0
             fi
-            echo "::warning::osv-scanner found only unfixable CVEs (no upstream fix) — passing"
+            fixable=$(grep -E "^\|" "$report" | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5 || true)
+            if [ -n "$fixable" ]; then
+              echo "::error::osv-scanner found ${label} vulnerabilities with available fixes:"
+              echo "$fixable"
+              return 1
+            fi
+            echo "::warning::osv-scanner found only unfixable ${label} CVEs (no upstream fix) — passing"
+            return 0
           }
-          # Scan dashboard deps
+
+          osv_gate uv.lock "uv.lock" /tmp/osv-uv.txt
+          osv_gate ui/package-lock.json "UI lockfile" /tmp/osv-ui.txt
+          osv_gate sdks/typescript/package-lock.json "TypeScript SDK lockfile" /tmp/osv-sdk.txt
+          # Scan dashboard deps — no unfixable-CVE carve-out, any finding fails.
           osv-scanner scan --config osv-scanner.toml --lockfile=dashboard/requirements.txt
-          # Scan UI and SDK npm lockfiles with the same OSV gate as uv.lock
-          osv-scanner scan --config osv-scanner.toml --lockfile=ui/package-lock.json 2>&1 | tee /tmp/osv-ui.txt || {
-            FIXABLE=$(grep -E "^\|" /tmp/osv-ui.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
-            if [ -n "$FIXABLE" ]; then
-              echo "::error::osv-scanner found UI lockfile vulnerabilities with available fixes:"
-              echo "$FIXABLE"
-              exit 1
-            fi
-            echo "::warning::osv-scanner found only unfixable UI lockfile CVEs (no upstream fix) — passing"
-          }
-          osv-scanner scan --config osv-scanner.toml --lockfile=sdks/typescript/package-lock.json 2>&1 | tee /tmp/osv-sdk.txt || {
-            FIXABLE=$(grep -E "^\|" /tmp/osv-sdk.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
-            if [ -n "$FIXABLE" ]; then
-              echo "::error::osv-scanner found TypeScript SDK lockfile vulnerabilities with available fixes:"
-              echo "$FIXABLE"
-              exit 1
-            fi
-            echo "::warning::osv-scanner found only unfixable TypeScript SDK lockfile CVEs (no upstream fix) — passing"
-          }
 
       - name: Filesystem vulnerability scan (agent-bom — dogfood)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
@@ -375,15 +392,26 @@ jobs:
 
       - name: JavaScript supply-chain guard
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
+        shell: bash
         run: |
           python scripts/check_js_supply_chain.py
           cd sdks/typescript
           # The preceding SDK audit step installed this exact lockfile. Reuse
           # that tree instead of paying for a second npm ci on every run.
           npm run build
-          if find dist -name '*.map' -print -quit | grep -q .; then
+          # `find dist ... | grep -q .` reported "clean" whenever `dist` was
+          # missing, because grep's exit 1 was indistinguishable from find's
+          # failure. Assert the build output exists before concluding it is
+          # source-map free — a guard that cannot observe its subject is not a
+          # guard.
+          if [ ! -d dist ]; then
+            echo "::error::TypeScript SDK build produced no dist/ directory"
+            exit 1
+          fi
+          maps=$(find dist -name '*.map' -print)
+          if [ -n "$maps" ]; then
             echo "::error::TypeScript SDK build emitted source maps"
-            find dist -name '*.map' -print
+            echo "$maps"
             exit 1
           fi
 
@@ -660,6 +688,42 @@ jobs:
             echo "::error::NEXT_EXPORT=1 build did not produce ui/out/index.html"
             exit 1
           }
+
+  compose-contract:
+    name: Compose Contract Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    # Path-filtered: this only has something to say when a compose file, the
+    # SQL/secrets it mounts, or a Dockerfile it builds actually changes.
+    if: >-
+      !cancelled() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.compose == 'true'
+      )
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Nothing in CI has ever run `docker compose config` against these files,
+      # while docs/DEPLOY_PLATFORM.md told operators the stack passes it. The
+      # gate also asserts the RENDERED graph, because "exited 0" is not a test.
+      - name: Validate every shipped compose file and overlay combination
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/check_compose_contract.py
 
   helm-profiles:
     name: Helm Profile Validate
@@ -1144,6 +1208,15 @@ jobs:
           SQL
           PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom \
             -v ON_ERROR_STOP=1 -f deploy/supabase/postgres/init.sql
+          # The Docker entrypoint mounts BOTH 01-init.sql and 02-runtime-schema.sql
+          # (deploy/docker-compose.platform.yml). Replaying only the first was not
+          # the bootstrap any deployment performs, and it left this path without
+          # hub_findings_current_observations — so the partition migration found
+          # nothing to convert and the two paths ended at the same Alembic head
+          # with materially different schemas. Only the new schema-parity check
+          # below could see that; the head comparison could not.
+          PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom \
+            -v ON_ERROR_STOP=1 -f deploy/supabase/postgres/runtime-schema.sql
           export ALEMBIC_DATABASE_URL='postgresql+psycopg://agentbom_psql_owner:psqlpass@127.0.0.1:5432/agent_bom'
           uv run alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
           uv run alembic -c deploy/supabase/postgres/alembic.ini upgrade head
@@ -1151,6 +1224,22 @@ jobs:
           test "$actual_head" = "$expected_head"
           test -z "$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc "SELECT current_setting('init.app_password', true)")"
           test "$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")" = "f"
+
+      - name: Postgres schema parity — both bootstrap paths must render one schema
+        # Matching `alembic_version` proves the two paths RAN the same revisions,
+        # not that they PRODUCED the same schema. The convention here is that a
+        # new column lands in a migration and is back-added to init.sql; miss the
+        # second edit and fresh installs ship a different database under an
+        # identical head. Every other guard against that is a regex over SQL text
+        # — this diffs the two live databases the job already built.
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/check_postgres_schema_parity.py \
+            --migration-url 'postgresql://agentbom_migration_owner:migrationpass@127.0.0.1:5432/agentbom_migration' \
+            --bootstrap-url 'postgresql://agentbom_psql_owner:psqlpass@127.0.0.1:5432/agent_bom' \
+            --require-extension pg_trgm \
+            --require-extension pgcrypto
 
       - name: Provision non-superuser application role
         run: |

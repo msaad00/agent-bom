@@ -70,6 +70,7 @@ jobs:
           echo "After the repository is registered with the official MCP Registry, set repository variable MCP_REGISTRY_PUBLISH_ENABLED=true or run this workflow manually with publish=true."
 
       - name: Get GitHub OIDC token
+        shell: bash
         id: oidc
         if: steps.mode.outputs.publish == 'true'
         run: |

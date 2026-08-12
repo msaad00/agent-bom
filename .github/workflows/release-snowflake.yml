@@ -68,6 +68,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build reproducible Native App artifact
+        shell: bash
         run: |
           mkdir -p dist
           python scripts/release/snowflake_native_app.py package \
@@ -111,6 +112,7 @@ jobs:
           docker image inspect "$LOCAL_IMAGE" --format '{{.Id}}'
 
       - name: Export image for the protected publish job
+        shell: bash
         env:
           LOCAL_IMAGE: agent-bom-spcs/${{ matrix.image.name }}:${{ matrix.image.tag }}
         run: |
@@ -199,6 +201,7 @@ jobs:
             --private-key-file "$key" --role "$SNOWFLAKE_ROLE"
 
       - name: Push all version-pinned SPCS images
+        shell: bash
         env:
           PACKAGE_VERSION: ${{ needs.package.outputs.package_version }}
           SNOWFLAKE_IMAGE_REPOSITORY_URL: ${{ vars.SNOWFLAKE_IMAGE_REPOSITORY_URL }}

@@ -57,6 +57,12 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
         r"\g<1>{v}\g<2>",
     ),
     ("uv.lock", re.compile(r'(\[\[package\]\]\nname = "agent-bom"\nversion = ")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    # `agent-bom-sdk` is a thin alias that re-exports the packaged control-plane
+    # client, so it ships the platform's version. It was bumped by hand once and
+    # then forgotten, drifting to 0.92.0 while the platform reached 0.100.0.
+    # scripts/check_release_consistency.py now sweeps for this structurally; this
+    # entry is the writer half, so the sweep has nothing to catch.
+    ("sdks/python/pyproject.toml", re.compile(r'^(version\s*=\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
 ]
 
 OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [

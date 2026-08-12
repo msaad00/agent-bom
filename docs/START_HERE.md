@@ -107,7 +107,7 @@ agent-bom mcp server                      # stdio MCP server: 78 tools, 6 resour
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),
   [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md)
-- Tool catalog (77 tools; sensitive writes remain admin-gated): see the
+- Tool catalog (78 tools; sensitive writes remain admin-gated): see the
   `Tools (77)` block in
   [`../src/agent_bom/mcp_server.py`](../src/agent_bom/mcp_server.py)
 - Typed control-plane clients: [`PYTHON_API.md`](PYTHON_API.md),

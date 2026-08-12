@@ -11,10 +11,10 @@ admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
 <details>
-<summary>Complete current catalog (77 tools)</summary>
+<summary>Complete current catalog (78 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
-`intel_daily_brief`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
+`intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
 `policy_check`, `registry_lookup`, `generate_sbom`, `compliance`, `remediate`,
 `skill_scan`, `skill_verify`, `skill_trust`, `verify`, `inventory_summary`,
 `inventory_list`, `inventory_asset`, `where`, `tool_risk_assessment`,

@@ -375,6 +375,121 @@ test("large graph overview renders above threshold", async ({ page }, testInfo: 
   );
 });
 
+/**
+ * Both overview renderers used to paint a fixed `#050505` stage with near-white
+ * labels, so on a light page the biggest element on screen was a black
+ * rectangle. Canvas and WebGL cannot use CSS classes, so the only way to know
+ * they track the theme is to read what they actually painted.
+ */
+for (const theme of ["dark", "light"] as const) {
+  test(`large graph overview paints the ${theme} page background`, async ({ page }, testInfo: TestInfo) => {
+    test.setTimeout(60_000);
+    await routeLargeGraphPage(page);
+    await page.addInitScript((selected) => {
+      window.localStorage.setItem("agent-bom-theme", selected);
+    }, theme);
+
+    await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page.getByTestId("large-graph-overview")).toBeVisible();
+    await expectCanvasHasPixels(page);
+
+    const painted = await page
+      .getByTestId("large-graph-overview-canvas")
+      .evaluate((element) => {
+        const canvas = element as HTMLCanvasElement;
+        const viewportHeight = window.innerHeight;
+        const pixel = canvas
+          .getContext("2d")!
+          .getImageData(2, 2, 1, 1).data;
+        const style = getComputedStyle(document.body);
+        return {
+          stage: [pixel[0], pixel[1], pixel[2]],
+          background: style.getPropertyValue("--background").trim(),
+          height: canvas.clientHeight,
+          viewportHeight,
+        };
+      });
+
+    // Writing `canvas.height` from `clientHeight` used to feed the element's
+    // own intrinsic size, so every draw grew it: 21,604px on this fixture,
+    // with the user looking at an empty slice of stage.
+    expect(painted.height).toBeLessThan(painted.viewportHeight * 1.5);
+
+    // The stage is the page background, so its luminance has to sit on the
+    // correct side of mid-grey for the theme in play.
+    const luminance =
+      (painted.stage[0]! + painted.stage[1]! + painted.stage[2]!) / 3;
+    if (theme === "light") expect(luminance).toBeGreaterThan(160);
+    else expect(luminance).toBeLessThan(96);
+
+    await captureRenderedRegion(
+      page,
+      page.getByTestId("large-graph-overview"),
+      testInfo.outputPath(`large-graph-overview-${theme}.png`),
+    );
+  });
+
+  test(`webgl overview stage follows the ${theme} theme`, async ({ page }, testInfo: TestInfo) => {
+    test.setTimeout(60_000);
+    await routeLargeGraphPage(page);
+    await page.addInitScript((selected) => {
+      window.localStorage.setItem("agent-bom-theme", selected);
+    }, theme);
+
+    await page.goto(
+      "/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package",
+      { waitUntil: "domcontentloaded" },
+    );
+    const sigma = page.getByTestId("sigma-graph-overview");
+    await expect(sigma).toBeVisible({ timeout: 30_000 });
+    await expectSigmaCanvases(page);
+
+    // Sigma's own canvases are transparent; the stage is the element behind
+    // them, which used to be a hardcoded `bg-[#050505]`.
+    const stage = await page
+      .getByTestId("sigma-graph-overview-canvas")
+      .evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor);
+    const channels = stage.match(/\d+/g)!.slice(0, 3).map(Number);
+    const luminance = (channels[0]! + channels[1]! + channels[2]!) / 3;
+    if (theme === "light") expect(luminance).toBeGreaterThan(160);
+    else expect(luminance).toBeLessThan(96);
+
+    await captureRenderedRegion(page, sigma, testInfo.outputPath(`sigma-webgl-${theme}.png`));
+  });
+}
+
+/**
+ * The canvas renderers hand assistive technology nothing on their own. Both
+ * carry a text equivalent naming every node and relationship they draw.
+ */
+test("canvas overview exposes its nodes and edges as text", async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeLargeGraphPage(page);
+
+  await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByTestId("large-graph-overview")).toBeVisible();
+
+  const canvas = page.getByTestId("large-graph-overview-canvas");
+  await expect(canvas).toHaveAttribute("role", "img");
+  await expect(canvas).toHaveAttribute("aria-describedby", "large-graph-overview-text");
+
+  const equivalent = page.getByRole("region", {
+    name: "Graph contents, text equivalent",
+    includeHidden: true,
+  });
+  await expect(equivalent).toBeAttached();
+  await expect(equivalent.getByRole("table", { includeHidden: true })).toBeAttached();
+  // Real rows, not an empty shell: the fixture draws well over a thousand nodes.
+  const rows = equivalent.locator("tbody tr");
+  expect(await rows.count()).toBeGreaterThan(10);
+  await expect(equivalent).toContainText(/Listing \d+ of [\d,]+ drawn nodes/);
+  await expect(equivalent).toContainText(/Listing \d+ of [\d,]+ drawn relationships/);
+});
+
 test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {
   test.setTimeout(60_000);
   await routeLargeGraphPage(page);
@@ -385,7 +500,8 @@ test("sigma webgl overview renders when explicitly requested", async ({ page }, 
 
   const sigma = page.getByTestId("sigma-graph-overview");
   await expect(sigma).toBeVisible({ timeout: 30_000 });
-  await expect(sigma.getByText("WebGL graph overview")).toBeVisible();
+  // Exact: the surface's screen-reader text equivalent names the renderer too.
+  await expect(sigma.getByText("WebGL graph overview", { exact: true })).toBeVisible();
   await expect(sigma.getByText(/Sigma\.js renderer for broad estate scans/)).toBeVisible();
   await expectSigmaCanvases(page);
   await captureRenderedRegion(page, sigma, testInfo.outputPath("sigma-webgl-overview.png"));

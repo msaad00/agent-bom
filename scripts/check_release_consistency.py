@@ -135,6 +135,39 @@ MCP_COUNT_DOCS: list[Path] = [
 ]
 DOCKER_MCP_TOOLS = ROOT / "integrations" / "docker-mcp-registry" / "tools.json"
 
+# ---------------------------------------------------------------------------
+# Derived version sweep
+#
+# Everything above this line is a hand-maintained list, and so is
+# ``scripts/bump-version.py``. A version-bearing artifact that is in neither
+# list is written by nobody and checked by nobody — which is exactly how
+# ``sdks/python/pyproject.toml`` sat at 0.92.0 while the platform shipped
+# 0.100.0. It had been bumped by hand once, then forgotten.
+#
+# The sweep below finds those artifacts by SHAPE instead of by name: any file
+# matching a structural glob is read, any self-referential version it carries is
+# extracted, and a mismatch fails. A newly added SDK, compose profile, or
+# deploy manifest is therefore covered the moment it exists.
+#
+# A genuinely independent version must be declared here, with a reason. Silence
+# is not an option: the sweep fails closed.
+# ---------------------------------------------------------------------------
+VERSION_SWEEP: list[tuple[str, re.Pattern[str], str]] = [
+    ("sdks/*/pyproject.toml", re.compile(r'^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', re.M), "SDK package version"),
+    ("sdks/*/package.json", re.compile(r'\A\{(?:[^{}]|\n)*?"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "SDK package version"),
+    ("deploy/docker-compose*.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)"), "compose image tag"),
+    ("deploy/k8s/*.yaml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)"), "k8s image tag"),
+    ("deploy/docker/Dockerfile*", re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M), "Dockerfile ARG VERSION"),
+    ("integrations/*/server.json", re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "integration manifest version"),
+]
+
+# Artifacts that legitimately carry their own version line, each with the reason
+# it does not track the platform release.
+INDEPENDENTLY_VERSIONED: dict[str, str] = {
+    "sdks/typescript/package.json": "@agent-bom/runtime is published to npm on its own 0.x line, independent of the platform tag",
+    "sdks/typescript-client/package.json": "@agent-bom/client is published to npm on its own 0.x line, independent of the platform tag",
+}
+
 
 def _load_version() -> str:
     text = PYPROJECT.read_text()
@@ -290,6 +323,40 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
             _fail(f"docs/images/product-screenshots.json references missing image: docs/images/{rel_path}")
         if entry.get("visible_version") != expected_version:
             _fail(f"docs/images/{rel_path} manifest visible_version is stale: {entry.get('visible_version')!r} != {expected_version}")
+
+
+def sweep_version_drift(expected: str) -> list[str]:
+    """Return every self-referential version that disagrees with the release.
+
+    Discovery is structural, so an artifact nobody remembered to register still
+    gets checked. Declared-independent files are skipped by exact relative path
+    — a glob there would re-open the hole this closes.
+    """
+    problems: list[str] = []
+    for glob, pattern, label in VERSION_SWEEP:
+        for path in sorted(ROOT.glob(glob)):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(ROOT).as_posix()
+            if relative in INDEPENDENTLY_VERSIONED:
+                continue
+            found = {match.group(1) for match in pattern.finditer(path.read_text(encoding="utf-8"))}
+            stale = sorted(found - {expected})
+            if stale:
+                problems.append(f"{relative} has stale {label}: {stale} != {expected}")
+    return problems
+
+
+def _assert_no_unmanaged_version_drift(version: str) -> None:
+    problems = sweep_version_drift(version)
+    if problems:
+        detail = "\n  - ".join(problems)
+        _fail(
+            "version sweep found artifacts that do not track the release:\n  - "
+            f"{detail}\n"
+            "Add the file to scripts/bump-version.py so it is bumped automatically, "
+            "or declare it in INDEPENDENTLY_VERSIONED with the reason it differs."
+        )
 
 
 def main() -> int:
@@ -449,6 +516,7 @@ def main() -> int:
             _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {version}")
     for path, version_pattern, label in MANAGED_VERSION_REFS:
         _assert_versions(path, version_pattern, version, label)
+    _assert_no_unmanaged_version_drift(version)
     ui_lock = json.loads((ROOT / "ui" / "package-lock.json").read_text())
     ui_lock_versions = {ui_lock.get("version"), ui_lock.get("packages", {}).get("", {}).get("version")}
     if ui_lock_versions != {version}:

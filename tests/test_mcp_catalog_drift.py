@@ -39,6 +39,34 @@ def test_live_mcp_server_lists_same_tool_names_as_server_card() -> None:
     assert live_names == server_card_tool_names()
 
 
+def test_live_mcp_server_lists_same_resource_uris_as_server_card() -> None:
+    """Live resources must match the card — nothing checked this before.
+
+    The HTTP server-card route replaces ``card["tools"]`` with the live list but
+    serves ``card["resources"]`` and ``card["prompts"]`` verbatim from the static
+    lists. A resource registered but absent from the card (or advertised but
+    never registered) was therefore invisible to every test and every workflow.
+    """
+    pytest.importorskip("mcp", reason="mcp SDK not installed")
+    from agent_bom.mcp_server import create_mcp_server
+    from agent_bom.mcp_server_metadata import _SERVER_CARD_RESOURCES
+
+    server = create_mcp_server()
+    live = {str(resource.uri) for resource in asyncio.run(server.list_resources())}
+    assert live == {str(resource["uri"]) for resource in _SERVER_CARD_RESOURCES}
+
+
+def test_live_mcp_server_lists_same_prompt_names_as_server_card() -> None:
+    """Live prompts must match the card — the other half of the same blind spot."""
+    pytest.importorskip("mcp", reason="mcp SDK not installed")
+    from agent_bom.mcp_server import create_mcp_server
+    from agent_bom.mcp_server_metadata import _SERVER_CARD_PROMPTS
+
+    server = create_mcp_server()
+    live = {prompt.name for prompt in asyncio.run(server.list_prompts())}
+    assert live == {str(prompt["name"]) for prompt in _SERVER_CARD_PROMPTS}
+
+
 def test_no_write_tool_is_labeled_read_only() -> None:
     """A tool whose capability class set includes WRITE must never advertise
     readOnlyHint=True — that mislabel tells a client the call is side-effect free

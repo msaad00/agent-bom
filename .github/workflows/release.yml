@@ -813,6 +813,7 @@ jobs:
           helm package /tmp/agent-bom-chart --destination dist/helm
 
       - name: Login to GHCR OCI registry
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: echo "${GH_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -953,6 +954,10 @@ jobs:
           npm audit --audit-level=high
 
       - name: OSV scanner (ui lockfile) — block release on fixable CVEs
+        # Without pipefail the `| tee` below swallowed osv-scanner's exit code,
+        # so this release blocker could never block anything. Same defect as the
+        # CI twin in ci.yml; both are now covered by scripts/check_ci_pipefail.py.
+        shell: bash
         run: |
           OSV_SCANNER_VERSION="v2.3.3"
           OSV_SCANNER_SHA256="777b4bb7ddd10bdcc8a1aa398d37d05e91e866e7586f9cff3fca2f72b8153033"
@@ -960,15 +965,17 @@ jobs:
             "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
           echo "${OSV_SCANNER_SHA256}  /tmp/osv-scanner" | sha256sum -c -
           install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
-          osv-scanner scan --config osv-scanner.toml --lockfile=ui/package-lock.json 2>&1 | tee /tmp/osv-ui-release.txt || {
-            FIXABLE=$(grep -E "^\|" /tmp/osv-ui-release.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
+          status=0
+          osv-scanner scan --config osv-scanner.toml --lockfile=ui/package-lock.json 2>&1 | tee /tmp/osv-ui-release.txt || status=$?
+          if [ "$status" -ne 0 ]; then
+            FIXABLE=$(grep -E "^\|" /tmp/osv-ui-release.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5 || true)
             if [ -n "$FIXABLE" ]; then
               echo "::error::osv-scanner found UI lockfile vulnerabilities with available fixes:"
               echo "$FIXABLE"
               exit 1
             fi
             echo "::warning::osv-scanner found only unfixable UI lockfile CVEs (no upstream fix) — passing"
-          }
+          fi
 
       - name: pip-audit (shipping Python deps) — block release on high/critical or fixable CVEs
         run: |
@@ -1310,6 +1317,7 @@ jobs:
           fi
 
       - name: Update floating major tag (v0)
+        shell: bash
         if: ${{ vars.AGENT_BOM_UPDATE_FLOATING_MAJOR_TAGS == '1' }}
         run: |
           MAJOR=$(echo "${{ github.ref_name }}" | grep -oP '^v\d+')

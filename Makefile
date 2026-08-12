@@ -57,6 +57,8 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 	@echo "→ graph proof fixtures";                 python scripts/check_graph_epic_proof.py
 	@echo "→ enterprise demo surfaces";             python scripts/check_enterprise_demo_surfaces.py
 	@echo "→ release/README consistency";           python scripts/check_release_consistency.py
+	@echo "→ published counts vs shipped build";    python scripts/check_published_counts.py
+	@echo "→ CI pipefail policy";                   python scripts/check_ci_pipefail.py
 	@echo "→ product metrics snapshot";             python scripts/product_metrics_snapshot.py --check
 	@echo "→ CVE matching accuracy";                python scripts/cve_matching_accuracy.py --check
 	@echo "→ env-var reference";                    python scripts/generate_env_var_reference.py --check

@@ -25,6 +25,7 @@ jobs:
       }}
     steps:
       - name: Resolve trusted release tag
+        shell: bash
         id: tag
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -89,6 +90,7 @@ jobs:
           fi
 
       - name: Post-deploy version check
+        shell: bash
         env:
           RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
           RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}

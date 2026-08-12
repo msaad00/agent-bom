@@ -34,14 +34,23 @@ jobs:
         run: uv tool install .  # PR checkout — a PyPI pin equal to the repo version breaks between bump and publish
 
       - name: Scan changed MCP configs
+        shell: bash
         id: scan
         env:
           PR_NUMBER: "${{ github.event.pull_request.number }}"
         run: |
           set +e
 
-          # Find which MCP config files changed in this PR
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '(\.mcp\.json|mcp\.json|docker-compose\.ya?ml|compose\.ya?ml)$' || true)
+          # Resolve the changed-file list BEFORE filtering it. Folding the two
+          # into one `|| true` pipeline made "git diff failed" (missing base ref
+          # after a shallow fetch) indistinguishable from "nothing matched", so a
+          # PR that did change MCP configs skipped this security scan silently.
+          if ! DIFF=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD"); then
+            echo "::error::could not diff against origin/${{ github.base_ref }} — refusing to report 'no MCP config changes' from a failed diff"
+            exit 1
+          fi
+          # Only the filter may legitimately match nothing.
+          CHANGED=$(printf '%s\n' "$DIFF" | grep -E '(\.mcp\.json|mcp\.json|docker-compose\.ya?ml|compose\.ya?ml)$' || true)
 
           if [ -z "$CHANGED" ]; then
             echo "No MCP config files changed"

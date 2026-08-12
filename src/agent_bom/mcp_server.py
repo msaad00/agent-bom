@@ -85,7 +85,7 @@ Tools (77):
     sync_ticket_status  — Refresh a filed ITSM ticket's status through the stored connector
 
 Resources (6):
-    registry://servers  — Browse the 1013-entry server security metadata registry
+    registry://servers  — Browse the 1081-entry server security metadata registry
     policy://template   — Default security policy template
     metrics://tools     — MCP tool execution metrics and limits
     schema://inventory-v1 — Canonical pushed-inventory schema contract

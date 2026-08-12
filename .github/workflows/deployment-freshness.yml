@@ -43,6 +43,7 @@ jobs:
           echo "Expected version: $VERSION"
 
       - name: Check Railway deployment
+        shell: bash
         id: railway
         continue-on-error: true
         env:
@@ -76,6 +77,7 @@ jobs:
           fi
 
       - name: Check Smithery catalog listing
+        shell: bash
         id: public
         continue-on-error: true
         env:
@@ -144,6 +146,7 @@ jobs:
           fi
 
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
+        shell: bash
         if: steps.railway.outputs.stale == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

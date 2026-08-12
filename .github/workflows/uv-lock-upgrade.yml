@@ -31,6 +31,7 @@ jobs:
         run: uv lock --upgrade
 
       - name: Check for changes
+        shell: bash
         id: diff
         run: |
           if git diff --quiet uv.lock; then

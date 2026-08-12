@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 from agent_bom import __version__
 from agent_bom.http_client import create_client, request_with_retry
@@ -22,6 +24,42 @@ from agent_bom.security import sanitize_error
 logger = logging.getLogger(__name__)
 
 _YDC_BASE_URL = "https://ydc-index.io"
+_YDC_ALLOWED_HOSTS = frozenset({"ydc-index.io", "api.ydc-index.io"})
+
+
+def _resolve_youcom_base_url(raw: str | None) -> str:
+    """Return a base URL safe to send ``YDC_API_KEY`` to.
+
+    The request carries the caller's API key, so the host it goes to is not a
+    free parameter. An override is honoured only when it stays on a You.com
+    origin over TLS, or points at loopback — the same posture
+    ``ai_enrich._url_is_loopback`` takes for ``OPENAI_API_BASE``, and the one
+    ``cloud/azure_graph.py`` takes for credentialed Graph pagination.
+    """
+    if not raw or not raw.strip():
+        return _YDC_BASE_URL
+
+    candidate = raw.strip().rstrip("/")
+    parsed = urlsplit(candidate)
+    hostname = (parsed.hostname or "").strip().lower().rstrip(".")
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        raise ValueError("YOUCOM_BASE_URL must be an http(s) URL")
+
+    is_loopback = hostname == "localhost" or hostname.endswith(".localhost")
+    if not is_loopback:
+        try:
+            is_loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            is_loopback = False
+
+    if is_loopback:
+        return candidate
+
+    if parsed.scheme != "https":
+        raise ValueError("YOUCOM_BASE_URL must use https for a non-loopback host")
+    if hostname not in _YDC_ALLOWED_HOSTS and not hostname.endswith(".ydc-index.io"):
+        raise ValueError(f"refusing to send YDC_API_KEY off-origin to {hostname}")
+    return candidate
 
 
 def _youcom_result_summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -42,11 +80,7 @@ def _youcom_result_summary(result: dict[str, Any]) -> dict[str, Any]:
 
     contents = result.get("contents")
     if isinstance(contents, dict):
-        summary["contents"] = {
-            key: contents[key]
-            for key in ("markdown", "html")
-            if contents.get(key)
-        }
+        summary["contents"] = {key: contents[key] for key in ("markdown", "html") if contents.get(key)}
 
     return summary
 
@@ -183,7 +217,7 @@ async def youcom_search_impl(
                 details={"environment_variable": "YDC_API_KEY"},
             )
 
-        base_url = (os.environ.get("YOUCOM_BASE_URL") or _YDC_BASE_URL).rstrip("/")
+        base_url = _resolve_youcom_base_url(os.environ.get("YOUCOM_BASE_URL"))
         params: dict[str, Any] = {
             "query": q,
             "count": max(1, min(int(count or 10), 100)),
@@ -227,14 +261,19 @@ async def youcom_search_impl(
                 details={
                     "upstream": "youcom_search",
                     "status_code": response.status_code,
-                    "response": (response.text or "")[:500],
+                    # Redacted before it reaches an MCP client: an upstream body
+                    # can echo the request, and the request carries the API key.
+                    "response": sanitize_error((response.text or "")[:500]),
                 },
             )
 
         payload = response.json()
         results = payload.get("results") if isinstance(payload, dict) else {}
-        web_results = results.get("web") if isinstance(results, dict) else []
-        news_results = results.get("news") if isinstance(results, dict) else []
+        # `or []` rather than a bare .get: You.com omits a section entirely when
+        # it has no hits, and iterating that None would surface as an internal
+        # error rather than an empty result set.
+        web_results = (results.get("web") or []) if isinstance(results, dict) else []
+        news_results = (results.get("news") or []) if isinstance(results, dict) else []
         metadata = payload.get("metadata") if isinstance(payload, dict) else {}
 
         compact = {

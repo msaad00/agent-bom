@@ -448,6 +448,87 @@ async def test_youcom_search_returns_compact_results(monkeypatch: pytest.MonkeyP
     assert body["results"]["news"][0]["title"] == "You.com News"
 
 
+@pytest.mark.parametrize(
+    "override",
+    [
+        "https://attacker.example",
+        "http://ydc-index.io",
+        "https://ydc-index.io.attacker.example",
+        "ftp://ydc-index.io",
+    ],
+)
+@pytest.mark.asyncio
+async def test_youcom_search_never_sends_the_key_off_origin(monkeypatch: pytest.MonkeyPatch, override: str) -> None:
+    """The request carries YDC_API_KEY, so its destination is not a free parameter."""
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    monkeypatch.setenv("YOUCOM_BASE_URL", override)
+
+    def _no_client(**_kwargs):  # noqa: ANN003
+        raise AssertionError(f"a request was attempted against {override}")
+
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.create_client", _no_client)
+
+    body = json.loads(await youcom_search_impl(query="agentic search"))
+
+    assert body["error"]["code"].endswith("VALIDATION_INVALID_ARGUMENT")
+
+
+@pytest.mark.asyncio
+async def test_youcom_search_allows_a_loopback_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loopback stays usable for local testing, matching ai_enrich's posture."""
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    monkeypatch.setenv("YOUCOM_BASE_URL", "http://127.0.0.1:8931")
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    seen: dict[str, str] = {}
+
+    async def _fake_request(_client, _method, url, **_kwargs):
+        seen["url"] = url
+        payload = {"results": {"web": [], "news": []}, "metadata": {}}
+        return SimpleNamespace(status_code=200, json=lambda: payload, text=json.dumps(payload))
+
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.create_client", lambda timeout=20.0: _Client())
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.request_with_retry", _fake_request)
+
+    body = json.loads(await youcom_search_impl(query="agentic search"))
+
+    assert body["schema_version"] == "youcom.search.v1"
+    assert seen["url"] == "http://127.0.0.1:8931/v1/search"
+
+
+@pytest.mark.asyncio
+async def test_youcom_search_defaults_to_the_youcom_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("YDC_API_KEY", "test-key")
+    monkeypatch.delenv("YOUCOM_BASE_URL", raising=False)
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    seen: dict[str, str] = {}
+
+    async def _fake_request(_client, _method, url, **_kwargs):
+        seen["url"] = url
+        payload = {"results": {"web": [], "news": []}, "metadata": {}}
+        return SimpleNamespace(status_code=200, json=lambda: payload, text=json.dumps(payload))
+
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.create_client", lambda timeout=20.0: _Client())
+    monkeypatch.setattr("agent_bom.mcp_tools.intel.request_with_retry", _fake_request)
+
+    await youcom_search_impl(query="agentic search")
+
+    assert seen["url"] == "https://ydc-index.io/v1/search"
+
+
 @pytest.mark.asyncio
 async def test_governed_raw_artifact_fetch_records_metadata(monkeypatch, tmp_path) -> None:  # noqa: ANN001
     source = next(source for source in list_intel_sources()["sources"] if source["source_id"] == "cisa_kev")

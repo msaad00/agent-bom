@@ -120,6 +120,52 @@
     ]
   },
   {
+    "name": "youcom_search",
+    "description": "Search You.com for current web/news context when YDC_API_KEY is configured.",
+    "arguments": [
+      {
+        "name": "query",
+        "type": "string",
+        "desc": "Free-text query for You.com web/news search"
+      },
+      {
+        "name": "count",
+        "type": "integer",
+        "desc": "Results per section, 1-100 (default 10)"
+      },
+      {
+        "name": "freshness",
+        "type": "string",
+        "desc": "Optional freshness filter: day, week, month, year, or YYYY-MM-DDtoYYYY-MM-DD"
+      },
+      {
+        "name": "country",
+        "type": "string",
+        "desc": "Optional two-letter country code, e.g. US"
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "desc": "Optional BCP 47 language code, e.g. en"
+      },
+      {
+        "name": "safesearch",
+        "type": "string",
+        "desc": "Optional safesearch level: off, moderate, strict"
+      },
+      {
+        "name": "livecrawl",
+        "type": "string",
+        "desc": "Optional livecrawl mode: web, news, or all"
+      },
+      {
+        "name": "crawl_timeout",
+        "type": "integer",
+        "desc": "Optional livecrawl timeout in seconds, 1-60"
+      }
+    ]
+  },
+  {
     "name": "blast_radius",
     "description": "Look up the blast radius of a specific CVE \u2014 shows which agents, credentials, and tools are affected.",
     "arguments": [

@@ -191,8 +191,10 @@ MCP server mode exposes 78 MCP tools, 6 resources, and 8 workflow prompts, all
 read-first: discovery and analysis never mutate a scanned target.
 
 Set `YDC_API_KEY` to enable the optional `youcom_search` MCP tool for live web
-and news context when you want current external intelligence alongside the
-local threat-intel database.
+and news context alongside the local threat-intel database. It is the only tool
+that sends your query to a third party, it is off unless the key is set, and the
+request is pinned to the You.com origin over TLS — so the key cannot be
+redirected to another host by configuration.
 
 The CLI, Docker, API, Helm chart, MCP server, gateway, and SDK are distribution
 surfaces of the same product. The Snowflake SPCS / Native App lane runs inside

@@ -29,6 +29,8 @@ run:
   env:
     - name: NVD_API_KEY
       description: NVD API key for higher rate limits on vulnerability enrichment (optional)
+    - name: YDC_API_KEY
+      description: You.com API key enabling the optional youcom_search tool (optional)
   allowHosts:
     - api.osv.dev:443
     - services.nvd.nist.gov:443
@@ -37,6 +39,8 @@ run:
     - registry.npmjs.org:443
     - pypi.org:443
     - proxy.golang.org:443
+    # Only reached by youcom_search, and only when YDC_API_KEY is set.
+    - ydc-index.io:443
 
 config:
   secrets:
@@ -44,3 +48,7 @@ config:
       env: NVD_API_KEY
       example: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
       description: "NVD API key — optional, increases rate limits for vulnerability enrichment"
+    - name: agent-bom.ydc_api_key
+      env: YDC_API_KEY
+      example: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      description: "You.com API key — optional, enables the youcom_search tool for live web/news context"

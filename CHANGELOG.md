@@ -9,6 +9,30 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A `min_severity` filter no longer deletes the graph it was meant to narrow.
+  Only findings carry a severity, so applying the floor to every node dropped
+  the agents, servers, packages, resources and identities the findings hang
+  off. One backend already exempted them on one code path; every other read
+  path — both `load_graph` implementations, four Postgres sites, the Neptune
+  adapter and the in-memory filter — did not, so the same estate answered
+  differently depending on which store replied. Drift incidents were also
+  missing from the in-memory rated-type list.
+- A graph node budget now bounds the read rather than the result on SQLite,
+  which previously loaded the whole snapshot before trimming it. At 200k nodes
+  under a 5,000-node budget: 270 MB peak and 22.9s before, 6.4 MB and 2.8s
+  after, returning the same nodes.
+- `GET /v1/graph/search` now rejects a deep `offset` past the documented cap,
+  as `/v1/graph` and `/v1/graph/agents` already did; both stores enforce it too.
+- `GET /v1/graph` documented an induced subgraph it has never returned. The
+  edge list deliberately reaches one hop past the node list — that is what keeps
+  a severity-ranked finding page attached to its assets — so the description is
+  corrected and `completeness.boundary_edges` now counts the crossing edges.
+- Unfiltered graph statistics are served from the snapshot row on Postgres
+  instead of re-aggregating every node on each page view, matching SQLite. At
+  100k nodes: 73.5ms to 30.2ms.
+
 ## [0.100.0] - 2026-08-11
 
 An output-honesty release. Every local gate was already green before this work

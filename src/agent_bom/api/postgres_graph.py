@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 from agent_bom.api.graph_store import (
     _DYNAMIC_RELATIONSHIP_VALUES,
-    MAX_NODE_PAGE_OFFSET,
+    _assert_offset_within_cap,
     _escape_like_query,
     _node_search_text,
     decode_graph_cursor,
@@ -33,6 +33,7 @@ from agent_bom.graph.completeness import (
     graph_completeness,
     impact_completeness,
 )
+from agent_bom.graph.severity_floor import severity_floor_sql
 from agent_bom.security import sanitize_text
 
 from .postgres_common import (
@@ -346,11 +347,15 @@ class PostgresGraphStore:
                     node_count INTEGER DEFAULT 0,
                     edge_count INTEGER DEFAULT 0,
                     risk_summary TEXT DEFAULT '{}',
+                    node_type_counts TEXT DEFAULT NULL,
                     analysis_status TEXT NOT NULL DEFAULT '{}',
                     PRIMARY KEY (scan_id, tenant_id)
                 )
                 """
             )
+            # Additive and nullable, matching the SQLite column: snapshots written
+            # before it existed read NULL and fall back to the live GROUP BY.
+            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS node_type_counts TEXT DEFAULT NULL")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_snapshots_recent ON graph_snapshots(tenant_id, created_at DESC)")
             conn.execute(
                 """
@@ -620,6 +625,9 @@ class PostgresGraphStore:
         node_count = 0
         edge_count = 0
         severity_counts: dict[str, int] = defaultdict(int)
+        # Mirrors UnifiedGraph.stats(): severity_counts covers only rated nodes,
+        # type_counts covers every node.
+        type_counts: dict[str, int] = defaultdict(int)
 
         node_insert = """
             INSERT INTO graph_nodes (
@@ -724,6 +732,7 @@ class PostgresGraphStore:
                 node_count += 1
                 et = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
                 et_search = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+                type_counts[str(et)] += 1
                 if node.severity:
                     severity_counts[node.severity] += 1
                 node_batch.append(
@@ -964,13 +973,14 @@ class PostgresGraphStore:
             conn.execute(
                 """
                 INSERT INTO graph_snapshots
-                    (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, analysis_status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary, node_type_counts, analysis_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
                     created_at = EXCLUDED.created_at,
                     node_count = EXCLUDED.node_count,
                     edge_count = EXCLUDED.edge_count,
                     risk_summary = EXCLUDED.risk_summary,
+                    node_type_counts = EXCLUDED.node_type_counts,
                     analysis_status = EXCLUDED.analysis_status
                 """,
                 (
@@ -980,6 +990,7 @@ class PostgresGraphStore:
                     node_count,
                     edge_count,
                     json.dumps(dict(severity_counts)),
+                    json.dumps(dict(type_counts)),
                     json.dumps(analysis_status_map_to_dict(analysis_status or {})),
                 ),
             )
@@ -1094,7 +1105,6 @@ class PostgresGraphStore:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         from agent_bom.graph import (
-            SEVERITY_RANK,
             AttackPath,
             InteractionRisk,
             RelationshipType,
@@ -1126,6 +1136,14 @@ class PostgresGraphStore:
                 placeholders = ",".join(["%s"] * len(entity_types))
                 query += f" AND entity_type IN ({placeholders})"
                 params.extend(sorted(entity_types))
+            # The floor belongs in the WHERE clause, not after the LIMIT: a
+            # post-filter both deletes the topology the findings hang off and
+            # spends the budget on rows it then discards, so the page comes back
+            # short of its own budget and `total` counts a different population.
+            sev_sql, sev_params = severity_floor_sql(min_severity_rank, placeholder="%s")
+            if sev_sql:
+                query += f" AND {sev_sql}"
+                params.extend(sev_params)
 
             budget = resolve_node_budget(node_budget)
             total_nodes = 0
@@ -1147,9 +1165,6 @@ class PostgresGraphStore:
 
             node_ids: set[str] = set()
             for row in conn.execute(query, params).fetchall():
-                severity = row[8] or ""
-                if min_severity_rank and SEVERITY_RANK.get(severity, 0) < min_severity_rank:
-                    continue
                 graph.add_node(self._node_from_row(row))
                 node_ids.add(row[0])
 
@@ -2402,9 +2417,10 @@ class PostgresGraphStore:
             placeholders = ",".join(["%s"] * len(entity_types))
             node_where.append(f"entity_type IN ({placeholders})")
             params.extend(sorted(entity_types))
-        if min_severity_rank:
-            node_where.append("severity_id >= %s")
-            params.append(min_severity_rank)
+        sev_sql, sev_params = severity_floor_sql(min_severity_rank, placeholder="%s")
+        if sev_sql:
+            node_where.append(sev_sql)
+            params.extend(sev_params)
         where_sql = " AND ".join(node_where)
 
         with _tenant_connection(self._pool) as conn:
@@ -2415,24 +2431,33 @@ class PostgresGraphStore:
             analysis_status = analysis_status_map_to_dict(
                 analysis_status_map_from_dict(_decode_json_object(analysis_row[0] if analysis_row else None))
             )
-            # Unfiltered node/edge totals are already materialised on the snapshot
-            # row at write time. Re-deriving the edge count here re-scans
-            # graph_edges with a double id-membership subquery (~seconds at 500k
-            # edges on every paged /v1/graph call), so read the stored counts and
-            # only fall back to COUNT(*) when the snapshot row is missing or the
-            # counts were never populated. Any active entity-type or severity
-            # filter narrows the set, so the recompute path still runs then.
+            # Unfiltered node/edge totals AND the entity-type / severity breakdowns
+            # are materialised on the snapshot row at write time. Re-deriving them
+            # here costs two GROUP BYs over graph_nodes plus a double id-membership
+            # edge subquery on every paged /v1/graph call — O(estate) per page view
+            # of an estate that only grows. Read the stored values and fall back to
+            # the live queries only when the snapshot row is missing or the
+            # breakdown was never populated (snapshots older than the column). Any
+            # active entity-type or severity filter narrows the set, so the
+            # recompute path still runs then. Kept identical to the SQLite backend:
+            # a count that depends on which store answered is not a count.
             filters_active = bool(entity_types) or bool(min_severity_rank)
             stored_node_count: int | None = None
             stored_edge_count: int | None = None
+            cached_node_types: dict[str, int] | None = None
+            cached_severity_counts: dict[str, int] | None = None
             if not filters_active:
                 snap_row = conn.execute(
-                    "SELECT node_count, edge_count FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                    "SELECT node_count, edge_count, risk_summary, node_type_counts "
+                    "FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
                     (effective_scan_id, tenant_id),
                 ).fetchone()
                 if snap_row is not None:
                     stored_node_count = snap_row[0] if snap_row[0] is not None else None
                     stored_edge_count = snap_row[1] if snap_row[1] is not None else None
+                    if snap_row[3] is not None:
+                        cached_node_types = {str(k): int(v) for k, v in _decode_json_object(snap_row[3]).items()}
+                        cached_severity_counts = {str(k): int(v) for k, v in _decode_json_object(snap_row[2]).items() if k}
 
             if stored_node_count is not None:
                 total_nodes = int(stored_node_count)
@@ -2442,14 +2467,22 @@ class PostgresGraphStore:
                     params,
                 ).fetchone()
                 total_nodes = int((total_nodes_row[0] if total_nodes_row else 0) or 0)
-            node_type_rows = conn.execute(
-                f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
-                params,
-            ).fetchall()
-            severity_rows = conn.execute(
-                f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
-                params,
-            ).fetchall()
+            if cached_node_types is not None:
+                node_types = cached_node_types
+            else:
+                node_type_rows = conn.execute(
+                    f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchall()
+                node_types = {str(row[0]): int(row[1]) for row in node_type_rows}
+            if cached_severity_counts is not None:
+                severity_counts = cached_severity_counts
+            else:
+                severity_rows = conn.execute(
+                    f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchall()
+                severity_counts = {str(row[0]): int(row[1]) for row in severity_rows}
             if stored_edge_count is not None:
                 total_edges = int(stored_edge_count)
             else:
@@ -2501,8 +2534,8 @@ class PostgresGraphStore:
             return {
                 "total_nodes": total_nodes,
                 "total_edges": total_edges,
-                "node_types": {str(row[0]): int(row[1]) for row in node_type_rows},
-                "severity_counts": {str(row[0]): int(row[1]) for row in severity_rows},
+                "node_types": node_types,
+                "severity_counts": severity_counts,
                 "relationship_types": {str(row[0]): int(row[1]) for row in rel_rows},
                 "attack_path_count": int((attack_row[0] if attack_row else 0) or 0),
                 "interaction_risk_count": int((interaction_row[0] if interaction_row else 0) or 0),
@@ -2524,11 +2557,7 @@ class PostgresGraphStore:
     ) -> tuple[str, str, list[Any], int, str | None]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
-        if not cursor and offset > MAX_NODE_PAGE_OFFSET:
-            raise ValueError(
-                f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}); "
-                "use the cursor= keyset parameter from the previous page's next_cursor for deep pagination."
-            )
+        _assert_offset_within_cap(offset, cursor)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return scan_id, "", [], 0, None
@@ -2543,9 +2572,10 @@ class PostgresGraphStore:
                 placeholders = ",".join(["%s"] * len(entity_types))
                 where.append(f"entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
-            if min_severity_rank:
-                where.append("severity_id >= %s")
-                params.append(min_severity_rank)
+            sev_sql, sev_params = severity_floor_sql(min_severity_rank, placeholder="%s")
+            if sev_sql:
+                where.append(sev_sql)
+                params.extend(sev_params)
             where_sql = " AND ".join(where)
             total_row = conn.execute(
                 f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
@@ -2653,6 +2683,7 @@ class PostgresGraphStore:
     ) -> tuple[list[UnifiedNode], int, str | None]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
+        _assert_offset_within_cap(offset, cursor)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return [], 0, None
@@ -2669,9 +2700,12 @@ class PostgresGraphStore:
                 placeholders = ",".join(["%s"] * len(entity_types))
                 search_where.append(f"gn.entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
-            if min_severity_rank:
-                search_where.append("gn.severity_id >= %s")
-                params.append(min_severity_rank)
+            sev_sql, sev_params = severity_floor_sql(
+                min_severity_rank, column="gn.severity_id", entity_column="gn.entity_type", placeholder="%s"
+            )
+            if sev_sql:
+                search_where.append(sev_sql)
+                params.extend(sev_params)
             if compliance_prefixes:
                 prefix_filters = []
                 for prefix in sorted(compliance_prefixes):

@@ -344,11 +344,19 @@ class TestGraphEndpointLogic:
         assert all(n.entity_type == EntityType.AGENT for n in loaded.nodes.values())
 
     def test_load_with_severity_filter(self, graph_db):
+        """A floor narrows the findings; the topology around them survives.
+
+        This asserted one surviving node, which is what happens when the floor
+        is applied to every row: only finding-like nodes carry a severity, so
+        the agents and servers the finding hangs off all rank 0 and were deleted
+        with it. The paging path was corrected in #2879; ``load_graph`` kept the
+        old behaviour, so the same estate answered differently depending on
+        which query parameters the caller set.
+        """
         _build_persisted_graph(graph_db)
         loaded = load_graph(graph_db, scan_id="test-scan-001", min_severity_rank=5)
-        # Only critical vuln passes
-        assert len(loaded.nodes) == 1
         assert "vuln:CVE-2024-1" in loaded.nodes
+        assert {"agent:a", "agent:b", "server:a:fs"} <= set(loaded.nodes)
 
     def test_diff_between_scans(self, graph_db):
         from agent_bom.db.graph_store import diff_snapshots

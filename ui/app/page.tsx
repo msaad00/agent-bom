@@ -355,7 +355,7 @@ export default function Dashboard() {
       : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageLaneHeader
         lane="command"
         title="Overview"

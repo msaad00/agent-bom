@@ -681,6 +681,18 @@ function RemediationPage() {
                 </button>
               </div>
             </div>
+
+            {/* Page-position caption near the top so the reader knows the pager
+                below is a slice, not the whole list (mirrors Findings). */}
+            <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-[var(--text-tertiary)]">
+              <span className="font-semibold text-[var(--text-secondary)]">
+                {displayed.length} matching package{displayed.length === 1 ? "" : "s"}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>{paged.length} on this page</span>
+              <span aria-hidden="true">·</span>
+              <span>{PAGE_SIZE} per page</span>
+            </p>
           </div>
 
           {/* Table */}

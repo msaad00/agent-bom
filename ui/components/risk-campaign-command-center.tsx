@@ -631,7 +631,7 @@ export function RiskCampaignCommandCenter() {
       <VerificationQueue />
       {!loading && !error && campaigns.length > 0 ? (
         <>
-          <div className="grid gap-2">
+          <div className="grid gap-1.5">
             {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
           </div>
           <div className="risk-proof-note">

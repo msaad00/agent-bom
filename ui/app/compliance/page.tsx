@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   api,
@@ -554,15 +555,22 @@ function CompliancePageContent() {
       header: "Findings",
       align: "right",
       width: "5rem",
-      cell: (c) => (
-        <span
-          className={
-            c.findings > 0 ? "font-semibold text-[color:var(--foreground)]" : "text-[color:var(--text-tertiary)]"
-          }
-        >
-          {c.findings}
-        </span>
-      ),
+      cell: (c) =>
+        c.findings > 0 ? (
+          // Drill a non-zero count into the findings queue, scoped to this
+          // control's framework + control id. stopPropagation keeps the row
+          // click (which opens the evidence drawer) from also firing.
+          <Link
+            href={`/findings?framework=${encodeURIComponent(selectedSection?.id ?? "")}&control=${encodeURIComponent(c.code)}`}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`View ${c.findings} findings for ${c.code}`}
+            className="font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+          >
+            {c.findings}
+          </Link>
+        ) : (
+          <span className="text-[color:var(--text-tertiary)]">{c.findings}</span>
+        ),
     },
   ];
 
@@ -705,7 +713,12 @@ function CompliancePageContent() {
       </div>
 
       {viewMode === "heatmap" && <ComplianceHeatmap data={data} />}
-      {viewMode === "matrix" && <ComplianceMatrix data={data} />}
+      {viewMode === "matrix" && (
+        <ComplianceMatrix
+          data={data}
+          onSelectControl={(selection) => setSelectedControl(selection)}
+        />
+      )}
 
       {viewMode === "detail" ? (
         <>

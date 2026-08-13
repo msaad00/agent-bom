@@ -67,6 +67,8 @@ verbs are additive entry points that delegate to the underlying implementations.
 |---------|-------------|
 | `graph` | Export the transitive dependency graph from a scan report |
 | `graph-evidence` | Export retained graph snapshot history or a signed evidence manifest digest |
+| `graph-paths` | Query ranked attack paths and exposure paths for a scan from the graph store |
+| `compliance` | Evaluate a framework's pass/fail posture; `eval --framework <id>` exits non-zero on failure for CI gating |
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
 | `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |
 | `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
@@ -131,6 +133,7 @@ metadata or environment defaults.
 | Command | Description |
 |---------|-------------|
 | `policy` | Policy templates, application, and install-guard checks |
+| `campaigns` | List remediation campaigns and record verification (owner, SLA, priority, status) |
 | `firewall` | Inter-agent firewall policy validate / list / check |
 | `trust` | Show data access, network, auth, and storage boundaries |
 | `auth` | Configure dashboard authentication — guided browser SSO / OIDC setup |

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import click
 
 from agent_bom.client import AgentBomApiError, AgentBomClient, JsonObject
+
+_RequestResult = TypeVar("_RequestResult")
 
 
 def _make_client(api_url: str | None, api_key: str | None, bearer_token: str | None, tenant_id: str | None) -> AgentBomClient:
@@ -119,7 +121,7 @@ def _print_triage_table(payload: JsonObject) -> None:
         )
 
 
-def _run_request(client: AgentBomClient, callback: Any) -> JsonObject:
+def _run_request(client: AgentBomClient, callback: Callable[[AgentBomClient], _RequestResult]) -> _RequestResult:
     import httpx
 
     try:
@@ -188,6 +190,8 @@ def push_findings_cmd(
 
 @findings_cmd.command("list")
 @click.option("--severity", help="Filter findings by severity.")
+@click.option("--framework", help="Compliance framework drill-through (e.g. soc2, nist-csf).")
+@click.option("--control", help="Framework control code; narrows within --framework (e.g. CC6.1).")
 @click.option("--sort", default="effective_reach", show_default=True, help="Sort field used by the API.")
 @click.option("--limit", default=500, show_default=True, type=click.IntRange(min=1, max=1000), help="Maximum rows to return.")
 @click.option("--offset", default=0, show_default=True, type=click.IntRange(min=0), help="Rows to skip.")
@@ -199,6 +203,8 @@ def list_findings_cmd(
     bearer_token: str | None,
     tenant_id: str | None,
     severity: str | None,
+    framework: str | None,
+    control: str | None,
     sort: str,
     limit: int,
     offset: int,
@@ -207,7 +213,10 @@ def list_findings_cmd(
     """List findings with the same filters as the REST API."""
 
     client = _make_client(api_url, api_key, bearer_token, tenant_id)
-    payload = _run_request(client, lambda api: api.list_findings(severity=severity, sort=sort, limit=limit, offset=offset))
+    payload = _run_request(
+        client,
+        lambda api: api.list_findings(severity=severity, sort=sort, limit=limit, offset=offset, framework=framework, control=control),
+    )
     if output_format == "json":
         _emit_json(payload)
     else:

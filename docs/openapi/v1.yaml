@@ -11554,6 +11554,30 @@ paths:
           - type: 'null'
           description: Only known-exploited (KEV) findings, or only non-KEV when false
           title: Kev
+      - description: Compliance framework drill-through, e.g. soc2 / nist-csf (compliance
+          section id)
+        in: query
+        name: framework
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          description: Compliance framework drill-through, e.g. soc2 / nist-csf (compliance
+            section id)
+          title: Framework
+      - description: Framework control code, narrows within framework (e.g. CC6.1)
+        in: query
+        name: control
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          description: Framework control code, narrows within framework (e.g. CC6.1)
+          title: Control
       - in: query
         name: include_facets
         required: false

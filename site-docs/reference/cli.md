@@ -134,6 +134,8 @@ metadata or environment defaults.
 |---------|-------------|
 | `policy` | Policy templates, application, and install-guard checks |
 | `campaigns` | List remediation campaigns and record verification (owner, SLA, priority, status) |
+| `ticket` | File and sync ITSM tickets for findings through a stored connect-once connection (no per-action credential) |
+| `export` | Manage connect-once findings-export destinations and cron schedules (`destinations list/create/run`, `schedules list/create`) |
 | `firewall` | Inter-agent firewall policy validate / list / check |
 | `trust` | Show data access, network, auth, and storage boundaries |
 | `auth` | Configure dashboard authentication — guided browser SSO / OIDC setup |

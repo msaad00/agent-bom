@@ -4,7 +4,7 @@
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 78,
+      "value": 79,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card tools."
     },
@@ -40,7 +40,7 @@
     },
     {
       "name": "Python modules",
-      "value": 844,
+      "value": 847,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

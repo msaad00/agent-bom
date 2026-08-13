@@ -292,6 +292,9 @@ def test_server_card_tools_expose_capability_classes():
         # through a stored connection (no per-action credential).
         "create_ticket",
         "sync_ticket_status",
+        # Records a triage decision to the exception store (can suppress a
+        # finding); admin-gated findings:write.
+        "findings_triage",
     }
     # Writes that tear down or invalidate state advertise destructiveHint; issuing
     # an identity or granting access creates state and is non-destructive.
@@ -308,6 +311,7 @@ def test_server_card_tools_expose_capability_classes():
         "diff",
         "create_ticket",
         "sync_ticket_status",
+        "findings_triage",
     }
     card = build_server_card()
     for tool in card["tools"]:
@@ -368,6 +372,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "access_review",
         "create_ticket",
         "diff",
+        "findings_triage",
         "identity_grant_jit",
         "identity_issue",
         "identity_revoke",

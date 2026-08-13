@@ -74,7 +74,14 @@ class AgentBomClient:
 
         return self._request("GET", "/health")
 
-    def exposure_paths(self, *, limit: int | None = None, min_risk: int | None = None, tenant_id: str | None = None) -> JsonObject:
+    def exposure_paths(
+        self,
+        *,
+        scan_id: str | None = None,
+        limit: int | None = None,
+        min_risk: float | None = None,
+        tenant_id: str | None = None,
+    ) -> JsonObject:
         """List graph exposure paths for the request tenant."""
 
         return self._request(
@@ -83,11 +90,52 @@ class AgentBomClient:
             params=_strip_query_none(
                 {
                     "tenant_id": tenant_id or self.tenant_id,
+                    "scan_id": scan_id,
                     "limit": limit,
                     "min_risk": min_risk,
                 }
             ),
         )
+
+    def attack_paths(
+        self,
+        *,
+        scan_id: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> JsonObject:
+        """List ranked graph attack paths for the request tenant."""
+
+        return self._request(
+            "GET",
+            "/v1/graph/attack-paths",
+            params=_strip_query_none(
+                {
+                    "scan_id": scan_id,
+                    "offset": offset,
+                    "limit": limit,
+                }
+            ),
+        )
+
+    def list_campaigns(self) -> JsonObject:
+        """List risk/remediation campaigns for the request tenant."""
+
+        return self._request("GET", "/v1/campaigns")
+
+    def verify_campaign(self, campaign_id: str, *, version: int) -> JsonObject:
+        """Verify a campaign against the current findings spine (optimistic lock)."""
+
+        return self._request(
+            "POST",
+            f"/v1/campaigns/{_quote_path(campaign_id)}/verify",
+            json={"version": version},
+        )
+
+    def compliance_framework(self, framework: str) -> JsonObject:
+        """Evaluate a single compliance framework's pass/fail posture."""
+
+        return self._request("GET", f"/v1/compliance/{_quote_path(framework)}")
 
     def should_i_deploy(
         self,

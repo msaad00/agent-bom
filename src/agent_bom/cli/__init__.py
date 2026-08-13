@@ -287,6 +287,13 @@ main.add_command(graph_evidence_cmd, "graph-evidence")
 main.add_command(mesh_cmd, "mesh")
 # introspect is under `mcp introspect` — no top-level duplicate
 
+# `graph` is a leaf command (positional SCAN_FILE), so ranked-path queries live
+# in a sibling group `graph-paths` (mirrors the existing `graph-evidence`/`mesh`
+# siblings) rather than as subcommands that would shadow `agent-bom graph <file>`.
+from agent_bom.cli._graph_paths_group import graph_paths_cmd  # noqa: E402
+
+main.add_command(graph_paths_cmd, "graph-paths")
+
 # ---------------------------------------------------------------------------
 # Report command group — `agent-bom report [history|diff|rescan|query|analytics|dashboard]`
 # ---------------------------------------------------------------------------
@@ -301,6 +308,16 @@ report_group.add_command(local_query_cmd, "query")
 report_group.add_command(analytics_cmd, "analytics")
 report_group.add_command(dashboard_cmd, "dashboard")
 main.add_command(report_group)
+
+# ---------------------------------------------------------------------------
+# Campaigns + compliance groups — headless parity for the campaign workflow
+# API and the framework evaluator (the CI-gate wedge).
+# ---------------------------------------------------------------------------
+from agent_bom.cli._campaigns_group import campaigns_cmd  # noqa: E402
+from agent_bom.cli._compliance_group import compliance_cmd  # noqa: E402
+
+main.add_command(campaigns_cmd, "campaigns")
+main.add_command(compliance_cmd, "compliance")
 
 from agent_bom.cli._db import db_cmd  # noqa: E402
 

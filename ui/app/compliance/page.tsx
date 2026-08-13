@@ -33,6 +33,9 @@ import {
 } from "lucide-react";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import {
+  controlStatusLabel,
+  evidenceReasonLabel,
+  isControlUnscored,
   isNotEvaluated,
   postureLabel,
   statusColor,
@@ -73,12 +76,6 @@ function downloadBlobToFile(blob: Blob, filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
-
-const CONTROL_STATUS_LABEL: Record<string, string> = {
-  pass: "Pass",
-  warning: "Warn",
-  fail: "Fail",
-};
 
 function statusToAccent(status: string): StatAccent {
   if (isNotEvaluated(status)) return "neutral";
@@ -540,15 +537,32 @@ function CompliancePageContent() {
     {
       key: "status",
       header: "Status",
-      width: "6rem",
-      cell: (c) => (
-        <span className="inline-flex items-center gap-1.5">
-          <StatusIcon status={c.status} className="h-3.5 w-3.5" />
-          <span className={`text-xs font-medium ${statusColor(c.status)}`}>
-            {CONTROL_STATUS_LABEL[c.status] ?? c.status}
-          </span>
-        </span>
-      ),
+      width: "9rem",
+      cell: (c) => {
+        // Surface the provenance behind an unscored control: instead of a bare
+        // "Not evaluated", show WHY (e.g. "No completed scan"). The full CTA
+        // lives in the drawer; here it's a dense, honest one-liner.
+        const reason = isControlUnscored(c.status) ? evidenceReasonLabel(c.evidence_reason) : null;
+        return (
+          <div className="min-w-0">
+            <span className="inline-flex items-center gap-1.5">
+              <StatusIcon status={c.status} className="h-3.5 w-3.5" />
+              <span className={`text-xs font-medium ${statusColor(c.status)}`}>
+                {controlStatusLabel(c.status)}
+              </span>
+            </span>
+            {reason ? (
+              <span
+                className="mt-0.5 block truncate text-[10px] text-[color:var(--text-tertiary)]"
+                title={reason}
+                data-testid="control-evidence-reason"
+              >
+                {reason}
+              </span>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: "findings",

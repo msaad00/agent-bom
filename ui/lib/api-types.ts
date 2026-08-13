@@ -2113,7 +2113,17 @@ export interface ComplianceControl {
   code: string;
   name: string;
   findings: number;
+  // The API also emits the unscored statuses "not_evaluated", "not_assessed",
+  // "not_applicable", and "applicable" (api/routes/compliance.py:_build_controls).
+  // They are handled as strings through the compliance-status helpers rather than
+  // widening this union — the matrix/heatmap row types mirror it narrowly.
   status: "pass" | "warning" | "fail";
+  // Provenance for the status: WHY a control landed where it did (e.g.
+  // "no_completed_scan", "no_mapped_finding", "no_observed_signal"). Drives the
+  // "Not evaluated — <reason>" label and the next-step CTA in the UI.
+  evidence_reason?: string | undefined;
+  // Evaluation mode that produced the status: "detective" | "corrective" | "overlay".
+  evaluation_mode?: string | undefined;
   severity_breakdown: Record<string, number>;
   affected_packages: string[];
   affected_agents: string[];

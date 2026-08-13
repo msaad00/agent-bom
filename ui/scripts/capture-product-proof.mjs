@@ -1981,7 +1981,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "mesh-live.png",
-      page: "/mesh?capture=1",
+      page: "/graph?lens=mesh&capture=1",
       scope: "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
     },
     {
@@ -2014,7 +2014,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "context-map-live.png",
-      page: "/context?capture=1",
+      page: "/graph?lens=context&capture=1",
       scope: "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
     },
     {
@@ -2161,7 +2161,7 @@ async function main() {
       minGraphEdges: 6,
     });
     await page.setViewportSize({ width: 1440, height: 1120 });
-    await capture(page, "/mesh?capture=1", "mesh-live.png", async (meshPage) => {
+    await capture(page, "/graph?lens=mesh&capture=1", "mesh-live.png", async (meshPage) => {
       // ReactFlow can preserve a hidden, pre-measurement node tree across an
       // App Router transition. A hard reload gives the capture a fresh canvas
       // and makes the readiness assertion deterministic in both themes.
@@ -2243,7 +2243,7 @@ async function main() {
     });
     await capture(
       page,
-      "/context?capture=1",
+      "/graph?lens=context&capture=1",
       "context-map-live.png",
       async (contextPage) => {
         await contextPage.getByRole("heading", { name: "Context Map" }).waitFor({

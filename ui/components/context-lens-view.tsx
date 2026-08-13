@@ -1,0 +1,806 @@
+"use client";
+
+/**
+ * Context Map page — static agent interaction context with lateral reachability
+ * analysis. Shows reachability between agents, servers, credentials, tools, and
+ * vulnerabilities without implying observed runtime causality.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  type Node,
+  type Edge,
+  type ReactFlowInstance,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import {
+  Search,
+  Waypoints,
+  ChevronDown,
+  ChevronRight,
+  PanelRight,
+} from "lucide-react";
+import { api, type Agent, type JobListItem, type ScanJob } from "@/lib/api";
+import { useGraphLayout } from "@/lib/use-graph-layout";
+import { readableLineageDagreLr } from "@/lib/graph-node-dimensions";
+import {
+  lineageNodeTypes,
+  type LineageNodeData,
+} from "@/components/lineage-nodes";
+import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
+import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
+import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
+import {
+  buildContextFlowGraph,
+  type ContextGraphData,
+  type LateralPath,
+  type InteractionRisk,
+  topLateralPathForAgent,
+} from "@/lib/context-graph";
+import { ExposurePathStrip } from "@/components/exposure-path-strip";
+import { pathDisplayTitle, type ExposurePath } from "@/lib/exposure-path";
+import {
+  formatInventoryAgentLabel,
+  topologyAgentTypeLabel,
+} from "@/lib/agent-topology-graph";
+import {
+  CONTROLS_CLASS,
+  MINIMAP_BG,
+  MINIMAP_CLASS,
+  MINIMAP_MASK,
+  BACKGROUND_COLOR,
+  BACKGROUND_GAP,
+  graphNodeDisplayLabels,
+  legendItemsForVisibleGraph,
+  minimapNodeColor,
+  readableGraphEdges,
+} from "@/lib/graph-utils";
+import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
+import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
+import { useGraphPresentation } from "@/hooks/use-graph-presentation";
+import { graphTopologyKey } from "@/lib/graph-presentation";
+import { useAuthState } from "@/components/auth-provider";
+import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
+import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { useCaptureMode } from "@/lib/use-capture-mode";
+
+// ─── Stats Bar ──────────────────────────────────────────────────────────────
+
+function ContextStats({ data, compact = false }: { data: ContextGraphData; compact?: boolean }) {
+  const s = data.stats;
+  const items = compact
+    ? [
+        { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
+        { label: "Paths", value: s.lateral_path_count, color: "text-orange-400" },
+        { label: "Top risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-[var(--text-secondary)]" },
+      ]
+    : [
+        { label: "Agents", value: s.agent_count, color: "text-emerald-400" },
+        { label: "Shared Servers", value: s.shared_server_count, color: "text-cyan-400" },
+        { label: "Shared Credentials", value: s.shared_credential_count, color: "text-amber-400" },
+        { label: "Lateral Paths", value: s.lateral_path_count, color: "text-orange-400" },
+        { label: "Highest Risk", value: s.highest_path_risk.toFixed(1), color: s.highest_path_risk >= 7 ? "text-red-400" : "text-[var(--text-secondary)]" },
+        { label: "Risk Patterns", value: s.interaction_risk_count, color: "text-purple-400" },
+      ];
+
+  return (
+    <div className={`flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 text-xs ${compact ? "py-1.5" : "py-2"}`}>
+      {items?.map((it) => (
+        <div key={it.label} className="flex items-center gap-1.5">
+          <span className="text-[var(--text-tertiary)]">{it.label}</span>
+          <span className={`font-semibold ${it.color}`}>{it.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Lateral Movement Panel ─────────────────────────────────────────────────
+
+function formatExposureList(values: string[], limit = 2): string {
+  if (values.length === 0) return "";
+  if (values.length <= limit) return values.join(", ");
+  return `${values.slice(0, limit).join(", ")} +${values.length - limit} more`;
+}
+
+function lateralPathToExposure(path: LateralPath, agentLabel: string): ExposurePath {
+  const hopLabels = path.hops.map((hop) => hop.split(":").slice(1).join(":") || hop);
+  return {
+    id: path.hops.join("->"),
+    label: path.summary,
+    riskScore: path.composite_risk,
+    severity: path.composite_risk >= 7 ? "high" : path.composite_risk >= 4 ? "medium" : "low",
+    source: { id: path.source, label: agentLabel, role: "agent" },
+    target: { id: path.target, label: hopLabels.at(-1) ?? path.target, role: "finding" },
+    hops: hopLabels.map((label, index) => ({
+      id: path.hops[index] ?? label,
+      label,
+      role: "unknown" as const,
+    })),
+    relationships: [],
+    nodeIds: path.hops,
+    edgeIds: path.edges,
+    findings: path.vuln_ids,
+    affectedAgents: [agentLabel],
+    affectedServers: [],
+    reachableTools: path.tool_exposure,
+    exposedCredentials: path.credential_exposure,
+  };
+}
+
+function agentScopeHeading(agentId: string | null, agents: Agent[]): string {
+  if (!agentId) return "Lateral paths";
+  const agent = agents.find((entry) => entry.name === agentId);
+  const label = agent
+    ? formatInventoryAgentLabel(agent.name)
+    : formatInventoryAgentLabel(agentId);
+  const typeLabel = agent ? topologyAgentTypeLabel(agent.agent_type) : null;
+  return typeLabel ? `Paths from ${label} · ${typeLabel}` : `Paths from ${label}`;
+}
+
+function LateralPanel({
+  paths,
+  risks,
+  selectedAgent,
+  pathFocusActive,
+  agents,
+}: {
+  paths: LateralPath[];
+  risks: InteractionRisk[];
+  selectedAgent: string | null;
+  pathFocusActive: boolean;
+  agents: Agent[];
+}) {
+  const [risksOpen, setRisksOpen] = useState(false);
+  const filtered = selectedAgent
+    ? paths.filter((p) => p.source === `agent:${selectedAgent}`)
+    : paths;
+  const distinctPaths = Array.from(
+    new Map(filtered.map((path) => [`${path.hops.join("->")}::${path.vuln_ids.join(",")}`, path])).values(),
+  ).sort((left, right) => right.composite_risk - left.composite_risk);
+  const topPaths = distinctPaths.slice(0, pathFocusActive ? 3 : 5);
+
+  return (
+    <div className="w-80 shrink-0 overflow-y-auto border-l border-[var(--border-subtle)] bg-[var(--background)]">
+      <div className="p-3 border-b border-[var(--border-subtle)]">
+        <h3 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">
+          {agentScopeHeading(selectedAgent, agents)}
+        </h3>
+        <p className="text-[10px] text-[var(--text-tertiary)]">
+          {pathFocusActive
+            ? "Canvas shows the top lateral path only. Other agents appear when they share reachability — not because they are the same workload."
+            : "Ranked reachability chains from scan evidence."}
+        </p>
+        {topPaths.length === 0 ? (
+          <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">No lateral paths found</p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {topPaths?.map((p, i) => (
+              <div
+                key={i}
+                className={`rounded-lg border p-2 ${
+                  i === 0 && pathFocusActive
+                    ? "border-orange-500/40 bg-orange-950/20"
+                    : "border-[var(--border-subtle)] bg-[var(--surface)]"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-[var(--text-tertiary)]">
+                    {p.hops.length - 1} hop{p.hops.length - 1 !== 1 ? "s" : ""}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      p.composite_risk >= 7
+                        ? "text-red-400"
+                        : p.composite_risk >= 4
+                        ? "text-amber-400"
+                        : "text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    Risk {p.composite_risk.toFixed(1)}
+                  </span>
+                </div>
+                <p className="break-words text-[11px] leading-relaxed text-[var(--foreground)]">
+                  {pathDisplayTitle(lateralPathToExposure(p, selectedAgent ?? "agent"))}
+                </p>
+                {p.credential_exposure.length > 0 && (
+                  <p className="mt-1 break-words text-[10px] text-amber-400">
+                    Creds: {formatExposureList(p.credential_exposure)}
+                  </p>
+                )}
+                {p.tool_exposure.length > 0 && (
+                  <p className="mt-1 break-words text-[10px] text-purple-400">
+                    Tools: {formatExposureList(p.tool_exposure)}
+                  </p>
+                )}
+                {p.vuln_ids.length > 0 && (
+                  <p className="mt-1 break-words text-[10px] text-red-400">
+                    Findings: {formatExposureList(p.vuln_ids, 3)}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Interaction risks */}
+      <div className="p-3">
+        <button
+          onClick={() => setRisksOpen(!risksOpen)}
+          className="flex items-center gap-1 text-xs font-semibold text-[var(--text-secondary)] mb-2"
+        >
+          {risksOpen ? (
+            <ChevronDown className="w-3 h-3" />
+          ) : (
+            <ChevronRight className="w-3 h-3" />
+          )}
+          Interaction Risks ({risks.length})
+        </button>
+        {risksOpen && (
+          <div className="space-y-2">
+            {risks?.map((r, i) => (
+              <div
+                key={i}
+                className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg p-2"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-[var(--text-tertiary)] capitalize">
+                    {r.pattern.replace(/_/g, " ")}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      r.risk_score >= 7
+                        ? "text-red-400"
+                        : r.risk_score >= 5
+                        ? "text-amber-400"
+                        : "text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    {r.risk_score.toFixed(1)}
+                  </span>
+                </div>
+                <p className="break-words text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                  {r.description}
+                </p>
+                {r.owasp_agentic_tag && (
+                  <span className="inline-block mt-1 text-[9px] bg-purple-500/10 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded">
+                    {r.owasp_agentic_tag}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ───────────────────────────────────────────────────────────────────
+
+export function ContextLensView() {
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [graphData, setGraphData] = useState<ContextGraphData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<LineageNodeData>, Edge> | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
+  // Canvas is the hero — paths list opens on demand (drawer), not by default.
+  const [pathsPanelOpen, setPathsPanelOpen] = useState(false);
+  const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
+  const { counts } = useDeploymentContext();
+  const captureMode = useCaptureMode();
+  const { session, loading: authLoading } = useAuthState();
+
+  useEffect(() => {
+    if (captureMode) {
+      setPathFocusEnabled(false);
+    }
+  }, [captureMode]);
+
+  // Load completed jobs
+  useEffect(() => {
+    api
+      .listJobs()
+      .then((res) => {
+        const doneJobs = res.jobs.filter((j) => j.status === "done");
+        setJobs(doneJobs);
+        if (doneJobs.length > 0) setSelectedJobId(doneJobs[0]!.job_id);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!selectedJobId) {
+        setActiveJob(null);
+        return;
+      }
+      setDetailLoading(true);
+      api
+        .getScan(selectedJobId)
+        .then((job) => {
+          if (!cancelled) {
+            setActiveJob(job.result ? job : null);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setActiveJob(null);
+            setError(e.message);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setDetailLoading(false);
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [selectedJobId]);
+
+  const agentNames = useMemo(
+    () => activeJob?.result?.agents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right)) ?? [],
+    [activeJob],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (agentNames.length === 0) {
+        setSelectedAgent(null);
+        return;
+      }
+      setSelectedAgent((current) => (current && agentNames.includes(current) ? current : agentNames[0] ?? null));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [agentNames]);
+
+  // Fetch context graph when job changes
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!selectedJobId) return;
+      setGraphData(null);
+      api
+        .getContextGraph(selectedJobId, selectedAgent ?? undefined)
+        .then((resp) => setGraphData(resp as unknown as ContextGraphData))
+        .catch((e) => setError(e.message));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [selectedJobId, selectedAgent]);
+
+  // Build ReactFlow graph
+  const { rawNodes, rawEdges, focusedPath } = useMemo(() => {
+    if (!graphData) {
+      return {
+        rawNodes: [] as Node[],
+        rawEdges: [] as Edge[],
+        focusedPath: null as LateralPath | null,
+      };
+    }
+    const { nodes, edges, focusedPath: path } = buildContextFlowGraph(
+      graphData,
+      selectedAgent ?? undefined,
+      { topPathOnly: pathFocusEnabled },
+    );
+    return { rawNodes: nodes, rawEdges: edges, focusedPath: path };
+  }, [graphData, selectedAgent, pathFocusEnabled]);
+
+  const topExposurePath = useMemo(() => {
+    if (!graphData || !selectedAgent) return null;
+    const path = focusedPath ?? topLateralPathForAgent(graphData.lateral_paths, selectedAgent);
+    if (!path) return null;
+    return lateralPathToExposure(path, selectedAgent);
+  }, [focusedPath, graphData, selectedAgent]);
+
+  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("dagre-lr", rawNodes, rawEdges, {
+    // Slightly tighter ranks so small context chains fill the centered canvas.
+    dagreLr: readableLineageDagreLr({ rankSep: 132, nodeSep: 48 }),
+  });
+
+  // Search highlighting
+  const searchMatches = useMemo(
+    () => (searchQuery ? searchNodes(layoutNodes, searchQuery) : null),
+    [layoutNodes, searchQuery]
+  );
+
+  // Hover highlighting
+  const connectedIds = useMemo(
+    () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),
+    [hoveredNodeId, layoutEdges]
+  );
+
+  const pathFocusIds = useMemo(() => {
+    if (!pathFocusEnabled || !focusedPath || searchQuery || hoveredNodeId) return null;
+    return new Set(focusedPath.hops);
+  }, [focusedPath, hoveredNodeId, pathFocusEnabled, searchQuery]);
+
+  const displayNodes = useMemo(() => {
+    if (searchMatches && searchMatches.size > 0) {
+      return layoutNodes?.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          dimmed: !searchMatches.has(n.id),
+          highlighted: searchMatches.has(n.id),
+          renderBand: "detail" as const,
+        },
+      }));
+    }
+    if (pathFocusIds) {
+      return layoutNodes
+        ?.filter((n) => pathFocusIds.has(n.id))
+        .map((n) => ({
+          ...n,
+          data: { ...n.data, dimmed: false, highlighted: true, renderBand: "detail" as const },
+        }));
+    }
+    if (!connectedIds) {
+      return layoutNodes?.map((n) => ({
+        ...n,
+        data: { ...n.data, renderBand: "detail" as const },
+      }));
+    }
+    return layoutNodes?.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        dimmed: !connectedIds.has(n.id),
+        highlighted: connectedIds.has(n.id),
+        renderBand: "detail" as const,
+      },
+    }));
+  }, [layoutNodes, connectedIds, searchMatches, pathFocusIds]);
+
+  const presentation = useGraphPresentation({
+    nodes: displayNodes as Node<LineageNodeData>[],
+    scope: {
+      tenantId: session?.tenant_id || "local",
+      subject: session?.subject || session?.auth_method || "local-viewer",
+      snapshotId: selectedJobId || "unselected",
+      lens: "context",
+      scope: JSON.stringify({ agent: selectedAgent, pathFocusEnabled, topology: graphTopologyKey(displayNodes, layoutEdges) }),
+    },
+    layout: "dagre-lr",
+    enabled: !captureMode && !authLoading && Boolean(session),
+    ownerActive: Boolean(session),
+    localMode: session?.recommended_ui_mode === "no_auth",
+  });
+
+  const displayEdges = useMemo(() => {
+    const activeSet =
+      searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
+    const scopedEdges =
+      pathFocusIds
+        ? layoutEdges.filter(
+            (edge) => pathFocusIds.has(edge.source) && pathFocusIds.has(edge.target),
+          )
+        : layoutEdges;
+    return readableGraphEdges(scopedEdges, activeSet, {
+      baseOpacity: pathFocusIds ? 0.72 : 0.32,
+      highSignalOpacity: pathFocusIds ? 0.95 : 0.56,
+      inactiveOpacity: 0.06,
+      captureMode,
+      zoom: presentation.viewport.zoom,
+      nodeLabels: graphNodeDisplayLabels(displayNodes),
+    });
+  }, [layoutEdges, connectedIds, searchMatches, pathFocusIds, captureMode, presentation.viewport.zoom, displayNodes]);
+
+  const legendItems = useMemo(() => {
+    const extras =
+      displayEdges.some((edge) => edge.animated || Boolean(edge.style?.strokeDasharray))
+        ? [{ label: "Lateral", color: "#f97316", dashed: true, shape: "diamond" as const }]
+        : [];
+    return legendItemsForVisibleGraph(displayNodes, displayEdges, extras);
+  }, [displayEdges, displayNodes]);
+
+  const viewportOptions = useMemo(
+    () =>
+      graphFitViewOptions({
+        nodeCount: displayNodes.length,
+        edgeCount: displayEdges.length,
+        selectedNode: Boolean(selectedNode),
+        mode: "context",
+        captureMode,
+      }),
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
+  );
+  const showMiniMap = useMemo(
+    () =>
+      !captureMode && shouldShowGraphMiniMap({
+        nodeCount: displayNodes.length,
+        edgeCount: displayEdges.length,
+        selectedNode: Boolean(selectedNode),
+        mode: "context",
+      }),
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
+  );
+
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedNode(node.data as LineageNodeData);
+    setSelectedNodeId(node.id);
+    setHoveredNodeId(null);
+  }, []);
+
+  const fitVisible = useCallback(() => void flowInstance?.fitView({ ...viewportOptions, duration: 240 }), [flowInstance, viewportOptions]);
+  const fitSelection = useCallback(() => {
+    const node = selectedNodeId ? flowInstance?.getNode(selectedNodeId) : undefined;
+    if (node) void flowInstance?.fitView({ nodes: [node], padding: 0.7, duration: 240, maxZoom: 1.4 });
+  }, [flowInstance, selectedNodeId]);
+
+  const onNodeMouseEnter = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setHoveredNodeId(node.id);
+    },
+    []
+  );
+
+  const onNodeMouseLeave = useCallback(() => {
+    setHoveredNodeId(null);
+  }, []);
+
+  if (loading || (detailLoading && !graphData)) {
+    return (
+      <div className="h-[80vh]">
+        <GraphPanelSkeleton
+          title="Loading context graph"
+          detail="Fetching the selected scan and preparing a focused lateral-movement window."
+        />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-[80vh]">
+        <GraphEmptyState
+          title="Cannot load context graph"
+          detail={error || "The API did not return scan evidence for the context graph view."}
+          suggestions={[
+            "Confirm the API is reachable before reopening the context graph.",
+            "Run a fresh scan when the control plane has no completed job history.",
+            "Open the agent mesh after scan evidence is available.",
+          ]}
+          command="agent-bom serve --api"
+        />
+      </div>
+    );
+  }
+
+  if (jobs.length === 0) {
+    if (counts && !isDeploymentSurfaceAvailable("context", counts)) {
+      return <DeploymentSurfaceRequiredState surface="context" counts={counts} detail={error} />;
+    }
+    return (
+      <div className="h-[80vh]">
+        <GraphEmptyState
+          title="No completed scans found"
+          detail="Run a scan first so the context map can show agents, MCP servers, shared credentials, and lateral paths from a real snapshot."
+          suggestions={[
+            "Use a demo scan for a local proof point.",
+            "Open the Security Graph after the scan persists graph evidence.",
+            "Keep the first context view scoped to one agent before expanding.",
+          ]}
+          command="agent-bom agents --demo --offline"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col`}>
+      {/* Compact header — filters share one row so the canvas stays hero */}
+      <div className="flex flex-col gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="shrink-0 text-sm font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+            <Waypoints className="w-3.5 h-3.5 text-orange-400" />
+            Context Map
+          </h1>
+          <select
+            value={selectedAgent ?? ""}
+            onChange={(e) =>
+              setSelectedAgent(e.target.value || null)
+            }
+            className="min-w-0 max-w-[11rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-orange-600"
+          >
+            <option value="">All agents</option>
+            {agentNames?.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedJobId}
+            onChange={(e) => setSelectedJobId(e.target.value)}
+            className="min-w-0 max-w-[12rem] truncate rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] focus:outline-none focus:border-emerald-600"
+          >
+            {jobs?.map((j) => (
+              <option key={j.job_id} value={j.job_id}>
+                Scan {j.job_id.slice(0, 8)} —{" "}
+                {new Date(j.created_at).toLocaleDateString()}
+              </option>
+            ))}
+          </select>
+          <div className="relative min-w-0 flex-1 sm:max-w-[12rem]">
+            <Search className="w-3 h-3 text-[var(--text-tertiary)] absolute left-2 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search…"
+              className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded pl-6 pr-2 py-0.5 text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-emerald-600"
+            />
+          </div>
+          {graphData && (
+            <button
+              type="button"
+              onClick={() => setPathsPanelOpen((open) => !open)}
+              aria-pressed={pathsPanelOpen}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] transition ${
+                pathsPanelOpen
+                  ? "border-orange-500/40 bg-orange-500/10 text-orange-200"
+                  : "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-orange-500/30"
+              }`}
+            >
+              <PanelRight className="h-3 w-3" />
+              Paths
+            </button>
+          )}
+          <FullscreenButton />
+          {presentation.enabled && !captureMode && displayNodes.length > 0 && <GraphInteractionToolbar
+            editing={presentation.editing}
+            hasSelection={Boolean(selectedNodeId)}
+            onFitVisible={fitVisible}
+            onFitSelection={fitSelection}
+            onAutoLayout={() => { presentation.autoLayout(); window.setTimeout(fitVisible, 0); }}
+            onReset={() => { presentation.reset(); window.setTimeout(fitVisible, 0); }}
+            onToggleEditing={presentation.toggleEditing}
+          />}
+        </div>
+        <GraphLensSwitcher variant="compact" {...(!captureMode ? { legendItems } : {})} />
+      </div>
+
+      {!captureMode && topExposurePath && (
+        <ExposurePathStrip
+          path={topExposurePath}
+          active={pathFocusEnabled}
+          actionLabel="Focus path"
+          onAction={() => setPathFocusEnabled((current) => !current)}
+        />
+      )}
+
+      {/* Stats */}
+      {!captureMode && graphData?.stats.lateral_paths_truncated && (
+        <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[10px] text-amber-200">
+          Showing a bounded set of highest-priority lateral paths for this large graph. Narrow the agent scope to inspect additional paths.
+        </div>
+      )}
+      {!captureMode && graphData && <ContextStats data={graphData} compact />}
+      {!captureMode && graphData?.completeness && !graphData.completeness.complete && (
+        <div className="mx-3 mt-1">
+          <GraphCompletenessBanner completeness={graphData.completeness} />
+        </div>
+      )}
+
+      {/* Main area: graph + optional paths drawer */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Graph */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="relative min-h-0 flex-1">
+          {detailLoading && graphData && (
+            <GraphRefreshOverlay label="Updating context graph" />
+          )}
+          {!graphData ? (
+            <GraphPanelSkeleton
+              title="Loading context map"
+              detail="Fetching the selected scan and preparing the focused agent-to-server context."
+            />
+          ) : displayNodes.length === 0 ? (
+            <GraphEmptyState
+              title="No context relationships match this scope"
+              detail="The selected scan loaded, but this agent scope does not have enough server, credential, or lateral path evidence to draw a context map."
+              suggestions={[
+                "Choose another agent from the scope selector.",
+                "Switch to all agents to inspect shared infrastructure.",
+                "Run a broader scan when you expect MCP server or credential relationships.",
+              ]}
+              command="agent-bom scan -p . -f graph"
+            />
+          ) : (
+            <div className="flex h-full min-h-0 w-full items-center justify-center bg-[var(--background)]">
+              {/* Cap canvas height for small graphs so fitView fills the frame
+                  instead of parking a wide short chain in a tall empty pane. */}
+              <div
+                className={`relative w-full min-h-0 ${
+                  displayNodes.length <= 20
+                    ? "h-[min(100%,38rem)]"
+                    : "h-full"
+                }`}
+              >
+            <ReactFlow
+              key={captureMode ? "context-capture" : presentation.storageKey}
+              nodes={presentation.nodes}
+              edges={displayEdges}
+              nodeTypes={lineageNodeTypes}
+              fitView={!presentation.hasSavedState}
+              defaultViewport={presentation.viewport}
+              fitViewOptions={viewportOptions}
+              minZoom={0.16}
+              maxZoom={2.8}
+              onlyRenderVisibleElements
+              defaultEdgeOptions={{ type: "smoothstep" }}
+              proOptions={{ hideAttribution: true }}
+              deleteKeyCode={null}
+              nodesDraggable={!captureMode && presentation.editing}
+              nodesConnectable={false}
+              onNodesChange={presentation.onNodesChange}
+              onNodeDragStop={presentation.onNodeDragStop}
+              onMoveEnd={presentation.onMoveEnd}
+              onInit={setFlowInstance}
+              onNodeClick={onNodeClick}
+              onNodeMouseEnter={onNodeMouseEnter}
+              onNodeMouseLeave={onNodeMouseLeave}
+              onPaneClick={() => {
+                setSelectedNode(null);
+                setSelectedNodeId(null);
+                setHoveredNodeId(null);
+              }}
+            >
+              <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+              {!captureMode && <Controls className={CONTROLS_CLASS} />}
+              {showMiniMap && (
+                <MiniMap
+                  nodeColor={minimapNodeColor}
+                  className={MINIMAP_CLASS}
+                  bgColor={MINIMAP_BG}
+                  maskColor={MINIMAP_MASK}
+                />
+              )}
+            </ReactFlow>
+              </div>
+            </div>
+          )}
+
+          {selectedNode && (
+            <GraphEntityDrawer
+              data={selectedNode}
+              onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
+              enrich={false}
+            />
+          )}
+          </div>
+        </div>
+
+        {/* Lateral movement sidebar — drawer on demand */}
+        {graphData && pathsPanelOpen && (
+          <LateralPanel
+            paths={graphData.lateral_paths}
+            risks={graphData.interaction_risks}
+            selectedAgent={selectedAgent}
+            pathFocusActive={pathFocusEnabled}
+            agents={activeJob?.result?.agents ?? []}
+          />
+        )}
+      </div>
+    </div>
+  );
+}

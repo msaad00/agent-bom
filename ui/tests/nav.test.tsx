@@ -366,7 +366,7 @@ describe('Nav', () => {
     fireEvent.keyDown(window, { key: 'k', metaKey: true })
     const palette = screen.getByRole('dialog', { name: /command palette/i })
     const paletteHrefs = within(palette).getAllByRole('link').map((l) => l.getAttribute('href'))
-    expect(paletteHrefs).toEqual(expect.arrayContaining(['/graph', '/mesh', '/context']))
+    expect(paletteHrefs).toEqual(expect.arrayContaining(['/graph', '/graph?lens=mesh', '/graph?lens=context']))
   })
 
   it('keeps Investigation selected while a deep graph lens route is open', () => {
@@ -443,8 +443,8 @@ describe('Nav', () => {
     expect(within(palette).getByRole('button', { name: /refresh current view/i })).toBeInTheDocument()
     expect(within(palette).getByRole('link', { name: /overview/i })).toHaveAttribute('href', '/')
     expect(within(palette).getByRole('link', { name: /lineage/i })).toHaveAttribute('href', '/graph')
-    expect(within(palette).getByRole('link', { name: /agent mesh/i })).toHaveAttribute('href', '/mesh')
-    expect(within(palette).getByRole('link', { name: /context/i })).toHaveAttribute('href', '/context')
+    expect(within(palette).getByRole('link', { name: /agent mesh/i })).toHaveAttribute('href', '/graph?lens=mesh')
+    expect(within(palette).getByRole('link', { name: /context/i })).toHaveAttribute('href', '/graph?lens=context')
   })
 
   it('renders the canonical agent-bom mark in the top bar', () => {

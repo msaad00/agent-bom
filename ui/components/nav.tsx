@@ -126,8 +126,8 @@ const NAV_GROUPS: NavGroup[] = [
     ],
     secondary: [
       { href: "/graph", label: "Lineage", icon: GitBranch },
-      { href: "/mesh", label: "Agent Mesh", icon: Waypoints },
-      { href: "/context", label: "Context", icon: Layers },
+      { href: "/graph?lens=mesh", label: "Agent Mesh", icon: Waypoints },
+      { href: "/graph?lens=context", label: "Context", icon: Layers },
     ],
   },
   {

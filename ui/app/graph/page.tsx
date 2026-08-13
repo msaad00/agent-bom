@@ -1,5 +1,5 @@
-import GraphPageClient from "./graph-page-client";
+import { GraphSurface } from "./graph-surface";
 
 export default function GraphPage() {
-  return <GraphPageClient />;
+  return <GraphSurface />;
 }

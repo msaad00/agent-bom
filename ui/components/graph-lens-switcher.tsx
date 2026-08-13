@@ -6,17 +6,20 @@ import { GraphLegendDock } from "@/components/graph-chrome";
 import { ASSET_DRIFT_GRAPH_SCOPE_PARAM } from "@/components/lineage-filter";
 import type { LegendItem } from "@/lib/graph-utils";
 
-// One security-graph surface, several lenses. Each lens is a deep route that keeps
-// working on its own (deep links + e2e), but the nav now exposes a single
-// "Security Graph" entry and users switch lenses from this bar instead of hunting
-// through five separate sidebar links.
+// One security-graph surface, several lenses. Attack Paths keeps its own
+// `/security-graph` route; Lineage, Asset Drift, Agent Mesh, and Context are all
+// hosted on the single `/graph` surface and switched via URL params (`?scope=`
+// for drift, `?lens=` for mesh/context) — no separate route per lens. The nav
+// exposes one "Security Graph" entry and users switch lenses from this bar.
 interface GraphLens {
   id: string;
   label: string;
   icon: string;
   href: string;
-  match: (path: string, scope: string | null) => boolean;
+  match: (path: string, scope: string | null, lens: string | null) => boolean;
 }
+
+const isGraphPath = (p: string) => p === "/graph" || p.startsWith("/graph/");
 
 const GRAPH_LENSES: GraphLens[] = [
   {
@@ -31,9 +34,8 @@ const GRAPH_LENSES: GraphLens[] = [
     label: "Lineage",
     icon: "🌿",
     href: "/graph",
-    match: (p, scope) =>
-      (p === "/graph" || p.startsWith("/graph/")) &&
-      scope !== ASSET_DRIFT_GRAPH_SCOPE_PARAM,
+    match: (p, scope, lens) =>
+      isGraphPath(p) && scope !== ASSET_DRIFT_GRAPH_SCOPE_PARAM && !lens,
   },
   {
     id: "asset-drift",
@@ -41,22 +43,21 @@ const GRAPH_LENSES: GraphLens[] = [
     icon: "📐",
     href: `/graph?scope=${ASSET_DRIFT_GRAPH_SCOPE_PARAM}`,
     match: (p, scope) =>
-      (p === "/graph" || p.startsWith("/graph/")) &&
-      scope === ASSET_DRIFT_GRAPH_SCOPE_PARAM,
+      isGraphPath(p) && scope === ASSET_DRIFT_GRAPH_SCOPE_PARAM,
   },
   {
     id: "mesh",
     label: "Agent Mesh",
     icon: "🕸️",
-    href: "/mesh",
-    match: (p) => p.startsWith("/mesh"),
+    href: "/graph?lens=mesh",
+    match: (p, _scope, lens) => isGraphPath(p) && lens === "mesh",
   },
   {
     id: "context",
     label: "Context",
     icon: "🗺️",
-    href: "/context",
-    match: (p) => p.startsWith("/context"),
+    href: "/graph?lens=context",
+    match: (p, _scope, lens) => isGraphPath(p) && lens === "context",
   },
 ];
 
@@ -107,17 +108,18 @@ export function GraphLensSwitcher({
   const router = useRouter();
   const searchParams = useSearchParams();
   const scope = searchParams?.get("scope") ?? null;
+  const activeLens = searchParams?.get("lens") ?? null;
 
   const layers = GRAPH_LENSES.map((lens) => ({
     id: lens.id,
     label: lens.label,
     icon: lens.icon,
-    active: lens.match(path, scope),
+    active: lens.match(path, scope, activeLens),
   }));
 
   const onToggle = (id: string) => {
     const lens = GRAPH_LENSES.find((l) => l.id === id);
-    if (!lens || lens.match(path, scope)) return;
+    if (!lens || lens.match(path, scope, activeLens)) return;
     router.push(buildInvestigationLensHref(lens.href, searchParams));
   };
 

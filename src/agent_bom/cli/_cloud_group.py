@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Optional, cast
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.cli._tenant import resolve_cli_tenant_id
 
 
 def _auto_update_db_default() -> bool:
@@ -875,7 +876,7 @@ def side_scan_cmd(
                     account_id=account_id or "",
                     location=availability_zone or "",
                     collector_id=collector_instance_id or "",
-                    tenant_id=(tenant_id or os.environ.get("AGENT_BOM_TENANT_ID") or "default"),
+                    tenant_id=resolve_cli_tenant_id(tenant_id),
                     collector_resource_group=collector_resource_group,
                     region=region,
                     scan_secrets_enabled=not no_secrets,

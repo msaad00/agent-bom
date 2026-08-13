@@ -7,6 +7,23 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 
+// Render next/link as a plain anchor so href assertions are deterministic and
+// no app-router context is required in the test environment.
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    href,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    href: string;
+  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
 // CIS drill-down fetches its own benchmark data on mount — stub it so the
 // compliance page test stays focused on the dense framework/control surface.
 vi.mock("@/components/cis-benchmark-detail", () => ({
@@ -139,6 +156,30 @@ describe("CompliancePage (dense restyle)", () => {
     await waitFor(() =>
       expect(screen.getByText("Prompt Injection")).toBeInTheDocument(),
     );
+  });
+
+  it("links a non-zero findings count to the framework/control-filtered queue", async () => {
+    render(<CompliancePage />);
+    await screen.findByTestId("compliance-kpi-strip");
+    await screen.findByText("Prompt Injection");
+
+    // LLM01 has 4 findings → a click-through into the findings queue.
+    const link = screen.getByRole("link", { name: /4 findings for LLM01/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/findings?framework=owasp-llm&control=LLM01",
+    );
+  });
+
+  it("keeps a zero findings count non-interactive", async () => {
+    render(<CompliancePage />);
+    await screen.findByTestId("compliance-kpi-strip");
+    await screen.findByText("Prompt Injection");
+
+    // LLM02 has 0 findings → plain text, no link.
+    expect(
+      screen.queryByRole("link", { name: /findings for LLM02/i }),
+    ).toBeNull();
   });
 
   it("opens the control drawer when a control row is clicked", async () => {

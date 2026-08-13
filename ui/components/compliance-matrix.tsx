@@ -49,6 +49,17 @@ interface MatrixRow {
   low: number;
   affectedPackages: string[];
   affectedAgents: string[];
+  // Carried (not rendered as columns) so a row click can open the shared
+  // ComplianceControlDrawer with the original control + its framework catalog.
+  control: ComplianceControl;
+  catalog: Record<string, string>;
+}
+
+/** Payload emitted when a matrix row is drilled into, shaped for the drawer. */
+export interface ComplianceMatrixSelection {
+  control: ComplianceControl;
+  frameworkLabel: string;
+  catalog: Record<string, string>;
 }
 
 // ─── Data transform ──────────────────────────────────────────────────────────
@@ -83,6 +94,8 @@ function flattenControls(data: ComplianceResponse): MatrixRow[] {
         low: c.severity_breakdown.low ?? 0,
         affectedPackages: c.affected_packages,
         affectedAgents: c.affected_agents,
+        control: c,
+        catalog,
       });
     }
   }
@@ -252,7 +265,14 @@ function exportCsv(rows: MatrixRow[]) {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
+export function ComplianceMatrix({
+  data,
+  onSelectControl,
+}: {
+  data: ComplianceResponse;
+  /** Drill a row into the shared control drawer. When omitted, rows are static. */
+  onSelectControl?: (selection: ComplianceMatrixSelection) => void;
+}) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -420,10 +440,35 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
               ))}
             </thead>
             <tbody className="divide-y divide-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
-              {table.getRowModel().rows?.map((row) => (
+              {table.getRowModel().rows?.map((row) => {
+                const select = onSelectControl
+                  ? () =>
+                      onSelectControl({
+                        control: row.original.control,
+                        frameworkLabel: row.original.framework,
+                        catalog: row.original.catalog,
+                      })
+                  : undefined;
+                return (
                 <tr
                   key={row.id}
-                  className="hover:bg-[color:var(--surface)]/50 transition-colors"
+                  className={`transition-colors hover:bg-[color:var(--surface)]/50 ${
+                    select ? "cursor-pointer" : ""
+                  }`}
+                  {...(select
+                    ? {
+                        role: "button",
+                        tabIndex: 0,
+                        "aria-label": `Open evidence for ${row.original.framework} ${row.original.code}`,
+                        onClick: select,
+                        onKeyDown: (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            select();
+                          }
+                        },
+                      }
+                    : {})}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-3 py-2.5">
@@ -434,7 +479,8 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
                     </td>
                   ))}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

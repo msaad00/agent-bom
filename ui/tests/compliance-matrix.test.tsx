@@ -15,7 +15,7 @@
  */
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import type { ComplianceResponse } from "@/lib/api";
@@ -122,5 +122,32 @@ describe("ComplianceMatrix", () => {
   it("keeps the evidence-triage disclaimer visible", () => {
     render(<ComplianceMatrix data={matrixData()} />);
     expect(screen.getByTestId("compliance-matrix-helper-disclaimer")).toBeVisible();
+  });
+
+  it("makes matrix rows drillable via onSelectControl", () => {
+    const onSelect = vi.fn();
+    render(<ComplianceMatrix data={matrixData()} onSelectControl={onSelect} />);
+
+    const row = screen.getByText("LLM01").closest("tr");
+    expect(row).not.toBeNull();
+    fireEvent.click(row as HTMLElement);
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const payload = onSelect.mock.calls[0]![0];
+    expect(payload.control.code).toBe("LLM01");
+    expect(payload.frameworkLabel).toBe("OWASP LLM");
+    // The catalog map travels with the control so the drawer can resolve names.
+    expect(typeof payload.catalog).toBe("object");
+  });
+
+  it("opens the drawer on keyboard activation of a row", () => {
+    const onSelect = vi.fn();
+    render(<ComplianceMatrix data={matrixData()} onSelectControl={onSelect} />);
+
+    const row = screen.getByText("MCP01").closest("tr") as HTMLElement;
+    row.focus();
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0]![0].control.code).toBe("MCP01");
   });
 });

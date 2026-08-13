@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   PermissionDeniedNotice,
@@ -7,6 +7,17 @@ import {
   RolePermissionsPanel,
 } from "@/components/role-access";
 import type { AuthMeResponse } from "@/lib/api";
+
+// Demo detection is read from the shared hook; keep it mutable so a test can
+// flip the deployment into the public-demo posture without a real /health call.
+const demoState = { isDemoMode: false, loading: false };
+vi.mock("@/hooks/use-demo-mode", () => ({
+  useDemoMode: () => demoState,
+}));
+
+beforeEach(() => {
+  demoState.isDemoMode = false;
+});
 
 function session(overrides: Partial<AuthMeResponse> = {}): AuthMeResponse {
   return {
@@ -100,6 +111,31 @@ describe("PermissionDeniedNotice", () => {
     );
     expect(screen.getByText(/AGENT_BOM_NO_AUTH_ROLE=analyst/)).toBeInTheDocument();
     expect(screen.getByText(/AGENT_BOM_DEMO_ESTATE/)).toBeInTheDocument();
+  });
+
+  it("never leaks operator env-var config to a public demo visitor", () => {
+    demoState.isDemoMode = true;
+    render(
+      <PermissionDeniedNotice
+        session={session({ role: "viewer", auth_required: false })}
+      />,
+    );
+    // The self-host env-var elevation steps must not reach a demo visitor.
+    expect(screen.queryByText(/AGENT_BOM_NO_AUTH_ROLE/)).toBeNull();
+    expect(screen.queryByText(/AGENT_BOM_DEMO_ESTATE/)).toBeNull();
+    // A concise, neutral read-only line replaces them.
+    expect(screen.getByText(/read-only public demo/i)).toBeInTheDocument();
+  });
+
+  it("renders as a collapsible details notice, not an always-open band", () => {
+    const { container } = render(
+      <PermissionDeniedNotice session={session({ role: "viewer" })} />,
+    );
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    // Compact by default: the guidance is disclosed on demand, not pre-expanded.
+    expect(details).not.toHaveAttribute("open");
+    expect(container.querySelector("summary")).not.toBeNull();
   });
 
   it("attributes denial to environment policy when the current role is already sufficient", () => {

@@ -633,14 +633,28 @@ export function Nav() {
                           </span>
                         )}
 
-                        {/* Vuln count badges */}
+                        {/* Vuln count badges — severity-colored, but bare
+                            numbers are ambiguous, so the group carries a
+                            screen-reader label and a hover tooltip spelling
+                            out "N critical, N high". */}
                         {showVulnBadge && (
-                          <span className="ml-auto flex items-center gap-1">
-                            <span className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/40 rounded-full px-1.5 py-0 leading-4">
+                          <span
+                            role="group"
+                            aria-label={`${counts.critical} critical${counts.high > 0 ? `, ${counts.high} high` : ""} open findings`}
+                            title={`${counts.critical} critical${counts.high > 0 ? `, ${counts.high} high` : ""} open findings`}
+                            className="ml-auto flex items-center gap-1"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/40 rounded-full px-1.5 py-0 leading-4"
+                            >
                               {counts.critical}
                             </span>
                             {counts.high > 0 && (
-                              <span className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 border border-orange-800/40 rounded-full px-1.5 py-0 leading-4">
+                              <span
+                                aria-hidden="true"
+                                className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 border border-orange-800/40 rounded-full px-1.5 py-0 leading-4"
+                              >
                                 {counts.high}
                               </span>
                             )}

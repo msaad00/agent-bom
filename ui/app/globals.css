@@ -353,7 +353,7 @@ body {
 /* Dense remediation rows share these styles outside route JavaScript so the
    command center stays compact without duplicating long utility strings. */
 .risk-campaign-card { @apply rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] shadow-sm; }
-.risk-campaign-summary { @apply grid cursor-pointer list-none gap-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center; }
+.risk-campaign-summary { @apply grid cursor-pointer list-none gap-x-2 gap-y-1 px-3 py-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center; }
 .risk-campaign-summary::-webkit-details-marker,
 .risk-campaign-queue-summary::-webkit-details-marker { display: none; }
 .risk-campaign-severity { @apply rounded-full border border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--status-danger)]; }
@@ -406,7 +406,7 @@ body {
 .risk-entry-layout { @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between; }
 .risk-proof-note { @apply flex items-center gap-2 text-xs text-[color:var(--text-tertiary)]; }
 .risk-card-title { @apply truncate text-sm font-semibold text-[color:var(--foreground)]; }
-.risk-card-meta { @apply mt-1 truncate text-[11px] text-[color:var(--text-tertiary)]; }
+.risk-card-meta { @apply mt-0.5 truncate text-[11px] text-[color:var(--text-tertiary)]; }
 .risk-number { @apply font-semibold tabular-nums text-[color:var(--foreground)]; }
 .risk-queue-body { @apply border-t border-[color:var(--border-subtle)] px-3 pb-3; }
 .risk-entry-title { @apply text-sm font-semibold text-[color:var(--foreground)]; }

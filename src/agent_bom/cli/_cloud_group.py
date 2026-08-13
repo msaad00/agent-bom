@@ -745,19 +745,46 @@ cloud_group.add_command(inventory_cmd, "inventory")
     type=click.Choice(["aws", "azure", "gcp"], case_sensitive=False),
     default="aws",
     show_default=True,
-    help="Cloud provider. Only AWS ships a CLI executor today; Azure/GCP stay contract_only.",
+    help="Cloud provider. AWS EBS, Azure Managed Disk, and GCP Persistent Disk all ship a CLI executor.",
 )
-@click.option("--instance-id", default=None, help="EC2 instance whose attached EBS volumes to scan.")
-@click.option("--volume-id", default=None, help="A specific EBS volume to scan (takes precedence over --instance-id).")
+@click.option(
+    "--instance-id",
+    default=None,
+    help="AWS only: EC2 instance whose attached EBS volumes to scan.",
+)
+@click.option(
+    "--volume-id",
+    default=None,
+    help="Target disk to scan. AWS: EBS volume id. Azure/GCP: the managed/persistent disk resource id.",
+)
 @click.option(
     "--collector-instance-id",
     default=None,
-    help="In-account collector EC2 instance the temp volume is attached to (no block data leaves the account).",
+    help="In-account collector instance/VM the temp disk is attached to (no block data leaves the account).",
 )
-@click.option("--availability-zone", default=None, help="AZ to create the temp volume in (must match the collector).")
-@click.option("--region", default=None, help="AWS region.")
+@click.option(
+    "--availability-zone",
+    default=None,
+    help="Location for the temp disk (must match the collector). AWS AZ / Azure location / GCP zone.",
+)
+@click.option("--region", default=None, help="AWS region (AWS only).")
+@click.option(
+    "--account-id",
+    default=None,
+    help="Azure subscription id / GCP project id that owns the disk and collector (Azure/GCP only).",
+)
+@click.option(
+    "--collector-resource-group",
+    default=None,
+    help="Azure only: resource group of the in-account collector VM.",
+)
+@click.option(
+    "--tenant-id",
+    default=None,
+    help="Tenant that owns the durable lifecycle state (Azure/GCP). Defaults to $AGENT_BOM_TENANT_ID or 'default'.",
+)
 @click.option("--no-secrets", is_flag=True, help="Skip the redacted secret scan (SBOM + CVEs only).")
-@click.option("--no-sweep-orphans", is_flag=True, help="Skip the pre-run sweep of snapshots stranded by an earlier crash.")
+@click.option("--no-sweep-orphans", is_flag=True, help="AWS only: skip the pre-run sweep of stranded snapshots.")
 def side_scan_cmd(
     provider: str,
     instance_id: Optional[str],
@@ -765,32 +792,43 @@ def side_scan_cmd(
     collector_instance_id: Optional[str],
     availability_zone: Optional[str],
     region: Optional[str],
+    account_id: Optional[str],
+    collector_resource_group: Optional[str],
+    tenant_id: Optional[str],
     no_secrets: bool,
     no_sweep_orphans: bool,
 ) -> None:
     """Agentless disk side-scan — snapshot, mount read-only, SBOM + CVEs + redacted secrets.
 
-    AWS EBS is the shipped CLI executor: it takes a snapshot, attaches a temp
-    volume to an *in-account collector* instance, mounts it read-only, parses the
-    package SBOM + secret type/location (never values, never file contents), and
-    tears everything down in a guaranteed cleanup. No disk image or block data
-    ever leaves the account.
+    Each provider takes a snapshot of the target disk, creates a temp disk from
+    it, attaches that to an *in-account collector* instance, mounts it read-only,
+    parses the package SBOM + secret type/location (never values, never file
+    contents), and tears everything down in a guaranteed cleanup. No disk image
+    or block data ever leaves the account.
 
-    Azure Managed Disk and GCP Persistent Disk expose target discovery and an
-    injected-SDK lifecycle adapter boundary only — ``--provider azure|gcp``
-    refuses execution (exit 2) until a credentialed smoke proves a CLI executor.
-    Use ``agent-bom cloud side-scan-capabilities`` and cloud inventory
+    AWS EBS, Azure Managed Disk, and GCP Persistent Disk all ship a CLI executor.
+    Credentials are never embedded — the Azure/GCP executors resolve read-only
+    credentials from the provider's default chain, and no live-cloud smoke is
+    claimed yet (``credentialed_smoke=false``). Use
+    ``agent-bom cloud side-scan-capabilities`` and cloud inventory
     ``side_scan_targets`` for the honest surface.
 
-    Requires the scoped snapshot role (deploy/terraform/connect-aws-sidescan) and
-    an in-account collector instance. Gated by ``AGENT_BOM_SIDESCAN`` — OFF by
-    default; an unset flag prints how to enable it and exits non-zero.
+    Requires the scoped snapshot role and an in-account collector instance. Gated
+    by ``AGENT_BOM_SIDESCAN`` — OFF by default; an unset flag prints how to enable
+    it and exits non-zero.
 
     \b
     Examples:
       AGENT_BOM_SIDESCAN=1 agent-bom cloud side-scan \\
         --volume-id vol-0abc --collector-instance-id i-0def \\
         --availability-zone us-east-1a --region us-east-1
+      AGENT_BOM_SIDESCAN=1 agent-bom cloud side-scan --provider azure \\
+        --volume-id /subscriptions/SUB/resourceGroups/RG/providers/Microsoft.Compute/disks/os \\
+        --account-id SUB --collector-instance-id collector-vm \\
+        --collector-resource-group collectors --availability-zone eastus
+      AGENT_BOM_SIDESCAN=1 agent-bom cloud side-scan --provider gcp \\
+        --volume-id projects/PROJ/zones/us-central1-a/disks/os --account-id PROJ \\
+        --collector-instance-id collector-vm --availability-zone us-central1-a
       agent-bom cloud side-scan-capabilities -f json
     """
     import asyncio
@@ -803,41 +841,58 @@ def side_scan_cmd(
         SideScanProvider,
         side_scan_provider_capabilities,
     )
+    from agent_bom.cloud.side_scan_targets import run_provider_side_scan
 
     con = Console()
     provider_key = cast(SideScanProvider, provider.strip().lower())
     capabilities = side_scan_provider_capabilities()
     capability = capabilities.get(provider_key)
     if capability is None or not capability.cli_available:
-        executor = capability.executor if capability is not None else "contract_only"
+        executor = capability.executor if capability is not None else "unknown"
         con.print(f"\n  [yellow]side-scan executor unavailable for {provider_key}:[/yellow] executor={executor}, cli_available=false")
-        con.print(
-            "  [dim]Azure/GCP expose target discovery + lifecycle contract only — "
-            "no CLI executor is claimed. See `agent-bom cloud side-scan-capabilities` "
-            "and inventory `side_scan_targets`.[/dim]\n"
-        )
+        con.print("  [dim]See `agent-bom cloud side-scan-capabilities` and inventory `side_scan_targets`.[/dim]\n")
         raise SystemExit(2)
 
     try:
-        results: list[SideScanResult] = asyncio.run(
-            run_side_scan(
-                instance_id=instance_id,
-                volume_id=volume_id,
-                collector_instance_id=collector_instance_id,
-                availability_zone=availability_zone,
-                region=region,
-                scan_secrets_enabled=not no_secrets,
-                sweep_orphans=not no_sweep_orphans,
+        if provider_key == "aws":
+            results = asyncio.run(
+                run_side_scan(
+                    instance_id=instance_id,
+                    volume_id=volume_id,
+                    collector_instance_id=collector_instance_id,
+                    availability_zone=availability_zone,
+                    region=region,
+                    scan_secrets_enabled=not no_secrets,
+                    sweep_orphans=not no_sweep_orphans,
+                )
             )
-        )
+            _render_side_scan_results(con, results)
+        else:
+            provider_results = asyncio.run(
+                run_provider_side_scan(
+                    provider=provider_key,
+                    target_id=volume_id or "",
+                    account_id=account_id or "",
+                    location=availability_zone or "",
+                    collector_id=collector_instance_id or "",
+                    tenant_id=(tenant_id or os.environ.get("AGENT_BOM_TENANT_ID") or "default"),
+                    collector_resource_group=collector_resource_group,
+                    region=region,
+                    scan_secrets_enabled=not no_secrets,
+                )
+            )
+            _render_provider_side_scan_results(con, provider_key, provider_results)
     except CloudDiscoveryError as exc:
-        # Actionable, user-safe message (opt-in / config guidance). The message
-        # text is authored in the side-scan module and carries no exception
-        # internals, so it is safe to surface directly.
+        # Actionable, user-safe opt-in / config guidance authored in the side-scan
+        # module — no exception internals, safe to surface directly.
         con.print(f"\n  [yellow]side-scan unavailable:[/yellow] {exc}\n")
         raise SystemExit(1) from None
+    except Exception as exc:  # noqa: BLE001 - never leak a raw traceback for a provider fault
+        from agent_bom.security import sanitize_text
 
-    _render_side_scan_results(con, results)
+        con.print(f"\n  [red]side-scan failed for {provider_key}:[/red] [dim]{sanitize_text(exc)}[/dim]")
+        con.print("  [dim]Temporary snapshot/disk cleanup still ran; rerun to resume any partial teardown.[/dim]\n")
+        raise SystemExit(1) from None
 
 
 @click.command("side-scan-capabilities")
@@ -887,8 +942,8 @@ def side_scan_capabilities_cmd(output_format: str) -> None:
         )
     con.print(table)
     con.print(
-        "\n  [dim]Azure/GCP CLI execution is refused until a credentialed smoke "
-        "proves an executor. Inventory `side_scan_targets` remains discovery-only.[/dim]\n"
+        "\n  [dim]AWS EBS, Azure Managed Disk, and GCP Persistent Disk all ship a CLI executor. "
+        "No live credentialed smoke is claimed for any provider yet (credentialed_smoke=false).[/dim]\n"
     )
 
 
@@ -935,6 +990,52 @@ def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> No
         for warning in res.warnings:
             con.print(f"  [yellow]![/yellow] [dim]{warning}[/dim]")
     con.print()
+
+
+def _render_provider_side_scan_results(con: Console, provider: str, results: list) -> None:
+    """Render Azure/GCP side-scan results — metadata only, cleanup + warnings honest."""
+    from rich.table import Table
+
+    label = "Azure Managed Disk" if provider == "azure" else "GCP Persistent Disk"
+    con.print(f"\n  [bold]{label} side-scan[/bold] [dim]· agentless · read-only output · auto-cleaned[/dim]")
+
+    if not results:
+        con.print("  [yellow]No target disks resolved.[/yellow] [dim]Pass --volume-id (disk resource id).[/dim]\n")
+        return
+
+    summary = Table()
+    summary.add_column("Disk")
+    summary.add_column("Snapshot")
+    summary.add_column("Scan disk")
+    summary.add_column("Packages", justify="right")
+    summary.add_column("Vuln pkgs", justify="right")
+    summary.add_column("Secrets", justify="right")
+    summary.add_column("Cleaned up")
+    for res in results:
+        summary.add_row(
+            str(res.target_id or "—"),
+            str(res.snapshot_id or "—"),
+            str(res.scan_disk_id or "—"),
+            str(len(res.packages)),
+            str(res.vulnerability_count),
+            str(len(res.secrets)),
+            "[green]yes[/green]" if res.cleaned_up else "[yellow]partial[/yellow]",
+        )
+    con.print(summary)
+
+    for res in results:
+        if res.secrets:
+            secrets = Table(title=f"Secrets · {res.target_id} [dim](type + location only)[/dim]")
+            secrets.add_column("Type")
+            secrets.add_column("File", overflow="fold")
+            secrets.add_column("Line", justify="right")
+            secrets.add_column("Severity")
+            for sec in res.secrets:
+                secrets.add_row(sec.secret_type, sec.file_path, str(sec.line_number), sec.severity)
+            con.print(secrets)
+        for warning in res.warnings:
+            con.print(f"  [yellow]![/yellow] [dim]{warning}[/dim]")
+    con.print("  [dim]Zero findings are scoped to the scanned disk only — never a clean-workload assertion.[/dim]\n")
 
 
 cloud_group.add_command(side_scan_cmd, "side-scan")

@@ -30,15 +30,19 @@ def _execution(*, tenant_id: str = "tenant-a", idempotency_key: str = "scan-requ
     )
 
 
-def test_provider_capabilities_do_not_claim_unshipped_executors() -> None:
+def test_provider_capabilities_ship_cli_executors_with_smoke_pending() -> None:
     capabilities = side_scan_provider_capabilities()
 
-    assert capabilities["aws"].executor == "shipped"
-    assert capabilities["aws"].cli_available is True
-    assert capabilities["azure"].executor == "contract_only"
-    assert capabilities["gcp"].executor == "contract_only"
-    assert capabilities["azure"].cli_available is False
-    assert capabilities["gcp"].cli_available is False
+    # AWS, Azure Managed Disk, and GCP Persistent Disk all ship a CLI executor.
+    for provider in ("aws", "azure", "gcp"):
+        assert capabilities[provider].executor == "shipped", provider
+        assert capabilities[provider].cli_available is True, provider
+        assert capabilities[provider].target_discovery is True, provider
+        assert capabilities[provider].lifecycle_contract is True, provider
+
+    # Live-cloud proof is honest: AWS EBS has none claimed either, and Azure/GCP
+    # stay smoke-pending until an owner supplies read-only credentials.
+    assert capabilities["aws"].credentialed_smoke is False
     assert capabilities["azure"].credentialed_smoke is False
     assert capabilities["gcp"].credentialed_smoke is False
 

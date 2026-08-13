@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
 from agent_bom.cloud.side_scan_lifecycle import (
     CleanupStatus,
     ExecutionStatus,
@@ -21,7 +22,11 @@ from agent_bom.cloud.side_scan_provider_adapters import (
     SideScanLifecycleTimeoutError,
     SideScanPermissionDeniedError,
 )
-from agent_bom.cloud.side_scan_targets import CloudSideScanTarget, run_cloud_side_scan_targets
+from agent_bom.cloud.side_scan_targets import (
+    CloudSideScanTarget,
+    run_cloud_side_scan_targets,
+    run_provider_side_scan,
+)
 
 
 class FakeSdkError(Exception):
@@ -446,3 +451,126 @@ async def test_runner_persists_scan_evidence_and_guaranteed_cleanup(tmp_path: Pa
     assert persisted.status is ExecutionStatus.SCAN_COMPLETE
     assert persisted.cleanup_status is CleanupStatus.COMPLETE
     assert persisted.to_evidence_dict()["disposition"] == "complete"
+
+
+_GCP_DISK_ID = "https://compute.googleapis.com/compute/v1/projects/proj-1/zones/us-central1-a/disks/os-disk"
+
+
+@pytest.mark.asyncio
+async def test_run_provider_side_scan_gcp_dispatches_to_adapter_and_cleans_up(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI/scheduler entry point builds the concrete adapter and guarantees cleanup."""
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+
+    async def _no_cves(_packages: object) -> int:
+        return 0
+
+    monkeypatch.setattr("agent_bom.cloud.side_scan_targets._scan_packages", _no_cves)
+    snapshots = FakeGcpCollection("snapshots")
+    disks = FakeGcpCollection("disks")
+    instances = FakeGcpInstances()
+    mount_path = tmp_path / "mount"
+    mount_path.mkdir()
+
+    factory_calls: list[str] = []
+
+    def factory(provider: str, *, account_id: str, region: str | None) -> dict[str, Any]:
+        factory_calls.append(provider)
+        assert provider == "gcp"
+        assert account_id == "proj-1"
+        return {"snapshots_client": snapshots, "disks_client": disks, "instances_client": instances}
+
+    results = await run_provider_side_scan(
+        provider="gcp",
+        target_id=_GCP_DISK_ID,
+        account_id="proj-1",
+        location="us-central1-a",
+        collector_id="collector-1",
+        tenant_id="tenant-a",
+        state_db_path=tmp_path / "state.db",
+        client_factory=factory,
+        mount_controller=FakeMount(mount_path),
+        sleep=lambda _seconds: None,
+    )
+
+    assert factory_calls == ["gcp"]
+    assert len(results) == 1
+    assert results[0].cleaned_up is True
+    # The concrete adapter really ran (snapshot + temp disk created via the SDK)…
+    assert snapshots.insert_calls and disks.insert_calls
+    # …and every owned temporary resource was torn down.
+    assert snapshots.resources == {}
+    assert disks.resources == {}
+    assert not instances.disks
+
+
+@pytest.mark.asyncio
+async def test_run_provider_side_scan_cleans_up_on_provider_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A denied attach still tears down the snapshot + temp disk and never reads as clean."""
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+    snapshots = FakeGcpCollection("snapshots")
+    disks = FakeGcpCollection("disks")
+
+    class _DenyAttachInstances(FakeGcpInstances):
+        def attach_disk(self, *, request: dict[str, Any]) -> FakeOperation:
+            raise FakeSdkError("attach denied token=secret", 403)
+
+    instances = _DenyAttachInstances()
+    mount_path = tmp_path / "mount"
+    mount_path.mkdir()
+
+    def factory(provider: str, *, account_id: str, region: str | None) -> dict[str, Any]:
+        return {"snapshots_client": snapshots, "disks_client": disks, "instances_client": instances}
+
+    with pytest.raises(SideScanPermissionDeniedError):
+        await run_provider_side_scan(
+            provider="gcp",
+            target_id=_GCP_DISK_ID,
+            account_id="proj-1",
+            location="us-central1-a",
+            collector_id="collector-1",
+            tenant_id="tenant-a",
+            state_db_path=tmp_path / "state.db",
+            client_factory=factory,
+            mount_controller=FakeMount(mount_path),
+            sleep=lambda _seconds: None,
+        )
+
+    # Snapshot + temp disk were created, then guaranteed-cleanup reaped both.
+    assert snapshots.insert_calls and disks.insert_calls
+    assert snapshots.resources == {}
+    assert disks.resources == {}
+    # No secret material leaked into the raised error path.
+    assert "token=secret" not in "".join(str(call) for call in disks.delete_calls)
+
+
+@pytest.mark.asyncio
+async def test_run_provider_side_scan_requires_opt_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_SIDESCAN", raising=False)
+
+    with pytest.raises(SideScanDisabledError, match="AGENT_BOM_SIDESCAN"):
+        await run_provider_side_scan(
+            provider="gcp",
+            target_id=_GCP_DISK_ID,
+            account_id="proj-1",
+            location="us-central1-a",
+            collector_id="collector-1",
+            tenant_id="tenant-a",
+            state_db_path=tmp_path / "state.db",
+            client_factory=lambda *a, **k: {},
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_provider_side_scan_rejects_aws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SIDESCAN", "1")
+    with pytest.raises(SideScanConfigError, match="azure|gcp"):
+        await run_provider_side_scan(
+            provider="aws",  # type: ignore[arg-type]
+            target_id="vol-1",
+            account_id="111122223333",
+            location="us-east-1a",
+            collector_id="i-collector",
+            tenant_id="tenant-a",
+            state_db_path=tmp_path / "state.db",
+            client_factory=lambda *a, **k: {},
+        )

@@ -165,7 +165,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (78 tools)
+## Tool Categories (79 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
@@ -182,7 +182,7 @@ agent-bom proxy-bootstrap \
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan`, `runtime_evidence_ingest` | Scan AI artifacts, prompts, model files, and browser extensions; import tool-agnostic SARIF/SBOM/scanner evidence without executing its producer; merge CWPP runtime signals |
 
 <details>
-<summary>Complete current catalog (78 tools)</summary>
+<summary>Complete current catalog (79 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,

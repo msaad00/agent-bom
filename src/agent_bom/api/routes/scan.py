@@ -2150,6 +2150,8 @@ def _canonical_scope_filters(
     finding_class: str | None = None,
     q: str | None = None,
     kev: bool | None = None,
+    framework: str | None = None,
+    control: str | None = None,
 ) -> dict[str, str]:
     """Normalize the optional scope/domain filters into an active-filter map.
 
@@ -2157,8 +2159,26 @@ def _canonical_scope_filters(
     and empty inputs dropped. Unknown values are kept (not rejected) so the
     endpoint never raises on ad-hoc input — an unmatched value simply returns no
     findings. ``account`` maps to the finding's ``account_ref``.
+
+    ``framework`` / ``control`` power the compliance drill-through (epic #4790):
+    the framework identifier (a UI section id such as ``nist-csf`` / ``iso27001``)
+    is resolved once here to the finding's ``*_tags`` field and canonical slug so
+    the per-row predicate stays a cheap containment check. An unresolved
+    framework is stored raw so the predicate returns an honest empty match.
+    ``control`` is only meaningful alongside a framework and is dropped otherwise.
     """
     filters: dict[str, str] = {}
+    if framework and framework.strip():
+        from agent_bom.compliance_coverage import resolve_framework_filter
+
+        meta = resolve_framework_filter(framework)
+        if meta is not None:
+            filters["framework_tag_field"] = meta.tag_field
+            filters["framework_slug"] = meta.slug
+        else:
+            filters["framework"] = framework.strip().lower()
+        if control and control.strip():
+            filters["control"] = control.strip()
     if provider and provider.strip():
         filters["provider"] = provider.strip().lower()
     if account and account.strip():
@@ -2433,6 +2453,14 @@ async def list_findings(
     status: Annotated[str, Query(max_length=16)] = _DEFAULT_FINDING_STATUS,
     finding_class: FindingClass | None = None,
     kev: Annotated[bool | None, Query(description="Only known-exploited (KEV) findings, or only non-KEV when false")] = None,
+    framework: Annotated[
+        str | None,
+        Query(max_length=64, description="Compliance framework drill-through, e.g. soc2 / nist-csf (compliance section id)"),
+    ] = None,
+    control: Annotated[
+        str | None,
+        Query(max_length=64, description="Framework control code, narrows within framework (e.g. CC6.1)"),
+    ] = None,
     include_facets: bool = False,
 ) -> dict:
     """List unified findings aggregated from completed scan results.
@@ -2479,6 +2507,8 @@ async def list_findings(
                 finding_class,
                 kev,
                 include_facets,
+                framework,
+                control,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -2507,6 +2537,8 @@ def _list_findings_impl(
     finding_class: str | None = None,
     kev: bool | None = None,
     include_facets: bool = False,
+    framework: str | None = None,
+    control: str | None = None,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -2632,7 +2664,9 @@ def _list_findings_impl(
     # returns that scan's rows verbatim.
     from agent_bom.api.findings_current import current_scan_findings
 
-    scope_filters = _canonical_scope_filters(provider, account, environment, domain, finding_class, q, kev=kev)
+    scope_filters = _canonical_scope_filters(
+        provider, account, environment, domain, finding_class, q, kev=kev, framework=framework, control=control
+    )
 
     store = get_compliance_hub_store()
     bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
@@ -2930,6 +2964,8 @@ def _list_findings_impl(
             for key, value in {
                 "finding_class": finding_class,
                 "q": q.strip() if q and q.strip() else None,
+                "framework": framework.strip() if framework and framework.strip() else None,
+                "control": control.strip() if control and control.strip() else None,
             }.items()
             if value is not None
         },

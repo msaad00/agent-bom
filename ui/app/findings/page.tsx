@@ -259,6 +259,10 @@ function FindingsPage() {
   const paramProvider = searchParams.get("provider");
   const paramAccount = searchParams.get("account");
   const paramEnvironment = searchParams.get("environment");
+  // Compliance drill-through (epic #4790): a framework section id + optional
+  // control code linked from the Compliance view's per-control finding count.
+  const paramFramework = searchParams.get("framework");
+  const paramControl = searchParams.get("control");
   const { lens, selectLens, lenses, label: lensLabel, hint: lensHint } = useFindingsLens(paramLens);
 
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
@@ -285,6 +289,9 @@ function FindingsPage() {
   const [providerFilter, setProviderFilter] = useState<string>(paramProvider ?? "");
   const [accountFilter, setAccountFilter] = useState<string>(paramAccount ?? "");
   const [environmentFilter, setEnvironmentFilter] = useState<string>(paramEnvironment ?? "");
+  const [frameworkFilter, setFrameworkFilter] = useState<string>(paramFramework ?? "");
+  // A control code is only meaningful alongside a framework; it is cleared with it.
+  const [controlFilter, setControlFilter] = useState<string>(paramFramework ? (paramControl ?? "") : "");
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   // Default read-window (#4009): findings default to the last ~90 days so the
@@ -388,6 +395,11 @@ function FindingsPage() {
   }, [paramEnvironment]);
 
   useEffect(() => {
+    setFrameworkFilter(paramFramework ?? "");
+    setControlFilter(paramFramework ? (paramControl ?? "") : "");
+  }, [paramFramework, paramControl]);
+
+  useEffect(() => {
     const parsed = Number(paramWindow);
     setWindowDays(
       paramWindow != null && Number.isFinite(parsed) && parsed >= 0
@@ -410,6 +422,9 @@ function FindingsPage() {
     if (providerFilter.trim()) params.set("provider", providerFilter.trim());
     if (accountFilter.trim()) params.set("account", accountFilter.trim());
     if (environmentFilter.trim()) params.set("environment", environmentFilter.trim());
+    if (frameworkFilter.trim()) params.set("framework", frameworkFilter.trim());
+    // A control code without a framework is meaningless — only sync it alongside.
+    if (frameworkFilter.trim() && controlFilter.trim()) params.set("control", controlFilter.trim());
     if (windowDays !== DEFAULT_FINDINGS_WINDOW_DAYS) params.set("window", String(windowDays));
     if (page > 1) params.set("page", String(page));
     if (paramScan) params.set("scan", paramScan);
@@ -424,6 +439,8 @@ function FindingsPage() {
     providerFilter,
     accountFilter,
     environmentFilter,
+    frameworkFilter,
+    controlFilter,
     windowDays,
     page,
     paramScope,
@@ -540,6 +557,8 @@ function FindingsPage() {
           ...(providerFilter.trim() ? { provider: providerFilter.trim() } : {}),
           ...(accountFilter.trim() ? { account: accountFilter.trim() } : {}),
           ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
+          ...(frameworkFilter.trim() ? { framework: frameworkFilter.trim() } : {}),
+          ...(frameworkFilter.trim() && controlFilter.trim() ? { control: controlFilter.trim() } : {}),
           ...(issueTypeFilter !== "all" ? { findingClass: issueTypeFilter } : {}),
           sort: serverFindingsSort(sortKey),
           limit: PAGE_SIZE,
@@ -577,6 +596,8 @@ function FindingsPage() {
     providerFilter,
     accountFilter,
     environmentFilter,
+    frameworkFilter,
+    controlFilter,
     issueTypeFilter,
     windowDays,
     sortKey,
@@ -665,6 +686,21 @@ function FindingsPage() {
     environmentFilter.trim()
       ? { key: "environment", label: `Env: ${environmentFilter.trim()}`, onClear: () => setEnvironmentFilter("") }
       : null,
+    // Compliance drill-through chips. Clearing the framework also clears the
+    // control, since a control code without its framework is meaningless.
+    frameworkFilter.trim()
+      ? {
+          key: "framework",
+          label: `Framework: ${frameworkFilter.trim().toUpperCase()}`,
+          onClear: () => {
+            setFrameworkFilter("");
+            setControlFilter("");
+          },
+        }
+      : null,
+    frameworkFilter.trim() && controlFilter.trim()
+      ? { key: "control", label: `Control: ${controlFilter.trim()}`, onClear: () => setControlFilter("") }
+      : null,
   ].filter((chip): chip is { key: string; label: string; onClear: () => void } => chip !== null);
   const activeFilterCount = activeFilterChips.length;
   const clearAdvancedFilters = () => {
@@ -672,6 +708,8 @@ function FindingsPage() {
     setProviderFilter("");
     setAccountFilter("");
     setEnvironmentFilter("");
+    setFrameworkFilter("");
+    setControlFilter("");
   };
 
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [

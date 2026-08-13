@@ -167,8 +167,15 @@ class AgentBomClient:
         sort: str = "effective_reach",
         limit: int = 500,
         offset: int = 0,
+        framework: str | None = None,
+        control: str | None = None,
     ) -> JsonObject:
-        """List normalized findings from scan jobs and bulk ingests."""
+        """List normalized findings from scan jobs and bulk ingests.
+
+        ``framework`` / ``control`` are the compliance drill-through filters
+        (epic #4790): a framework section id (e.g. ``soc2`` / ``nist-csf``) and,
+        optionally, a control code that narrows within it.
+        """
 
         return self._request(
             "GET",
@@ -179,6 +186,8 @@ class AgentBomClient:
                     "sort": sort,
                     "limit": limit,
                     "offset": offset,
+                    "framework": framework,
+                    "control": control,
                 }
             ),
         )

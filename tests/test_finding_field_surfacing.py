@@ -42,6 +42,14 @@ _NEW_JSON_FINDING_KEYS = {
     "reachability",
     "is_actionable",
     "impact_category",
+    # Additive ownership + remediation-SLA fields (owner/SLA PR). ``sla_due_at``
+    # and ``first_seen`` are context-dependent — the report spine anchors
+    # first_seen at scan-completion time so a deadline is derivable, while a bare
+    # Finding.to_dict has no anchor — so they are excluded from the legacy
+    # snapshot comparison, same as the other additive keys.
+    "owner",
+    "sla_due_at",
+    "first_seen",
 }
 _NEW_SARIF_RESULT_PROPERTY_KEYS = {
     "affected_servers",

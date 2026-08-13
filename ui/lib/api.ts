@@ -103,6 +103,8 @@ import type {
   GovernanceFinding,
   GovernanceReport,
   SelfPostureReport,
+  SkillsScanReport,
+  SkillsScanRequest,
   ActivityTimeline,
   TraceIngestResponse,
   TraceExplorerResponse,
@@ -348,6 +350,10 @@ export type {
   SelfPostureCheck,
   SelfPostureCounts,
   SelfPostureReport,
+  SkillsScanReport,
+  SkillsScanRequest,
+  SkillsScanFileReport,
+  SkillsScanFileStatus,
   ActivityTimeline,
   ActivitySource,
   ActivityEvent,
@@ -1358,6 +1364,12 @@ export const api = {
 
   // Operator self-posture — this instance's own control-plane hardening
   getSelfPosture: () => get<SelfPostureReport>("/v1/self-posture"),
+
+  // ── Skills scan (#4790): same shared scanner the CLI/MCP use, over REST ──
+  /** This tenant's latest persisted skills scan (honest empty when none). */
+  getSkillsScan: () => get<SkillsScanReport>("/v1/skills/scan", { ttlMs: 0 }),
+  /** Trigger a skills scan over confined scan-root targets; returns verdicts inline. */
+  runSkillsScan: (body: SkillsScanRequest) => post<SkillsScanReport>("/v1/skills/scan", body),
 
   // Governance
   getGovernance: (days = 30) => get<GovernanceReport>(`/v1/governance?days=${days}`),

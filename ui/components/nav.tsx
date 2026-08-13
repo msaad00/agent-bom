@@ -43,6 +43,7 @@ import {
   Cog,
   ListChecks,
   ShieldCheck,
+  ScrollText,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -142,6 +143,12 @@ const NAV_GROUPS: NavGroup[] = [
         desc: "Repos, packages, images, cloud, identities, MCP, agents — one section",
       },
       { href: "/agents", label: "Agents", icon: Bot },
+      {
+        href: "/skills",
+        label: "Skills",
+        icon: ScrollText,
+        desc: "Scan agent skill/instruction files for trust verdict + provenance",
+      },
       { href: "/manifest", label: "AI BOM", icon: ClipboardList },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],

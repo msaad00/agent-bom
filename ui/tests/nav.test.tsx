@@ -412,6 +412,13 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/cost')).toBe(true)
   })
 
+  it('contains Skills link under Inventory', () => {
+    renderExpandedNav()
+    fireEvent.click(screen.getByRole('button', { name: /^inventory/i }))
+    const links = screen.getAllByRole('link', { name: /^skills$/i })
+    expect(links.some((l) => l.getAttribute('href') === '/skills')).toBe(true)
+  })
+
   it('moves Identity into Runtime', () => {
     renderExpandedNav()
     fireEvent.click(screen.getByRole('button', { name: /^runtime/i }))

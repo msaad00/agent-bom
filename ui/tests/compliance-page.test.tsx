@@ -40,13 +40,15 @@ const { compliance } = vi.hoisted(() => {
   const control = (
     code: string,
     name: string,
-    status: "pass" | "warning" | "fail",
+    status: string,
     findings: number,
+    evidence_reason?: string,
   ) => ({
     code,
     name,
     findings,
     status,
+    evidence_reason,
     severity_breakdown: {},
     affected_packages: [],
     affected_agents: [],
@@ -87,6 +89,7 @@ const { compliance } = vi.hoisted(() => {
       owasp_llm_top10: [
         control("LLM01", "Prompt Injection", "fail", 4),
         control("LLM02", "Insecure Output Handling", "pass", 0),
+        control("LLM03", "Training Data Poisoning", "not_evaluated", 0, "no_completed_scan"),
       ],
       owasp_mcp_top10: [control("MCP01", "Tool Poisoning", "warning", 1)],
       mitre_atlas: [],
@@ -180,6 +183,35 @@ describe("CompliancePage (dense restyle)", () => {
     expect(
       screen.queryByRole("link", { name: /findings for LLM02/i }),
     ).toBeNull();
+  });
+
+  it("surfaces WHY a not-evaluated control was not scored in the dense list", async () => {
+    render(<CompliancePage />);
+    await screen.findByTestId("compliance-kpi-strip");
+    // LLM03 is not_evaluated with reason no_completed_scan → the row shows the
+    // provenance, not a bare "Not evaluated".
+    await screen.findByText("Training Data Poisoning");
+    const reasons = screen.getAllByTestId("control-evidence-reason");
+    expect(reasons.some((el) => el.textContent === "No completed scan")).toBe(true);
+  });
+
+  it("offers a next-step CTA in the drawer for a not-evaluated control", async () => {
+    render(<CompliancePage />);
+    await screen.findByTestId("compliance-kpi-strip");
+
+    const poisoning = await screen.findByText("Training Data Poisoning");
+    fireEvent.click(poisoning);
+
+    const drawer = await screen.findByRole("dialog", {
+      name: /Control details for LLM03/i,
+    });
+    // Honest provenance line + an actionable "New Scan" link into /scan.
+    expect(within(drawer).getByTestId("control-unscored-provenance")).toHaveTextContent(
+      /not evaluated — no completed scan/i,
+    );
+    const cta = within(drawer).getByTestId("control-evidence-cta");
+    expect(cta).toHaveAttribute("href", "/scan");
+    expect(cta).toHaveTextContent("New Scan");
   });
 
   it("opens the control drawer when a control row is clicked", async () => {

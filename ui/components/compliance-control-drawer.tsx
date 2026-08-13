@@ -4,19 +4,14 @@ import Link from "next/link";
 import { Package, Server, X } from "lucide-react";
 
 import { useEscToClose } from "@/hooks/use-esc-to-close";
+import {
+  controlStatusLabel,
+  evidenceReasonCta,
+  evidenceReasonLabel,
+  isControlUnscored,
+} from "@/components/compliance-status";
 import type { ComplianceControl } from "@/lib/api";
 import { findingsHref, remediationHref, securityGraphHref } from "@/lib/page-links";
-
-function statusLabel(status: ComplianceControl["status"]): string {
-  switch (status) {
-    case "pass":
-      return "Pass";
-    case "warning":
-      return "Needs attention";
-    default:
-      return "Fail";
-  }
-}
 
 export function ComplianceControlDrawer({
   control,
@@ -32,6 +27,9 @@ export function ComplianceControlDrawer({
   useEscToClose(true, onClose);
   const name = catalogName ?? control.name;
   const sev = control.severity_breakdown;
+  const unscored = isControlUnscored(control.status);
+  const reasonLabel = evidenceReasonLabel(control.evidence_reason);
+  const reasonCta = unscored ? evidenceReasonCta(control.evidence_reason) : null;
 
   return (
     <div
@@ -62,18 +60,41 @@ export function ComplianceControlDrawer({
                     ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                     : control.status === "warning"
                       ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300"
-                      : "bg-red-500/15 text-red-700 dark:text-red-300"
+                      : unscored
+                        ? "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
+                        : "bg-red-500/15 text-red-700 dark:text-red-300"
                 }`}
               >
-                {statusLabel(control.status)}
+                {controlStatusLabel(control.status)}
               </span>
             </div>
             <h2 className="mt-2 text-base font-medium leading-snug text-[color:var(--foreground)]">
               {name}
             </h2>
-            <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
-              {control.findings} finding{control.findings === 1 ? "" : "s"} mapped to this control.
-            </p>
+            {unscored ? (
+              // Provenance for a control the scan couldn't grade: state WHY, and
+              // (when a missing input is implied) offer the next step. Never
+              // imply a source is connected/disconnected — "no observed signal"
+              // is an honest statement of absence.
+              <div className="mt-2" data-testid="control-unscored-provenance">
+                <p className="text-sm text-[color:var(--text-secondary)]">
+                  Not evaluated{reasonLabel ? ` — ${reasonLabel.toLowerCase()}` : ""}.
+                </p>
+                {reasonCta ? (
+                  <Link
+                    href={reasonCta.href}
+                    className="mt-2 inline-flex items-center rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent)] transition hover:bg-[color:var(--accent-soft-hover)]"
+                    data-testid="control-evidence-cta"
+                  >
+                    {reasonCta.label}
+                  </Link>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
+                {control.findings} finding{control.findings === 1 ? "" : "s"} mapped to this control.
+              </p>
+            )}
           </div>
           <button
             type="button"

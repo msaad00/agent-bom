@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType, ReactNode } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Brain,
@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
+import { useDrawerWidth } from "@/lib/use-drawer-width";
 import { graphLayerHref } from "@/lib/page-links";
 import {
   reachColorClass,
@@ -230,448 +231,567 @@ export function LineageDetailPanel({
     },
   );
 
-  const shellClass =
-    variant === "inline"
-      ? `relative w-full max-w-none border ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95 overflow-y-auto rounded-xl`
-      : `absolute right-0 top-0 bottom-0 w-80 bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50 overflow-y-auto`;
+  const { width, onHandlePointerDown, onHandleKeyDown } = useDrawerWidth();
+  const isOverlay = variant !== "inline";
 
-  return (
-    <div className={shellClass} data-testid="graph-entity-drawer">
+  // ---- Node-type primary block (the "what is this node" hero detail) --------
+  const typeSection = (
+    <>
+      {data.nodeType === "provider" && data.agentCount !== undefined && (
+        <Row label="Hosted agents" value={data.agentCount} />
+      )}
 
-      <div className="p-4 space-y-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
-              {TYPE_LABELS[data.nodeType]}
-            </span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <Icon className="w-4 h-4 text-[var(--text-secondary)]" />
-              <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                {data.label}
-              </h3>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {headerSlot}
-
-        {data.nodeType === "provider" && data.agentCount !== undefined && (
-          <Row label="Hosted agents" value={data.agentCount} />
-        )}
-
-        {data.nodeType === "agent" && (
-          <div className="space-y-3">
-            {data.agentType && <Row label="Type" value={data.agentType} />}
-            {data.agentStatus && (
-              <div
-                className={`text-xs px-2 py-1 rounded border font-mono ${
-                  data.agentStatus === "installed-not-configured"
-                    ? "border-yellow-800 bg-yellow-950 text-yellow-400"
-                    : "border-emerald-800 bg-emerald-950 text-emerald-400"
-                }`}
-              >
-                {data.agentStatus === "installed-not-configured"
-                  ? "Not Configured"
-                  : "Configured"}
-              </div>
-            )}
-            {data.serverCount !== undefined && (
-              <Row label="Servers" value={data.serverCount} />
-            )}
-            {data.packageCount !== undefined && (
-              <Row label="Packages" value={data.packageCount} />
-            )}
-            {(data.vulnCount ?? 0) > 0 && (
-              <Row
-                label="Findings"
-                value={data.vulnCount ?? 0}
-                className="text-red-400"
-              />
-            )}
-          </div>
-        )}
-
-        {(data.nodeType === "user" ||
-          data.nodeType === "group" ||
-          data.nodeType === "serviceAccount" ||
-          data.nodeType === "environment" ||
-          data.nodeType === "fleet" ||
-          data.nodeType === "cluster") && (
-          <GenericAssetSection
-            description={data.description}
-            version={data.version}
-            attributes={data.attributes}
-          />
-        )}
-
-        {data.nodeType === "server" && (
-          <div className="space-y-3">
-            {data.command && (
-              <CodeBlock label="Connection" value={data.command} />
-            )}
-            {data.toolCount !== undefined && data.toolCount > 0 && (
-              <Row label="Tools" value={data.toolCount} />
-            )}
-            {data.credentialCount !== undefined && data.credentialCount > 0 && (
-              <Row
-                label="Credentials"
-                value={data.credentialCount}
-                className="text-amber-400"
-              />
-            )}
-            {data.packageCount !== undefined && data.packageCount > 0 && (
-              <Row label="Packages" value={data.packageCount} />
-            )}
-          </div>
-        )}
-
-        {data.nodeType === "sharedServer" && (
-          <div className="space-y-3">
-            {data.sharedBy && (
-              <div className="text-xs px-2 py-1 rounded bg-cyan-500/10 dark:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300 border border-cyan-700 font-mono">
-                Shared by {data.sharedBy} agents
-              </div>
-            )}
-            {data.sharedAgents && data.sharedAgents.length > 0 && (
-              <TagList label="Connected Agents" tags={data.sharedAgents} />
-            )}
-            {data.command && (
-              <CodeBlock label="Connection" value={data.command} />
-            )}
-          </div>
-        )}
-
-        {data.nodeType === "package" && (
-          <div className="space-y-3">
-            {data.ecosystem && <Row label="Ecosystem" value={data.ecosystem} />}
-            {data.version && <Row label="Version" value={data.version} />}
-            {data.versionSource && (
-              <Row label="Version source" value={data.versionSource} />
-            )}
-            {data.versionConfidence && (
-              <Row label="Version confidence" value={data.versionConfidence} />
-            )}
-            {(data.vulnCount ?? 0) > 0 ? (
-              <Row
-                label="Findings"
-                value={data.vulnCount ?? 0}
-                className="text-red-400"
-              />
-            ) : (
-              <div className="text-xs text-emerald-400">
-                No known findings on this package node
-              </div>
-            )}
-          </div>
-        )}
-
-        {data.nodeType === "vulnerability" && (
-          <div className="space-y-3">
-            {data.severity && (
-              <span
-                className={`inline-block text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}
-              >
-                {data.severity}
-              </span>
-            )}
-            {typeof data.cvssScore === "number" &&
-              Number.isFinite(data.cvssScore) && (
-                <Row label="CVSS" value={data.cvssScore.toFixed(1)} />
-              )}
-            {typeof data.epssScore === "number" && data.epssScore > 0 && (
-              <Row
-                label="EPSS"
-                value={`${(data.epssScore * 100).toFixed(1)}%`}
-              />
-            )}
-            {data.isKev && (
-              <div className="text-xs px-2 py-1 rounded bg-red-900 text-red-300 border border-red-700 font-mono inline-block">
-                CISA Known Exploited
-              </div>
-            )}
-            {data.fixedVersion && (
-              <Row
-                label="Fix version"
-                value={data.fixedVersion}
-                className="text-emerald-400"
-              />
-            )}
-            {data.effectiveReach && (
-              <div className="space-y-1.5">
-                <Label>Effective reach</Label>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-block w-2.5 h-2.5 rounded-full ${reachColorClass(
-                      data.effectiveReach.band,
-                    )}`}
-                    aria-label={`reach band ${data.effectiveReach.band}`}
-                  />
-                  <span
-                    className={`text-xs font-mono ${reachTextClass(
-                      data.effectiveReach.band,
-                    )}`}
-                  >
-                    {data.effectiveReach.composite.toFixed(1)} / 100 ·{" "}
-                    {data.effectiveReach.band}
-                  </span>
-                </div>
-                <div className="text-[10px] font-mono text-[var(--text-secondary)] break-all">
-                  {reachFormula(data.effectiveReach)}
-                </div>
-                {data.effectiveReach.reachable_tools &&
-                  data.effectiveReach.reachable_tools.length > 0 && (
-                    <Row
-                      label="Reachable tools"
-                      value={data.effectiveReach.reachable_tools
-                        .slice(0, 4)
-                        .join(", ")}
-                    />
-                  )}
-                {data.effectiveReach.reachable_creds &&
-                  data.effectiveReach.reachable_creds.length > 0 && (
-                    <Row
-                      label="Reachable creds"
-                      value={data.effectiveReach.reachable_creds
-                        .slice(0, 4)
-                        .join(", ")}
-                    />
-                  )}
-              </div>
-            )}
-            {data.owaspTags && data.owaspTags.length > 0 && (
-              <TagList label="OWASP" tags={data.owaspTags} />
-            )}
-            {data.atlasTags && data.atlasTags.length > 0 && (
-              <TagList label="ATLAS" tags={data.atlasTags} />
-            )}
-            {osvUrl && (
-              <a
-                href={osvUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-              >
-                <ExternalLink className="w-3 h-3" />
-                View on OSV
-              </a>
-            )}
-          </div>
-        )}
-
-        {data.nodeType === "misconfiguration" && (
-          <div className="space-y-3">
-            {data.severity && (
-              <span
-                className={`inline-block text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}
-              >
-                {data.severity}
-              </span>
-            )}
-            {data.description && (
-              <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
-            )}
-          </div>
-        )}
-
-        {data.nodeType === "credential" && (
-          <div className="space-y-3">
-            <div className="text-xs text-amber-400">
-              Environment variable or credential-like secret exposed in
-              configuration.
-            </div>
-            {data.serverName && (
-              <Row label="Linked server" value={data.serverName} />
-            )}
-          </div>
-        )}
-
-        {data.nodeType === "tool" && data.description && (
-          <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
-        )}
-
-        {data.nodeType === "model" && (
-          <GenericAssetSection
-            description={data.description}
-            version={data.version}
-            attributes={data.attributes}
-          />
-        )}
-
-        {data.nodeType === "dataset" && (
-          <GenericAssetSection
-            description={data.description}
-            version={data.version}
-            attributes={data.attributes}
-          />
-        )}
-
-        {data.nodeType === "container" && (
-          <GenericAssetSection
-            description={data.description}
-            attributes={data.attributes}
-          />
-        )}
-
-        {data.nodeType === "cloudResource" && (
-          <GenericAssetSection
-            description={data.description}
-            attributes={data.attributes}
-          />
-        )}
-
-        <EvidenceTierBadge
-          tier={data.evidenceTier}
-          captureReplay={data.evidenceCaptureReplay}
-          notAfter={data.evidenceNotAfter}
-        />
-
-        <RuntimeEvidenceBadge tier={data.runtimeEvidenceTier} />
-
-        {(data.status ||
-          data.riskScore != null ||
-          data.firstSeen ||
-          data.lastSeen) && (
-          <div className="space-y-2">
-            <Label>Lifecycle</Label>
-            {data.status && <Row label="Status" value={data.status} />}
-            {data.riskScore != null && (
-              <Row label="Risk score" value={data.riskScore.toFixed(1)} />
-            )}
-            {data.firstSeen && (
-              <Row label="First seen" value={shortDate(data.firstSeen)} />
-            )}
-            {data.lastSeen && (
-              <Row label="Last seen" value={shortDate(data.lastSeen)} />
-            )}
-          </div>
-        )}
-
-        {typeof data.attributes?.node_id === "string" &&
-          data.attributes.node_id && (
-            <div className="space-y-2">
-              <Label>Identifier</Label>
-              <CodeBlock
-                label="Node ID"
-                value={String(data.attributes.node_id)}
-              />
+      {data.nodeType === "agent" && (
+        <div className="space-y-3">
+          {data.agentType && <Row label="Type" value={data.agentType} />}
+          {data.agentStatus && (
+            <div
+              className={`text-xs px-2 py-1 rounded border font-mono ${
+                data.agentStatus === "installed-not-configured"
+                  ? "border-yellow-800 bg-yellow-950 text-yellow-400"
+                  : "border-emerald-800 bg-emerald-950 text-emerald-400"
+              }`}
+            >
+              {data.agentStatus === "installed-not-configured"
+                ? "Not Configured"
+                : "Configured"}
             </div>
           )}
+          {data.serverCount !== undefined && (
+            <Row label="Servers" value={data.serverCount} />
+          )}
+          {data.packageCount !== undefined && (
+            <Row label="Packages" value={data.packageCount} />
+          )}
+          {(data.vulnCount ?? 0) > 0 && (
+            <Row
+              label="Findings"
+              value={data.vulnCount ?? 0}
+              className="text-red-400"
+            />
+          )}
+        </div>
+      )}
 
-        {(data.neighborCount != null ||
-          data.sourceCount != null ||
-          data.incomingEdgeCount != null ||
-          data.outgoingEdgeCount != null ||
-          data.impactCount != null) && (
-          <div className="space-y-2">
-            <Label>Graph Context</Label>
-            {data.neighborCount != null && (
-              <Row label="Neighbors" value={data.neighborCount} />
-            )}
-            {data.sourceCount != null && (
-              <Row label="Sources" value={data.sourceCount} />
-            )}
-            {data.incomingEdgeCount != null && (
-              <Row label="Incoming edges" value={data.incomingEdgeCount} />
-            )}
-            {data.outgoingEdgeCount != null && (
-              <Row label="Outgoing edges" value={data.outgoingEdgeCount} />
-            )}
-            {data.impactCount != null && (
-              <Row
-                label="Affected nodes"
-                value={data.impactCount}
-                className="text-orange-300"
-              />
-            )}
-            {data.maxImpactDepth != null && (
-              <Row label="Impact depth" value={data.maxImpactDepth} />
-            )}
-          </div>
-        )}
+      {(data.nodeType === "user" ||
+        data.nodeType === "group" ||
+        data.nodeType === "serviceAccount" ||
+        data.nodeType === "environment" ||
+        data.nodeType === "fleet" ||
+        data.nodeType === "cluster") && (
+        <GenericAssetSection
+          description={data.description}
+          version={data.version}
+          attributes={data.attributes}
+        />
+      )}
 
-        {onShowBlastRadius && (
-          <button
-            type="button"
-            onClick={onShowBlastRadius}
-            disabled={blastRadiusLoading}
-            aria-pressed={blastRadiusActive}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
-              blastRadiusActive
-                ? "border-violet-400/50 bg-violet-500/20 text-violet-100"
-                : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200 hover:border-violet-400/60 hover:bg-violet-500/20"
-            }`}
-          >
-            {blastRadiusLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Radar className="h-3.5 w-3.5" />
-            )}
-            {blastRadiusActive ? "Blast radius shown" : "Show blast radius"}
-          </button>
-        )}
+      {data.nodeType === "server" && (
+        <div className="space-y-3">
+          {data.command && (
+            <CodeBlock label="Connection" value={data.command} />
+          )}
+          {data.toolCount !== undefined && data.toolCount > 0 && (
+            <Row label="Tools" value={data.toolCount} />
+          )}
+          {data.credentialCount !== undefined && data.credentialCount > 0 && (
+            <Row
+              label="Credentials"
+              value={data.credentialCount}
+              className="text-amber-400"
+            />
+          )}
+          {data.packageCount !== undefined && data.packageCount > 0 && (
+            <Row label="Packages" value={data.packageCount} />
+          )}
+        </div>
+      )}
 
-        {data.impactByType && Object.keys(data.impactByType).length > 0 && (
-          <div>
-            <Label>Impact By Type</Label>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {Object.entries(data.impactByType)
-                .sort((left, right) => right[1] - left[1])
-                .map(([key, value]) => (
-                  <Link
-                    key={key}
-                    href={graphLayerHref(key)}
-                    className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
-                  >
-                    {prettifyKey(key)}: {value}
-                  </Link>
-                ))}
+      {data.nodeType === "sharedServer" && (
+        <div className="space-y-3">
+          {data.sharedBy && (
+            <div className="text-xs px-2 py-1 rounded bg-cyan-500/10 dark:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300 border border-cyan-700 font-mono">
+              Shared by {data.sharedBy} agents
             </div>
-          </div>
-        )}
+          )}
+          {data.sharedAgents && data.sharedAgents.length > 0 && (
+            <TagList label="Connected Agents" tags={data.sharedAgents} />
+          )}
+          {data.command && (
+            <CodeBlock label="Connection" value={data.command} />
+          )}
+        </div>
+      )}
 
-        {data.dataSources && data.dataSources.length > 0 && (
-          <TagList
-            label="Data Sources"
-            tags={data.dataSources}
-            tone="blue"
-            linkBuilder={(tag) => `/jobs?q=${encodeURIComponent(tag)}`}
-          />
-        )}
+      {data.nodeType === "package" && (
+        <div className="space-y-3">
+          {data.ecosystem && <Row label="Ecosystem" value={data.ecosystem} />}
+          {data.version && <Row label="Version" value={data.version} />}
+          {data.versionSource && (
+            <Row label="Version source" value={data.versionSource} />
+          )}
+          {data.versionConfidence && (
+            <Row label="Version confidence" value={data.versionConfidence} />
+          )}
+          {(data.vulnCount ?? 0) > 0 ? (
+            <Row
+              label="Findings"
+              value={data.vulnCount ?? 0}
+              className="text-red-400"
+            />
+          ) : (
+            <div className="text-xs text-emerald-400">
+              No known findings on this package node
+            </div>
+          )}
+        </div>
+      )}
 
-        {data.complianceTags && data.complianceTags.length > 0 && (
-          <TagList
-            label="Compliance Tags"
-            tags={data.complianceTags}
-            linkBuilder={(tag) => `/compliance?q=${encodeURIComponent(tag)}`}
-          />
-        )}
-
-        {extraAttributes.length > 0 && (
-          <div className="space-y-2">
-            <Label>Attributes</Label>
+      {data.nodeType === "vulnerability" && (
+        <div className="space-y-3">
+          {data.severity && (
+            <span
+              className={`inline-block text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}
+            >
+              {data.severity}
+            </span>
+          )}
+          {typeof data.cvssScore === "number" &&
+            Number.isFinite(data.cvssScore) && (
+              <Row label="CVSS" value={data.cvssScore.toFixed(1)} />
+            )}
+          {typeof data.epssScore === "number" && data.epssScore > 0 && (
+            <Row
+              label="EPSS"
+              value={`${(data.epssScore * 100).toFixed(1)}%`}
+            />
+          )}
+          {data.isKev && (
+            <div className="text-xs px-2 py-1 rounded bg-red-900 text-red-300 border border-red-700 font-mono inline-block">
+              CISA Known Exploited
+            </div>
+          )}
+          {data.fixedVersion && (
+            <Row
+              label="Fix version"
+              value={data.fixedVersion}
+              className="text-emerald-400"
+            />
+          )}
+          {data.effectiveReach && (
             <div className="space-y-1.5">
-              {extraAttributes.slice(0, 10).map(([key, value]) => (
-                <Row
-                  key={key}
-                  label={prettifyKey(key)}
-                  value={formatValue(value)}
+              <Label>Effective reach</Label>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-block w-2.5 h-2.5 rounded-full ${reachColorClass(
+                    data.effectiveReach.band,
+                  )}`}
+                  aria-label={`reach band ${data.effectiveReach.band}`}
                 />
-              ))}
+                <span
+                  className={`text-xs font-mono ${reachTextClass(
+                    data.effectiveReach.band,
+                  )}`}
+                >
+                  {data.effectiveReach.composite.toFixed(1)} / 100 ·{" "}
+                  {data.effectiveReach.band}
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-[var(--text-secondary)] break-all">
+                {reachFormula(data.effectiveReach)}
+              </div>
+              {data.effectiveReach.reachable_tools &&
+                data.effectiveReach.reachable_tools.length > 0 && (
+                  <Row
+                    label="Reachable tools"
+                    value={data.effectiveReach.reachable_tools
+                      .slice(0, 4)
+                      .join(", ")}
+                  />
+                )}
+              {data.effectiveReach.reachable_creds &&
+                data.effectiveReach.reachable_creds.length > 0 && (
+                  <Row
+                    label="Reachable creds"
+                    value={data.effectiveReach.reachable_creds
+                      .slice(0, 4)
+                      .join(", ")}
+                  />
+                )}
             </div>
+          )}
+          {data.owaspTags && data.owaspTags.length > 0 && (
+            <TagList label="OWASP" tags={data.owaspTags} />
+          )}
+          {data.atlasTags && data.atlasTags.length > 0 && (
+            <TagList label="ATLAS" tags={data.atlasTags} />
+          )}
+          {osvUrl && (
+            <a
+              href={osvUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View on OSV
+            </a>
+          )}
+        </div>
+      )}
+
+      {data.nodeType === "misconfiguration" && (
+        <div className="space-y-3">
+          {data.severity && (
+            <span
+              className={`inline-block text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}
+            >
+              {data.severity}
+            </span>
+          )}
+          {data.description && (
+            <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
+          )}
+        </div>
+      )}
+
+      {data.nodeType === "credential" && (
+        <div className="space-y-3">
+          <div className="text-xs text-amber-400">
+            Environment variable or credential-like secret exposed in
+            configuration.
+          </div>
+          {data.serverName && (
+            <Row label="Linked server" value={data.serverName} />
+          )}
+        </div>
+      )}
+
+      {data.nodeType === "tool" && data.description && (
+        <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
+      )}
+
+      {data.nodeType === "model" && (
+        <GenericAssetSection
+          description={data.description}
+          version={data.version}
+          attributes={data.attributes}
+        />
+      )}
+
+      {data.nodeType === "dataset" && (
+        <GenericAssetSection
+          description={data.description}
+          version={data.version}
+          attributes={data.attributes}
+        />
+      )}
+
+      {data.nodeType === "container" && (
+        <GenericAssetSection
+          description={data.description}
+          attributes={data.attributes}
+        />
+      )}
+
+      {data.nodeType === "cloudResource" && (
+        <GenericAssetSection
+          description={data.description}
+          attributes={data.attributes}
+        />
+      )}
+
+      <EvidenceTierBadge
+        tier={data.evidenceTier}
+        captureReplay={data.evidenceCaptureReplay}
+        notAfter={data.evidenceNotAfter}
+      />
+
+      <RuntimeEvidenceBadge tier={data.runtimeEvidenceTier} />
+
+      {(data.status ||
+        data.riskScore != null ||
+        data.firstSeen ||
+        data.lastSeen) && (
+        <div className="space-y-2">
+          <Label>Lifecycle</Label>
+          {data.status && <Row label="Status" value={data.status} />}
+          {data.riskScore != null && (
+            <Row label="Risk score" value={data.riskScore.toFixed(1)} />
+          )}
+          {data.firstSeen && (
+            <Row label="First seen" value={shortDate(data.firstSeen)} />
+          )}
+          {data.lastSeen && (
+            <Row label="Last seen" value={shortDate(data.lastSeen)} />
+          )}
+        </div>
+      )}
+
+      {typeof data.attributes?.node_id === "string" &&
+        data.attributes.node_id && (
+          <div className="space-y-2">
+            <Label>Identifier</Label>
+            <CodeBlock
+              label="Node ID"
+              value={String(data.attributes.node_id)}
+            />
           </div>
         )}
 
-        {footerSlot}
+      {onShowBlastRadius && (
+        <button
+          type="button"
+          onClick={onShowBlastRadius}
+          disabled={blastRadiusLoading}
+          aria-pressed={blastRadiusActive}
+          className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            blastRadiusActive
+              ? "border-violet-400/50 bg-violet-500/20 text-violet-100"
+              : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200 hover:border-violet-400/60 hover:bg-violet-500/20"
+          }`}
+        >
+          {blastRadiusLoading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Radar className="h-3.5 w-3.5" />
+          )}
+          {blastRadiusActive ? "Blast radius shown" : "Show blast radius"}
+        </button>
+      )}
+    </>
+  );
+
+  // ---- Relationships: structural graph context -----------------------------
+  const hasRelationships =
+    data.neighborCount != null ||
+    data.sourceCount != null ||
+    data.incomingEdgeCount != null ||
+    data.outgoingEdgeCount != null ||
+    data.impactCount != null ||
+    data.maxImpactDepth != null;
+
+  const relationshipsSection = hasRelationships ? (
+    <div className="space-y-2">
+      {data.neighborCount != null && (
+        <Row label="Neighbors" value={data.neighborCount} />
+      )}
+      {data.sourceCount != null && (
+        <Row label="Sources" value={data.sourceCount} />
+      )}
+      {data.incomingEdgeCount != null && (
+        <Row label="Incoming edges" value={data.incomingEdgeCount} />
+      )}
+      {data.outgoingEdgeCount != null && (
+        <Row label="Outgoing edges" value={data.outgoingEdgeCount} />
+      )}
+      {data.impactCount != null && (
+        <Row
+          label="Affected nodes"
+          value={data.impactCount}
+          className="text-orange-300"
+        />
+      )}
+      {data.maxImpactDepth != null && (
+        <Row label="Impact depth" value={data.maxImpactDepth} />
+      )}
+    </div>
+  ) : null;
+
+  // ---- Impact: affected nodes broken down by type --------------------------
+  const hasImpact =
+    !!data.impactByType && Object.keys(data.impactByType).length > 0;
+
+  const impactSection = hasImpact ? (
+    <div className="flex flex-wrap gap-1">
+      {Object.entries(data.impactByType ?? {})
+        .sort((left, right) => right[1] - left[1])
+        .map(([key, value]) => (
+          <Link
+            key={key}
+            href={graphLayerHref(key)}
+            className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
+          >
+            {prettifyKey(key)}: {value}
+          </Link>
+        ))}
+    </div>
+  ) : null;
+
+  // ---- Attributes: sources, compliance tags, raw attributes ----------------
+  const hasAttributes =
+    (data.dataSources?.length ?? 0) > 0 ||
+    (data.complianceTags?.length ?? 0) > 0 ||
+    extraAttributes.length > 0;
+
+  const attributesSection = hasAttributes ? (
+    <div className="space-y-4">
+      {data.dataSources && data.dataSources.length > 0 && (
+        <TagList
+          label="Data Sources"
+          tags={data.dataSources}
+          tone="blue"
+          linkBuilder={(tag) => `/jobs?q=${encodeURIComponent(tag)}`}
+        />
+      )}
+
+      {data.complianceTags && data.complianceTags.length > 0 && (
+        <TagList
+          label="Compliance Tags"
+          tags={data.complianceTags}
+          linkBuilder={(tag) => `/compliance?q=${encodeURIComponent(tag)}`}
+        />
+      )}
+
+      {extraAttributes.length > 0 && (
+        <div className="space-y-2">
+          <Label>Attributes</Label>
+          <div className="space-y-1.5">
+            {extraAttributes.slice(0, 10).map(([key, value]) => (
+              <Row
+                key={key}
+                label={prettifyKey(key)}
+                value={formatValue(value)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  // ---- Tab model -----------------------------------------------------------
+  // Detail groups into tabs instead of one mile-long column. Overview is always
+  // present (identity + lifecycle); the rest appear only when they carry data
+  // so the drawer never shows an empty tab.
+  const tabs: { id: TabId; label: string; content: ReactNode }[] = [
+    { id: "overview", label: "Overview", content: typeSection },
+    ...(hasRelationships
+      ? [
+          {
+            id: "relationships" as const,
+            label: "Relationships",
+            content: relationshipsSection,
+          },
+        ]
+      : []),
+    ...(hasImpact
+      ? [{ id: "impact" as const, label: "Impact", content: impactSection }]
+      : []),
+    ...(hasAttributes
+      ? [
+          {
+            id: "attributes" as const,
+            label: "Attributes",
+            content: attributesSection,
+          },
+        ]
+      : []),
+  ];
+
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const activeId = tabs.some((tab) => tab.id === activeTab)
+    ? activeTab
+    : (tabs[0]?.id ?? "overview");
+  const activeContent =
+    tabs.find((tab) => tab.id === activeId)?.content ?? typeSection;
+
+  const shellClass = isOverlay
+    ? `absolute right-0 top-0 bottom-0 flex max-w-full flex-col bg-[var(--background)]/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50`
+    : `relative flex w-full max-w-none flex-col border ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95 rounded-xl`;
+
+  return (
+    <div
+      className={shellClass}
+      style={isOverlay ? { width } : undefined}
+      data-testid="graph-entity-drawer"
+    >
+      {isOverlay && (
+        <div
+          role="separator"
+          aria-label="Resize drawer"
+          aria-orientation="vertical"
+          tabIndex={0}
+          onKeyDown={onHandleKeyDown}
+          onPointerDown={onHandlePointerDown}
+          title="Drag to resize"
+          className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-[color:var(--accent-border)] focus:bg-[color:var(--accent-border)] focus:outline-none"
+        />
+      )}
+
+      {/* Header — always visible */}
+      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
+        <div className="min-w-0">
+          <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
+            {TYPE_LABELS[data.nodeType]}
+          </span>
+          <div className="flex items-center gap-2 mt-0.5">
+            <Icon className="w-4 h-4 shrink-0 text-[var(--text-secondary)]" />
+            <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">
+              {data.label}
+            </h3>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="shrink-0 p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
+
+      {/* Pinned summary (layer / evidence / id / counts) */}
+      {headerSlot ? <div className="px-4 pb-3">{headerSlot}</div> : null}
+
+      {/* Tab bar — only when there is more than one group to switch between */}
+      {tabs.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Node detail sections"
+          className="flex gap-1 border-b border-[color:var(--border-subtle)] px-4"
+        >
+          {tabs.map((tab) => {
+            const selected = tab.id === activeId;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                data-testid={`graph-drawer-tab-${tab.id}`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  selected
+                    ? "border-[color:var(--accent-border)] text-[var(--foreground)]"
+                    : "border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Active tab content — scrolls independently in overlay mode */}
+      <div
+        role="tabpanel"
+        data-testid={`graph-drawer-panel-${activeId}`}
+        className={`space-y-4 p-4 ${
+          isOverlay ? "min-h-0 flex-1 overflow-y-auto" : ""
+        }`}
+      >
+        {activeContent}
+      </div>
+
+      {/* Action footer — always visible */}
+      {footerSlot ? <div className="shrink-0 px-4 pb-4">{footerSlot}</div> : null}
     </div>
   );
 }
+
+type TabId = "overview" | "relationships" | "impact" | "attributes";
 
 function GenericAssetSection({
   description,

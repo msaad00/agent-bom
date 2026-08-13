@@ -240,6 +240,75 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/remediation')).toBe(true)
   })
 
+  it('labels the Findings severity count badges for screen readers and hover', async () => {
+    const { api } = await import('@/lib/api')
+    vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
+      critical: 440,
+      high: 1337,
+      medium: 0,
+      low: 0,
+      total: 1777,
+      kev: 0,
+      compound_issues: 0,
+      deployment_mode: 'local',
+      has_mcp_context: false,
+      has_agent_context: false,
+      has_local_scan: true,
+      has_fleet_ingest: false,
+      has_cluster_scan: false,
+      has_ci_cd_scan: false,
+      has_mesh: false,
+      has_gateway: false,
+      has_proxy: false,
+      has_traces: false,
+      has_registry: false,
+      scan_sources: ['sbom'],
+      scan_count: 1,
+    })
+
+    renderExpandedNav()
+
+    const badges = await screen.findByRole('group', {
+      name: /440 critical, 1337 high open findings/i,
+    })
+    expect(badges).toHaveAttribute('title', '440 critical, 1337 high open findings')
+    expect(within(badges).getByText('440')).toBeInTheDocument()
+    expect(within(badges).getByText('1337')).toBeInTheDocument()
+  })
+
+  it('drops the high badge from the accessible label when there are no high findings', async () => {
+    const { api } = await import('@/lib/api')
+    vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
+      critical: 5,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 5,
+      kev: 0,
+      compound_issues: 0,
+      deployment_mode: 'local',
+      has_mcp_context: false,
+      has_agent_context: false,
+      has_local_scan: true,
+      has_fleet_ingest: false,
+      has_cluster_scan: false,
+      has_ci_cd_scan: false,
+      has_mesh: false,
+      has_gateway: false,
+      has_proxy: false,
+      has_traces: false,
+      has_registry: false,
+      scan_sources: ['sbom'],
+      scan_count: 1,
+    })
+
+    renderExpandedNav()
+
+    const badges = await screen.findByRole('group', { name: /^5 critical open findings$/i })
+    expect(within(badges).getByText('5')).toBeInTheDocument()
+    expect(within(badges).queryByText('0')).not.toBeInTheDocument()
+  })
+
   it('exposes one Investigation entry under Posture', () => {
     renderExpandedNav()
     const links = screen.getAllByRole('link', { name: /^investigation$/i })

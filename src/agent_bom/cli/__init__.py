@@ -319,6 +319,16 @@ from agent_bom.cli._compliance_group import compliance_cmd  # noqa: E402
 main.add_command(campaigns_cmd, "campaigns")
 main.add_command(compliance_cmd, "compliance")
 
+# ---------------------------------------------------------------------------
+# Ticketing + export groups — headless parity for the connect-once ITSM
+# ticketing plane and the scheduled findings-export plane (API-only until now).
+# ---------------------------------------------------------------------------
+from agent_bom.cli._exports_group import export_cmd  # noqa: E402
+from agent_bom.cli._ticketing_group import ticket_cmd  # noqa: E402
+
+main.add_command(ticket_cmd, "ticket")
+main.add_command(export_cmd, "export")
+
 from agent_bom.cli._db import db_cmd  # noqa: E402
 
 main.add_command(db_cmd, "db")

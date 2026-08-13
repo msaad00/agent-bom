@@ -3,9 +3,9 @@
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. Fourteen write-annotated tools cover scan-history
+resources, or runtime targets. 15 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
-review, and ticket workflows.
+review, finding triage, and ticket workflows.
 They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
@@ -31,7 +31,8 @@ invoke them.
 `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ai_inventory_scan`,
 `license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
-`cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`.
+`cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
+`findings_triage`.
 
 </details>
 

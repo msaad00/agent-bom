@@ -1434,5 +1434,24 @@
       {"name": "reason", "type": "string", "desc": "Human audit reason"},
       {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
     ]
+  },
+  {
+    "name": "findings_triage",
+    "description": "Record a tenant-scoped finding triage decision (queue state, VEX decision + justification, assignee) to the exception store; no per-action credential.",
+    "arguments": [
+      {"name": "vulnerability_id", "type": "string", "desc": "Vulnerability/advisory id being triaged"},
+      {"name": "package", "type": "string", "desc": "Affected package name, or '*' for all"},
+      {"name": "server_name", "type": "string", "desc": "Optional MCP server / asset scope"},
+      {"name": "assignee", "type": "string", "desc": "Owner recorded for the triage entry"},
+      {"name": "queue_state", "type": "string", "desc": "open, assigned, reviewing, or decided"},
+      {"name": "decision", "type": "string", "desc": "under_investigation, affected, or not_affected"},
+      {"name": "justification", "type": "string", "desc": "OpenVEX justification (required for not_affected)"},
+      {"name": "decision_reason", "type": "string", "desc": "Free-text rationale for the decision"},
+      {"name": "expires_at", "type": "string", "desc": "Optional ISO-8601 expiry"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "reason", "type": "string", "desc": "Human audit reason"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
+    ]
   }
 ]

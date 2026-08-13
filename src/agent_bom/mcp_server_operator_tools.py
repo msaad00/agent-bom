@@ -70,6 +70,7 @@ def register_operator_tools(
     )
     from agent_bom.mcp_tools.sbom import diff_impl
     from agent_bom.mcp_tools.scanning import code_scan_impl
+    from agent_bom.mcp_tools.triage import findings_triage_impl
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 
@@ -99,6 +100,56 @@ def register_operator_tools(
             required_scope="findings:write",
             baseline=baseline,
             _run_scan_pipeline=run_scan_pipeline,
+            _truncate_response=truncate_response,
+        )
+
+    # ── findings_triage ──────────────────────────────────────────
+    # Headless MCP surface over POST /v1/findings/triage. Writes a triage
+    # decision to the shared exception store via ``record_finding_triage`` — no
+    # new business logic, no per-action credential. Admin-gated write.
+
+    @mcp.tool(annotations=write_action, title="Record Finding Triage Decision")
+    async def findings_triage(
+        vulnerability_id: Annotated[str, Field(description="Vulnerability/advisory id being triaged (e.g. CVE-2024-1234).")] = "",
+        package: Annotated[str, Field(description="Affected package name, or '*' for all packages (default).")] = "*",
+        server_name: Annotated[str, Field(description="Optional MCP server / asset scope for the decision.")] = "",
+        assignee: Annotated[str, Field(description="Owner recorded for the triage entry.")] = "",
+        queue_state: Annotated[str, Field(description="Queue state: open, assigned, reviewing, or decided.")] = "open",
+        decision: Annotated[str, Field(description="Decision: under_investigation, affected, or not_affected.")] = "under_investigation",
+        justification: Annotated[
+            str, Field(description="OpenVEX justification (required for not_affected), e.g. vulnerable_code_not_present.")
+        ] = "",
+        decision_reason: Annotated[str, Field(description="Free-text rationale for the decision.")] = "",
+        expires_at: Annotated[str, Field(description="Optional ISO-8601 expiry for the triage entry.")] = "",
+        operator_role: Annotated[str, Field(description="Operator role for this write action (audit).")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes (audit).")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for recording the decision.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for the triage entry and audit logging.")] = "default",
+    ) -> str:
+        """Record a tenant-scoped finding triage decision to the exception store.
+
+        Writes the same entry as the REST ``POST /v1/findings/triage`` endpoint.
+        Requires an admin operator + ``findings:write`` scope. A ``not_affected``
+        decision requires an OpenVEX ``justification``.
+        """
+        return await execute_tool_async(
+            "findings_triage",
+            findings_triage_impl,
+            destructive=True,
+            required_scope="findings:write",
+            vulnerability_id=vulnerability_id,
+            package=package,
+            server_name=server_name,
+            assignee=assignee,
+            queue_state=queue_state,
+            decision=decision,
+            justification=justification,
+            decision_reason=decision_reason,
+            expires_at=expires_at,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
             _truncate_response=truncate_response,
         )
 

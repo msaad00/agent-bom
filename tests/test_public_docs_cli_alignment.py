@@ -166,7 +166,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "Scan repositories, images, and cloud accounts" not in hero
     assert "<b>15</b> package ecosystems" in hero
     assert "<b>16</b> compliance surfaces" in hero
-    assert "<b>77</b> MCP tools" in hero
+    assert "<b>79</b> MCP tools" in hero
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
     # The hero links the live demo. This project operates that Cloud Run service

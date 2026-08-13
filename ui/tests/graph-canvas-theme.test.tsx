@@ -1,10 +1,10 @@
 /**
- * The two overview renderers a large estate falls back to painted a fixed
- * near-black stage (`#050505`) with near-white labels (`#e4e4e7`), regardless
- * of theme. In light mode the rest of the page is `#e6eaf1` and the graph —
- * the largest element on the screen — was a black hole with its own private
- * palette. Canvas and WebGL cannot use CSS classes, so they have to read the
- * tokens at runtime and re-read them when the theme flips.
+ * The WebGL overview a large estate renders into painted a fixed near-black
+ * stage (`#050505`) with near-white labels (`#e4e4e7`), regardless of theme.
+ * In light mode the rest of the page is `#e6eaf1` and the graph — the largest
+ * element on the screen — was a black hole with its own private palette. The
+ * WebGL canvas cannot use CSS classes, so it has to read the tokens at runtime
+ * and re-read them when the theme flips.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -19,10 +19,7 @@ import {
 
 const UI_ROOT = process.cwd();
 
-const CANVAS_SURFACES = [
-  "components/large-graph-overview.tsx",
-  "components/sigma-graph-overview.tsx",
-] as const;
+const CANVAS_SURFACES = ["components/sigma-graph-overview.tsx"] as const;
 
 /** Raw hex paint. Tailwind's own `#`-free utilities are unaffected. */
 const HEX_LITERAL = /#[0-9a-fA-F]{3,8}\b/g;

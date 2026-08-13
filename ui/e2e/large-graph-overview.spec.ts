@@ -260,37 +260,6 @@ async function routeLargeGraphPage(page: Page) {
   });
 }
 
-async function expectCanvasHasPixels(page: Page) {
-  const canvas = page.getByTestId("large-graph-overview-canvas");
-  await expect(canvas).toBeVisible();
-  await expect
-    .poll(
-      async () =>
-        page
-          .evaluate(() => {
-            const canvasElement = document.querySelector<HTMLCanvasElement>(
-              '[data-testid="large-graph-overview-canvas"]',
-            );
-            if (!canvasElement || canvasElement.width <= 1 || canvasElement.height <= 1) return 0;
-            const context = canvasElement.getContext("2d");
-            if (!context) return 0;
-            const { width, height } = canvasElement;
-            const pixels = context.getImageData(0, 0, width, height).data;
-            let count = 0;
-            for (let index = 0; index < pixels.length; index += 16) {
-              const red = pixels[index] ?? 0;
-              const green = pixels[index + 1] ?? 0;
-              const blue = pixels[index + 2] ?? 0;
-              if (red + green + blue > 40) count += 1;
-            }
-            return count;
-          })
-          .catch(() => 0),
-      { timeout: 15_000 },
-    )
-    .toBeGreaterThan(20);
-}
-
 async function expectSigmaCanvases(page: Page) {
   const stage = page.getByTestId("sigma-graph-overview-canvas");
   await expect(stage).toBeVisible();
@@ -347,7 +316,7 @@ async function captureRenderedRegion(page: Page, region: Locator, path: string) 
   }
 }
 
-test("large graph overview renders above threshold", async ({ page }, testInfo: TestInfo) => {
+test("broad graph defaults to the WebGL overview above threshold", async ({ page }, testInfo: TestInfo) => {
   test.setTimeout(60_000);
   const failedGraphResponses: string[] = [];
   page.on("response", (response) => {
@@ -361,28 +330,29 @@ test("large graph overview renders above threshold", async ({ page }, testInfo: 
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByTestId("large-graph-overview")).toBeVisible();
-  await expect(page.getByText("Large graph overview")).toBeVisible();
+  // No renderer flag: a broad estate now renders on Sigma by default, the
+  // hand-rolled 2D canvas is retired.
+  const sigma = page.getByTestId("sigma-graph-overview");
+  await expect(sigma).toBeVisible({ timeout: 30_000 });
+  await expect(sigma.getByText("WebGL graph overview", { exact: true })).toBeVisible();
   await expect(page.getByText(/Draw budget:/)).toBeVisible();
-  await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
-  await expectCanvasHasPixels(page);
-  await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled({ timeout: 15_000 });
+  await expectSigmaCanvases(page);
   expect(failedGraphResponses).toEqual([]);
   await captureRenderedRegion(
     page,
-    page.getByTestId("large-graph-overview"),
-    testInfo.outputPath("large-graph-overview.png"),
+    sigma,
+    testInfo.outputPath("sigma-graph-overview.png"),
   );
 });
 
 /**
- * Both overview renderers used to paint a fixed `#050505` stage with near-white
+ * The WebGL overview used to paint a fixed `#050505` stage with near-white
  * labels, so on a light page the biggest element on screen was a black
- * rectangle. Canvas and WebGL cannot use CSS classes, so the only way to know
- * they track the theme is to read what they actually painted.
+ * rectangle. Sigma cannot use CSS classes, so the only way to know it tracks
+ * the theme is to read what the stage behind it actually painted.
  */
 for (const theme of ["dark", "light"] as const) {
-  test(`large graph overview paints the ${theme} page background`, async ({ page }, testInfo: TestInfo) => {
+  test(`webgl overview stage follows the ${theme} theme by default`, async ({ page }, testInfo: TestInfo) => {
     test.setTimeout(60_000);
     await routeLargeGraphPage(page);
     await page.addInitScript((selected) => {
@@ -392,56 +362,6 @@ for (const theme of ["dark", "light"] as const) {
     await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
       waitUntil: "domcontentloaded",
     });
-    await expect(page.getByTestId("large-graph-overview")).toBeVisible();
-    await expectCanvasHasPixels(page);
-
-    const painted = await page
-      .getByTestId("large-graph-overview-canvas")
-      .evaluate((element) => {
-        const canvas = element as HTMLCanvasElement;
-        const viewportHeight = window.innerHeight;
-        const pixel = canvas
-          .getContext("2d")!
-          .getImageData(2, 2, 1, 1).data;
-        const style = getComputedStyle(document.body);
-        return {
-          stage: [pixel[0], pixel[1], pixel[2]],
-          background: style.getPropertyValue("--background").trim(),
-          height: canvas.clientHeight,
-          viewportHeight,
-        };
-      });
-
-    // Writing `canvas.height` from `clientHeight` used to feed the element's
-    // own intrinsic size, so every draw grew it: 21,604px on this fixture,
-    // with the user looking at an empty slice of stage.
-    expect(painted.height).toBeLessThan(painted.viewportHeight * 1.5);
-
-    // The stage is the page background, so its luminance has to sit on the
-    // correct side of mid-grey for the theme in play.
-    const luminance =
-      (painted.stage[0]! + painted.stage[1]! + painted.stage[2]!) / 3;
-    if (theme === "light") expect(luminance).toBeGreaterThan(160);
-    else expect(luminance).toBeLessThan(96);
-
-    await captureRenderedRegion(
-      page,
-      page.getByTestId("large-graph-overview"),
-      testInfo.outputPath(`large-graph-overview-${theme}.png`),
-    );
-  });
-
-  test(`webgl overview stage follows the ${theme} theme`, async ({ page }, testInfo: TestInfo) => {
-    test.setTimeout(60_000);
-    await routeLargeGraphPage(page);
-    await page.addInitScript((selected) => {
-      window.localStorage.setItem("agent-bom-theme", selected);
-    }, theme);
-
-    await page.goto(
-      "/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package",
-      { waitUntil: "domcontentloaded" },
-    );
     const sigma = page.getByTestId("sigma-graph-overview");
     await expect(sigma).toBeVisible({ timeout: 30_000 });
     await expectSigmaCanvases(page);
@@ -461,21 +381,21 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 /**
- * The canvas renderers hand assistive technology nothing on their own. Both
- * carry a text equivalent naming every node and relationship they draw.
+ * The WebGL canvas hands assistive technology nothing on its own; it carries a
+ * text equivalent naming every node and relationship it draws.
  */
-test("canvas overview exposes its nodes and edges as text", async ({ page }) => {
+test("webgl overview exposes its nodes and edges as text", async ({ page }) => {
   test.setTimeout(60_000);
   await routeLargeGraphPage(page);
 
   await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByTestId("large-graph-overview")).toBeVisible();
+  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible({ timeout: 30_000 });
 
-  const canvas = page.getByTestId("large-graph-overview-canvas");
+  const canvas = page.getByTestId("sigma-graph-overview-canvas");
   await expect(canvas).toHaveAttribute("role", "img");
-  await expect(canvas).toHaveAttribute("aria-describedby", "large-graph-overview-text");
+  await expect(canvas).toHaveAttribute("aria-describedby", "sigma-graph-overview-text");
 
   const equivalent = page.getByRole("region", {
     name: "Graph contents, text equivalent",
@@ -490,10 +410,12 @@ test("canvas overview exposes its nodes and edges as text", async ({ page }) => 
   await expect(equivalent).toContainText(/Listing \d+ of [\d,]+ drawn relationships/);
 });
 
-test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {
+test("retired renderer=webgl opt-in still lands on the WebGL overview", async ({ page }, testInfo: TestInfo) => {
   test.setTimeout(60_000);
   await routeLargeGraphPage(page);
 
+  // The flag is a backward-compatible no-op now; a deep link that still carries
+  // it must not break — it resolves to the same default Sigma overview.
   await page.goto("/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
     waitUntil: "domcontentloaded",
   });

@@ -179,6 +179,41 @@ function clusterLabel(nodeType: LineageNodeType): string {
   return nodeType;
 }
 
+/** Grid spacing used when laying a cluster of `count` nodes out as a block. */
+function clusterGridSpacing(count: number): number {
+  return Math.max(22, Math.min(42, 34 - Math.log10(Math.max(count, 1)) * 4));
+}
+
+/**
+ * Approximate radius of the square-ish grid block a cluster of `count` nodes
+ * occupies, so clusters can be spaced far enough apart to never overlap.
+ */
+function clusterFootprintRadius(count: number): number {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const spacing = clusterGridSpacing(count);
+  const rows = Math.ceil(count / columns);
+  const width = (columns - 1) * spacing;
+  const height = (rows - 1) * spacing;
+  return Math.sqrt(width * width + height * height) / 2 + spacing;
+}
+
+/** Extra breathing room between neighbouring cluster blocks on a ring. */
+const CLUSTER_RING_GAP = 72;
+
+/**
+ * Radius at which `footprints.length` clusters can sit evenly on a ring without
+ * their grid blocks colliding: neighbouring centres are a chord `2R·sin(π/N)`
+ * apart, which must clear two footprint radii plus a gap.
+ */
+function ringRadiusForFootprints(footprints: number[], minRadius: number): number {
+  const groupCount = footprints.length;
+  if (groupCount === 0) return minRadius;
+  const maxFootprint = Math.max(...footprints);
+  if (groupCount === 1) return Math.max(minRadius, maxFootprint);
+  const required = (maxFootprint * 2 + CLUSTER_RING_GAP) / (2 * Math.sin(Math.PI / groupCount));
+  return Math.max(minRadius, required);
+}
+
 function buildClusteredOverviewPositions(
   rankedNodes: Array<{ node: Node<LineageNodeData>; index: number; score: number }>,
 ): Map<string, { x: number; y: number }> {
@@ -199,18 +234,28 @@ function buildClusteredOverviewPositions(
   const positions = new Map<string, { x: number; y: number }>();
   if (orderedGroups.length === 0) return positions;
 
-  const ringRadius = Math.max(360, Math.min(920, 280 + rankedNodes.length * 0.32));
   const coreTypes = new Set(["agent", "server", "sharedServer", "tool", "credential", "vulnerability", "misconfiguration"]);
   const coreGroups = orderedGroups.filter(([, items]) => coreTypes.has(items[0]?.node.data.nodeType ?? ""));
   const outerGroups = orderedGroups.filter(([, items]) => !coreTypes.has(items[0]?.node.data.nodeType ?? ""));
   const allGroups = [...coreGroups, ...outerGroups];
+
+  // Size the two rings from the clusters they carry so a broad estate spreads
+  // out instead of piling clusters on top of each other near the centre (the
+  // old fixed radius capped at 920px and overlapped once clusters grew large).
+  const coreFootprints = coreGroups.map(([, items]) => clusterFootprintRadius(items.length));
+  const outerFootprints = outerGroups.map(([, items]) => clusterFootprintRadius(items.length));
+  const coreRadius = coreGroups.length > 0 ? ringRadiusForFootprints(coreFootprints, 300) : 0;
+  const coreReach = coreRadius + (coreFootprints.length > 0 ? Math.max(...coreFootprints) : 0);
+  const outerFloor =
+    coreReach + (outerFootprints.length > 0 ? Math.max(...outerFootprints) : 0) + CLUSTER_RING_GAP;
+  const outerRadius = ringRadiusForFootprints(outerFootprints, Math.max(outerFloor, 360));
 
   allGroups.forEach(([, items], groupIndex) => {
     const inCore = coreTypes.has(items[0]?.node.data.nodeType ?? "");
     const totalGroups = Math.max(1, inCore ? coreGroups.length : outerGroups.length);
     const relativeIndex = inCore ? groupIndex : groupIndex - coreGroups.length;
     const angleOffset = inCore ? -Math.PI / 2 : -Math.PI / 2 + Math.PI / Math.max(outerGroups.length, 1);
-    const radius = inCore ? ringRadius * 0.48 : ringRadius;
+    const radius = inCore ? coreRadius : outerRadius;
     const angle = angleOffset + (relativeIndex / totalGroups) * Math.PI * 2;
     const center = {
       x: Math.cos(angle) * radius,
@@ -218,7 +263,7 @@ function buildClusteredOverviewPositions(
     };
     const sortedItems = [...items].sort((left, right) => right.score - left.score || left.index - right.index);
     const columns = Math.max(1, Math.ceil(Math.sqrt(sortedItems.length)));
-    const spacing = Math.max(22, Math.min(42, 34 - Math.log10(Math.max(sortedItems.length, 1)) * 4));
+    const spacing = clusterGridSpacing(sortedItems.length);
     sortedItems.forEach((item, itemIndex) => {
       const column = itemIndex % columns;
       const row = Math.floor(itemIndex / columns);

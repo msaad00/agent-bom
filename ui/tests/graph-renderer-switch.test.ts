@@ -48,15 +48,15 @@ describe("graph renderer switch", () => {
     });
   });
 
-  it("preserves the existing large graph overview thresholds", () => {
+  it("promotes broad graphs to the WebGL overview at the existing thresholds", () => {
     expect(
       decideGraphRenderer({
         nodeCount: LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
         edgeCount: 20,
       }),
     ).toMatchObject({
-      kind: "large-overview",
-      reason: "large-graph-overview-threshold",
+      kind: "webgl",
+      reason: "large-graph-webgl-overview",
       supportsInvestigation: false,
     });
 
@@ -66,30 +66,29 @@ describe("graph renderer switch", () => {
         edgeCount: LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
       }),
     ).toMatchObject({
-      kind: "large-overview",
-      reason: "large-graph-overview-threshold",
+      kind: "webgl",
+      reason: "large-graph-webgl-overview",
       supportsInvestigation: false,
     });
   });
 
-  it("keeps WebGL behind an explicit future switch", () => {
-    expect(
-      decideGraphRenderer({
-        nodeCount: LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD + 1,
-        edgeCount: LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD + 1,
-      }),
-    ).toMatchObject({ kind: "large-overview" });
+  it("renders WebGL for broad graphs regardless of the retired opt-in flag", () => {
+    const broad = {
+      nodeCount: LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD + 1,
+      edgeCount: LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD + 1,
+    };
 
-    expect(
-      decideGraphRenderer({
-        nodeCount: LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD + 1,
-        edgeCount: LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD + 1,
-        webglEnabled: true,
-      }),
-    ).toMatchObject({
+    expect(decideGraphRenderer(broad)).toMatchObject({
       kind: "webgl",
-      reason: "large-graph-webgl-enabled",
+      reason: "large-graph-webgl-overview",
       supportsInvestigation: false,
+    });
+
+    // The legacy ?webgl / renderer=webgl opt-in is gone; passing it changes
+    // nothing because WebGL is now the default for broad estates.
+    expect(decideGraphRenderer({ ...broad, webglEnabled: true })).toMatchObject({
+      kind: "webgl",
+      reason: "large-graph-webgl-overview",
     });
   });
 

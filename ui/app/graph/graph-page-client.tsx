@@ -32,7 +32,6 @@ import {
   type DriftScrubberPair,
 } from "@/components/graph-drift-timeline";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
-import { LargeGraphOverview } from "@/components/large-graph-overview";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import {
   GraphEmptyState,
@@ -1348,19 +1347,13 @@ function GraphPageInner() {
   // copied address bar reproduces the view but back/forward isn't spammed.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Read preserved renderer flags from the live address bar rather than
-    // useSearchParams(): on this page the filter/layout state churns rapidly
-    // on load and useSearchParams() can lag or read empty across those
-    // re-renders.
+    // Read the live address bar rather than useSearchParams(): on this page the
+    // filter/layout state churns rapidly on load and useSearchParams() can lag
+    // or read empty across those re-renders. The current query drives the
+    // no-op guard below so we never re-sync an unchanged URL.
     const currentSearch = new URLSearchParams(window.location.search);
     const nextParams = encodeFiltersToParams(filters);
     if (selectedScanId) nextParams.set("scan", selectedScanId);
-    if (currentSearch.get("renderer") === "webgl") {
-      nextParams.set("renderer", "webgl");
-    }
-    if (currentSearch.get("webgl") === "1") {
-      nextParams.set("webgl", "1");
-    }
     if (captureMode) {
       nextParams.set("capture", "1");
     }
@@ -2086,17 +2079,6 @@ function GraphPageInner() {
   );
 
   const graphOnlyFindings = displayNodes.length > 0 && !hasContextualGraph;
-  // Match the filter→URL sync behavior above: during the initial graph load,
-  // App Router search params can lag behind router.replace() churn. The live
-  // address bar is the source of truth for renderer flags so explicit
-  // /graph?renderer=webgl requests cannot briefly fall back to React Flow.
-  const liveRendererParams =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search)
-      : searchParams;
-  const webglGraphEnabled =
-    liveRendererParams?.get("renderer") === "webgl" ||
-    liveRendererParams?.get("webgl") === "1";
   const graphRenderer = decideGraphRenderer({
     nodeCount: renderedNodeCount,
     edgeCount: displayEdges.length,
@@ -2105,7 +2087,6 @@ function GraphPageInner() {
     reachabilityActive: Boolean(reachabilitySummary),
     rollupActive: rollupNavigationActive,
     graphOnlyFindings,
-    webglEnabled: webglGraphEnabled,
   });
 
   // Soft re-frame when drift/evidence lenses engage so ring emphasis stays in view.
@@ -3335,13 +3316,6 @@ function GraphPageInner() {
                   ),
                 )
               }
-            />
-          ) : graphRenderer.kind === "large-overview" ? (
-            <LargeGraphOverview
-              nodes={displayNodes}
-              edges={displayEdges}
-              legendItems={legendItems}
-              onNodeSelect={onLargeGraphNodeSelect}
             />
           ) : graphRenderer.kind === "webgl" ? (
             <SigmaGraphOverview

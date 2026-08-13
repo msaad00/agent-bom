@@ -145,10 +145,14 @@ export function SigmaGraphOverview({
           hideLabelsOnMove: true,
           itemSizesReference: "positions",
           labelColor: { color: palette.label },
+          // Label level-of-detail. The grid keeps at most a handful of labels
+          // per cell so they never overlap into a smear; the size threshold
+          // surfaces the largest / highest-signal nodes first and lets the rest
+          // appear as the user zooms in (rendered size grows) or hovers a node.
           labelDensity: 0.08,
           labelFont: "Inter, ui-sans-serif, system-ui, sans-serif",
-          labelGridCellSize: 180,
-          labelRenderedSizeThreshold: 8.5,
+          labelGridCellSize: 170,
+          labelRenderedSizeThreshold: 6,
           labelSize: 11,
           minCameraRatio: 0.04,
           maxCameraRatio: 4,
@@ -229,8 +233,8 @@ export function SigmaGraphOverview({
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
           <span>
-            Switches on with renderer=webgl at {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes or{" "}
-            {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges.
+            Renders broad estates at {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes or{" "}
+            {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges; labels resolve on zoom and hover.
           </span>
           <span>
             Draw budget: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes,{" "}

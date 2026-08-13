@@ -132,7 +132,15 @@ export function buildSigmaGraphOverviewModel(
       severity: node.severity,
       hidden: node.hidden,
       highlighted: node.highlighted,
-      forceLabel: node.forceLabel,
+      // Sigma always draws a `forceLabel` node's label, bypassing both the
+      // rendered-size threshold and the label-grid declutter. The overview
+      // model force-labels every agent/server/credential/tool, which on a
+      // broad estate is hundreds of nodes and paints an unreadable smear. Only
+      // force the label for genuinely highlighted nodes here; every other label
+      // is governed by the size threshold + grid declutter and appears on zoom
+      // or hover. The model's `forceLabel` still drives z-ordering below so
+      // high-signal nodes keep drawing on top.
+      forceLabel: node.highlighted,
       dimmed: node.hidden,
       zIndex: node.highlighted || node.forceLabel ? 2 : 1,
     });

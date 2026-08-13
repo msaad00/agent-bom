@@ -3,7 +3,7 @@ import {
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 
-export type GraphRendererKind = "react-flow" | "large-overview" | "webgl";
+export type GraphRendererKind = "react-flow" | "webgl";
 
 export interface GraphRendererDecisionInput {
   nodeCount: number;
@@ -13,6 +13,11 @@ export interface GraphRendererDecisionInput {
   reachabilityActive?: boolean | undefined;
   rollupActive?: boolean | undefined;
   graphOnlyFindings?: boolean | undefined;
+  /**
+   * Retired opt-in for the WebGL overview. WebGL is now the default renderer
+   * for broad graphs, so this flag is accepted for backward compatibility but
+   * no longer affects the decision.
+   */
   webglEnabled?: boolean | undefined;
 }
 
@@ -43,7 +48,6 @@ export function decideGraphRenderer({
   reachabilityActive = false,
   rollupActive = false,
   graphOnlyFindings = false,
-  webglEnabled = false,
 }: GraphRendererDecisionInput): GraphRendererDecision {
   if (captureMode) {
     return {
@@ -89,18 +93,10 @@ export function decideGraphRenderer({
   const broadGraph =
     nodeCount >= LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD ||
     edgeCount >= LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD;
-  if (broadGraph && webglEnabled) {
-    return {
-      kind: "webgl",
-      reason: "large-graph-webgl-enabled",
-      interactive: true,
-      supportsInvestigation: false,
-    };
-  }
   if (broadGraph) {
     return {
-      kind: "large-overview",
-      reason: "large-graph-overview-threshold",
+      kind: "webgl",
+      reason: "large-graph-webgl-overview",
       interactive: true,
       supportsInvestigation: false,
     };

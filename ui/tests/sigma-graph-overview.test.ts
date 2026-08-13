@@ -128,7 +128,12 @@ describe("sigma graph overview", () => {
 
     expect(model.graph.order).toBe(3);
     expect(model.graph.size).toBe(2);
-    expect(model.graph.getNodeAttribute("agent-a", "forceLabel")).toBe(true);
+    // Labels are decluttered for readability at scale: only genuinely
+    // highlighted nodes force their label. A plain agent no longer force-draws
+    // its label (force-labeling every agent/server/cred/tool smeared hundreds
+    // of labels together on a broad estate); the highlighted CVE still does.
+    expect(model.graph.getNodeAttribute("agent-a", "forceLabel")).toBe(false);
+    expect(model.graph.getNodeAttribute("cve-a", "forceLabel")).toBe(true);
     expect(model.graph.getNodeAttribute("cve-a", "highlighted")).toBe(true);
     expect(model.graph.getNodeAttribute("cve-a", "size")).toBeGreaterThan(
       model.graph.getNodeAttribute("pkg-a", "size"),

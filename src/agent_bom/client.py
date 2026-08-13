@@ -137,6 +137,113 @@ class AgentBomClient:
 
         return self._request("GET", f"/v1/compliance/{_quote_path(framework)}")
 
+    # ── Ticketing (connect-once ITSM) ───────────────────────────────────────
+    def list_tickets(self) -> JsonObject:
+        """List the tenant's filed finding→ticket links."""
+
+        return self._request("GET", "/v1/ticketing/tickets")
+
+    def create_ticket(
+        self,
+        *,
+        finding: Mapping[str, JsonValue],
+        connection_id: str = "",
+        project: str = "",
+        finding_id: str = "",
+        issue_type: str = "",
+        source_url: str = "",
+    ) -> JsonObject:
+        """File an ITSM ticket for a finding through a stored connection.
+
+        Carries no credential or base URL: auth and endpoint are resolved from
+        the stored, encrypted ticketing connection (connect-once).
+        """
+
+        return self._request(
+            "POST",
+            "/v1/ticketing/tickets",
+            json=_strip_none(
+                {
+                    "finding": dict(finding),
+                    "connection_id": connection_id,
+                    "project": project,
+                    "finding_id": finding_id,
+                    "issue_type": issue_type,
+                    "source_url": source_url,
+                }
+            ),
+        )
+
+    def sync_ticket(self, ticket_id: str) -> JsonObject:
+        """Refresh a filed ticket's status from its ITSM through the connection."""
+
+        return self._request("POST", f"/v1/ticketing/tickets/{_quote_path(ticket_id)}/sync")
+
+    # ── Scheduled findings exports (connect-once destinations) ──────────────
+    def list_export_destinations(self) -> list[JsonObject]:
+        """List the tenant's connect-once export destinations."""
+
+        return self._request_list("GET", "/v1/exports/destinations")
+
+    def create_export_destination(
+        self,
+        *,
+        kind: str,
+        display_name: str,
+        config: Mapping[str, JsonValue] | None = None,
+    ) -> JsonObject:
+        """Create a connect-once export destination (no per-action credential).
+
+        Only non-secret ``config`` is sent; a secret-bearing destination
+        (e.g. Snowflake) is provisioned through the connect-once API/hub, not by
+        passing a credential to this command.
+        """
+
+        return self._request(
+            "POST",
+            "/v1/exports/destinations",
+            json={"kind": kind, "display_name": display_name, "config": dict(config or {})},
+        )
+
+    def run_export_destination(self, destination_id: str) -> JsonObject:
+        """Fire a one-off findings export to a stored destination now."""
+
+        return self._request("POST", f"/v1/exports/destinations/{_quote_path(destination_id)}/run")
+
+    def list_export_schedules(self) -> list[JsonObject]:
+        """List the tenant's export schedules."""
+
+        return self._request_list("GET", "/v1/exports/schedules")
+
+    def create_export_schedule(
+        self,
+        *,
+        name: str,
+        cron_expression: str,
+        destination_id: str,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        since_days: int | None = None,
+        enabled: bool = True,
+    ) -> JsonObject:
+        """Create a cron export schedule bound to a stored destination."""
+
+        return self._request(
+            "POST",
+            "/v1/exports/schedules",
+            json=_strip_none(
+                {
+                    "name": name,
+                    "cron_expression": cron_expression,
+                    "destination_id": destination_id,
+                    "sort": sort,
+                    "severity": severity,
+                    "since_days": since_days,
+                    "enabled": enabled,
+                }
+            ),
+        )
+
     def should_i_deploy(
         self,
         candidate: str | Mapping[str, JsonValue],
@@ -681,6 +788,34 @@ class AgentBomClient:
         if not isinstance(data, dict):
             raise AgentBomApiError("agent-bom response was not a JSON object", status_code=response.status_code, body=text)
         return data
+
+    def _request_list(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, QueryValue] | None = None,
+        json: Mapping[str, JsonValue] | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> list[JsonObject]:
+        """Like :meth:`_request` but for endpoints returning a JSON array."""
+        headers = self._headers(json is not None)
+        if extra_headers:
+            headers.update(extra_headers)
+        response = self._client.request(method, self._url(path), params=params, json=json, headers=headers)
+        text = response.text
+        if response.status_code < 200 or response.status_code >= 300:
+            raise AgentBomApiError(
+                f"agent-bom request failed: {response.status_code}",
+                status_code=response.status_code,
+                body=text,
+            )
+        if not text:
+            return []
+        data = response.json()
+        if not isinstance(data, list):
+            raise AgentBomApiError("agent-bom response was not a JSON array", status_code=response.status_code, body=text)
+        return [item for item in data if isinstance(item, dict)]
 
     def _url(self, path: str) -> str:
         if path.startswith(("http://", "https://")):

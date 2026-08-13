@@ -2503,15 +2503,18 @@ async def list_finding_feedback(request: Request, state: str | None = None) -> d
     return {"feedback": entries, "total": len(entries)}
 
 
-@router.post("/findings/triage", tags=["enterprise"], status_code=201)
-async def create_finding_triage(request: Request, req: FindingTriageRequest) -> dict:
-    """Create a tenant-scoped finding triage queue item."""
+def record_finding_triage(*, tenant_id: str, actor: str, req: FindingTriageRequest) -> dict[str, Any]:
+    """Persist a tenant-scoped triage decision to the exception store.
+
+    Shared by ``POST /v1/findings/triage`` and the MCP ``findings_triage`` write
+    tool so both surfaces write identical entries to the one exception store.
+    Raises ``HTTPException(400)`` when a ``not_affected`` decision omits its
+    required OpenVEX justification.
+    """
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus, VulnException
 
     _validate_triage_decision(req.decision, req.justification)
-    tenant_id = require_request_tenant_id(request)
-    actor = _request_actor(request)
     now = datetime.now(timezone.utc).isoformat()
     queue_state = "decided" if req.decision in {"affected", "not_affected"} else req.queue_state
     reviewed_at = now if queue_state == "decided" else ""
@@ -2548,6 +2551,14 @@ async def create_finding_triage(request: Request, req: FindingTriageRequest) -> 
         decision=req.decision,
     )
     return _triage_response(exc)
+
+
+@router.post("/findings/triage", tags=["enterprise"], status_code=201)
+async def create_finding_triage(request: Request, req: FindingTriageRequest) -> dict:
+    """Create a tenant-scoped finding triage queue item."""
+    tenant_id = require_request_tenant_id(request)
+    actor = _request_actor(request)
+    return record_finding_triage(tenant_id=tenant_id, actor=actor, req=req)
 
 
 @router.get("/findings/triage", tags=["enterprise"])

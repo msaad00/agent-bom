@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import click
 
 from agent_bom.client import AgentBomApiError, AgentBomClient, JsonObject
+
+_RequestResult = TypeVar("_RequestResult")
 
 
 def _make_client(api_url: str | None, api_key: str | None, bearer_token: str | None, tenant_id: str | None) -> AgentBomClient:
@@ -119,7 +121,7 @@ def _print_triage_table(payload: JsonObject) -> None:
         )
 
 
-def _run_request(client: AgentBomClient, callback: Any) -> JsonObject:
+def _run_request(client: AgentBomClient, callback: Callable[[AgentBomClient], _RequestResult]) -> _RequestResult:
     import httpx
 
     try:

@@ -403,6 +403,11 @@ _SERVER_CARD_TOOLS = [
         "description": "Refresh a filed ITSM ticket's status through the stored ticketing connection",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
+    {
+        "name": "findings_triage",
+        "description": "Record a tenant-scoped finding triage decision (queue state, VEX decision + justification) to the exception store",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
 ]
 
 _TOOL_CAPABILITY_CLASSES = {
@@ -485,6 +490,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "cost_allocation": ["READ", "RUNTIME", "OBSERVABILITY"],
     "create_ticket": ["WRITE", "NETWORK", "INTEGRATION"],
     "sync_ticket_status": ["WRITE", "NETWORK", "INTEGRATION"],
+    "findings_triage": ["WRITE", "GOVERNANCE", "AUDIT"],
 }
 
 for _tool in _SERVER_CARD_TOOLS:

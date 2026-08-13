@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 78 MCP tools as an MCP server. Any MCP-compatible client can
+agent-bom exposes 79 MCP tools as an MCP server. Any MCP-compatible client can
 connect and get vulnerability scanning, blast radius analysis, compliance
 checks, runtime posture, and supply-chain verification through natural
 conversation.
@@ -202,7 +202,8 @@ agent-bom proxy-bootstrap \
 `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ai_inventory_scan`,
 `license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
-`cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`.
+`cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
+`findings_triage`.
 
 </details>
 
@@ -240,9 +241,9 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  The 14 write-annotated tools cover scan-history diff, Shield, identity,
-  external ingest, CWPP runtime-evidence ingest, access review, and ticket
-  workflows. They require an
+  The 15 write-annotated tools cover scan-history diff, Shield, identity,
+  external ingest, CWPP runtime-evidence ingest, access review, finding
+  triage, and ticket workflows. They require an
   authenticated MCP operator token plus admin role, their specific write
   scope (`findings:write`, `identity:write`, `shield:write`, or
   `ticketing:write`), and an audit reason; stdio cannot invoke them.

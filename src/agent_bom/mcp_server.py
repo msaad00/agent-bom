@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (78):
+Tools (79):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel

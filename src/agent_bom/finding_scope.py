@@ -723,16 +723,15 @@ def canonical_finding_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         elif isinstance(payload["fixed_version"], str) and payload["fixed_version"].strip():
             payload["remediation_versions"] = [payload["fixed_version"]]
 
-    # Ownership + remediation SLA — one source of truth (agent_bom.sla). Any row
-    # that reaches the API without a precomputed value (bulk-ingested / hub
-    # findings) is filled here so ``/v1/findings``, the CLI, the exports, and the
-    # UI read the same owner and deadline the scan spine already carries. Owner
-    # defaults to "Unassigned"; the deadline stays an explicit None when no anchor
-    # or KEV date makes one derivable, never a fabricated date.
-    from agent_bom.sla import finding_owner, sla_due_at
+    # Remediation SLA — one source of truth (agent_bom.graph.sla). Any row that
+    # reaches the API without a precomputed value (bulk-ingested / hub findings)
+    # is filled here so ``/v1/findings``, the CLI, the exports, and the UI read
+    # the same deadline the scan spine already carries. Owner stays an explicit
+    # ``None`` when nobody is assigned (rendered "Unassigned" only in the CLI/UI);
+    # the deadline stays ``None`` when no anchor or KEV date makes one derivable,
+    # never a fabricated date.
+    from agent_bom.graph.sla import sla_due_at
 
-    if payload["owner"] is None:
-        payload["owner"] = finding_owner(None)
     if payload["sla_due_at"] is None:
         anchor = payload.get("first_seen") or payload.get("last_seen") or payload.get("last_observed")
         evidence = payload.get("evidence")

@@ -789,18 +789,18 @@ def _plain_critical_vuln() -> Vulnerability:
 
 
 def test_sarif_result_carries_owner_and_sla_due_at() -> None:
-    from agent_bom.sla import SEVERITY_SLA_DAYS
+    from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 
     report = _report_with_vuln(_plain_critical_vuln())
     result = next(r for r in to_sarif(report)["runs"][0]["results"] if r["ruleId"] == "CVE-2026-7777")
     props = result["properties"]
-    assert props["owner"] == "Unassigned"
+    assert props.get("owner") is None
     due = datetime.fromisoformat(props["sla_due_at"])
     assert (due - report.generated_at).days == SEVERITY_SLA_DAYS["critical"]
 
 
 def test_cyclonedx_vulnerability_carries_sla_due_at() -> None:
-    from agent_bom.sla import SEVERITY_SLA_DAYS
+    from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 
     report = _report_with_vuln(_plain_critical_vuln())
     doc = to_cyclonedx(report)

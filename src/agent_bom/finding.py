@@ -522,7 +522,7 @@ class Finding:
 
     def to_dict(self) -> dict:
         """Return a JSON-serializable finding payload."""
-        from agent_bom.sla import finding_owner, sla_due_at
+        from agent_bom.graph.sla import finding_owner, sla_due_at
 
         kev_due_date = self.evidence.get("kev_due_date") if isinstance(self.evidence, dict) else None
         resolved_sla = self.sla_due_at or sla_due_at(
@@ -613,9 +613,10 @@ class Finding:
             "is_actionable": self.is_actionable,
             "impact_category": self.impact_category,
             # Ownership + remediation SLA (derived, single source of truth in
-            # agent_bom.sla). ``owner`` defaults to "Unassigned" so the surface
-            # reads honestly; ``sla_due_at`` is an explicit None when no deadline
-            # can be derived (unrated severity + no anchor/KEV date).
+            # agent_bom.graph.sla). ``owner`` is an explicit None when nobody is
+            # assigned (an honest absence for the API/exports; the CLI/UI render
+            # it as "Unassigned"); ``sla_due_at`` is None when no deadline can be
+            # derived (unrated severity + no anchor/KEV date).
             "first_seen": self.first_seen,
             "owner": finding_owner(self.owner),
             "sla_due_at": resolved_sla,

@@ -317,7 +317,7 @@ def test_canonical_payload_defaults_owner_to_unassigned() -> None:
     from agent_bom.finding_scope import canonical_finding_payload
 
     payload = canonical_finding_payload({"severity": "high"})
-    assert payload["owner"] == "Unassigned"
+    assert payload["owner"] is None
 
 
 def test_canonical_payload_preserves_existing_owner() -> None:
@@ -331,7 +331,7 @@ def test_canonical_payload_derives_sla_from_first_seen() -> None:
     from datetime import datetime
 
     from agent_bom.finding_scope import canonical_finding_payload
-    from agent_bom.sla import SEVERITY_SLA_DAYS
+    from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 
     payload = canonical_finding_payload({"severity": "high", "first_seen": "2026-08-01T00:00:00+00:00"})
     assert payload["sla_due_at"] is not None

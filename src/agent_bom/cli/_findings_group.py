@@ -65,9 +65,11 @@ def _package_name(row: Mapping[str, object]) -> str:
 
 
 def _owner(row: Mapping[str, object]) -> str:
-    from agent_bom.sla import finding_owner
+    # Presentation layer: the data carries None for an unassigned finding
+    # (honest absence in the API/exports); the CLI table renders it "Unassigned".
+    from agent_bom.graph.sla import finding_owner
 
-    return finding_owner(row.get("owner"))
+    return finding_owner(row.get("owner")) or "Unassigned"
 
 
 def _print_findings_table(payload: JsonObject) -> None:

@@ -620,11 +620,11 @@ def _cve_sarif_result(
     related_locations = _exposure_related_locations(exposure_path)
     if related_locations:
         result["relatedLocations"] = related_locations
-    # Ownership + remediation SLA (single source of truth in agent_bom.sla). The
+    # Ownership + remediation SLA (single source of truth in agent_bom.graph.sla). The
     # scan-completion time anchors the deadline when the finding carries no
     # first-seen history, matching the JSON report spine.
-    from agent_bom.sla import finding_owner
-    from agent_bom.sla import sla_due_at as _compute_sla_due_at
+    from agent_bom.graph.sla import finding_owner
+    from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
 
     finding_sla_due_at = finding.sla_due_at or _compute_sla_due_at(
         finding.effective_severity(),

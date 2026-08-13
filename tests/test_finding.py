@@ -764,7 +764,7 @@ def test_report_dual_write_findings_field():
 def test_finding_to_dict_populates_owner_and_sla_from_first_seen():
     from datetime import datetime
 
-    from agent_bom.sla import SEVERITY_SLA_DAYS
+    from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 
     finding = Finding(
         finding_type=FindingType.CVE,
@@ -774,7 +774,7 @@ def test_finding_to_dict_populates_owner_and_sla_from_first_seen():
         first_seen="2026-08-01T00:00:00+00:00",
     )
     payload = finding.to_dict()
-    assert payload["owner"] == "Unassigned"
+    assert payload["owner"] is None
     assert payload["first_seen"] == "2026-08-01T00:00:00+00:00"
     due = datetime.fromisoformat(payload["sla_due_at"])
     anchor = datetime.fromisoformat("2026-08-01T00:00:00+00:00")

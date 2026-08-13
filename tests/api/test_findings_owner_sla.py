@@ -3,7 +3,8 @@
 Locks the P0 fix: finding-level ``owner`` and ``sla_due_at`` are declared in the
 response contract but were never populated. The scan spine now derives an SLA
 deadline (severity policy from the scan-observation anchor, KEV override) and
-surfaces the triage assignee as the owner, defaulting to "Unassigned".
+surfaces the triage assignee as the owner — an explicit ``None`` when nobody is
+assigned (the CLI/UI render that as "Unassigned").
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from agent_bom.api.store import InMemoryJobStore
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import AIBOMReport
 from agent_bom.output import to_json
-from agent_bom.sla import SEVERITY_SLA_DAYS
+from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 
 
 def _completed_job(tenant_id: str, findings: list[Finding], *, generated_at: datetime) -> ScanJob:
@@ -76,7 +77,7 @@ def test_scan_spine_finding_defaults_owner_and_populates_sla(isolated_job_store,
     assert rows, "expected the seeded critical finding on the scan spine"
     row = rows[0]
 
-    assert row["owner"] == "Unassigned"
+    assert row["owner"] is None
     assert row["sla_due_at"] is not None
     delta = datetime.fromisoformat(row["sla_due_at"]) - generated_at
     assert delta.days == SEVERITY_SLA_DAYS["critical"]
@@ -101,7 +102,7 @@ def test_scan_spine_owner_reflects_triage_assignee(isolated_job_store, isolated_
     rows = iter_tenant_scan_spine_findings("default")
     # The assignee is surfaced as owner; the API masks the email for privacy.
     assert rows[0]["owner"] == mask_email("secops@example.com")
-    assert rows[0]["owner"] != "Unassigned"
+    assert rows[0]["owner"] is not None
 
 
 def test_triage_owner_does_not_leak_across_tenants(isolated_job_store, isolated_exception_store):
@@ -127,4 +128,4 @@ def test_triage_owner_does_not_leak_across_tenants(isolated_job_store, isolated_
 
     assert alpha[0]["owner"] == mask_email("alpha-owner@example.com")
     # tenant-beta must not inherit tenant-alpha's assignee.
-    assert beta[0]["owner"] == "Unassigned"
+    assert beta[0]["owner"] is None

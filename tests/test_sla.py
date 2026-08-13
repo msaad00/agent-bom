@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from agent_bom.sla import (
+from agent_bom.graph.sla import (
     SEVERITY_SLA_DAYS,
-    UNASSIGNED_OWNER,
     finding_owner,
     sla_due_at,
 )
@@ -85,8 +84,9 @@ def test_finding_owner_prefers_assignee() -> None:
     assert finding_owner("  bob  ") == "bob"
 
 
-def test_finding_owner_defaults_to_unassigned() -> None:
-    assert finding_owner(None) == UNASSIGNED_OWNER
-    assert finding_owner("") == UNASSIGNED_OWNER
-    assert finding_owner("   ") == UNASSIGNED_OWNER
-    assert finding_owner(123) == UNASSIGNED_OWNER  # type: ignore[arg-type]
+def test_finding_owner_is_none_when_unassigned() -> None:
+    # Data layer carries None (honest absence); the CLI/UI render "Unassigned".
+    assert finding_owner(None) is None
+    assert finding_owner("") is None
+    assert finding_owner("   ") is None
+    assert finding_owner(123) is None  # type: ignore[arg-type]

@@ -348,7 +348,7 @@ def _vulnerability_annotations(
         statements.append(f"agent-bom:kev-date-added={vuln.kev_date_added}")
     if vuln.kev_due_date:
         statements.append(f"agent-bom:kev-due-date={vuln.kev_due_date}")
-    from agent_bom.sla import sla_due_at as _compute_sla_due_at
+    from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
 
     _severity_value = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
     sla_due = _compute_sla_due_at(_severity_value, observed_at, kev_due_date=vuln.kev_due_date)

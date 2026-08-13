@@ -202,8 +202,8 @@ def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str, *, observed_at: 
         if vuln.kev_due_date:
             vuln_properties.append({"name": "agent-bom:kev_due_date", "value": vuln.kev_due_date})
     # Severity-derived remediation SLA (KEV override) — one source of truth in
-    # agent_bom.sla. Only emitted when an anchor + policy make a deadline real.
-    from agent_bom.sla import sla_due_at as _compute_sla_due_at
+    # agent_bom.graph.sla. Only emitted when an anchor + policy make a deadline real.
+    from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
 
     sla_due = _compute_sla_due_at(vuln.severity.value, observed_at, kev_due_date=vuln.kev_due_date)
     if sla_due is not None:

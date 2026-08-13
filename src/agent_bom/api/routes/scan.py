@@ -1031,7 +1031,8 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     findings = [grouped[key] for key in order]
     # Surface the triage assignee as the finding owner (the simple ownership cut).
     # Built once per tenant and matched per row; rows with no triage assignee keep
-    # whatever owner the scan spine already set (defaults to "Unassigned" later).
+    # whatever owner the scan spine already set (an explicit None when unassigned,
+    # rendered "Unassigned" only in the CLI/UI).
     from agent_bom.api.routes.enterprise import build_tenant_triage_owner_index, triage_owner_for
 
     owner_index = build_tenant_triage_owner_index(tenant_id)

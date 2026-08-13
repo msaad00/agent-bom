@@ -30,9 +30,6 @@ SEVERITY_SLA_DAYS: dict[str, int] = {
     "low": 180,
 }
 
-UNASSIGNED_OWNER = "Unassigned"
-
-
 def _parse_iso(value: object) -> datetime | None:
     """Parse a date or datetime string into a tz-aware UTC datetime, or None.
 
@@ -85,16 +82,19 @@ def sla_due_at(
     return min(candidates).isoformat()
 
 
-def finding_owner(assignee: object) -> str:
-    """Return the finding owner label: the triage assignee, else ``Unassigned``.
+def finding_owner(assignee: object) -> str | None:
+    """Return the finding owner: the triage assignee, else ``None``.
 
     The simple ownership cut surfaces the existing triage ``assignee`` as the
-    finding's owner. Absent an assignee the finding is explicitly ``Unassigned``
-    rather than blank, so the surface reads honestly instead of empty.
+    finding's owner. The *data* layer carries an explicit ``None`` when nobody
+    is assigned — an honest absence the API contract and every export
+    (JSON/SARIF/CDX/SPDX) preserve, so a machine consumer never sees a fake
+    owner. The CLI and UI render that ``None`` as "Unassigned" at the
+    presentation layer only.
     """
     if isinstance(assignee, str) and assignee.strip():
         return assignee.strip()
-    return UNASSIGNED_OWNER
+    return None
 
 
-__all__ = ["SEVERITY_SLA_DAYS", "UNASSIGNED_OWNER", "finding_owner", "sla_due_at"]
+__all__ = ["SEVERITY_SLA_DAYS", "finding_owner", "sla_due_at"]

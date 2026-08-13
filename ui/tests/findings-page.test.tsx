@@ -264,6 +264,38 @@ describe("FindingsPage", () => {
     expect(screen.getByTestId("findings-filters-toggle")).not.toHaveTextContent("(1)");
   });
 
+  it("honours the compliance drill-through framework/control URL and surfaces removable chips", async () => {
+    navigationState.query = "framework=soc2&control=CC6.1";
+    render(<FindingsPage />);
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+
+    // The drill-through params are forwarded to the findings API.
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ framework: "soc2", control: "CC6.1" }),
+      ),
+    );
+
+    // Both facets surface as removable chips.
+    const frameworkChip = screen.getByTestId("findings-chip-framework");
+    expect(frameworkChip).toHaveTextContent("Framework: SOC2");
+    const controlChip = screen.getByTestId("findings-chip-control");
+    expect(controlChip).toHaveTextContent("Control: CC6.1");
+
+    // Clearing the framework drops the control too (a control without its
+    // framework is meaningless) and re-queries without either param.
+    fireEvent.click(frameworkChip);
+    await waitFor(() =>
+      expect(screen.queryByTestId("findings-chip-framework")).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("findings-chip-control")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const lastCall = apiMock.listFindings.mock.calls.at(-1)?.[0] ?? {};
+      expect(lastCall).not.toHaveProperty("framework");
+      expect(lastCall).not.toHaveProperty("control");
+    });
+  });
+
   it("sends the selected issue class to the paginated findings API", async () => {
     render(<FindingsPage />);
     expect(await screen.findByText("Findings queue")).toBeInTheDocument();

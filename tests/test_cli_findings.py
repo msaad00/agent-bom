@@ -151,7 +151,23 @@ def test_findings_list_outputs_json_and_passes_filters(monkeypatch) -> None:
     assert fake.init_kwargs["tenant_id"] == "tenant-a"
     assert fake.calls[0] == (
         "list_findings",
-        {"severity": "high", "sort": "effective_reach", "limit": 10, "offset": 0},
+        {"severity": "high", "sort": "effective_reach", "limit": 10, "offset": 0, "framework": None, "control": None},
+    )
+
+
+def test_findings_list_passes_framework_and_control_filters(monkeypatch) -> None:
+    """CLI parity for the compliance drill-through (epic #4790)."""
+    fake = _install_fake_client(monkeypatch)
+
+    result = CliRunner().invoke(
+        main,
+        ["findings", "list", "--framework", "soc2", "--control", "CC6.1", "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert fake.calls[0] == (
+        "list_findings",
+        {"severity": None, "sort": "effective_reach", "limit": 500, "offset": 0, "framework": "soc2", "control": "CC6.1"},
     )
 
 

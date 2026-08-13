@@ -254,6 +254,18 @@ describe('api.listFindings', () => {
       expect.objectContaining({ credentials: 'include' }),
     )
   })
+
+  it('serializes the compliance drill-through framework and control filters', async () => {
+    const fetchMock = mockFetch({ findings: [], total: 0 })
+    global.fetch = fetchMock
+
+    await api.listFindings({ framework: 'soc2', control: 'CC6.1', limit: 25 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/findings?limit=25&framework=soc2&control=CC6.1',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
 })
 
 describe('api.getCompliance', () => {

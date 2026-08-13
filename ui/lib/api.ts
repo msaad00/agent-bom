@@ -1436,6 +1436,10 @@ export const api = {
     account?: string;
     environment?: string;
     domain?: string;
+    // Compliance drill-through (epic #4790): a framework section id (e.g. `soc2`
+    // / `nist-csf`) and, optionally, a control code that narrows within it.
+    framework?: string;
+    control?: string;
     findingClass?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
     status?: "open" | "resolved" | "all";
     // Known-exploited only, or explicitly everything else. Omit for no filter —
@@ -1459,6 +1463,8 @@ export const api = {
     if (filters?.account) params.set("account", filters.account);
     if (filters?.environment) params.set("environment", filters.environment);
     if (filters?.domain) params.set("domain", filters.domain);
+    if (filters?.framework) params.set("framework", filters.framework);
+    if (filters?.control) params.set("control", filters.control);
     if (filters?.findingClass) params.set("finding_class", filters.findingClass);
     if (filters?.kev != null) params.set("kev", String(filters.kev));
     if (filters?.status) params.set("status", filters.status);

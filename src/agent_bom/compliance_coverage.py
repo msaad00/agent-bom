@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -350,6 +351,45 @@ def normalize_framework_slug(slug: str) -> str:
     """Normalize API/ingest framework slugs to canonical hyphenated form."""
     normalized = slug.strip().lower().replace("_", "-")
     return FRAMEWORK_SLUG_ALIASES.get(normalized, normalized)
+
+
+_FRAMEWORK_IDENT_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_framework_ident(value: str) -> str:
+    """Lowercase and strip every non-alphanumeric character.
+
+    Collapses the small representational differences between the compliance
+    UI's section id, the metadata ``slug``, its ``output_key`` and its
+    ``tag_field`` so all three forms of one framework compare equal
+    (``nist-csf`` == ``nist_csf`` == ``nistcsf``).
+    """
+    return _FRAMEWORK_IDENT_RE.sub("", value.strip().lower())
+
+
+def resolve_framework_filter(value: str) -> ComplianceFrameworkMetadata | None:
+    """Resolve a UI/API framework identifier to its tag-mapped metadata.
+
+    The compliance drill-through links to ``/findings?framework=<section id>``
+    where the section id is the UI slug (``nist-csf``, ``iso27001``,
+    ``nist-ai-rmf`` …). Those do not always equal the metadata ``slug`` /
+    ``output_key`` / ``tag_field`` (``nist-ai-rmf`` maps to slug ``nist``,
+    ``iso27001`` to ``iso-27001``), so match tolerantly against all three,
+    normalized. Returns ``None`` for an unrecognized identifier so the caller
+    can return an honest empty result rather than raising.
+    """
+    key = _normalize_framework_ident(value)
+    if not key:
+        return None
+    for meta in TAG_MAPPED_FRAMEWORKS:
+        candidates = {
+            _normalize_framework_ident(meta.slug),
+            _normalize_framework_ident(meta.output_key),
+            _normalize_framework_ident(meta.tag_field.removesuffix("_tags")),
+        }
+        if key in candidates:
+            return meta
+    return None
 
 
 AISVS_BENCHMARK = ComplianceBenchmarkMetadata(

@@ -760,6 +760,76 @@ def row_matches_search(row: Mapping[str, object], query: str | None) -> bool:
     return False
 
 
+def _framework_control_codes(row: Mapping[str, Any], tag_field: str, framework_key: str) -> set[str]:
+    """Collect one framework's control codes from every representation on a row.
+
+    A scan finding may carry its framework controls three ways: the per-framework
+    tag list (``soc2_tags``), the structured ``controls`` list, and the flattened
+    ``framework_tags`` (``"soc2:CC6.1"``). All are read, but strictly scoped to
+    ``framework_key`` so a code is never matched against another framework's
+    namespace — the flat ``compliance_tags`` union is deliberately NOT consulted.
+    """
+    codes: set[str] = set()
+    raw = row.get(tag_field)
+    if isinstance(raw, (list, tuple, set)):
+        codes.update(str(tag) for tag in raw)
+    controls = row.get("controls")
+    if isinstance(controls, list):
+        for control in controls:
+            if isinstance(control, dict) and str(control.get("framework") or "") == framework_key:
+                code = control.get("control") or control.get("id")
+                if code:
+                    codes.add(str(code))
+    framework_tags = row.get("framework_tags")
+    if isinstance(framework_tags, list):
+        prefix = f"{framework_key}:"
+        for tag in framework_tags:
+            text = str(tag)
+            if text.startswith(prefix):
+                codes.add(text[len(prefix) :])
+    return codes
+
+
+def _row_matches_framework(row: Mapping[str, Any], filters: Mapping[str, str]) -> bool:
+    """Framework / control drill-through predicate (compliance → findings).
+
+    The framework identifier is resolved once in the route to ``framework_tag_field``
+    (e.g. ``soc2_tags``) plus the canonical ``framework_slug``. When it does not
+    resolve the route stores the raw value under ``framework`` and nothing can
+    match it — an honest empty result rather than a silent widening.
+
+    With a ``control`` code the match is exact containment in the framework's
+    control codes, mirroring the compliance per-control count (``code in tags``)
+    so the drilled queue reconciles with the badge the user clicked. Without a
+    control it is a framework-level match: any control tagged for the framework,
+    or — for bulk-ingested rows whose per-framework tags are redacted at rest —
+    the framework slug present in ``applicable_frameworks``.
+    """
+    tag_field = filters.get("framework_tag_field")
+    if tag_field is None:
+        # Unresolved framework identifier: match nothing (honest empty).
+        return False
+
+    control = filters.get("control")
+    control = control.strip() if isinstance(control, str) else None
+    framework_key = tag_field[:-5] if tag_field.endswith("_tags") else tag_field
+    codes = _framework_control_codes(row, tag_field, framework_key)
+
+    if control:
+        return control in codes
+    if codes:
+        return True
+    slug = filters.get("framework_slug")
+    if slug:
+        from agent_bom.compliance_coverage import normalize_framework_slug
+
+        wanted = normalize_framework_slug(slug)
+        applicable = row.get("applicable_frameworks")
+        if isinstance(applicable, (list, tuple, set)):
+            return any(normalize_framework_slug(str(item)) == wanted for item in applicable)
+    return False
+
+
 def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
     """Return True when a finding row matches every active scope filter.
 
@@ -771,8 +841,10 @@ def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
     equality checks. ``domain`` matches membership in the finding's overlapping
     coverage-lens set (:func:`lenses_for_row`), so ``domain=aspm`` returns
     SAST + secrets + repo dependencies + IaC and ``domain=vuln`` returns every
-    CVE. The caller is responsible for pre-canonicalizing the filter values
-    (lowercased/trimmed, ``appsec_sca`` -> ``aspm`` legacy alias applied).
+    CVE. ``framework`` / ``control`` power the compliance drill-through
+    (:func:`_row_matches_framework`). The caller is responsible for
+    pre-canonicalizing the filter values (lowercased/trimmed, ``appsec_sca`` ->
+    ``aspm`` legacy alias applied, framework resolved to its tag field).
     """
     for key in ("provider", "account_ref", "environment"):
         wanted = filters.get(key)
@@ -786,6 +858,12 @@ def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
     wanted_class = filters.get("finding_class")
     if wanted_class is not None and finding_class_for_row(row) != wanted_class:
         return False
+    # Compliance drill-through: framework (resolved to its tag field) + optional
+    # control code. ``framework`` (raw) is present only when the identifier did
+    # not resolve, in which case the match is an honest empty.
+    if filters.get("framework_tag_field") is not None or filters.get("framework") is not None:
+        if not _row_matches_framework(row, filters):
+            return False
     # KEV leads the executive headline — "actively exploited, fix these first" —
     # so the list has to be able to answer it. An absent verdict is not a match:
     # a row nobody checked must never be presented as known-exploited.

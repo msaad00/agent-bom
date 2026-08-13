@@ -30,6 +30,7 @@ SEVERITY_SLA_DAYS: dict[str, int] = {
     "low": 180,
 }
 
+
 def _parse_iso(value: object) -> datetime | None:
     """Parse a date or datetime string into a tz-aware UTC datetime, or None.
 

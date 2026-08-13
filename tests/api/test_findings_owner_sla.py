@@ -21,9 +21,9 @@ from agent_bom.api.routes.enterprise import _triage_reason
 from agent_bom.api.routes.scan import iter_tenant_scan_spine_findings
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 from agent_bom.models import AIBOMReport
 from agent_bom.output import to_json
-from agent_bom.graph.sla import SEVERITY_SLA_DAYS
 
 
 def _completed_job(tenant_id: str, findings: list[Finding], *, generated_at: datetime) -> ScanJob:

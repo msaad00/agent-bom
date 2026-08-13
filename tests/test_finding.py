@@ -754,3 +754,66 @@ def test_report_dual_write_findings_field():
     # to_findings() returns the already-populated list
     assert len(report.to_findings()) == 1
     assert report.to_findings()[0].cve_id == "CVE-2024-9999"  # vuln_id maps to cve_id
+
+
+# ---------------------------------------------------------------------------
+# Owner + SLA (P0: finding-level owner + SLA populated on the spine)
+# ---------------------------------------------------------------------------
+
+
+def test_finding_to_dict_populates_owner_and_sla_from_first_seen():
+    from datetime import datetime
+
+    from agent_bom.sla import SEVERITY_SLA_DAYS
+
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg", asset_type="package", identifier="pkg:pypi/torch@2.3.0"),
+        severity="critical",
+        first_seen="2026-08-01T00:00:00+00:00",
+    )
+    payload = finding.to_dict()
+    assert payload["owner"] == "Unassigned"
+    assert payload["first_seen"] == "2026-08-01T00:00:00+00:00"
+    due = datetime.fromisoformat(payload["sla_due_at"])
+    anchor = datetime.fromisoformat("2026-08-01T00:00:00+00:00")
+    assert (due - anchor).days == SEVERITY_SLA_DAYS["critical"]
+
+
+def test_finding_to_dict_owner_surfaces_assignee():
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg", asset_type="package", identifier="pkg:pypi/torch@2.3.0"),
+        severity="high",
+        owner="alice@example.com",
+    )
+    assert finding.to_dict()["owner"] == "alice@example.com"
+
+
+def test_finding_to_dict_sla_none_without_anchor():
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg", asset_type="package", identifier="pkg:pypi/torch@2.3.0"),
+        severity="critical",
+    )
+    # Honest unknown: no first_seen anchor and no KEV date -> no fabricated date.
+    assert finding.to_dict()["sla_due_at"] is None
+
+
+def test_finding_to_dict_kev_due_date_overrides_sla():
+    from datetime import datetime
+
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg", asset_type="package", identifier="pkg:pypi/torch@2.3.0"),
+        severity="high",
+        first_seen="2026-08-01T00:00:00+00:00",
+        is_kev=True,
+        evidence={"kev_due_date": "2026-08-10"},
+    )
+    due = datetime.fromisoformat(finding.to_dict()["sla_due_at"])
+    assert due == datetime.fromisoformat("2026-08-10T00:00:00+00:00")

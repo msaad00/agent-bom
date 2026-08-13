@@ -771,3 +771,66 @@ def test_findings_api_payload_carries_the_provenance_status() -> None:
     # The response model carries every field explicitly, so the unknown verdict
     # is an explicit null beside the status that explains it.
     assert payload["package_provenance_attested"] is None
+
+
+# ---------------------------------------------------------------------------
+# Owner + SLA reach every finding-shaped export (P0 parity)
+# ---------------------------------------------------------------------------
+
+
+def _plain_critical_vuln() -> Vulnerability:
+    return Vulnerability(
+        id="CVE-2026-7777",
+        summary="RCE in flask",
+        severity=Severity.CRITICAL,
+        cvss_score=9.8,
+        fixed_version="2.3.0",
+    )
+
+
+def test_sarif_result_carries_owner_and_sla_due_at() -> None:
+    from agent_bom.sla import SEVERITY_SLA_DAYS
+
+    report = _report_with_vuln(_plain_critical_vuln())
+    result = next(r for r in to_sarif(report)["runs"][0]["results"] if r["ruleId"] == "CVE-2026-7777")
+    props = result["properties"]
+    assert props["owner"] == "Unassigned"
+    due = datetime.fromisoformat(props["sla_due_at"])
+    assert (due - report.generated_at).days == SEVERITY_SLA_DAYS["critical"]
+
+
+def test_cyclonedx_vulnerability_carries_sla_due_at() -> None:
+    from agent_bom.sla import SEVERITY_SLA_DAYS
+
+    report = _report_with_vuln(_plain_critical_vuln())
+    doc = to_cyclonedx(report)
+    vuln = next(v for v in doc["vulnerabilities"] if v["id"] == "CVE-2026-7777")
+    props = {p["name"]: p["value"] for p in vuln.get("properties", [])}
+    due = datetime.fromisoformat(props["agent-bom:sla_due_at"])
+    assert (due - report.generated_at).days == SEVERITY_SLA_DAYS["critical"]
+
+
+def test_cyclonedx_sla_honors_kev_due_date_override() -> None:
+    # high policy = 30 days from Jan 1 -> Jan 31; the KEV deadline (Jan 23) is
+    # earlier and therefore governs (most-urgent binding deadline wins).
+    vuln = Vulnerability(
+        id="CVE-2026-8888",
+        summary="SSRF in flask",
+        severity=Severity.HIGH,
+        cvss_score=7.5,
+        is_kev=True,
+        kev_due_date="2026-01-23",
+    )
+    report = _report_with_vuln(vuln)
+    doc = to_cyclonedx(report)
+    entry = next(v for v in doc["vulnerabilities"] if v["id"] == "CVE-2026-8888")
+    props = {p["name"]: p["value"] for p in entry.get("properties", [])}
+    assert datetime.fromisoformat(props["agent-bom:sla_due_at"]) == datetime(2026, 1, 23, tzinfo=timezone.utc)
+
+
+def test_spdx_annotations_carry_the_sla_due_at() -> None:
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    report = _report_with_vuln(_plain_critical_vuln())
+    doc = to_spdx(report)
+    assert "agent-bom:sla-due-at=" in json.dumps(doc)

@@ -987,6 +987,15 @@ def to_json(report: AIBOMReport) -> dict:
     from agent_bom.output.finding_views import apply_workload_runtime_evidence_for_export
 
     export_findings = apply_workload_runtime_evidence_for_export(list(report.to_findings()))
+    # Anchor the remediation SLA window: scan completion is the authoritative
+    # first-observation time for a fresh scan's findings, so stamp it when the
+    # finding does not already carry a first-seen history. to_dict() then derives
+    # ``sla_due_at`` from this anchor (with the KEV override) — one source of
+    # truth for the report, the API job result, and every export.
+    scan_observed_at = report.generated_at.isoformat()
+    for finding in export_findings:
+        if not finding.first_seen:
+            finding.first_seen = scan_observed_at
     unified_findings = [finding.to_dict() for finding in export_findings]
     asset_inventory = _build_asset_inventory(unified_findings)
     finding_summary = _build_finding_summary(unified_findings)

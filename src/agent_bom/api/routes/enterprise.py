@@ -310,6 +310,40 @@ def _triage_response(exc: Any) -> dict[str, Any]:
     }
 
 
+def build_tenant_triage_owner_index(tenant_id: str) -> list[tuple[Any, str]]:
+    """Return ``(exception, assignee)`` pairs for the tenant's triage entries.
+
+    The finding "owner" is the triage ``assignee``. Only triage entries with an
+    assignee contribute — suppressions and feedback carry an approver, not an
+    owner, and must not be surfaced as ownership. Tenant-scoped read: the store
+    is queried with ``tenant_id`` so one tenant's assignees never leak into
+    another tenant's findings.
+    """
+    index: list[tuple[Any, str]] = []
+    for exc in _get_exception_store().list_all(tenant_id=tenant_id):
+        data = _parse_triage_reason(str(exc.reason))
+        if data is None:
+            continue
+        assignee = str(data.get("assignee") or getattr(exc, "approved_by", "") or "").strip()
+        if assignee:
+            index.append((exc, assignee))
+    return index
+
+
+def triage_owner_for(
+    index: list[tuple[Any, str]],
+    *,
+    vuln_id: str,
+    package: str,
+    server_name: str = "",
+) -> str | None:
+    """Return the triage assignee matching a finding, or ``None`` when unassigned."""
+    for exc, assignee in index:
+        if exc.matches(vuln_id, package, server_name):
+            return assignee
+    return None
+
+
 def _auth_session_state(request: Request) -> dict:
     """Build the current request's auth/session state without leaking secrets."""
     from agent_bom.api.middleware import get_auth_runtime_status

@@ -64,11 +64,17 @@ def _package_name(row: Mapping[str, object]) -> str:
     return _string(value)
 
 
+def _owner(row: Mapping[str, object]) -> str:
+    from agent_bom.sla import finding_owner
+
+    return finding_owner(row.get("owner"))
+
+
 def _print_findings_table(payload: JsonObject) -> None:
     rows = payload.get("findings")
     if not isinstance(rows, list):
         rows = []
-    click.echo("id\tseverity\tstatus\tpackage\tfirst_seen\tlast_seen\ttitle")
+    click.echo("id\tseverity\tstatus\towner\tpackage\tfirst_seen\tlast_seen\tsla_due_at\ttitle")
     for item in rows:
         if not isinstance(item, dict):
             continue
@@ -78,9 +84,11 @@ def _print_findings_table(payload: JsonObject) -> None:
                     _finding_id(item),
                     _string(item.get("severity")),
                     _string(item.get("status")),
+                    _owner(item),
                     _package_name(item),
                     _string(item.get("first_seen")),
                     _string(item.get("last_seen")),
+                    _string(item.get("sla_due_at")),
                     _string(item.get("title") or item.get("summary") or item.get("message")),
                 ]
             )

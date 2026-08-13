@@ -253,6 +253,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                         vuln,
                         vuln_element_id,
                         compliance_tags=vuln_compliance_tags.get(_vulnerability_key(pkg, vuln), []),
+                        observed_at=report.generated_at.isoformat(),
                     )
                     if vuln_annotations:
                         vuln_element["annotation"] = vuln_annotations
@@ -322,8 +323,19 @@ def export_spdx(report: AIBOMReport, output_path: str) -> None:
     Path(output_path).write_text(json.dumps(data, indent=2))
 
 
-def _vulnerability_annotations(vuln: Any, subject: str, *, compliance_tags: list[str] | None = None) -> list[dict[str, object]]:
-    """Encode non-core vulnerability enrichments as SPDX annotations."""
+def _vulnerability_annotations(
+    vuln: Any,
+    subject: str,
+    *,
+    compliance_tags: list[str] | None = None,
+    observed_at: str | None = None,
+) -> list[dict[str, object]]:
+    """Encode non-core vulnerability enrichments as SPDX annotations.
+
+    ``observed_at`` anchors the severity-derived remediation SLA
+    (``agent-bom:sla-due-at``, KEV override); omitted when no deadline is
+    derivable so a missing statement never reads as "no SLA".
+    """
     statements: list[str] = []
     if vuln.severity_source:
         statements.append(f"agent-bom:severity-source={vuln.severity_source}")
@@ -336,6 +348,12 @@ def _vulnerability_annotations(vuln: Any, subject: str, *, compliance_tags: list
         statements.append(f"agent-bom:kev-date-added={vuln.kev_date_added}")
     if vuln.kev_due_date:
         statements.append(f"agent-bom:kev-due-date={vuln.kev_due_date}")
+    from agent_bom.sla import sla_due_at as _compute_sla_due_at
+
+    _severity_value = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
+    sla_due = _compute_sla_due_at(_severity_value, observed_at, kev_due_date=vuln.kev_due_date)
+    if sla_due is not None:
+        statements.append(f"agent-bom:sla-due-at={sla_due}")
     for cwe_id in vuln.cwe_ids:
         statements.append(f"agent-bom:cwe={cwe_id}")
     compliance_statements = [*list(compliance_tags or []), *_vulnerability_compliance_tags(vuln)]

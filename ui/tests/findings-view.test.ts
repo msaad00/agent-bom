@@ -5,6 +5,7 @@ import {
   findingStatusLabel,
   cvssVersion,
   formatFindingTimestamp,
+  formatSlaDue,
   hasLifecycleMetadata,
   officialAdvisoryLinks,
   vulnRowKey,
@@ -44,6 +45,35 @@ describe("findings lifecycle helpers", () => {
   it("detects lifecycle metadata on enriched rows", () => {
     expect(hasLifecycleMetadata([sampleVuln()])).toBe(false);
     expect(hasLifecycleMetadata([sampleVuln({ lifecycle_status: "open", last_seen: "2026-07-01T00:00:00Z" })])).toBe(true);
+  });
+});
+
+describe("formatSlaDue", () => {
+  const now = Date.parse("2026-08-10T00:00:00Z");
+
+  it("returns null when no deadline is known", () => {
+    expect(formatSlaDue(undefined, now)).toBeNull();
+    expect(formatSlaDue("", now)).toBeNull();
+    expect(formatSlaDue("not-a-date", now)).toBeNull();
+  });
+
+  it("renders a future deadline as a relative, non-overdue label", () => {
+    const sla = formatSlaDue("2026-08-15T00:00:00Z", now);
+    expect(sla).not.toBeNull();
+    expect(sla?.overdue).toBe(false);
+    expect(sla?.label).toBe("SLA in 5d");
+  });
+
+  it("flags a past deadline as overdue", () => {
+    const sla = formatSlaDue("2026-08-07T00:00:00Z", now);
+    expect(sla?.overdue).toBe(true);
+    expect(sla?.label).toBe("SLA overdue 3d");
+  });
+
+  it("labels a same-day deadline as due today", () => {
+    const sla = formatSlaDue("2026-08-10T00:00:00Z", now);
+    expect(sla?.overdue).toBe(false);
+    expect(sla?.label).toBe("SLA due today");
   });
 });
 

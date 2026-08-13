@@ -306,3 +306,57 @@ def test_known_source_routing_is_unchanged_by_the_lenient_parse() -> None:
     assert lenses_for_row({"source": "SBOM", "finding_type": "CVE"}) == frozenset({"vuln", "aspm"})
     assert domain_for_row({"source": "MCP_SCAN", "finding_type": "TOOL_DRIFT"}) == "aispm"
     assert domain_for_row({"source": "CLOUD_CIS", "finding_type": "CIS_FAIL", "evidence": {"benchmark": "CIS"}}) == "cspm"
+
+
+# ---------------------------------------------------------------------------
+# Owner + SLA derivation on the canonical API projection
+# ---------------------------------------------------------------------------
+
+
+def test_canonical_payload_defaults_owner_to_unassigned() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    payload = canonical_finding_payload({"severity": "high"})
+    assert payload["owner"] == "Unassigned"
+
+
+def test_canonical_payload_preserves_existing_owner() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    payload = canonical_finding_payload({"severity": "high", "owner": "alice@example.com"})
+    assert payload["owner"] == "alice@example.com"
+
+
+def test_canonical_payload_derives_sla_from_first_seen() -> None:
+    from datetime import datetime
+
+    from agent_bom.finding_scope import canonical_finding_payload
+    from agent_bom.sla import SEVERITY_SLA_DAYS
+
+    payload = canonical_finding_payload({"severity": "high", "first_seen": "2026-08-01T00:00:00+00:00"})
+    assert payload["sla_due_at"] is not None
+    delta = datetime.fromisoformat(payload["sla_due_at"]) - datetime.fromisoformat("2026-08-01T00:00:00+00:00")
+    assert delta.days == SEVERITY_SLA_DAYS["high"]
+
+
+def test_canonical_payload_sla_falls_back_to_last_seen_anchor() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    payload = canonical_finding_payload({"severity": "critical", "last_seen": "2026-08-01T00:00:00+00:00"})
+    assert payload["sla_due_at"] is not None
+
+
+def test_canonical_payload_preserves_precomputed_sla() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    payload = canonical_finding_payload(
+        {"severity": "high", "first_seen": "2026-08-01T00:00:00+00:00", "sla_due_at": "2026-08-05T00:00:00+00:00"}
+    )
+    assert payload["sla_due_at"] == "2026-08-05T00:00:00+00:00"
+
+
+def test_canonical_payload_sla_none_without_anchor() -> None:
+    from agent_bom.finding_scope import canonical_finding_payload
+
+    payload = canonical_finding_payload({"severity": "critical"})
+    assert payload["sla_due_at"] is None

@@ -30,9 +30,11 @@ class FakeFindingsClient:
                     "id": "finding-1",
                     "severity": "high",
                     "status": "open",
+                    "owner": "secops@example.com",
                     "package": "requests",
                     "first_seen": "2026-07-01T00:00:00Z",
                     "last_seen": "2026-07-03T00:00:00Z",
+                    "sla_due_at": "2026-07-31T00:00:00Z",
                     "title": "Reachable CVE",
                 }
             ],
@@ -112,9 +114,11 @@ def test_findings_list_table_includes_lifecycle_columns(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     lines = result.output.strip().splitlines()
-    assert lines[0].startswith("id\tseverity\tstatus\tpackage\tfirst_seen\tlast_seen\ttitle")
+    assert lines[0].startswith("id\tseverity\tstatus\towner\tpackage\tfirst_seen\tlast_seen\tsla_due_at\ttitle")
     assert "open" in lines[1]
     assert "2026-07-01T00:00:00Z" in lines[1]
+    assert "secops@example.com" in lines[1]
+    assert "2026-07-31T00:00:00Z" in lines[1]
 
 
 def test_findings_list_outputs_json_and_passes_filters(monkeypatch) -> None:

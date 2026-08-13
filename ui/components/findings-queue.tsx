@@ -10,6 +10,7 @@ import {
   findingSecondaryText,
   findingStatusClass,
   formatFindingTimestamp,
+  formatSlaDue,
   vulnRowKey,
 } from "@/lib/findings-view";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
@@ -467,6 +468,7 @@ function EngineeringCells({
   onMarkFP: () => void;
 }) {
   const verifyCommand = vuln.remediation_items.find((item) => item.verify_command)?.verify_command;
+  const sla = formatSlaDue(vuln.sla_due_at);
   return (
     <>
       <td className="px-4 py-3">
@@ -511,9 +513,16 @@ function EngineeringCells({
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1 text-xs">
           <span className="text-[var(--text-secondary)]">{vuln.owner || triage?.assignee || "Unassigned"}</span>
-          <span className="text-[var(--text-tertiary)]">
-            {vuln.sla_due_at ? `SLA ${formatFindingTimestamp(vuln.sla_due_at)}` : "SLA unavailable"}
-          </span>
+          {sla ? (
+            <span
+              className={sla.overdue ? "font-medium text-[color:var(--status-danger)]" : "text-[var(--text-tertiary)]"}
+              title={`SLA due ${sla.absolute}`}
+            >
+              {sla.label}
+            </span>
+          ) : (
+            <span className="text-[var(--text-tertiary)]">SLA unavailable</span>
+          )}
         </div>
       </td>
       <td className="px-4 py-3 text-xs font-mono text-[var(--text-secondary)]">

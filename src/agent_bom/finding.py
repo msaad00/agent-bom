@@ -335,6 +335,15 @@ class Finding:
     # workload is clean — summaries carry clean_workload_assertion=False.
     workload_runtime_evidence: Optional[dict] = None
 
+    # Ownership + remediation SLA (additive, optional). ``first_seen`` anchors
+    # the SLA window (scan-observation time for a fresh scan); ``owner`` surfaces
+    # the triage assignee when one exists; ``sla_due_at`` is severity-derived
+    # from ``first_seen`` with a KEV override. All left None by default so
+    # existing findings serialize unchanged and to_dict() derives on demand.
+    first_seen: Optional[str] = None
+    owner: Optional[str] = None
+    sla_due_at: Optional[str] = None
+
     # Unique ID — deterministic UUID v5 based on content (computed in __post_init__)
     # Pass an explicit id= to override (e.g. when ingesting from external scanner)
     id: str = field(default="")
@@ -513,6 +522,14 @@ class Finding:
 
     def to_dict(self) -> dict:
         """Return a JSON-serializable finding payload."""
+        from agent_bom.sla import finding_owner, sla_due_at
+
+        kev_due_date = self.evidence.get("kev_due_date") if isinstance(self.evidence, dict) else None
+        resolved_sla = self.sla_due_at or sla_due_at(
+            self.effective_severity(),
+            self.first_seen,
+            kev_due_date=kev_due_date,
+        )
         return {
             "schema_version": FINDING_SCHEMA_VERSION,
             "id": self.id,
@@ -595,6 +612,13 @@ class Finding:
             "reachability": self.reachability,
             "is_actionable": self.is_actionable,
             "impact_category": self.impact_category,
+            # Ownership + remediation SLA (derived, single source of truth in
+            # agent_bom.sla). ``owner`` defaults to "Unassigned" so the surface
+            # reads honestly; ``sla_due_at`` is an explicit None when no deadline
+            # can be derived (unrated severity + no anchor/KEV date).
+            "first_seen": self.first_seen,
+            "owner": finding_owner(self.owner),
+            "sla_due_at": resolved_sla,
             # Suppression state — a suppressed finding must never surface as
             # unsuppressed downstream (mirrors BlastRadius / SARIF suppressions[]).
             "suppressed": self.suppressed,

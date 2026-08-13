@@ -149,13 +149,15 @@ def _cdx_score_method(cvss_vector: str | None) -> str:
     return "CVSSv3"
 
 
-def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
+def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str, *, observed_at: str | None = None) -> dict:
     """Build one package-scoped CycloneDX vulnerability observation.
 
     Carries the enrichment other exporters already surface: CWE weaknesses via
     the native ``cwes`` array, EPSS as an ``other``-method rating, and CISA KEV
     plus EPSS detail as namespaced ``agent-bom:`` properties (KEV/EPSS have no
-    first-class CDX 1.7 vulnerability slot).
+    first-class CDX 1.7 vulnerability slot). ``observed_at`` anchors the
+    severity-derived remediation SLA (``agent-bom:sla_due_at``); omitted when no
+    deadline is derivable so a missing property never reads as "no SLA".
     """
     ratings: list[dict[str, object]] = []
     if vuln.cvss_score:
@@ -199,6 +201,13 @@ def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str) -> dict:
             vuln_properties.append({"name": "agent-bom:kev_date_added", "value": vuln.kev_date_added})
         if vuln.kev_due_date:
             vuln_properties.append({"name": "agent-bom:kev_due_date", "value": vuln.kev_due_date})
+    # Severity-derived remediation SLA (KEV override) — one source of truth in
+    # agent_bom.sla. Only emitted when an anchor + policy make a deadline real.
+    from agent_bom.sla import sla_due_at as _compute_sla_due_at
+
+    sla_due = _compute_sla_due_at(vuln.severity.value, observed_at, kev_due_date=vuln.kev_due_date)
+    if sla_due is not None:
+        vuln_properties.append({"name": "agent-bom:sla_due_at", "value": sla_due})
     if vuln.epss_score is not None:
         vuln_properties.append({"name": "agent-bom:epss_score", "value": str(vuln.epss_score)})
     if vuln.epss_percentile is not None:
@@ -640,7 +649,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 for vuln in pkg.vulnerabilities:
                     _merge_vulnerability_observation(
                         vulnerabilities_by_id,
-                        _cyclonedx_vulnerability(vuln, pkg_ref),
+                        _cyclonedx_vulnerability(vuln, pkg_ref, observed_at=report.generated_at.isoformat()),
                     )
                 if pkg_ref in seen_component_refs:
                     continue

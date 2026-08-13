@@ -108,6 +108,38 @@ export function formatFindingTimestamp(value: string | undefined | null): string
   });
 }
 
+export interface SlaDue {
+  /** Absolute deadline, formatted for the row tooltip. */
+  absolute: string;
+  /** Short relative label, e.g. "SLA in 5d", "SLA overdue 3d", "SLA due today". */
+  label: string;
+  /** True when the deadline is in the past — surfaced with the danger token. */
+  overdue: boolean;
+}
+
+/**
+ * Render a finding's remediation SLA as a relative deadline with an overdue
+ * state. Returns null when no deadline is known (an explicit "SLA unavailable"),
+ * never a fabricated date.
+ */
+export function formatSlaDue(value: string | undefined | null, now: number = Date.now()): SlaDue | null {
+  if (!value || !value.trim()) return null;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return null;
+  const absolute = formatFindingTimestamp(value);
+  const dayMs = 24 * 60 * 60 * 1000;
+  // Compare on calendar days so a deadline later today reads "due today".
+  const days = Math.round((parsed - now) / dayMs);
+  if (days < 0) {
+    const overdueDays = Math.abs(days);
+    return { absolute, label: `SLA overdue ${overdueDays}d`, overdue: true };
+  }
+  if (days === 0) {
+    return { absolute, label: "SLA due today", overdue: false };
+  }
+  return { absolute, label: `SLA in ${days}d`, overdue: false };
+}
+
 export function findingStatusLabel(status: string | undefined): string {
   const normalized = (status ?? "").trim().toLowerCase();
   if (normalized === "open" || normalized === "resolved" || normalized === "reopened") {

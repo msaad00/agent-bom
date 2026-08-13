@@ -1029,8 +1029,28 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         _absorb(_attach_reach(row))
 
     findings = [grouped[key] for key in order]
+    # Surface the triage assignee as the finding owner (the simple ownership cut).
+    # Built once per tenant and matched per row; rows with no triage assignee keep
+    # whatever owner the scan spine already set (defaults to "Unassigned" later).
+    from agent_bom.api.routes.enterprise import build_tenant_triage_owner_index, triage_owner_for
+
+    owner_index = build_tenant_triage_owner_index(tenant_id)
     for row in findings:
         _normalize_finding_identifiers(row)
+        if owner_index:
+            raw_asset = row.get("asset")
+            asset = raw_asset if isinstance(raw_asset, dict) else {}
+            raw_evidence = row.get("evidence")
+            evidence = raw_evidence if isinstance(raw_evidence, dict) else {}
+            package = str(row.get("package") or row.get("package_name") or evidence.get("package_name") or asset.get("name") or "")
+            assignee = triage_owner_for(
+                owner_index,
+                vuln_id=str(row.get("vulnerability_id") or row.get("cve_id") or ""),
+                package=package,
+                server_name=str(row.get("server_name") or ""),
+            )
+            if assignee:
+                row["owner"] = assignee
     return findings
 
 

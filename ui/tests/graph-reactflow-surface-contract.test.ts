@@ -7,8 +7,8 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), "utf8")
 describe("interactive React Flow surface contract", () => {
   it.each([
     "app/graph/graph-page-client.tsx",
-    "app/mesh/page.tsx",
-    "app/context/page.tsx",
+    "components/mesh-lens-view.tsx",
+    "components/context-lens-view.tsx",
     "components/scan-mesh.tsx",
     "components/attack-flow.tsx",
     "components/security-graph-investigation.tsx",
@@ -18,7 +18,7 @@ describe("interactive React Flow surface contract", () => {
   });
 
   it.each([
-    "app/context/page.tsx",
+    "components/context-lens-view.tsx",
     "components/scan-mesh.tsx",
     "components/attack-flow.tsx",
     "app/agents/page.tsx",
@@ -50,8 +50,8 @@ describe("interactive React Flow surface contract", () => {
 
   it.each([
     "app/graph/graph-page-client.tsx",
-    "app/mesh/page.tsx",
-    "app/context/page.tsx",
+    "components/mesh-lens-view.tsx",
+    "components/context-lens-view.tsx",
     "components/scan-mesh.tsx",
     "components/attack-flow.tsx",
     "app/agents/page.tsx",
@@ -76,8 +76,8 @@ describe("interactive React Flow surface contract", () => {
 
   it.each([
     "app/graph/graph-page-client.tsx",
-    "app/mesh/page.tsx",
-    "app/context/page.tsx",
+    "components/mesh-lens-view.tsx",
+    "components/context-lens-view.tsx",
   ])("enables persistence only for an explicit no-auth local session in %s", (path) => {
     expect(source(path)).toContain('localMode: session?.recommended_ui_mode === "no_auth"');
   });

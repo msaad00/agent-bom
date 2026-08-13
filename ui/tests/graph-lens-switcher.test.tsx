@@ -44,15 +44,23 @@ describe("GraphLensSwitcher", () => {
     expect(screen.getByText("Context")).toBeInTheDocument();
   });
 
-  it("routes to another graph lens without shifting the canvas route shell", () => {
+  it("switches to the mesh lens on the unified graph surface via a param", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
-    expect(push).toHaveBeenCalledWith("/mesh");
+    expect(push).toHaveBeenCalledWith("/graph?lens=mesh");
   });
 
-  it("preserves investigation focus when switching route-backed lenses", () => {
+  it("switches to the context lens on the unified graph surface via a param", () => {
+    render(<GraphLensSwitcher variant="floating" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /context/i }));
+
+    expect(push).toHaveBeenCalledWith("/graph?lens=context");
+  });
+
+  it("preserves investigation focus when switching to a param-backed lens", () => {
     pathname = "/security-graph";
     params = new URLSearchParams({
       scan: "scan-123",
@@ -71,7 +79,7 @@ describe("GraphLensSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith(
-      "/mesh?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&rollup=1",
+      "/graph?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&rollup=1&lens=mesh",
     );
   });
 
@@ -92,13 +100,28 @@ describe("GraphLensSwitcher", () => {
     expect(push).toHaveBeenCalledWith("/graph?scope=asset-drift");
   });
 
-  it("does not reroute when the active lens is selected", () => {
-    pathname = "/mesh";
+  it("does not reroute when the active param lens is selected", () => {
+    pathname = "/graph";
+    params = new URLSearchParams({ lens: "mesh" });
     render(<GraphLensSwitcher variant="floating" />);
 
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("marks the mesh lens active when the lens param is set on /graph", () => {
+    pathname = "/graph";
+    params = new URLSearchParams({ lens: "mesh" });
+    render(<GraphLensSwitcher variant="floating" />);
+
+    expect(
+      screen.getByRole("button", { name: /agent mesh/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /lineage/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("renders a collapsible legend dock under the lens bar", () => {

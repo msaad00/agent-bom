@@ -97,4 +97,9 @@ describe("product proof capture contract", () => {
     expect(findingsQueue).toMatch(/getOsvVulnerabilityUrl\((?:v|vuln)\.id\)/);
     expect(findingsQueue).not.toContain("https://osv.dev/vulnerability/${v.id}");
   });
+
+  it("explains why a finding cannot be verified", () => {
+    expect(findingsQueue).not.toContain('"Verify unavailable"');
+    expect(findingsQueue).toContain("No scanner-provided verification command");
+  });
 });

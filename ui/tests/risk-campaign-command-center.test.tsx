@@ -137,6 +137,39 @@ describe("RiskCampaignCommandCenter", () => {
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
+  it("opens the highest-priority campaign as the default guided work item", async () => {
+    render(<RiskCampaignCommandCenter />);
+
+    const title = await screen.findByText(response.campaigns[0]!.title);
+    expect(title.closest("details")).toHaveAttribute("open");
+    expect(screen.getByText(/Start with the highest-priority campaign/i)).toBeInTheDocument();
+  });
+
+  it("progressively discloses large campaign queues", async () => {
+    const campaigns = Array.from({ length: 12 }, (_, index) => ({
+      ...response.campaigns[0]!,
+      id: `campaign-${index + 1}`,
+      title: `Campaign ${index + 1}`,
+      priority_score: 10 - index / 10,
+    }));
+    vi.mocked(api.listRiskCampaigns).mockResolvedValue({
+      ...response,
+      campaigns,
+      count: campaigns.length,
+      truncated: false,
+      total_findings: campaigns.length,
+      total_approximate: false,
+    });
+
+    const { container } = render(<RiskCampaignCommandCenter />);
+    await screen.findByText("Campaign 1");
+
+    expect(container.querySelectorAll(".risk-campaign-card")).toHaveLength(10);
+    expect(screen.getByText(/Showing 10 of 12 prioritized campaigns/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Show 2 more campaigns/i }));
+    expect(container.querySelectorAll(".risk-campaign-card")).toHaveLength(12);
+  });
+
   it("renders generic finding campaigns without assuming a CVE workflow", async () => {
     vi.mocked(api.listRiskCampaigns).mockResolvedValue({
       ...response,

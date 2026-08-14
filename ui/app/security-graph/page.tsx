@@ -149,7 +149,7 @@ function SecurityGraphPageContent() {
       setCompletedSteps((current) => ({ ...current, [next]: true }));
       if (next === "fix") {
         setPathView("path");
-      } else if (next === "expand" || next === "impact") {
+      } else if (next === "impact") {
         setPathView("graph");
         setInvestigationFocusMode(true);
       } else {
@@ -171,9 +171,10 @@ function SecurityGraphPageContent() {
 
   const handleStepHint = useCallback(
     (step: "expand" | "impact" | "fix") => {
-      setCompletedSteps((current) => ({ ...current, path: true, [step]: true }));
-      if (investigationStep === "path" && step === "expand") {
-        setInvestigationStep("expand");
+      const lifecycleStep: InvestigationStep = step === "expand" ? "impact" : step;
+      setCompletedSteps((current) => ({ ...current, path: true, [lifecycleStep]: true }));
+      if (investigationStep === "path" && lifecycleStep === "impact") {
+        setInvestigationStep("impact");
       }
     },
     [investigationStep, setInvestigationStep],
@@ -669,6 +670,11 @@ function SecurityGraphPageContent() {
             step={investigationStep}
             onStepChange={setInvestigationStep}
             completed={completedSteps}
+            stepHrefs={{
+              owner: "/remediation#campaigns",
+              fix: "/remediation#campaigns",
+              verify: "/remediation#verification",
+            }}
           />
           {pinnedNodeId ? (
             <span className="text-xs text-[color:var(--text-tertiary)]">

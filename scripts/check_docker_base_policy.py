@@ -65,7 +65,7 @@ class BasePolicy:
 POLICY: dict[str, BasePolicy] = {
     "Dockerfile": BasePolicy(
         image="python",
-        expected_tags=("3.14.6-alpine3.23",),
+        expected_tags=("3.14.7-alpine3.23",),
         rationale="Stable Alpine runtime for the packaged CLI/API image; digest pin keeps Dependabot bumps reviewable.",
     ),
     "ui/Dockerfile": BasePolicy(

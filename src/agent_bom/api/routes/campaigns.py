@@ -16,7 +16,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.campaign_store import MembershipEvidence, get_campaign_store
+from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.risk_campaigns import derive_campaigns
+from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.ticketing.service import TicketingError, create_ticket_for_finding, sync_ticket_status
@@ -258,6 +260,8 @@ class CampaignVerificationResponse(BaseModel):
     schema_version: Literal["risk-campaign-verification.v1"]
     campaign_id: str
     verification_status: Literal["verified", "failed"]
+    outcome: Literal["verified_fixed", "still_affected"]
+    retry_state: Literal["complete", "ready_after_rescan"]
     state: str
     remaining_finding_ids: list[str]
     remaining_count: int
@@ -441,16 +445,148 @@ def _require_complete_membership(campaign: dict[str, Any]) -> None:
 
 
 def _audit(action: str, request: Request, campaign_id: str, **details: Any) -> None:
+    _audit_for_actor(action, tenant_id=_tenant(request), actor=_actor(request), campaign_id=campaign_id, **details)
+
+
+def _audit_for_actor(action: str, *, tenant_id: str, actor: str, campaign_id: str, **details: Any) -> None:
     try:
         log_action(
             action,
-            actor=_actor(request),
+            actor=actor,
             resource=f"risk-campaign/{campaign_id}",
-            tenant_id=_tenant(request),
+            tenant_id=tenant_id,
             **details,
         )
     except Exception:  # noqa: BLE001 - audit failure must not corrupt workflow state
         _logger.warning("risk campaign audit append failed")
+
+
+def verify_campaign_workflow(
+    *,
+    tenant_id: str,
+    campaign_id: str,
+    version: int,
+    source: dict[str, Any],
+    actor: str,
+    idempotency_key: str = "",
+) -> dict[str, Any]:
+    """Verify a campaign through the shared persisted workflow service."""
+    if len(idempotency_key) > 200:
+        raise HTTPException(status_code=422, detail="Idempotency-Key must be 200 characters or fewer.")
+    if _source_incomplete(source):
+        _audit_for_actor(
+            "risk_campaign.verify_unavailable",
+            tenant_id=tenant_id,
+            actor=actor,
+            campaign_id=campaign_id,
+            outcome="unavailable_evidence",
+            retry_state="awaiting_complete_snapshot",
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "outcome": "unavailable_evidence",
+                "retry_state": "awaiting_complete_snapshot",
+                "reason": "Campaign verification requires a complete findings snapshot.",
+            },
+        )
+
+    endpoint = f"/v1/campaigns/{campaign_id}/verify"
+    request_hash = idempotency_request_fingerprint({"campaign_id": campaign_id, "version": version})
+    if idempotency_key:
+        cached = _get_idempotency_store().get(
+            endpoint,
+            tenant_id,
+            "risk-campaign",
+            idempotency_key,
+            request_hash=request_hash,
+        )
+        if cached is not None:
+            return cast("dict[str, Any]", cached)
+
+    store = get_campaign_store()
+    stored = store.get(tenant_id, campaign_id)
+    if stored is None or not stored.member_ids:
+        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
+    current_campaigns = derive_campaigns(
+        source["findings"],
+        tenant_id=tenant_id,
+        workflow_by_id={},
+        window_days=90,
+        finding_limit=1000,
+        truncated=False,
+    )
+    current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
+    remaining = tuple(sorted(str(value) for value in current["finding_ids"])) if current else ()
+    verified = store.verify(tenant_id, campaign_id, expected_version=version, remaining_ids=remaining)
+    if verified is None:
+        raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
+
+    outcome = "verified_fixed" if verified.verification_status == "verified" else "still_affected"
+    retry_state = "complete" if outcome == "verified_fixed" else "ready_after_rescan"
+    result: dict[str, Any] = {
+        "schema_version": "risk-campaign-verification.v1",
+        "campaign_id": campaign_id,
+        "verification_status": verified.verification_status,
+        "outcome": outcome,
+        "retry_state": retry_state,
+        "state": verified.state,
+        "remaining_finding_ids": list(remaining),
+        "remaining_count": len(remaining),
+        "original_member_count": len(stored.member_ids),
+        "evidence_scope": {
+            "source": "canonical_findings_spine",
+            "finding_window_days": 90,
+            "finding_limit": 1000,
+            "membership_complete": True,
+        },
+        "version": verified.version,
+        "verified_at": verified.updated_at,
+    }
+    _audit_for_actor(
+        "risk_campaign.verify",
+        tenant_id=tenant_id,
+        actor=actor,
+        campaign_id=campaign_id,
+        verification_status=verified.verification_status,
+        outcome=outcome,
+        retry_state=retry_state,
+        remaining_count=len(remaining),
+    )
+    if idempotency_key:
+        _get_idempotency_store().put(
+            endpoint,
+            tenant_id,
+            "risk-campaign",
+            idempotency_key,
+            result,
+            request_hash=request_hash,
+        )
+    return result
+
+
+def update_campaign_workflow(
+    *,
+    request: Request,
+    campaign_id: str,
+    body: CampaignUpdate,
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    """Update owner, SLA, or state through one REST/MCP workflow service."""
+    tenant_id = _tenant(request)
+    campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    _require_complete_membership(campaign)
+    fields = body.model_dump(exclude_unset=True, exclude={"version"})
+    if not fields:
+        raise HTTPException(status_code=422, detail="At least one campaign workflow field is required.")
+    if "owner" in fields:
+        fields["owner"] = body.owner.strip() if body.owner else None
+    workflow = get_campaign_store().patch(tenant_id, campaign_id, expected_version=body.version, fields=fields)
+    if workflow is None:
+        raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
+    campaign.update(workflow.to_dict())
+    _audit("risk_campaign.update", request, campaign_id, state=workflow.state, verification_status=workflow.verification_status)
+    return campaign
 
 
 @router.get("/campaigns", response_model=CampaignListResponse)
@@ -514,68 +650,25 @@ async def campaign_verification_queue(
 
 @router.patch("/campaigns/{campaign_id}", response_model=CampaignResponse)
 async def update_campaign(request: Request, campaign_id: str, body: CampaignUpdate, _role: Any = _WRITE) -> dict[str, Any]:
-    tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
-    campaign = _find_campaign(_campaigns(request, source), campaign_id)
-    _require_complete_membership(campaign)
-    fields = body.model_dump(exclude_unset=True, exclude={"version"})
-    if "owner" in fields:
-        fields["owner"] = body.owner.strip() if body.owner else None
-    workflow = get_campaign_store().patch(tenant_id, campaign_id, expected_version=body.version, fields=fields)
-    if workflow is None:
-        raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
-    campaign.update(workflow.to_dict())
-    _audit("risk_campaign.update", request, campaign_id, state=workflow.state, verification_status=workflow.verification_status)
-    return campaign
+    return update_campaign_workflow(request=request, campaign_id=campaign_id, body=body, source=source)
 
 
 @router.post("/campaigns/{campaign_id}/verify", response_model=CampaignVerificationResponse)
 async def verify_campaign(request: Request, campaign_id: str, body: CampaignVerificationRequest, _role: Any = _WRITE) -> dict[str, Any]:
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
-    if _source_incomplete(source):
-        raise HTTPException(status_code=409, detail="Campaign verification requires a complete findings snapshot.")
-    store = get_campaign_store()
-    stored = store.get(tenant_id, campaign_id)
-    if stored is None or not stored.member_ids:
-        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
-    current_campaigns = derive_campaigns(
-        source["findings"],
-        tenant_id=tenant_id,
-        workflow_by_id={},
-        window_days=90,
-        finding_limit=1000,
-        truncated=False,
-    )
-    current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
-    remaining = tuple(sorted(str(value) for value in current["finding_ids"])) if current else ()
-    verified = store.verify(tenant_id, campaign_id, expected_version=body.version, remaining_ids=remaining)
-    if verified is None:
-        raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
-    _audit(
-        "risk_campaign.verify",
-        request,
-        campaign_id,
-        verification_status=verified.verification_status,
-        remaining_count=len(remaining),
-    )
-    return {
-        "schema_version": "risk-campaign-verification.v1",
-        "campaign_id": campaign_id,
-        "verification_status": verified.verification_status,
-        "state": verified.state,
-        "remaining_finding_ids": list(remaining),
-        "remaining_count": len(remaining),
-        "original_member_count": len(stored.member_ids),
-        "evidence_scope": {
-            "source": "canonical_findings_spine",
-            "finding_window_days": 90,
-            "finding_limit": 1000,
-            "membership_complete": True,
-        },
-        "version": verified.version,
-        "verified_at": verified.updated_at,
-    }
+    try:
+        return verify_campaign_workflow(
+            tenant_id=tenant_id,
+            campaign_id=campaign_id,
+            version=body.version,
+            source=source,
+            actor=_actor(request),
+            idempotency_key=(request.headers.get("Idempotency-Key") or "").strip(),
+        )
+    except IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key was reused with a different verification request.") from exc
 
 
 @router.post(

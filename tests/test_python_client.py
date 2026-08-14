@@ -141,6 +141,31 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
     ]
 
 
+def test_client_exposes_complete_campaign_workflow() -> None:
+    seen: list[tuple[str, str, dict[str, object], dict[str, str]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8")) if request.content else {}
+        seen.append((request.method, str(request.url), body, dict(request.headers)))
+        return httpx.Response(200, json={"ok": True})
+
+    client = _client(handler)
+    client.update_campaign("campaign/a", version=2, owner="payments", state="in_progress")
+    client.verify_campaign("campaign/a", version=3, idempotency_key="verify-once")
+    client.create_campaign_tickets("campaign/a", connection_id="jira", project="SEC", limit=10)
+    client.sync_campaign_tickets("campaign/a", cursor="next", limit=5)
+
+    assert [(method, url) for method, url, _, _ in seen] == [
+        ("PATCH", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa"),
+        ("POST", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa/verify"),
+        ("POST", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa/tickets"),
+        ("POST", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa/tickets/sync?cursor=next&limit=5"),
+    ]
+    assert seen[0][2] == {"version": 2, "owner": "payments", "state": "in_progress"}
+    assert seen[1][3]["idempotency-key"] == "verify-once"
+    assert seen[2][2] == {"connection_id": "jira", "project": "SEC", "issue_type": "", "limit": 10}
+
+
 def test_client_exposes_runtime_event_sessions() -> None:
     seen: list[tuple[str, str]] = []
     bodies: list[dict[str, object]] = []

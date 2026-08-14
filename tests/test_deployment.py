@@ -298,6 +298,8 @@ def test_server_card_tools_expose_capability_classes():
         # Records a triage decision to the exception store (can suppress a
         # finding); admin-gated findings:write.
         "findings_triage",
+        # Assigns, tickets, and verifies persisted remediation campaigns.
+        "risk_campaign_workflow",
     }
     # Writes that tear down or invalidate state advertise destructiveHint; issuing
     # an identity or granting access creates state and is non-destructive.
@@ -315,6 +317,7 @@ def test_server_card_tools_expose_capability_classes():
         "create_ticket",
         "sync_ticket_status",
         "findings_triage",
+        "risk_campaign_workflow",
         "cloud_side_scan",
     }
     card = build_server_card()
@@ -384,6 +387,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "identity_revoke_jit",
         "identity_rotate",
         "ingest_external_scan",
+        "risk_campaign_workflow",
         "runtime_evidence_ingest",
         "shield_break_glass",
         "shield_start",

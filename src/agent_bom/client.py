@@ -123,13 +123,66 @@ class AgentBomClient:
 
         return self._request("GET", "/v1/campaigns")
 
-    def verify_campaign(self, campaign_id: str, *, version: int) -> JsonObject:
+    def update_campaign(
+        self,
+        campaign_id: str,
+        *,
+        version: int,
+        owner: str | None = None,
+        sla_due_at: str | None = None,
+        state: str | None = None,
+    ) -> JsonObject:
+        """Assign a campaign owner/SLA/state using optimistic concurrency."""
+
+        return self._request(
+            "PATCH",
+            f"/v1/campaigns/{_quote_path(campaign_id)}",
+            json=_strip_none({"version": version, "owner": owner, "sla_due_at": sla_due_at, "state": state}),
+        )
+
+    def verify_campaign(self, campaign_id: str, *, version: int, idempotency_key: str = "") -> JsonObject:
         """Verify a campaign against the current findings spine (optimistic lock)."""
 
         return self._request(
             "POST",
             f"/v1/campaigns/{_quote_path(campaign_id)}/verify",
             json={"version": version},
+            extra_headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+        )
+
+    def create_campaign_tickets(
+        self,
+        campaign_id: str,
+        *,
+        connection_id: str,
+        project: str = "",
+        issue_type: str = "",
+        cursor: str | None = None,
+        limit: int = 25,
+    ) -> JsonObject:
+        """Create one bounded page of tickets for campaign findings."""
+
+        return self._request(
+            "POST",
+            f"/v1/campaigns/{_quote_path(campaign_id)}/tickets",
+            json=_strip_none(
+                {
+                    "connection_id": connection_id,
+                    "project": project,
+                    "issue_type": issue_type,
+                    "cursor": cursor,
+                    "limit": limit,
+                }
+            ),
+        )
+
+    def sync_campaign_tickets(self, campaign_id: str, *, cursor: str | None = None, limit: int = 25) -> JsonObject:
+        """Sync one bounded page of the campaign's linked tickets."""
+
+        return self._request(
+            "POST",
+            f"/v1/campaigns/{_quote_path(campaign_id)}/tickets/sync",
+            params=_strip_query_none({"cursor": cursor, "limit": limit}),
         )
 
     def compliance_framework(self, framework: str) -> JsonObject:

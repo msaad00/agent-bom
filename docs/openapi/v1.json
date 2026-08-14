@@ -1188,6 +1188,14 @@
             "title": "Original Member Count",
             "type": "integer"
           },
+          "outcome": {
+            "enum": [
+              "verified_fixed",
+              "still_affected"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
           "remaining_count": {
             "title": "Remaining Count",
             "type": "integer"
@@ -1198,6 +1206,14 @@
             },
             "title": "Remaining Finding Ids",
             "type": "array"
+          },
+          "retry_state": {
+            "enum": [
+              "complete",
+              "ready_after_rescan"
+            ],
+            "title": "Retry State",
+            "type": "string"
           },
           "schema_version": {
             "const": "risk-campaign-verification.v1",
@@ -1229,6 +1245,8 @@
           "schema_version",
           "campaign_id",
           "verification_status",
+          "outcome",
+          "retry_state",
           "state",
           "remaining_finding_ids",
           "remaining_count",

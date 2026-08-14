@@ -1455,6 +1455,27 @@
     ]
   },
   {
+    "name": "risk_campaign_workflow",
+    "description": "List, assign, ticket, and verify tenant-scoped remediation campaigns through the shared persisted workflow.",
+    "arguments": [
+      {"name": "action", "type": "string", "desc": "list, update, verify, verification_queue, ticket_create, or ticket_sync"},
+      {"name": "campaign_id", "type": "string", "desc": "Campaign id for update, verify, or ticket actions"},
+      {"name": "version", "type": "integer", "desc": "Current optimistic-lock version for update or verify"},
+      {"name": "owner", "type": "string", "desc": "Owner to assign during update"},
+      {"name": "sla_due_at", "type": "string", "desc": "Timezone-aware ISO-8601 SLA deadline"},
+      {"name": "state", "type": "string", "desc": "open, in_progress, blocked, or done"},
+      {"name": "connection_id", "type": "string", "desc": "Stored ticketing connection id for ticket_create"},
+      {"name": "project", "type": "string", "desc": "Optional ticketing project override"},
+      {"name": "issue_type", "type": "string", "desc": "Optional ticketing issue type override"},
+      {"name": "cursor", "type": "string", "desc": "Continuation cursor for bounded queue or ticket actions"},
+      {"name": "limit", "type": "integer", "desc": "Bounded queue or ticket action page size"},
+      {"name": "idempotency_key", "type": "string", "desc": "Retry key for verify"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
+    ]
+  },
+  {
     "name": "cloud_side_scan",
     "description": "Trigger one agentless Azure/GCP disk side-scan (snapshot + read-only mount, SBOM + CVE + secret metadata) through the shared executor; admin-gated, no per-action credential.",
     "arguments": [

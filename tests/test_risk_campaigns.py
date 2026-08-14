@@ -14,10 +14,11 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.campaign_store import InMemoryCampaignStore, SQLiteCampaignStore, get_campaign_store, set_campaign_store
 from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
+from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.risk_campaigns import derive_campaigns
 from agent_bom.api.store import InMemoryJobStore
-from agent_bom.api.stores import set_job_store
+from agent_bom.api.stores import set_idempotency_store, set_job_store
 from agent_bom.ticketing.connection_store import InMemoryTicketingStore, TicketLink, get_ticketing_store, set_ticketing_store
 from agent_bom.ticketing.service import TicketingError
 
@@ -43,6 +44,7 @@ def _stores() -> Iterator[None]:
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     set_campaign_store(InMemoryCampaignStore())
+    set_idempotency_store(InMemoryIdempotencyStore())
     set_compliance_hub_store(InMemoryComplianceHubStore())
     set_ticketing_store(InMemoryTicketingStore())
     set_job_store(InMemoryJobStore())
@@ -50,6 +52,7 @@ def _stores() -> Iterator[None]:
         yield
     finally:
         set_campaign_store(None)
+        set_idempotency_store(None)
         set_compliance_hub_store(None)
         set_ticketing_store(None)
         for key, value in prior.items():
@@ -679,6 +682,42 @@ def test_campaign_verify_fails_with_remaining_members_and_is_cas_safe(monkeypatc
     assert first.json()["evidence_scope"]["membership_complete"] is True
     stale = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert stale.status_code == 409
+
+
+def test_campaign_verify_returns_honest_outcome_and_replays_idempotently(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    client = TestClient(app)
+    campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
+    headers = {**_headers(), "Idempotency-Key": "verify-campaign-once"}
+
+    first = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers)
+    replay = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers)
+
+    assert first.status_code == 200 and replay.status_code == 200
+    assert replay.json() == first.json()
+    assert first.json()["outcome"] == "still_affected"
+    assert first.json()["retry_state"] == "ready_after_rescan"
+
+
+def test_campaign_verify_reports_unavailable_evidence_without_mutating(monkeypatch) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    client = TestClient(app)
+    campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings",
+        lambda request: {"findings": _findings(), "total": 4, "total_approximate": False, "has_more": True},
+    )
+
+    response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["outcome"] == "unavailable_evidence"
+    assert response.json()["detail"]["retry_state"] == "awaiting_complete_snapshot"
+    assert get_campaign_store().get("tenant-alpha", campaign["id"]).version == campaign["version"]
 
 
 def test_campaign_verify_survives_restart_and_disappeared_campaign(monkeypatch, tmp_path) -> None:

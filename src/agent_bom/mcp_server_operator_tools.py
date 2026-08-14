@@ -49,6 +49,7 @@ def register_operator_tools(
         nhi_discover_impl,
     )
     from agent_bom.mcp_tools.registry import fleet_scan_impl, marketplace_check_impl
+    from agent_bom.mcp_tools.risk_campaigns import risk_campaign_workflow_impl
     from agent_bom.mcp_tools.runtime import (
         anomaly_scan_impl,
         audit_integrity_impl,
@@ -150,6 +151,58 @@ def register_operator_tools(
             operator_role=operator_role,
             operator_scopes=operator_scopes,
             reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    # ── risk_campaign_workflow ───────────────────────────────────
+    # Headless parity for the persisted owner/SLA/verification lifecycle.
+
+    @mcp.tool(annotations=write_action, title="Manage Remediation Campaign Workflow")
+    async def risk_campaign_workflow(
+        action: Annotated[
+            str,
+            Field(description="Workflow action: list, update, verify, verification_queue, ticket_create, or ticket_sync."),
+        ] = "list",
+        campaign_id: Annotated[str, Field(description="Campaign id for update or verify.")] = "",
+        version: Annotated[int, Field(description="Current optimistic-lock version for update or verify.", ge=0)] = 0,
+        owner: Annotated[str, Field(description="Owner to assign during update.")] = "",
+        sla_due_at: Annotated[str, Field(description="Timezone-aware ISO-8601 SLA deadline during update.")] = "",
+        state: Annotated[str, Field(description="Workflow state: open, in_progress, blocked, or done.")] = "",
+        connection_id: Annotated[str, Field(description="Stored ticketing connection id for ticket_create.")] = "",
+        project: Annotated[str, Field(description="Optional ticketing project override.")] = "",
+        issue_type: Annotated[str, Field(description="Optional ticketing issue type override.")] = "",
+        cursor: Annotated[str, Field(description="Continuation cursor for bounded queue or ticket actions.")] = "",
+        limit: Annotated[int, Field(description="Bounded queue or ticket action page size.", ge=1, le=25)] = 25,
+        idempotency_key: Annotated[str, Field(description="Retry key for verify; replays return the original result.")] = "",
+        operator_role: Annotated[str, Field(description="Operator role for this write action (audit).")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes (audit).")] = "",
+        tenant_id: Annotated[str, Field(description="Requested tenant; the MCP server binding remains authoritative.")] = "default",
+    ) -> str:
+        """List, assign, ticket, or verify a tenant-scoped remediation campaign.
+
+        Uses the same campaign store and verification service as REST and CLI.
+        Writes require an authenticated admin operator with ``findings:write``.
+        """
+        return await execute_tool_async(
+            "risk_campaign_workflow",
+            risk_campaign_workflow_impl,
+            destructive=True,
+            required_scope="findings:write",
+            action=action,
+            campaign_id=campaign_id,
+            version=version,
+            owner=owner,
+            sla_due_at=sla_due_at,
+            state=state,
+            connection_id=connection_id,
+            project=project,
+            issue_type=issue_type,
+            cursor=cursor,
+            limit=limit,
+            idempotency_key=idempotency_key,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,
         )

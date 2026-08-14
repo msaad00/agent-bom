@@ -3187,6 +3187,104 @@ export interface SelfPostureReport {
   checks: SelfPostureCheck[];
 }
 
+// ── Skills scan (#4790 REST parity — the CLI/MCP skills scanner over REST) ──
+
+/** Per-file threat-intel status (never an implied clean pass). */
+export type SkillsScanFileStatus =
+  | "clean"
+  | "suspicious"
+  | "malicious"
+  | "pending"
+  | "unavailable";
+
+/** Behavioural content verdict, split from provenance per the trust two-axis model. */
+export type SkillsContentVerdict = "benign" | "suspicious" | "malicious";
+
+/** Handling recommendation derived from content + provenance together. */
+export type SkillsReviewVerdict = "clean" | "review" | "high_risk" | "blocked";
+
+export interface SkillsScanFinding {
+  severity: string;
+  category: string;
+  title: string;
+  detail: string;
+  source_file?: string | null;
+  package?: string | null;
+  server?: string | null;
+  recommendation?: string | null;
+  confidence?: string | null;
+  source_line?: number | null;
+  source_column?: number | null;
+}
+
+export interface SkillsScanTrust {
+  verdict: SkillsContentVerdict;
+  content_verdict: SkillsContentVerdict;
+  provenance_verdict: string;
+  review_verdict: SkillsReviewVerdict;
+  confidence: string;
+  recommendations: string[];
+  review_reasons: string[];
+}
+
+export interface SkillsScanProvenance {
+  status: "verified" | "unsigned" | "bundle_found_but_invalid" | "missing";
+  reason?: string | null;
+  sha256?: string | null;
+  signer?: string | null;
+  has_sigstore_bundle?: boolean;
+}
+
+export interface SkillsScanFileReport {
+  path: string;
+  status: SkillsScanFileStatus;
+  credential_env_vars: string[];
+  packages: Array<{ name: string; version?: string | null; ecosystem: string }>;
+  servers: Array<{ name: string; command?: string | null; transport: string }>;
+  audit: {
+    passed: boolean;
+    behavioral_summary?: string | null;
+    findings: SkillsScanFinding[];
+  };
+  trust: SkillsScanTrust;
+  provenance: SkillsScanProvenance;
+}
+
+export interface SkillsScanSummary {
+  files_scanned: number;
+  bundles: number;
+  packages_found: number;
+  servers_found: number;
+  credential_env_vars: number;
+  findings: number;
+  verified_files: number;
+  suspicious_files: number;
+  malicious_files: number;
+  blocked_files: number;
+  high_risk_files: number;
+  clean_files: number;
+  suspicious_status_files: number;
+  malicious_status_files: number;
+  pending_status_files: number;
+  unavailable_status_files: number;
+}
+
+export interface SkillsScanReport {
+  scan_type: "skills";
+  report_type: "skills_scan";
+  status: "completed" | "no_data";
+  run_id: string | null;
+  created_at: string | null;
+  summary: SkillsScanSummary;
+  files: SkillsScanFileReport[];
+  note?: string;
+}
+
+export interface SkillsScanRequest {
+  directories?: string[];
+  files?: string[];
+}
+
 /** One activity source and whether it is actually contributing events.
  *
  * `not_configured` is deliberately distinct from `empty`: "nothing happened"

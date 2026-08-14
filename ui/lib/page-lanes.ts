@@ -29,6 +29,7 @@ const PATH_TO_LANE: Record<string, PageLane> = {
   "/mesh": "command",
   "/context": "command",
   "/agents": "ai-estate",
+  "/skills": "ai-estate",
   "/manifest": "ai-estate",
   "/fleet": "ai-estate",
   "/connections": "cloud-data",

@@ -461,6 +461,8 @@ AGENT_BOM_SIDECAR_PROXY_IMAGE
 AGENT_BOM_SIDECAR_TOKEN_SECRET_KEY
 AGENT_BOM_SIDECAR_TOKEN_SECRET_NAME
 AGENT_BOM_SIDESCAN  # opt-in flag (default OFF) gating the agentless EBS disk side-scan — the one deliberate non-read-only capability; read at call-time in cloud/side_scan.py
+AGENT_BOM_SIDESCAN_SCHEDULER  # opt-in flag (default OFF) gating the cross-cloud side-scan scheduler loop; read live in api/side_scan_scheduler.py so operators/tests can toggle it
+AGENT_BOM_SIDESCAN_SCHEDULER_TARGETS  # JSON file path or inline JSON listing the Azure/GCP targets the side-scan scheduler re-runs; read live in api/side_scan_scheduler.py
 AGENT_BOM_SIDE_SCAN_STATE_DB  # operator override for the shared side-scan lifecycle SQLite store path; read at call-time in cloud/side_scan_targets.py so CLI/API/MCP/UI open one durable store
 AGENT_BOM_SIEM_FORMAT
 AGENT_BOM_SIEM_INDEX

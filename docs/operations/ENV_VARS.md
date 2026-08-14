@@ -60,6 +60,8 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_NO_AUTH_ROLE` | `str` | `'viewer'` | Role granted when unauthenticated API access is explicitly enabled. Default preserves local/dev compatibility; demo-estate mode clamps this to viewer. |
 | `AGENT_BOM_NO_UI` | `bool` | `False` | Hide the bundled browser UI when serving an API-only/local control-plane process. Some CLI paths set this immediately before loading the API server, so the server still reads the live environment value at request time. |
 | `AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID` | `str` | `'default'` | Reserved tenant that may perform cross-tenant trial lifecycle operations. The route guard re-reads the environment so test and deployment overrides are applied without weakening the default operator boundary. |
+| `AGENT_BOM_SIDESCAN_SCHEDULER_MAX_CONCURRENCY` | `int` | `2` | — |
+| `AGENT_BOM_SIDESCAN_SCHEDULER_POLL_SECONDS` | `int` | `3600` | Cross-cloud (Azure/GCP) agentless disk side-scan scheduler (#4158 Stage 4). The background loop re-runs the shipped ``run_provider_side_scan`` executor for each configured target on a cadence, so a CWPP side-scan keeps evaluating without a  |
 
 ## Agent-to-Agent (A2A) auth posture
 | Env var | Type | Default | Description |

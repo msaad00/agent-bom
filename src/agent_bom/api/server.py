@@ -566,6 +566,20 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         _export_scheduler_task = asyncio.create_task(export_scheduler_loop())
         _logger.info("Findings-export scheduler enabled")
 
+    # ── Cross-cloud side-scan scheduler (#4158 Stage 4) ──
+    # Opt-in background loop that re-runs the shipped Azure/GCP side-scan executor
+    # for each configured target on a cadence, so a CWPP side-scan keeps
+    # evaluating without a manual CLI/API call. Off unless
+    # AGENT_BOM_SIDESCAN_SCHEDULER is set (and the executor's own
+    # AGENT_BOM_SIDESCAN gate), so it never runs in CLI/dev — a scheduled
+    # snapshot side-scan is never a surprise cloud write.
+    global _side_scan_scheduler_task
+    from agent_bom.api.side_scan_scheduler import side_scan_scheduler_loop, sidescan_scheduler_enabled
+
+    if sidescan_scheduler_enabled():
+        _side_scan_scheduler_task = asyncio.create_task(side_scan_scheduler_loop())
+        _logger.info("Cross-cloud side-scan scheduler enabled")
+
     # ── Distributed scan dispatch ──
     # Start a per-replica claim-loop so queued scans are stolen across the
     # cluster. No-op on single-node / non-Postgres deployments.
@@ -613,6 +627,8 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         _connection_scheduler_task.cancel()
     if _export_scheduler_task:
         _export_scheduler_task.cancel()
+    if _side_scan_scheduler_task:
+        _side_scan_scheduler_task.cancel()
     if _cleanup_task:
         _cleanup_task.cancel()
     # Drain in-flight scans. Honor the operator-configured drain budget so the
@@ -1048,6 +1064,7 @@ _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
 _connection_scheduler_task: asyncio.Task | None = None
 _export_scheduler_task: asyncio.Task | None = None
+_side_scan_scheduler_task: asyncio.Task | None = None
 # Flipped to True during graceful shutdown so the /readyz probe goes red
 # and upstream load balancers stop sending new traffic while in-flight
 # requests complete under the drain budget.

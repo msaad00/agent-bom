@@ -175,7 +175,10 @@ def test_trigger_unavailable_on_config_error(state_db, monkeypatch) -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["status"] == "unavailable"
-    assert "gcp extra" in body["reason"]
+    # The specific config cause ("gcp extra") is logged server-side, never
+    # surfaced to the caller (CodeQL: information-exposure-through-an-exception).
+    assert "gcp extra" not in body["reason"]
+    assert "unavailable" in body["reason"]
 
 
 def test_azure_requires_collector_resource_group(state_db, monkeypatch) -> None:

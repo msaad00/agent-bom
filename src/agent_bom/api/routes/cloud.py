@@ -980,7 +980,6 @@ async def cloud_side_scan_trigger(
     from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
     from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore, new_side_scan_execution
     from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
-    from agent_bom.security import sanitize_text
 
     tenant_id = _tenant(request)
     provider = body.provider
@@ -1021,25 +1020,31 @@ async def cloud_side_scan_trigger(
         async with adaptive_backpressure("cloud_side_scan"):
             results = await anyio.to_thread.run_sync(lambda: _run_provider_side_scan_sync(**run_kwargs))
     except SideScanDisabledError as exc:
+        # The specific cause is logged server-side; the external response stays
+        # generic so no exception detail reaches the caller (CodeQL:
+        # information-exposure-through-an-exception).
+        _logger.info("cloud_side_scan disabled for tenant %s: %s", tenant_id, exc)
         return {
             "status": "disabled",
             "execution_id": execution_id,
             "provider": provider,
             "tenant_id": tenant_id,
-            "message": str(exc),
+            "message": "Agentless disk side-scan is disabled on this instance.",
             "enable": "Set AGENT_BOM_SIDESCAN=1 and provide a scoped snapshot role plus an in-account collector.",
         }
     except SideScanConfigError as exc:
         # Provider extra missing / read-only credentials unavailable / invalid
-        # config. The executor's messages are authored + sanitized and safe to
-        # surface. Degrade to an honest HTTP-200 unavailable envelope (mirrors the
-        # CIS no-SDK path) rather than a 500 — never a false clean.
+        # config. Degrade to an honest HTTP-200 unavailable envelope (mirrors the
+        # CIS no-SDK path) rather than a 500 — never a false clean. The specific
+        # cause is logged server-side; the external response stays generic so no
+        # exception detail is exposed to the caller.
+        _logger.warning("cloud_side_scan unavailable for %s tenant %s: %s", provider, tenant_id, exc)
         return {
             "status": "unavailable",
             "execution_id": execution_id,
             "provider": provider,
             "tenant_id": tenant_id,
-            "reason": sanitize_text(exc),
+            "reason": "Provider side-scan configuration or read-only credentials are unavailable; see server logs for the cause.",
         }
     except BackpressureRejectedError as exc:
         raise HTTPException(

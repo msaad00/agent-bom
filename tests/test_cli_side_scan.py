@@ -142,21 +142,92 @@ def test_side_scan_command_registered_on_group():
     assert "side-scan-capabilities" in cg.cloud_group.commands
 
 
+@pytest.mark.parametrize(
+    ("provider", "location"),
+    [("azure", "eastus"), ("gcp", "us-central1-a")],
+)
+def test_side_scan_azure_gcp_dispatch_to_provider_executor(monkeypatch, provider: str, location: str):
+    """--provider azure|gcp is accepted and dispatches to the shipped executor."""
+    from agent_bom.cloud.side_scan_targets import CloudSideScanExecutionResult
+
+    captured: dict = {}
+
+    async def fake_run_provider_side_scan(**kwargs):
+        captured.update(kwargs)
+        return [
+            CloudSideScanExecutionResult(
+                provider=provider,
+                target_type="managed_disk" if provider == "azure" else "persistent_disk",
+                target_id="disk-1",
+                account_id="acct-1",
+                location=location,
+                snapshot_id="snap-1",
+                scan_disk_id="scan-1",
+                vulnerability_count=3,
+                cleaned_up=True,
+            )
+        ]
+
+    monkeypatch.setattr(
+        "agent_bom.cloud.side_scan_targets.run_provider_side_scan",
+        fake_run_provider_side_scan,
+    )
+
+    args = [
+        "--provider",
+        provider,
+        "--volume-id",
+        "disk-1",
+        "--account-id",
+        "acct-1",
+        "--collector-instance-id",
+        "collector-1",
+        "--availability-zone",
+        location,
+        "--tenant-id",
+        "tenant-a",
+    ]
+    if provider == "azure":
+        args += ["--collector-resource-group", "collectors"]
+
+    result = CliRunner().invoke(cg.side_scan_cmd, args)
+
+    assert result.exit_code == 0, result.output
+    assert captured["provider"] == provider
+    assert captured["target_id"] == "disk-1"
+    assert captured["account_id"] == "acct-1"
+    assert captured["collector_id"] == "collector-1"
+    assert captured["location"] == location
+    assert captured["tenant_id"] == "tenant-a"
+    if provider == "azure":
+        assert captured["collector_resource_group"] == "collectors"
+    # Rendered honestly: snapshot + cleanup status + no clean-workload claim.
+    assert "snap-1" in result.output
+    assert "clean-workload" in result.output.lower()
+    assert "Traceback" not in result.output
+
+
 @pytest.mark.parametrize("provider", ["azure", "gcp"])
-def test_side_scan_refuses_non_cli_providers_without_calling_executor(monkeypatch, provider: str):
-    called = False
+def test_side_scan_provider_config_error_is_actionable_not_traceback(monkeypatch, provider: str):
+    """A provider config/credential fault surfaces an actionable message, exit 1, no traceback."""
+    from agent_bom.cloud.side_scan import SideScanConfigError
 
-    async def fake_run_side_scan(**kwargs):
-        nonlocal called
-        called = True
-        return []
+    async def fake_run_provider_side_scan(**kwargs):
+        raise SideScanConfigError(f"{provider} side-scan requires the {provider} extra. Install with: pip install 'agent-bom[...]'")
 
-    monkeypatch.setattr("agent_bom.cloud.side_scan.run_side_scan", fake_run_side_scan)
-    result = CliRunner().invoke(cg.side_scan_cmd, ["--provider", provider, "--volume-id", "vol-x"])
-    assert result.exit_code == 2, result.output
-    assert called is False
-    assert "executor unavailable" in result.output.lower() or "cli_available=false" in result.output.lower()
-    assert "contract" in result.output.lower() or "discovery" in result.output.lower()
+    monkeypatch.setattr(
+        "agent_bom.cloud.side_scan_targets.run_provider_side_scan",
+        fake_run_provider_side_scan,
+    )
+
+    result = CliRunner().invoke(
+        cg.side_scan_cmd,
+        ["--provider", provider, "--volume-id", "disk-1", "--account-id", "a", "--collector-instance-id", "c", "--availability-zone", "z"],
+    )
+    assert result.exit_code == 1, result.output
+    assert "side-scan unavailable" in result.output.lower()
+    assert provider in result.output.lower()
+    assert "Traceback" not in result.output
 
 
 def test_side_scan_capabilities_json():
@@ -164,4 +235,8 @@ def test_side_scan_capabilities_json():
     assert result.exit_code == 0, result.output
     assert '"provider": "aws"' in result.output
     assert '"provider": "azure"' in result.output
-    assert '"cli_available": false' in result.output or '"cli_available": false' in result.output.replace("False", "false")
+    assert '"provider": "gcp"' in result.output
+    # Azure/GCP now ship a CLI executor, but no live smoke is claimed for any provider.
+    normalized = result.output.replace("False", "false").replace("True", "true")
+    assert normalized.count('"cli_available": true') == 3
+    assert normalized.count('"credentialed_smoke": false') == 3

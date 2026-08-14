@@ -2,9 +2,12 @@
 
 This module contains state and evidence contracts only.  It does not create,
 attach, mount, or delete cloud resources and it does not load provider
-credentials.  AWS execution remains in :mod:`agent_bom.cloud.side_scan`;
-Azure and GCP expose target discovery and an adapter boundary, not shipped
-executors.
+credentials.  AWS execution lives in :mod:`agent_bom.cloud.side_scan`; the
+Azure Managed Disk and GCP Persistent Disk executors live in
+:mod:`agent_bom.cloud.side_scan_provider_adapters` and are driven by
+:func:`agent_bom.cloud.side_scan_targets.run_provider_side_scan`.  All three
+providers ship a CLI executor; no live credentialed smoke is claimed for any of
+them (``credentialed_smoke=False``).
 """
 
 from __future__ import annotations
@@ -145,16 +148,18 @@ class SideScanProviderCapability:
 
 
 def side_scan_provider_capabilities() -> dict[SideScanProvider, SideScanProviderCapability]:
-    """Return the shipped side-scan surface without inferring adapter availability.
+    """Return the shipped side-scan surface with an honest live-proof boundary.
 
-    Azure/GCP expose target discovery and an injected-SDK lifecycle adapter
-    boundary. They are ``contract_only`` until a CLI/scheduler executor and
-    credentialed smoke are proven — never advertise them as shipped executors.
+    AWS EBS, Azure Managed Disk, and GCP Persistent Disk each ship a CLI
+    executor over injected-SDK lifecycle adapters with durable ownership and
+    guaranteed cleanup. ``credentialed_smoke`` stays ``False`` for every
+    provider: no live-cloud smoke is claimed until it has actually run against
+    read-only provider credentials. The flag advertises real proof, not intent.
     """
     return {
         "aws": SideScanProviderCapability("aws", True, True, "shipped", True, False),
-        "azure": SideScanProviderCapability("azure", True, True, "contract_only", False, False),
-        "gcp": SideScanProviderCapability("gcp", True, True, "contract_only", False, False),
+        "azure": SideScanProviderCapability("azure", True, True, "shipped", True, False),
+        "gcp": SideScanProviderCapability("gcp", True, True, "shipped", True, False),
     }
 
 

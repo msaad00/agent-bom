@@ -606,9 +606,13 @@ and execution state. Those records are graph-visible workload-disk targets.
 The repository defines a versioned provider-neutral lifecycle/evidence contract
 and concrete Azure Managed Disk and GCP Persistent Disk adapters that accept
 already-authenticated SDK clients. Separate least-privilege Terraform modules
-grant the snapshot/temp-disk/collector lifecycle. Azure/GCP credentials,
-scheduler wiring, and CLI commands are not shipped, and no live credentialed
-smoke is claimed. The command above remains AWS EBS-only.
+grant the snapshot/temp-disk/collector lifecycle. Both providers now ship a CLI
+executor — `agent-bom cloud side-scan --provider azure|gcp` drives the same
+snapshot → temp-disk → collector-mount → SBOM/CVE/secret → guaranteed-cleanup
+lifecycle as AWS EBS, resolving read-only credentials from the provider's
+default chain (never embedded). No live credentialed smoke is claimed for any
+provider yet (`credentialed_smoke=false`); a scheduler that pulls from sources
+is still pending.
 
 All provider lifecycle implementations must persist explicit
 `disabled`/`denied`/`partial`/`failed`/`scan_complete` state and separate cleanup
@@ -617,8 +621,9 @@ zero findings are scoped to the scanned disk and never assert that a workload is
 clean. Snapshot operations remain opt-in because they are not read-only.
 `side_scan_lifecycle.py` supplies the versioned records, deterministic ownership
 tags, stale-worker protection, and a tenant-scoped SQLite state store. The
-injected-SDK adapters consume that state; no production scheduler or Azure/GCP
-CLI surface invokes them yet.
+injected-SDK adapters consume that state; the `side-scan --provider azure|gcp`
+CLI executor (`run_provider_side_scan`) drives them, while a production
+scheduler surface is still pending.
 
 ## 7c. Runtime/EDR workload evidence (optional, read-only, additive)
 
@@ -671,12 +676,14 @@ the tenant durable evidence store is non-empty (`AGENT_BOM_TENANT_ID`). The
 findings Evidence drawer shows a dedicated Workload runtime evidence panel
 (separate from proxy/gateway reach badges). CLI
 `agent-bom cloud side-scan-capabilities` prints the honest provider surface;
-`agent-bom cloud side-scan --provider azure|gcp` refuses execution (exit 2)
-without instantiating adapters.
+`agent-bom cloud side-scan --provider azure|gcp` runs the shipped executor
+(opt-in via `AGENT_BOM_SIDESCAN`).
 
-Not yet locked in (stage 4 remainder): a scheduler that pulls from sources.
-Azure/GCP disk side-scan remains discovery + injected-SDK lifecycle adapters
-(`executor: contract_only`) — no credentialed live smoke is claimed.
+Not yet locked in (stage 4 remainder): a scheduler that pulls from sources, and
+an execution API/MCP surface for Azure/GCP disk side-scan. The Azure/GCP disk
+side-scan executors ship as CLI over injected-SDK lifecycle adapters, but no
+credentialed live smoke is claimed yet (`credentialed_smoke=false`) — live
+proof waits on read-only Azure/GCP credentials.
 
 ---
 

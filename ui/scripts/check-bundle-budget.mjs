@@ -89,7 +89,13 @@ const BUDGETS = {
   // Code-splitting the one consumer was tried first and does not help — this
   // budget totals every chunk, so moving bytes between them changes nothing.
   // Restore ~21 KiB of headroom on the same terms as every raise above.
-  totalClientJsBytes: 3_850_240,
+  // The evidence-truth surfacing (explicit definition/source/scope/filters/
+  // returned-total/completeness provenance on the demo-estate page) measures
+  // 3760.2 KiB in Linux CI — 0.2 KiB over the 3760 KiB line with no headroom.
+  // Legitimate feature copy, not bloat (the api-types additions are erased at
+  // compile). Restore ~16 KiB to 3776 KiB on the same terms as every raise
+  // above; largest-chunk and shared-runtime budgets are unchanged.
+  totalClientJsBytes: 3_866_624,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

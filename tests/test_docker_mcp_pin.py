@@ -39,13 +39,19 @@ def test_shipped_pin_is_a_full_sha_reachable_in_this_repository() -> None:
     current = pin.read_pin(SERVER_YAML.read_text(encoding="utf-8"))
     assert current is not None, "server.yaml lost its source.commit pin"
     assert re.fullmatch(r"[0-9a-f]{40}", current), f"source.commit must be a full SHA, not a prefix or a branch: {current!r}"
+    # ``-c safe.directory=*`` so these read-only queries work when the repo is
+    # checked out under a different UID than the process (git's dubious-ownership
+    # guard otherwise makes cat-file exit 128 — indistinguishable from a missing
+    # object — and blanks the is-shallow-repository probe below so its skip never
+    # fires). This surfaced on the musl CI container's newer git. Reachability is
+    # still enforced: a genuinely absent commit exits 1 and fails the assert.
     resolved = subprocess.run(
-        ["git", "cat-file", "-e", f"{current}^{{commit}}"],
+        ["git", "-c", "safe.directory=*", "cat-file", "-e", f"{current}^{{commit}}"],
         cwd=ROOT,
         capture_output=True,
     )
     shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"],
+        ["git", "-c", "safe.directory=*", "rev-parse", "--is-shallow-repository"],
         cwd=ROOT,
         capture_output=True,
         text=True,

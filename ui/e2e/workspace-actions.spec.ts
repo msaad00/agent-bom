@@ -174,9 +174,10 @@ test("remediation compact rows disclose detail and durable re-verification", asy
 
   const campaignSummary = page.getByText(campaign.title, { exact: true });
   await expect(campaignSummary).toBeVisible();
-  await expect(page.getByRole("button", { name: /Why this priority/i })).toBeHidden();
-  await campaignSummary.click();
-  await page.getByRole("button", { name: /Why this priority/i }).click();
+  const priorityDisclosure = page.getByRole("button", { name: /Why this priority/i });
+  await expect(priorityDisclosure).toBeVisible();
+  await expect(priorityDisclosure).toHaveAttribute("aria-expanded", "false");
+  await priorityDisclosure.click();
   await expect(page.getByText("Observed priority evidence", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Details", exact: true }).click();

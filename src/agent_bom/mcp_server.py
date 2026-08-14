@@ -244,6 +244,7 @@ class _StaticBearerTokenVerifier:
                 client_id="agent-bom-operator-token",
                 scopes=[
                     "admin",
+                    "cloud:write",
                     "findings:write",
                     "identity:write",
                     "shield:write",

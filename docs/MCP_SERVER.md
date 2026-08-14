@@ -245,8 +245,8 @@ live runtime traffic rather than static reachability.
   external ingest, CWPP runtime-evidence ingest, access review, finding
   triage, and ticket workflows. They require an
   authenticated MCP operator token plus admin role, their specific write
-  scope (`findings:write`, `identity:write`, `shield:write`, or
-  `ticketing:write`), and an audit reason; stdio cannot invoke them.
+  scope (`cloud:write`, `findings:write`, `identity:write`, `shield:write`,
+  or `ticketing:write`), and an audit reason; stdio cannot invoke them.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.
 - **Agentless**: No agents installed on targets.

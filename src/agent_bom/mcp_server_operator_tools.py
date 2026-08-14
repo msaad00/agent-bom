@@ -185,7 +185,7 @@ def register_operator_tools(
         ``POST /v1/cloud/side-scan``: snapshot the disk, mount a temp copy on an
         in-account collector read-only, record SBOM + CVE + secret *metadata* only,
         and tear every owned temporary resource down. Requires an admin operator +
-        ``cloud:sidescan`` scope. Credentials are never accepted here — the
+        ``cloud:write`` scope. Credentials are never accepted here — the
         executor resolves read-only credentials from the provider's default chain
         (``credentialed_smoke=false``). Fail-closed and honest: OFF → ``disabled``;
         missing extra/credentials → ``unavailable``; never a clean-workload claim.
@@ -194,7 +194,7 @@ def register_operator_tools(
             "cloud_side_scan",
             cloud_side_scan_impl,
             destructive=True,
-            required_scope="cloud:sidescan",
+            required_scope="cloud:write",
             provider=provider,
             target_id=target_id,
             account_id=account_id,

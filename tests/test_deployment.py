@@ -391,7 +391,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "sync_ticket_status",
     ]
     assert f"{len(write_tools)} write-annotated tools" in docs
-    for required_scope in ("findings:write", "identity:write", "shield:write", "ticketing:write"):
+    for required_scope in ("cloud:write", "findings:write", "identity:write", "shield:write", "ticketing:write"):
         assert required_scope in docs
     for resource in card["resources"]:
         assert resource["uri"] in docs

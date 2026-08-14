@@ -11,7 +11,7 @@ Security posture (non-negotiable):
   only, and tears every owned temporary resource down.
 - Credentials are never accepted here; the executor resolves read-only
   credentials from the provider's default chain (``credentialed_smoke=False``).
-- Admin-gated destructive write at the dispatch layer (``cloud:sidescan`` scope).
+- Admin-gated destructive write at the dispatch layer (``cloud:write`` scope).
 - Fail-closed and honest: side-scan OFF → ``disabled``; missing provider extra /
   credentials → ``unavailable``; never a false clean-workload assertion.
 

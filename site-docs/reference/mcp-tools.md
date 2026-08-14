@@ -3,7 +3,7 @@
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. 15 write-annotated tools cover scan-history
+resources, or runtime targets. 16 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
 review, finding triage, and ticket workflows.
 They fail closed unless a remote caller uses the operator token and supplies an

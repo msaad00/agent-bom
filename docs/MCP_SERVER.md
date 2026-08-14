@@ -241,7 +241,7 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  The 15 write-annotated tools cover scan-history diff, Shield, identity,
+  The 16 write-annotated tools cover scan-history diff, Shield, identity,
   external ingest, CWPP runtime-evidence ingest, access review, finding
   triage, and ticket workflows. They require an
   authenticated MCP operator token plus admin role, their specific write

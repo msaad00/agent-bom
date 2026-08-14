@@ -3,7 +3,7 @@
 agent-bom runs as an MCP server, exposing 80 MCP tools to any MCP client.
 The server card also advertises 6 resources and 8 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
-Most tools are read-only. 15 write-annotated tools cover scan-history
+Most tools are read-only. 16 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
 review, finding triage, and ticket workflows.
 Each requires `operator_role=admin`, its tool-specific write scope, and an audit

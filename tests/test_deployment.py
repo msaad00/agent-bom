@@ -284,6 +284,9 @@ def test_server_card_tools_expose_capability_classes():
         "identity_revoke_jit",
         "ingest_external_scan",
         "runtime_evidence_ingest",
+        # Triggers an agentless Azure/GCP disk side-scan: creates then tears down a
+        # temporary snapshot/scan-disk (destructive cloud write, read-only intent).
+        "cloud_side_scan",
         # access_review recomputes+persists campaign status on read; diff persists
         # the fresh scan to history and prunes old reports.
         "access_review",
@@ -312,6 +315,7 @@ def test_server_card_tools_expose_capability_classes():
         "create_ticket",
         "sync_ticket_status",
         "findings_triage",
+        "cloud_side_scan",
     }
     card = build_server_card()
     for tool in card["tools"]:
@@ -370,6 +374,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
     assert sorted(write_tools) == [
         "access_review",
+        "cloud_side_scan",
         "create_ticket",
         "diff",
         "findings_triage",

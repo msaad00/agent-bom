@@ -506,7 +506,7 @@ function EngineeringCells({
             {vuln.fixed_version ? `Upgrade ${vuln.fixed_version}` : "Fix unavailable"}
           </span>
           <span className="max-w-[14rem] truncate font-mono text-[11px] text-[var(--text-tertiary)]" title={verifyCommand ?? undefined}>
-            {verifyCommand ? `Verify: ${verifyCommand}` : "Verify unavailable"}
+            {verifyCommand ? `Verify: ${verifyCommand}` : "No scanner-provided verification command"}
           </span>
         </div>
       </td>

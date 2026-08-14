@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DemoEstatePage from "@/app/demo-estate/page";
@@ -183,6 +183,19 @@ describe("DemoEstatePage", () => {
     expect(screen.getByText("Demo findings")).toBeInTheDocument();
     expect(screen.getByText("Evidence-linked correlations")).toBeInTheDocument();
     expect(screen.queryByText("Attack paths")).not.toBeInTheDocument();
+    const incident = screen.getByRole("heading", { name: /Sensitive-data path stopped/i }).closest("section");
+    expect(within(incident!).getByTitle(story.primary_correlation.asset_path[0]!)).toHaveClass("break-all");
+    const starts = screen.getByRole("region", { name: /Start by workflow/i });
+    for (const label of [
+      "CLI scan",
+      "Docker scan",
+      "GitHub Action",
+      "Control plane",
+      "Compliance evidence",
+      "Runtime enforcement",
+    ]) {
+      expect(within(starts).getByText(label)).toBeInTheDocument();
+    }
   });
 
   it("renders each finding as a chain, with counts that reconcile", async () => {

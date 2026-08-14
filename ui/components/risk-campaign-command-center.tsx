@@ -98,17 +98,20 @@ type TicketProgress = {
 };
 
 const ACTION_BATCH_LIMIT = 25;
+const CAMPAIGN_PAGE_SIZE = 10;
 
 function CampaignCard({
   campaign,
   onChanged,
   connections,
   onReload,
+  defaultOpen,
 }: {
   campaign: RiskCampaign;
   onChanged: (campaign: RiskCampaign) => void;
   connections: TicketingConnection[];
   onReload: () => void;
+  defaultOpen: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -247,7 +250,7 @@ function CampaignCard({
   >;
 
   return (
-    <details className="group risk-campaign-card">
+    <details className="group risk-campaign-card" open={defaultOpen || undefined}>
       <summary className="risk-campaign-summary">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -490,6 +493,7 @@ function VerificationQueue() {
 
   return (
     <details
+      id="verification"
       className="group risk-campaign-queue"
       open={entries.length > 0 || Boolean(error)}
     >
@@ -569,6 +573,7 @@ export function RiskCampaignCommandCenter() {
   const [connections, setConnections] = useState<TicketingConnection[]>([]);
   const [totalFindings, setTotalFindings] = useState<number | null>(null);
   const [totalApproximate, setTotalApproximate] = useState(false);
+  const [visibleCampaignCount, setVisibleCampaignCount] = useState(CAMPAIGN_PAGE_SIZE);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -580,6 +585,7 @@ export function RiskCampaignCommandCenter() {
       setWindowDays(response.finding_window_days);
       setTotalFindings(response.total_findings);
       setTotalApproximate(response.total_approximate);
+      setVisibleCampaignCount(CAMPAIGN_PAGE_SIZE);
       try {
         const ticketing = await api.listTicketingConnections();
         setConnections(ticketing.connections.filter((connection) => connection.status === "active"));
@@ -596,12 +602,16 @@ export function RiskCampaignCommandCenter() {
   useEffect(() => { void load(); }, [load]);
 
   const campaignFindingCount = useMemo(() => campaigns.reduce((sum, campaign) => sum + campaign.finding_count, 0), [campaigns]);
+  const visibleCampaigns = useMemo(
+    () => campaigns.slice(0, visibleCampaignCount),
+    [campaigns, visibleCampaignCount],
+  );
   const updateCampaign = useCallback((updated: RiskCampaign) => {
     setCampaigns((current) => current.map((campaign) => campaign.id === updated.id ? updated : campaign));
   }, []);
 
   return (
-    <section aria-labelledby="risk-campaigns-title" className="space-y-4">
+    <section id="campaigns" aria-labelledby="risk-campaigns-title" className="space-y-4 scroll-mt-24">
       {loading ? (
         <PageLoadingState title="Loading prioritized campaigns" detail="Reading server-authored risk priorities and workflow state." />
       ) : error ? (
@@ -612,7 +622,7 @@ export function RiskCampaignCommandCenter() {
         <div>
           <div className="risk-campaign-kicker">Prioritized remediation</div>
           <h2 id="risk-campaigns-title" className="risk-page-title">Risk campaigns</h2>
-          <p className="risk-page-copy">{campaigns.length} campaigns cluster {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} into owner-ready work.</p>
+          <p className="risk-page-copy">{campaigns.length} campaigns cluster {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} into owner-ready work. Start with the highest-priority campaign, opened below.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <Link href="/security-graph" className="risk-campaign-investigate">Open investigation</Link>
@@ -632,8 +642,22 @@ export function RiskCampaignCommandCenter() {
       {!loading && !error && campaigns.length > 0 ? (
         <>
           <div className="grid gap-1.5">
-            {campaigns.map((campaign) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} />)}
+            {visibleCampaigns.map((campaign, index) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} defaultOpen={index === 0} />)}
           </div>
+          {visibleCampaignCount < campaigns.length ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-xs text-[color:var(--text-tertiary)]">
+              <span>Showing {visibleCampaigns.length} of {campaigns.length} prioritized campaigns.</span>
+              <button
+                type="button"
+                onClick={() => setVisibleCampaignCount((count) => Math.min(count + CAMPAIGN_PAGE_SIZE, campaigns.length))}
+                className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+              >
+                Show {Math.min(CAMPAIGN_PAGE_SIZE, campaigns.length - visibleCampaignCount)} more campaigns
+              </button>
+            </div>
+          ) : campaigns.length > CAMPAIGN_PAGE_SIZE ? (
+            <p className="text-xs text-[color:var(--text-tertiary)]">Showing all {campaigns.length} prioritized campaigns.</p>
+          ) : null}
           <div className="risk-proof-note">
             <CheckCircle2 className="h-3.5 w-3.5" /> Priority is supplied by the server; modeled reduction appears only with its server-authored basis. Ticket actions use stored connections.
           </div>

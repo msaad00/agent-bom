@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { StatStrip } from "@/components/stat-strip";
+import { PersonaStartRoutes } from "@/components/persona-start-routes";
 import { PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { api, type EnterpriseDemoStory } from "@/lib/api";
 
@@ -189,7 +190,7 @@ export default function DemoEstatePage() {
           {primary.asset_path.map((asset, index) => (
             <div className="contents" key={asset}>
               {index > 0 ? <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)]" aria-hidden="true" /> : null}
-              <span className="max-w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 font-mono text-xs text-[color:var(--foreground)]" title={asset}>
+              <span className="min-w-0 max-w-full break-all rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 font-mono text-xs text-[color:var(--foreground)]" title={asset}>
                 {asset}
               </span>
             </div>
@@ -200,6 +201,8 @@ export default function DemoEstatePage() {
           {primary.data_classifications.map((classification) => <span key={classification} className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 font-semibold uppercase text-rose-700 dark:text-rose-200">{classification}</span>)}
         </div>
       </section>
+
+      <PersonaStartRoutes />
 
       <section
         className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 elev-1"

@@ -936,6 +936,43 @@ class RuntimeEvidenceIngestRequest(BaseModel):
     signals: list[RuntimeEvidenceSignalIn] = Field(default_factory=list, max_length=1000)
 
 
+class SideScanTriggerRequest(BaseModel):
+    """Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158 Wave 2).
+
+    The authenticated, tenant-scoped door for the shipped
+    ``run_provider_side_scan`` executor that previously ran only from the CLI.
+    Read-only toward customer targets: agent-bom snapshots the disk, mounts a
+    temp copy on an in-account collector read-only, records SBOM + CVE + secret
+    *metadata* only, and tears every owned temporary resource down. Credentials
+    are never embedded and never accepted here — the executor resolves read-only
+    credentials from the provider's default chain. AWS EBS keeps its own CLI
+    entrypoint (its results are not persisted to the shared lifecycle store).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    provider: Literal["azure", "gcp"]
+    target_id: Annotated[str, Field(min_length=1, max_length=1024, description="Managed/persistent disk resource id to scan.")]
+    account_id: Annotated[
+        str, Field(min_length=1, max_length=256, description="Azure subscription id / GCP project id owning the disk + collector.")
+    ]
+    location: Annotated[
+        str, Field(min_length=1, max_length=128, description="Azure location / GCP zone of the temp disk (must match the collector).")
+    ]
+    collector_id: Annotated[
+        str, Field(min_length=1, max_length=256, description="In-account collector VM/instance the temp disk attaches to.")
+    ]
+    collector_resource_group: Annotated[
+        str | None, Field(default=None, max_length=256, description="Azure only: resource group of the collector VM.")
+    ] = None
+    region: Annotated[
+        str | None, Field(default=None, max_length=64, description="Optional provider region hint for client construction.")
+    ] = None
+    idempotency_key: Annotated[
+        str | None, Field(default=None, max_length=128, description="Retry-safe key; the same key reuses one execution record.")
+    ] = None
+    scan_secrets_enabled: bool = True
+
+
 class CreateKeyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str

@@ -11,7 +11,7 @@ admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
 <details>
-<summary>Complete current catalog (79 tools)</summary>
+<summary>Complete current catalog (80 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
@@ -32,7 +32,7 @@ invoke them.
 `license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
 `cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
-`findings_triage`.
+`findings_triage`, `cloud_side_scan`.
 
 </details>
 

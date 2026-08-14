@@ -8,6 +8,7 @@ mutation credentials.
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -40,6 +41,24 @@ ProviderClientFactory = Callable[..., dict[str, Any]]
 # Default on-disk lifecycle state store for CLI-driven cross-cloud side-scans,
 # matching the repo-wide ``~/.agent-bom`` convention.
 DEFAULT_SIDE_SCAN_STATE_DB = Path.home() / ".agent-bom" / "side_scan_state.db"
+
+# Env override so every surface (CLI, API, MCP, scheduler) reads and writes the
+# SAME durable lifecycle store — a deployment points them all at one path.
+SIDE_SCAN_STATE_DB_ENV = "AGENT_BOM_SIDE_SCAN_STATE_DB"
+
+
+def side_scan_state_db_path() -> Path:
+    """Resolve the shared side-scan lifecycle store path (env override or default).
+
+    Keeping every surface on one resolver is what makes CLI/API/MCP execution
+    status consistent: a scan triggered over REST is readable by the CLI and the
+    UI because they all open the same SQLite file.
+    """
+    raw = os.environ.get(SIDE_SCAN_STATE_DB_ENV)
+    if raw and raw.strip():
+        return Path(raw.strip()).expanduser()
+    return DEFAULT_SIDE_SCAN_STATE_DB
+
 
 CloudSideScanProvider = SideScanProvider
 
@@ -356,7 +375,7 @@ async def run_provider_side_scan(
     collector_id: str,
     tenant_id: str,
     idempotency_key: str | None = None,
-    state_db_path: str | Path = DEFAULT_SIDE_SCAN_STATE_DB,
+    state_db_path: str | Path | None = None,
     collector_resource_group: str | None = None,
     collector_lun: int = 63,
     region: str | None = None,
@@ -419,7 +438,7 @@ async def run_provider_side_scan(
         encryption="unknown",
     )
 
-    store = SQLiteSideScanStateStore(state_db_path)
+    store = SQLiteSideScanStateStore(state_db_path if state_db_path is not None else side_scan_state_db_path())
     execution = store.create_or_get(
         new_side_scan_execution(
             tenant_id=tenant_id,

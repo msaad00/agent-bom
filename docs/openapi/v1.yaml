@@ -4760,6 +4760,82 @@ components:
       - completeness
       title: ScopedGraphResponse
       type: object
+    SideScanTriggerRequest:
+      additionalProperties: false
+      description: "Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158\
+        \ Wave 2).\n\nThe authenticated, tenant-scoped door for the shipped\n``run_provider_side_scan``\
+        \ executor that previously ran only from the CLI.\nRead-only toward customer\
+        \ targets: agent-bom snapshots the disk, mounts a\ntemp copy on an in-account\
+        \ collector read-only, records SBOM + CVE + secret\n*metadata* only, and tears\
+        \ every owned temporary resource down. Credentials\nare never embedded and\
+        \ never accepted here \u2014 the executor resolves read-only\ncredentials\
+        \ from the provider's default chain. AWS EBS keeps its own CLI\nentrypoint\
+        \ (its results are not persisted to the shared lifecycle store)."
+      properties:
+        account_id:
+          description: Azure subscription id / GCP project id owning the disk + collector.
+          maxLength: 256
+          minLength: 1
+          title: Account Id
+          type: string
+        collector_id:
+          description: In-account collector VM/instance the temp disk attaches to.
+          maxLength: 256
+          minLength: 1
+          title: Collector Id
+          type: string
+        collector_resource_group:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          description: 'Azure only: resource group of the collector VM.'
+          title: Collector Resource Group
+        idempotency_key:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          description: Retry-safe key; the same key reuses one execution record.
+          title: Idempotency Key
+        location:
+          description: Azure location / GCP zone of the temp disk (must match the
+            collector).
+          maxLength: 128
+          minLength: 1
+          title: Location
+          type: string
+        provider:
+          enum:
+          - azure
+          - gcp
+          title: Provider
+          type: string
+        region:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          description: Optional provider region hint for client construction.
+          title: Region
+        scan_secrets_enabled:
+          default: true
+          title: Scan Secrets Enabled
+          type: boolean
+        target_id:
+          description: Managed/persistent disk resource id to scan.
+          maxLength: 1024
+          minLength: 1
+          title: Target Id
+          type: string
+      required:
+      - provider
+      - target_id
+      - account_id
+      - location
+      - collector_id
+      title: SideScanTriggerRequest
+      type: object
     SourceCreate:
       additionalProperties: false
       properties:
@@ -8396,6 +8472,195 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Cloud Runtime Evidence Ingest
+      tags:
+      - cloud
+      - cloud
+  /v1/cloud/side-scan:
+    get:
+      description: "List recent Azure/GCP side-scan executions + provider executor\
+        \ capabilities.\n\nRead-only over the shared lifecycle store, tenant-scoped\
+        \ \u2014 never crosses the\ntenant boundary and never triggers a scan. ``capabilities``\
+        \ reflects the honest\nper-provider executor surface (``credentialed_smoke``\
+        \ stays false until a live\nrun is proven). Powers the CWPP side-scan UI."
+      operationId: cloud_side_scan_list_v1_cloud_side_scan_get
+      parameters:
+      - description: Max executions to return (newest first).
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 50
+          description: Max executions to return (newest first).
+          maximum: 200
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Cloud Side Scan List V1 Cloud Side Scan Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Cloud Side Scan List
+      tags:
+      - cloud
+      - cloud
+    post:
+      description: "Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158\
+        \ Wave 2).\n\nRuns the same shipped ``run_provider_side_scan`` executor the\
+        \ CLI\n(``agent-bom cloud side-scan``) uses, tenant-scoped and admin-gated.\
+        \ The heavy\nsnapshot/mount/scan/teardown runs off the event loop in a worker\
+        \ thread under\nbackpressure. The durable lifecycle record is returned so\
+        \ the caller can read\nhonest terminal state \u2014 ``scan_complete`` / ``partial``\
+        \ / ``failed`` plus\ncleanup status \u2014 never a false clean.\n\nFail-closed\
+        \ and honest:\n- side-scan OFF (``AGENT_BOM_SIDESCAN`` unset) \u2192 ``200``\
+        \ ``status=disabled``\n  with enablement guidance (no cloud call is made).\n\
+        - provider extra / read-only credentials unavailable \u2192 ``200``\n  ``status=unavailable``\
+        \ with the actionable, sanitized reason.\n- Azure requires ``collector_resource_group``\
+        \ \u2192 ``400``.\nCredentials are never accepted here; the executor resolves\
+        \ read-only\ncredentials from the provider's default chain (``credentialed_smoke=false``)."
+      operationId: cloud_side_scan_trigger_v1_cloud_side_scan_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SideScanTriggerRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Cloud Side Scan Trigger V1 Cloud Side Scan Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Cloud Side Scan Trigger
+      tags:
+      - cloud
+      - cloud
+  /v1/cloud/side-scan/{execution_id}:
+    get:
+      description: 'Read one side-scan execution''s status + metadata-only evidence
+        by id.
+
+
+        Tenant-scoped read from the shared lifecycle store; an unknown id (or one
+
+        owned by another tenant) returns ``404``. Never triggers a scan.'
+      operationId: cloud_side_scan_status_v1_cloud_side_scan__execution_id__get
+      parameters:
+      - in: path
+        name: execution_id
+        required: true
+        schema:
+          title: Execution Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Cloud Side Scan Status V1 Cloud Side Scan  Execution
+                  Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Cloud Side Scan Status
       tags:
       - cloud
       - cloud

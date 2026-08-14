@@ -1453,5 +1453,24 @@
       {"name": "reason", "type": "string", "desc": "Human audit reason"},
       {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
     ]
+  },
+  {
+    "name": "cloud_side_scan",
+    "description": "Trigger one agentless Azure/GCP disk side-scan (snapshot + read-only mount, SBOM + CVE + secret metadata) through the shared executor; admin-gated, no per-action credential.",
+    "arguments": [
+      {"name": "provider", "type": "string", "desc": "Cloud provider: 'azure' or 'gcp'"},
+      {"name": "target_id", "type": "string", "desc": "Managed/persistent disk resource id to scan"},
+      {"name": "account_id", "type": "string", "desc": "Azure subscription id / GCP project id"},
+      {"name": "location", "type": "string", "desc": "Azure location / GCP zone of the temp disk"},
+      {"name": "collector_id", "type": "string", "desc": "In-account collector VM/instance id"},
+      {"name": "collector_resource_group", "type": "string", "desc": "Azure only: collector VM resource group"},
+      {"name": "region", "type": "string", "desc": "Optional provider region hint"},
+      {"name": "idempotency_key", "type": "string", "desc": "Retry-safe key; reuses one execution record"},
+      {"name": "scan_secrets_enabled", "type": "boolean", "desc": "Include the redacted secret scan (type + location only)"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "reason", "type": "string", "desc": "Human audit reason"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope"}
+    ]
   }
 ]

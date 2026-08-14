@@ -123,6 +123,7 @@ def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
     assert operator_access.client_id == "agent-bom-operator-token"
     assert set(operator_access.scopes) == {
         "admin",
+        "cloud:write",
         "findings:write",
         "identity:write",
         "shield:write",
@@ -143,7 +144,7 @@ def test_static_operator_token_authorizes_every_registered_write_family():
     required_scopes = {
         match for path in server_root.glob("mcp_server_*.py") for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
     }
-    assert required_scopes == {"findings:write", "identity:write", "shield:write", "ticketing:write"}
+    assert required_scopes == {"cloud:write", "findings:write", "identity:write", "shield:write", "ticketing:write"}
     for required_scope in required_scopes:
         denial = authorize_destructive_tool(
             "write-tool",

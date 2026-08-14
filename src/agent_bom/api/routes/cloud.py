@@ -34,7 +34,7 @@ import anyio
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from agent_bom.api.models import RuntimeEvidenceIngestRequest
+from agent_bom.api.models import RuntimeEvidenceIngestRequest, SideScanTriggerRequest
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.cloud.ambient_credentials import (
@@ -51,6 +51,7 @@ from agent_bom.cloud.runtime_workload_evidence import (
 from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
 from agent_bom.config import CLOUD_CIS_TIMEOUT_SECONDS
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_log_label
 
 router = APIRouter(tags=["cloud"])
 _logger = logging.getLogger(__name__)
@@ -904,3 +905,268 @@ async def cloud_runtime_evidence_ingest(
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Runtime evidence ingest failed")
         raise HTTPException(status_code=500, detail="Runtime evidence ingest failed; see server logs.") from exc
+
+
+# ── CWPP side-scan execution (#4158 Wave 2) ─────────────────────────────────
+# Expose the shipped cross-cloud (Azure/GCP) ``run_provider_side_scan`` executor
+# over REST so it is no longer CLI-only. Trigger is admin-gated (it spends the
+# in-account collector's ambient cloud identity, like the CIS ambient path);
+# status reads map to the shared "read" gate. Every heavy provider/SDK call runs
+# off the event loop in a worker thread under backpressure. Results are read back
+# from the SAME durable SQLite lifecycle store the CLI and scheduler use, so a
+# scan triggered over REST is visible to every surface. AWS EBS keeps its own CLI
+# entrypoint (it does not persist to this lifecycle store).
+
+_SIDESCAN_PROVIDERS = ("azure", "gcp")
+
+
+def _run_provider_side_scan_sync(**kwargs: Any) -> list[Any]:
+    """Drive one Azure/GCP side-scan to completion on a fresh loop in a worker thread.
+
+    Kept module-level so the offload seam is spy-able/patch-able in tests and so
+    the coroutine never touches the request event loop. ``run_provider_side_scan``
+    itself guarantees teardown of every owned temporary resource on success and
+    failure.
+    """
+    import asyncio
+
+    from agent_bom.cloud.side_scan_targets import run_provider_side_scan
+
+    return asyncio.run(run_provider_side_scan(**kwargs))
+
+
+def _side_scan_result_summary(results: list[Any]) -> dict[str, Any]:
+    """Metadata-only run summary (never raw block data, file contents, or values)."""
+    if not results:
+        return {}
+    res = results[0]
+    return {
+        "target_id": getattr(res, "target_id", ""),
+        "snapshot_id": getattr(res, "snapshot_id", None),
+        "scan_disk_id": getattr(res, "scan_disk_id", None),
+        "package_count": len(getattr(res, "packages", []) or []),
+        "vulnerability_count": int(getattr(res, "vulnerability_count", 0) or 0),
+        "secret_count": len(getattr(res, "secrets", []) or []),
+        "config_finding_count": len(getattr(res, "config_findings", []) or []),
+        "ioc_finding_count": len(getattr(res, "ioc_findings", []) or []),
+        "cleaned_up": bool(getattr(res, "cleaned_up", False)),
+        "warnings": [str(w) for w in (getattr(res, "warnings", []) or [])],
+    }
+
+
+@router.post("/cloud/side-scan", tags=["cloud"])
+async def cloud_side_scan_trigger(
+    request: Request,
+    body: SideScanTriggerRequest,
+    _role: Any = _CIS_DEP,
+) -> dict[str, Any]:
+    """Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158 Wave 2).
+
+    Runs the same shipped ``run_provider_side_scan`` executor the CLI
+    (``agent-bom cloud side-scan``) uses, tenant-scoped and admin-gated. The heavy
+    snapshot/mount/scan/teardown runs off the event loop in a worker thread under
+    backpressure. The durable lifecycle record is returned so the caller can read
+    honest terminal state — ``scan_complete`` / ``partial`` / ``failed`` plus
+    cleanup status — never a false clean.
+
+    Fail-closed and honest:
+    - side-scan OFF (``AGENT_BOM_SIDESCAN`` unset) → ``200`` ``status=disabled``
+      with enablement guidance (no cloud call is made).
+    - provider extra / read-only credentials unavailable → ``200``
+      ``status=unavailable`` with the actionable, sanitized reason.
+    - Azure requires ``collector_resource_group`` → ``400``.
+    Credentials are never accepted here; the executor resolves read-only
+    credentials from the provider's default chain (``credentialed_smoke=false``).
+    """
+    from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
+    from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore, new_side_scan_execution
+    from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
+
+    tenant_id = _tenant(request)
+    provider = body.provider
+    if provider == "azure" and not str(body.collector_resource_group or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Azure Managed Disk side-scan requires 'collector_resource_group' for the in-account collector VM.",
+        )
+
+    import uuid as _uuid
+
+    idempotency_key = (body.idempotency_key or _uuid.uuid4().hex).strip()
+    # Deterministic execution id so the record is readable by execution_id after
+    # the run, and so retries with the same idempotency key coalesce.
+    execution_id = new_side_scan_execution(
+        tenant_id=tenant_id,
+        provider=provider,
+        account_id=body.account_id.strip(),
+        target_id=body.target_id.strip(),
+        collector_id=body.collector_id.strip(),
+        idempotency_key=idempotency_key,
+    ).execution_id
+
+    run_kwargs = dict(
+        provider=provider,
+        target_id=body.target_id.strip(),
+        account_id=body.account_id.strip(),
+        location=body.location.strip(),
+        collector_id=body.collector_id.strip(),
+        tenant_id=tenant_id,
+        idempotency_key=idempotency_key,
+        collector_resource_group=body.collector_resource_group,
+        region=body.region,
+        scan_secrets_enabled=body.scan_secrets_enabled,
+    )
+
+    try:
+        async with adaptive_backpressure("cloud_side_scan"):
+            results = await anyio.to_thread.run_sync(lambda: _run_provider_side_scan_sync(**run_kwargs))
+    except SideScanDisabledError as exc:
+        # The specific cause is logged server-side; the external response stays
+        # generic so no exception detail reaches the caller (CodeQL:
+        # information-exposure-through-an-exception).
+        _logger.info("cloud_side_scan disabled for tenant %s: %s", sanitize_log_label(tenant_id), sanitize_log_label(exc))
+        return {
+            "status": "disabled",
+            "execution_id": execution_id,
+            "provider": provider,
+            "tenant_id": tenant_id,
+            "message": "Agentless disk side-scan is disabled on this instance.",
+            "enable": "Set AGENT_BOM_SIDESCAN=1 and provide a scoped snapshot role plus an in-account collector.",
+        }
+    except SideScanConfigError as exc:
+        # Provider extra missing / read-only credentials unavailable / invalid
+        # config. Degrade to an honest HTTP-200 unavailable envelope (mirrors the
+        # CIS no-SDK path) rather than a 500 — never a false clean. The specific
+        # cause is logged server-side; the external response stays generic so no
+        # exception detail is exposed to the caller.
+        _logger.warning(
+            "cloud_side_scan unavailable for %s tenant %s: %s",
+            sanitize_log_label(provider),
+            sanitize_log_label(tenant_id),
+            sanitize_log_label(exc),
+        )
+        return {
+            "status": "unavailable",
+            "execution_id": execution_id,
+            "provider": provider,
+            "tenant_id": tenant_id,
+            "reason": "Provider side-scan configuration or read-only credentials are unavailable; see server logs for the cause.",
+        }
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # The executor still ran guaranteed teardown; do not leak internals.
+        _logger.exception("Cloud side-scan execution failed")
+        raise HTTPException(
+            status_code=500, detail="Cloud side-scan failed; see server logs. Temporary resource teardown still ran."
+        ) from exc
+
+    store = SQLiteSideScanStateStore(side_scan_state_db_path())
+    record = store.get(tenant_id=tenant_id, execution_id=execution_id)
+    payload: dict[str, Any] = {
+        "status": record.status.value if record is not None else "unknown",
+        "execution_id": execution_id,
+        "provider": provider,
+        "tenant_id": tenant_id,
+        "result": _side_scan_result_summary(results),
+    }
+    if record is not None:
+        payload["execution"] = record.to_dict()
+        payload["evidence"] = record.to_evidence_dict()
+    return payload
+
+
+@router.get("/cloud/side-scan", tags=["cloud"])
+async def cloud_side_scan_list(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200, description="Max executions to return (newest first)."),
+    _role: Any = _READ_DEP,
+) -> dict[str, Any]:
+    """List recent Azure/GCP side-scan executions + provider executor capabilities.
+
+    Read-only over the shared lifecycle store, tenant-scoped — never crosses the
+    tenant boundary and never triggers a scan. ``capabilities`` reflects the honest
+    per-provider executor surface (``credentialed_smoke`` stays false until a live
+    run is proven). Powers the CWPP side-scan UI.
+    """
+    from agent_bom.cloud.side_scan_lifecycle import (
+        SQLiteSideScanStateStore,
+        side_scan_provider_capabilities,
+    )
+    from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
+
+    tenant_id = _tenant(request)
+
+    def _read() -> dict[str, Any]:
+        store = SQLiteSideScanStateStore(side_scan_state_db_path())
+        records = store.list_recent(tenant_id=tenant_id, limit=limit)
+        capabilities = [cap.to_dict() for cap in side_scan_provider_capabilities().values()]
+        return {
+            "tenant_id": tenant_id,
+            "executions": [record.to_dict() for record in records],
+            "capabilities": capabilities,
+            "credentialed_smoke": False,
+        }
+
+    try:
+        async with adaptive_backpressure("findings"):
+            return await anyio.to_thread.run_sync(_read)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+
+@router.get("/cloud/side-scan/{execution_id}", tags=["cloud"])
+async def cloud_side_scan_status(
+    request: Request,
+    execution_id: str,
+    _role: Any = _READ_DEP,
+) -> dict[str, Any]:
+    """Read one side-scan execution's status + metadata-only evidence by id.
+
+    Tenant-scoped read from the shared lifecycle store; an unknown id (or one
+    owned by another tenant) returns ``404``. Never triggers a scan.
+    """
+    from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore
+    from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
+
+    tenant_id = _tenant(request)
+    scoped_id = execution_id.strip()
+    if not scoped_id or len(scoped_id) > 128:
+        raise HTTPException(status_code=404, detail="Side-scan execution not found.")
+
+    def _read() -> dict[str, Any] | None:
+        store = SQLiteSideScanStateStore(side_scan_state_db_path())
+        record = store.get(tenant_id=tenant_id, execution_id=scoped_id)
+        if record is None:
+            return None
+        return {
+            "status": record.status.value,
+            "execution_id": record.execution_id,
+            "provider": record.provider,
+            "tenant_id": tenant_id,
+            "execution": record.to_dict(),
+            "evidence": record.to_evidence_dict(),
+        }
+
+    try:
+        async with adaptive_backpressure("findings"):
+            payload = await anyio.to_thread.run_sync(_read)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.to_dict(),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Side-scan execution not found.")
+    return payload

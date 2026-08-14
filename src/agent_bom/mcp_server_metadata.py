@@ -408,6 +408,11 @@ _SERVER_CARD_TOOLS = [
         "description": "Record a tenant-scoped finding triage decision (queue state, VEX decision + justification) to the exception store",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
+    {
+        "name": "cloud_side_scan",
+        "description": "Trigger one agentless Azure/GCP disk side-scan — metadata-only SBOM/CVE/secret evidence; admin-gated write",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
 ]
 
 _TOOL_CAPABILITY_CLASSES = {
@@ -491,6 +496,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "create_ticket": ["WRITE", "NETWORK", "INTEGRATION"],
     "sync_ticket_status": ["WRITE", "NETWORK", "INTEGRATION"],
     "findings_triage": ["WRITE", "GOVERNANCE", "AUDIT"],
+    "cloud_side_scan": ["WRITE", "NETWORK", "CLOUD", "CWPP", "AUDIT"],
 }
 
 for _tool in _SERVER_CARD_TOOLS:

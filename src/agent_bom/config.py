@@ -499,6 +499,18 @@ API_SCAN_CLAIM_POLL_SECONDS = _int("AGENT_BOM_API_SCAN_CLAIM_POLL_SECONDS", 3)
 CONNECTIONS_SCHEDULER_POLL_SECONDS = _int("AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS", 60)
 CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES = _int("AGENT_BOM_CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES", 15)
 CONNECTIONS_SCHEDULER_MAX_CONCURRENCY = _int("AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY", 4)
+# Cross-cloud (Azure/GCP) agentless disk side-scan scheduler (#4158 Stage 4).
+# The background loop re-runs the shipped ``run_provider_side_scan`` executor for
+# each configured target on a cadence, so a CWPP side-scan keeps evaluating
+# without a manual CLI/API call. Disabled by default: it needs BOTH the loop
+# gate (AGENT_BOM_SIDESCAN_SCHEDULER, read live) AND the executor gate
+# (AGENT_BOM_SIDESCAN) — a scheduled snapshot side-scan is the one deliberate
+# non-read-only capability and must never run without explicit enablement.
+# Poll seconds is the cadence between full passes (default hourly); concurrency
+# bounds how many provider side-scans run at once. Targets are supplied out of
+# band via AGENT_BOM_SIDESCAN_SCHEDULER_TARGETS (a JSON file path or inline JSON).
+SIDESCAN_SCHEDULER_POLL_SECONDS = _int("AGENT_BOM_SIDESCAN_SCHEDULER_POLL_SECONDS", 3600)
+SIDESCAN_SCHEDULER_MAX_CONCURRENCY = _int("AGENT_BOM_SIDESCAN_SCHEDULER_MAX_CONCURRENCY", 2)
 # Event-driven AWS posture ingestion (continuous posture). When an operator
 # wires EventBridge→SQS (opt-in via AGENT_BOM_AWS_EVENT_QUEUE_URL, read live,
 # default off), the bounded SQS consumer drains change events and re-evaluates

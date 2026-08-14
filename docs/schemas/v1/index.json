@@ -247,6 +247,11 @@
       "schema": "ScheduleCreate.json"
     },
     {
+      "doc": "Trigger one cross-cloud (Azure/GCP) agentless disk side-scan (#4158 Wave 2).",
+      "name": "SideScanTriggerRequest",
+      "schema": "SideScanTriggerRequest.json"
+    },
+    {
       "doc": "",
       "name": "SourceCreate",
       "schema": "SourceCreate.json"

@@ -735,6 +735,80 @@ export interface GraphDeployDecisionResponse {
   provenance?: { source: string; basis: string } | undefined;
 }
 
+// ─── CWPP agentless side-scan (Azure/GCP) ───────────────────────────────────
+
+export type SideScanProvider = "aws" | "azure" | "gcp";
+
+/** Honest per-provider side-scan executor capability (from the lifecycle module). */
+export interface SideScanProviderCapability {
+  provider: SideScanProvider;
+  target_discovery: boolean;
+  lifecycle_contract: boolean;
+  executor: string;
+  cli_available: boolean;
+  credentialed_smoke: boolean;
+}
+
+/** Metadata-only, non-negative evidence counts for one execution. */
+export interface SideScanCounts {
+  package_count: number;
+  vulnerability_count: number;
+  secret_count: number;
+  config_finding_count: number;
+  ioc_finding_count: number;
+}
+
+/** One durable side-scan execution record (never a clean-workload assertion). */
+export interface SideScanExecutionRecord {
+  execution_id: string;
+  provider: SideScanProvider;
+  account_id: string;
+  target_id: string;
+  status: string;
+  phase: string;
+  cleanup_status: string;
+  counts: SideScanCounts;
+  failure_code: string;
+  warning_codes: string[];
+  updated_at: string;
+  created_at: string;
+}
+
+/** GET /v1/cloud/side-scan — recent executions + capabilities for the tenant. */
+export interface SideScanListResponse {
+  tenant_id: string;
+  executions: SideScanExecutionRecord[];
+  capabilities: SideScanProviderCapability[];
+  credentialed_smoke: boolean;
+}
+
+/** POST/GET side-scan execution envelope (status can be disabled/unavailable). */
+export interface SideScanExecutionResponse {
+  status: string;
+  execution_id: string;
+  provider: SideScanProvider;
+  tenant_id: string;
+  execution?: SideScanExecutionRecord;
+  evidence?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  reason?: string;
+  message?: string;
+  enable?: string;
+}
+
+/** Body for POST /v1/cloud/side-scan (no credential is ever sent). */
+export interface SideScanTriggerRequest {
+  provider: "azure" | "gcp";
+  target_id: string;
+  account_id: string;
+  location: string;
+  collector_id: string;
+  collector_resource_group?: string;
+  region?: string;
+  idempotency_key?: string;
+  scan_secrets_enabled?: boolean;
+}
+
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const api = {
@@ -1729,6 +1803,19 @@ export const api = {
       {},
       { "Idempotency-Key": mutationIdempotencyKey("ui-cloud-scan") },
     ),
+
+  // ── CWPP agentless side-scan (Azure/GCP) ──
+  /** Recent side-scan executions + honest per-provider executor capabilities. */
+  listSideScans: (limit = 50) =>
+    get<SideScanListResponse>(`/v1/cloud/side-scan?limit=${encodeURIComponent(String(limit))}`, { ttlMs: 0 }),
+  /** One side-scan execution's durable status + metadata-only evidence. */
+  getSideScan: (executionId: string) =>
+    get<SideScanExecutionResponse>(`/v1/cloud/side-scan/${encodeURIComponent(executionId)}`, { ttlMs: 0 }),
+  /** Trigger one agentless Azure/GCP disk side-scan through the shared executor. */
+  triggerSideScan: (body: SideScanTriggerRequest) =>
+    post<SideScanExecutionResponse>("/v1/cloud/side-scan", body, {
+      "Idempotency-Key": mutationIdempotencyKey("ui-side-scan"),
+    }),
 
   // ── Drift / behavior-incident cockpit ──
   listDriftIncidents: (includeResolved = false, limit = 200) =>

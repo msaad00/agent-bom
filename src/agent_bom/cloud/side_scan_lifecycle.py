@@ -638,6 +638,26 @@ class SQLiteSideScanStateStore:
             if cursor.rowcount != 1:
                 raise SideScanStateConflictError("side-scan execution was updated by another worker")
 
+    def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]:
+        """Return the tenant's most recently updated executions (newest first).
+
+        Bounded read for surfacing execution status/history on the API and UI
+        without crossing the tenant boundary. Never returns another tenant's rows.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json FROM side_scan_execution_state
+                WHERE tenant_id = ?
+                ORDER BY updated_at DESC, execution_id DESC
+                LIMIT ?
+                """,
+                (tenant_id, limit),
+            ).fetchall()
+        return [_record_from_json(str(row["payload_json"])) for row in rows]
+
     def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]:
         """Return bounded retry work for incomplete cleanup in one tenant."""
         if limit < 1:

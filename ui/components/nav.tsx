@@ -43,6 +43,7 @@ import {
   Cog,
   ListChecks,
   ShieldCheck,
+  HardDrive,
   ScrollText,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -183,6 +184,7 @@ const NAV_GROUPS: NavGroup[] = [
     desc: "Live enforcement and identity",
     links: [
       { href: "/runtime", label: "Runtime", icon: Shield },
+      { href: "/cwpp", label: "CWPP Side-Scan", icon: HardDrive, desc: "Agentless Azure/GCP disk side-scan — SBOM, CVEs, secrets" },
       { href: "/traces", label: "Traces", icon: Radio },
       { href: "/identity", label: "Identity", icon: Fingerprint, desc: "Non-human identities and creds" },
     ],

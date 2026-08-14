@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 79 MCP tools as an MCP server. Any MCP-compatible client can
+agent-bom exposes 80 MCP tools as an MCP server. Any MCP-compatible client can
 connect and get vulnerability scanning, blast radius analysis, compliance
 checks, runtime posture, and supply-chain verification through natural
 conversation.
@@ -165,7 +165,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (79 tools)
+## Tool Categories (80 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
@@ -182,7 +182,7 @@ agent-bom proxy-bootstrap \
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan`, `runtime_evidence_ingest` | Scan AI artifacts, prompts, model files, and browser extensions; import tool-agnostic SARIF/SBOM/scanner evidence without executing its producer; merge CWPP runtime signals |
 
 <details>
-<summary>Complete current catalog (79 tools)</summary>
+<summary>Complete current catalog (80 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
@@ -203,7 +203,7 @@ agent-bom proxy-bootstrap \
 `license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
 `cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
-`findings_triage`.
+`findings_triage`, `cloud_side_scan`.
 
 </details>
 
@@ -241,12 +241,12 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  The 15 write-annotated tools cover scan-history diff, Shield, identity,
+  The 16 write-annotated tools cover scan-history diff, Shield, identity,
   external ingest, CWPP runtime-evidence ingest, access review, finding
   triage, and ticket workflows. They require an
   authenticated MCP operator token plus admin role, their specific write
-  scope (`findings:write`, `identity:write`, `shield:write`, or
-  `ticketing:write`), and an audit reason; stdio cannot invoke them.
+  scope (`cloud:write`, `findings:write`, `identity:write`, `shield:write`,
+  or `ticketing:write`), and an audit reason; stdio cannot invoke them.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.
 - **Agentless**: No agents installed on targets.

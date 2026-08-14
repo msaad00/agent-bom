@@ -564,9 +564,10 @@ standard setups, **no new permission**.
 
 > **The one exception family is the opt-in disk side-scan.** AWS EBS side-scan
 > is exposed through the CLI with `AGENT_BOM_SIDESCAN=1`. Azure Managed Disk
-> and GCP Persistent Disk lifecycle adapters are available to an embedding
-> scheduler through injected, already-authenticated SDK clients; they are not
-> yet CLI- or scheduler-wired. Each provider requires a **separate, narrowly
+> and GCP Persistent Disk lifecycle adapters run the same executor across the
+> CLI, REST, MCP, UI, and the opt-in scheduler auto-trigger, resolving
+> read-only credentials from the provider default chain. Each provider requires
+> a **separate, narrowly
 > scoped lifecycle role** distinct from the read-only scanner role:
 > `deploy/terraform/connect-aws-sidescan`,
 > `deploy/terraform/connect-azure-sidescan`, or
@@ -611,8 +612,11 @@ executor — `agent-bom cloud side-scan --provider azure|gcp` drives the same
 snapshot → temp-disk → collector-mount → SBOM/CVE/secret → guaranteed-cleanup
 lifecycle as AWS EBS, resolving read-only credentials from the provider's
 default chain (never embedded). No live credentialed smoke is claimed for any
-provider yet (`credentialed_smoke=false`); a scheduler that pulls from sources
-is still pending.
+provider yet (`credentialed_smoke=false`). An opt-in scheduler auto-trigger
+re-runs the same executor for each configured target on a cadence — off unless
+both `AGENT_BOM_SIDESCAN_SCHEDULER` (the loop gate) and `AGENT_BOM_SIDESCAN`
+(the executor gate) are set — so a CWPP side-scan keeps evaluating without a
+manual call.
 
 All provider lifecycle implementations must persist explicit
 `disabled`/`denied`/`partial`/`failed`/`scan_complete` state and separate cleanup
@@ -622,8 +626,9 @@ clean. Snapshot operations remain opt-in because they are not read-only.
 `side_scan_lifecycle.py` supplies the versioned records, deterministic ownership
 tags, stale-worker protection, and a tenant-scoped SQLite state store. The
 injected-SDK adapters consume that state; the `side-scan --provider azure|gcp`
-CLI executor (`run_provider_side_scan`) drives them, while a production
-scheduler surface is still pending.
+CLI executor (`run_provider_side_scan`) drives them, and the opt-in scheduler
+loop (`api/side_scan_scheduler.py`) re-runs configured targets on a cadence
+through the same executor and the same durable lifecycle store.
 
 ## 7c. Runtime/EDR workload evidence (optional, read-only, additive)
 
@@ -679,11 +684,15 @@ findings Evidence drawer shows a dedicated Workload runtime evidence panel
 `agent-bom cloud side-scan --provider azure|gcp` runs the shipped executor
 (opt-in via `AGENT_BOM_SIDESCAN`).
 
-Not yet locked in (stage 4 remainder): a scheduler that pulls from sources, and
-an execution API/MCP surface for Azure/GCP disk side-scan. The Azure/GCP disk
-side-scan executors ship as CLI over injected-SDK lifecycle adapters, but no
-credentialed live smoke is claimed yet (`credentialed_smoke=false`) — live
-proof waits on read-only Azure/GCP credentials.
+The Azure/GCP disk side-scan is now surface-aligned across CLI
+(`agent-bom cloud side-scan`), REST (`POST /v1/cloud/side-scan`), MCP
+(`cloud_side_scan`), the `/cwpp` UI, and an opt-in scheduler auto-trigger
+(`AGENT_BOM_SIDESCAN_SCHEDULER`, off by default) that re-runs each configured
+target on a cadence — every surface driving the same `run_provider_side_scan`
+executor and reading the same durable lifecycle store. The executors ship as
+injected-SDK lifecycle adapters, but no credentialed live smoke is claimed yet
+(`credentialed_smoke=false`) — live proof waits on read-only Azure/GCP
+credentials.
 
 ---
 

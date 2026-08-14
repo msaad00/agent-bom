@@ -70,6 +70,7 @@ def register_operator_tools(
     )
     from agent_bom.mcp_tools.sbom import diff_impl
     from agent_bom.mcp_tools.scanning import code_scan_impl
+    from agent_bom.mcp_tools.side_scan import cloud_side_scan_impl
     from agent_bom.mcp_tools.triage import findings_triage_impl
 
     # ── Tool 13: diff ─────────────────────────────────────────────
@@ -146,6 +147,63 @@ def register_operator_tools(
             justification=justification,
             decision_reason=decision_reason,
             expires_at=expires_at,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    # ── cloud_side_scan ──────────────────────────────────────────
+    # Headless MCP surface over POST /v1/cloud/side-scan. Runs the SAME shipped
+    # cross-cloud (Azure/GCP) run_provider_side_scan executor the CLI uses and
+    # persists to the SAME durable lifecycle store. Read-only toward customer
+    # targets (snapshot + read-only mount, metadata-only evidence, guaranteed
+    # teardown). No per-action credential. Admin-gated destructive write.
+
+    @mcp.tool(annotations=write_action, title="Cloud Side-Scan (Azure/GCP)")
+    async def cloud_side_scan(
+        provider: Annotated[str, Field(description="Cloud provider: 'azure' or 'gcp' (AWS EBS uses the CLI side-scan entrypoint).")] = "",
+        target_id: Annotated[str, Field(description="Managed/persistent disk resource id to scan.")] = "",
+        account_id: Annotated[str, Field(description="Azure subscription id / GCP project id owning the disk + collector.")] = "",
+        location: Annotated[str, Field(description="Azure location / GCP zone of the temp disk (must match the collector).")] = "",
+        collector_id: Annotated[str, Field(description="In-account collector VM/instance the temp disk attaches to.")] = "",
+        collector_resource_group: Annotated[str, Field(description="Azure only: resource group of the collector VM.")] = "",
+        region: Annotated[str, Field(description="Optional provider region hint for client construction.")] = "",
+        idempotency_key: Annotated[str, Field(description="Retry-safe key; the same key reuses one execution record.")] = "",
+        scan_secrets_enabled: Annotated[
+            bool, Field(description="Include the redacted secret scan (type + location only, never values).")
+        ] = True,
+        operator_role: Annotated[str, Field(description="Operator role for this write action (audit).")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes (audit).")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for triggering the side-scan.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for the execution and durable lifecycle record.")] = "default",
+    ) -> str:
+        """Trigger one agentless Azure/GCP disk side-scan and read back honest state.
+
+        Runs the same executor as ``agent-bom cloud side-scan`` and the REST
+        ``POST /v1/cloud/side-scan``: snapshot the disk, mount a temp copy on an
+        in-account collector read-only, record SBOM + CVE + secret *metadata* only,
+        and tear every owned temporary resource down. Requires an admin operator +
+        ``cloud:write`` scope. Credentials are never accepted here — the
+        executor resolves read-only credentials from the provider's default chain
+        (``credentialed_smoke=false``). Fail-closed and honest: OFF → ``disabled``;
+        missing extra/credentials → ``unavailable``; never a clean-workload claim.
+        """
+        return await execute_tool_async(
+            "cloud_side_scan",
+            cloud_side_scan_impl,
+            destructive=True,
+            required_scope="cloud:write",
+            provider=provider,
+            target_id=target_id,
+            account_id=account_id,
+            location=location,
+            collector_id=collector_id,
+            collector_resource_group=collector_resource_group,
+            region=region,
+            idempotency_key=idempotency_key,
+            scan_secrets_enabled=scan_secrets_enabled,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
             reason=reason,

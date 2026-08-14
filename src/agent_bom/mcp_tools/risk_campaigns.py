@@ -7,7 +7,6 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
-from fastapi import HTTPException, Response
 from pydantic import ValidationError
 
 from agent_bom.api.idempotency_store import IdempotencyConflictError
@@ -49,6 +48,12 @@ async def risk_campaign_workflow_impl(
     _authenticated_actor: str = "",
 ) -> str:
     """List, assign, ticket, and verify tenant-scoped remediation campaigns."""
+    # Imported lazily: the campaign workflow runs against the FastAPI route layer,
+    # so fastapi is only needed when this write tool is invoked — never at MCP
+    # import/boot. Keeps the stdio MCP server importable in the clean (no-api-extra)
+    # wheel, which the packaging smoke exercises.
+    from fastapi import HTTPException, Response
+
     from agent_bom.api.routes.campaigns import (
         CampaignTicketAction,
         CampaignUpdate,

@@ -474,6 +474,13 @@ def verify_campaign_workflow(
     if len(idempotency_key) > 200:
         raise HTTPException(status_code=422, detail="Idempotency-Key must be 200 characters or fewer.")
     if _source_incomplete(source):
+        from agent_bom.db.adoption_events import record_adoption_event_best_effort
+
+        record_adoption_event_best_effort(
+            "verification_completed",
+            channel="control_plane",
+            outcome="unavailable_evidence",
+        )
         _audit_for_actor(
             "risk_campaign.verify_unavailable",
             tenant_id=tenant_id,
@@ -553,6 +560,9 @@ def verify_campaign_workflow(
         retry_state=retry_state,
         remaining_count=len(remaining),
     )
+    from agent_bom.db.adoption_events import record_adoption_event_best_effort
+
+    record_adoption_event_best_effort("verification_completed", channel="control_plane", outcome=outcome)
     if idempotency_key:
         _get_idempotency_store().put(
             endpoint,

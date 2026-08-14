@@ -28,10 +28,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
+import resource
 import statistics
 import sys
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -72,6 +75,11 @@ def _percentile_ms(values_ms: list[float], percent: float) -> float:
     ordered = sorted(values_ms)
     idx = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * percent)))
     return round(ordered[idx], 3)
+
+
+def _peak_rss_mib() -> float:
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return round(peak / (1024 * 1024) if platform.system() == "Darwin" else peak / 1024, 3)
 
 
 def _seed_inmemory_store(count: int, *, tenant_id: str) -> str:
@@ -146,28 +154,30 @@ def _bench_store_list(
     limit: int,
     samples: int,
     warmup: int,
+    concurrency: int,
 ) -> list[float]:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     store = get_compliance_hub_store()
     list_page = getattr(store, "list_page", None)
-    for _ in range(warmup):
-        if callable(list_page):
-            list_page(tenant_id, limit=limit, offset=0, include_total=False)
-        else:
-            rows = store.list(tenant_id)
-            _ = rows[:limit]
 
-    timings: list[float] = []
-    for _ in range(samples):
+    def read_once() -> float:
         started = time.perf_counter()
         if callable(list_page):
             list_page(tenant_id, limit=limit, offset=0, include_total=False)
         else:
             rows = store.list(tenant_id)
             _ = rows[:limit]
-        timings.append((time.perf_counter() - started) * 1000)
-    return timings
+        return (time.perf_counter() - started) * 1000
+
+    for _ in range(warmup):
+        read_once()
+
+    if concurrency == 1:
+        return [read_once() for _ in range(samples)]
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(read_once) for _ in range(samples)]
+        return [future.result() for future in as_completed(futures)]
 
 
 def _bench_live_api(
@@ -237,8 +247,15 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         else:
             _seed_inmemory_store(args.count, tenant_id=tenant_id)
 
+    started = time.perf_counter()
     if args.mode == "store":
-        timings = _bench_store_list(tenant_id=tenant_id, limit=args.limit, samples=args.samples, warmup=args.warmup)
+        timings = _bench_store_list(
+            tenant_id=tenant_id,
+            limit=args.limit,
+            samples=args.samples,
+            warmup=args.warmup,
+            concurrency=args.concurrency,
+        )
     elif args.mode == "api" and args.base_url:
         timings = _bench_live_api(
             base_url=args.base_url,
@@ -253,7 +270,31 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     else:
         timings = _bench_api_inprocess(tenant_id=tenant_id, limit=args.limit, samples=args.samples, warmup=args.warmup)
 
+    wall_seconds = max(time.perf_counter() - started, 0.000001)
+    recovery = {"kind": "not_applicable", "status": "not_measured"}
+    backend = "remote" if args.base_url else "inmemory"
+    if args.sqlite_db:
+        from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore
+
+        reopened = SQLiteComplianceHubStore(args.sqlite_db)
+        reopened.list_page(tenant_id, limit=args.limit, offset=0, include_total=False)
+        recovery = {"kind": "store_reopen", "status": "passed"}
+        backend = "sqlite"
+
     return {
+        "schema_version": "operability-benchmark.v1",
+        "evidence_status": "measured_synthetic_local" if not args.base_url else "measured_controlled_live",
+        "backend": backend,
+        "dataset": {"findings": args.count, "page_size": args.limit},
+        "latency_ms": {
+            "p50": _percentile_ms(timings, 0.50),
+            "p95": _percentile_ms(timings, 0.95),
+        },
+        "throughput_ops_per_second": round(len(timings) / wall_seconds, 2),
+        "peak_memory_mib": _peak_rss_mib(),
+        "concurrency": args.concurrency,
+        "recovery": recovery,
+        "claim": "synthetic_local_not_a_production_slo" if not args.base_url else "controlled_benchmark_not_a_production_slo",
         "mode": args.mode if not (args.mode == "api" and args.base_url) else "live_api",
         "count": args.count,
         "limit": args.limit,
@@ -272,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=1, help="Page size for list/read (default: 1 — audit regression case)")
     parser.add_argument("--samples", type=int, default=7, help="Timed iterations after warmup (default: 7)")
     parser.add_argument("--warmup", type=int, default=2, help="Warmup iterations (default: 2)")
+    parser.add_argument("--concurrency", type=int, default=1, help="Concurrent store readers (default: 1)")
     parser.add_argument(
         "--p50-threshold-ms",
         type=float,
@@ -333,6 +375,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--count must be >= 1")
     if args.limit < 1:
         parser.error("--limit must be >= 1")
+    if args.concurrency < 1:
+        parser.error("--concurrency must be >= 1")
+    if args.concurrency > 1 and args.mode != "store":
+        parser.error("--concurrency > 1 is supported only with --mode store")
 
     try:
         summary = _run(args)

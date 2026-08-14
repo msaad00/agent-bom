@@ -965,6 +965,9 @@ jobs:
       - name: Verify release consistency map
         run: python scripts/check_release_consistency.py
 
+      - name: Verify release evidence matrix
+        run: python scripts/check_release_evidence_matrix.py
+
       - name: npm audit (ui/ deps) — block release on high/critical
         run: |
           cd ui

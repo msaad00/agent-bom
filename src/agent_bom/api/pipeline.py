@@ -1909,3 +1909,15 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception:  # noqa: BLE001
             # Metrics must never break the scan path. Swallow all errors.
             pass
+        if terminal_status in {JobStatus.DONE, JobStatus.FAILED}:
+            from agent_bom.db.adoption_events import record_scan_completion_best_effort
+
+            outcome = "failed" if terminal_status is JobStatus.FAILED else "complete"
+            scan_run = job.result.get("scan_run", {}) if isinstance(job.result, dict) else {}
+            if terminal_status is JobStatus.DONE and isinstance(scan_run, dict) and scan_run.get("outcome") == "partial":
+                outcome = "partial"
+            record_scan_completion_best_effort(
+                channel="control_plane",
+                outcome=outcome,
+                artifact_type="json" if terminal_status is JobStatus.DONE else None,
+            )

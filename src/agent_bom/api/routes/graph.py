@@ -2755,7 +2755,7 @@ async def get_graph_paths(
     )
     nodes_by_id = {node.id: node for node in path_nodes}
 
-    return {
+    result = {
         "source": source_node_id,
         "source_id": source_node_id,
         "max_depth": max_depth,
@@ -2784,6 +2784,10 @@ async def get_graph_paths(
             reason=_paths_truncation_reason(traversal_truncated, pagination["has_more"], depth_limited),
         ),
     }
+    from agent_bom.db.adoption_events import record_adoption_event_best_effort
+
+    record_adoption_event_best_effort("investigation_started", channel="control_plane")
+    return result
 
 
 @router.get("/graph/impact", tags=["graph"])

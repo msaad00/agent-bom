@@ -2870,6 +2870,12 @@ def scan(
             page=page,
         )
 
+    from agent_bom.db.adoption_events import record_scan_completion_best_effort
+
+    _artifact_type = output_format if output_format in {"json", "sarif", "cyclonedx", "spdx", "html", "markdown", "graph"} else None
+    _adoption_outcome = str((current_report_json.get("scan_run") or {}).get("outcome") or "complete")
+    record_scan_completion_best_effort(outcome=_adoption_outcome, artifact_type=_artifact_type)
+
     # ── First-run nudge: offline scan with no local advisory data ─────────────
     # A clean install running `scan … --offline` with no synced advisory DB
     # reports "0 vulns / PARTIAL COVERAGE" — alarming and unexplained. Surface an

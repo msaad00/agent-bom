@@ -224,6 +224,8 @@ so they cannot regress silently, but they are not part of this reference.
 ## Local Analytics
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_ADOPTION_EVENTS_DB` | `str` | `''` | — |
+| `AGENT_BOM_ADOPTION_EVENTS_ENABLED` | `bool` | `False` | Coarse product-funnel events are a separate, privacy-bounded local store. They remain disabled until an operator explicitly opts in. |
 | `AGENT_BOM_LOCAL_ANALYTICS_DB` | `str` | `''` | Optional path override for the local scan analytics SQL mirror. Empty string means use ~/.agent-bom/local-analytics.sqlite. |
 
 ## MCP / agent→MCP auth posture

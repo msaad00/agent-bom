@@ -1183,6 +1183,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     # but listing them explicitly makes the role intent of each subroute easy
     # to grep and audit.
     _ROLE_RULES: tuple[tuple[str, str, str], ...] = (
+        ("GET", "/v1/observability/adoption", "admin"),
+        ("POST", "/v1/observability/adoption/events", "analyst"),
         ("GET", "/v1/compliance", "viewer"),
         ("GET", "/v1/posture/backpressure", "viewer"),
         ("GET", "/v1/posture/webhooks/", "analyst"),
@@ -1289,6 +1291,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     )
 
     _SCOPE_RULES: tuple[tuple[str, str, str], ...] = (
+        ("GET", "/v1/observability/adoption", "audit:read"),
+        ("POST", "/v1/observability/adoption/events", "scan:write"),
         ("GET", "/v1/cloud/connections", "cloud.connection:read"),
         ("POST", "/v1/cloud/connections", "cloud.connection:write"),
         ("PATCH", "/v1/cloud/connections/", "cloud.connection:write"),

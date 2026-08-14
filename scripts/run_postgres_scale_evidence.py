@@ -275,7 +275,18 @@ def generate(
     dry_run: bool,
 ) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": "operability-benchmark.v1",
+        "backend": "postgres",
+        "evidence_status": "unverified_dry_run" if dry_run else "measured_controlled",
+        "claim": "controlled_benchmark_not_a_production_slo",
+        "required_metrics": [
+            "p50_ms",
+            "p95_ms",
+            "throughput_ops_per_second",
+            "peak_memory_mib",
+            "concurrency",
+            "recovery",
+        ],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": "Clustered Postgres throughput for control-plane stores. Closes the SLO doc gap on clustered scale evidence.",
         "environment": {
@@ -304,7 +315,13 @@ def generate(
         )
 
     base["results"] = [_run_clustered(dsn, size, replicas, kinds) for size in sizes]
+    base["operability"] = {
+        "concurrency": replicas,
+        "peak_memory_mib": None,
+        "recovery": {"kind": "client_reconnect", "status": "not_measured"},
+    }
     base["gaps"] = [
+        "Peak memory and client-reconnect recovery remain unverified unless the result artifact supplies measured values.",
         "Per-row p99 includes psycopg-pool acquisition; measure pool exhaustion separately under sustained load.",
         "Audit-log append is HMAC-chained; chain-verification cost grows with "
         "history. Run --kinds audit_verify to measure that path explicitly.",

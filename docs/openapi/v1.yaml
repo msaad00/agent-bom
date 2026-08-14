@@ -1,5 +1,66 @@
 components:
   schemas:
+    AdoptionEventRequest:
+      additionalProperties: false
+      properties:
+        artifact_type:
+          anyOf:
+          - enum:
+            - json
+            - sarif
+            - cyclonedx
+            - spdx
+            - html
+            - markdown
+            - graph
+            type: string
+          - type: 'null'
+          title: Artifact Type
+        channel:
+          enum:
+          - cli
+          - ci
+          - github_action
+          - control_plane
+          - docker
+          title: Channel
+          type: string
+        ci_provider:
+          anyOf:
+          - enum:
+            - github_actions
+            - gitlab_ci
+            - circleci
+            - jenkins
+            - other
+            type: string
+          - type: 'null'
+          title: Ci Provider
+        event:
+          enum:
+          - scan_completed
+          - artifact_created
+          - investigation_started
+          - verification_completed
+          title: Event
+          type: string
+        outcome:
+          anyOf:
+          - enum:
+            - complete
+            - partial
+            - failed
+            - verified_fixed
+            - still_affected
+            - unavailable_evidence
+            type: string
+          - type: 'null'
+          title: Outcome
+      required:
+      - event
+      - channel
+      title: AdoptionEventRequest
+      type: object
     AnalyticsHealth:
       properties:
         backend:
@@ -18750,6 +18811,105 @@ paths:
       summary: Revoke Virtual Key Route
       tags:
       - model-keys
+  /v1/observability/adoption:
+    get:
+      operationId: adoption_summary_v1_observability_adoption_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Adoption Summary V1 Observability Adoption Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Adoption Summary
+      tags:
+      - observability
+  /v1/observability/adoption/events:
+    post:
+      operationId: record_adoption_event_v1_observability_adoption_events_post
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdoptionEventRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Record Adoption Event V1 Observability Adoption Events
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Record Adoption Event
+      tags:
+      - observability
   /v1/observability/anomalies:
     get:
       description: 'Detect cost and behavior anomalies (per-agent spend + per-session

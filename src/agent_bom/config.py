@@ -286,6 +286,11 @@ DSPM_DB_MAX_TABLES = _int("AGENT_BOM_DSPM_DB_MAX_TABLES", 200)
 
 LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
+# Coarse product-funnel events are a separate, privacy-bounded local store.
+# They remain disabled until an operator explicitly opts in.
+ADOPTION_EVENTS_ENABLED = _bool("AGENT_BOM_ADOPTION_EVENTS_ENABLED", False)
+ADOPTION_EVENTS_DB = _str("AGENT_BOM_ADOPTION_EVENTS_DB", "")
+
 
 # ── ClickHouse findings-ingest (opt-in analytics mirror) ─────────────────────
 # When a ClickHouse HTTP URL is configured, the scan-completion history hook

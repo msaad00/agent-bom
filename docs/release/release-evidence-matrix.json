@@ -1,0 +1,18 @@
+{
+  "schema_version": "release-evidence-matrix.v1",
+  "surfaces": [
+    {"surface": "python", "phase": "pre_publish_and_post_publish", "verification": "Build and inspect wheel and sdist, then install from PyPI in a clean environment.", "evidence_paths": ["scripts/verify_release_wheel.py", ".github/workflows/release.yml"]},
+    {"surface": "dashboard", "phase": "pre_publish", "verification": "Build the bundled dashboard and verify its CSP and browser route contract.", "evidence_paths": ["scripts/build-ui.sh", "docs/RELEASE_VERIFICATION.md"]},
+    {"surface": "docker_api", "phase": "post_publish", "verification": "Pull, inspect, smoke, scan, sign, and attest the API image by immutable digest.", "evidence_paths": ["Dockerfile", ".github/workflows/release.yml"]},
+    {"surface": "docker_ui", "phase": "post_publish", "verification": "Pull and smoke the dashboard image, then verify signature and provenance.", "evidence_paths": ["ui/Dockerfile", ".github/workflows/release.yml"]},
+    {"surface": "docker_collector", "phase": "post_publish", "verification": "Pull and smoke the cloud SDK collector and verify its signed digest.", "evidence_paths": ["deploy/docker/Dockerfile.collector", ".github/workflows/release.yml"]},
+    {"surface": "helm_oci", "phase": "post_publish", "verification": "Pull the OCI chart and template default, pilot, and production profiles.", "evidence_paths": ["deploy/helm/agent-bom/Chart.yaml", ".github/workflows/release.yml"]},
+    {"surface": "github_action", "phase": "pre_publish", "verification": "Dogfood action.yml against a clean SBOM and verify produced SARIF.", "evidence_paths": ["action.yml", ".github/workflows/ci.yml"]},
+    {"surface": "mcp_metadata", "phase": "pre_publish", "verification": "Verify tool counts, strict arguments, server metadata, and registry serialization.", "evidence_paths": ["src/agent_bom/mcp_server_metadata.py", "integrations/mcp-registry/server.json"]},
+    {"surface": "registries", "phase": "post_publish", "verification": "Verify Glama and Smithery expose the published version and non-empty tool inventory.", "evidence_paths": ["integrations/glama/server.json", "integrations/smithery.yaml", "scripts/check_surface_freshness.py"]},
+    {"surface": "sbom", "phase": "post_publish", "verification": "Download and inspect the CycloneDX release SBOM.", "evidence_paths": [".github/workflows/release.yml", "docs/RELEASE_VERIFICATION.md"]},
+    {"surface": "signatures", "phase": "post_publish", "verification": "Verify Sigstore bundles for Python and container artifacts.", "evidence_paths": [".github/workflows/release.yml", "docs/RELEASE_VERIFICATION.md"]},
+    {"surface": "provenance", "phase": "post_publish", "verification": "Verify GitHub attestations and exported SLSA provenance bundles.", "evidence_paths": [".github/workflows/release.yml", "docs/RELEASE_VERIFICATION.md"]},
+    {"surface": "live_demo", "phase": "post_publish", "verification": "Deploy the exact release image and exercise the seeded incident journey in browser.", "evidence_paths": [".github/workflows/demo-deploy-cloudrun.yml", "scripts/deploy/hosted_poc_preflight.py"]}
+  ]
+}

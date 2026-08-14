@@ -284,6 +284,7 @@ jobs:
           python scripts/bump-version.py "$PYPROJECT_VER" --check
           python scripts/check_version_alignment.py
           python scripts/check_release_consistency.py
+          python scripts/check_release_evidence_matrix.py
           python scripts/generate_agent_capability_manifest.py --check
           python scripts/check-counts.py
           python scripts/check_benchmark_drift.py

@@ -20,6 +20,7 @@ signed release evidence.
 | Surface | Command | Release bar |
 |---|---|---|
 | Version alignment | `uv run python scripts/check_release_consistency.py` | Package, docs, OpenAPI, Docker, Helm, and integration versions agree. |
+| Evidence matrix | `uv run python scripts/check_release_evidence_matrix.py` | Every published surface retains a named pre- or post-publish verification path. |
 | Product contract | `uv run python scripts/check_product_surface_contract.py` | README/product-surface claims match generated metrics and exposed surfaces. |
 | API schema | `uv run python scripts/generate_v1_schemas.py --check` | Published v1 schemas match the Pydantic models. |
 | CLI docs | `uv run python scripts/check_cli_reference_alignment.py` | CLI reference and implemented command tree agree. |

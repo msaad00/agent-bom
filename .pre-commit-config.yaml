@@ -104,3 +104,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|README\.md|PYPI_README\.md|DOCKER_HUB_README\.md|CHANGELOG\.md|docs/(DATA_MODEL\.md|openapi/v1\.(json|yaml)|PRODUCT_|RELEASE_|PUBLISHING|MCP_SECURITY_MODEL|AI_INFRASTRUCTURE_SCANNING|ENTERPRISE_DEPLOYMENT)|site-docs/|src/agent_bom/(api/|mcp_registry\.json)|integrations/(mcp-registry|glama|openclaw)/|deploy/|Dockerfile|uv\.lock|scripts/(check_release_consistency|regenerate_data_model_atlas)\.py)
+      - id: release-evidence-matrix
+        name: release evidence surface matrix
+        entry: python3 scripts/check_release_evidence_matrix.py
+        language: system
+        pass_filenames: false
+        files: ^(docs/release/release-evidence-matrix\.json|docs/RELEASE_VERIFICATION\.md|\.github/workflows/(ci|release|demo-deploy-cloudrun)\.yml|action\.yml|Dockerfile|ui/Dockerfile|deploy/helm/agent-bom/|deploy/docker/Dockerfile\.collector|integrations/(mcp-registry|glama|smithery)|scripts/(check_release_evidence_matrix|check_surface_freshness|verify_release_wheel)\.py)

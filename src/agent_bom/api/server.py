@@ -935,9 +935,10 @@ from agent_bom.api.pipeline import (  # noqa: E402
     shutdown_scan_executor,
     submit_scheduled_scan_job,
 )
-from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router  # noqa: E402
 
 # ─── Route modules ────────────────────────────────────────────────────────
+from agent_bom.api.routes.adoption import router as _adoption_router  # noqa: E402
+from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router  # noqa: E402
 from agent_bom.api.routes.assets import router as _assets_router  # noqa: E402
 from agent_bom.api.routes.blueprints import router as _blueprints_router  # noqa: E402
 from agent_bom.api.routes.campaigns import router as _campaigns_router  # noqa: E402
@@ -990,6 +991,7 @@ from agent_bom.api.versioning import create_v1_api_router  # noqa: E402
 _v1_api_router = create_v1_api_router()
 
 for _router in (
+    _adoption_router,
     _assets_router,
     _agent_manifest_router,
     _campaigns_router,

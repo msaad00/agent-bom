@@ -49,6 +49,18 @@ def test_public_mcp_counts_match_server_card() -> None:
     for relative, phrase in expected.items():
         assert phrase in _read(relative), f"{relative} is missing current MCP count"
 
+    developer_docs = {
+        "docs/START_HERE.md": (
+            f"stdio MCP server: {count} tools",
+            f"Tool catalog ({count} tools",
+        ),
+        "docs/README.md": (f"run the MCP server, {count} tools",),
+    }
+    for relative, phrases in developer_docs.items():
+        text = _read(relative)
+        for phrase in phrases:
+            assert phrase in text, f"{relative} is missing current MCP count"
+
 
 def test_public_registry_and_client_counts_match_code() -> None:
     registry = json.loads(_read("src/agent_bom/mcp_registry.json"))

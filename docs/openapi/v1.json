@@ -2765,6 +2765,66 @@
         "title": "EnterpriseDemoBounds",
         "type": "object"
       },
+      "EnterpriseDemoCountMetadata": {
+        "additionalProperties": false,
+        "description": "Definition and completeness carried beside an ambiguous demo count.",
+        "properties": {
+          "completeness": {
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ],
+            "title": "Completeness",
+            "type": "string"
+          },
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
+          "filters": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "returned": {
+            "minimum": 0.0,
+            "title": "Returned",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "window": {
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition",
+          "source",
+          "scope",
+          "window",
+          "returned",
+          "total",
+          "completeness"
+        ],
+        "title": "EnterpriseDemoCountMetadata",
+        "type": "object"
+      },
       "EnterpriseDemoListBound": {
         "additionalProperties": false,
         "description": "What one truncated list holds, and what it was truncated out of.",
@@ -2818,6 +2878,13 @@
             },
             "title": "Correlations",
             "type": "array"
+          },
+          "count_metadata": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EnterpriseDemoCountMetadata"
+            },
+            "title": "Count Metadata",
+            "type": "object"
           },
           "disclosure": {
             "title": "Disclosure",
@@ -2901,6 +2968,7 @@
           "story_content_hash",
           "summary",
           "bounds",
+          "count_metadata",
           "primary_correlation",
           "events",
           "correlations",
@@ -21757,6 +21825,10 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "count_metadata": {
+                      "additionalProperties": true,
+                      "type": "object"
                     },
                     "created_at": {
                       "type": "string"

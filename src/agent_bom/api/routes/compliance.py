@@ -2821,6 +2821,8 @@ def _list_hub_findings_impl(request: Request, limit: int, offset: int, cursor: s
         sort=sort,
         cursor=cursor or "",
         next_cursor=next_cursor,
+        source="native_and_compliance_hub_findings",
+        scope="tenant compliance-hub current findings",
     )
 
 

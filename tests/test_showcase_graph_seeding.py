@@ -7,6 +7,7 @@ seed must be refreshed on ``--demo-estate`` boot instead of early-returning.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,15 @@ def test_seeds_when_empty(store: SQLiteGraphStore) -> None:
     assert created.get(SHOWCASE_SCAN_ID) == SHOWCASE_CURRENT_CREATED_AT
     assert SHOWCASE_BASELINE_SCAN_ID in created
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == SHOWCASE_SCAN_ID
+
+
+def test_showcase_snapshot_stamps_are_never_future_dated() -> None:
+    """A seeded demo must not present tomorrow's snapshot as observed evidence."""
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_CREATED_AT
+
+    now = datetime.now(timezone.utc)
+    assert datetime.fromisoformat(SHOWCASE_BASELINE_CREATED_AT) <= now
+    assert datetime.fromisoformat(SHOWCASE_CURRENT_CREATED_AT) <= now
 
 
 def test_persisted_finding_nodes_serve_prose_not_a_python_repr(store: SQLiteGraphStore) -> None:

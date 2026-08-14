@@ -36,8 +36,18 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-SHOWCASE_BASELINE_CREATED_AT = "2026-08-08T12:00:00+00:00"
-SHOWCASE_CURRENT_CREATED_AT = "2026-08-15T12:00:00+00:00"
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 8, 15, 12, 0, 0, tzinfo=timezone.utc)
+_SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
+# Preserve the deterministic target once it is in the past. Before then, clamp
+# to the current UTC day's start so a release candidate never presents a
+# snapshot from tomorrow. The seven-day baseline window remains intact.
+_SHOWCASE_CURRENT_STAMP = (
+    _SHOWCASE_CURRENT_TARGET
+    if _SHOWCASE_CURRENT_TARGET <= _SHOWCASE_IMPORT_NOW
+    else _SHOWCASE_IMPORT_NOW.replace(hour=0, minute=0, second=0, microsecond=0)
+)
+SHOWCASE_CURRENT_CREATED_AT = _SHOWCASE_CURRENT_STAMP.isoformat()
+SHOWCASE_BASELINE_CREATED_AT = (_SHOWCASE_CURRENT_STAMP - timedelta(days=7)).isoformat()
 
 # The estate's containment root, once projected, becomes the graph's single
 # top-level container. The hand-built showcase org hangs off it so the demo reads

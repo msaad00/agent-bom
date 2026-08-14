@@ -123,7 +123,8 @@ RULES: tuple[CountRule, ...] = (
     CountRule(
         "MCP tools",
         (
-            re.compile(rf"{_NUMBER}\s+MCP\s+tools\b", re.I),
+            # Inline HTML is presentation, not a shield from count drift.
+            re.compile(rf"(?:<[^>]+>\s*)*{_NUMBER}(?:\s*</[^>]+>)*\s+MCP\s+tools\b", re.I),
             re.compile(rf"Tool\s+Categories\s*\(\s*{_NUMBER}\s+tools\s*\)", re.I),
         ),
     ),

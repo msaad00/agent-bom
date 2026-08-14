@@ -151,6 +151,21 @@ def test_a_git_range_alone_does_not_disqualify_an_advisory() -> None:
     assert out.true_positive == 2
 
 
+def test_git_commit_fixes_are_not_pypi_negative_oracles() -> None:
+    """A Git commit cannot be replayed as though it were a released PyPI version."""
+    harness = _load_harness()
+    block = {
+        "package": {"name": "requests", "ecosystem": "PyPI"},
+        "ranges": [
+            {"type": "GIT", "events": [{"introduced": "0"}, {"fixed": "c45d7c49ea75133e52ab22a8e9e13173938e36ff"}]},
+            {"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2.20.0"}]},
+        ],
+        "versions": ["2.19.1"],
+    }
+
+    assert harness._sound_negatives(block) == ["2.20.0"]
+
+
 # Every advisory the corpus cannot label, named rather than counted, so a new
 # skip is visible as an identity and not just as a number moving. All of them
 # are PYSEC records whose GIT range from ``introduced: 0`` enumerates git tags

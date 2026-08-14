@@ -1,6 +1,7 @@
 """Tests for the rewritten `agent-bom serve` command (API-based, no Streamlit)."""
 
 import builtins
+import tempfile
 
 from click.testing import CliRunner
 
@@ -75,3 +76,52 @@ def test_serve_no_ui_sets_rest_only_env(monkeypatch):
     assert result.exit_code == 0, result.output
     assert seen.get("no_ui_env") == "1"
     assert "Disabled (--no-ui" in result.output
+
+
+def test_serve_reports_one_sanitized_state_directory_recovery(monkeypatch, tmp_path):
+    """An unwritable durable default is one actionable CLI error, never a traceback."""
+    import uvicorn
+
+    state_dir = tmp_path / "blocked-state"
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(state_dir))
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_EPHEMERAL_STORE", raising=False)
+
+    def deny_probe(*args, **kwargs):
+        raise PermissionError("private host path and secret detail")
+
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", deny_probe)
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not bind")))
+
+    result = CliRunner().invoke(main, ["serve", "--no-ui"])
+    combined = (result.output or "") + str(result.exception or "")
+    assert result.exit_code != 0
+    assert "Control-plane state is not writable" in combined
+    assert "AGENT_BOM_STATE_DIR=/writable/path agent-bom serve" in combined
+    assert "private host path" not in combined
+    assert "Traceback" not in combined
+
+
+def test_serve_checks_parent_directory_for_existing_sqlite_database(monkeypatch, tmp_path):
+    """An existing SQLite file still needs a writable directory for WAL sidecars."""
+    import uvicorn
+
+    database_path = tmp_path / "existing.db"
+    database_path.touch()
+    monkeypatch.setenv("AGENT_BOM_DB", str(database_path))
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_EPHEMERAL_STORE", raising=False)
+
+    def deny_directory_probe(*args, **kwargs):
+        raise PermissionError("private WAL directory detail")
+
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", deny_directory_probe)
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not bind")))
+
+    result = CliRunner().invoke(main, ["serve", "--no-ui"])
+    combined = (result.output or "") + str(result.exception or "")
+    assert result.exit_code != 0
+    assert "Control-plane state is not writable" in combined
+    assert "private WAL directory" not in combined
+    assert "Traceback" not in combined

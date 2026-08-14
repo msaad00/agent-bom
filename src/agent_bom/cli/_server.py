@@ -8,6 +8,7 @@ import os
 import secrets
 import ssl
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -224,6 +225,36 @@ def _enforce_database_role_posture(command: str) -> None:
             f"Postgres role preflight failed before {command} could bind. Verify the distinct "
             "application and maintenance credentials, database reachability, migrations, and "
             "agent_bom_rls_maintenance membership."
+        ) from exc
+
+
+def _enforce_writable_control_plane_state(command: str) -> None:
+    """Fail once, before app import, when durable SQLite state is unwritable."""
+    from agent_bom.api.durable_store import select_backend, sqlite_path
+
+    if select_backend() != "sqlite":
+        return
+    raw_path = sqlite_path(create_parent=False)
+    if raw_path == ":memory:":
+        return
+
+    database_path = Path(raw_path).expanduser()
+    directory = database_path.parent
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        # SQLite may create journal, WAL, and shared-memory sidecars even when
+        # the database file already exists, so the parent must always be
+        # writable as well as the file itself.
+        with tempfile.NamedTemporaryFile(prefix=".agent-bom-write-probe-", dir=directory):
+            pass
+        if database_path.exists():
+            descriptor = os.open(database_path, os.O_WRONLY | os.O_APPEND)
+            os.close(descriptor)
+    except OSError as exc:
+        raise click.ClickException(
+            "Control-plane state is not writable. Set a writable state directory and retry:\n"
+            f"  AGENT_BOM_STATE_DIR=/writable/path agent-bom {command}\n"
+            "Or choose an explicit database with --persist /writable/path/control-plane.db."
         ) from exc
 
 
@@ -665,6 +696,7 @@ def serve_cmd(
     _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
     _enforce_control_plane_listener_posture(host)
     _enforce_database_role_posture("serve")
+    _enforce_writable_control_plane_state("serve")
     tls_kwargs = _uvicorn_tls_kwargs()
 
     seeded_connection_key = _maybe_seed_local_connection_key(host=host, allow_insecure_no_auth=allow_insecure_no_auth)
@@ -945,6 +977,7 @@ def api_cmd(
     _enforce_auth_defaults("api", host, api_key, allow_insecure_no_auth)
     _enforce_control_plane_listener_posture(host)
     _enforce_database_role_posture("api")
+    _enforce_writable_control_plane_state("api")
     tls_kwargs = _uvicorn_tls_kwargs()
 
     seeded_connection_key = _maybe_seed_local_connection_key(host=host, allow_insecure_no_auth=allow_insecure_no_auth)

@@ -70,5 +70,5 @@
 <rect x="459" y="330" width="3" height="14" rx="1.5" fill="#0284c7"/>
 <text x="469" y="338" font-family="Inter,system-ui,sans-serif" font-size="17.55" font-weight="800" fill="#18181b">One correlated view</text>
 <text x="469" y="358" font-family="Inter,system-ui,sans-serif" font-size="13.0" font-weight="600" fill="#71717a">material risk · trend · explicit gaps</text>
-<rect x="24" y="402" width="1232" height="28" rx="8" fill="#ecfdf5" stroke="#bbf7d0"/><text x="640" y="422" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="600" fill="#15803d">LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>
+<rect x="24" y="402" width="1232" height="28" rx="8" fill="#ecfdf5" stroke="#bbf7d0"/><text x="640" y="422" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="600" fill="#15803d">SCAN + CI · CENTRALIZE EVIDENCE · ENFORCE AT RUNTIME — one Finding + UnifiedGraph</text>
 </svg>

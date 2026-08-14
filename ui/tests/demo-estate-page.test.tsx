@@ -56,6 +56,18 @@ const story: EnterpriseDemoStory = {
     correlations: { returned: 1, total: 4, limit: 50, truncated: true },
     findings: { returned: 1, total: 439, limit: 100, truncated: true },
   },
+  count_metadata: {
+    attack_paths_evidenced: {
+      definition: "Unique correlation identifiers referenced by synthetic finding evidence; not persisted or derived graph paths.",
+      source: "synthetic_finding_evidence",
+      scope: "whole bundled fictional estate",
+      window: "bundled synthetic snapshot",
+      filters: ["finding evidence has correlation_id"],
+      returned: 4,
+      total: 4,
+      completeness: "complete",
+    },
+  },
   primary_correlation: correlation,
   events: [
     {
@@ -168,6 +180,9 @@ describe("DemoEstatePage", () => {
     expect(screen.getByText("2 records · google-cloud-audit-log")).toBeInTheDocument();
     expect(screen.getByText("workflow_run")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open security graph/ })).toHaveAttribute("href", "/security-graph");
+    expect(screen.getByText("Demo findings")).toBeInTheDocument();
+    expect(screen.getByText("Evidence-linked correlations")).toBeInTheDocument();
+    expect(screen.queryByText("Attack paths")).not.toBeInTheDocument();
   });
 
   it("renders each finding as a chain, with counts that reconcile", async () => {

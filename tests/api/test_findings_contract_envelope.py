@@ -65,6 +65,15 @@ def _assert_canonical_envelope(body: dict) -> None:
     assert isinstance(body["filters"], dict)
     assert isinstance(body["warnings"], list)
     assert body["schema_version"] == "v1"
+    metadata = body["count_metadata"]
+    assert metadata["definition"]
+    assert metadata["source"]
+    assert metadata["scope"]
+    assert "window" in metadata
+    assert metadata["filters"] == body["filters"]
+    assert metadata["returned"] == body["count"]
+    assert metadata["total"] == body["total"]
+    assert metadata["completeness"]["status"] in {"complete", "partial", "unknown"}
 
 
 def _ingest_csv(client: TestClient, rows: int) -> None:

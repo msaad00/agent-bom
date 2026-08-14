@@ -83,6 +83,11 @@ class TestStaleClaimsAreCaught:
         problems = self._sweep(tmp_path, monkeypatch, svg, suffix=".svg")
         assert any("999" in p for p in problems)
 
+    def test_html_wrapped_readme_badge_count_is_swept(self, tmp_path, monkeypatch):
+        """Inline markup must not hide a stale headline count from the gate."""
+        problems = self._sweep(tmp_path, monkeypatch, "<b>999</b> MCP tools\n")
+        assert any("999" in p and "MCP tools" in p for p in problems)
+
     def test_shipped_python_prose_is_swept(self, tmp_path, monkeypatch):
         """Two of the six real stale claims were runtime strings, not docs."""
         source = '"""Browse the 999-entry server security metadata registry."""\n'

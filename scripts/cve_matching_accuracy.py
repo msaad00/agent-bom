@@ -139,6 +139,10 @@ def _sound_negatives(block: dict) -> list[str]:
     declared = {str(v) for v in (block.get("versions") or [])}
     negatives: set[str] = set()
     for rng in block.get("ranges") or []:
+        # Commit fixes are only ordered inside the repository's graph. They are
+        # not released package versions and cannot label an ecosystem oracle.
+        if (rng.get("type") or "") not in _ECOSYSTEM_RANGE_TYPES:
+            continue
         for event in rng.get("events") or []:
             fixed = event.get("fixed")
             if fixed and str(fixed) not in declared:

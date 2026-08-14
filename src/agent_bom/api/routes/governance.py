@@ -133,7 +133,11 @@ async def governance_findings(
             total=total,
             limit=safe_limit,
             offset=safe_offset,
+            filters={key: value for key, value in {"severity": severity, "category": category}.items() if value},
             warnings=list(report.warnings),
+            source="snowflake_governance_discovery",
+            scope="requested Snowflake governance discovery",
+            window={"days": days},
         )
 
     try:

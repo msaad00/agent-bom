@@ -84,6 +84,21 @@ class EnterpriseDemoBounds(BaseModel):
     findings: EnterpriseDemoListBound
 
 
+class EnterpriseDemoCountMetadata(BaseModel):
+    """Definition and completeness carried beside an ambiguous demo count."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    definition: str
+    source: str
+    scope: str
+    window: str
+    filters: tuple[str, ...] = ()
+    returned: int = Field(ge=0)
+    total: int = Field(ge=0)
+    completeness: Literal["complete", "partial", "unknown"]
+
+
 class EnterpriseDemoStory(BaseModel):
     """One read model for every operator-facing synthetic-demo surface."""
 
@@ -101,6 +116,7 @@ class EnterpriseDemoStory(BaseModel):
     story_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary: EnterpriseDemoSummary
     bounds: EnterpriseDemoBounds
+    count_metadata: dict[str, EnterpriseDemoCountMetadata]
     primary_correlation: EnterpriseCorrelation
     events: tuple[NormalizedEnterpriseEvent, ...]
     correlations: tuple[EnterpriseCorrelation, ...]
@@ -159,6 +175,28 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
     def _bound(returned: int, total: int, limit: int) -> EnterpriseDemoListBound:
         return EnterpriseDemoListBound(returned=returned, total=total, limit=limit, truncated=returned < total)
 
+    def _count(
+        *,
+        definition: str,
+        source: str,
+        returned: int,
+        total: int,
+        filters: tuple[str, ...] = (),
+    ) -> EnterpriseDemoCountMetadata:
+        return EnterpriseDemoCountMetadata(
+            definition=definition,
+            source=source,
+            scope="whole bundled fictional estate",
+            window="bundled synthetic snapshot",
+            filters=filters,
+            returned=returned,
+            total=total,
+            completeness="partial" if returned < total else "complete",
+        )
+
+    cross_source_total = sum(1 for row in result.correlations if len(set(row.sources)) >= 2)
+    evidence_link_total = finding_summary.attack_paths_evidenced
+
     return EnterpriseDemoStory(
         disclosure=estate.disclosure,
         estate_id=estate.estate_id,
@@ -173,7 +211,7 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
             complete_sources=result.complete_source_count,
             partial_sources=result.partial_source_count,
             correlations=len(result.correlations),
-            cross_source_correlations=sum(1 for row in result.correlations if len(set(row.sources)) >= 2),
+            cross_source_correlations=cross_source_total,
             snapshots=len(estate.snapshots),
             findings=finding_summary.total,
         ),
@@ -182,6 +220,36 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
             correlations=_bound(len(correlations), len(result.correlations), _STORY_CORRELATION_LIMIT),
             findings=_bound(len(findings), finding_summary.total, _STORY_FINDING_LIMIT),
         ),
+        count_metadata={
+            "findings": _count(
+                definition="Synthetic findings across the fictional estate; not current persisted control-plane findings.",
+                source="synthetic_estate_findings",
+                returned=len(findings),
+                total=finding_summary.total,
+                filters=("ranked worst-first", "primary incident first"),
+            ),
+            "correlations": _count(
+                definition="Synthetic trace-group correlations; a row may contain evidence from only one source.",
+                source="synthetic_estate_correlations",
+                returned=len(correlations),
+                total=len(result.correlations),
+                filters=("primary incident first", "newest remainder first"),
+            ),
+            "cross_source_correlations": _count(
+                definition="Synthetic correlation rows joining evidence from at least two distinct sources.",
+                source="synthetic_estate_correlations",
+                returned=cross_source_total,
+                total=cross_source_total,
+                filters=("distinct source count >= 2",),
+            ),
+            "attack_paths_evidenced": _count(
+                definition="Unique correlation identifiers referenced by synthetic finding evidence; not persisted or derived graph paths.",
+                source="synthetic_finding_evidence",
+                returned=evidence_link_total,
+                total=evidence_link_total,
+                filters=("finding evidence has correlation_id",),
+            ),
+        },
         primary_correlation=primary,
         events=events,
         correlations=correlations,

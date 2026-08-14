@@ -71,6 +71,8 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert "Agent-native surface" in svg
     assert "Triage by reachability" in svg
     assert "Audit-ready exports" in svg
+    assert "SCAN + CI · CENTRALIZE EVIDENCE · ENFORCE AT RUNTIME — one Finding + UnifiedGraph" in svg
+    assert "LOCAL SCAN · CONTROL PLANE · RUNTIME" not in svg
     assert _audit_layout(svg) == []
 
 

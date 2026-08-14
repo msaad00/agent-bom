@@ -136,6 +136,32 @@ def test_story_artifact_states_the_bound_on_every_list_it_truncates() -> None:
     assert all(bounds[name]["truncated"] for name in bounds)
 
 
+def test_story_defines_count_scope_source_and_completeness() -> None:
+    """Synthetic totals must not masquerade as persisted or derived graph counts."""
+    story = build_enterprise_demo_story(tenant_id="tenant-count-truth")
+    payload = json.loads(story.model_dump_json())
+
+    metadata = payload["count_metadata"]
+    findings = metadata["findings"]
+    assert findings["source"] == "synthetic_estate_findings"
+    assert findings["scope"] == "whole bundled fictional estate"
+    assert findings["returned"] == len(story.findings)
+    assert findings["total"] == story.summary.findings
+    assert findings["completeness"] == "partial"
+
+    correlations = metadata["correlations"]
+    assert correlations["source"] == "synthetic_estate_correlations"
+    assert correlations["returned"] == len(story.correlations)
+    assert correlations["total"] == story.summary.correlations
+    assert correlations["completeness"] == "partial"
+
+    evidence_links = metadata["attack_paths_evidenced"]
+    assert evidence_links["source"] == "synthetic_finding_evidence"
+    assert "not persisted or derived graph paths" in evidence_links["definition"]
+    assert evidence_links["returned"] == evidence_links["total"] == story.finding_summary.attack_paths_evidenced
+    assert evidence_links["completeness"] == "complete"
+
+
 def test_demo_story_help_does_not_promise_the_complete_evidence() -> None:
     """The artifact carries a bounded view, so the help cannot say "complete"."""
     result = CliRunner().invoke(main, ["demo", "story", "--help"])

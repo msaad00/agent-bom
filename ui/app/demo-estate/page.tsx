@@ -165,8 +165,8 @@ export default function DemoEstatePage() {
           { label: "Assets", value: story.summary.assets, icon: Database },
           { label: "Observations", value: story.summary.observations, icon: Clock3 },
           { label: "Evidence sources", value: story.summary.evidence_sources, hint: `${story.summary.complete_sources} complete` },
-          { label: "Correlations", value: story.summary.correlations, icon: Network, hint: `${story.summary.cross_source_correlations} cross-source` },
-          { label: "Findings", value: story.summary.findings, icon: TriangleAlert },
+          { label: "Correlations", value: story.summary.correlations, icon: Network, hint: `${story.bounds.correlations.returned} returned · ${story.summary.cross_source_correlations} cross-source` },
+          { label: "Demo findings", value: story.summary.findings, icon: TriangleAlert, hint: `${story.bounds.findings.returned} returned · fictional estate` },
           { label: "Snapshots", value: story.summary.snapshots, icon: GitBranch },
           { label: "Partial sources", value: story.summary.partial_sources, accent: "warn", icon: TriangleAlert },
         ]}
@@ -219,7 +219,7 @@ export default function DemoEstatePage() {
           <dl className="grid shrink-0 grid-cols-3 gap-x-5 gap-y-1 text-xs sm:text-right">
             <div><dt className="text-[color:var(--text-tertiary)]">Assets affected</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.assets_affected} / {posture.assets_total}</dd></div>
             <div><dt className="text-[color:var(--text-tertiary)]">Controls</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.controls_evidenced}</dd></div>
-            <div><dt className="text-[color:var(--text-tertiary)]">Attack paths</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.attack_paths_evidenced}</dd></div>
+            <div title={story.count_metadata.attack_paths_evidenced?.definition}><dt className="text-[color:var(--text-tertiary)]">Evidence-linked correlations</dt><dd className="font-semibold text-[color:var(--foreground)]">{posture.attack_paths_evidenced}</dd></div>
           </dl>
         </div>
 

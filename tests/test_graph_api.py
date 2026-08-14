@@ -1859,6 +1859,14 @@ class TestGraphStoreBackendSelection:
 
         queue = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5}).json()
         assert queue["pagination"]["total"] == 1
+        count_metadata = queue["count_metadata"]
+        assert count_metadata["definition"]
+        assert count_metadata["source"] == "derived_graph_paths"
+        assert count_metadata["scope"] == "tenant graph snapshot"
+        assert count_metadata["filters"] == {"scan_id": "store-scan", "offset": 0, "limit": 5}
+        assert count_metadata["returned"] == len(queue["attack_paths"])
+        assert count_metadata["total"] == queue["pagination"]["total"]
+        assert count_metadata["completeness"] == queue["completeness"]
         assert queue["stats"]["attack_path_count"] == 1
         assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]
         assert queue["attack_paths"][0]["edges"] == ["uses", "depends_on", "vulnerable_to"]

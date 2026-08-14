@@ -2971,10 +2971,13 @@ def _list_findings_impl(
         },
         warnings=warnings,
         total_approximate=total_approximate,
+        source="scan_and_current_ingest_findings",
+        scope="tenant current-state findings",
     )
     # Echo the applied read-window so clients label counts honestly as
     # "last Nd" rather than "all" (#4009).
     envelope["window"] = time_window.window_metadata(resolved_window)
+    envelope["count_metadata"]["window"] = envelope["window"]
     if scope_completeness is not None:
         envelope["scope_completeness"] = scope_completeness
     if facets is not None:

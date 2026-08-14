@@ -276,6 +276,7 @@ _ATTACK_PATHS_OPENAPI_RESPONSE: dict[str, Any] = {
                         "additionalProperties": True,
                     },
                     "pagination": {"type": "object", "additionalProperties": True},
+                    "count_metadata": {"type": "object", "additionalProperties": True},
                 },
             }
         }
@@ -1787,9 +1788,16 @@ def _serialize_attack_path_queue(
     offset: int,
     limit: int,
     stats: dict[str, Any],
+    path_source: str,
 ) -> dict[str, Any]:
     nodes_by_id = {node.id: node for node in nodes}
     stats = _sync_attack_path_stats(stats, total=total, paths=paths)
+    completeness = graph_completeness(
+        returned=len(paths),
+        total=total,
+        truncated=offset + len(paths) < total,
+        reason="path_page_limit" if offset + len(paths) < total else "",
+    )
     return {
         "scan_id": scan_id,
         "tenant_id": tenant,
@@ -1803,12 +1811,17 @@ def _serialize_attack_path_queue(
         "interaction_risks": [],
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
-        "completeness": graph_completeness(
-            returned=len(paths),
-            total=total,
-            truncated=offset + len(paths) < total,
-            reason="path_page_limit" if offset + len(paths) < total else "",
-        ),
+        "completeness": completeness,
+        "count_metadata": {
+            "definition": "Ranked persisted attack paths when available, otherwise paths derived from traversable graph topology.",
+            "source": path_source,
+            "scope": "tenant graph snapshot",
+            "window": {"snapshot_created_at": created_at},
+            "filters": {"scan_id": scan_id, "offset": offset, "limit": limit},
+            "returned": len(paths),
+            "total": total,
+            "completeness": completeness,
+        },
     }
 
 
@@ -2488,6 +2501,7 @@ async def get_graph_attack_paths(
         offset=offset,
         limit=limit,
     )
+    path_source = "persisted_graph_paths"
     if total == 0:
         graph = await _load_graph_for_investigation(
             graph_store,
@@ -2500,6 +2514,7 @@ async def get_graph_attack_paths(
             offset=offset,
             limit=limit,
         )
+        path_source = "derived_graph_paths"
     hop_ids = {hop for path in paths for hop in path.hops}
     nodes = await _graph_store_call(
         graph_store.nodes_by_ids,
@@ -2530,6 +2545,7 @@ async def get_graph_attack_paths(
         offset=offset,
         limit=limit,
         stats=stats,
+        path_source=path_source,
     )
 
 

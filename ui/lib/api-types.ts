@@ -1147,6 +1147,20 @@ export interface FindingListEnvelope<T> {
   next_cursor: string;
   has_more: boolean;
   warnings: string[];
+  count_metadata: {
+    definition: string;
+    source: string;
+    scope: string;
+    window: ReadWindow | { days: number } | null;
+    filters: Record<string, unknown>;
+    returned: number;
+    total: number | null;
+    total_kind: "exact" | "lower_bound" | "unknown";
+    completeness: {
+      status: "complete" | "partial" | "unknown";
+      reason: string;
+    };
+  };
   /** Applied default read-window (#4009); present on `/v1/findings`. */
   window?: ReadWindow | undefined;
   /** Canonical server-applied facets echoed for pagination/debugging. */
@@ -2993,6 +3007,18 @@ export interface EnterpriseDemoBounds {
   findings: EnterpriseDemoListBound;
 }
 
+/** Definition and completeness carried beside an otherwise ambiguous count. */
+export interface EnterpriseDemoCountMetadata {
+  definition: string;
+  source: string;
+  scope: string;
+  window: string;
+  filters: string[];
+  returned: number;
+  total: number;
+  completeness: "complete" | "partial" | "unknown";
+}
+
 /** GET /v1/demo-estate/story — normalized, fictional enterprise evidence. */
 export interface EnterpriseDemoStory {
   schema_version: string;
@@ -3008,6 +3034,7 @@ export interface EnterpriseDemoStory {
   summary: EnterpriseDemoSummary;
   /** Limit + true total for each bounded list below. */
   bounds: EnterpriseDemoBounds;
+  count_metadata: Record<string, EnterpriseDemoCountMetadata>;
   primary_correlation: EnterpriseDemoCorrelation;
   events: EnterpriseDemoEvent[];
   correlations: EnterpriseDemoCorrelation[];

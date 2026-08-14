@@ -1705,7 +1705,7 @@ def persona_value(theme: str) -> str:
             w,
             h,
             t,
-            "LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph",
+            "SCAN + CI · CENTRALIZE EVIDENCE · ENFORCE AT RUNTIME — one Finding + UnifiedGraph",
         )
     )
     parts.append("</svg>")

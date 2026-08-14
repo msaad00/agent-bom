@@ -45,6 +45,7 @@ FINDING_LIST_ENVELOPE_KEYS: tuple[str, ...] = (
     "has_more",
     "filters",
     "warnings",
+    "count_metadata",
 )
 
 
@@ -61,6 +62,9 @@ def finding_list_envelope(
     filters: dict[str, Any] | None = None,
     warnings: list[str] | None = None,
     total_approximate: bool = False,
+    source: str = "unified_findings",
+    scope: str = "tenant-scoped current findings",
+    window: dict[str, Any] | None = None,
     schema_version: str = FINDING_LIST_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     """Build the canonical finding-list envelope shared by every list surface.
@@ -68,6 +72,17 @@ def finding_list_envelope(
     ``count`` and ``has_more`` are derived so callers cannot drift them out of
     sync with ``findings`` and ``next_cursor``.
     """
+    applied_filters = filters if filters is not None else {}
+    has_more = bool(next_cursor)
+    if total is None:
+        completeness = {"status": "unknown", "reason": "total_unavailable"}
+    elif total_approximate:
+        completeness = {"status": "partial", "reason": "total_is_lower_bound"}
+    elif offset > 0 or has_more or len(findings) < total:
+        completeness = {"status": "partial", "reason": "paginated_result"}
+    else:
+        completeness = {"status": "complete", "reason": ""}
+
     envelope: dict[str, Any] = {
         "schema_version": schema_version,
         "findings": findings,
@@ -79,9 +94,20 @@ def finding_list_envelope(
         "scan_id": scan_id,
         "cursor": cursor,
         "next_cursor": next_cursor,
-        "has_more": bool(next_cursor),
-        "filters": filters if filters is not None else {},
+        "has_more": has_more,
+        "filters": applied_filters,
         "warnings": warnings if warnings is not None else [],
+        "count_metadata": {
+            "definition": "Findings matching this endpoint's tenant, source, window, and filters.",
+            "source": source,
+            "scope": scope,
+            "window": window,
+            "filters": applied_filters,
+            "returned": len(findings),
+            "total": total,
+            "total_kind": "unknown" if total is None else "lower_bound" if total_approximate else "exact",
+            "completeness": completeness,
+        },
     }
     if total_approximate:
         envelope["total_approximate"] = True

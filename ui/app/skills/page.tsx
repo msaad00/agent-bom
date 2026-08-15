@@ -23,12 +23,14 @@ import { ApiError } from "@/lib/api-errors";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { Drawer } from "@/components/drawer";
 import { PageLaneHeader } from "@/components/page-lane";
+import { PaginationBar } from "@/components/pagination-bar";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
 
 // Headless equivalents (§11 human + headless parity) — the page is the human
 // surface; these run the SAME shared scanner from the CLI / an agent / CI.
 const HEADLESS_CLI = "agent-bom skills scan <path>";
 const HEADLESS_API = "POST /v1/skills/scan";
+const FILE_PAGE_SIZE = 25;
 
 type StatusChipMeta = {
   label: string;
@@ -274,6 +276,7 @@ export default function SkillsPage() {
 
   const [statusFilter, setStatusFilter] = useState<SkillsScanFileStatus | "all">("all");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<SkillsScanFileReport | null>(null);
 
   const load = useCallback(() => {
@@ -309,6 +312,7 @@ export default function SkillsPage() {
       .then((r) => {
         setReport(r);
         setStatusFilter("all");
+        setPage(1);
         setScanNotice(`Scanned ${r.summary.files_scanned} file(s).`);
       })
       .catch((e) => {
@@ -331,7 +335,7 @@ export default function SkillsPage() {
     return counts;
   }, [files]);
 
-  const visibleFiles = useMemo(() => {
+  const filteredFiles = useMemo(() => {
     const q = query.trim().toLowerCase();
     return files.filter((f) => {
       if (statusFilter !== "all" && f.status !== statusFilter) return false;
@@ -339,6 +343,14 @@ export default function SkillsPage() {
       return true;
     });
   }, [files, statusFilter, query]);
+
+  useEffect(() => setPage(1), [statusFilter, query]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredFiles.length / FILE_PAGE_SIZE));
+  const visibleFiles = useMemo(
+    () => filteredFiles.slice((page - 1) * FILE_PAGE_SIZE, page * FILE_PAGE_SIZE),
+    [filteredFiles, page],
+  );
 
   const scanForm = (
     <div className="flex flex-wrap items-center gap-2">
@@ -546,6 +558,16 @@ export default function SkillsPage() {
               </tbody>
             </table>
           </div>
+          {filteredFiles.length > 0 ? (
+            <PaginationBar
+              page={page}
+              totalPages={totalPages}
+              totalItems={filteredFiles.length}
+              itemLabel="files"
+              onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+              onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+            />
+          ) : null}
         </>
       )}
 

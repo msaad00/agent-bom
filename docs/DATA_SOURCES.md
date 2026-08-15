@@ -5,8 +5,9 @@ One-page map from the README intake diagram to the **actual connect path**,
 default** across every lane: no secret values stored, no writes to customer
 environments unless an operator explicitly opts into the documented disk
 side-scan lifecycle. AWS EBS is CLI-wired; Azure Managed Disk and GCP
-Persistent Disk adapters require injected, already-authenticated SDK clients
-and are not yet scheduler- or CLI-wired.
+Persistent Disk use injected, already-authenticated SDK clients and ship through
+CLI, REST, MCP, UI, and the opt-in scheduler. Snapshot/temp-disk operations use
+separate scoped lifecycle roles; they are not read-only discovery.
 
 ## How intake works (four modes)
 

@@ -159,6 +159,23 @@ describe("SkillsPage", () => {
     expect(within(summary).getByText("Files scanned").previousSibling).toHaveTextContent("2");
   });
 
+  it("paginates filtered files instead of rendering the whole result set", async () => {
+    const base = report();
+    const files = Array.from({ length: 27 }, (_, index) => ({
+      ...base.files[0]!,
+      path: `skills/team-${index.toString().padStart(2, "0")}/SKILL.md`,
+    }));
+    apiMock.getSkillsScan.mockResolvedValue(
+      report({ files, summary: { ...base.summary, files_scanned: files.length } }),
+    );
+    render(<SkillsPage />);
+
+    expect(await screen.findAllByTestId("skills-row")).toHaveLength(25);
+    expect(screen.getByText(/Page 1 of 2 \(27 files\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    expect(screen.getAllByTestId("skills-row")).toHaveLength(2);
+  });
+
   it("opens a drawer with provenance + findings on row click", async () => {
     apiMock.getSkillsScan.mockResolvedValue(report());
     render(<SkillsPage />);

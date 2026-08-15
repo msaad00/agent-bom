@@ -5,7 +5,7 @@ from the CLI. These tests pin the REST door that exposes it consistently: an
 admin-gated, tenant-scoped POST trigger that runs the executor off the event
 loop and reads back honest terminal state from the SAME durable lifecycle store
 the CLI uses, plus tenant-scoped status/list reads. Credentials are never
-accepted here; the executor resolves read-only creds from the provider chain.
+accepted here; the executor resolves scoped lifecycle credentials from the provider chain.
 
 The executor itself is faked at the module seam so the route's orchestration
 (gating, tenancy, off-loop offload, durable-store read, honest disabled/

@@ -116,54 +116,64 @@ def _tokenize(expr: str) -> list[tuple[str, str]]:
     return tokens
 
 
-def _extract_field(br, name: str):
-    """Extract a field value from a BlastRadius object for expression evaluation.
+_EXPRESSION_FIELD_GETTERS = {
+    # Vulnerability fields
+    "severity": lambda b: SEVERITY_ORDER.get(b.vulnerability.severity.value.upper(), 0),
+    "cvss_score": lambda b: b.vulnerability.cvss_score or 0.0,
+    "epss_score": lambda b: b.vulnerability.epss_score or 0.0,
+    "is_kev": lambda b: bool(b.vulnerability.is_kev),
+    "has_fix": lambda b: bool(b.vulnerability.fixed_version),
+    "vuln_id": lambda b: b.vulnerability.id,
+    # Package fields
+    "package_name": lambda b: b.package.name,
+    "ecosystem": lambda b: b.package.ecosystem,
+    "scorecard_score": lambda b: b.package.scorecard_score if b.package.scorecard_score is not None else 0.0,
+    "is_malicious": lambda b: getattr(b.package, "is_malicious", False),
+    # Blast radius and graph fields
+    "risk_score": lambda b: b.risk_score,
+    "agent_count": lambda b: len(b.affected_agents),
+    "server_count": lambda b: len(b.affected_servers),
+    "tool_count": lambda b: len(b.exposed_tools),
+    "credential_count": lambda b: len(b.exposed_credentials),
+    "has_credentials": lambda b: bool(b.exposed_credentials),
+    "ai_risk": lambda b: bool(b.ai_risk_context),
+    "graph_reachable": lambda b: getattr(b, "graph_reachable", None),
+    # Tags
+    "owasp_tags": lambda b: getattr(b, "owasp_tags", []),
+    "owasp_mcp_tags": lambda b: getattr(b, "owasp_mcp_tags", []),
+    "owasp_agentic_tags": lambda b: getattr(b, "owasp_agentic_tags", []),
+    "nist_csf_tags": lambda b: getattr(b, "nist_csf_tags", []),
+    "nist_ai_rmf_tags": lambda b: getattr(b, "nist_ai_rmf_tags", []),
+    "nist_800_53_tags": lambda b: getattr(b, "nist_800_53_tags", []),
+    "atlas_tags": lambda b: getattr(b, "atlas_tags", []),
+    "attack_tags": lambda b: getattr(b, "attack_tags", []),
+    "iso_27001_tags": lambda b: getattr(b, "iso_27001_tags", []),
+    "soc2_tags": lambda b: getattr(b, "soc2_tags", []),
+    "cis_tags": lambda b: getattr(b, "cis_tags", []),
+    "cmmc_tags": lambda b: getattr(b, "cmmc_tags", []),
+    "eu_ai_act_tags": lambda b: getattr(b, "eu_ai_act_tags", []),
+    "fedramp_tags": lambda b: getattr(b, "fedramp_tags", []),
+}
 
-    Only whitelisted fields are accessible — no arbitrary attribute access.
-    """
-    field_map = {
-        # Vulnerability fields
-        "severity": lambda b: SEVERITY_ORDER.get(b.vulnerability.severity.value.upper(), 0),
-        "cvss_score": lambda b: b.vulnerability.cvss_score or 0.0,
-        "epss_score": lambda b: b.vulnerability.epss_score or 0.0,
-        "is_kev": lambda b: bool(b.vulnerability.is_kev),
-        "has_fix": lambda b: bool(b.vulnerability.fixed_version),
-        "vuln_id": lambda b: b.vulnerability.id,
-        # Package fields
-        "package_name": lambda b: b.package.name,
-        "ecosystem": lambda b: b.package.ecosystem,
-        "scorecard_score": lambda b: b.package.scorecard_score if b.package.scorecard_score is not None else 0.0,
-        "is_malicious": lambda b: getattr(b.package, "is_malicious", False),
-        # Blast radius fields
-        "risk_score": lambda b: b.risk_score,
-        "agent_count": lambda b: len(b.affected_agents),
-        "server_count": lambda b: len(b.affected_servers),
-        "tool_count": lambda b: len(b.exposed_tools),
-        "credential_count": lambda b: len(b.exposed_credentials),
-        "has_credentials": lambda b: bool(b.exposed_credentials),
-        "ai_risk": lambda b: bool(b.ai_risk_context),
-        # Tags
-        "owasp_tags": lambda b: getattr(b, "owasp_tags", []),
-        "owasp_mcp_tags": lambda b: getattr(b, "owasp_mcp_tags", []),
-        "owasp_agentic_tags": lambda b: getattr(b, "owasp_agentic_tags", []),
-        "nist_csf_tags": lambda b: getattr(b, "nist_csf_tags", []),
-        "nist_ai_rmf_tags": lambda b: getattr(b, "nist_ai_rmf_tags", []),
-        "nist_800_53_tags": lambda b: getattr(b, "nist_800_53_tags", []),
-        "atlas_tags": lambda b: getattr(b, "atlas_tags", []),
-        "attack_tags": lambda b: getattr(b, "attack_tags", []),
-        "iso_27001_tags": lambda b: getattr(b, "iso_27001_tags", []),
-        "soc2_tags": lambda b: getattr(b, "soc2_tags", []),
-        "cis_tags": lambda b: getattr(b, "cis_tags", []),
-        "cmmc_tags": lambda b: getattr(b, "cmmc_tags", []),
-        "eu_ai_act_tags": lambda b: getattr(b, "eu_ai_act_tags", []),
-        "fedramp_tags": lambda b: getattr(b, "fedramp_tags", []),
-    }
+
+def _validate_expression_fields(tokens: list[tuple[str, str]]) -> None:
+    """Reject unknown identifiers before a policy can be evaluated."""
+    for token_type, value in tokens:
+        if token_type != "IDENT":
+            continue
+        if value in _EXPRESSION_FIELD_GETTERS or value.upper() in SEVERITY_ORDER:
+            continue
+        raise ValueError(f"Unknown field in policy expression: {value!r}")
+
+
+def _extract_field(br, name: str):
+    """Extract a whitelisted field value for expression evaluation."""
 
     # Severity name comparisons: resolve "HIGH", "CRITICAL" etc. to ordinal
     if name.upper() in SEVERITY_ORDER:
         return SEVERITY_ORDER[name.upper()]
 
-    getter = field_map.get(name)
+    getter = _EXPRESSION_FIELD_GETTERS.get(name)
     if getter is None:
         raise ValueError(f"Unknown field in policy expression: {name!r}")
     return getter(br)
@@ -417,7 +427,8 @@ def _validate_policy(policy: dict) -> None:
         condition = rule.get("condition")
         if condition and isinstance(condition, str):
             try:
-                _tokenize(condition)
+                tokens = _tokenize(condition)
+                _validate_expression_fields(tokens)
             except ValueError as e:
                 raise ValueError(f"Rule '{rule['id']}' has invalid condition syntax: {e}") from e
 
@@ -456,11 +467,7 @@ def _rule_matches(rule: dict, br) -> bool:
     """
     # Expression-based condition (new in v0.58.0)
     if "condition" in rule:
-        try:
-            if not evaluate_expression(rule["condition"], br):
-                return False
-        except ValueError:
-            # Invalid expression = rule doesn't match (fail-safe)
+        if not evaluate_expression(rule["condition"], br):
             return False
 
     # severity_gte: severity must be >= this level

@@ -39,7 +39,7 @@ function KpiCard({
   );
 }
 
-/** Natoma-style runtime rollup — visible on every gateway tab, not only Live Feed. */
+/** Runtime rollup visible on every gateway tab, not only Live Feed. */
 export function GatewayFeedKpiBar({ refreshKey = 0 }: { refreshKey?: number }) {
   const [kpis, setKpis] = useState<GatewayFeedKpis | null>(null);
 

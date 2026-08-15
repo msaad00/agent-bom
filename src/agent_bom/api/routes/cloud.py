@@ -913,7 +913,7 @@ async def cloud_runtime_evidence_ingest(
 # in-account collector's ambient cloud identity, like the CIS ambient path);
 # status reads map to the shared "read" gate. Every heavy provider/SDK call runs
 # off the event loop in a worker thread under backpressure. Results are read back
-# from the SAME durable SQLite lifecycle store the CLI and scheduler use, so a
+# from the SAME selected durable lifecycle store the CLI and scheduler use, so a
 # scan triggered over REST is visible to every surface. AWS EBS keeps its own CLI
 # entrypoint (it does not persist to this lifecycle store).
 
@@ -972,15 +972,15 @@ async def cloud_side_scan_trigger(
     Fail-closed and honest:
     - side-scan OFF (``AGENT_BOM_SIDESCAN`` unset) → ``200`` ``status=disabled``
       with enablement guidance (no cloud call is made).
-    - provider extra / read-only credentials unavailable → ``200``
+    - provider extra / scoped lifecycle credentials unavailable → ``200``
       ``status=unavailable`` with the actionable, sanitized reason.
     - Azure requires ``collector_resource_group`` → ``400``.
-    Credentials are never accepted here; the executor resolves read-only
-    credentials from the provider's default chain (``credentialed_smoke=false``).
+    Credentials are never accepted here; the executor resolves separately
+    scoped lifecycle credentials from the provider's default chain
+    (``credentialed_smoke=false``).
     """
     from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
-    from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore, new_side_scan_execution
-    from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
+    from agent_bom.cloud.side_scan_lifecycle import get_side_scan_state_store, new_side_scan_execution
 
     tenant_id = _tenant(request)
     provider = body.provider
@@ -1034,7 +1034,7 @@ async def cloud_side_scan_trigger(
             "enable": "Set AGENT_BOM_SIDESCAN=1 and provide a scoped snapshot role plus an in-account collector.",
         }
     except SideScanConfigError as exc:
-        # Provider extra missing / read-only credentials unavailable / invalid
+        # Provider extra missing / scoped lifecycle credentials unavailable / invalid
         # config. Degrade to an honest HTTP-200 unavailable envelope (mirrors the
         # CIS no-SDK path) rather than a 500 — never a false clean. The specific
         # cause is logged server-side; the external response stays generic so no
@@ -1050,7 +1050,7 @@ async def cloud_side_scan_trigger(
             "execution_id": execution_id,
             "provider": provider,
             "tenant_id": tenant_id,
-            "reason": "Provider side-scan configuration or read-only credentials are unavailable; see server logs for the cause.",
+            "reason": "Provider side-scan configuration or scoped lifecycle credentials are unavailable; see server logs for the cause.",
         }
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -1067,7 +1067,7 @@ async def cloud_side_scan_trigger(
             status_code=500, detail="Cloud side-scan failed; see server logs. Temporary resource teardown still ran."
         ) from exc
 
-    store = SQLiteSideScanStateStore(side_scan_state_db_path())
+    store = get_side_scan_state_store()
     record = store.get(tenant_id=tenant_id, execution_id=execution_id)
     payload: dict[str, Any] = {
         "status": record.status.value if record is not None else "unknown",
@@ -1096,15 +1096,14 @@ async def cloud_side_scan_list(
     run is proven). Powers the CWPP side-scan UI.
     """
     from agent_bom.cloud.side_scan_lifecycle import (
-        SQLiteSideScanStateStore,
+        get_side_scan_state_store,
         side_scan_provider_capabilities,
     )
-    from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
 
     tenant_id = _tenant(request)
 
     def _read() -> dict[str, Any]:
-        store = SQLiteSideScanStateStore(side_scan_state_db_path())
+        store = get_side_scan_state_store()
         records = store.list_recent(tenant_id=tenant_id, limit=limit)
         capabilities = [cap.to_dict() for cap in side_scan_provider_capabilities().values()]
         return {
@@ -1136,8 +1135,7 @@ async def cloud_side_scan_status(
     Tenant-scoped read from the shared lifecycle store; an unknown id (or one
     owned by another tenant) returns ``404``. Never triggers a scan.
     """
-    from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore
-    from agent_bom.cloud.side_scan_targets import side_scan_state_db_path
+    from agent_bom.cloud.side_scan_lifecycle import get_side_scan_state_store
 
     tenant_id = _tenant(request)
     scoped_id = execution_id.strip()
@@ -1145,7 +1143,7 @@ async def cloud_side_scan_status(
         raise HTTPException(status_code=404, detail="Side-scan execution not found.")
 
     def _read() -> dict[str, Any] | None:
-        store = SQLiteSideScanStateStore(side_scan_state_db_path())
+        store = get_side_scan_state_store()
         record = store.get(tenant_id=tenant_id, execution_id=scoped_id)
         if record is None:
             return None

@@ -9,8 +9,9 @@ Security posture (non-negotiable):
 - Read-only toward customer targets: agent-bom snapshots the disk, mounts a temp
   copy on an in-account collector read-only, records SBOM + CVE + secret metadata
   only, and tears every owned temporary resource down.
-- Credentials are never accepted here; the executor resolves read-only
-  credentials from the provider's default chain (``credentialed_smoke=False``).
+- Credentials are never accepted here; the executor resolves separately scoped
+  lifecycle credentials from the provider's default chain
+  (``credentialed_smoke=False``).
 - Admin-gated destructive write at the dispatch layer (``cloud:write`` scope).
 - Fail-closed and honest: side-scan OFF → ``disabled``; missing provider extra /
   credentials → ``unavailable``; never a false clean-workload assertion.
@@ -53,8 +54,8 @@ async def cloud_side_scan_impl(
 ) -> str:
     """Run one Azure/GCP agentless disk side-scan through the shared executor."""
     from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
-    from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore, new_side_scan_execution
-    from agent_bom.cloud.side_scan_targets import run_provider_side_scan, side_scan_state_db_path
+    from agent_bom.cloud.side_scan_lifecycle import get_side_scan_state_store, new_side_scan_execution
+    from agent_bom.cloud.side_scan_targets import run_provider_side_scan
 
     resolved_tenant = resolve_mcp_tool_tenant_id(tenant_id)
     prov = provider.strip().lower()
@@ -134,7 +135,7 @@ async def cloud_side_scan_impl(
         logger.warning("MCP cloud_side_scan failed")
         return _truncate_response(json.dumps({"status": "error", "execution_id": execution_id, "error": sanitize_error(exc)}))
 
-    store = SQLiteSideScanStateStore(side_scan_state_db_path())
+    store = get_side_scan_state_store()
     record = store.get(tenant_id=resolved_tenant, execution_id=execution_id)
     payload = {
         "status": record.status.value if record is not None else "unknown",

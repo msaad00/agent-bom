@@ -210,6 +210,36 @@ def test_validate_policy_valid_fields_pass():
     )
 
 
+def test_validate_policy_rejects_unknown_expression_field():
+    """A misspelled expression field must fail at load time, never disable a rule."""
+    with pytest.raises(ValueError, match="Unknown field.*graph_rechable"):
+        _validate_policy(
+            {
+                "rules": [
+                    {
+                        "id": "reachable-critical",
+                        "condition": "graph_rechable == true",
+                        "action": "fail",
+                    }
+                ]
+            }
+        )
+
+
+def test_validate_policy_accepts_graph_reachability_condition():
+    _validate_policy(
+        {
+            "rules": [
+                {
+                    "id": "reachable-critical",
+                    "condition": "graph_reachable == true and severity >= HIGH",
+                    "action": "fail",
+                }
+            ]
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # _rule_matches
 # ---------------------------------------------------------------------------
@@ -633,8 +663,15 @@ class TestExpressionInRuleMatches:
         br2.risk_score = 3.0
         assert _rule_matches(rule, br2) is False
 
-    def test_invalid_expression_fails_safe(self):
+    def test_invalid_expression_cannot_silently_disable_rule(self):
         rule = {"id": "test", "condition": "@@invalid@@", "action": "fail"}
         br = _make_blast_radius()
-        # Invalid expression = doesn't match (fail-safe, not fail-open)
-        assert _rule_matches(rule, br) is False
+        with pytest.raises(ValueError, match="Invalid token"):
+            _rule_matches(rule, br)
+
+    @pytest.mark.parametrize(("reachable", "expected"), [(True, True), (False, False), (None, False)])
+    def test_graph_reachable_condition(self, reachable, expected):
+        rule = {"id": "reachable", "condition": "graph_reachable == true", "action": "fail"}
+        br = _make_blast_radius()
+        br.graph_reachable = reachable
+        assert _rule_matches(rule, br) is expected

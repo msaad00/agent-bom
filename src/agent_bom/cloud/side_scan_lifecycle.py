@@ -14,13 +14,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Mapping, cast
+from typing import Any, Iterator, Literal, Mapping, Protocol, cast
 
 SideScanProvider = Literal["aws", "azure", "gcp"]
 
@@ -545,6 +548,71 @@ class SideScanStateConflictError(RuntimeError):
     """Raised when a stale worker attempts to overwrite newer lifecycle state."""
 
 
+class SideScanStateStore(Protocol):
+    """Tenant-scoped lifecycle contract shared by every persistence backend."""
+
+    def create_or_get(self, record: SideScanExecutionRecord) -> SideScanExecutionRecord: ...
+
+    def get(self, *, tenant_id: str, execution_id: str) -> SideScanExecutionRecord | None: ...
+
+    def save(self, record: SideScanExecutionRecord, *, expected_version: int) -> None: ...
+
+    def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]: ...
+
+    def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]: ...
+
+
+class InMemorySideScanStateStore:
+    """Explicit ephemeral backend; never selected unless the operator opts out."""
+
+    def __init__(self) -> None:
+        self._records: dict[str, SideScanExecutionRecord] = {}
+        self._dedup: dict[tuple[str, str, str, str, str], str] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _key(record: SideScanExecutionRecord) -> tuple[str, str, str, str, str]:
+        return (record.tenant_id, record.provider, record.account_id, record.target_id, record.idempotency_key)
+
+    def create_or_get(self, record: SideScanExecutionRecord) -> SideScanExecutionRecord:
+        with self._lock:
+            existing_id = self._dedup.get(self._key(record))
+            if existing_id is not None:
+                return self._records[existing_id]
+            self._records[record.execution_id] = record
+            self._dedup[self._key(record)] = record.execution_id
+            return record
+
+    def get(self, *, tenant_id: str, execution_id: str) -> SideScanExecutionRecord | None:
+        with self._lock:
+            record = self._records.get(execution_id)
+            return record if record is not None and record.tenant_id == tenant_id else None
+
+    def save(self, record: SideScanExecutionRecord, *, expected_version: int) -> None:
+        if record.state_version != expected_version + 1:
+            raise SideScanStateConflictError("side-scan state version must advance by exactly one")
+        with self._lock:
+            current = self._records.get(record.execution_id)
+            if current is None or current.tenant_id != record.tenant_id or current.state_version != expected_version:
+                raise SideScanStateConflictError("side-scan execution was updated by another worker")
+            self._records[record.execution_id] = record
+
+    def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]:
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        with self._lock:
+            rows = [record for record in self._records.values() if record.tenant_id == tenant_id]
+        rows.sort(key=lambda record: (record.updated_at, record.execution_id), reverse=True)
+        return rows[:limit]
+
+    def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]:
+        due = {CleanupStatus.PENDING, CleanupStatus.IN_PROGRESS, CleanupStatus.PARTIAL}
+        candidates = self.list_recent(tenant_id=tenant_id, limit=max(limit, len(self._records) or 1))
+        rows = [record for record in candidates if record.cleanup_status in due]
+        rows.sort(key=lambda record: (record.updated_at, record.execution_id))
+        return rows[:limit]
+
+
 class SQLiteSideScanStateStore:
     """Tenant-scoped SQLite persistence for restart-safe execution state."""
 
@@ -694,6 +762,206 @@ class SQLiteSideScanStateStore:
             record.updated_at,
             _record_json(record),
         )
+
+
+class PostgresSideScanStateStore:
+    """Shared multi-replica lifecycle store with tenant RLS and CAS updates."""
+
+    table = "side_scan_execution_state"
+
+    def __init__(self, *, pool: Any | None = None) -> None:
+        if pool is None:
+            from agent_bom.api.postgres_common import _get_pool
+
+            pool = _get_pool()
+        self._pool = pool
+        self._initialize()
+
+    @contextmanager
+    def _tenant_connection(self, tenant_id: str) -> Iterator[Any]:
+        from agent_bom.api.postgres_common import _tenant_connection, reset_current_tenant, set_current_tenant
+
+        token = set_current_tenant(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as connection:
+                yield connection
+        finally:
+            reset_current_tenant(token)
+
+    def _initialize(self) -> None:
+        from agent_bom.api.postgres_common import _ensure_tenant_rls
+
+        with self._pool.connection() as connection:
+            connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("agent_bom.schema.side_scan_execution_state",))
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS side_scan_execution_state (
+                    execution_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    account_id TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    state_version INTEGER NOT NULL,
+                    cleanup_status TEXT NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    UNIQUE (tenant_id, provider, account_id, target_id, idempotency_key)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_side_scan_cleanup "
+                "ON side_scan_execution_state (tenant_id, cleanup_status, updated_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_side_scan_recent "
+                "ON side_scan_execution_state (tenant_id, updated_at DESC, execution_id DESC)"
+            )
+            _ensure_tenant_rls(connection, self.table, "tenant_id")
+            connection.commit()
+
+    @staticmethod
+    def _row_values(record: SideScanExecutionRecord) -> tuple[object, ...]:
+        return (
+            record.execution_id,
+            record.tenant_id,
+            record.provider,
+            record.account_id,
+            record.target_id,
+            record.idempotency_key,
+            record.state_version,
+            record.cleanup_status.value,
+            record.updated_at,
+            _record_json(record),
+        )
+
+    def create_or_get(self, record: SideScanExecutionRecord) -> SideScanExecutionRecord:
+        with self._tenant_connection(record.tenant_id) as connection:
+            connection.execute(
+                """
+                INSERT INTO side_scan_execution_state
+                    (execution_id, tenant_id, provider, account_id, target_id, idempotency_key,
+                     state_version, cleanup_status, updated_at, payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, provider, account_id, target_id, idempotency_key) DO NOTHING
+                """,
+                self._row_values(record),
+            )
+            row = connection.execute(
+                """
+                SELECT payload_json FROM side_scan_execution_state
+                WHERE tenant_id = %s AND provider = %s AND account_id = %s
+                  AND target_id = %s AND idempotency_key = %s
+                """,
+                (record.tenant_id, record.provider, record.account_id, record.target_id, record.idempotency_key),
+            ).fetchone()
+            connection.commit()
+        if row is None:
+            raise RuntimeError("side-scan lifecycle record could not be persisted")
+        return _record_from_json(str(row[0]))
+
+    def get(self, *, tenant_id: str, execution_id: str) -> SideScanExecutionRecord | None:
+        with self._tenant_connection(tenant_id) as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM side_scan_execution_state WHERE tenant_id = %s AND execution_id = %s",
+                (tenant_id, execution_id),
+            ).fetchone()
+        return _record_from_json(str(row[0])) if row is not None else None
+
+    def save(self, record: SideScanExecutionRecord, *, expected_version: int) -> None:
+        if record.state_version != expected_version + 1:
+            raise SideScanStateConflictError("side-scan state version must advance by exactly one")
+        with self._tenant_connection(record.tenant_id) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE side_scan_execution_state
+                SET state_version = %s, cleanup_status = %s, updated_at = %s, payload_json = %s
+                WHERE tenant_id = %s AND execution_id = %s AND state_version = %s
+                """,
+                (
+                    record.state_version,
+                    record.cleanup_status.value,
+                    record.updated_at,
+                    _record_json(record),
+                    record.tenant_id,
+                    record.execution_id,
+                    expected_version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                raise SideScanStateConflictError("side-scan execution was updated by another worker")
+            connection.commit()
+
+    def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]:
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        with self._tenant_connection(tenant_id) as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json FROM side_scan_execution_state
+                WHERE tenant_id = %s ORDER BY updated_at DESC, execution_id DESC LIMIT %s
+                """,
+                (tenant_id, limit),
+            ).fetchall()
+        return [_record_from_json(str(row[0])) for row in rows]
+
+    def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]:
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        with self._tenant_connection(tenant_id) as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json FROM side_scan_execution_state
+                WHERE tenant_id = %s AND cleanup_status IN (%s, %s, %s)
+                ORDER BY updated_at, execution_id LIMIT %s
+                """,
+                (
+                    tenant_id,
+                    CleanupStatus.PENDING.value,
+                    CleanupStatus.IN_PROGRESS.value,
+                    CleanupStatus.PARTIAL.value,
+                    limit,
+                ),
+            ).fetchall()
+        return [_record_from_json(str(row[0])) for row in rows]
+
+
+_default_side_scan_store: SideScanStateStore | None = None
+_default_side_scan_store_lock = threading.Lock()
+
+
+def get_side_scan_state_store(*, state_db_path: str | Path | None = None) -> SideScanStateStore:
+    """Resolve the shared lifecycle backend used by CLI, API, MCP, and scheduler."""
+    if state_db_path is not None:
+        return SQLiteSideScanStateStore(state_db_path)
+    explicit_path = os.environ.get("AGENT_BOM_SIDE_SCAN_STATE_DB", "").strip()
+    if explicit_path:
+        return SQLiteSideScanStateStore(Path(explicit_path).expanduser())
+
+    global _default_side_scan_store
+    with _default_side_scan_store_lock:
+        if _default_side_scan_store is not None:
+            return _default_side_scan_store
+        from agent_bom.api.durable_store import select_backend
+
+        backend = select_backend()
+        if backend == "postgres":
+            _default_side_scan_store = PostgresSideScanStateStore()
+        elif backend == "memory":
+            _default_side_scan_store = InMemorySideScanStateStore()
+        else:
+            state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", str(Path.home() / ".agent-bom")))
+            state_dir.mkdir(parents=True, exist_ok=True)
+            _default_side_scan_store = SQLiteSideScanStateStore(state_dir / "side_scan_state.db")
+        return _default_side_scan_store
+
+
+def reset_side_scan_state_store() -> None:
+    global _default_side_scan_store
+    with _default_side_scan_store_lock:
+        _default_side_scan_store = None
 
 
 def new_side_scan_execution(

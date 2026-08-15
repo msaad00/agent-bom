@@ -90,11 +90,37 @@ describe("CWPP side-scan page", () => {
       credentialed_smoke: false,
     });
     render(<CwppSideScanPage />);
-    await waitFor(() => expect(screen.getByText("Scan complete")).toBeInTheDocument());
-    expect(screen.getByText("Failed")).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Scan complete")).toBeInTheDocument();
+    expect(within(table).getByText("Failed")).toBeInTheDocument();
     // Metadata-only counts appear in the table.
-    const table = screen.getByRole("table");
     expect(within(table).getAllByText("42").length).toBeGreaterThan(0);
+  });
+
+  it("filters and paginates execution history", async () => {
+    const executions = Array.from({ length: 27 }, (_, index) =>
+      execution({
+        execution_id: `exec-${index}`,
+        provider: index === 26 ? "azure" : "gcp",
+        status: index === 25 ? "failed" : "scan_complete",
+      }),
+    );
+    apiMock.listSideScans.mockResolvedValue({
+      tenant_id: "tenant-acme",
+      executions,
+      capabilities: CAPABILITIES,
+      credentialed_smoke: false,
+    });
+    render(<CwppSideScanPage />);
+
+    expect(await screen.findAllByTestId("cwpp-execution-row")).toHaveLength(25);
+    expect(screen.getByText(/Page 1 of 2 \(27 executions\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    expect(screen.getAllByTestId("cwpp-execution-row")).toHaveLength(2);
+
+    fireEvent.change(screen.getByLabelText("Filter executions by provider"), { target: { value: "azure" } });
+    expect(screen.getAllByTestId("cwpp-execution-row")).toHaveLength(1);
+    expect(screen.getByText(/Page 1 of 1 \(1 executions\)/)).toBeInTheDocument();
   });
 
   it("shows an error state and retries on failure", async () => {

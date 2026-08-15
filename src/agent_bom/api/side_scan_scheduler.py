@@ -19,8 +19,8 @@ Design (deliberately thin — reuse, do not build a new subsystem):
   lifecycle (``time.sleep``); each target runs in a worker thread under a
   concurrency semaphore, mirroring how the HTTP route offloads it.
 * **Shared durable lifecycle store.** The scheduled path pre-creates the same
-  deterministic execution identity and reads back the same
-  :class:`SQLiteSideScanStateStore` record the CLI/API/UI read, so terminal
+  deterministic execution identity and reads back the same selected
+  :class:`SideScanStateStore` record the CLI/API/UI read, so terminal
   state is consistent across every surface — no false clean.
 * **Honest, fail-soft.** Disabled / unavailable / failed states stay explicit
   per target, and one failing target never sinks the others or the loop.
@@ -205,14 +205,14 @@ def run_scheduled_side_scan_once(
 
     Never raises. Honest terminal envelopes:
     - executor OFF (``AGENT_BOM_SIDESCAN`` unset) → ``status=disabled``
-    - provider extra / read-only creds unavailable → ``status=unavailable``
+    - provider extra / scoped lifecycle credentials unavailable → ``status=unavailable``
     - unexpected failure → ``status=failed`` (executor still ran teardown)
     - otherwise the durable lifecycle status (``scan_complete`` / ``partial`` /
       ``failed``) plus the cleanup flag from the executor result.
     """
     from agent_bom.cloud.side_scan import SideScanConfigError, SideScanDisabledError
-    from agent_bom.cloud.side_scan_lifecycle import SQLiteSideScanStateStore, new_side_scan_execution
-    from agent_bom.cloud.side_scan_targets import run_provider_side_scan, side_scan_state_db_path
+    from agent_bom.cloud.side_scan_lifecycle import get_side_scan_state_store, new_side_scan_execution
+    from agent_bom.cloud.side_scan_targets import run_provider_side_scan
 
     idem = target.idempotency_key or uuid.uuid4().hex
     execution_id = new_side_scan_execution(
@@ -246,8 +246,10 @@ def run_scheduled_side_scan_once(
         logger.exception("Scheduled side-scan failed for %s target %s", target.provider, target.target_id)
         return {**base, "status": "failed"}
 
-    resolved = state_db_path if state_db_path is not None else side_scan_state_db_path()
-    record = SQLiteSideScanStateStore(resolved).get(tenant_id=target.tenant_id, execution_id=execution_id)
+    record = get_side_scan_state_store(state_db_path=state_db_path).get(
+        tenant_id=target.tenant_id,
+        execution_id=execution_id,
+    )
     cleaned_up = bool(results) and all(getattr(r, "cleaned_up", False) for r in results)
     return {
         **base,

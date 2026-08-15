@@ -566,7 +566,7 @@ standard setups, **no new permission**.
 > is exposed through the CLI with `AGENT_BOM_SIDESCAN=1`. Azure Managed Disk
 > and GCP Persistent Disk lifecycle adapters run the same executor across the
 > CLI, REST, MCP, UI, and the opt-in scheduler auto-trigger, resolving
-> read-only credentials from the provider default chain. Each provider requires
+> separately scoped lifecycle credentials from the provider default chain. Each provider requires
 > a **separate, narrowly
 > scoped lifecycle role** distinct from the read-only scanner role:
 > `deploy/terraform/connect-aws-sidescan`,
@@ -610,7 +610,7 @@ already-authenticated SDK clients. Separate least-privilege Terraform modules
 grant the snapshot/temp-disk/collector lifecycle. Both providers now ship a CLI
 executor — `agent-bom cloud side-scan --provider azure|gcp` drives the same
 snapshot → temp-disk → collector-mount → SBOM/CVE/secret → guaranteed-cleanup
-lifecycle as AWS EBS, resolving read-only credentials from the provider's
+lifecycle as AWS EBS, resolving scoped snapshot/temp-disk credentials from the provider's
 default chain (never embedded). No live credentialed smoke is claimed for any
 provider yet (`credentialed_smoke=false`). An opt-in scheduler auto-trigger
 re-runs the same executor for each configured target on a cadence — off unless
@@ -624,7 +624,8 @@ state. A scan is complete only after owned temporary resources are deleted;
 zero findings are scoped to the scanned disk and never assert that a workload is
 clean. Snapshot operations remain opt-in because they are not read-only.
 `side_scan_lifecycle.py` supplies the versioned records, deterministic ownership
-tags, stale-worker protection, and a tenant-scoped SQLite state store. The
+tags, stale-worker protection, and tenant-scoped SQLite or Postgres lifecycle
+persistence (with ephemeral memory only by explicit opt-out). The
 injected-SDK adapters consume that state; the `side-scan --provider azure|gcp`
 CLI executor (`run_provider_side_scan`) drives them, and the opt-in scheduler
 loop (`api/side_scan_scheduler.py`) re-runs configured targets on a cadence

@@ -1332,11 +1332,11 @@ jobs:
         needs.changes.outputs.alpine == 'true'
       )
     runs-on: ubuntu-latest
-    # Version and dependency changes run the full suite under musl. The
-    # The 0.98.4 stabilization baseline completed the tests at 34m51s, then the
-    # previous 35-minute ceiling canceled action cleanup and falsely marked the
-    # passing job red. Keep a finite budget with cleanup and runner-variance
-    # headroom so CI reports the actual test result.
+    # Version and dependency changes run the full suite under musl. The serial
+    # suite reached only 82% at the 45-minute ceiling as the repository grew.
+    # Use two workers: bounded parallelism recovers wall time while staying
+    # below the four-worker hosted-runner OOM threshold documented above.
+    # Keep a finite timeout so a genuinely hung run releases the runner.
     timeout-minutes: 45
     permissions:
       contents: read
@@ -1391,7 +1391,7 @@ jobs:
         run: |
           set -euxo pipefail
           if [ "${ALPINE_FULL}" = "true" ]; then
-            uv run pytest tests/ -q --tb=short -m "not network and not slow" -x --durations=20
+            uv run pytest tests/ -q --tb=short -m "not network and not slow" -x --durations=20 -n 2 --dist worksteal
           else
             uv run pytest -q --tb=short -m "not network and not slow" --durations=20 \
               tests/api/test_api_auth_me.py \

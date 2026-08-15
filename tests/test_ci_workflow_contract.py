@@ -135,6 +135,16 @@ def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:
     assert _ci()["jobs"]["test-alpine"]["timeout-minutes"] == 45
 
 
+def test_alpine_full_suite_uses_bounded_parallelism() -> None:
+    """The musl full suite must finish without overcommitting the hosted runner."""
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    alpine = text.split("      - name: Run tests (musl)", 1)[1].split("  # 3c. PR Base Branch Guard", 1)[0]
+    full_suite = next(line.strip() for line in alpine.splitlines() if "uv run pytest tests/" in line)
+
+    assert "-n 2" in full_suite
+    assert "--dist worksteal" in full_suite
+
+
 def test_pull_request_pytest_reports_slowest_tests() -> None:
     """PR runs surface the slowest tests so timeout regressions have evidence."""
     text = CI_WORKFLOW.read_text(encoding="utf-8")

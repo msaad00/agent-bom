@@ -811,8 +811,7 @@ class PostgresSideScanStateStore:
                 """
             )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_side_scan_cleanup "
-                "ON side_scan_execution_state (tenant_id, cleanup_status, updated_at)"
+                "CREATE INDEX IF NOT EXISTS idx_side_scan_cleanup ON side_scan_execution_state (tenant_id, cleanup_status, updated_at)"
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_side_scan_recent "

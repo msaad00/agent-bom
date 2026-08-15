@@ -340,8 +340,7 @@ def _default_provider_clients(provider: str, *, account_id: str, region: str | N
         except Exception as exc:  # noqa: BLE001 - sanitized, actionable, no secret leakage
             detail = sanitize_text(exc)
             raise SideScanConfigError(
-                f"Azure Managed Disk side-scan could not resolve scoped lifecycle credentials "
-                f"for the collector subscription: {detail}"
+                f"Azure Managed Disk side-scan could not resolve scoped lifecycle credentials for the collector subscription: {detail}"
             ) from exc
         return {
             "snapshots_client": client.snapshots,

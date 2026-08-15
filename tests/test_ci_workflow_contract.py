@@ -121,12 +121,13 @@ def test_path_gated_jobs_remain_cancellable() -> None:
 
 
 def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
-    """25 minutes keeps ~40% headroom over the ~17.6 min worst case seen on main.
+    """Keep bounded headroom over the Python 3.11 coverage lane on main.
 
-    A 35-minute ceiling let a hung suite burn a runner for another quarter hour
-    before anyone saw it.
+    The coverage lane reached the former 25-minute ceiling twice at
+    ``cd43aadee`` while the 3.13 and 3.14 lanes completed successfully. A
+    35-minute ceiling preserves a hard bound while allowing normal suite growth.
     """
-    assert _ci()["jobs"]["test"]["timeout-minutes"] == 25
+    assert _ci()["jobs"]["test"]["timeout-minutes"] == 35
 
 
 def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:

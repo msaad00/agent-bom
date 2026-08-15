@@ -898,9 +898,11 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    # Observed worst case is ~17.6 minutes on the slowest matrix leg; 25 keeps
-    # real headroom while surfacing a hung suite well before a 35-minute burn.
-    timeout-minutes: 25
+    # The Python 3.11 main-push lane also collects coverage and reached the
+    # former 25-minute ceiling twice at cd43aadee while 3.13/3.14 completed.
+    # Keep a bounded 35-minute budget so normal suite growth can finish while
+    # a genuinely hung run still releases the hosted runner promptly.
+    timeout-minutes: 35
     permissions:
       contents: read
     needs: changes

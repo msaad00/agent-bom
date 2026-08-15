@@ -878,7 +878,7 @@ class SQLiteSideScanStateStore:
                 )
                 SELECT page.payload_json, totals.total
                 FROM (SELECT COUNT(*) AS total FROM filtered) AS totals
-                LEFT JOIN page ON 1 = 1""",  # noqa: S608 - where clauses are fixed literals
+                LEFT JOIN page ON 1 = 1""",  # nosec B608  # noqa: S608
                 (*params, limit, offset),
             ).fetchall()
         total = int(rows[0]["total"]) if rows else 0
@@ -896,7 +896,7 @@ class SQLiteSideScanStateStore:
         where, params = self._page_where(tenant_id=tenant_id, provider=provider, status=status, query=query)
         with self._connect() as connection:
             row = connection.execute(
-                f"SELECT COUNT(*) AS total FROM side_scan_execution_state WHERE {where}",  # noqa: S608 - fixed clauses
+                f"SELECT COUNT(*) AS total FROM side_scan_execution_state WHERE {where}",  # nosec B608  # noqa: S608
                 params,
             ).fetchone()
         return int(row["total"]) if row is not None else 0
@@ -1132,7 +1132,7 @@ class PostgresSideScanStateStore:
                 )
                 SELECT page.payload_json, totals.total
                 FROM (SELECT COUNT(*) AS total FROM filtered) AS totals
-                LEFT JOIN page ON TRUE""",  # noqa: S608 - where clauses are fixed literals
+                LEFT JOIN page ON TRUE""",  # nosec B608  # noqa: S608
                 (*params, limit, offset),
             ).fetchall()
         total = int(rows[0][1]) if rows else 0
@@ -1150,7 +1150,7 @@ class PostgresSideScanStateStore:
         where, params = self._page_where(tenant_id=tenant_id, provider=provider, status=status, query=query)
         with self._tenant_connection(tenant_id) as connection:
             row = connection.execute(
-                f"SELECT COUNT(*) FROM side_scan_execution_state WHERE {where}",  # noqa: S608 - fixed clauses
+                f"SELECT COUNT(*) FROM side_scan_execution_state WHERE {where}",  # nosec B608  # noqa: S608
                 params,
             ).fetchone()
         return int(row[0]) if row is not None else 0

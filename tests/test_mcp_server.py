@@ -78,6 +78,26 @@ def test_create_mcp_server_returns_object():
     assert server.name == "agent-bom"
 
 
+def test_create_mcp_server_rebuilds_sdk_settings_before_initialization(monkeypatch) -> None:
+    """Avoid pydantic-settings incomplete-forward-reference warnings at startup."""
+    from mcp.server.fastmcp.server import Settings
+
+    from agent_bom.mcp_server import create_mcp_server
+
+    calls = 0
+    original = Settings.model_rebuild
+
+    def _rebuild(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(Settings, "model_rebuild", _rebuild)
+    create_mcp_server()
+
+    assert calls == 1
+
+
 def test_mcp_server_has_correct_tool_count():
     """Server registers the same number of tools as _SERVER_CARD_TOOLS declares."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server

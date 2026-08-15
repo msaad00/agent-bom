@@ -108,6 +108,9 @@ class CloudSideScanExecutionResult:
     target_id: str
     account_id: str
     location: str
+    execution_id: str = ""
+    execution_status: str = ""
+    cleanup_status: str = ""
     snapshot_id: str | None = None
     scan_disk_id: str | None = None
     packages: list[Package] = field(default_factory=list)
@@ -125,6 +128,9 @@ class CloudSideScanExecutionResult:
             "target_id": self.target_id,
             "account_id": self.account_id,
             "location": self.location,
+            "execution_id": self.execution_id,
+            "execution_status": self.execution_status,
+            "cleanup_status": self.cleanup_status,
             "snapshot_id": self.snapshot_id,
             "scan_disk_id": self.scan_disk_id,
             "package_count": len(self.packages),
@@ -254,6 +260,11 @@ async def run_cloud_side_scan_targets(
             account_id=target.account_id,
             location=target.location,
         )
+        persisted_execution = getattr(lifecycle, "execution", None)
+        if persisted_execution is not None:
+            result.execution_id = str(getattr(persisted_execution, "execution_id", ""))
+            result.execution_status = str(getattr(getattr(persisted_execution, "status", None), "value", ""))
+            result.cleanup_status = str(getattr(getattr(persisted_execution, "cleanup_status", None), "value", ""))
         mount_point: Path | None = None
         scan_disk_id = ""
         try:
@@ -291,6 +302,9 @@ async def run_cloud_side_scan_targets(
             if callable(persisted_cleanup):
                 try:
                     execution = persisted_cleanup(target, collector_id)
+                    result.execution_id = str(getattr(execution, "execution_id", result.execution_id))
+                    result.execution_status = str(getattr(getattr(execution, "status", None), "value", result.execution_status))
+                    result.cleanup_status = str(getattr(getattr(execution, "cleanup_status", None), "value", result.cleanup_status))
                     result.warnings.extend(str(code) for code in getattr(execution, "warning_codes", ()) if code)
                     result.cleaned_up = getattr(getattr(execution, "cleanup_status", None), "value", "") == "complete"
                 except Exception as exc:  # noqa: BLE001
@@ -311,6 +325,7 @@ async def run_cloud_side_scan_targets(
                     except Exception as exc:  # noqa: BLE001
                         result.warnings.append(f"delete snapshot failed: {sanitize_text(exc)}")
                 result.cleaned_up = not result.warnings
+                result.cleanup_status = "complete" if result.cleaned_up else "partial"
             if result.warnings:
                 result.cleaned_up = False
         results.append(result)

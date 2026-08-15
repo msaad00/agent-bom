@@ -155,6 +155,12 @@ def create_fastmcp_server(
     """Create the FastMCP server with optional static bearer auth."""
     from mcp.server.auth.settings import AuthSettings
     from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp.server import Settings
+
+    # mcp 1.29 can leave the generic lifespan annotation unresolved under
+    # pydantic-settings 2.15. Rebuild once before Settings is instantiated so
+    # startup is warning-free and every settings source sees complete metadata.
+    Settings.model_rebuild()
 
     auth_settings = None
     token_verifier = None

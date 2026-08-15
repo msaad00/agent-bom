@@ -123,6 +123,15 @@ class AgentBomClient:
 
         return self._request("GET", "/v1/campaigns")
 
+    def campaign_verification_queue(self, *, cursor: str | None = None, limit: int = 100) -> JsonObject:
+        """List one bounded page of inactive campaigns awaiting verification."""
+
+        return self._request(
+            "GET",
+            "/v1/campaigns/verification-queue",
+            params=_strip_query_none({"cursor": cursor, "limit": limit}),
+        )
+
     def update_campaign(
         self,
         campaign_id: str,

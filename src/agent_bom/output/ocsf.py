@@ -182,6 +182,16 @@ def finding_to_ocsf(finding: "Finding", product_version: str = "") -> dict[str, 
         "exposed_credentials": list(finding.exposed_credentials),
         "exposed_tools": list(finding.exposed_tools),
     }
+    if finding.owner:
+        unmapped["owner"] = finding.owner
+    sla_due = finding.to_dict().get("sla_due_at")
+    if sla_due:
+        unmapped["sla_due_at"] = sla_due
+    from agent_bom.output.finding_views import workflow_status
+
+    status_value = workflow_status(finding)
+    if status_value:
+        unmapped["workflow_status"] = status_value
     if ai_context:
         unmapped["ai_context"] = ai_context
     if suppression:

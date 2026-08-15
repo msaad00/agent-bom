@@ -82,6 +82,7 @@ def to_spdx(report: AIBOMReport) -> dict:
 
     pkg_ref_map: dict[str, str] = {}
     vuln_compliance_tags = _finding_compliance_tags(report)
+    vuln_workflow = _finding_workflow_metadata(report)
 
     for agent in report.agents:
         agent_id = _next_id("SPDXRef-Agent")
@@ -254,6 +255,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                         vuln_element_id,
                         compliance_tags=vuln_compliance_tags.get(_vulnerability_key(pkg, vuln), []),
                         observed_at=report.generated_at.isoformat(),
+                        workflow=vuln_workflow.get(_vulnerability_key(pkg, vuln)),
                     )
                     if vuln_annotations:
                         vuln_element["annotation"] = vuln_annotations
@@ -329,6 +331,7 @@ def _vulnerability_annotations(
     *,
     compliance_tags: list[str] | None = None,
     observed_at: str | None = None,
+    workflow: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     """Encode non-core vulnerability enrichments as SPDX annotations.
 
@@ -351,9 +354,15 @@ def _vulnerability_annotations(
     from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
 
     _severity_value = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
-    sla_due = _compute_sla_due_at(_severity_value, observed_at, kev_due_date=vuln.kev_due_date)
+    workflow_data = workflow or {}
+    explicit_sla = workflow_data.get("sla_due_at")
+    sla_due = explicit_sla or _compute_sla_due_at(_severity_value, observed_at, kev_due_date=vuln.kev_due_date)
     if sla_due is not None:
         statements.append(f"agent-bom:sla-due-at={sla_due}")
+    if workflow_data.get("owner"):
+        statements.append(f"agent-bom:owner={workflow_data['owner']}")
+    if workflow_data.get("workflow_status"):
+        statements.append(f"agent-bom:workflow-status={workflow_data['workflow_status']}")
     for cwe_id in vuln.cwe_ids:
         statements.append(f"agent-bom:cwe={cwe_id}")
     compliance_statements = [*list(compliance_tags or []), *_vulnerability_compliance_tags(vuln)]
@@ -400,6 +409,26 @@ def _finding_compliance_tags(report: AIBOMReport) -> dict[tuple[str, str, str | 
         tags = framework_qualified_finding_tags(finding)
         if tags:
             by_vuln[(package_ecosystem(finding), package_name(finding), package_version(finding), vuln_id)] = tags
+    return by_vuln
+
+
+def _finding_workflow_metadata(report: AIBOMReport) -> dict[tuple[str, str, str | None, str], dict[str, str]]:
+    """Return persisted owner/SLA/state keyed by package vulnerability."""
+    from agent_bom.output.finding_views import workflow_status
+
+    by_vuln: dict[tuple[str, str, str | None, str], dict[str, str]] = {}
+    for finding in cve_findings(report):
+        metadata: dict[str, str] = {}
+        if finding.owner:
+            metadata["owner"] = finding.owner
+        sla_due = finding.to_dict().get("sla_due_at")
+        if sla_due:
+            metadata["sla_due_at"] = str(sla_due)
+        status = workflow_status(finding)
+        if status:
+            metadata["workflow_status"] = status
+        if metadata:
+            by_vuln[(package_ecosystem(finding), package_name(finding), package_version(finding), finding.cve_id or finding.id)] = metadata
     return by_vuln
 
 

@@ -12606,6 +12606,83 @@
             }
           },
           {
+            "description": "Zero-based execution offset.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Zero-based execution offset.",
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional provider filter.",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "aws",
+                    "azure",
+                    "gcp"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional provider filter.",
+              "title": "Provider"
+            }
+          },
+          {
+            "description": "Optional lifecycle status filter.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "scan_complete",
+                    "partial",
+                    "disabled",
+                    "denied",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional lifecycle status filter.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Optional target, account, or execution-id search.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional target, account, or execution-id search.",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Agent-Bom-Role",
             "required": false,

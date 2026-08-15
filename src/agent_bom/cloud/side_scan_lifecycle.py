@@ -559,6 +559,37 @@ class SideScanStateStore(Protocol):
 
     def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]: ...
 
+    def list_page(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> list[SideScanExecutionRecord]: ...
+
+    def list_page_with_total(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> tuple[list[SideScanExecutionRecord], int]: ...
+
+    def count(
+        self,
+        *,
+        tenant_id: str,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> int: ...
+
     def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]: ...
 
 
@@ -598,12 +629,80 @@ class InMemorySideScanStateStore:
             self._records[record.execution_id] = record
 
     def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]:
-        if limit < 1:
-            raise ValueError("limit must be at least 1")
+        return self.list_page(tenant_id=tenant_id, limit=limit, offset=0)
+
+    def _filtered(
+        self,
+        *,
+        tenant_id: str,
+        provider: str | None,
+        status: str | None,
+        query: str,
+    ) -> list[SideScanExecutionRecord]:
+        needle = query.strip().lower()
         with self._lock:
-            rows = [record for record in self._records.values() if record.tenant_id == tenant_id]
+            rows = [
+                record
+                for record in self._records.values()
+                if record.tenant_id == tenant_id
+                and (provider is None or record.provider == provider)
+                and (status is None or record.status.value == status)
+                and (
+                    not needle
+                    or needle in record.target_id.lower()
+                    or needle in record.account_id.lower()
+                    or needle in record.execution_id.lower()
+                )
+            ]
         rows.sort(key=lambda record: (record.updated_at, record.execution_id), reverse=True)
-        return rows[:limit]
+        return rows
+
+    def list_page(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> list[SideScanExecutionRecord]:
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be at least 1 and offset cannot be negative")
+        rows, _total = self.list_page_with_total(
+            tenant_id=tenant_id,
+            limit=limit,
+            offset=offset,
+            provider=provider,
+            status=status,
+            query=query,
+        )
+        return rows
+
+    def list_page_with_total(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> tuple[list[SideScanExecutionRecord], int]:
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be at least 1 and offset cannot be negative")
+        rows = self._filtered(tenant_id=tenant_id, provider=provider, status=status, query=query)
+        return rows[offset : offset + limit], len(rows)
+
+    def count(
+        self,
+        *,
+        tenant_id: str,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> int:
+        return len(self._filtered(tenant_id=tenant_id, provider=provider, status=status, query=query))
 
     def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]:
         due = {CleanupStatus.PENDING, CleanupStatus.IN_PROGRESS, CleanupStatus.PARTIAL}
@@ -646,6 +745,10 @@ class SQLiteSideScanStateStore:
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_side_scan_cleanup ON side_scan_execution_state (tenant_id, cleanup_status, updated_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_side_scan_recent "
+                "ON side_scan_execution_state (tenant_id, updated_at DESC, execution_id DESC)"
             )
 
     def create_or_get(self, record: SideScanExecutionRecord) -> SideScanExecutionRecord:
@@ -712,19 +815,91 @@ class SQLiteSideScanStateStore:
         Bounded read for surfacing execution status/history on the API and UI
         without crossing the tenant boundary. Never returns another tenant's rows.
         """
-        if limit < 1:
-            raise ValueError("limit must be at least 1")
+        return self.list_page(tenant_id=tenant_id, limit=limit, offset=0)
+
+    @staticmethod
+    def _page_where(*, tenant_id: str, provider: str | None, status: str | None, query: str) -> tuple[str, list[object]]:
+        clauses = ["tenant_id = ?"]
+        params: list[object] = [tenant_id]
+        if provider is not None:
+            clauses.append("provider = ?")
+            params.append(provider)
+        if status is not None:
+            clauses.append("json_extract(payload_json, '$.status') = ?")
+            params.append(status)
+        if query.strip():
+            pattern = f"%{query.strip().lower()}%"
+            clauses.append("(lower(target_id) LIKE ? OR lower(account_id) LIKE ? OR lower(execution_id) LIKE ?)")
+            params.extend((pattern, pattern, pattern))
+        return " AND ".join(clauses), params
+
+    def list_page(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> list[SideScanExecutionRecord]:
+        rows, _total = self.list_page_with_total(
+            tenant_id=tenant_id,
+            limit=limit,
+            offset=offset,
+            provider=provider,
+            status=status,
+            query=query,
+        )
+        return rows
+
+    def list_page_with_total(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> tuple[list[SideScanExecutionRecord], int]:
+        """Return one page and its count from the same SQLite statement snapshot."""
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be at least 1 and offset cannot be negative")
+        where, params = self._page_where(tenant_id=tenant_id, provider=provider, status=status, query=query)
         with self._connect() as connection:
             rows = connection.execute(
-                """
-                SELECT payload_json FROM side_scan_execution_state
-                WHERE tenant_id = ?
-                ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ?
-                """,
-                (tenant_id, limit),
+                f"""WITH filtered AS (
+                    SELECT payload_json, updated_at, execution_id
+                    FROM side_scan_execution_state WHERE {where}
+                ), page AS (
+                    SELECT payload_json FROM filtered
+                    ORDER BY updated_at DESC, execution_id DESC LIMIT ? OFFSET ?
+                )
+                SELECT page.payload_json, totals.total
+                FROM (SELECT COUNT(*) AS total FROM filtered) AS totals
+                LEFT JOIN page ON 1 = 1""",  # noqa: S608 - where clauses are fixed literals
+                (*params, limit, offset),
             ).fetchall()
-        return [_record_from_json(str(row["payload_json"])) for row in rows]
+        total = int(rows[0]["total"]) if rows else 0
+        records = [_record_from_json(str(row["payload_json"])) for row in rows if row["payload_json"] is not None]
+        return records, total
+
+    def count(
+        self,
+        *,
+        tenant_id: str,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> int:
+        where, params = self._page_where(tenant_id=tenant_id, provider=provider, status=status, query=query)
+        with self._connect() as connection:
+            row = connection.execute(
+                f"SELECT COUNT(*) AS total FROM side_scan_execution_state WHERE {where}",  # noqa: S608 - fixed clauses
+                params,
+            ).fetchone()
+        return int(row["total"]) if row is not None else 0
 
     def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]:
         """Return bounded retry work for incomplete cleanup in one tenant."""
@@ -894,17 +1069,91 @@ class PostgresSideScanStateStore:
             connection.commit()
 
     def list_recent(self, *, tenant_id: str, limit: int = 50) -> list[SideScanExecutionRecord]:
-        if limit < 1:
-            raise ValueError("limit must be at least 1")
+        return self.list_page(tenant_id=tenant_id, limit=limit, offset=0)
+
+    @staticmethod
+    def _page_where(*, tenant_id: str, provider: str | None, status: str | None, query: str) -> tuple[str, list[object]]:
+        clauses = ["tenant_id = %s"]
+        params: list[object] = [tenant_id]
+        if provider is not None:
+            clauses.append("provider = %s")
+            params.append(provider)
+        if status is not None:
+            clauses.append("payload_json::jsonb ->> 'status' = %s")
+            params.append(status)
+        if query.strip():
+            pattern = f"%{query.strip()}%"
+            clauses.append("(target_id ILIKE %s OR account_id ILIKE %s OR execution_id ILIKE %s)")
+            params.extend((pattern, pattern, pattern))
+        return " AND ".join(clauses), params
+
+    def list_page(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> list[SideScanExecutionRecord]:
+        rows, _total = self.list_page_with_total(
+            tenant_id=tenant_id,
+            limit=limit,
+            offset=offset,
+            provider=provider,
+            status=status,
+            query=query,
+        )
+        return rows
+
+    def list_page_with_total(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        offset: int,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> tuple[list[SideScanExecutionRecord], int]:
+        """Return one page and its count from the same Postgres statement snapshot."""
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be at least 1 and offset cannot be negative")
+        where, params = self._page_where(tenant_id=tenant_id, provider=provider, status=status, query=query)
         with self._tenant_connection(tenant_id) as connection:
             rows = connection.execute(
-                """
-                SELECT payload_json FROM side_scan_execution_state
-                WHERE tenant_id = %s ORDER BY updated_at DESC, execution_id DESC LIMIT %s
-                """,
-                (tenant_id, limit),
+                f"""WITH filtered AS (
+                    SELECT payload_json, updated_at, execution_id
+                    FROM side_scan_execution_state WHERE {where}
+                ), page AS (
+                    SELECT payload_json FROM filtered
+                    ORDER BY updated_at DESC, execution_id DESC LIMIT %s OFFSET %s
+                )
+                SELECT page.payload_json, totals.total
+                FROM (SELECT COUNT(*) AS total FROM filtered) AS totals
+                LEFT JOIN page ON TRUE""",  # noqa: S608 - where clauses are fixed literals
+                (*params, limit, offset),
             ).fetchall()
-        return [_record_from_json(str(row[0])) for row in rows]
+        total = int(rows[0][1]) if rows else 0
+        records = [_record_from_json(str(row[0])) for row in rows if row[0] is not None]
+        return records, total
+
+    def count(
+        self,
+        *,
+        tenant_id: str,
+        provider: str | None = None,
+        status: str | None = None,
+        query: str = "",
+    ) -> int:
+        where, params = self._page_where(tenant_id=tenant_id, provider=provider, status=status, query=query)
+        with self._tenant_connection(tenant_id) as connection:
+            row = connection.execute(
+                f"SELECT COUNT(*) FROM side_scan_execution_state WHERE {where}",  # noqa: S608 - fixed clauses
+                params,
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
 
     def list_cleanup_due(self, *, tenant_id: str, limit: int = 100) -> list[SideScanExecutionRecord]:
         if limit < 1:

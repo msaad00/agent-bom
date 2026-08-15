@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FolderTree, GitBranch, Info } from "lucide-react";
+import { CheckCircle2, Download, FolderTree, GitBranch, Info } from "lucide-react";
 
 import type { ScanResult } from "@/lib/api-types";
 import {
@@ -14,10 +14,14 @@ export function RepoScanOverviewPanel({
   scanId,
   repoUrl,
   result,
+  artifactLabel,
+  onDownloadArtifact,
 }: {
   scanId: string;
   repoUrl: string;
   result: ScanResult;
+  artifactLabel: string;
+  onDownloadArtifact: () => void;
 }) {
   const surfaces = deriveRepoSurfaceEvidence(result);
   const foundCount = surfaces.filter(
@@ -44,13 +48,6 @@ export function RepoScanOverviewPanel({
             app testing.
           </p>
         </div>
-        <Link
-          href={repoGraphHref(scanId)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/40 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 hover:border-emerald-500/50"
-        >
-          <GitBranch className="h-3.5 w-3.5" />
-          Open folder graph
-        </Link>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -58,6 +55,40 @@ export function RepoScanOverviewPanel({
         <Mini label="Directories" value={stats.directories != null ? String(stats.directories) : "—"} />
         <Mini label="Packages" value={stats.packages != null ? String(stats.packages) : "—"} />
         <Mini label="Lockfiles" value={stats.lockfiles != null ? String(stats.lockfiles) : "—"} />
+      </div>
+
+      <div className="mt-4" aria-labelledby="repo-evidence-journey-heading">
+        <h3 id="repo-evidence-journey-heading" className="text-xs font-semibold text-[color:var(--foreground)]">
+          Repository evidence journey
+        </h3>
+        <ol className="mt-2 grid gap-2 md:grid-cols-3">
+          <li className="flex min-h-16 items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-500/10 px-3 py-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+            <div>
+              <p className="text-xs font-semibold text-[color:var(--foreground)]">1. Scan complete</p>
+              <p className="text-[10px] text-[color:var(--text-secondary)]">Static evidence collected</p>
+            </div>
+          </li>
+          <li className="flex min-h-16 items-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+            <button
+              type="button"
+              onClick={onDownloadArtifact}
+              className="inline-flex items-center gap-2 text-left text-xs font-semibold text-cyan-800 transition hover:text-cyan-600 dark:text-cyan-200 dark:hover:text-cyan-100"
+            >
+              <Download className="h-4 w-4 shrink-0" />
+              Download {artifactLabel}
+            </button>
+          </li>
+          <li className="flex min-h-16 items-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+            <Link
+              href={repoGraphHref(scanId)}
+              className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-700 transition hover:text-emerald-600 dark:text-emerald-200 dark:hover:text-emerald-100"
+            >
+              <GitBranch className="h-4 w-4 shrink-0" />
+              Explore repository context graph
+            </Link>
+          </li>
+        </ol>
       </div>
 
       <div className="mt-4">

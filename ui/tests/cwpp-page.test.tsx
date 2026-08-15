@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import CwppSideScanPage from "@/app/cwpp/page";
@@ -56,6 +56,14 @@ function execution(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   authState.capabilities = ["scan.run"];
   apiMock.listSideScans.mockReset();
@@ -63,6 +71,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -74,6 +83,8 @@ describe("CWPP side-scan page", () => {
     expect(screen.getByText("azure-managed-disk")).toBeInTheDocument();
     expect(screen.getByText("gcp-persistent-disk")).toBeInTheDocument();
     expect(screen.getByText(/credentialed_smoke=false/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Run a side-scan" }).closest("form")).toHaveClass("min-w-0");
+    expect(screen.getByRole("heading", { name: "Headless equivalent (CLI)" }).parentElement).toHaveClass("min-w-0");
   });
 
   it("shows an empty state when there are no executions", async () => {
@@ -105,22 +116,94 @@ describe("CWPP side-scan page", () => {
         status: index === 25 ? "failed" : "scan_complete",
       }),
     );
-    apiMock.listSideScans.mockResolvedValue({
-      tenant_id: "tenant-acme",
-      executions,
-      capabilities: CAPABILITIES,
-      credentialed_smoke: false,
-    });
+    apiMock.listSideScans
+      .mockResolvedValueOnce({
+        tenant_id: "tenant-acme",
+        executions: executions.slice(0, 25),
+        page: { limit: 25, offset: 0, returned: 25, total: 27, has_more: true, completeness: "complete" },
+        capabilities: CAPABILITIES,
+        credentialed_smoke: false,
+      })
+      .mockResolvedValueOnce({
+        tenant_id: "tenant-acme",
+        executions: executions.slice(25),
+        page: { limit: 25, offset: 25, returned: 2, total: 27, has_more: false, completeness: "complete" },
+        capabilities: CAPABILITIES,
+        credentialed_smoke: false,
+      })
+      .mockResolvedValueOnce({
+        tenant_id: "tenant-acme",
+        executions: [executions[26]],
+        page: { limit: 25, offset: 0, returned: 1, total: 1, has_more: false, completeness: "complete" },
+        capabilities: CAPABILITIES,
+        credentialed_smoke: false,
+      });
     render(<CwppSideScanPage />);
 
     expect(await screen.findAllByTestId("cwpp-execution-row")).toHaveLength(25);
     expect(screen.getByText(/Page 1 of 2 \(27 executions\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Next/i }));
-    expect(screen.getAllByTestId("cwpp-execution-row")).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId("cwpp-execution-row")).toHaveLength(2));
+    expect(apiMock.listSideScans).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 25, offset: 25 }));
 
     fireEvent.change(screen.getByLabelText("Filter executions by provider"), { target: { value: "azure" } });
-    expect(screen.getAllByTestId("cwpp-execution-row")).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByTestId("cwpp-execution-row")).toHaveLength(1));
+    expect(apiMock.listSideScans).toHaveBeenLastCalledWith(expect.objectContaining({ provider: "azure", offset: 0 }));
     expect(screen.getByText(/Page 1 of 1 \(1 executions\)/)).toBeInTheDocument();
+  });
+
+  it("keeps the newest filtered response when an older request resolves last", async () => {
+    const stale = deferred<ReturnType<typeof responseWithExecutions>>();
+    const latest = deferred<ReturnType<typeof responseWithExecutions>>();
+    apiMock.listSideScans
+      .mockResolvedValueOnce(responseWithExecutions([execution({ target_id: "disks/initial" })]))
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(latest.promise);
+
+    render(<CwppSideScanPage />);
+    expect(await screen.findByText("initial")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter executions by provider"), { target: { value: "azure" } });
+    await waitFor(() => expect(apiMock.listSideScans).toHaveBeenCalledTimes(2));
+    fireEvent.change(screen.getByLabelText("Filter executions by status"), { target: { value: "failed" } });
+    await waitFor(() => expect(apiMock.listSideScans).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      latest.resolve(responseWithExecutions([execution({ target_id: "disks/latest", provider: "azure", status: "failed" })]));
+      await latest.promise;
+    });
+    expect(await screen.findByText("latest")).toBeInTheDocument();
+
+    await act(async () => {
+      stale.resolve(responseWithExecutions([execution({ target_id: "disks/stale", provider: "azure" })]));
+      await stale.promise;
+    });
+    expect(screen.getByText("latest")).toBeInTheDocument();
+    expect(screen.queryByText("stale")).not.toBeInTheDocument();
+  });
+
+  it("debounces target/account query changes before requesting the server", async () => {
+    apiMock.listSideScans.mockResolvedValue(responseWithExecutions([]));
+    render(<CwppSideScanPage />);
+    expect(await screen.findByText("No side-scan executions yet")).toBeInTheDocument();
+    expect(apiMock.listSideScans).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    const query = screen.getByLabelText("Filter executions by target or account");
+    fireEvent.change(query, { target: { value: "prod" } });
+    fireEvent.change(query, { target: { value: "prod-db" } });
+    expect(apiMock.listSideScans).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(249);
+    });
+    expect(apiMock.listSideScans).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(apiMock.listSideScans).toHaveBeenCalledTimes(2);
+    expect(apiMock.listSideScans).toHaveBeenLastCalledWith(expect.objectContaining({ query: "prod-db", offset: 0 }));
   });
 
   it("shows an error state and retries on failure", async () => {
@@ -179,3 +262,20 @@ describe("CWPP side-scan page", () => {
     expect(screen.getByRole("button", { name: /Run side-scan/i })).toBeDisabled();
   });
 });
+
+function responseWithExecutions(executions: ReturnType<typeof execution>[]) {
+  return {
+    tenant_id: "tenant-acme",
+    executions,
+    page: {
+      limit: 25,
+      offset: 0,
+      returned: executions.length,
+      total: executions.length,
+      has_more: false,
+      completeness: "complete",
+    },
+    capabilities: CAPABILITIES,
+    credentialed_smoke: false,
+  };
+}

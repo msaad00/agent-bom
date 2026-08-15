@@ -61,9 +61,15 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
         # pytest-randomly it only surfaces when the two land in this order.
         from agent_bom.api import blueprint_store as blueprint_store_mod
         from agent_bom.api import cost_store as cost_store_mod
+        from agent_bom.api.campaign_store import set_campaign_store
+        from agent_bom.api.skills_scan_store import set_skills_scan_store
+        from agent_bom.cloud.side_scan_lifecycle import reset_side_scan_state_store
 
         blueprint_store_mod.set_blueprint_store(None)
         cost_store_mod._COST_STORE = None
+        set_campaign_store(None)
+        set_skills_scan_store(None)
+        reset_side_scan_state_store()
         reset_daily_evidence_day()
 
 

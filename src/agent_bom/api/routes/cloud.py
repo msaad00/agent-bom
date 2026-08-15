@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlencode
 
 import anyio
@@ -1086,6 +1086,13 @@ async def cloud_side_scan_trigger(
 async def cloud_side_scan_list(
     request: Request,
     limit: int = Query(50, ge=1, le=200, description="Max executions to return (newest first)."),
+    offset: int = Query(0, ge=0, le=100_000, description="Zero-based execution offset."),
+    provider: Literal["aws", "azure", "gcp"] | None = Query(None, description="Optional provider filter."),
+    status: Literal["queued", "running", "scan_complete", "partial", "disabled", "denied", "failed"] | None = Query(
+        None,
+        description="Optional lifecycle status filter.",
+    ),
+    q: str = Query("", max_length=200, description="Optional target, account, or execution-id search."),
     _role: Any = _READ_DEP,
 ) -> dict[str, Any]:
     """List recent Azure/GCP side-scan executions + provider executor capabilities.
@@ -1104,11 +1111,26 @@ async def cloud_side_scan_list(
 
     def _read() -> dict[str, Any]:
         store = get_side_scan_state_store()
-        records = store.list_recent(tenant_id=tenant_id, limit=limit)
+        records, total = store.list_page_with_total(
+            tenant_id=tenant_id,
+            limit=limit,
+            offset=offset,
+            provider=provider,
+            status=status,
+            query=q,
+        )
         capabilities = [cap.to_dict() for cap in side_scan_provider_capabilities().values()]
         return {
             "tenant_id": tenant_id,
             "executions": [record.to_dict() for record in records],
+            "page": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(records),
+                "total": total,
+                "has_more": offset + len(records) < total,
+                "completeness": "complete",
+            },
             "capabilities": capabilities,
             "credentialed_smoke": False,
         }

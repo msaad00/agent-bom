@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
@@ -159,19 +159,44 @@ export default function CwppSideScanPage() {
   const [executionProvider, setExecutionProvider] = useState("all");
   const [executionStatus, setExecutionStatus] = useState("all");
   const [executionQuery, setExecutionQuery] = useState("");
+  const [debouncedExecutionQuery, setDebouncedExecutionQuery] = useState("");
+  const requestIdentity = useRef(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedExecutionQuery(executionQuery);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [executionQuery]);
+
+  useEffect(
+    () => () => {
+      requestIdentity.current += 1;
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdentity.current;
     setLoading(true);
     setError(null);
     try {
-      const resp = await api.listSideScans(200);
+      const resp = await api.listSideScans({
+        limit: EXECUTION_PAGE_SIZE,
+        offset: (executionPage - 1) * EXECUTION_PAGE_SIZE,
+        ...(executionProvider !== "all" ? { provider: executionProvider as "aws" | "azure" | "gcp" } : {}),
+        ...(executionStatus !== "all" ? { status: executionStatus } : {}),
+        ...(debouncedExecutionQuery.trim() ? { query: debouncedExecutionQuery.trim() } : {}),
+      });
+      if (requestId !== requestIdentity.current) return;
       setData(resp);
     } catch (err) {
+      if (requestId !== requestIdentity.current) return;
       setError(err instanceof Error ? err.message : "Failed to load side-scan executions.");
     } finally {
-      setLoading(false);
+      if (requestId === requestIdentity.current) setLoading(false);
     }
-  }, []);
+  }, [debouncedExecutionQuery, executionPage, executionProvider, executionStatus]);
 
   useEffect(() => {
     void load();
@@ -222,26 +247,9 @@ export default function CwppSideScanPage() {
   );
 
   const executions = useMemo(() => data?.executions ?? [], [data]);
-  const executionStatuses = useMemo(
-    () => Array.from(new Set(executions.map((record) => record.status))).sort(),
-    [executions],
-  );
-  const filteredExecutions = useMemo(() => {
-    const query = executionQuery.trim().toLowerCase();
-    return executions.filter((record) => {
-      if (executionProvider !== "all" && record.provider !== executionProvider) return false;
-      if (executionStatus !== "all" && record.status !== executionStatus) return false;
-      if (query && !`${record.target_id} ${record.account_id} ${record.execution_id}`.toLowerCase().includes(query)) return false;
-      return true;
-    });
-  }, [executionProvider, executionQuery, executionStatus, executions]);
-  const executionTotalPages = Math.max(1, Math.ceil(filteredExecutions.length / EXECUTION_PAGE_SIZE));
-  const visibleExecutions = useMemo(
-    () => filteredExecutions.slice((executionPage - 1) * EXECUTION_PAGE_SIZE, executionPage * EXECUTION_PAGE_SIZE),
-    [executionPage, filteredExecutions],
-  );
-
-  useEffect(() => setExecutionPage(1), [executionProvider, executionQuery, executionStatus]);
+  const executionStatuses = ["queued", "running", "scan_complete", "partial", "disabled", "denied", "failed"];
+  const executionTotalItems = data?.page?.total ?? executions.length;
+  const executionTotalPages = Math.max(1, Math.ceil(executionTotalItems / EXECUTION_PAGE_SIZE));
 
   if (loading && !data) {
     return <PageLoadingState title="Loading CWPP side-scans" detail="Reading recent agentless disk side-scan executions and provider capabilities." data-testid="cwpp-loading" />;
@@ -305,7 +313,7 @@ export default function CwppSideScanPage() {
 
       {/* Trigger — in-product action + headless (CLI) parity side by side. */}
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <form onSubmit={onSubmit} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <form onSubmit={onSubmit} className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
             <Play className="h-4 w-4 text-[color:var(--accent)]" /> Run a side-scan
           </h2>
@@ -370,7 +378,7 @@ export default function CwppSideScanPage() {
           )}
         </form>
 
-        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
+        <div className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
             <Terminal className="h-4 w-4 text-[color:var(--text-secondary)]" /> Headless equivalent (CLI)
           </h2>
@@ -388,7 +396,10 @@ export default function CwppSideScanPage() {
             id="cwpp-provider-filter"
             aria-label="Filter executions by provider"
             value={executionProvider}
-            onChange={(event) => setExecutionProvider(event.target.value)}
+            onChange={(event) => {
+              setExecutionProvider(event.target.value);
+              setExecutionPage(1);
+            }}
             className="h-8 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 text-xs text-[color:var(--foreground)]"
           >
             <option value="all">All providers</option>
@@ -401,7 +412,10 @@ export default function CwppSideScanPage() {
             id="cwpp-status-filter"
             aria-label="Filter executions by status"
             value={executionStatus}
-            onChange={(event) => setExecutionStatus(event.target.value)}
+            onChange={(event) => {
+              setExecutionStatus(event.target.value);
+              setExecutionPage(1);
+            }}
             className="h-8 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 text-xs text-[color:var(--foreground)]"
           >
             <option value="all">All statuses</option>
@@ -409,7 +423,10 @@ export default function CwppSideScanPage() {
           </select>
           <input
             value={executionQuery}
-            onChange={(event) => setExecutionQuery(event.target.value)}
+            onChange={(event) => {
+              setExecutionQuery(event.target.value);
+              setExecutionPage(1);
+            }}
             aria-label="Filter executions by target or account"
             placeholder="Target or account"
             className="h-8 w-44 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 text-xs text-[color:var(--foreground)] placeholder:text-[color:var(--text-tertiary)]"
@@ -436,19 +453,19 @@ export default function CwppSideScanPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleExecutions.map((record) => (
+                {executions.map((record) => (
                   <ExecutionRow key={record.execution_id} record={record} />
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        {filteredExecutions.length > 0 ? (
+        {executionTotalItems > 0 ? (
           <PaginationBar
             className="mt-3"
             page={executionPage}
             totalPages={executionTotalPages}
-            totalItems={filteredExecutions.length}
+            totalItems={executionTotalItems}
             itemLabel="executions"
             onPrevious={() => setExecutionPage((current) => Math.max(1, current - 1))}
             onNext={() => setExecutionPage((current) => Math.min(executionTotalPages, current + 1))}

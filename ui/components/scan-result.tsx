@@ -11,11 +11,20 @@ import { RepoScanOverviewPanel } from "@/components/repo-scan-overview-panel";
 import { FrameworkTagChips } from "@/components/framework-tag-chips";
 import { SeverityBadge } from "@/components/severity-badge";
 import { StatCard } from "@/components/stat-card";
+import { PaginationBar } from "@/components/pagination-bar";
 import {
   ArrowLeft, Loader2, CheckCircle, Clock, Zap, Key, Wrench,
   ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight, Download, GitBranch, Server,
   Cloud, Database, ShieldCheck,
 } from "lucide-react";
+
+const BLAST_RADIUS_PAGE_SIZE = 8;
+
+function scanArtifactDescriptor(format: string | undefined): { label: string; fileSuffix: string } {
+  if (format === "cyclonedx") return { label: "CycloneDX SBOM", fileSuffix: "cdx.json" };
+  if (format === "spdx") return { label: "SPDX 3 SBOM", fileSuffix: "spdx.json" };
+  return { label: "AI-BOM JSON", fileSuffix: "ai-bom.json" };
+}
 
 // ─── Scan Result View ───────────────────────────────────────────────────────
 
@@ -91,6 +100,8 @@ export function ScanResultView({ id }: { id: string }) {
   }, [messages]);
 
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [blastSeverity, setBlastSeverity] = useState("all");
+  const [blastPage, setBlastPage] = useState(1);
 
   function toggleSection(key: string) {
     setCollapsedSections((prev) => {
@@ -110,12 +121,29 @@ export function ScanResultView({ id }: { id: string }) {
         : undefined,
     [job?.status, result, summary],
   );
-  const blastRadius = result?.blast_radius ?? [];
+  const blastRadius = useMemo(() => result?.blast_radius ?? [], [result]);
+  const filteredBlastRadius = useMemo(
+    () =>
+      [...blastRadius]
+        .filter((path) => blastSeverity === "all" || path.severity.toLowerCase() === blastSeverity)
+        .sort((a, b) => b.blast_score - a.blast_score),
+    [blastRadius, blastSeverity],
+  );
+  const blastTotalPages = Math.max(1, Math.ceil(filteredBlastRadius.length / BLAST_RADIUS_PAGE_SIZE));
+  const visibleBlastRadius = useMemo(
+    () => filteredBlastRadius.slice((blastPage - 1) * BLAST_RADIUS_PAGE_SIZE, blastPage * BLAST_RADIUS_PAGE_SIZE),
+    [blastPage, filteredBlastRadius],
+  );
   const cloudEvidence = result ? summarizeCloudEvidence(result) : null;
   const repoUrl =
     typeof job?.request?.repo_url === "string" && job.request.repo_url.trim()
       ? job.request.repo_url.trim()
       : null;
+  const scanArtifact = scanArtifactDescriptor(job?.request?.format);
+
+  useEffect(() => {
+    setBlastPage(1);
+  }, [blastSeverity, id]);
 
   async function handleExport(format: GraphExportFormat = "json") {
     setExporting(true);
@@ -135,6 +163,22 @@ export function ScanResultView({ id }: { id: string }) {
     } finally {
       setExporting(false);
     }
+  }
+
+  function handleArtifactDownload() {
+    const format = job?.request?.format ?? "json";
+    const artifactDocument = format === "json" ? result : job?.result_document;
+    if (artifactDocument == null) return;
+    const content = typeof artifactDocument === "string" ? artifactDocument : JSON.stringify(artifactDocument, null, 2);
+    const blob = new Blob([content], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `scan-${id}.${scanArtifact.fileSuffix}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -224,40 +268,86 @@ export function ScanResultView({ id }: { id: string }) {
         </div>
       )}
 
-      {repoUrl && result ? <RepoScanOverviewPanel scanId={id} repoUrl={repoUrl} result={result} /> : null}
+      {repoUrl && result ? (
+        <RepoScanOverviewPanel
+          scanId={id}
+          repoUrl={repoUrl}
+          result={result}
+          artifactLabel={scanArtifact.label}
+          onDownloadArtifact={handleArtifactDownload}
+        />
+      ) : null}
 
       {cloudEvidence ? <CloudEvidencePanel evidence={cloudEvidence} /> : null}
 
       {/* Blast radius */}
       {blastRadius.length > 0 && (
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <button type="button" onClick={() => toggleSection("blast")} className="flex items-center gap-2 group">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              aria-controls="blast-radius-paths"
+              aria-expanded={!collapsedSections.has("blast")}
+              onClick={() => toggleSection("blast")}
+              className="group flex items-center gap-2"
+            >
               {collapsedSections.has("blast") ? <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" />}
               <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest group-hover:text-[color:var(--foreground)] transition-colors">
                 Blast Radius ({blastRadius.length})
               </h2>
             </button>
-            <Link
-              href={`/scan?id=${id}&view=mesh`}
-              className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors bg-cyan-500/10 dark:bg-cyan-950/30 border border-cyan-500/30 dark:border-cyan-900/50 rounded-lg px-3 py-1.5"
-            >
-              <Server className="w-3 h-3" />
-              View Mesh
-            </Link>
-            <Link
-              href={`/scan?id=${id}&view=attack-flow`}
-              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/30 dark:border-emerald-900/50 rounded-lg px-3 py-1.5"
-            >
-              <GitBranch className="w-3 h-3" />
-              View Attack Flow
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/scan?id=${id}&view=mesh`}
+                className="flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-700 transition-colors hover:text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300 dark:hover:text-cyan-200"
+              >
+                <Server className="w-3 h-3" />
+                View Mesh
+              </Link>
+              <Link
+                href={`/scan?id=${id}&view=attack-flow`}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-700 transition-colors hover:text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:text-emerald-200"
+              >
+                <GitBranch className="w-3 h-3" />
+                View Attack Flow
+              </Link>
+            </div>
           </div>
           {!collapsedSections.has("blast") && (
-            <div className="space-y-3">
-              {blastRadius.sort((a, b) => b.blast_score - a.blast_score).map((b, index) => (
-                <BlastRadiusCard key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`} blast={b} />
-              ))}
+            <div id="blast-radius-paths" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+                <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                  Severity
+                  <select
+                    aria-label="Filter blast-radius paths by severity"
+                    value={blastSeverity}
+                    onChange={(event) => setBlastSeverity(event.target.value)}
+                    className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-xs text-[color:var(--foreground)]"
+                  >
+                    <option value="all">All</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </label>
+                <span className="text-xs text-[color:var(--text-tertiary)]">
+                  {filteredBlastRadius.length.toLocaleString()} matching paths
+                </span>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {visibleBlastRadius.map((b, index) => (
+                  <BlastRadiusCard key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`} blast={b} />
+                ))}
+              </div>
+              <PaginationBar
+                page={blastPage}
+                totalPages={blastTotalPages}
+                totalItems={filteredBlastRadius.length}
+                itemLabel="paths"
+                onPrevious={() => setBlastPage((current) => Math.max(1, current - 1))}
+                onNext={() => setBlastPage((current) => Math.min(blastTotalPages, current + 1))}
+              />
             </div>
           )}
         </section>
@@ -353,7 +443,7 @@ export function ScanResultView({ id }: { id: string }) {
       )}
 
       {result && cloudEvidence && blastRadius.length === 0 && (!result.agents || result.agents.length === 0) ? (
-        <div className="rounded-xl border border-cyan-900/50 bg-cyan-950/20 px-4 py-3 text-sm text-cyan-100">
+        <div className="rounded-xl border border-cyan-600/35 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-950 dark:border-cyan-900/50 dark:bg-cyan-950/20 dark:text-cyan-100">
           Cloud inventory and posture evidence was persisted for this scan. No
           package attack-path findings were produced for this evidence set.
         </div>
@@ -516,13 +606,16 @@ function formatBenchmarkRate(benchmark: CloudBenchmarkDisplay): string {
 function CloudEvidencePanel({ evidence }: { evidence: CloudEvidenceDisplay }) {
   const providerLabel = evidence.providers.length > 0 ? evidence.providers.join(", ").toUpperCase() : "Cloud";
   return (
-    <section className="rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
+    <section
+      aria-label="Cloud evidence"
+      className="rounded-xl border border-cyan-600/35 bg-[color:var(--surface)] p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20"
+    >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <Cloud className="h-4 w-4 text-cyan-300" />
-          <h2 className="text-sm font-semibold text-cyan-100">Cloud evidence</h2>
+          <Cloud className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />
+          <h2 className="text-sm font-semibold text-cyan-950 dark:text-cyan-100">Cloud evidence</h2>
         </div>
-        <span className="font-mono text-[11px] uppercase tracking-wide text-cyan-300/80">{providerLabel}</span>
+        <span className="font-mono text-[11px] uppercase tracking-wide text-cyan-800 dark:text-cyan-200">{providerLabel}</span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <EvidenceMetric icon={Database} label="Resources" value={formatEvidenceCount(evidence.resourceCount ?? evidence.inventoryItems)} />
@@ -535,10 +628,10 @@ function CloudEvidencePanel({ evidence }: { evidence: CloudEvidenceDisplay }) {
           {evidence.benchmarks.map((benchmark) => (
             <div
               key={benchmark.key}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-900/40 bg-[color:var(--surface-muted)] px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-600/25 bg-[color:var(--surface-muted)] px-3 py-2 dark:border-cyan-900/40"
             >
               <span className="text-xs font-medium text-[color:var(--foreground)]">{benchmark.label}</span>
-              <span className="font-mono text-xs text-cyan-200">
+              <span className="font-mono text-xs text-cyan-800 dark:text-cyan-200">
                 {benchmark.passed ?? "—"}/{benchmark.total ?? "—"} passed · {formatBenchmarkRate(benchmark)}
               </span>
             </div>
@@ -559,8 +652,8 @@ function EvidenceMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-cyan-900/40 bg-[color:var(--surface-muted)] p-3">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-cyan-300/80">
+    <div className="rounded-lg border border-cyan-600/25 bg-[color:var(--surface-muted)] p-3 dark:border-cyan-900/40">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-cyan-800 dark:text-cyan-200">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>

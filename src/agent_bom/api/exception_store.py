@@ -179,6 +179,9 @@ class SQLiteExceptionStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_status ON exceptions(status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_tenant ON exceptions(tenant_id)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_vuln ON exceptions(vuln_id)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_exc_tenant_status_match ON exceptions(tenant_id, status, vuln_id, package_name, server_name)"
+        )
         self._conn.commit()
 
     def put(self, exc: VulnException) -> None:

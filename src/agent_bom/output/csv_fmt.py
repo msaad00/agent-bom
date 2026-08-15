@@ -20,6 +20,7 @@ from agent_bom.output.finding_views import (
     package_version,
     severity_value,
     unified_export_findings,
+    workflow_status,
 )
 
 _COLUMNS = [
@@ -64,6 +65,9 @@ _COLUMNS = [
     # Why: "unavailable" here beside an empty ``provenance_attested`` is a
     # registry that never answered, not an attestation that is missing.
     "provenance_status",
+    "owner",
+    "sla_due_at",
+    "workflow_status",
 ]
 
 
@@ -124,6 +128,9 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
             "provenance_attested": _verdict_cell(finding, "package_provenance_attested"),
             "provenance_source": _verdict_cell(finding, "package_provenance_source"),
             "provenance_status": _verdict_cell(finding, "package_provenance_status"),
+            "owner": finding.owner or "",
+            "sla_due_at": finding.to_dict().get("sla_due_at") or "",
+            "workflow_status": workflow_status(finding),
         }
         writer.writerow({key: _excel_safe_cell(value) for key, value in row.items()})
 

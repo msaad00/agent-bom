@@ -348,6 +348,10 @@ class Finding:
     # Pass an explicit id= to override (e.g. when ingesting from external scanner)
     id: str = field(default="")
 
+    # Appended after the long-standing explicit-ID slot so additive workflow
+    # state does not shift legacy positional construction of this public model.
+    lifecycle_status: Optional[str] = None
+
     def __post_init__(self) -> None:
         """Compute stable ID from finding content if not explicitly set."""
         from agent_bom.graph.severity import normalize_severity
@@ -620,6 +624,8 @@ class Finding:
             "first_seen": self.first_seen,
             "owner": finding_owner(self.owner),
             "sla_due_at": resolved_sla,
+            "status": self.lifecycle_status,
+            "lifecycle_status": self.lifecycle_status,
             # Suppression state — a suppressed finding must never surface as
             # unsuppressed downstream (mirrors BlastRadius / SARIF suppressions[]).
             "suppressed": self.suppressed,

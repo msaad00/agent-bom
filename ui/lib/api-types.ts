@@ -66,6 +66,8 @@ export interface ScanJob {
   request: ScanRequest;
   progress: string[];
   result?: ScanResult | undefined;
+  result_document?: Record<string, unknown> | string | undefined;
+  result_format?: string | undefined;
   error?: string | undefined;
 }
 

@@ -147,6 +147,22 @@ def test_does_not_shadow_a_real_scan(store: SQLiteGraphStore) -> None:
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "aws-scan-2026-07-14"
 
 
+def test_explicit_demo_force_never_replaces_a_non_showcase_snapshot(store: SQLiteGraphStore) -> None:
+    """The operator's demo reset must never delete real scan evidence.
+
+    An environment flag is not sufficient authorization to erase tenant graph
+    history. Force can refresh a showcase-only tenant, but a non-showcase
+    snapshot remains an absolute preservation boundary.
+    """
+    store.save_graph(_minimal_graph(scan_id="stale-local-scan", created_at="2026-07-14T09:00:00+00:00"))
+
+    assert seed_showcase_graph_if_empty(store, force=True) is False
+
+    scan_ids = {row["scan_id"] for row in store.list_snapshots(tenant_id=SHOWCASE_TENANT)}
+    assert scan_ids == {"stale-local-scan"}
+    assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "stale-local-scan"
+
+
 def test_seeded_estate_is_isolated_per_tenant(store: SQLiteGraphStore) -> None:
     """Two tenants seed the SAME node ids; neither may drop or leak.
 

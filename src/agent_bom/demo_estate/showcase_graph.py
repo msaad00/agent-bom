@@ -751,6 +751,7 @@ def seed_showcase_graph_if_empty(
     graph_store: GraphStoreProtocol,
     *,
     tenant_id: str = SHOWCASE_TENANT,
+    force: bool = False,
 ) -> bool:
     """Persist baseline + current showcase snapshots, stale-aware (issue #3964).
 
@@ -760,7 +761,9 @@ def seed_showcase_graph_if_empty(
     * A real (non-showcase) scan is never shadowed — if any snapshot has a
       scan id outside the showcase set, a fresh scan owns the graph and the demo
       seed is skipped. The read path already defaults to the newest snapshot, so
-      the fresh scan stays the one served.
+      the fresh scan stays the one served. This preservation boundary applies
+      even when the demo ``force`` override is set: force may refresh showcase
+      snapshots, never delete operator scan evidence.
     * A *current* showcase seed (both snapshots at the expected ``created_at``)
       is idempotent — nothing is rewritten.
     * A *stale* showcase seed (missing baseline, or an out-of-date ``created_at``
@@ -771,11 +774,12 @@ def seed_showcase_graph_if_empty(
     snapshots = _existing_snapshots(graph_store, tenant_id)
     if any(str(row.get("scan_id")) not in showcase_ids for row in snapshots):
         return False
-    if snapshots and _showcase_seed_is_current(snapshots):
+    if not force and snapshots and _showcase_seed_is_current(snapshots):
         return False
     if snapshots:
-        # Only stale showcase snapshots remain (no real scan reached here); wipe
-        # them so the refreshed seed does not leave orphaned nodes/edges behind.
+        # Only showcase snapshots remain. Wipe them so the refreshed seed does
+        # not leave orphaned nodes/edges behind. A non-showcase snapshot always
+        # returned above, including on explicit force.
         delete_tenant = getattr(graph_store, "delete_tenant", None)
         if callable(delete_tenant):
             delete_tenant(tenant_id=tenant_id)

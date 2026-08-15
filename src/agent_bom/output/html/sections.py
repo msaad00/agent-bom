@@ -32,6 +32,7 @@ from agent_bom.output.finding_views import (
     ranked_cve_findings,
     reachability_label,
     severity_value,
+    workflow_status,
 )
 from agent_bom.output.html._common import (
     _PAGE_SIZE,
@@ -303,6 +304,21 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         )
         summary_text = (finding.description or "")[:90]
         summary = _esc(summary_text) if summary_text else '<span style="color:#475569;font-style:italic">Run --enrich</span>'
+        workflow_parts: list[str] = []
+        if finding.owner:
+            workflow_parts.append(f"Owner: {_esc(finding.owner)}")
+        sla_due = finding.to_dict().get("sla_due_at")
+        if sla_due:
+            workflow_parts.append(f"SLA: {_esc(sla_due)}")
+        status = workflow_status(finding)
+        if status:
+            workflow_parts.append(f"Status: {_esc(status)}")
+        if workflow_parts:
+            summary += (
+                '<div class="finding-workflow" style="margin-top:4px;font-size:.66rem;color:#a7f3d0">'
+                + " &middot; ".join(workflow_parts)
+                + "</div>"
+            )
         assessment = ai_assessments.get(finding.id)
         if assessment is not None:
             summary += (

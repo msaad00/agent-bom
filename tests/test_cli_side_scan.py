@@ -161,6 +161,9 @@ def test_side_scan_azure_gcp_dispatch_to_provider_executor(monkeypatch, provider
                 target_id="disk-1",
                 account_id="acct-1",
                 location=location,
+                execution_id="exec-123",
+                execution_status="scan_complete",
+                cleanup_status="complete",
                 snapshot_id="snap-1",
                 scan_disk_id="scan-1",
                 vulnerability_count=3,
@@ -203,6 +206,10 @@ def test_side_scan_azure_gcp_dispatch_to_provider_executor(monkeypatch, provider
         assert captured["collector_resource_group"] == "collectors"
     # Rendered honestly: snapshot + cleanup status + no clean-workload claim.
     assert "snap-1" in result.output
+    assert "exec-123" in result.output
+    assert "scan complete" in result.output.lower()
+    assert "cleanup" in result.output.lower()
+    assert "complete" in result.output.lower()
     assert "clean-workload" in result.output.lower()
     assert "Traceback" not in result.output
 

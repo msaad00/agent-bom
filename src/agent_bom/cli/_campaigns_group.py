@@ -80,6 +80,28 @@ def list_campaigns_cmd(
         _print_campaigns_table(payload)
 
 
+@campaigns_cmd.command("verification-queue")
+@click.option("--cursor", default=None, help="Continuation cursor from the previous queue page.")
+@click.option("--limit", type=click.IntRange(1, 100), default=100, show_default=True)
+@click.option("--format", "output_format", type=click.Choice(["json"]), default="json", show_default=True)
+@_common_api_options
+def verification_queue_cmd(
+    api_url: str | None,
+    api_key: str | None,
+    bearer_token: str | None,
+    tenant_id: str | None,
+    cursor: str | None,
+    limit: int,
+    output_format: str,
+) -> None:
+    """List inactive campaigns awaiting evidence-backed verification."""
+
+    client = _make_client(api_url, api_key, bearer_token, tenant_id)
+    payload = _run_request(client, lambda api: api.campaign_verification_queue(cursor=cursor, limit=limit))
+    if output_format == "json":
+        _emit_json(payload)
+
+
 @campaigns_cmd.command("verify")
 @click.argument("campaign_id")
 @click.option(

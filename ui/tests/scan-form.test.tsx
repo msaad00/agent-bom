@@ -281,10 +281,16 @@ describe("ScanForm", () => {
     expect(screen.getByText(/not git URLs/i)).toBeInTheDocument();
     expect(screen.getByText(/dependencies, SBOM, secrets/i)).toBeInTheDocument();
     expect(screen.getByText(/Repository code is not executed/i)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Artifact after scan/i })).toHaveValue("json");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /Artifact after scan/i }),
+      "cyclonedx",
+    );
     await user.click(screen.getByRole("button", { name: /Scan repository/i }));
     expect(startScan).toHaveBeenCalledWith({
       repo_url: "https://github.com/org/repo",
       enrich: false,
+      format: "cyclonedx",
     });
   });
 

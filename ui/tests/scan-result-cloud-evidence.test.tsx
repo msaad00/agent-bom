@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScanResultView } from "@/components/scan-result";
@@ -86,6 +87,10 @@ describe("ScanResultView cloud evidence", () => {
     await waitFor(() => expect(apiMock.getScan).toHaveBeenCalledWith("scan-cloud-1"));
 
     expect(screen.getByText("Cloud evidence")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Cloud evidence" })).toHaveClass(
+      "bg-[color:var(--surface)]",
+      "dark:bg-cyan-950/20",
+    );
     expect(screen.getByText("AWS")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
@@ -94,6 +99,50 @@ describe("ScanResultView cloud evidence", () => {
     expect(
       screen.getByText(/Cloud inventory and posture evidence was persisted/i),
     ).toBeInTheDocument();
+  });
+
+  it("filters and paginates dense blast-radius evidence instead of rendering every path", async () => {
+    apiMock.getScan.mockResolvedValue({
+      job_id: "scan-cloud-1",
+      status: "done",
+      created_at: "2026-06-27T00:00:00Z",
+      completed_at: "2026-06-27T00:05:00Z",
+      request: {},
+      progress: [],
+      result: {
+        agents: [],
+        blast_radius: Array.from({ length: 13 }, (_, index) => ({
+          vulnerability_id: `CVE-2026-${String(index).padStart(4, "0")}`,
+          package: `pkg-${index}`,
+          severity: index % 2 === 0 ? "critical" : "high",
+          blast_score: index,
+          affected_agents: [],
+          exposed_credentials: [],
+          reachable_tools: [],
+        })),
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<ScanResultView id="scan-cloud-1" />);
+
+    expect(await screen.findByText("Page 1 of 2 (13 paths)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Blast Radius \(13\)/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("CVE-2026-0012")).toBeInTheDocument();
+    expect(screen.queryByText("CVE-2026-0000")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("CVE-2026-0000")).toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Filter blast-radius paths by severity" }),
+      "critical",
+    );
+    expect(screen.getByText("Page 1 of 1 (7 paths)")).toBeInTheDocument();
+    expect(screen.queryByText("CVE-2026-0011")).not.toBeInTheDocument();
   });
 
   it("sums per-account counts for an organization fan-out inventory list", async () => {

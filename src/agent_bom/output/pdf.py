@@ -18,6 +18,7 @@ from agent_bom.output.finding_views import (
     package_version,
     ranked_cve_findings,
     severity_value,
+    workflow_status,
 )
 
 _PAGE_WIDTH = 612
@@ -119,6 +120,14 @@ def _build_report_lines(report: AIBOMReport, blast_radii: list[BlastRadius] | No
                 details.append(f"tools={len(finding.exposed_tools)}")
             if finding.fixed_version:
                 details.append(f"fix={finding.fixed_version}")
+            if finding.owner:
+                details.append(f"owner={finding.owner}")
+            sla_due = finding.to_dict().get("sla_due_at")
+            if sla_due:
+                details.append(f"sla_due_at={sla_due}")
+            status = workflow_status(finding)
+            if status:
+                details.append(f"workflow_status={status}")
             if details:
                 _append_wrapped(lines, "; ".join(details), indent="   ")
             summary = finding.description or finding.attack_vector_summary or finding.ai_summary

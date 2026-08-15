@@ -275,3 +275,57 @@ def test_list_is_tenant_scoped(state_db, monkeypatch) -> None:
     resp = client.get("/v1/cloud/side-scan", headers=_headers(tenant="tenant-beta"))
     assert resp.status_code == 200
     assert resp.json()["executions"] == []
+
+
+def test_list_returns_server_pagination_and_filter_metadata(state_db, monkeypatch) -> None:
+    store = SQLiteSideScanStateStore(state_db)
+    first = store.create_or_get(
+        new_side_scan_execution(
+            tenant_id=TENANT,
+            provider="azure",
+            account_id="subscription-a",
+            target_id="/subscriptions/subscription-a/disks/payments-db",
+            collector_id="collector-a",
+            idempotency_key="azure-page",
+            now="2026-08-13T00:00:00Z",
+        )
+    )
+    second = store.create_or_get(
+        new_side_scan_execution(
+            tenant_id=TENANT,
+            provider="gcp",
+            account_id="project-b",
+            target_id="projects/project-b/zones/us-central1-a/disks/agent-api",
+            collector_id="collector-b",
+            idempotency_key="gcp-page",
+            now="2026-08-13T00:01:00Z",
+        )
+    )
+    failed = second.transition(status=ExecutionStatus.FAILED, phase="finished", now="2026-08-13T00:02:00Z")
+    store.save(failed, expected_version=second.state_version)
+
+    def _separate_count_is_forbidden(*args, **kwargs):
+        raise AssertionError("route must read the page and total from one store snapshot")
+
+    monkeypatch.setattr(SQLiteSideScanStateStore, "count", _separate_count_is_forbidden)
+
+    client = TestClient(app)
+    page = client.get("/v1/cloud/side-scan?limit=1&offset=1", headers=_headers())
+    assert page.status_code == 200, page.text
+    assert page.json()["executions"][0]["execution_id"] == first.execution_id
+    assert page.json()["page"] == {
+        "limit": 1,
+        "offset": 1,
+        "returned": 1,
+        "total": 2,
+        "has_more": False,
+        "completeness": "complete",
+    }
+
+    filtered = client.get(
+        "/v1/cloud/side-scan?provider=gcp&status=failed&q=agent-api",
+        headers=_headers(),
+    )
+    assert filtered.status_code == 200, filtered.text
+    assert [row["execution_id"] for row in filtered.json()["executions"]] == [failed.execution_id]
+    assert filtered.json()["page"]["total"] == 1

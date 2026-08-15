@@ -192,7 +192,7 @@ mcp-server = [
     # to hosted MCP registry adapters rather than the core stdio server.
     "smithery>=0.4",
 ]
-dashboard = ["streamlit>=1.55.0", "plotly>=5.18.0", "pandas>=2.0.0"]
+dashboard = ["streamlit>=1.55.0", "plotly>=5.24.0", "pandas>=2.2.0"]
 lake = ["pyarrow>=15.0"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 interactive = ["prompt-toolkit>=3.0"]

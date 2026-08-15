@@ -152,18 +152,20 @@ def test_client_exposes_complete_campaign_workflow() -> None:
     client = _client(handler)
     client.update_campaign("campaign/a", version=2, owner="payments", state="in_progress")
     client.verify_campaign("campaign/a", version=3, idempotency_key="verify-once")
+    client.campaign_verification_queue(cursor="next page", limit=20)
     client.create_campaign_tickets("campaign/a", connection_id="jira", project="SEC", limit=10)
     client.sync_campaign_tickets("campaign/a", cursor="next", limit=5)
 
     assert [(method, url) for method, url, _, _ in seen] == [
         ("PATCH", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa"),
         ("POST", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa/verify"),
+        ("GET", "https://agent-bom.example.com/v1/campaigns/verification-queue?cursor=next+page&limit=20"),
         ("POST", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa/tickets"),
         ("POST", "https://agent-bom.example.com/v1/campaigns/campaign%2Fa/tickets/sync?cursor=next&limit=5"),
     ]
     assert seen[0][2] == {"version": 2, "owner": "payments", "state": "in_progress"}
     assert seen[1][3]["idempotency-key"] == "verify-once"
-    assert seen[2][2] == {"connection_id": "jira", "project": "SEC", "issue_type": "", "limit": 10}
+    assert seen[3][2] == {"connection_id": "jira", "project": "SEC", "issue_type": "", "limit": 10}
 
 
 def test_client_exposes_runtime_event_sessions() -> None:

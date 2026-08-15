@@ -149,7 +149,13 @@ def _cdx_score_method(cvss_vector: str | None) -> str:
     return "CVSSv3"
 
 
-def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str, *, observed_at: str | None = None) -> dict:
+def _cyclonedx_vulnerability(
+    vuln: Vulnerability,
+    pkg_ref: str,
+    *,
+    observed_at: str | None = None,
+    workflow: dict[str, str] | None = None,
+) -> dict:
     """Build one package-scoped CycloneDX vulnerability observation.
 
     Carries the enrichment other exporters already surface: CWE weaknesses via
@@ -205,13 +211,31 @@ def _cyclonedx_vulnerability(vuln: Vulnerability, pkg_ref: str, *, observed_at: 
     # agent_bom.graph.sla. Only emitted when an anchor + policy make a deadline real.
     from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
 
-    sla_due = _compute_sla_due_at(vuln.severity.value, observed_at, kev_due_date=vuln.kev_due_date)
+    workflow_data = workflow or {}
+    sla_due = _compute_sla_due_at(
+        vuln.severity.value,
+        observed_at,
+        kev_due_date=vuln.kev_due_date,
+    )
     if sla_due is not None:
         vuln_properties.append({"name": "agent-bom:sla_due_at", "value": sla_due})
     if vuln.epss_score is not None:
         vuln_properties.append({"name": "agent-bom:epss_score", "value": str(vuln.epss_score)})
     if vuln.epss_percentile is not None:
         vuln_properties.append({"name": "agent-bom:epss_percentile", "value": str(vuln.epss_percentile)})
+    if workflow_data:
+        # A CycloneDX vulnerability can affect more than one component. Owner,
+        # explicit SLA, and workflow state belong to the package observation,
+        # not the globally merged CVE, so retain the affected bom-ref in one
+        # deterministic structured property. The generic sla_due_at above stays
+        # the single severity-policy deadline shared by the vulnerability.
+        scoped_workflow = {"affects_ref": pkg_ref, **workflow_data}
+        vuln_properties.append(
+            {
+                "name": "agent-bom:workflow",
+                "value": json.dumps(scoped_workflow, sort_keys=True, separators=(",", ":")),
+            }
+        )
     if vuln.is_kev or vuln.epss_score is not None:
         vuln_properties.append({"name": "agent-bom:exploit_likelihood", "value": vuln.exploit_likelihood})
     # Framework control attribution (CDX 1.7 has no first-class vulnerability
@@ -260,6 +284,9 @@ def _merge_vulnerability_observation(by_id: dict[str, dict], observation: dict) 
         str(affected.get("ref")) for affected in [*existing.get("affects", []), *observation.get("affects", [])] if affected.get("ref")
     }
     existing["affects"] = [{"ref": ref} for ref in sorted(affected_refs)]
+    incoming_properties = observation.get("properties")
+    if isinstance(incoming_properties, list):
+        existing["properties"] = _merge_properties(existing.get("properties", []), incoming_properties)
 
 
 def _append_discovery_provenance_properties(properties: list[dict], provenance: dict | None) -> None:
@@ -560,6 +587,23 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     components = []
     services: list[dict] = []
     vulnerabilities_by_id: dict[str, dict] = {}
+    from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version, workflow_status
+
+    workflow_by_vulnerability: dict[tuple[str, str, str | None, str], dict[str, str]] = {}
+    for finding in cve_findings(report):
+        workflow: dict[str, str] = {}
+        if finding.owner:
+            workflow["owner"] = finding.owner
+        sla_due = finding.to_dict().get("sla_due_at")
+        if sla_due:
+            workflow["sla_due_at"] = str(sla_due)
+        status = workflow_status(finding)
+        if status:
+            workflow["workflow_status"] = status
+        if workflow:
+            workflow_by_vulnerability[
+                (package_ecosystem(finding), package_name(finding), package_version(finding), finding.cve_id or finding.id)
+            ] = workflow
     dependencies = []
 
     comp_id = 0
@@ -649,7 +693,12 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 for vuln in pkg.vulnerabilities:
                     _merge_vulnerability_observation(
                         vulnerabilities_by_id,
-                        _cyclonedx_vulnerability(vuln, pkg_ref, observed_at=report.generated_at.isoformat()),
+                        _cyclonedx_vulnerability(
+                            vuln,
+                            pkg_ref,
+                            observed_at=report.generated_at.isoformat(),
+                            workflow=workflow_by_vulnerability.get((pkg.ecosystem, pkg.name, pkg.version, vuln.id)),
+                        ),
                     )
                 if pkg_ref in seen_component_refs:
                     continue

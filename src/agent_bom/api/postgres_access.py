@@ -393,6 +393,9 @@ class PostgresExceptionStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_status ON exceptions(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_team ON exceptions(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_vuln ON exceptions(vuln_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_exc_team_status_match ON exceptions(team_id, status, vuln_id, package_name, server_name)"
+            )
             _ensure_tenant_rls(conn, "exceptions", "team_id")
             conn.commit()
 

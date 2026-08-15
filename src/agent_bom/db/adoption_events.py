@@ -144,10 +144,32 @@ class AdoptionEventStore:
 
     def summary(self) -> dict[str, object]:
         counts = Counter(str(row["event"]) for row in self.events())
+
+        def _transition(numerator_event: str, denominator_event: str) -> dict[str, int | float | None]:
+            numerator = counts[numerator_event]
+            denominator = counts[denominator_event]
+            return {
+                "numerator": numerator,
+                "denominator": denominator,
+                "rate": round(numerator / denominator, 4) if denominator else None,
+            }
+
         return {
             "schema_version": SCHEMA_VERSION,
             "enabled": self.enabled,
             "counts": dict(sorted(counts.items())),
+            "funnel": {
+                "unit": "bounded_event_counts_not_unique_users",
+                "transitions": {
+                    "scan_to_artifact": _transition("artifact_created", "scan_completed"),
+                    "artifact_to_investigation": _transition("investigation_started", "artifact_created"),
+                    "investigation_to_verification": _transition("verification_completed", "investigation_started"),
+                },
+                "limitations": [
+                    "Rates describe event progression on this installation, not unique people or market adoption.",
+                    "Numerators are not forced below denominators; retries and multiple artifacts remain visible.",
+                ],
+            },
             "privacy": {
                 "telemetry_disabled_by_default": True,
                 "stores_source_contents": False,

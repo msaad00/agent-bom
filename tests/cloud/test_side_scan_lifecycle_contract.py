@@ -22,15 +22,23 @@ from agent_bom.cloud.side_scan_lifecycle import (
 )
 
 
-def _execution(*, tenant_id: str = "tenant-a", idempotency_key: str = "scan-request-1"):
+def _execution(
+    *,
+    tenant_id: str = "tenant-a",
+    idempotency_key: str = "scan-request-1",
+    provider: str = "azure",
+    account_id: str = "subscription-1",
+    target_id: str = "/subscriptions/subscription-1/disks/os-disk",
+    now: str = "2026-07-17T20:00:00Z",
+):
     return new_side_scan_execution(
         tenant_id=tenant_id,
-        provider="azure",
-        account_id="subscription-1",
-        target_id="/subscriptions/subscription-1/disks/os-disk",
+        provider=provider,
+        account_id=account_id,
+        target_id=target_id,
         collector_id="collector-1",
         idempotency_key=idempotency_key,
-        now="2026-07-17T20:00:00Z",
+        now=now,
     )
 
 
@@ -284,6 +292,44 @@ def test_sqlite_store_returns_only_tenant_scoped_cleanup_retries(tmp_path: Path)
     restarted = SQLiteSideScanStateStore(tmp_path / "side-scan-state.db")
     assert restarted.get(tenant_id="tenant-a", execution_id=cleaned.execution_id) == cleaned
     assert restarted.list_cleanup_due(tenant_id="tenant-a") == []
+
+
+def test_sqlite_store_pages_and_filters_full_execution_history(tmp_path: Path) -> None:
+    store = SQLiteSideScanStateStore(tmp_path / "side-scan-state.db")
+    azure = store.create_or_get(
+        _execution(
+            idempotency_key="azure-1",
+            target_id="/subscriptions/subscription-1/disks/payments-db",
+            now="2026-07-17T20:00:00Z",
+        )
+    )
+    gcp = store.create_or_get(
+        _execution(
+            idempotency_key="gcp-1",
+            provider="gcp",
+            account_id="project-1",
+            target_id="projects/project-1/zones/us-central1-a/disks/agent-api",
+            now="2026-07-17T20:01:00Z",
+        )
+    )
+    failed = gcp.transition(status=ExecutionStatus.FAILED, phase="finished", now="2026-07-17T20:02:00Z")
+    store.save(failed, expected_version=gcp.state_version)
+
+    assert store.count(tenant_id="tenant-a") == 2
+    page, total = store.list_page_with_total(tenant_id="tenant-a", limit=1, offset=0)
+    assert page == [failed]
+    assert total == 2
+    assert store.list_page(tenant_id="tenant-a", limit=1, offset=1) == [azure]
+    assert store.count(tenant_id="tenant-a", provider="gcp", status="failed", query="agent-api") == 1
+    assert store.list_page(
+        tenant_id="tenant-a",
+        limit=25,
+        offset=0,
+        provider="gcp",
+        status="failed",
+        query="agent-api",
+    ) == [failed]
+    assert store.count(tenant_id="tenant-b") == 0
 
 
 def test_serialized_state_contains_metadata_only() -> None:

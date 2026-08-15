@@ -919,6 +919,46 @@ def _promote_repo_dependency_inventory(report: Any, ai_inventory: dict[str, Any]
         report.project_inventory_data = nested
 
 
+def _apply_tenant_workflow_metadata(report: Any, *, tenant_id: str) -> None:
+    """Join tenant-scoped owner and current lifecycle metadata before export.
+
+    Scan documents are rendered from ``AIBOMReport`` objects, while control-plane
+    assignments live in the tenant exception store.  Joining once here keeps
+    JSON and every requested document format aligned on a rescan without making
+    the formatters aware of authentication or persistence.
+    """
+    from agent_bom.api.routes.enterprise import build_tenant_triage_owner_index, triage_owner_for
+
+    try:
+        owner_index = build_tenant_triage_owner_index(tenant_id)
+    except Exception as exc:  # noqa: BLE001 - workflow metadata must not fail the scan artifact
+        _logger.warning("Finding owner enrichment unavailable: %s", sanitize_error(exc, generic=True))
+        owner_index = {}
+    observed_at = getattr(report, "generated_at", None)
+    observed_text = observed_at.isoformat() if isinstance(observed_at, datetime) else str(observed_at or "")
+
+    for finding in getattr(report, "findings", ()) or ():
+        if getattr(finding, "first_seen", None) is None and observed_text:
+            finding.first_seen = observed_text
+        if getattr(finding, "lifecycle_status", None) is None:
+            finding.lifecycle_status = "suppressed" if bool(getattr(finding, "suppressed", False)) else "open"
+        if getattr(finding, "owner", None) or not owner_index:
+            continue
+        evidence = getattr(finding, "evidence", None)
+        evidence = evidence if isinstance(evidence, dict) else {}
+        affected_servers = getattr(finding, "affected_servers", None) or []
+        server_name = str(affected_servers[0]) if affected_servers else ""
+        package = str(evidence.get("package_name") or getattr(getattr(finding, "asset", None), "name", "") or "")
+        owner = triage_owner_for(
+            owner_index,
+            vuln_id=str(getattr(finding, "cve_id", None) or getattr(finding, "id", "")),
+            package=package,
+            server_name=server_name,
+        )
+        if owner:
+            finding.owner = owner
+
+
 def _rendered_result_document(job: ScanJob, report: Any, blast_radii: list | None = None) -> tuple[dict[str, Any] | str | None, str | None]:
     """Render the finished report in the format the request asked for.
 
@@ -1412,6 +1452,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     report.sast_data = repo_sast_data
                 if repo_trust_data is not None:
                     report.repo_trust_data = repo_trust_data
+                _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
                 report_json = to_json(report)
                 report_json["status"] = "findings_only"
                 result_document, document_note = _rendered_result_document(job, report)
@@ -1720,6 +1761,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as gderiv_exc:  # noqa: BLE001
             _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_error(gderiv_exc))
 
+        _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
         report_json = to_json(report)
         result_document, document_note = _rendered_result_document(job, report)
         with lock:

@@ -22,6 +22,7 @@ from agent_bom.output.finding_views import (
     severity_counts,
     severity_value,
     unified_findings,
+    workflow_status,
 )
 
 
@@ -162,6 +163,14 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
                 lines.append(f"> {finding.description}")
                 lines.append("")
             lines.append(f"- **Severity**: {severity_value(finding).upper()}")
+            if finding.owner:
+                lines.append(f"- **Owner**: {finding.owner}")
+            sla_due = finding.to_dict().get("sla_due_at")
+            if sla_due:
+                lines.append(f"- **SLA due**: {sla_due}")
+            status = workflow_status(finding)
+            if status:
+                lines.append(f"- **Workflow status**: {status}")
             severity_source = evidence(finding, "severity_source", "")
             if severity_source:
                 lines.append(f"- **Severity source**: {severity_source}")

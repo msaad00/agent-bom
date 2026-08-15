@@ -121,6 +121,14 @@ def evidence(finding: Finding, key: str, default: Any = "") -> Any:
     return default if value is None else value
 
 
+def workflow_status(finding: Finding) -> str:
+    """Return the persisted finding workflow/lifecycle state, if available."""
+    value = getattr(finding, "lifecycle_status", None)
+    if value is None:
+        value = evidence(finding, "lifecycle_status", None) or evidence(finding, "status", None)
+    return str(value or "").strip()
+
+
 # Human-facing labels for the code-level reachability signal. Ordered
 # most-specific first. ``state`` drives filtering/styling; ``label`` is the cell.
 _REACHABILITY_LABELS: dict[str, tuple[str, str]] = {

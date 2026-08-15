@@ -778,6 +778,14 @@ export interface SideScanExecutionRecord {
 export interface SideScanListResponse {
   tenant_id: string;
   executions: SideScanExecutionRecord[];
+  page?: {
+    limit: number;
+    offset: number;
+    returned: number;
+    total: number;
+    has_more: boolean;
+    completeness: "complete";
+  } | undefined;
   capabilities: SideScanProviderCapability[];
   credentialed_smoke: boolean;
 }
@@ -1806,8 +1814,21 @@ export const api = {
 
   // ── CWPP agentless side-scan (Azure/GCP) ──
   /** Recent side-scan executions + honest per-provider executor capabilities. */
-  listSideScans: (limit = 50) =>
-    get<SideScanListResponse>(`/v1/cloud/side-scan?limit=${encodeURIComponent(String(limit))}`, { ttlMs: 0 }),
+  listSideScans: (options?: {
+    limit?: number;
+    offset?: number;
+    provider?: SideScanProvider | undefined;
+    status?: string | undefined;
+    query?: string | undefined;
+  }) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(options?.limit ?? 50));
+    params.set("offset", String(options?.offset ?? 0));
+    if (options?.provider) params.set("provider", options.provider);
+    if (options?.status) params.set("status", options.status);
+    if (options?.query?.trim()) params.set("q", options.query.trim());
+    return get<SideScanListResponse>(`/v1/cloud/side-scan?${params.toString()}`, { ttlMs: 0 });
+  },
   /** One side-scan execution's durable status + metadata-only evidence. */
   getSideScan: (executionId: string) =>
     get<SideScanExecutionResponse>(`/v1/cloud/side-scan/${encodeURIComponent(executionId)}`, { ttlMs: 0 }),

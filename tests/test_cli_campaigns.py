@@ -54,6 +54,29 @@ class FakeCampaignsClient:
             "version": 4,
         }
 
+    def campaign_verification_queue(self, **kwargs: Any) -> dict[str, object]:
+        self.__class__.calls.append(("campaign_verification_queue", kwargs))
+        return {
+            "schema_version": "risk-campaign-verification-queue.v1",
+            "tenant_id": "tenant-a",
+            "entries": [
+                {
+                    "campaign_id": "retired-1",
+                    "title": "Retired reachable RCE cluster",
+                    "original_member_count": 4,
+                    "owner": "payments",
+                    "sla_due_at": "2026-08-31T00:00:00+00:00",
+                    "state": "in_progress",
+                    "verification_status": "unverified",
+                    "version": 3,
+                }
+            ],
+            "count": 1,
+            "has_more": True,
+            "next_cursor": "next-page",
+            "limit": 20,
+        }
+
     def update_campaign(self, campaign_id: str, **kwargs: Any) -> dict[str, Any]:
         self.__class__.calls.append(("update_campaign", {"campaign_id": campaign_id, **kwargs}))
         return {"id": campaign_id, **kwargs}
@@ -125,6 +148,22 @@ def test_campaigns_verify_posts_version(monkeypatch) -> None:
     assert fake.calls[0] == ("verify_campaign", {"campaign_id": "camp-1", "version": 3})
 
 
+def test_campaigns_verification_queue_uses_typed_client_and_surfaces_cursor(monkeypatch) -> None:
+    fake = _install_fake(monkeypatch)
+    result = CliRunner().invoke(
+        main,
+        ["campaigns", "verification-queue", "--cursor", "previous-page", "--limit", "20"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["entries"][0]["campaign_id"] == "retired-1"
+    assert payload["next_cursor"] == "next-page"
+    assert fake.calls[0] == (
+        "campaign_verification_queue",
+        {"cursor": "previous-page", "limit": 20},
+    )
+
+
 def test_campaign_cli_update_and_ticket_actions_use_canonical_api(monkeypatch) -> None:
     fake = _install_fake(monkeypatch)
     runner = CliRunner()
@@ -162,6 +201,7 @@ class ConnRefusedClient:
 
     list_campaigns = _refuse
     verify_campaign = _refuse
+    campaign_verification_queue = _refuse
 
 
 def test_campaigns_list_connection_refused_is_friendly(monkeypatch) -> None:

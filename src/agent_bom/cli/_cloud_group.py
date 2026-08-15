@@ -1005,22 +1005,28 @@ def _render_provider_side_scan_results(con: Console, provider: str, results: lis
         return
 
     summary = Table()
+    summary.add_column("Execution")
+    summary.add_column("Status")
     summary.add_column("Disk")
     summary.add_column("Snapshot")
     summary.add_column("Scan disk")
     summary.add_column("Packages", justify="right")
     summary.add_column("Vuln pkgs", justify="right")
     summary.add_column("Secrets", justify="right")
-    summary.add_column("Cleaned up")
+    summary.add_column("Cleanup")
     for res in results:
+        execution_status = str(res.execution_status or "unknown").replace("_", " ")
+        cleanup_status = str(res.cleanup_status or ("complete" if res.cleaned_up else "partial")).replace("_", " ")
         summary.add_row(
+            str(res.execution_id or "—"),
+            execution_status,
             str(res.target_id or "—"),
             str(res.snapshot_id or "—"),
             str(res.scan_disk_id or "—"),
             str(len(res.packages)),
             str(res.vulnerability_count),
             str(len(res.secrets)),
-            "[green]yes[/green]" if res.cleaned_up else "[yellow]partial[/yellow]",
+            f"[green]{cleanup_status}[/green]" if res.cleaned_up else f"[yellow]{cleanup_status}[/yellow]",
         )
     con.print(summary)
 

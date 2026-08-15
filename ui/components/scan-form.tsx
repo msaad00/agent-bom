@@ -110,6 +110,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
   );
   const [form, setForm] = useState<ScanRequest>({
     enrich: enterprisePreset,
+    format: "json",
     k8s: false,
     images: [],
     tf_dirs: [],
@@ -252,6 +253,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
           ? {
               repo_url: repoUrlInput.trim(),
               enrich: form.enrich ?? false,
+              format: form.format ?? "json",
             }
           : {
               ...form,
@@ -463,6 +465,18 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                     {repoUrlInvalid ? (
                       <p className="text-xs text-red-400">Enter a full http(s):// URL, e.g. https://github.com/org/repo</p>
                     ) : null}
+                    <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+                      Artifact after scan
+                      <select
+                        value={form.format ?? "json"}
+                        onChange={(event) => setForm((current) => ({ ...current, format: event.target.value }))}
+                        className="mt-1.5 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--foreground)] focus:border-emerald-600 focus:outline-none"
+                      >
+                        <option value="json">AI-BOM JSON</option>
+                        <option value="cyclonedx">CycloneDX SBOM</option>
+                        <option value="spdx">SPDX 3 SBOM</option>
+                      </select>
+                    </label>
                     <RepoSurfaceCatalog />
                   </div>
                 )}

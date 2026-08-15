@@ -268,7 +268,7 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     # or identity seeding below — those keep posture + NHI non-empty on start.
     graph_seeded = False
     try:
-        graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id)
+        graph_seeded = seed_showcase_graph_if_empty(graph_store, tenant_id=tenant_id, force=force)
     except Exception:
         _logger.warning("demo estate graph seeding failed", exc_info=True)
         summary["graph_error"] = True
@@ -324,6 +324,18 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
     except Exception:
         _logger.warning("demo estate catalog seeding failed", exc_info=True)
         summary["catalog_error"] = True
+
+    # Skills, CWPP lifecycle, and the campaign verification queue each read a
+    # dedicated tenant-scoped store. Seed small, explicitly synthetic records
+    # through those stores' public contracts so the corresponding demo journeys
+    # are evidence-backed rather than empty shells.
+    try:
+        from agent_bom.demo_estate.showcase_surfaces import seed_showcase_auxiliary_surfaces
+
+        summary["auxiliary_surfaces"] = seed_showcase_auxiliary_surfaces(tenant_id=tenant_id)
+    except Exception:
+        _logger.warning("demo estate auxiliary surface seeding failed", exc_info=True)
+        summary["auxiliary_surfaces_error"] = True
 
     # Governance blueprints and LLM spend live in their own stores, which the
     # graph/findings seeds never touch — the same gap the fleet/runtime seed

@@ -310,8 +310,12 @@ def _triage_response(exc: Any) -> dict[str, Any]:
     }
 
 
-def build_tenant_triage_owner_index(tenant_id: str) -> list[tuple[Any, str]]:
-    """Return ``(exception, assignee)`` pairs for the tenant's triage entries.
+TriageOwnerKey = tuple[str, str, str]
+TriageOwnerIndex = dict[TriageOwnerKey, tuple[int, str]]
+
+
+def build_tenant_triage_owner_index(tenant_id: str) -> TriageOwnerIndex:
+    """Return a constant-time match index for the tenant's triage entries.
 
     The finding "owner" is the triage ``assignee``. Only triage entries with an
     assignee contribute — suppressions and feedback carry an approver, not an
@@ -319,29 +323,46 @@ def build_tenant_triage_owner_index(tenant_id: str) -> list[tuple[Any, str]]:
     is queried with ``tenant_id`` so one tenant's assignees never leak into
     another tenant's findings.
     """
-    index: list[tuple[Any, str]] = []
-    for exc in _get_exception_store().list_all(tenant_id=tenant_id):
+    index: TriageOwnerIndex = {}
+    for sequence, exc in enumerate(_get_exception_store().list_all(tenant_id=tenant_id)):
         data = _parse_triage_reason(str(exc.reason))
         if data is None:
             continue
+        if exc.status.value not in {"approved", "active"} or exc.is_expired():
+            continue
         assignee = str(data.get("assignee") or getattr(exc, "approved_by", "") or "").strip()
         if assignee:
-            index.append((exc, assignee))
+            # ``list_all`` is newest-first. Keep only its first entry per match
+            # key, while retaining the sequence so exact/wildcard candidates can
+            # preserve that same global newest-first winner without scanning all
+            # triage rows once per finding.
+            key = (str(exc.vuln_id), str(exc.package_name), str(exc.server_name))
+            index.setdefault(key, (sequence, assignee))
     return index
 
 
 def triage_owner_for(
-    index: list[tuple[Any, str]],
+    index: TriageOwnerIndex,
     *,
     vuln_id: str,
     package: str,
     server_name: str = "",
 ) -> str | None:
     """Return the triage assignee matching a finding, or ``None`` when unassigned."""
-    for exc, assignee in index:
-        if exc.matches(vuln_id, package, server_name):
-            return assignee
-    return None
+    candidates: list[tuple[int, str]] = []
+    # Vuln/package each accept exact or ``*``. Server additionally accepts the
+    # historical empty-string wildcard. Eight/twelve bounded dictionary reads
+    # replace the previous O(findings * tenant triage rows) join.
+    server_keys = tuple(dict.fromkeys((server_name, "*", "")))
+    for candidate_vuln in (vuln_id, "*"):
+        for candidate_package in (package, "*"):
+            for candidate_server in server_keys:
+                candidate = index.get((candidate_vuln, candidate_package, candidate_server))
+                if candidate is not None:
+                    candidates.append(candidate)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
 
 
 def _auth_session_state(request: Request) -> dict:

@@ -50,6 +50,8 @@ _NEW_JSON_FINDING_KEYS = {
     "owner",
     "sla_due_at",
     "first_seen",
+    "status",
+    "lifecycle_status",
 }
 _NEW_SARIF_RESULT_PROPERTY_KEYS = {
     "affected_servers",

@@ -10,9 +10,11 @@ slow demo nobody profiles again.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
 import pytest
 from starlette.testclient import TestClient
@@ -26,6 +28,84 @@ from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
 # deliberately far above any real build (~1.6s), so it can never fire on a
 # merely slow runner.
 HANDSHAKE_TIMEOUT_S = 30.0
+
+
+def _fast_demo_story(*, tenant_id: str):
+    """Return a valid tenant-specific story without composing the full estate.
+
+    This module verifies scheduling, cache, and graph-store behaviour.  Building
+    the 2,000+ asset synthetic estate is covered by the enterprise-demo contract
+    suites; repeating it for every cache key made these concurrency contracts
+    contend with unrelated full-suite workers and time out on Python 3.11.
+    """
+    from agent_bom.demo_estate.enterprise_correlation import EnterpriseCorrelation
+    from agent_bom.demo_estate.enterprise_findings import EstateFindingSummary
+    from agent_bom.demo_estate.presentation import (
+        EnterpriseDemoBounds,
+        EnterpriseDemoListBound,
+        EnterpriseDemoStory,
+        EnterpriseDemoSummary,
+    )
+
+    estate_hash = hashlib.sha256(f"estate:{tenant_id}".encode()).hexdigest()
+    story_hash = hashlib.sha256(f"story:{tenant_id}".encode()).hexdigest()
+    observed_at = datetime(2026, 1, 1, tzinfo=UTC)
+    primary = EnterpriseCorrelation(
+        correlation_id=f"test-correlation:{tenant_id}",
+        tenant_id=tenant_id,
+        trace_id=f"test-trace:{tenant_id}",
+        kind="test",
+        outcome="observed",
+        started_at=observed_at,
+        ended_at=observed_at,
+        event_ids=(),
+        sources=(),
+        asset_ids=(),
+        asset_path=(),
+        data_classifications=(),
+        evidence_hashes=(),
+        evidence_quality="complete",
+    )
+    empty_bound = EnterpriseDemoListBound(returned=0, total=0, limit=0, truncated=False)
+    return EnterpriseDemoStory(
+        disclosure="Synthetic test fixture.",
+        estate_id=f"test-estate:{tenant_id}",
+        estate_name="Test estate",
+        tenant_id=tenant_id,
+        estate_content_hash=estate_hash,
+        story_content_hash=story_hash,
+        summary=EnterpriseDemoSummary(
+            assets=0,
+            observations=0,
+            evidence_sources=0,
+            complete_sources=0,
+            partial_sources=0,
+            correlations=1,
+            cross_source_correlations=0,
+            snapshots=0,
+            findings=0,
+        ),
+        bounds=EnterpriseDemoBounds(
+            events=empty_bound,
+            correlations=EnterpriseDemoListBound(returned=1, total=1, limit=1, truncated=False),
+            findings=empty_bound,
+        ),
+        count_metadata={},
+        primary_correlation=primary,
+        events=(),
+        correlations=(primary,),
+        collection_health=(),
+        finding_summary=EstateFindingSummary(
+            total=0,
+            by_severity={},
+            assets_affected=0,
+            assets_total=0,
+            controls_evidenced=0,
+            attack_paths_evidenced=0,
+            identities_implicated=0,
+        ),
+    )
+
 
 # ---------------------------------------------------------------------------
 # 1. /v1/demo-estate/story must not build the estate on the event loop
@@ -48,6 +128,7 @@ def story_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     original_graph_store = api_stores._graph_store
     api_stores._store = None
     api_stores._graph_store = None
+    monkeypatch.setattr(demo_routes, "build_enterprise_demo_story", _fast_demo_story)
     demo_routes.reset_demo_story_cache()
     try:
         with TestClient(api_server.app) as client:

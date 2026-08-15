@@ -51,6 +51,7 @@ jobs:
           EXPECTED_TAG: ${{ steps.tag.outputs.ref }}
           EXPECTED_VERSION: ${{ steps.tag.outputs.version }}
         run: |
+          set -euo pipefail
           git fetch --force --tags origin "refs/tags/$EXPECTED_TAG:refs/tags/$EXPECTED_TAG"
           TAG_SHA=$(git rev-list -n 1 "$EXPECTED_TAG^{commit}")
           HEAD_SHA=$(git rev-parse HEAD)
@@ -68,8 +69,20 @@ jobs:
             echo "::error::Checked-out version $REPO_VERSION does not match release tag $EXPECTED_TAG"
             exit 1
           fi
+          METRICS_JSON=$(git show "HEAD:docs/PRODUCT_METRICS.json")
+          METRICS_VERSION=$(echo "$METRICS_JSON" | jq -er '.version')
+          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er 'first(.metrics[] | select(.name == "MCP tools") | .value)')
+          if [ "$METRICS_VERSION" != "$REPO_VERSION" ]; then
+            echo "::error::Release metrics version $METRICS_VERSION does not match $REPO_VERSION"
+            exit 1
+          fi
+          if ! echo "$TOOL_COUNT" | grep -qE '^[1-9][0-9]*$'; then
+            echo "::error::Release metrics do not declare a positive MCP tool count"
+            exit 1
+          fi
           echo "Checked-out version: $REPO_VERSION"
           echo "repo_version=$REPO_VERSION" >> "$GITHUB_ENV"
+          echo "repo_tool_count=$TOOL_COUNT" >> "$GITHUB_ENV"
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli@4.30.5  # pinned — update periodically
@@ -89,44 +102,24 @@ jobs:
             railway up --detach
           fi
 
-      - name: Post-deploy version check
+      - name: Post-deploy exact release contract check
         shell: bash
         env:
           RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
           RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
         run: |
+          set -euo pipefail
           echo "Waiting 60s for Railway to rebuild and start..."
           sleep 60
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
-          HEALTH_URL=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe --base-url "$DEPLOY_URL" --resolve-only)
-          echo "Checking $HEALTH_URL"
-          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+          echo "Checking the public server card at $DEPLOY_URL"
+          PYTHONPATH=src python3 -m agent_bom.deployment_probe \
             --base-url "$DEPLOY_URL" \
             --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
+            --server-card \
+            --expected-version "$repo_version" \
+            --expected-tool-count "$repo_tool_count" \
             --attempts 5 \
             --backoff-seconds 30 \
-            --timeout 15 2>/dev/null || true)
-          if [ -n "$RESPONSE" ]; then
-            echo "Health response: $RESPONSE"
-            DEPLOYED_VERSION=$(echo "$RESPONSE" | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              print(data.get('version', 'unknown'))
-          except Exception:
-              print('unknown')
-          " 2>/dev/null || echo "unknown")
-            echo "Deployed version: $DEPLOYED_VERSION"
-            echo "Expected version: $repo_version"
-            if [ "$DEPLOYED_VERSION" = "$repo_version" ]; then
-              echo "✅ Version match confirmed"
-              exit 0
-            elif [ "$DEPLOYED_VERSION" = "unknown" ]; then
-              echo "⚠️ Could not extract version from health endpoint — auth or startup may still be incomplete"
-            else
-              echo "::warning::Version mismatch — deployed=$DEPLOYED_VERSION expected=$repo_version"
-            fi
-          else
-            echo "::warning::Health endpoint not ready after retries"
-          fi
-          echo "::warning::Could not verify deployed version — check Railway manually"
+            --timeout 15 >/dev/null
+          echo "Exact release contract confirmed: v${repo_version}, ${repo_tool_count} MCP tool schemas"

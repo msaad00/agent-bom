@@ -6,7 +6,13 @@ import urllib.error
 
 import pytest
 
-from agent_bom.deployment_probe import fetch_health, resolve_health_url, validate_health_payload
+from agent_bom.deployment_probe import (
+    fetch_health,
+    resolve_health_url,
+    resolve_server_card_url,
+    validate_health_payload,
+    validate_server_card_release,
+)
 
 
 class _Response:
@@ -31,6 +37,12 @@ def test_resolve_health_url_accepts_root_base_url():
 def test_resolve_health_url_strips_mcp_suffix():
     assert resolve_health_url("https://agent-bom-mcp.up.railway.app/mcp") == "https://agent-bom-mcp.up.railway.app/health"
     assert resolve_health_url("https://agent-bom-mcp.up.railway.app/nested/mcp") == "https://agent-bom-mcp.up.railway.app/nested/health"
+
+
+def test_resolve_server_card_url_uses_public_well_known_route():
+    expected = "https://agent-bom-mcp.up.railway.app/.well-known/mcp/server-card.json"
+    assert resolve_server_card_url("https://agent-bom-mcp.up.railway.app") == expected
+    assert resolve_server_card_url("https://agent-bom-mcp.up.railway.app/mcp") == expected
 
 
 def test_fetch_health_retries_normalized_url(monkeypatch):
@@ -70,3 +82,25 @@ def test_validate_health_payload_rejects_auth_required_for_public_registry():
 def test_validate_health_payload_allows_public_surface():
     payload = validate_health_payload({"version": "0.76.0", "auth_required": False}, forbid_auth_required=True)
     assert payload["version"] == "0.76.0"
+
+
+def test_validate_server_card_release_requires_exact_version_tools_and_schemas():
+    payload = {
+        "serverInfo": {"version": "0.100.0"},
+        "tools": [
+            {"name": "scan", "inputSchema": {"type": "object"}},
+            {"name": "generate_sbom", "inputSchema": {"type": "object"}},
+        ],
+    }
+
+    validated = validate_server_card_release(payload, expected_version="0.100.0", expected_tool_count=2)
+    assert validated is payload
+
+    with pytest.raises(ValueError, match="version mismatch"):
+        validate_server_card_release(payload, expected_version="0.101.0", expected_tool_count=2)
+    with pytest.raises(ValueError, match="tool count mismatch"):
+        validate_server_card_release(payload, expected_version="0.100.0", expected_tool_count=3)
+
+    payload["tools"][1].pop("inputSchema")
+    with pytest.raises(ValueError, match="tool schema"):
+        validate_server_card_release(payload, expected_version="0.100.0", expected_tool_count=2)

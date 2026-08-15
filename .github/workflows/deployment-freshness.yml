@@ -1,6 +1,7 @@
 name: Deployment Freshness
 
-# Checks that the protected Railway surface serves the latest release and that
+# Checks that the protected Railway surface serves the exact latest release
+# version and MCP tool-schema inventory, and that
 # the Smithery catalog listing is live with a non-empty tool inventory. Runs
 # daily and on-demand. Opens an issue if stale or misconfigured.
 #
@@ -29,18 +30,42 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get expected version from repo
+      - name: Get expected contract from latest published release
         id: expected
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION=$(python3 -c "
-          import re, pathlib
-          text = pathlib.Path('pyproject.toml').read_text()
-          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
-          print(m.group(1))
-          ")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Expected version: $VERSION"
+          set -euo pipefail
+          RELEASE_JSON=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest")
+          RELEASE_TAG=$(echo "$RELEASE_JSON" | jq -er '.tag_name')
+          if [ "$(echo "$RELEASE_JSON" | jq -r '.draft != false')" = "true" ]; then
+            echo "::error::Latest GitHub release is a draft"
+            exit 1
+          fi
+          git fetch --force --no-tags origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          RELEASE_SHA=$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")
+          VERSION="${RELEASE_TAG#v}"
+          METRICS_JSON=$(git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json")
+          METRICS_VERSION=$(echo "$METRICS_JSON" | jq -er '.version')
+          TOOL_COUNT=$(echo "$METRICS_JSON" | jq -er 'first(.metrics[] | select(.name == "MCP tools") | .value)')
+          if [ "$METRICS_VERSION" != "$VERSION" ]; then
+            echo "::error::Published release metrics version $METRICS_VERSION does not match $VERSION"
+            exit 1
+          fi
+          if ! echo "$TOOL_COUNT" | grep -qE '^[1-9][0-9]*$'; then
+            echo "::error::Published release metrics do not declare a positive MCP tool count"
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "tool_count=$TOOL_COUNT"
+            echo "release_sha=$RELEASE_SHA"
+          } >> "$GITHUB_OUTPUT"
+          echo "Expected published contract: v${VERSION}, ${TOOL_COUNT} MCP tools"
 
       - name: Check Railway deployment
         shell: bash
@@ -50,31 +75,33 @@ jobs:
           RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
           RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
         run: |
+          set -euo pipefail
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
-          HEALTH_URL=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe --base-url "$DEPLOY_URL" --resolve-only)
-          echo "Checking $HEALTH_URL ..."
-          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+          if RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
             --base-url "$DEPLOY_URL" \
             --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
+            --server-card \
+            --expected-version "${{ steps.expected.outputs.version }}" \
+            --expected-tool-count "${{ steps.expected.outputs.tool_count }}" \
             --attempts 3 \
             --backoff-seconds 5 \
-            --timeout 15 2>/dev/null || echo '{}')
-          DEPLOYED=$(echo "$RESPONSE" | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              print(data.get('version', 'unknown'))
-          except Exception:
-              print('unreachable')
-          ")
-          echo "railway_version=$DEPLOYED" >> "$GITHUB_OUTPUT"
-          echo "Railway version: $DEPLOYED (expected: ${{ steps.expected.outputs.version }})"
-          if [ "$DEPLOYED" = "unknown" ] || [ "$DEPLOYED" = "unreachable" ]; then
-            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Could not verify Railway version from $HEALTH_URL"
-          elif [ "$DEPLOYED" != "${{ steps.expected.outputs.version }}" ]; then
-            echo "stale=true" >> "$GITHUB_OUTPUT"
+            --timeout 15); then
+            DEPLOYED=$(echo "$RESPONSE" | jq -er '.serverInfo.version')
+            TOOL_COUNT=$(echo "$RESPONSE" | jq -er '.tools | length')
+          else
+            {
+              echo "railway_version=unreachable"
+              echo "tool_count=unknown"
+              echo "probe_failed=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::Railway server card does not match the latest published release contract"
+            exit 0
           fi
+          {
+            echo "railway_version=$DEPLOYED"
+            echo "tool_count=$TOOL_COUNT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Railway contract: v${DEPLOYED}, ${TOOL_COUNT} tools"
 
       - name: Check Smithery catalog listing
         shell: bash
@@ -117,10 +144,12 @@ jobs:
           }, separators=(",", ":")))
           PY
           ) || {
-            echo "public_version=unreachable" >> "$GITHUB_OUTPUT"
-            echo "tool_count=unknown" >> "$GITHUB_OUTPUT"
-            echo "auth_required=smithery-oauth" >> "$GITHUB_OUTPUT"
-            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "public_version=unreachable"
+              echo "tool_count=unknown"
+              echo "auth_required=smithery-oauth"
+              echo "probe_failed=true"
+            } >> "$GITHUB_OUTPUT"
             echo "::warning::Could not verify Smithery catalog listing"
             exit 0
           }
@@ -134,9 +163,11 @@ jobs:
           ")
           TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin).get('tool_count', 'unknown'))")
           DEPLOY_URL=$(echo "$RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin).get('deployment_url', 'unknown'))")
-          echo "public_version=$STATE" >> "$GITHUB_OUTPUT"
-          echo "tool_count=$TOOL_COUNT" >> "$GITHUB_OUTPUT"
-          echo "auth_required=smithery-oauth" >> "$GITHUB_OUTPUT"
+          {
+            echo "public_version=$STATE"
+            echo "tool_count=$TOOL_COUNT"
+            echo "auth_required=smithery-oauth"
+          } >> "$GITHUB_OUTPUT"
           echo "Smithery catalog state: $STATE"
           echo "Smithery deployment URL: $DEPLOY_URL"
           echo "Smithery tool count: $TOOL_COUNT"
@@ -147,12 +178,13 @@ jobs:
 
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
         shell: bash
-        if: steps.railway.outputs.stale == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
+        if: steps.railway.outputs.stale == 'true' || steps.railway.outputs.probe_failed == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           EXPECTED="${{ steps.expected.outputs.version }}"
           RAILWAY="${{ steps.railway.outputs.railway_version }}"
+          RAILWAY_TOOLS="${{ steps.railway.outputs.tool_count }}"
           PUBLIC="${{ steps.public.outputs.public_version }}"
           PUBLIC_TOOLS="${{ steps.public.outputs.tool_count }}"
           PUBLIC_AUTH="${{ steps.public.outputs.auth_required }}"
@@ -176,7 +208,7 @@ jobs:
 
           | Surface | Version | Expected | Auth Required | Tool Count |
           |---------|---------|----------|---------------|------------|
-          | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
+          | Railway (protected) | $RAILWAY | $EXPECTED | true | $RAILWAY_TOOLS |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
           **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
@@ -195,7 +227,7 @@ jobs:
 
           | Surface | Version | Expected | Auth Required | Tool Count |
           |---------|---------|----------|---------------|------------|
-          | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
+          | Railway (protected) | $RAILWAY | $EXPECTED | true | $RAILWAY_TOOLS |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
           **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.

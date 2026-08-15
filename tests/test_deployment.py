@@ -516,7 +516,21 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "smithery-oauth" in workflow
     assert "probe_failed=true" in workflow
     assert "steps.railway.outputs.probe_failed != 'true'" in workflow
-    assert "--resolve-only" in workflow
+    assert "--server-card" in workflow
+
+
+def test_deployment_freshness_targets_exact_published_server_card_contract():
+    """Unreleased main and same-version tool drift must not blur deployment truth."""
+    workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
+
+    assert "Get expected contract from latest published release" in workflow
+    assert "repos/$GITHUB_REPOSITORY/releases/latest" in workflow
+    assert 'git show "${RELEASE_SHA}:docs/PRODUCT_METRICS.json"' in workflow
+    assert 'select(.name == "MCP tools")' in workflow
+    assert "--server-card" in workflow
+    assert '--expected-version "${{ steps.expected.outputs.version }}"' in workflow
+    assert '--expected-tool-count "${{ steps.expected.outputs.tool_count }}"' in workflow
+    assert "steps.railway.outputs.probe_failed == 'true'" in workflow
 
 
 def test_deployment_freshness_uses_a_version_stable_issue_identity():
@@ -782,6 +796,19 @@ def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():
     assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
     assert "python3 -m agent_bom.deployment_probe" in workflow
     assert "--attempts 5" in workflow
+
+
+def test_deploy_mcp_sse_fails_closed_on_exact_release_server_card_drift():
+    """A release deploy is green only when version, tool count, and schemas match."""
+    workflow = (ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml").read_text()
+
+    assert 'METRICS_JSON=$(git show "HEAD:docs/PRODUCT_METRICS.json")' in workflow
+    assert 'select(.name == "MCP tools")' in workflow
+    assert 'repo_tool_count=$TOOL_COUNT' in workflow
+    assert "--server-card" in workflow
+    assert '--expected-version "$repo_version"' in workflow
+    assert '--expected-tool-count "$repo_tool_count"' in workflow
+    assert "Could not verify deployed version" not in workflow
 
 
 def test_dockerfiles_support_proxy_and_ca_contract():

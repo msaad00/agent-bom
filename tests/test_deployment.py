@@ -804,7 +804,7 @@ def test_deploy_mcp_sse_fails_closed_on_exact_release_server_card_drift():
 
     assert 'METRICS_JSON=$(git show "HEAD:docs/PRODUCT_METRICS.json")' in workflow
     assert 'select(.name == "MCP tools")' in workflow
-    assert 'repo_tool_count=$TOOL_COUNT' in workflow
+    assert "repo_tool_count=$TOOL_COUNT" in workflow
     assert "--server-card" in workflow
     assert '--expected-version "$repo_version"' in workflow
     assert '--expected-tool-count "$repo_tool_count"' in workflow

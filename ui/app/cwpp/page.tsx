@@ -246,7 +246,7 @@ export default function CwppSideScanPage() {
     [form, load],
   );
 
-  const executions = useMemo(() => data?.executions ?? [], [data]);
+  const executions = data?.executions ?? [];
   const executionStatuses = ["queued", "running", "scan_complete", "partial", "disabled", "denied", "failed"];
   const executionTotalItems = data?.page?.total ?? executions.length;
   const executionTotalPages = Math.max(1, Math.ceil(executionTotalItems / EXECUTION_PAGE_SIZE));

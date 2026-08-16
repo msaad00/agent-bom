@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 def test_scale_evidence_scaffold_is_complete() -> None:
     result = subprocess.run(
@@ -25,7 +27,9 @@ def test_postgres_scale_workflow_migrates_before_workload() -> None:
     assert "Migrate ephemeral Postgres schema" in workflow
     assert "alembic -c deploy/supabase/postgres/alembic.ini upgrade head" in workflow
     assert "AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:" in workflow
+    assert "AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance:" in workflow
     assert "AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://agent_bom:" in workflow
+    assert "ALTER DATABASE agent_bom SET init.maintenance_password = 'benchmark_maintenance'" in workflow
     assert "AGENT_BOM_ALLOW_SUPERUSER_DB" not in workflow
 
 
@@ -39,10 +43,102 @@ def test_postgres_scale_evidence_sets_current_postgres_url(monkeypatch) -> None:
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
     monkeypatch.delenv("AGENT_BOM_POSTGRES_DSN", raising=False)
 
-    module._set_postgres_env("postgresql://agent_bom:agent_bom@localhost:5432/agent_bom")
+    module._set_postgres_env(
+        "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom",
+        pool_min_size=1,
+        pool_max_size=4,
+    )
 
     assert os.environ["AGENT_BOM_POSTGRES_URL"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
     assert os.environ["AGENT_BOM_POSTGRES_DSN"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
+    assert os.environ["AGENT_BOM_POSTGRES_POOL_MIN_SIZE"] == "1"
+    assert os.environ["AGENT_BOM_POSTGRES_POOL_MAX_SIZE"] == "4"
+
+
+def test_postgres_scale_evidence_records_bounded_pool_budget() -> None:
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    evidence = module.generate(
+        None,
+        [1_000],
+        4,
+        ["job_put"],
+        dry_run=True,
+        pool_min_size=1,
+        pool_max_size=4,
+    )
+
+    assert evidence["environment"]["postgres_pool_min_size_per_replica"] == 1
+    assert evidence["environment"]["postgres_pool_max_size_per_replica"] == 4
+    assert evidence["environment"]["postgres_pool_max_connections"] == 16
+
+
+def test_postgres_scale_evidence_requires_maintenance_role_for_audit(monkeypatch) -> None:
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_MAINTENANCE_URL", raising=False)
+
+    with pytest.raises(SystemExit, match="AGENT_BOM_POSTGRES_MAINTENANCE_URL.*--kinds includes audit"):
+        module.generate(
+            "postgresql://app@localhost/agent_bom",
+            [1],
+            1,
+            ["audit"],
+            dry_run=False,
+        )
+
+
+def test_postgres_scale_evidence_preflights_migrated_schema(monkeypatch) -> None:
+    script = Path("scripts/run_postgres_scale_evidence.py")
+    spec = importlib.util.spec_from_file_location("run_postgres_scale_evidence", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    class Result:
+        def __init__(self, value: str | None) -> None:
+            self.value = value
+
+        def fetchone(self) -> tuple[str | None]:
+            return (self.value,)
+
+    class Connection:
+        def __init__(self, value: str | None) -> None:
+            self.value = value
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def execute(self, _query: str) -> Result:
+            return Result(self.value)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg",
+        SimpleNamespace(connect=lambda _dsn: Connection("control_plane_schema_versions")),
+    )
+    module._validate_postgres_schema("postgresql://app@localhost/agent_bom")
+
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=lambda _dsn: Connection(None)))
+    with pytest.raises(SystemExit, match="alembic.*upgrade head"):
+        module._validate_postgres_schema("postgresql://app@localhost/agent_bom")
+
+
+def test_postgres_scale_workflow_bounds_each_replica_pool() -> None:
+    workflow = Path(".github/workflows/postgres-scale-evidence.yml").read_text()
+
+    assert 'AGENT_BOM_POSTGRES_POOL_MIN_SIZE: "1"' in workflow
+    assert 'AGENT_BOM_POSTGRES_POOL_MAX_SIZE: "4"' in workflow
 
 
 def test_postgres_scale_audit_payload_matches_runtime_contract() -> None:

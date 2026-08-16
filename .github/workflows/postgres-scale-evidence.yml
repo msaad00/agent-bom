@@ -64,7 +64,12 @@ jobs:
           --health-retries 10
     env:
       AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:benchmark_app@localhost:5432/agent_bom
+      AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance:benchmark_maintenance@localhost:5432/agent_bom
       AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://agent_bom:agent_bom@localhost:5432/agent_bom
+      # Keep four simulated replicas within the packaged app role's connection
+      # cap while still measuring real pool contention.
+      AGENT_BOM_POSTGRES_POOL_MIN_SIZE: "1"
+      AGENT_BOM_POSTGRES_POOL_MAX_SIZE: "4"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,6 +96,7 @@ jobs:
 
           with psycopg.connect(os.environ["AGENT_BOM_POSTGRES_ADMIN_URL"], autocommit=True) as connection:
               connection.execute("ALTER DATABASE agent_bom SET init.app_password = 'benchmark_app'")
+              connection.execute("ALTER DATABASE agent_bom SET init.maintenance_password = 'benchmark_maintenance'")
           PY
           alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 

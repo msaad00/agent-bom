@@ -74,6 +74,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 DEFAULT_OUTPUT = ROOT / "docs" / "perf" / "results" / f"postgres-scale-evidence-{datetime.now(timezone.utc).date()}.json"
 DEFAULT_SIZES = (1_000, 5_000, 10_000)
+DEFAULT_POOL_MIN_SIZE = 1
+DEFAULT_POOL_MAX_SIZE = 4
 
 
 def _percentiles(values_ms: list[float]) -> dict[str, float]:
@@ -176,23 +178,50 @@ def _job_get_iter(job_store, sample_ids: list[tuple[str, str]]) -> list[float]:
     return timings
 
 
-def _set_postgres_env(dsn: str) -> None:
-    """Set current and legacy Postgres DSN env vars for child workers."""
+def _set_postgres_env(dsn: str, *, pool_min_size: int, pool_max_size: int) -> None:
+    """Set the DSN and bounded per-replica pool contract for child workers."""
     os.environ["AGENT_BOM_POSTGRES_URL"] = dsn
     os.environ["AGENT_BOM_POSTGRES_DSN"] = dsn
+    os.environ["AGENT_BOM_POSTGRES_POOL_MIN_SIZE"] = str(pool_min_size)
+    os.environ["AGENT_BOM_POSTGRES_POOL_MAX_SIZE"] = str(pool_max_size)
+
+
+def _validate_postgres_schema(dsn: str) -> None:
+    """Fail before fan-out when the target has not run shipped migrations."""
+    import psycopg
+
+    try:
+        with psycopg.connect(dsn) as connection:
+            row = connection.execute("SELECT to_regclass('public.control_plane_schema_versions')").fetchone()
+    except Exception:
+        raise SystemExit(
+            "Postgres schema preflight failed. Verify the app DSN and run "
+            "`alembic -c deploy/supabase/postgres/alembic.ini upgrade head` before benchmarking."
+        ) from None
+    if not row or row[0] is None:
+        raise SystemExit(
+            "Postgres schema is not migrated. Run `alembic -c deploy/supabase/postgres/alembic.ini upgrade head` before benchmarking."
+        )
 
 
 # ─── Per-replica worker (run in a child process) ─────────────────────────────
 
 
-def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> dict[str, Any]:
+def _replica_worker(
+    dsn: str,
+    size: int,
+    replica_idx: int,
+    kinds: list[str],
+    pool_min_size: int,
+    pool_max_size: int,
+) -> dict[str, Any]:
     """Simulate one control-plane replica's contribution to the load.
 
     Each child process opens its own pool, runs the requested workload
     `kinds` (subset of {"audit","job_put","job_get"}), and returns
     timing distributions. The parent aggregates across replicas.
     """
-    _set_postgres_env(dsn)
+    _set_postgres_env(dsn, pool_min_size=pool_min_size, pool_max_size=pool_max_size)
 
     # Lazy import — psycopg may not be installed in dry-run mode.
     from agent_bom.api.postgres_audit import PostgresAuditLog
@@ -241,13 +270,20 @@ def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> 
     return result
 
 
-def _run_clustered(dsn: str, size: int, n_replicas: int, kinds: list[str]) -> dict[str, Any]:
+def _run_clustered(
+    dsn: str,
+    size: int,
+    n_replicas: int,
+    kinds: list[str],
+    pool_min_size: int,
+    pool_max_size: int,
+) -> dict[str, Any]:
     started = time.perf_counter()
     if n_replicas <= 1:
-        replicas = [_replica_worker(dsn, size, 0, kinds)]
+        replicas = [_replica_worker(dsn, size, 0, kinds, pool_min_size, pool_max_size)]
     else:
         with ProcessPoolExecutor(max_workers=n_replicas) as pool:
-            futures = [pool.submit(_replica_worker, dsn, size, idx, kinds) for idx in range(n_replicas)]
+            futures = [pool.submit(_replica_worker, dsn, size, idx, kinds, pool_min_size, pool_max_size) for idx in range(n_replicas)]
             replicas = [f.result() for f in as_completed(futures)]
     wall_ms = (time.perf_counter() - started) * 1000
 
@@ -273,7 +309,14 @@ def generate(
     kinds: list[str],
     *,
     dry_run: bool,
+    pool_min_size: int = DEFAULT_POOL_MIN_SIZE,
+    pool_max_size: int = DEFAULT_POOL_MAX_SIZE,
 ) -> dict[str, Any]:
+    if replicas < 1:
+        raise SystemExit("--replicas must be at least 1.")
+    if pool_min_size < 1 or pool_max_size < pool_min_size:
+        raise SystemExit("Postgres pool sizes must satisfy 1 <= min <= max.")
+
     base: dict[str, Any] = {
         "schema_version": "operability-benchmark.v1",
         "backend": "postgres",
@@ -295,6 +338,9 @@ def generate(
             "machine": platform.machine(),
             "processor": platform.processor(),
             "replicas_simulated": replicas,
+            "postgres_pool_min_size_per_replica": pool_min_size,
+            "postgres_pool_max_size_per_replica": pool_max_size,
+            "postgres_pool_max_connections": replicas * pool_max_size,
         },
         "kinds": kinds,
         "sizes_per_replica": sizes,
@@ -313,8 +359,14 @@ def generate(
             "AGENT_BOM_POSTGRES_URL env var, AGENT_BOM_POSTGRES_DSN env var, or --dsn required "
             "(use --dry-run to validate the harness without Postgres)."
         )
+    if "audit" in kinds and not os.environ.get("AGENT_BOM_POSTGRES_MAINTENANCE_URL"):
+        raise SystemExit(
+            "AGENT_BOM_POSTGRES_MAINTENANCE_URL is required when --kinds includes audit; "
+            "use the scoped NOSUPERUSER maintenance role provisioned by the shipped migrations."
+        )
 
-    base["results"] = [_run_clustered(dsn, size, replicas, kinds) for size in sizes]
+    _validate_postgres_schema(dsn)
+    base["results"] = [_run_clustered(dsn, size, replicas, kinds, pool_min_size, pool_max_size) for size in sizes]
     base["operability"] = {
         "concurrency": replicas,
         "peak_memory_mib": None,
@@ -354,6 +406,18 @@ def main() -> int:
         help="Comma-separated workloads (audit, job_put, job_get).",
     )
     parser.add_argument(
+        "--pool-min-size",
+        type=int,
+        default=DEFAULT_POOL_MIN_SIZE,
+        help="Minimum Postgres connections opened by each simulated replica (default: 1).",
+    )
+    parser.add_argument(
+        "--pool-max-size",
+        type=int,
+        default=DEFAULT_POOL_MAX_SIZE,
+        help="Maximum Postgres connections opened by each simulated replica (default: 4).",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
@@ -373,7 +437,15 @@ def main() -> int:
     if invalid:
         parser.error(f"Unknown --kinds entries: {invalid} (valid: {sorted(valid)})")
 
-    evidence = generate(args.dsn, sizes, args.replicas, kinds, dry_run=args.dry_run)
+    evidence = generate(
+        args.dsn,
+        sizes,
+        args.replicas,
+        kinds,
+        dry_run=args.dry_run,
+        pool_min_size=args.pool_min_size,
+        pool_max_size=args.pool_max_size,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     try:

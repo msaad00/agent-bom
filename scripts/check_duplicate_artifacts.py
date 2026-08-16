@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Fail when Finder-style duplicate artifacts are present.
+"""Fail when duplicate or agent-session artifacts are tracked.
 
 macOS Finder copies such as ``foo 2.py`` and duplicated directories such as
 ``contracts/v1 2`` are easy to miss in reviews but can be included in source
 distributions and release archives. CI checks tracked paths. Local operators can
 use ``--working-tree`` to catch untracked copies that would still be collected by
 tools such as pytest.
+
+Agent worktrees and rescue patches are local recovery state, not product source.
+They are rejected when tracked even though their parent directories remain
+ignored during an explicit working-tree scan.
 """
 
 from __future__ import annotations
@@ -48,6 +52,11 @@ _IGNORED_DIR_NAMES = {
     "site",
     "venv",
 }
+_FORBIDDEN_TRACKED_PREFIXES = (
+    ".claude/worktree-rescue/",
+    ".claude/worktrees/",
+    ".codex/",
+)
 
 
 def _tracked_paths() -> list[str]:
@@ -95,6 +104,18 @@ def find_duplicate_artifacts(paths: list[str]) -> list[str]:
     return sorted(set(matches))
 
 
+def find_forbidden_artifacts(paths: list[str]) -> list[str]:
+    """Return tracked paths that belong only to local agent sessions."""
+    matches: list[str] = []
+    for raw in paths:
+        normalized = raw.replace("\\", "/")
+        if normalized.startswith("./"):
+            normalized = normalized[2:]
+        if normalized.startswith(_FORBIDDEN_TRACKED_PREFIXES):
+            matches.append(normalized)
+    return sorted(set(matches))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -116,17 +137,23 @@ def main(argv: list[str] | None = None) -> int:
     else:
         paths = _tracked_paths()
     duplicates = find_duplicate_artifacts(paths)
-    if not duplicates:
+    forbidden = [] if args.working_tree else find_forbidden_artifacts(paths)
+    if not duplicates and not forbidden:
         scope = "working-tree" if args.working_tree else "tracked"
-        print(f"No {scope} Finder-style duplicate artifacts found.")
+        print(f"No {scope} duplicate or agent-session artifacts found.")
         return 0
 
     scope = "Working-tree" if args.working_tree else "Tracked"
-    print(f"{scope} Finder-style duplicate artifacts found:", file=sys.stderr)
-    for path in duplicates:
-        print(f"- {path}", file=sys.stderr)
+    if duplicates:
+        print(f"{scope} Finder-style duplicate artifacts found:", file=sys.stderr)
+        for path in duplicates:
+            print(f"- {path}", file=sys.stderr)
+    if forbidden:
+        print("Tracked agent-session artifacts found:", file=sys.stderr)
+        for path in forbidden:
+            print(f"- {path}", file=sys.stderr)
     print(
-        "\nRemove these files or rename them intentionally before merging/releasing.",
+        "\nRemove these files or rename intentional product files before merging/releasing.",
         file=sys.stderr,
     )
     return 1

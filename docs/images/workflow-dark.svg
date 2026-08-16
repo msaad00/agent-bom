@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="720" viewBox="0 0 1400 720" fill="none">
+<title>agent-bom end-to-end evidence workflow</title>
+<desc>Sources flow through collection, normalization, correlation, ownership, remediation, verification, and action.</desc>
+<rect width="1400" height="720" rx="24" fill="#0a0a0c"/>
+<text x="40" y="50" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="800" letter-spacing="0.16em" fill="#a78bfa">FROM SOURCE TO VERIFIED ACTION</text>
+<text x="40" y="86" font-family="Inter,system-ui,sans-serif" font-size="24" font-weight="750" fill="#f4f4f5">One workflow across developer, endpoint, CI, cloud, control plane, and runtime</text>
+<text x="40" y="112" font-family="ui-monospace,monospace" font-size="13" font-weight="800" letter-spacing="0.13em" fill="#a78bfa">SOURCES</text>
+<rect x="40" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
+<rect x="54" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(58,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7l4 4v12H7z M14 4v4h4"/></g>
+<text x="92" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">Repository + CI</text>
+<text x="54" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">code · deps · IaC · secrets</text>
+<rect x="306" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
+<rect x="320" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(324,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
+<text x="358" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">Workstation / endpoint</text>
+<text x="320" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">configs · agents · apps · images</text>
+<rect x="572" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
+<rect x="586" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(590,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 3v9 M4 7.5l16 9"/></g>
+<text x="624" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">Images + Kubernetes</text>
+<text x="586" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">registry · filesystem · workloads</text>
+<rect x="838" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
+<rect x="852" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(856,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15h12a4 4 0 0 0 .5-8A6 6 0 0 0 6 15z"/></g>
+<text x="890" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">Cloud + data platforms</text>
+<text x="852" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">accounts · identity · posture</text>
+<rect x="852" y="195" width="68" height="22" rx="6" fill="#ffffff" stroke="#d4d4d8"/><g transform="translate(856,197) scale(0.45)"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+<rect fill="#242F3E" x="0" y="0" width="40" height="40"/>
+<path d="M28.993,27.9952689 L11.487,27.9762689 C9.121,27.9742689 7.154,26.1292689 7.012,23.7752689 C7.004,23.6522689 7,23.5262689 7,23.3972689 C7,20.2992689 9.091,19.2872689 10.337,18.9592689 C10.577,18.8962689 10.735,18.6662689 10.707,18.4192689 C10.676,18.1492689 10.659,17.8752689 10.659,17.5962689 C10.659,15.1322689 12.308,12.4822689 14.415,11.5632689 C15.359,11.1502689 16.232,10.9862689 17.023,10.9862689 C19.276,10.9862689 20.867,12.3152689 21.561,13.0332689 C22.329,13.8262689 22.927,14.8382689 23.34,16.0422689 C23.4,16.2192689 23.555,16.3472689 23.74,16.3742689 C23.918,16.4012689 24.109,16.3232689 24.219,16.1712689 C24.807,15.3502689 25.766,14.9822689 26.659,15.2392689 C27.782,15.5602689 28.516,16.7272689 28.62,18.3072689 C28.578,18.5762689 28.759,18.8292689 29.027,18.8772689 C30.222,19.0892689 33,19.9572689 33,23.4402689 C33,27.5892689 29.114,27.9822689 28.993,27.9952689 M29.594,17.9742689 C29.379,16.0672689 28.4,14.6962689 26.934,14.2782689 C25.899,13.9822689 24.811,14.2452689 23.989,14.9502689 C23.553,13.9362689 22.979,13.0602689 22.28,12.3382689 C20.023,10.0052689 16.933,9.37226889 14.014,10.6462689 C11.531,11.7302689 9.659,14.7182689 9.659,17.5962689 C9.659,17.7702689 9.665,17.9432689 9.676,18.1142689 C8.319,18.5732689 6,19.8752689 6,23.3972689 C6,23.5492689 6.004,23.6962689 6.014,23.8382689 C6.188,26.7162689 8.593,28.9732689 11.486,28.9762689 L29.034,28.9932689 C29.084,28.9892689 34,28.5192689 34,23.4402689 C34,19.5022689 31.003,18.3142689 29.594,17.9742689" fill="#FFFFFF"/>
+</g></g><text x="879" y="211" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#18181b">AWS</text>
+<rect x="926" y="195" width="68" height="22" rx="6" fill="#ffffff" stroke="#d4d4d8"/><g transform="translate(930,197) scale(1.0)"><defs><linearGradient id="wf-dark-1-azure-cloud-gradient" x1="8.99" y1="16.61" x2="8.99" y2="-1.27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0078d4"/><stop offset="0.16" stop-color="#1380da"/><stop offset="0.53" stop-color="#3c91e5"/><stop offset="0.82" stop-color="#559cec"/><stop offset="1" stop-color="#5ea0ef"/></linearGradient></defs>
+<path d="M18,10.55a4.11,4.11,0,0,0-3.51-4,5.14,5.14,0,0,0-5.25-5,5.26,5.26,0,0,0-5,3.47A4.87,4.87,0,0,0,0,9.82a4.94,4.94,0,0,0,5.07,4.8l.44,0h8.21a1.46,1.46,0,0,0,.22,0A4.13,4.13,0,0,0,18,10.55Z" fill="url(#wf-dark-1-azure-cloud-gradient)"/>
+<circle cx="5.24" cy="9.65" r="0.71" fill="#e3e3e3"/>
+<path d="M7.74,9.92V9.35l-.08,0-.61-.2-.16-.39.31-.66-.4-.4-.08,0L6.15,8l-.39-.16-.25-.69H4.94l0,.08-.2.61L4.32,8l-.65-.31-.4.4,0,.08.29.57-.16.39-.7.25V10l.08,0,.61.2.16.39-.31.66.4.4.08,0,.57-.29.39.16.25.69h.57l0-.08.2-.61.39-.16.66.31.4-.4,0-.08-.29-.57.16-.39Zm-2.5.83a1.1,1.1,0,1,1,1.1-1.1A1.09,1.09,0,0,1,5.24,10.75Z" fill="#fff"/>
+<circle cx="10" cy="6.59" r="0.84" fill="#e3e3e3"/>
+<path d="M13,6.91V6.23l-.09,0L12.17,6,12,5.49l.37-.8-.48-.48-.09,0-.69.35-.46-.19-.3-.83H9.64l0,.1-.24.73-.47.19-.78-.37-.48.48.05.09L8,5.5,7.84,6,7,6.27V7l.1,0,.73.24L8,7.69l-.37.8L8.13,9l.1-.05.68-.35.47.19.3.83h.68l0-.1.24-.73.47-.19.79.37.48-.48-.05-.09L12,7.68l.19-.47Zm-3,1a1.32,1.32,0,1,1,1.32-1.32A1.31,1.31,0,0,1,10,7.91Z" fill="#fff"/></g><text x="953" y="211" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#18181b">Azure</text>
+<rect x="1000" y="195" width="68" height="22" rx="6" fill="#ffffff" stroke="#d4d4d8"/><g transform="translate(1004,197) scale(0.03515625)"><rect width="512" height="512" fill="none"/>
+<path d="M239.85,490c-1.54,0-3.11-.22-4.64-.69-6.73-2.04-11.33-8.25-11.33-15.28v-165.79h-121.9c-5.9,0-11.31-3.25-14.09-8.45-2.78-5.2-2.46-11.51.82-16.41L258.96,29.09c3.91-5.84,11.19-8.44,17.92-6.4s11.33,8.25,11.33,15.28v165.78h121.82c5.9,0,11.31,3.25,14.09,8.45s2.46,11.51-.81,16.41l-170.18,254.3c-3.02,4.51-8.05,7.09-13.28,7.09ZM131.89,276.29h107.96c8.82,0,15.97,7.15,15.97,15.97v129.17l124.3-185.74h-107.89c-8.82,0-15.97-7.15-15.97-15.97V90.54l-124.37,185.75h0Z" fill="#9aa0a6"/>
+<path d="M418.56,235.7h-146.33c-8.82,0-15.97-7.15-15.97-15.97V33.12c1.4-2.09,3.01-5.12,5.69-7.37,2.52-2.11,6.13-3.74,10.28-3.74,8.82,0,15.97,7.15,15.97,15.97v165.78h121.82c8.82,0,15.97,7.15,15.97,15.97,0,5.33-2.4,8.46-4.12,10.98-1.46,2.14-2.34,3.52-3.33,4.99h.02Z" fill="#2b80f8"/>
+<path d="M239.85,490c-8.82,0-15.97-7.15-15.97-15.97v-197.73h15.97c8.82,0,15.97,7.15,15.97,15.97v186.61c-1.75,2.7-3.28,5.33-5.49,7.2-2.73,2.31-6.21,3.92-10.49,3.92h.01Z" fill="#2b80f8"/></g><text x="1027" y="211" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#18181b">GCP</text>
+<rect x="1104" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
+<rect x="1118" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(1122,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6.1 6.1L5 16l3 3 3.6-3.6a4.5 4.5 0 0 0 6.1-6.1l-2.4 2.4"/></g>
+<text x="1156" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">MCP + runtime</text>
+<text x="1118" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">servers · tools · live decisions</text>
+<rect x="40" y="286" width="252" height="176" rx="14" fill="#0f0f13" stroke="#38bdf8" stroke-width="1.4"/>
+<text x="56" y="316" font-family="ui-monospace,monospace" font-size="13" font-weight="800" fill="#38bdf8">01</text>
+<text x="56" y="347" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="800" fill="#e9e9ec">COLLECT + SCAN</text>
+<text x="56" y="390" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="650" fill="#e9e9ec">Read-only intake</text>
+<text x="56" y="418" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">scope + completeness</text>
+<line x1="295" y1="374" x2="298" y2="374" stroke="#8b5cf6" stroke-width="2"/><polygon points="303,374 296,369 296,379" fill="#8b5cf6"/>
+<rect x="306" y="286" width="252" height="176" rx="14" fill="#0f0f13" stroke="#818cf8" stroke-width="1.4"/>
+<text x="322" y="316" font-family="ui-monospace,monospace" font-size="13" font-weight="800" fill="#818cf8">02</text>
+<text x="322" y="347" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="800" fill="#e9e9ec">NORMALIZE</text>
+<text x="322" y="390" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="650" fill="#e9e9ec">Finding + UnifiedGraph</text>
+<text x="322" y="418" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">identity + provenance</text>
+<line x1="561" y1="374" x2="564" y2="374" stroke="#8b5cf6" stroke-width="2"/><polygon points="569,374 562,369 562,379" fill="#8b5cf6"/>
+<rect x="572" y="286" width="252" height="176" rx="14" fill="#0f0f13" stroke="#a78bfa" stroke-width="1.4"/>
+<text x="588" y="316" font-family="ui-monospace,monospace" font-size="13" font-weight="800" fill="#a78bfa">03</text>
+<text x="588" y="347" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="800" fill="#e9e9ec">CORRELATE + PRIORITIZE</text>
+<text x="588" y="390" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="650" fill="#e9e9ec">reachability + blast radius</text>
+<text x="588" y="418" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">evidence-backed rank</text>
+<line x1="827" y1="374" x2="830" y2="374" stroke="#8b5cf6" stroke-width="2"/><polygon points="835,374 828,369 828,379" fill="#8b5cf6"/>
+<rect x="838" y="286" width="252" height="176" rx="14" fill="#0f0f13" stroke="#34d399" stroke-width="1.4"/>
+<text x="854" y="316" font-family="ui-monospace,monospace" font-size="13" font-weight="800" fill="#34d399">04</text>
+<text x="854" y="347" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="800" fill="#e9e9ec">OWN + REMEDIATE</text>
+<text x="854" y="390" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="650" fill="#e9e9ec">owner + SLA + ticket</text>
+<text x="854" y="418" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">fix or accept risk</text>
+<line x1="1093" y1="374" x2="1096" y2="374" stroke="#8b5cf6" stroke-width="2"/><polygon points="1101,374 1094,369 1094,379" fill="#8b5cf6"/>
+<rect x="1104" y="286" width="252" height="176" rx="14" fill="#0f0f13" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="1120" y="316" font-family="ui-monospace,monospace" font-size="13" font-weight="800" fill="#fbbf24">05</text>
+<text x="1120" y="347" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="800" fill="#e9e9ec">VERIFY + ACT</text>
+<text x="1120" y="390" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="650" fill="#e9e9ec">rescan + terminal state</text>
+<text x="1120" y="418" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">export · centralize · enforce</text>
+<rect x="40" y="488" width="1316" height="52" rx="12" fill="#15121f" stroke="#5b4bbd"/>
+<text x="698" y="521" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="800" fill="#a78bfa">Path -&gt; Impact -&gt; Owner -&gt; Fix -&gt; Verify</text>
+<rect x="40" y="568" width="207" height="46" rx="10" fill="#161619" stroke="#2a2a31"/>
+<text x="143.5" y="597" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="750" fill="#a1a1aa">SARIF</text>
+<rect x="259" y="568" width="207" height="46" rx="10" fill="#161619" stroke="#2a2a31"/>
+<text x="362.5" y="597" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="750" fill="#a1a1aa">CycloneDX</text>
+<rect x="478" y="568" width="207" height="46" rx="10" fill="#161619" stroke="#2a2a31"/>
+<text x="581.5" y="597" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="750" fill="#a1a1aa">SPDX</text>
+<rect x="697" y="568" width="207" height="46" rx="10" fill="#161619" stroke="#2a2a31"/>
+<text x="800.5" y="597" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="750" fill="#a1a1aa">HTML / JSON</text>
+<rect x="916" y="568" width="207" height="46" rx="10" fill="#161619" stroke="#2a2a31"/>
+<text x="1019.5" y="597" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="750" fill="#a1a1aa">Control plane</text>
+<rect x="1135" y="568" width="207" height="46" rx="10" fill="#161619" stroke="#2a2a31"/>
+<text x="1238.5" y="597" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="750" fill="#a1a1aa">Runtime policy</text>
+<rect x="40" y="642" width="650" height="44" rx="10" fill="#0c1a14" stroke="#1f4438"/>
+<text x="365" y="670" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#4ade80">Raw source + credentials stay local</text>
+<rect x="706" y="642" width="650" height="44" rx="10" fill="#121016" stroke="#2a2733"/>
+<text x="1031" y="670" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#82828c">Unavailable remains unavailable · partial stays explicit</text>
+</svg>

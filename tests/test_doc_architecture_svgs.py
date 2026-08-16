@@ -15,6 +15,7 @@ from scripts.generate_doc_architecture_svgs import (
     architecture,
     how_it_works,
     persona_value,
+    workflow,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,35 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     assert "agent-bom serve" in svg
     assert "agent-bom gateway serve --help" in svg
     assert "ContextGraph" not in svg
+
+
+def test_workflow_maps_sources_to_verified_outcomes() -> None:
+    svg = workflow("dark")
+    for label in (
+        "SOURCES",
+        "COLLECT + SCAN",
+        "NORMALIZE",
+        "CORRELATE + PRIORITIZE",
+        "OWN + REMEDIATE",
+        "VERIFY + ACT",
+    ):
+        assert label in svg
+    for source in (
+        "Repository + CI",
+        "Workstation / endpoint",
+        "Images + Kubernetes",
+        "Cloud + data platforms",
+        "MCP + runtime",
+    ):
+        assert source in svg
+    for outcome in ("SARIF", "CycloneDX", "SPDX", "Control plane", "Runtime policy"):
+        assert outcome in svg
+    assert "Finding + UnifiedGraph" in svg
+    assert "Path -&gt; Impact -&gt; Owner -&gt; Fix -&gt; Verify" in svg
+    assert "Unavailable remains unavailable" in svg
+    assert "Raw source + credentials stay local" in svg
+    assert _audit_layout(svg) == []
+    assert _audit_github_safe(svg) == []
 
 
 def test_architecture_includes_core_surfaces() -> None:
@@ -103,6 +133,16 @@ def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
     assert "<summary><b>Audience workflow map</b></summary>" not in readme
 
 
+def test_readme_surfaces_the_end_to_end_workflow_before_architecture_detail() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    workflow_heading = readme.index("### From source to verified action")
+    workflow_art = readme.index("workflow-dark.svg", workflow_heading)
+    architecture_detail = readme.index("<summary><b>Control-plane architecture</b></summary>")
+    assert workflow_heading < workflow_art < architecture_detail
+    assert "workflow-light.svg" in readme[workflow_heading:architecture_detail]
+    assert "raw source and credentials stay local" in readme[workflow_heading:architecture_detail].lower()
+
+
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:
     """Every persona row gives a literal first command, not a noun phrase."""
     for row in _readme_persona_rows():
@@ -132,6 +172,7 @@ def test_generated_svgs_have_no_rect_overflow() -> None:
         "architecture-dark.svg",
         "persona-value-dark.svg",
         "blast-radius-dark.svg",
+        "workflow-dark.svg",
     ):
         text = (IMAGES / name).read_text(encoding="utf-8")
         assert _audit_layout(text) == [], name
@@ -147,6 +188,8 @@ def test_generated_files_exist_and_are_valid_svg() -> None:
         "persona-value-light.svg",
         "blast-radius-dark.svg",
         "blast-radius-light.svg",
+        "workflow-dark.svg",
+        "workflow-light.svg",
     ):
         path = IMAGES / name
         assert path.exists(), name
@@ -164,6 +207,7 @@ def test_generated_svgs_are_github_safe() -> None:
         "architecture-dark.svg",
         "persona-value-dark.svg",
         "blast-radius-dark.svg",
+        "workflow-dark.svg",
     ):
         text = (IMAGES / name).read_text(encoding="utf-8")
         assert _audit_github_safe(text) == [], name
@@ -181,6 +225,8 @@ def test_all_generated_svg_bytes_match_their_generators() -> None:
         "persona-value-light.svg": persona_value("light"),
         "blast-radius-dark.svg": blast_radius("dark"),
         "blast-radius-light.svg": blast_radius("light"),
+        "workflow-dark.svg": workflow("dark"),
+        "workflow-light.svg": workflow("light"),
     }
     for name, svg in expected.items():
         assert (IMAGES / name).read_text(encoding="utf-8") == svg + "\n", name
@@ -191,6 +237,7 @@ def test_readme_flow_diagrams_keep_a_ten_pixel_rendered_text_floor() -> None:
 
     for name, (svg, readme_scale) in {
         "how-it-works": (how_it_works("light"), 1100 / 1120),
+        "workflow": (workflow("light"), 1100 / 1400),
         "blast-radius": (blast_radius("light"), 900 / 960),
     }.items():
         sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]
@@ -240,5 +287,6 @@ def test_dense_diagram_text_stays_inside_the_canvas() -> None:
         "architecture": architecture("light"),
         "persona-value": persona_value("light"),
         "how-it-works": how_it_works("light"),
+        "workflow": workflow("light"),
     }.items():
         assert _audit_text_fit(svg) == [], name

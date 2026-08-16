@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "retrieved_at": "2026-08-16",
+  "purpose": "Official vendor icons used only to identify supported sources in agent-bom architecture and workflow documentation.",
+  "assets": [
+    {
+      "path": "docs/images/vendor/aws-cloud.svg",
+      "vendor": "Amazon Web Services",
+      "source_page": "https://aws.amazon.com/architecture/icons/",
+      "source_archive": "https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip",
+      "source_path": "Architecture-Group-Icons_07312026/AWS-Cloud_32.svg",
+      "sha256": "80881eef48da05b9bf8a9181f5ab3ec282f7fec18f09aa8a9dcc5ac10d481325",
+      "terms": "AWS permits customers and partners to use the architecture icon assets in diagrams and related materials. AWS marks remain AWS property."
+    },
+    {
+      "path": "docs/images/vendor/azure-cloud.svg",
+      "vendor": "Microsoft Azure",
+      "source_page": "https://learn.microsoft.com/en-us/azure/architecture/icons/",
+      "source_archive": "https://arch-center.azureedge.net/icons/Azure_Public_Service_Icons_V24.zip",
+      "source_path": "Azure_Public_Service_Icons/Icons/compute/10030-icon-service-Cloud-Services-(Classic).svg",
+      "sha256": "e382881ba2a72058c0c5ec3402f6cb7ff0fa503d141e3b749ccdf0cf4bff065c",
+      "terms": "Microsoft permits these icons in architecture diagrams, training materials, and documentation. Do not crop, rotate, distort, or use them as the agent-bom product mark."
+    },
+    {
+      "path": "docs/images/vendor/gcp-compute.svg",
+      "vendor": "Google Cloud",
+      "source_page": "https://cloud.google.com/icons",
+      "source_archive": "https://services.google.com/fh/files/misc/category-icons.zip",
+      "source_path": "Category Icons/Compute/SVG/Compute-512-color.svg",
+      "sha256": "a078045aeaffb6c52c55938fe7909169805cf851c1b35bf6c4debdc8c581e1ae",
+      "terms": "Google provides the official icon library for diagrams and technical documentation. Google Cloud marks remain Google property."
+    }
+  ],
+  "neutral_icon_policy": "Use agent-bom neutral category icons when a vendor does not publish redistributable diagram assets or when trademark terms are unclear."
+}

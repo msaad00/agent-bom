@@ -38,6 +38,22 @@ Graph provenance stays explicit: collected, inferred, static, and runtime
 relationships remain distinct, and unavailable evidence is never upgraded to
 observed.
 
+### From source to verified action
+
+Repository, workstation, image, cluster, cloud, data-platform, MCP, and runtime
+evidence follows one workflow. Raw source and credentials stay local; only
+normalized evidence crosses into shared control-plane or fleet state.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-light.svg" alt="Agent-bom workflow from repositories, endpoints, images, Kubernetes, cloud, data platforms, MCP, and runtime through scan, normalization, correlation, ownership, remediation, verification, exports, control plane, and runtime policy" width="1100" />
+  </picture>
+</p>
+
+See [how the evidence workflow works](docs/HOW_IT_WORKS.md) for commands,
+artifacts, and the boundary between collected, partial, and unavailable state.
+
 <details>
 <summary><b>Control-plane architecture</b></summary>
 

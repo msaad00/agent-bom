@@ -6,6 +6,24 @@ what to run, start with [`START_HERE.md`](START_HERE.md); if you are choosing
 what to deploy, use the
 [deployment decision matrix](../site-docs/deployment/overview.md).
 
+## End-to-end evidence workflow
+
+The product begins with read-only intake from repositories and CI, developer
+workstations or enrolled endpoints, images and Kubernetes, cloud and data
+platforms, and MCP/runtime surfaces. It normalizes those observations into the
+same `Finding` + `UnifiedGraph` model, correlates reachable blast radius, and
+then carries ownership, remediation, and verification state to outputs.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/workflow-dark.svg">
+  <img alt="agent-bom end-to-end evidence workflow from supported sources through collection, normalization, correlation, ownership, remediation, verification, reports, control plane, and runtime policy" src="images/workflow-light.svg">
+</picture>
+
+The source boundary is deliberate: raw source, secret values, and credentials
+stay local. Shared surfaces receive normalized evidence and explicit
+completeness. A permission denial, unsupported collector, or partial scan stays
+partial or unavailable; it is never shown as observed or clean.
+
 ## Why it's different: symbol-level CVE reachability
 
 Most scanners stop at "this package has a CVE." `agent-bom` joins the

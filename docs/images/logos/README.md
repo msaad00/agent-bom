@@ -24,6 +24,13 @@ Registered in `ui/lib/framework-logos.ts`. Bump `LOGO_ASSET_REV` when assets cha
 
 Resolved by `ui/lib/vendor-logos.ts` for cloud accounts and integrations.
 
+Official vendor icons used in public diagrams live under
+`docs/images/vendor/`. Their first-party download URL, archive member,
+retrieval date, exact digest, and use terms are pinned in
+`docs/images/vendor/provenance.json`. When redistribution or trademark terms
+are unclear, diagrams use a neutral product-category icon instead of a
+look-alike mark.
+
 ## Adding a mark
 
 1. Add a 32×32 full-color SVG under `ui/public/logos/frameworks/`.

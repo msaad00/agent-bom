@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.check_duplicate_artifacts import find_duplicate_artifacts, main
+from scripts.check_duplicate_artifacts import find_duplicate_artifacts, find_forbidden_artifacts, main
 
 
 def test_duplicate_artifact_guard_detects_finder_copies() -> None:
@@ -38,6 +38,21 @@ def test_duplicate_artifact_guard_ignores_untracked_noise_prefixes() -> None:
     ]
 
     assert find_duplicate_artifacts(paths) == []
+
+
+def test_duplicate_artifact_guard_rejects_tracked_agent_session_debris() -> None:
+    paths = [
+        ".claude/worktree-rescue/a05c4f097987b7600.uncommitted.patch",
+        ".claude/worktrees/agent-a/.git",
+        ".codex/session.json",
+        "src/agent_bom/finding.py",
+    ]
+
+    assert find_forbidden_artifacts(paths) == [
+        ".claude/worktree-rescue/a05c4f097987b7600.uncommitted.patch",
+        ".claude/worktrees/agent-a/.git",
+        ".codex/session.json",
+    ]
 
 
 def test_duplicate_artifact_guard_cli_returns_failure_for_duplicates(tmp_path: Path, capsys) -> None:

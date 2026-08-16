@@ -9,6 +9,73 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-08-16
+
+A workflow-completion and deployment-portability release. The same finding can
+now move from scoped evidence through ownership, remediation, verification, and
+export across the control plane, CLI, MCP, and dashboard. The release also makes
+the self-hosted storage boundary explicit, adds portable evidence-table
+publication, and replaces several release-time assumptions with fail-closed
+proof.
+
+### Added
+
+- Finding lifecycle operations now persist owner, SLA, ticket, remediation,
+  retry, and verification history with tenant-scoped authorization and stable
+  idempotency across REST, CLI, MCP, and dashboard workflows.
+- The dashboard guides investigations through Path → Impact → Owner and SLA →
+  Fix → Verify, with persona-specific starts, scoped counts, progressive graph
+  disclosure, accessible text summaries, and bounded tables.
+- Skills scans and AWS, Azure, and GCP workload side scans are available through
+  the control plane, CLI, MCP, scheduler, and dashboard. Credentialed Azure/GCP
+  acceptance remains tracked separately and is not claimed by this release.
+- Opt-in, disabled-by-default adoption events measure completed scans, artifacts,
+  investigations, verification, repeat use, CI adoption, and control-plane
+  adoption without collecting source contents, raw findings, credentials, or
+  customer resource identifiers.
+- Managed Postgres readiness, capability reporting, Helm validation, reproducible
+  scale evidence, and portable Parquet/Iceberg evidence-table publication were
+  added for customer-controlled deployments and downstream security lakes.
+
+### Changed
+
+- Finding, path, correlation, returned, and total counts now carry explicit
+  source, scope, filters, completeness, and synthetic-versus-persisted semantics.
+- Repository scan results expose existing AI-BOM, CycloneDX, and SPDX artifacts
+  beside the repository context graph instead of requiring a separate workflow.
+- Investigation lenses share one graph surface, while large estates use bounded
+  Sigma rendering, filterable drill-downs, and readable light, dark, desktop,
+  mobile, keyboard, and reduced-motion states.
+- Owner, SLA, and lifecycle state are preserved across CSV, Markdown, HTML, PDF,
+  OCSF, CycloneDX, and SPDX exports; shared-CVE CycloneDX workflow metadata stays
+  scoped to the affected package reference.
+
+### Fixed
+
+- Public counts, persona language, generated metrics, registry metadata, and MCP
+  deployment inventory now derive from checked product contracts instead of
+  drifting independently.
+- Synthetic demo timestamps and auxiliary Skills, CWPP, campaign, graph, and
+  governance surfaces are deterministic, tenant-scoped, explicitly labeled, and
+  protected from replacing real tenant graph data.
+- CWPP execution lists, Skills files, findings, and blast-radius results no longer
+  silently hide older rows or render unbounded card sets; filters and pagination
+  are applied consistently.
+- Light-theme cloud evidence and graph surfaces use readable contrast and shared
+  surface tokens.
+
+### Release integrity
+
+- A release tag must point to the current `main` SHA and that exact commit must
+  have a completed successful `CI/CD Pipeline` main-push run. Pending, canceled,
+  stale, PR-only, or wrong-workflow evidence fails closed.
+- The release evidence matrix now covers source commit, Python distributions,
+  dashboard, API/UI/collector images, Helm OCI, GitHub Action, MCP metadata,
+  registries, SBOM, signatures, provenance, and the hosted demo.
+- CI now bounds Python and Alpine suites without weakening their assertions,
+  isolates benchmark environment state, validates exact MCP deployment inventory,
+  and keeps dependency-license exceptions package-scoped.
+
 ## [0.100.0] - 2026-08-11
 
 An output-honesty release. Every local gate was already green before this work

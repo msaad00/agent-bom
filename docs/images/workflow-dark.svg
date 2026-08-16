@@ -13,7 +13,7 @@
 <rect x="306" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
 <rect x="320" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(324,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
 <text x="358" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">Workstation / endpoint</text>
-<text x="320" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">configs · agents · apps · images</text>
+<text x="320" y="187" font-family="Inter,system-ui,sans-serif" font-size="13" fill="#82828c">configs · agents · MCP · browsers</text>
 <rect x="572" y="126" width="252" height="96" rx="12" fill="#161619" stroke="#2a2a31"/>
 <rect x="586" y="141" width="28" height="28" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(590,145) scale(0.8333333333333334)" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 3v9 M4 7.5l16 9"/></g>
 <text x="624" y="160" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="750" fill="#e9e9ec">Images + Kubernetes</text>

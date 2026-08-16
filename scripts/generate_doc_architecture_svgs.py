@@ -1158,7 +1158,7 @@ def workflow(theme_name: str) -> str:
 
     source_cards = (
         ("repo", "Repository + CI", "code · deps · IaC · secrets"),
-        ("endpoint", "Workstation / endpoint", "configs · agents · apps · images"),
+        ("endpoint", "Workstation / endpoint", "configs · agents · MCP · browsers"),
         ("cluster", "Images + Kubernetes", "registry · filesystem · workloads"),
         ("cloud", "Cloud + data platforms", "accounts · identity · posture"),
         ("runtime", "MCP + runtime", "servers · tools · live decisions"),

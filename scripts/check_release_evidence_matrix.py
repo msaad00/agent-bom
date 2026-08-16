@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "docs" / "release" / "release-evidence-matrix.json"
 REQUIRED_SURFACES = {
+    "source_commit",
     "python",
     "dashboard",
     "docker_api",
@@ -27,6 +28,7 @@ REQUIRED_SURFACES = {
 VALID_PHASES = {"pre_publish", "post_publish", "pre_publish_and_post_publish"}
 REQUIRED_MARKERS = {
     ".github/workflows/release.yml": (
+        "name: Verify tag commit is exact green main",
         "name: Publish to PyPI",
         "name: Publish to Docker Hub",
         "name: Publish cloud-SDK collector image",

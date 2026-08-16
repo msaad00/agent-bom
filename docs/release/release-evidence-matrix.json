@@ -1,6 +1,7 @@
 {
   "schema_version": "release-evidence-matrix.v1",
   "surfaces": [
+    {"surface": "source_commit", "phase": "pre_publish", "verification": "Require the release tag commit to equal current main and have a completed successful CI/CD Pipeline push run on that exact SHA.", "evidence_paths": ["scripts/check_release_main_ci.py", ".github/workflows/release.yml"]},
     {"surface": "python", "phase": "pre_publish_and_post_publish", "verification": "Build and inspect wheel and sdist, then install from PyPI in a clean environment.", "evidence_paths": ["scripts/verify_release_wheel.py", ".github/workflows/release.yml"]},
     {"surface": "dashboard", "phase": "pre_publish", "verification": "Build the bundled dashboard and verify its CSP and browser route contract.", "evidence_paths": ["scripts/build-ui.sh", "docs/RELEASE_VERIFICATION.md"]},
     {"surface": "docker_api", "phase": "post_publish", "verification": "Pull, inspect, smoke, scan, sign, and attest the API image by immutable digest.", "evidence_paths": ["Dockerfile", ".github/workflows/release.yml"]},

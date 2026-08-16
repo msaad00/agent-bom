@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -24,6 +25,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify tag commit is exact green main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/check_release_main_ci.py
+          --repo "${{ github.repository }}"
+          --sha "${{ github.sha }}"
+          --branch main
+          --workflow ci.yml
 
       - name: Extract version from tag
         id: meta

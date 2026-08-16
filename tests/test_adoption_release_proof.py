@@ -74,6 +74,7 @@ def test_release_evidence_matrix_is_machine_checked() -> None:
     matrix = json.loads((ROOT / "docs" / "release" / "release-evidence-matrix.json").read_text())
     surfaces = {row["surface"] for row in matrix["surfaces"]}
     assert surfaces == {
+        "source_commit",
         "python",
         "dashboard",
         "docker_api",

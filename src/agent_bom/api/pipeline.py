@@ -1956,11 +1956,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
             outcome = "failed" if terminal_status is JobStatus.FAILED else "complete"
             scan_run_payload = job.result.get("scan_run", {}) if isinstance(job.result, dict) else {}
-            if (
-                terminal_status is JobStatus.DONE
-                and isinstance(scan_run_payload, dict)
-                and scan_run_payload.get("outcome") == "partial"
-            ):
+            if terminal_status is JobStatus.DONE and isinstance(scan_run_payload, dict) and scan_run_payload.get("outcome") == "partial":
                 outcome = "partial"
             record_scan_completion_best_effort(
                 channel="control_plane",

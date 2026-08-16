@@ -38,6 +38,7 @@ dependencies = [
     { name = "mcp" },
     { name = "packageurl-python" },
     { name = "packaging" },
+    { name = "psutil" },
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "pyyaml" },
@@ -127,7 +128,6 @@ all = [
     { name = "plotly" },
     { name = "prompt-toolkit" },
     { name = "protobuf" },
-    { name = "psutil" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "pyjwt" },
@@ -373,7 +373,6 @@ postgres = [
 ]
 runtime = [
     { name = "cryptography" },
-    { name = "psutil" },
 ]
 saml = [
     { name = "python3-saml" },
@@ -516,7 +515,7 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'dashboard'", specifier = ">=5.24.0" },
     { name = "prompt-toolkit", marker = "extra == 'interactive'", specifier = ">=3.0" },
     { name = "protobuf", marker = "extra == 'otel'", specifier = ">=6.33.5" },
-    { name = "psutil", marker = "extra == 'runtime'", specifier = ">=5.9" },
+    { name = "psutil", specifier = ">=5.9" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.1" },
     { name = "psycopg-pool", marker = "extra == 'postgres'", specifier = ">=3.1" },
     { name = "pyarrow", marker = "extra == 'lake'", specifier = ">=15.0" },

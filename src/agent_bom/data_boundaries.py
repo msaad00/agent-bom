@@ -39,9 +39,23 @@ def describe_data_access_boundaries() -> dict[str, object]:
             },
             {
                 "mode": "endpoint_fleet",
-                "reads": ["generated_inventory", "operator_selected_scan_summary"],
-                "does_not_read": ["browser_history", "unrelated_user_documents", "arbitrary_home_directory_content"],
-                "operator_controls": ["mdm_command_scope", "--dry-run", "--no-scan", "--offline"],
+                "reads": [
+                    "known_application_directories_and_package_managers",
+                    "aggregate_process_names",
+                    "service_names_and_states",
+                    "local_listener_ports_and_bind_classes",
+                    "container_and_image_metadata",
+                    "operator_selected_scan_summary",
+                ],
+                "does_not_read": [
+                    "process_arguments",
+                    "environment_values",
+                    "remote_network_addresses",
+                    "browser_history",
+                    "unrelated_user_documents",
+                    "arbitrary_home_directory_content",
+                ],
+                "operator_controls": ["mdm_command_scope", "--preset workstation", "--dry-run", "--no-scan", "--offline"],
             },
             {
                 "mode": "api_ui_control_plane",

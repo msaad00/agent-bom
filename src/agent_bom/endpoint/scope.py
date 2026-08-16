@@ -65,6 +65,7 @@ def workstation_scan_scopes(
     agents: list[Any],
     browser_extension_count: int,
     context_graph_node_count: int,
+    endpoint_inventory: dict[str, Any] | None = None,
     system: str | None = None,
 ) -> list[ScanScope]:
     """Describe every scope requested by ``--preset workstation``.
@@ -84,13 +85,13 @@ def workstation_scan_scopes(
         package_scope = ScanScope(
             name="os_packages",
             status=ScanScopeStatus.UNSUPPORTED,
-            message="Host package inventory is not implemented for macOS; Homebrew and installed apps were not evaluated.",
+            message="Native advisory package matching is not implemented for macOS; installed applications are reported separately.",
         )
     elif host_system == "Windows":
         package_scope = ScanScope(
             name="os_packages",
             status=ScanScopeStatus.UNSUPPORTED,
-            message="Host package inventory is not implemented for Windows; installed applications were not evaluated.",
+            message="Native Windows advisory package matching is not implemented; installed applications are reported separately.",
         )
     else:
         package_scope = ScanScope(
@@ -113,7 +114,7 @@ def workstation_scan_scopes(
             message="MCP server processes only; general process and service inventory is not evaluated.",
         )
 
-    return [
+    scopes = [
         ScanScope(
             name="repository_inventory",
             status=ScanScopeStatus.COMPLETE,
@@ -136,3 +137,59 @@ def workstation_scan_scopes(
         _container_scope(agents),
         ScanScope(name="context_graph", status=ScanScopeStatus.COMPLETE, item_count=context_graph_node_count),
     ]
+
+    collector_rows = (endpoint_inventory or {}).get("collectors", [])
+    collectors = {str(row.get("name")): row for row in collector_rows if isinstance(row, dict) and row.get("name")}
+
+    def collector_scope(scope_name: str, collector_name: str) -> ScanScope:
+        row = collectors.get(collector_name)
+        if row is None:
+            return ScanScope(
+                name=scope_name,
+                status=ScanScopeStatus.UNAVAILABLE,
+                message=f"{collector_name} inventory did not return execution metadata.",
+            )
+        try:
+            status = ScanScopeStatus(str(row.get("status") or "unavailable"))
+        except ValueError:
+            status = ScanScopeStatus.UNAVAILABLE
+        count = row.get("item_count")
+        return ScanScope(
+            name=scope_name,
+            status=status,
+            item_count=int(count) if isinstance(count, int) else None,
+            message=str(row.get("message") or ""),
+        )
+
+    if endpoint_inventory is not None:
+        scopes.extend(
+            [
+                collector_scope("installed_applications", "applications"),
+                collector_scope("running_processes", "processes"),
+                collector_scope("services", "services"),
+                collector_scope("listeners", "listeners"),
+            ]
+        )
+        containers = collector_scope("container_assets", "containers")
+        images = collector_scope("container_assets", "images")
+        combined_status = containers.status
+        if containers.status is not images.status:
+            if ScanScopeStatus.COMPLETE in {containers.status, images.status}:
+                combined_status = ScanScopeStatus.PARTIAL
+            elif ScanScopeStatus.PERMISSION_DENIED in {containers.status, images.status}:
+                combined_status = ScanScopeStatus.PERMISSION_DENIED
+            else:
+                combined_status = ScanScopeStatus.UNAVAILABLE
+        combined_count = None
+        if containers.item_count is not None and images.item_count is not None:
+            combined_count = containers.item_count + images.item_count
+        scopes.append(
+            ScanScope(
+                name="container_assets",
+                status=combined_status,
+                item_count=combined_count,
+                message=" ".join(dict.fromkeys(filter(None, (containers.message, images.message)))),
+            )
+        )
+
+    return scopes

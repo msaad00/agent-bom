@@ -41,6 +41,10 @@ dependencies = [
     "toml>=0.10",
     "pyyaml>=6.0",
     "jsonschema>=4.0",
+    # Workstation preset process/listener inventory must work from the base
+    # package. The collector reads names and local bind classes only; it never
+    # captures process arguments, environment values, or remote addresses.
+    "psutil>=5.9",
     # MCP is a first-class advertised entry point (`uvx agent-bom mcp server`)
     # and must work from the base package used by the official registry.
     # Bounded to the major we import: we use `mcp.server.fastmcp`, which mcp
@@ -177,7 +181,6 @@ postgres = [
 ]
 watch = ["watchdog>=4.0"]
 runtime = [
-    "psutil>=5.9",  # Process + container discovery (--include-processes)
     "cryptography>=50.0.0",  # Proxy audit hash chain + response signing; CVE-2026-69247 floor.
 ]
 visual = [

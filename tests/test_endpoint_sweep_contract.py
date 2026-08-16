@@ -9,6 +9,19 @@ from agent_bom.cli import main
 from agent_bom.evidence.scan_run import ScanOutcome, ScanRun, ScanScope, ScanScopeStatus
 
 
+def _empty_endpoint_inventory() -> dict:
+    return {
+        "schema_version": "1",
+        "platform": {"system": "Darwin", "release": "", "machine": "arm64"},
+        "privacy": {},
+        "collectors": [
+            {"name": name, "status": "complete", "item_count": 0, "message": ""}
+            for name in ("applications", "processes", "services", "listeners", "containers", "images")
+        ],
+        **{name: [] for name in ("applications", "processes", "services", "listeners", "containers", "images")},
+    }
+
+
 def test_requested_incomplete_scope_downgrades_scan_and_serializes_reason() -> None:
     run = ScanRun(
         scopes=[
@@ -55,6 +68,7 @@ def test_workstation_preset_on_macos_reports_unsupported_package_scope(tmp_path)
     with (
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.endpoint.scope.platform.system", return_value="Darwin"),
+        patch("agent_bom.endpoint.inventory.collect_endpoint_inventory", return_value=_empty_endpoint_inventory()),
         patch("agent_bom.parsers.browser_extensions.discover_browser_extensions", return_value=[]),
     ):
         result = CliRunner().invoke(
@@ -102,6 +116,7 @@ def test_workstation_project_scan_also_collects_ambient_endpoint_surfaces(tmp_pa
     with (
         patch("agent_bom.cli.agents.discover_all", side_effect=[[], []]) as discover,
         patch("agent_bom.endpoint.scope.platform.system", return_value="Darwin"),
+        patch("agent_bom.endpoint.inventory.collect_endpoint_inventory", return_value=_empty_endpoint_inventory()),
         patch("agent_bom.parsers.browser_extensions.discover_browser_extensions", return_value=[]),
     ):
         result = CliRunner().invoke(

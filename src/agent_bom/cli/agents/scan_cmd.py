@@ -1909,12 +1909,25 @@ def scan(
     _findings.extend(evaluate_a2a_auth_posture(agents))
     _findings.extend(evaluate_mcp_auth_posture(agents))
 
+    _endpoint_inventory_data: dict[str, Any] | None = None
+    if preset == "workstation":
+        from agent_bom.endpoint import inventory as _endpoint_inventory
+
+        _endpoint_inventory_data = _endpoint_inventory.collect_endpoint_inventory()
+        if "endpoint_inventory" not in _scan_sources:
+            _scan_sources.append("endpoint_inventory")
+
     # Generate deterministic scan ID from content fingerprint (same inputs → same ID)
     import uuid as _uuid
 
     _scan_ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
     _pkg_fingerprints = sorted(f"{p.ecosystem}:{p.name}@{p.version}" for a in agents for s in a.mcp_servers for p in s.packages)
-    _scan_fingerprint = "|".join(_pkg_fingerprints) or "empty"
+    _endpoint_fingerprint = (
+        json.dumps(_endpoint_inventory_data, sort_keys=True, separators=(",", ":"), default=str)
+        if _endpoint_inventory_data is not None
+        else ""
+    )
+    _scan_fingerprint = "|".join(["|".join(_pkg_fingerprints) or "empty", _endpoint_fingerprint])
     _scan_id = str(_uuid.uuid5(_scan_ns, f"scan:{_scan_fingerprint}"))
 
     _generated_at = _reproducible_generated_at(reproducible)
@@ -1972,6 +1985,7 @@ def scan(
         scan_sources=_scan_sources,
         scan_run=ScanRun(outcome=_scan_outcome, issues=_scan_issues),
         scan_id=_scan_id,
+        endpoint_inventory_data=_endpoint_inventory_data,
         **_report_kwargs,
     )
     from agent_bom.advisory_sources import summarize_advisory_coverage
@@ -2254,6 +2268,7 @@ def scan(
                 agents=agents,
                 browser_extension_count=_browser_extension_count,
                 context_graph_node_count=_context_graph_node_count,
+                endpoint_inventory=report.endpoint_inventory_data,
             )
         )
 

@@ -1449,6 +1449,8 @@ def to_json(report: AIBOMReport) -> dict:
         findings = result.get("findings")
         if isinstance(findings, list):
             findings.extend(_browser_extension_findings(report.browser_extensions))
+    if report.endpoint_inventory_data:
+        result["endpoint_inventory"] = report.endpoint_inventory_data
     if report.ai_inventory_data:
         result["ai_inventory"] = report.ai_inventory_data
     if report.project_inventory_data:

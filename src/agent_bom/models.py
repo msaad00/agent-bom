@@ -1208,6 +1208,7 @@ class AIBOMReport:
     dataset_cards: Optional[dict[str, Any]] = None  # Serialized DatasetScanResult
     serving_configs: Optional[list[Any]] = None  # Serialized ServingConfig list
     browser_extensions: Optional[dict[str, Any]] = None  # Serialized browser extension scan results
+    endpoint_inventory_data: Optional[dict[str, Any]] = None  # Bounded workstation app/process/service/runtime inventory
     ai_inventory_data: Optional[dict[str, Any]] = None  # AI component source scan results (SDK imports, models, keys)
     project_inventory_data: Optional[dict[str, Any]] = None  # Project manifest / lockfile inventory summary
     # Optional GitHub trust card from --repo / repo_url scans (stars, contributors,

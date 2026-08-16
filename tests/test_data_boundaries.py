@@ -46,5 +46,21 @@ def test_data_access_boundary_contract_pins_operator_controls() -> None:
     assert modes["local_discovery"]["does_not_read"] == ["env_var_values", "arbitrary_personal_files"]
     assert "matched_secret_prefix" in modes["project_scan"]["does_not_store"]
     assert modes["cloud_inventory"]["required_identity"] == "read_only"
+    assert modes["endpoint_fleet"]["reads"] == [
+        "known_application_directories_and_package_managers",
+        "aggregate_process_names",
+        "service_names_and_states",
+        "local_listener_ports_and_bind_classes",
+        "container_and_image_metadata",
+        "operator_selected_scan_summary",
+    ]
+    assert {
+        "process_arguments",
+        "environment_values",
+        "remote_network_addresses",
+        "browser_history",
+        "arbitrary_home_directory_content",
+    } <= set(modes["endpoint_fleet"]["does_not_read"])
+    assert "--preset workstation" in modes["endpoint_fleet"]["operator_controls"]
     assert "cross_tenant_access" in modes["api_ui_control_plane"]["does_not_do"]
     assert modes["proxy_gateway"]["does_not_read"] == ["unrelated_application_traffic"]

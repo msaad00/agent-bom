@@ -1,7 +1,7 @@
 # Backend and Security-Lake Strategy
 
 > **You do not need to read this unless** you are reasoning about how
-> Postgres, ClickHouse, Snowflake, S3, and (future) Databricks fit
+> Postgres, ClickHouse, Snowflake, object storage, Iceberg, and Databricks fit
 > together as a tiered store strategy. For the per-API capability
 > matrix use [Backend Parity](backend-parity.md).
 
@@ -12,8 +12,9 @@ The backend strategy should stay simple:
 - `Postgres` is the transactional control-plane default
 - `ClickHouse` is the analytics scale-out tier
 - `Snowflake` is the warehouse-native governance and selected backend option
-- `S3` is the archive and evidence tier
-- `Databricks` is a future target only when code-backed
+- object storage is the archive and evidence tier
+- `Parquet` + Apache Iceberg provide the open evidence-table boundary
+- `Databricks` is a scheduled findings-export destination, not a control-plane store
 
 This page explains how those stores fit together in a self-hosted deployment.
 
@@ -57,8 +58,9 @@ That means:
 | `Postgres` / `Supabase` | transactional control plane | auth, policy, fleet, schedules, graph, recent scan state | long-range event lake |
 | `ClickHouse` | event and analytics tier | runtime history, trend queries, retained audit analytics | transactional API store |
 | `Snowflake` | warehouse-native governance and selected backend paths | governance joins, selected enterprise store paths, warehouse-centric orgs | universal parity until documented |
-| `S3` | archive and evidence tier | signed evidence bundles, backups, export archives | interactive operator query plane |
-| `Databricks` | future security-lake target | lakehouse export target when implemented | current shipped parity |
+| Object storage | archive and evidence tier | signed evidence bundles, backups, export archives | interactive operator query plane |
+| Parquet / Apache Iceberg | open evidence-table tier | portable finding snapshots, schema evolution, multi-engine catalog access | transactional control-plane state |
+| `Databricks` | lakehouse export destination | scheduled tenant-scoped findings feeds | control-plane backend parity |
 
 ## Recommended deployment shapes
 
@@ -101,13 +103,26 @@ This should be read as a supported security-lake and governance mode, not as a
 claim that every transactional control-plane surface has already reached
 Snowflake parity.
 
-### 4. Future lakehouse export target
+### 4. Open security-lake export
 
 - control plane on `Postgres`
-- exports or mirrored datasets to `Databricks`
+- Parquet artifacts or Apache Iceberg REST-catalog snapshots
+- optional scheduled delivery to object stores, `Databricks`, `Snowflake`,
+  `ClickHouse`, or `BigQuery`
 
-This should stay roadmap wording until code-backed. Do not market it as shipped
-parity before the implementation exists.
+Install `agent-bom[lake]`, then create a Parquet artifact and optionally publish
+the same additively versioned finding schema to an Iceberg REST catalog:
+
+```bash
+agent-bom scan . --format parquet --output findings.parquet \
+  --iceberg-catalog-url https://catalog.example.com
+```
+
+The Parquet file is written first. Once a catalog URL is configured, Iceberg is
+a required requested artifact: catalog publication failure returns non-zero and
+leaves the Parquet file available for retry. Catalog credentials remain in
+`AGENT_BOM_ICEBERG_CREDENTIAL` or `AGENT_BOM_ICEBERG_TOKEN`; they are never CLI
+arguments or output fields.
 
 ## Snowflake and Databricks
 
@@ -117,8 +132,10 @@ The product posture should be:
 
 - `Snowflake` is part of the current interoperable backend story where parity is
   already documented and implemented
-- `Databricks` is a supported direction for lakehouse export and governance once
-  the implementation exists
+- `Databricks` is a shipped scheduled-export destination; live provider
+  acceptance remains separate from its mocked adapter contracts
+- Apache Iceberg is the open table boundary when a customer wants the same
+  finding snapshots queryable across compatible engines
 
 The operator rule stays simple:
 
@@ -126,6 +143,7 @@ The operator rule stays simple:
 - add `ClickHouse` for event-scale analytics
 - choose `Snowflake` when warehouse-native governance or selected store parity
   is the actual goal
+- choose Parquet/Iceberg when portable, engine-neutral evidence is the goal
 
 That keeps the story accurate without understating how customers actually run
 security lakes.
@@ -142,6 +160,7 @@ For a self-hosted AWS/EKS deployment, the clean shape is:
 - `Postgres` as the control-plane store
 - optional `ClickHouse`
 - optional `S3`
+- optional Apache Iceberg REST catalog
 - optional `Snowflake` integration
 
 That lets the product stay:

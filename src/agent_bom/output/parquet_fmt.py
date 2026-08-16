@@ -21,12 +21,12 @@ from agent_bom.output.finding_views import (
     unified_export_findings,
 )
 
-# Lake/Parquet schema version. v1 = the CVE+malicious 28-column table; v2 adds
-# the three appended unified columns (``finding_type``/``finding_id``/``title``)
-# and widens the row set to every unified finding type (#4280). The bump is
-# purely additive: no v1 column is renamed, retyped, or reordered, so existing
-# Iceberg/lake consumers keep reading the same columns unchanged.
-PARQUET_SCHEMA_VERSION = "2"
+# Lake/Parquet schema version. v1 = the CVE+malicious 28-column table; v2 added
+# unified finding identity; v3 appends scan provenance, source/asset identity,
+# and persisted workflow context. Every evolution is additive: no prior column
+# is renamed, retyped, or reordered, so existing Iceberg/lake consumers keep
+# reading their original projection unchanged.
+PARQUET_SCHEMA_VERSION = "3"
 
 _COLUMNS = [
     "cve_id",
@@ -64,6 +64,13 @@ _COLUMNS = [
     "finding_type",
     "finding_id",
     "title",
+    "scan_id",
+    "generated_at",
+    "source",
+    "asset_identifier",
+    "owner",
+    "sla_due_at",
+    "lifecycle_status",
 ]
 
 
@@ -76,7 +83,8 @@ def _require_pyarrow():
     return pa, pq
 
 
-def _row_dict(finding) -> dict[str, Any]:
+def _row_dict(finding, report: AIBOMReport) -> dict[str, Any]:
+    workflow = finding.to_dict()
     return {
         "cve_id": finding.cve_id or finding.id,
         "package": package_name(finding),
@@ -109,6 +117,13 @@ def _row_dict(finding) -> dict[str, Any]:
         "finding_type": finding.finding_type.value,
         "finding_id": finding.id,
         "title": finding.title or None,
+        "scan_id": report.scan_id or None,
+        "generated_at": report.generated_at.isoformat(),
+        "source": finding.source.value,
+        "asset_identifier": finding.asset.identifier or None,
+        "owner": workflow.get("owner"),
+        "sla_due_at": workflow.get("sla_due_at"),
+        "lifecycle_status": workflow.get("lifecycle_status"),
     }
 
 
@@ -123,7 +138,7 @@ def to_arrow_table(report: AIBOMReport, blast_radii: list[BlastRadius] | None = 
     columns populated for every row.
     """
     pa, _ = _require_pyarrow()
-    rows = [_row_dict(finding) for finding in unified_export_findings(report, blast_radii)]
+    rows = [_row_dict(finding, report) for finding in unified_export_findings(report, blast_radii)]
     return pa.Table.from_pylist(rows, schema=_schema(pa))
 
 
@@ -179,6 +194,13 @@ def _schema(pa):
             ("finding_type", pa.string()),
             ("finding_id", pa.string()),
             ("title", pa.string()),
+            ("scan_id", pa.string()),
+            ("generated_at", pa.string()),
+            ("source", pa.string()),
+            ("asset_identifier", pa.string()),
+            ("owner", pa.string()),
+            ("sla_due_at", pa.string()),
+            ("lifecycle_status", pa.string()),
         ],
         metadata={b"agent_bom.parquet_schema_version": PARQUET_SCHEMA_VERSION.encode()},
     )

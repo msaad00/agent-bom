@@ -228,6 +228,7 @@ def output_options(fn):
                 help=(
                     "Register Parquet findings into an Iceberg REST catalog as a table snapshot "
                     "(in addition to the flat .parquet file). Requires agent-bom[lake]. "
+                    "A configured catalog is a required output: publication errors return non-zero while preserving the Parquet file. "
                     "Env: AGENT_BOM_ICEBERG_CATALOG_URL. Namespace/table default to agent_bom.findings; "
                     "override with --iceberg-namespace / --iceberg-table. "
                     "Auth via AGENT_BOM_ICEBERG_CREDENTIAL or AGENT_BOM_ICEBERG_TOKEN. Disabled by default."

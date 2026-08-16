@@ -217,16 +217,56 @@ def test_parquet_schema_is_additive_and_versioned() -> None:
     # v1 columns preserved, in order, at the front.
     assert tuple(table.schema.names[: len(_V1_COLUMNS)]) == _V1_COLUMNS
     # New nullable columns appended at the end.
-    assert table.schema.names[len(_V1_COLUMNS) :] == ["finding_type", "finding_id", "title"]
-    for name in ("finding_type", "finding_id", "title"):
+    assert table.schema.names[len(_V1_COLUMNS) :] == [
+        "finding_type",
+        "finding_id",
+        "title",
+        "scan_id",
+        "generated_at",
+        "source",
+        "asset_identifier",
+        "owner",
+        "sla_due_at",
+        "lifecycle_status",
+    ]
+    for name in (
+        "finding_type",
+        "finding_id",
+        "title",
+        "scan_id",
+        "generated_at",
+        "source",
+        "asset_identifier",
+        "owner",
+        "sla_due_at",
+        "lifecycle_status",
+    ):
         assert table.schema.field(name).nullable
     # A CVE-only consumer view still resolves every original column.
     for name in _V1_COLUMNS:
         assert name in table.schema.names
     # Additive change is signalled via a schema-version bump in file metadata.
-    assert PARQUET_SCHEMA_VERSION == "2"
+    assert PARQUET_SCHEMA_VERSION == "3"
     meta = table.schema.metadata or {}
-    assert meta.get(b"agent_bom.parquet_schema_version") == b"2"
+    assert meta.get(b"agent_bom.parquet_schema_version") == b"3"
+
+
+def test_parquet_preserves_scan_provenance_and_workflow_context() -> None:
+    report = _mixed_report()
+    finding = report.findings[0]
+    finding.owner = "security-platform"
+    finding.sla_due_at = "2026-08-20T00:00:00Z"
+    finding.lifecycle_status = "remediating"
+
+    row = to_arrow_table(report).to_pylist()[0]
+
+    assert row["scan_id"] == "parquet-unified"
+    assert row["generated_at"] == report.generated_at.isoformat()
+    assert row["source"] == finding.source.value
+    assert row["asset_identifier"] == "pkg:npm/web-lib@1.0.0"
+    assert row["owner"] == "security-platform"
+    assert row["sla_due_at"] == "2026-08-20T00:00:00Z"
+    assert row["lifecycle_status"] == "remediating"
 
 
 def test_parquet_requires_pyarrow(monkeypatch) -> None:

@@ -241,19 +241,23 @@ def _enospc_report_fallback(
 
 
 def _register_iceberg_if_configured(report, blast_radii, con, quiet: bool) -> None:
-    """Best-effort Iceberg REST-catalog registration alongside the .parquet file.
+    """Publish to a configured Iceberg REST catalog alongside the Parquet file.
 
     No-op unless an Iceberg catalog URL is configured (env / --iceberg-catalog-url).
-    A catalog/deps error is surfaced as a warning without failing the scan, since
-    the flat Parquet file has already been written.
+    Once configured, publication is a requested artifact and therefore fails
+    closed. The error points to the already-written Parquet recovery artifact.
     """
     from agent_bom.output.iceberg_catalog import maybe_register_iceberg
+    from agent_bom.security import sanitize_error
 
     try:
         result = maybe_register_iceberg(report, blast_radii)
     except Exception as exc:  # noqa: BLE001 - degrade cleanly, file already written
-        con.print(f"  [yellow]⚠[/yellow] Iceberg catalog registration skipped: {exc}")
-        return
+        detail = sanitize_error(exc, generic=True)
+        raise click.ClickException(
+            f"Iceberg snapshot publication failed: {detail}. "
+            "The Parquet file was written; retry with the same file after checking catalog URL, credentials, and warehouse access."
+        ) from exc
     if result and not quiet:
         con.print(f"  [green]✓[/green] Iceberg snapshot: {result['identifier']} ({result['rows']} rows) → {result['catalog_url']}")
 

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import tomllib
+from pathlib import Path
+
 import pytest
 
 from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulnerability
@@ -55,14 +58,40 @@ class _FakeSnapshot:
 class _FakeTable:
     def __init__(self, identifier, schema):
         self.identifier = identifier
-        self.schema = schema
+        self._schema = schema
         self.appended = []
+
+    def schema(self):
+        return self._schema
 
     def append(self, arrow_table):
         self.appended.append(arrow_table)
 
     def current_snapshot(self):
         return _FakeSnapshot()
+
+
+class _FakeSchemaUpdate:
+    def __init__(self, table: "_FakeLegacyTable") -> None:
+        self._table = table
+        self._target = None
+
+    def union_by_name(self, schema):
+        self._target = schema
+        return self
+
+    def commit(self) -> None:
+        self._table._schema = self._target
+        self._table.schema_commits += 1
+
+
+class _FakeLegacyTable(_FakeTable):
+    def __init__(self, identifier, schema):
+        super().__init__(identifier, schema)
+        self.schema_commits = 0
+
+    def update_schema(self):
+        return _FakeSchemaUpdate(self)
 
 
 class _FakeCatalog:
@@ -152,6 +181,17 @@ def test_deps_absent_graceful_error(monkeypatch) -> None:
         register_findings(report, config, [br])
 
 
+def test_lake_extra_installs_the_documented_iceberg_runtime() -> None:
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    lake = pyproject["project"]["optional-dependencies"]["lake"]
+    assert any(dep.startswith("pyiceberg") for dep in lake)
+
+
+def test_lake_extra_is_covered_by_the_extras_dependency_audit() -> None:
+    workflow = (Path(__file__).parents[1] / ".github/workflows/extras-audit.yml").read_text()
+    assert 'extras: "postgres dashboard lake"' in workflow
+
+
 # ── round-trip against a fake REST catalog ────────────────────────────────────
 
 
@@ -165,19 +205,30 @@ def test_round_trip_against_fake_catalog() -> None:
     assert fake.namespaces == [("lake",)]
     assert "lake.cves" in fake.tables
     table = fake.tables["lake.cves"]
-    # schema handed to Iceberg must match the shared unified Parquet schema:
-    # the 28 v1 CVE columns plus the appended finding_type/finding_id/title (#4280)
-    assert len(table.schema) == 31
-    assert table.schema.names[0] == "cve_id"
-    assert table.schema.names[-3:] == ["finding_type", "finding_id", "title"]
+    # Schema handed to Iceberg is the same additively versioned schema emitted
+    # by the flat Parquet artifact.
+    assert len(table.schema()) == 38
+    assert table.schema().names[0] == "cve_id"
+    assert table.schema().names[-3:] == ["owner", "sla_due_at", "lifecycle_status"]
     assert len(table.appended) == 1
     assert table.appended[0].num_rows == 1
     assert result == {
         "identifier": "lake.cves",
         "rows": 1,
         "snapshot_id": 4242,
-        "catalog_url": "http://c/",
+        "catalog_url": "http://c",
     }
+
+
+def test_result_never_echoes_catalog_url_credentials_or_query_tokens() -> None:
+    report, br = _report()
+    config = IcebergCatalogConfig(catalog_url="https://client:secret@catalog.example/v1?token=hidden")
+
+    result = register_findings(report, config, [br], catalog=_FakeCatalog())
+
+    assert result["catalog_url"] == "https://catalog.example"
+    assert "secret" not in str(result)
+    assert "hidden" not in str(result)
 
 
 def test_round_trip_appends_to_existing_table() -> None:
@@ -191,6 +242,48 @@ def test_round_trip_appends_to_existing_table() -> None:
     # namespace + table create-if-not-exists are idempotent; two snapshots appended
     table = fake.tables[f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}"]
     assert len(table.appended) == 2
+
+
+def test_existing_additive_table_schema_is_evolved_before_append() -> None:
+    report, br = _report()
+    config = IcebergCatalogConfig(catalog_url="http://c/")
+    fake = _FakeCatalog()
+    current = iceberg_catalog.to_arrow_table(report, [br])
+    legacy = _FakeLegacyTable(config.identifier, current.select(current.schema.names[:31]).schema)
+    fake.tables[config.identifier] = legacy
+
+    register_findings(report, config, [br], catalog=fake)
+
+    assert legacy.schema_commits == 1
+    assert legacy.schema().names == current.schema.names
+    assert len(legacy.appended) == 1
+
+
+def test_real_pyiceberg_catalog_evolves_v2_and_commits_v3_snapshot(tmp_path) -> None:
+    pytest.importorskip("pyiceberg")
+    from pyiceberg.catalog.memory import InMemoryCatalog
+
+    report, br = _report()
+    current = iceberg_catalog.to_arrow_table(report, [br])
+    catalog = InMemoryCatalog("test", warehouse=f"file://{tmp_path.resolve()}")
+    catalog.create_namespace((DEFAULT_NAMESPACE,))
+    catalog.create_table(
+        f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}",
+        schema=current.select(current.schema.names[:31]).schema,
+    )
+
+    result = register_findings(
+        report,
+        IcebergCatalogConfig(catalog_url="memory://"),
+        [br],
+        catalog=catalog,
+    )
+
+    table = catalog.load_table(f"{DEFAULT_NAMESPACE}.{DEFAULT_TABLE}")
+    assert len(table.schema().fields) == 38
+    assert table.scan().to_arrow().num_rows == 1
+    assert result["rows"] == 1
+    assert result["snapshot_id"] is not None
 
 
 def test_maybe_register_uses_env(monkeypatch) -> None:

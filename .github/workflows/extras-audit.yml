@@ -27,7 +27,7 @@ jobs:
           - name: mcp-surface
             extras: "mcp-server graph"
           - name: analytics-ui
-            extras: "postgres dashboard"
+            extras: "postgres dashboard lake"
           - name: cloud-surface
             extras: "cloud"
 

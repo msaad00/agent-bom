@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from agent_bom import config as app_config
 from agent_bom.models import AIBOMReport, BlastRadius
@@ -101,6 +102,50 @@ def _build_catalog(config: IcebergCatalogConfig):
     return rest_catalog_cls("agent-bom", **config.catalog_properties())
 
 
+def _display_catalog_url(value: str | None) -> str:
+    """Return a credential-, path-, and query-free endpoint for user output."""
+    try:
+        parsed = urlsplit(value or "")
+        if not parsed.scheme or not parsed.hostname:
+            return "configured catalog"
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        return f"{parsed.scheme}://{parsed.hostname}{port}"
+    except (TypeError, ValueError):
+        return "configured catalog"
+
+
+def _schema_names(schema: Any) -> tuple[str, ...]:
+    names = getattr(schema, "names", None)
+    if names is not None:
+        return tuple(str(name) for name in names)
+    fields = getattr(schema, "fields", ())
+    return tuple(str(field.name) for field in fields)
+
+
+def _evolve_additive_schema(iceberg_table: Any, arrow_schema: Any) -> None:
+    """Add newly appended lake columns before writing the next snapshot.
+
+    Agent-Bom's lake schema evolves additively. Existing v1/v2 tables therefore
+    need a catalog schema commit before a v3 Arrow batch can append. PyIceberg's
+    ``union_by_name`` preserves existing field IDs and rejects incompatible type
+    changes instead of silently rewriting consumers' columns.
+    """
+    schema_accessor = getattr(iceberg_table, "schema", None)
+    current_schema = schema_accessor() if callable(schema_accessor) else schema_accessor
+    if current_schema is None:
+        raise RuntimeError("Iceberg table did not expose its current schema")
+    current_names = set(_schema_names(current_schema))
+    target_names = set(_schema_names(arrow_schema))
+    if target_names <= current_names:
+        return
+    update_schema = getattr(iceberg_table, "update_schema", None)
+    if not callable(update_schema):
+        raise RuntimeError("Iceberg table does not support additive schema evolution")
+    update = update_schema()
+    update.union_by_name(arrow_schema)
+    update.commit()
+
+
 def register_findings(
     report: AIBOMReport,
     config: IcebergCatalogConfig,
@@ -110,8 +155,8 @@ def register_findings(
 ) -> dict[str, Any]:
     """Append the report's unified findings to the Iceberg table as a new snapshot.
 
-    Creates the namespace and table (matching the shared unified Parquet schema —
-    the 28 v1 CVE columns plus the appended finding_type/finding_id/title, #4280)
+    Creates the namespace and table matching the shared, additively versioned
+    unified Parquet schema
     if they do not yet exist, then appends a data file and commits a snapshot.
     Returns a small summary dict for logging.
 
@@ -128,6 +173,7 @@ def register_findings(
 
     catalog.create_namespace_if_not_exists((config.namespace,))
     iceberg_table = catalog.create_table_if_not_exists(config.identifier, schema=arrow_table.schema)
+    _evolve_additive_schema(iceberg_table, arrow_table.schema)
     iceberg_table.append(arrow_table)
 
     snapshot = None
@@ -140,7 +186,7 @@ def register_findings(
         "identifier": config.identifier,
         "rows": arrow_table.num_rows,
         "snapshot_id": snapshot,
-        "catalog_url": config.catalog_url,
+        "catalog_url": _display_catalog_url(config.catalog_url),
     }
 
 

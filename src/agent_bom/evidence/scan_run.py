@@ -21,6 +21,45 @@ class ScanOutcome(str, Enum):
     FAILED = "failed"
 
 
+class ScanScopeStatus(str, Enum):
+    """Completeness of one explicitly requested scan scope."""
+
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNSUPPORTED = "unsupported"
+    UNAVAILABLE = "unavailable"
+    PERMISSION_DENIED = "permission_denied"
+    SKIPPED = "skipped"
+
+
+@dataclass(frozen=True)
+class ScanScope:
+    """Bounded evidence status for one requested collection scope."""
+
+    name: str
+    status: ScanScopeStatus
+    requested: bool = True
+    item_count: int | None = None
+    message: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", sanitize_text(self.name, max_len=100) or "unknown")
+        if isinstance(self.status, str):
+            object.__setattr__(self, "status", ScanScopeStatus(self.status))
+        if self.item_count is not None:
+            object.__setattr__(self, "item_count", max(0, int(self.item_count)))
+        object.__setattr__(self, "message", sanitize_text(self.message, max_len=500))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "status": self.status.value,
+            "requested": self.requested,
+            "item_count": self.item_count,
+            "message": self.message,
+        }
+
+
 @dataclass(frozen=True)
 class ScanIssue:
     """One sanitized execution issue projected to every report surface."""
@@ -57,11 +96,13 @@ class ScanRun:
 
     outcome: ScanOutcome = ScanOutcome.COMPLETE
     issues: list[ScanIssue] = field(default_factory=list)
+    scopes: list[ScanScope] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if isinstance(self.outcome, str):
             self.outcome = ScanOutcome(self.outcome)
         self.issues = self._dedupe(self.issues)
+        self.scopes = self._dedupe_scopes(self.scopes)
         self._derive_partial()
 
     @staticmethod
@@ -76,11 +117,25 @@ class ScanRun:
         return unique
 
     def _derive_partial(self) -> None:
-        if self.outcome is ScanOutcome.COMPLETE and any(issue.affects_coverage for issue in self.issues):
+        scope_incomplete = any(
+            scope.requested and scope.status not in {ScanScopeStatus.COMPLETE, ScanScopeStatus.SKIPPED} for scope in self.scopes
+        )
+        if self.outcome is ScanOutcome.COMPLETE and (any(issue.affects_coverage for issue in self.issues) or scope_incomplete):
             self.outcome = ScanOutcome.PARTIAL
+
+    @staticmethod
+    def _dedupe_scopes(scopes: list[ScanScope]) -> list[ScanScope]:
+        unique: dict[str, ScanScope] = {}
+        for scope in scopes[:100]:
+            unique[scope.name] = scope
+        return list(unique.values())
 
     def add_issue(self, issue: ScanIssue) -> None:
         self.issues = self._dedupe([*self.issues, issue])
+        self._derive_partial()
+
+    def set_scopes(self, scopes: list[ScanScope]) -> None:
+        self.scopes = self._dedupe_scopes(scopes)
         self._derive_partial()
 
     def mark_failed(self) -> None:
@@ -91,10 +146,16 @@ class ScanRun:
         return [issue.message for issue in self.issues]
 
     def to_dict(self) -> dict[str, Any]:
+        requested_scopes = [scope for scope in self.scopes if scope.requested]
+        complete_scope_count = sum(scope.status is ScanScopeStatus.COMPLETE for scope in requested_scopes)
         return {
             "outcome": self.outcome.value,
             "issues": [issue.to_dict() for issue in self.issues],
             "warning_count": len(self.issues),
+            "requested_scope_count": len(requested_scopes),
+            "complete_scope_count": complete_scope_count,
+            "incomplete_scope_count": len(requested_scopes) - complete_scope_count,
+            "scopes": [scope.to_dict() for scope in self.scopes],
         }
 
 
@@ -104,6 +165,7 @@ def effective_scan_run(report: Any) -> ScanRun:
     run = ScanRun(
         outcome=getattr(raw, "outcome", ScanOutcome.COMPLETE),
         issues=list(getattr(raw, "issues", []) or []),
+        scopes=list(getattr(raw, "scopes", []) or []),
     )
     for warning in getattr(report, "coverage_warnings", []) or []:
         if not isinstance(warning, dict):
@@ -156,6 +218,8 @@ __all__ = [
     "ScanIssue",
     "ScanOutcome",
     "ScanRun",
+    "ScanScope",
+    "ScanScopeStatus",
     "effective_scan_run",
     "vulnerability_coverage_incomplete",
 ]

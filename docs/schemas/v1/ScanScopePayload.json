@@ -1,0 +1,54 @@
+{
+  "additionalProperties": false,
+  "description": "Bounded completeness metadata for one requested collection scope.",
+  "properties": {
+    "item_count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Item Count"
+    },
+    "message": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Message",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "requested": {
+      "default": true,
+      "title": "Requested",
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "unsupported",
+        "unavailable",
+        "permission_denied",
+        "skipped"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "status"
+  ],
+  "title": "ScanScopePayload",
+  "type": "object"
+}

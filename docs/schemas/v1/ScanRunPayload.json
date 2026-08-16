@@ -51,11 +51,79 @@
       ],
       "title": "ScanIssuePayload",
       "type": "object"
+    },
+    "ScanScopePayload": {
+      "additionalProperties": false,
+      "description": "Bounded completeness metadata for one requested collection scope.",
+      "properties": {
+        "item_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Item Count"
+        },
+        "message": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Message",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "requested": {
+          "default": true,
+          "title": "Requested",
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "unsupported",
+            "unavailable",
+            "permission_denied",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status"
+      ],
+      "title": "ScanScopePayload",
+      "type": "object"
     }
   },
   "additionalProperties": true,
   "description": "Canonical evidence-quality contract, separate from job lifecycle.",
   "properties": {
+    "complete_scope_count": {
+      "default": 0,
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Complete Scope Count",
+      "type": "integer"
+    },
+    "incomplete_scope_count": {
+      "default": 0,
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Incomplete Scope Count",
+      "type": "integer"
+    },
     "issues": {
       "items": {
         "$ref": "#/$defs/ScanIssuePayload"
@@ -73,6 +141,21 @@
       ],
       "title": "Outcome",
       "type": "string"
+    },
+    "requested_scope_count": {
+      "default": 0,
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Requested Scope Count",
+      "type": "integer"
+    },
+    "scopes": {
+      "items": {
+        "$ref": "#/$defs/ScanScopePayload"
+      },
+      "maxItems": 100,
+      "title": "Scopes",
+      "type": "array"
     },
     "warning_count": {
       "default": 0,

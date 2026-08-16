@@ -376,11 +376,12 @@ def scan_control_options(fn):
             click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution"),
             click.option(
                 "--preset",
-                type=click.Choice(["ci", "enterprise", "quick"]),
+                type=click.Choice(["ci", "enterprise", "quick", "workstation"]),
                 default=None,
                 help=(
                     "Scan preset: ci (quiet, json, fail-on-critical), enterprise (enrich, introspect,"
-                    " transitive, verify-integrity, verify-instructions), quick (no transitive, no enrich)"
+                    " transitive, verify-integrity, verify-instructions), quick (no transitive, no enrich),"
+                    " workstation (repository, agents/MCP, browser extensions, host packages, MCP processes/containers, graph)"
                 ),
             ),
         ]

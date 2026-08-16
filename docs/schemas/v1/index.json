@@ -247,6 +247,11 @@
       "schema": "ScanRunPayload.json"
     },
     {
+      "doc": "Bounded completeness metadata for one requested collection scope.",
+      "name": "ScanScopePayload",
+      "schema": "ScanScopePayload.json"
+    },
+    {
       "doc": "",
       "name": "ScheduleCreate",
       "schema": "ScheduleCreate.json"

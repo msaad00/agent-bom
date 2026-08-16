@@ -738,13 +738,28 @@ class ScanIssuePayload(BaseModel):
     affects_coverage: bool = True
 
 
+class ScanScopePayload(BaseModel):
+    """Bounded completeness metadata for one requested collection scope."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    status: Literal["complete", "partial", "unsupported", "unavailable", "permission_denied", "skipped"]
+    requested: bool = True
+    item_count: int | None = Field(default=None, ge=0)
+    message: str = Field(default="", max_length=500)
+
+
 class ScanRunPayload(BaseModel):
     """Canonical evidence-quality contract, separate from job lifecycle."""
 
     model_config = ConfigDict(extra="allow")
     outcome: Literal["complete", "partial", "failed"] = "complete"
     issues: list[ScanIssuePayload] = Field(default_factory=list, max_length=100)
+    scopes: list[ScanScopePayload] = Field(default_factory=list, max_length=100)
     warning_count: int = Field(default=0, ge=0, le=100)
+    requested_scope_count: int = Field(default=0, ge=0, le=100)
+    complete_scope_count: int = Field(default=0, ge=0, le=100)
+    incomplete_scope_count: int = Field(default=0, ge=0, le=100)
 
 
 class PushPayload(BaseModel):

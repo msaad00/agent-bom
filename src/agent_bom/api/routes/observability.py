@@ -113,7 +113,7 @@ def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dic
             agent["servers"] = sanitized_servers
         normalized_agents.append(agent)
     report["agents"] = normalized_agents
-    from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+    from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, ScanScope, ScanScopeStatus
 
     raw_scan_run_value = report.get("scan_run")
     raw_scan_run: dict[str, Any] = raw_scan_run_value if isinstance(raw_scan_run_value, dict) else {}
@@ -149,7 +149,20 @@ def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dic
             existing_messages.add(issue.message)
     raw_outcome = str(raw_scan_run.get("outcome") or "complete")
     outcome = ScanOutcome(raw_outcome)
-    scan_run = ScanRun(outcome=outcome, issues=issues)
+    scopes: list[ScanScope] = []
+    for raw_scope in raw_scan_run.get("scopes", []) or []:
+        if not isinstance(raw_scope, dict):
+            continue
+        scopes.append(
+            ScanScope(
+                name=str(raw_scope.get("name") or "unknown"),
+                status=ScanScopeStatus(str(raw_scope.get("status") or "skipped")),
+                requested=bool(raw_scope.get("requested", True)),
+                item_count=raw_scope.get("item_count") if isinstance(raw_scope.get("item_count"), int) else None,
+                message=str(raw_scope.get("message") or ""),
+            )
+        )
+    scan_run = ScanRun(outcome=outcome, issues=issues, scopes=scopes)
     report["scan_run"] = {**raw_scan_run, **scan_run.to_dict()}
     report["warnings"] = scan_run.warnings
     return report

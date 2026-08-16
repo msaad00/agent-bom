@@ -635,6 +635,12 @@ def scan(
     elif preset == "quick":
         transitive = False
         enrich = False
+    elif preset == "workstation":
+        browser_extensions = True
+        os_packages = True
+        include_processes = True
+        include_containers = True
+        context_graph_flag = True
 
     # ── CI environment detection (informational only) ──
     # Auto-quiet removed: tests run in CI and need output.
@@ -1106,6 +1112,7 @@ def scan(
         smithery_flag=smithery_flag,
         mcp_registry_flag=mcp_registry_flag,
         os_packages=os_packages,
+        workstation_sweep=preset == "workstation",
         iac_paths=iac_paths,
         _image_only=_image_only,
         _any_cloud=any_cloud,
@@ -2236,6 +2243,19 @@ def scan(
             import logging as _glog
 
             _glog.getLogger(__name__).debug("Graph persistence skipped: %s", _graph_err)
+
+    if preset == "workstation":
+        from agent_bom.endpoint import workstation_scan_scopes
+
+        _browser_extension_count = len((ctx._browser_ext_results or {}).get("extensions", []))
+        _context_graph_node_count = len((report.context_graph_data or {}).get("nodes", []))
+        report.scan_run.set_scopes(
+            workstation_scan_scopes(
+                agents=agents,
+                browser_extension_count=_browser_extension_count,
+                context_graph_node_count=_context_graph_node_count,
+            )
+        )
 
     # ── License compliance check ─────────────────────────────────────
     if license_check and agents:

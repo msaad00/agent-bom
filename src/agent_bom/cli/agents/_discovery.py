@@ -36,6 +36,20 @@ def _aggregate_sast_path_results(path_results: list[dict]) -> dict:
     )
 
 
+def _merge_unique_agents(primary: list[Any], additional: list[Any]) -> list[Any]:
+    """Merge project and ambient discovery without duplicating identities."""
+
+    merged = list(primary)
+    seen = {str(getattr(agent, "canonical_id", "") or getattr(agent, "stable_id", "") or getattr(agent, "name", "")) for agent in merged}
+    for agent in additional:
+        identity = str(getattr(agent, "canonical_id", "") or getattr(agent, "stable_id", "") or getattr(agent, "name", ""))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        merged.append(agent)
+    return merged
+
+
 def _first_run_hints() -> list[tuple[str, str]]:
     """Return concrete config locations for common MCP clients on this platform."""
     system = platform.system()
@@ -114,6 +128,7 @@ def run_local_discovery(
     smithery_flag: bool = False,
     mcp_registry_flag: bool = False,
     os_packages: bool = False,
+    workstation_sweep: bool = False,
     _discover_all: Any = None,
     **kwargs: Any,
 ) -> None:
@@ -183,6 +198,23 @@ def run_local_discovery(
                 k8s_all_namespaces=k8s_all_namespaces,
                 k8s_context=k8s_mcp_context,
             )
+
+    if workstation_sweep and not no_discover and (project or config_dir):
+        # A project-scoped discovery intentionally skips ambient host surfaces.
+        # Workstation mode needs both, so collect global configs plus the
+        # opt-in MCP process/container evidence and merge by stable identity.
+        ambient_agents = _discover(
+            project_dir=None,
+            dynamic=dynamic_discovery,
+            dynamic_max_depth=dynamic_max_depth,
+            include_processes=include_processes,
+            include_containers=include_containers,
+            include_k8s_mcp=False,
+            k8s_namespace=k8s_namespace,
+            k8s_all_namespaces=False,
+            k8s_context=None,
+        )
+        ctx.agents = _merge_unique_agents(ctx.agents, ambient_agents)
 
     any_cloud = kwargs.get("_any_cloud", False)
     if (

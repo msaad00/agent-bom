@@ -466,7 +466,10 @@ def compute_exit_code(
         scan_outcome = effective_scan_run(report).outcome
         if scan_outcome is not ScanOutcome.COMPLETE:
             if not quiet and not ctx.cloud_provider_failures:
-                con.print(f"\n  [red]Exiting with code 1: scan execution was {scan_outcome.value}; inspect scan_run.issues[/red]")
+                con.print(
+                    f"\n  [red]Exiting with code 1: scan execution was {scan_outcome.value}; "
+                    "inspect scan_run.scopes and scan_run.issues[/red]"
+                )
             exit_code = 1
 
     # Every branch above prints the specific reason it tripped. What none of

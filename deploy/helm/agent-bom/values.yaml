@@ -446,6 +446,26 @@ teardownHooks:
 
 controlPlane:
   enabled: false
+  # Provider label for diagnostics and evidence only. It never changes the
+  # PostgreSQL protocol contract or upgrades compatibility into certification.
+  postgres:
+    provider: auto
+    verification:
+      enabled: true
+      hooks: post-install,post-upgrade
+      hookWeight: "10"
+      # Keep successful output available until the TTL removes it; the next
+      # release still replaces any prior hook deterministically.
+      deletePolicy: before-hook-creation
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 600
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
   # Canonical Postgres Secret references. When enabled, the chart injects
   # app + maintenance into the API, admin + app + maintenance into the
   # migration Job, and maintenance only into backups. Names must be distinct.

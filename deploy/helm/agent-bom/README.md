@@ -26,6 +26,10 @@ maintenance into the API, admin + app + maintenance into the migration Job, and
 maintenance only into backups; duplicate or missing names fail template
 validation. The migration hook runs the idempotent packaged upgrade/reconcile
 entrypoint and never inherits or falls back to generic API credentials.
+The chart then runs a post-migration portability hook using only the app and
+maintenance references; it fails closed when TLS, schema, or runtime-role RLS
+safety is not ready. Set `controlPlane.postgres.provider` to label the managed
+service in health and doctor output; the label never implies certification.
 Secret-sync and workload releases are isolated by the standard Helm instance
 label, including teardown cleanup; uninstalling one release cannot
 collection-delete ExternalSecrets owned by the other.
@@ -158,6 +162,8 @@ blank `collectorImage.tag` falls back to `image.tag`.
 | `collectorImage.repository` | `agentbom/agent-bom-collector` | Cloud-SDK collector image the scan CronJob runs |
 | `collectorImage.tag` | release version | Collector tag — override to bump the SDK layer independently of the control plane; blank falls back to `image.tag` |
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments |
+| `controlPlane.postgres.provider` | `auto` | Diagnostic provider hint; does not change the PostgreSQL contract or certification state |
+| `controlPlane.postgres.verification.enabled` | `true` | Run a post-install/post-upgrade portability probe for canonical Postgres deployments |
 | `controlPlane.ingress.enabled` | `false` | Same-origin ingress for UI + API |
 | `monitor.enabled` | `false` | Optional node-wide runtime monitor |
 | `sidecarInjection.enabled` | `false` | Mutating webhook for proxy sidecars |

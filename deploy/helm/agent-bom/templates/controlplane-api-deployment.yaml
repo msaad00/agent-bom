@@ -8,7 +8,7 @@
 {{- fail "controlPlane.postgresSecrets app, maintenance, and admin Secret names must be distinct" }}
 {{- end }}
 {{- range $entry := .Values.controlPlane.api.env }}
-{{- if has (get $entry "name") (list "AGENT_BOM_POSTGRES_URL" "AGENT_BOM_POSTGRES_MAINTENANCE_URL" "ALEMBIC_DATABASE_URL") }}
+{{- if has (get $entry "name") (list "AGENT_BOM_POSTGRES_URL" "AGENT_BOM_POSTGRES_MAINTENANCE_URL" "AGENT_BOM_POSTGRES_PROVIDER" "ALEMBIC_DATABASE_URL") }}
 {{- fail "controlPlane.api.env cannot override canonical Postgres identity variables when controlPlane.postgresSecrets.enabled=true" }}
 {{- end }}
 {{- end }}
@@ -91,6 +91,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
             {{- if $postgresSecrets.enabled }}
+            - name: AGENT_BOM_POSTGRES_PROVIDER
+              value: {{ .Values.controlPlane.postgres.provider | quote }}
             - name: AGENT_BOM_POSTGRES_URL
               valueFrom:
                 secretKeyRef:

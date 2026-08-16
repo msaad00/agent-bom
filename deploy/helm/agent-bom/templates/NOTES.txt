@@ -52,6 +52,12 @@ Enterprise pilot notes:
 - For existing databases bootstrapped from `init.sql`, stamp the baseline once
   before the first hooked upgrade:
   `alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01`.
+{{- if and .Values.controlPlane.postgresSecrets.enabled .Values.controlPlane.postgres.verification.enabled }}
+- After migrations, `{{ include "agent-bom.name" . }}-postgres-verify` runs the
+  bounded portability probe with only the app and maintenance Secret refs. It
+  fails the release when TLS, schema, or runtime-role safety is not ready and
+  never receives the migration/admin Secret.
+{{- end }}
 {{- else }}
 - SQLite pilot mode skips the Alembic migration hook. Do not use SQLite for
   multi-replica production control planes.

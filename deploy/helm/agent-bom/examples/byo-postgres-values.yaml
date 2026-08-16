@@ -26,9 +26,24 @@
 #   driver. Keep it in "candidate / smoke-test required" status until migrations,
 #   API startup, graph writes, fleet sync, policy, audit, and backup/restore
 #   posture have been validated in the target account and region.
+#
+# Declare the provider label without putting it in a Secret:
+#
+#   --set controlPlane.postgres.provider=aws-rds
+#
+# Accepted aliases include postgres, aws-rds, aurora-postgres, cloud-sql,
+# azure-postgres, supabase, crunchy, edb, snowflake-pg, clickhouse-postgres,
+# and other. Managed providers remain `compatible_unverified` until controlled
+# provider-specific evidence exists. The post-migration `postgres-verification`
+# hook runs the same bounded probe exposed by `agent-bom doctor` and fails the
+# Helm release when TLS, migrations, or the runtime RLS role are not ready.
 
 controlPlane:
   enabled: true
+  postgres:
+    provider: auto
+    verification:
+      enabled: true
   postgresSecrets:
     enabled: true
     appSecretRef:

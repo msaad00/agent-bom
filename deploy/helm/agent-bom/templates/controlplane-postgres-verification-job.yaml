@@ -1,0 +1,71 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.postgresSecrets.enabled .Values.controlPlane.postgres.verification.enabled }}
+{{- $postgresSecrets := .Values.controlPlane.postgresSecrets }}
+{{- $verification := .Values.controlPlane.postgres.verification }}
+{{- $appSecret := required "controlPlane.postgresSecrets.appSecretRef.name is required" $postgresSecrets.appSecretRef.name }}
+{{- $maintenanceSecret := required "controlPlane.postgresSecrets.maintenanceSecretRef.name is required" $postgresSecrets.maintenanceSecretRef.name }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agent-bom.name" . }}-postgres-verify
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-verification
+  annotations:
+    helm.sh/hook: {{ $verification.hooks | quote }}
+    helm.sh/hook-weight: {{ $verification.hookWeight | quote }}
+    helm.sh/hook-delete-policy: {{ $verification.deletePolicy | quote }}
+spec:
+  ttlSecondsAfterFinished: {{ $verification.ttlSecondsAfterFinished }}
+  backoffLimit: {{ $verification.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-verification
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: postgres-verify
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -c
+            - |
+              import json
+              from agent_bom.storage.postgres_capabilities import probe_postgres_portability
+              result = probe_postgres_portability()
+              print(json.dumps(result.to_dict(), sort_keys=True))
+              raise SystemExit(0 if result.status == "ready" else 1)
+          env:
+            - name: AGENT_BOM_POSTGRES_PROVIDER
+              value: {{ .Values.controlPlane.postgres.provider | quote }}
+            - name: AGENT_BOM_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $appSecret | quote }}
+                  key: AGENT_BOM_POSTGRES_URL
+            - name: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $maintenanceSecret | quote }}
+                  key: AGENT_BOM_POSTGRES_MAINTENANCE_URL
+          resources:
+            {{- toYaml $verification.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

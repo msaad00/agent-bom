@@ -76,6 +76,23 @@ Recommended operator practice:
   - shared rate limiting in multi-replica deployments
   - tenant-scoped RLS enforcement in the database layer
 
+Declare the provider separately from credentials so health and diagnostic
+output can name the deployment without parsing or exposing a DSN:
+
+```bash
+helm upgrade agent-bom deploy/helm/agent-bom \
+  --reuse-values \
+  --set controlPlane.postgres.provider=aws-rds
+```
+
+The provider value is an evidence label, not a capability switch. Managed
+services remain `compatible_unverified` until a controlled provider-specific
+run exists. With canonical Postgres Secrets enabled, Helm runs the
+`agent-bom-postgres-verify` post-install/post-upgrade hook after migrations.
+The hook receives only the app and maintenance references, checks TLS, schema,
+and runtime-role RLS safety, emits sanitized JSON, and fails the release unless
+the result is `ready`. The migration/admin Secret is never projected into it.
+
 ## How Helm and Postgres relate
 
 Helm should own:

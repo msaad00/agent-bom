@@ -206,3 +206,14 @@ def test_ci_lint_scope_is_defined_once_in_the_makefile() -> None:
     ruff = next(step for step in lint_steps if step.get("name") == "Ruff")
     assert "make lint-ruff" in ruff["run"], "CI must call the Makefile target, not restate the paths"
     assert "ruff check" not in ruff["run"], "CI restated the lint paths instead of reusing LINT_PATHS"
+
+
+def test_dependency_review_keeps_mmh3_license_exception_package_scoped() -> None:
+    """A metadata false positive must not globally allow CC-BY software."""
+    workflow = (ROOT / ".github" / "workflows" / "dependency-review.yml").read_text(encoding="utf-8")
+    global_allowlist = workflow.split("allow-licenses:", 1)[1].split("# Packages whitelisted by PURL:", 1)[0]
+
+    assert "pkg:pypi/mmh3" in workflow
+    assert "CC-BY-4.0" not in global_allowlist
+    assert "bibliography metadata" in workflow
+    assert "sdist declare MIT" in workflow

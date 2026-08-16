@@ -69,6 +69,11 @@ jobs:
           # - victory-vendor: ISC+JSON+MIT (JSON not in allow list)
           # - uv.lock transitive deps with LicenseRef-scancode-* identifiers
           #   (scancode can't map to standard SPDX; packages are permissive)
+          # - mmh3: upstream PyPI metadata and the 5.2.1 sdist declare MIT.
+          #   ScanCode also sees the MurmurHash public-domain notice and a
+          #   CC-BY-4.0 journal citation in README bibliography metadata; neither
+          #   changes the distributed package's declared MIT software license.
+          #   Keep this exception PURL-scoped instead of globally allowing CC-BY.
           allow-dependencies-licenses: >-
             pkg:pypi/jinja2,
             pkg:pypi/werkzeug,
@@ -89,6 +94,7 @@ jobs:
             pkg:pypi/psycopg-pool,
             pkg:pypi/scikit-learn,
             pkg:pypi/litellm,
+            pkg:pypi/mmh3,
             pkg:pypi/typing-extensions,
             pkg:pypi/wcwidth,
             pkg:pypi/backrefs,

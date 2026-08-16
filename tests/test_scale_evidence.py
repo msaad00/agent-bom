@@ -40,19 +40,33 @@ def test_postgres_scale_evidence_sets_current_postgres_url(monkeypatch) -> None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
-    monkeypatch.delenv("AGENT_BOM_POSTGRES_DSN", raising=False)
-
-    module._set_postgres_env(
-        "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom",
-        pool_min_size=1,
-        pool_max_size=4,
+    env_keys = (
+        "AGENT_BOM_POSTGRES_URL",
+        "AGENT_BOM_POSTGRES_DSN",
+        "AGENT_BOM_POSTGRES_POOL_MIN_SIZE",
+        "AGENT_BOM_POSTGRES_POOL_MAX_SIZE",
     )
+    original_env = {key: os.environ.get(key) for key in env_keys}
 
-    assert os.environ["AGENT_BOM_POSTGRES_URL"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
-    assert os.environ["AGENT_BOM_POSTGRES_DSN"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
-    assert os.environ["AGENT_BOM_POSTGRES_POOL_MIN_SIZE"] == "1"
-    assert os.environ["AGENT_BOM_POSTGRES_POOL_MAX_SIZE"] == "4"
+    with monkeypatch.context() as isolated_env:
+        # Register all four variables with monkeypatch before the benchmark helper
+        # mutates os.environ directly, so teardown cannot leak its pool size into
+        # later config reloads in the randomized/xdist test suite.
+        for key in env_keys:
+            isolated_env.setenv(key, "test-baseline")
+
+        module._set_postgres_env(
+            "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom",
+            pool_min_size=1,
+            pool_max_size=4,
+        )
+
+        assert os.environ["AGENT_BOM_POSTGRES_URL"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
+        assert os.environ["AGENT_BOM_POSTGRES_DSN"] == "postgresql://agent_bom:agent_bom@localhost:5432/agent_bom"
+        assert os.environ["AGENT_BOM_POSTGRES_POOL_MIN_SIZE"] == "1"
+        assert os.environ["AGENT_BOM_POSTGRES_POOL_MAX_SIZE"] == "4"
+
+    assert {key: os.environ.get(key) for key in env_keys} == original_env
 
 
 def test_postgres_scale_evidence_records_bounded_pool_budget() -> None:

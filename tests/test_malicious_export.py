@@ -56,7 +56,7 @@ def test_malicious_package_policy_gate() -> None:
 def test_malicious_parquet_row_has_compliance_tags() -> None:
     report = _malicious_report()
     finding = report.to_findings()[0]
-    row = _row_dict(finding)
+    row = _row_dict(finding, report)
     assert row["is_malicious"] is True
     assert row["malicious_reason"]
 

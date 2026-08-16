@@ -31,6 +31,8 @@ def doctor_cmd() -> None:
     cloud_sdk_checks: list[tuple[str, str, str]] = []
     cloud_api_checks: list[tuple[str, str, str]] = []
     pin_drift_checks: list[tuple[str, str, str]] = []
+    postgres_checks: list[tuple[str, str, str]] = []
+    postgres_payload: dict[str, object] | None = None
 
     # Python version
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -188,7 +190,40 @@ def doctor_cmd() -> None:
     except Exception:
         pin_drift_checks.append(("Cloud SDK pin drift", "check unavailable", "info"))
 
-    checks = [*core_checks, *runtime_checks, *platform_checks]
+    postgres_url = os.environ.get("AGENT_BOM_POSTGRES_URL", "")
+    database_url = os.environ.get("AGENT_BOM_DB", "")
+    if postgres_url or database_url.startswith(("postgres://", "postgresql://")):
+        from agent_bom.storage.postgres_capabilities import probe_postgres_portability
+
+        probe = probe_postgres_portability()
+        postgres_payload = probe.to_dict()
+        probe_status = "ok" if probe.status == "ready" else "warn"
+        postgres_checks.extend(
+            [
+                ("Provider", probe.provider, probe_status),
+                ("Evidence", probe.evidence, "ok" if probe.evidence == "controlled_verified" else "info"),
+                ("Contract", probe.contract, "ok"),
+                ("Server", probe.server_version or "unavailable", probe_status),
+                ("TLS", "active" if probe.tls else "inactive or unavailable", probe_status),
+                (
+                    "Runtime role",
+                    "RLS-safe" if probe.runtime_role_rls_safe else "unsafe or unavailable",
+                    probe_status,
+                ),
+                (
+                    "Migrations",
+                    "present" if probe.alembic_schema_present and probe.control_plane_schema_present else "missing or unavailable",
+                    probe_status,
+                ),
+                (
+                    "Maintenance role",
+                    "configured" if probe.maintenance_role_configured else "not configured",
+                    "ok" if probe.maintenance_role_configured else "warn",
+                ),
+            ]
+        )
+
+    checks = [*core_checks, *runtime_checks, *platform_checks, *postgres_checks]
     warns = sum(1 for _, _, s in checks if s == "warn")
 
     from agent_bom.cli._agent_mode import agent_mode_requested
@@ -219,6 +254,7 @@ def doctor_cmd() -> None:
                 "cloud_sdk": _section(cloud_sdk_checks),
                 "cloud_api_deprecations": _section(cloud_api_checks),
                 "cloud_sdk_pin_drift": _section(pin_drift_checks),
+                "postgres_portability": postgres_payload,
                 "capabilities": capabilities,
                 "coverage": coverage,
                 "ready": warns == 0,
@@ -238,6 +274,8 @@ def doctor_cmd() -> None:
     _print_section(console, "Cloud SDK freshness", cloud_sdk_checks)
     _print_section(console, "Cloud API deprecations", cloud_api_checks)
     _print_section(console, "Cloud SDK pin drift", pin_drift_checks)
+    if postgres_checks:
+        _print_section(console, "Postgres portability", postgres_checks)
 
     # Nothing-silent capability view — every gated feature with its state and
     # unlock path, so a skipped/degraded capability is never silent.

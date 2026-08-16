@@ -425,6 +425,16 @@ class AnalyticsHealth(BaseModel):
     dropped_count: int | None = None
 
 
+class PostgresPortabilityHealth(BaseModel):
+    """Non-secret, operator-declared PostgreSQL compatibility posture."""
+
+    provider: str
+    declared_hint: str
+    contract: str = "postgresql"
+    evidence: str = "provider_unverified"
+    next_action: str | None = "agent-bom doctor"
+
+
 class StorageHealth(BaseModel):
     control_plane_backend: str = "inmemory"
     job_store: str = "inmemory"
@@ -438,6 +448,7 @@ class StorageHealth(BaseModel):
     graph_store: str = "inmemory"
     key_store: str = "inmemory"
     audit_log: str = "inmemory"
+    postgres: PostgresPortabilityHealth | None = None
 
 
 class EntitlementHealth(BaseModel):

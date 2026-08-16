@@ -585,12 +585,11 @@ API_BODY_MIN_BPS = _int("AGENT_BOM_BODY_MIN_BPS", 256)
 
 
 # ── PostgreSQL Control Plane Tuning ──────────────────────────────────────
+# Operator hint only; never changes the PostgreSQL contract or implies certification.
+POSTGRES_PROVIDER = _str("AGENT_BOM_POSTGRES_PROVIDER", "auto")
 # Used by api/postgres_store.py and shared Postgres-backed control-plane
-# services such as the distributed rate limiter.
-#
-# Defaults target multi-replica self-hosted control planes rather than a
-# single local developer process.
-
+# services such as the distributed rate limiter. Defaults target multi-replica
+# self-hosted control planes rather than a single local developer process.
 POSTGRES_POOL_MIN_SIZE = _int("AGENT_BOM_POSTGRES_POOL_MIN_SIZE", 5)
 POSTGRES_POOL_MAX_SIZE = _int("AGENT_BOM_POSTGRES_POOL_MAX_SIZE", 20)
 # Route handlers offload synchronous store reads to worker threads. AnyIO's

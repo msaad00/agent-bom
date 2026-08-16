@@ -43,6 +43,7 @@ from agent_bom.api.models import (
     EntitlementHealth,
     HealthResponse,
     JobStatus,
+    PostgresPortabilityHealth,
     PublicHealthResponse,
     ScanJob,
     ScanRequest,
@@ -184,6 +185,22 @@ def _control_plane_backend(storage: StorageHealth) -> str:
     return "inmemory"
 
 
+def _postgres_portability_health(control_plane_backend: str) -> PostgresPortabilityHealth | None:
+    """Return declarative Postgres posture without blocking the health route."""
+    if control_plane_backend != "postgres":
+        return None
+    from agent_bom.storage.postgres_capabilities import declared_postgres_portability
+
+    posture = declared_postgres_portability()
+    return PostgresPortabilityHealth(
+        provider=posture.provider,
+        declared_hint=posture.declared_hint,
+        contract=posture.contract,
+        evidence=posture.evidence,
+        next_action=posture.next_action,
+    )
+
+
 def _storage_health() -> StorageHealth:
     try:
         source_store = _get_source_store()
@@ -212,6 +229,7 @@ def _storage_health() -> StorageHealth:
         audit_log=_backend_name(get_audit_log()),
     )
     storage.control_plane_backend = _control_plane_backend(storage)
+    storage.postgres = _postgres_portability_health(storage.control_plane_backend)
     return storage
 
 

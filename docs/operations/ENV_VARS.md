@@ -304,7 +304,8 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS` | `int` | `5` | — |
 | `AGENT_BOM_POSTGRES_GRAPH_SEARCH_TIMEOUT_MS` | `int` | `3000` | — |
 | `AGENT_BOM_POSTGRES_POOL_MAX_SIZE` | `int` | `20` | — |
-| `AGENT_BOM_POSTGRES_POOL_MIN_SIZE` | `int` | `5` | Used by api/postgres_store.py and shared Postgres-backed control-plane services such as the distributed rate limiter.  Defaults target multi-replica self-hosted control planes rather than a single local developer process. |
+| `AGENT_BOM_POSTGRES_POOL_MIN_SIZE` | `int` | `5` | Used by api/postgres_store.py and shared Postgres-backed control-plane services such as the distributed rate limiter. Defaults target multi-replica self-hosted control planes rather than a single local developer process. |
+| `AGENT_BOM_POSTGRES_PROVIDER` | `str` | `'auto'` | Operator hint only; never changes the PostgreSQL contract or implies certification. |
 | `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS` | `int` | `15000` | — |
 | `AGENT_BOM_WORKER_THREAD_LIMIT` | `int` | `POSTGRES_POOL_MAX_SIZE` | Route handlers offload synchronous store reads to worker threads. AnyIO's own default allows 40 concurrent threads, so leaving it alone lets offloaded reads outnumber connections two to one and queue inside the pool until they time out. Der |
 

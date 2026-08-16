@@ -172,6 +172,11 @@
       "schema": "PolicyUpdate.json"
     },
     {
+      "doc": "Non-secret, operator-declared PostgreSQL compatibility posture.",
+      "name": "PostgresPortabilityHealth",
+      "schema": "PostgresPortabilityHealth.json"
+    },
+    {
       "doc": "Request body for POST /v1/scan/prompt-scan.",
       "name": "PromptScanRequest",
       "schema": "PromptScanRequest.json"

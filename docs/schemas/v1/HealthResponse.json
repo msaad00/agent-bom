@@ -122,6 +122,47 @@
       "title": "EntitlementHealth",
       "type": "object"
     },
+    "PostgresPortabilityHealth": {
+      "description": "Non-secret, operator-declared PostgreSQL compatibility posture.",
+      "properties": {
+        "contract": {
+          "default": "postgresql",
+          "title": "Contract",
+          "type": "string"
+        },
+        "declared_hint": {
+          "title": "Declared Hint",
+          "type": "string"
+        },
+        "evidence": {
+          "default": "provider_unverified",
+          "title": "Evidence",
+          "type": "string"
+        },
+        "next_action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "agent-bom doctor",
+          "title": "Next Action"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "declared_hint"
+      ],
+      "title": "PostgresPortabilityHealth",
+      "type": "object"
+    },
     "StorageHealth": {
       "properties": {
         "audit_log": {
@@ -168,6 +209,17 @@
           "default": "inmemory",
           "title": "Policy Store",
           "type": "string"
+        },
+        "postgres": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostgresPortabilityHealth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "schedule_store": {
           "default": "inmemory",

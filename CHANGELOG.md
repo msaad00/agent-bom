@@ -22,6 +22,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Security-relevant native AST flows now surface through unified findings,
   SARIF, policy gates, and source-to-tool graph provenance; inventory-only LLM
   client calls remain inventory rather than vulnerabilities.
+- PostgreSQL audit and governance chains serialize tenant appends with
+  transaction-scoped advisory locks, reconcile migration-owned guards, and
+  require persistent HMAC signing for shared durable ledgers.
+- Bare ASGI startup enforces the database RLS-role preflight, while public-demo
+  operator pages withhold deployment posture and integration diagnostics.
 
 ## [0.101.0] - 2026-08-16
 

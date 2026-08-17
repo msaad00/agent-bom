@@ -125,3 +125,17 @@ def test_governance_report_missing_account_stays_on_loop(monkeypatch, offload_sp
         asyncio.run(governance.governance_report(days=30))
     assert exc_info.value.status_code == 400
     assert offload_spy == [], "validation errors must not offload"
+
+
+def test_public_demo_missing_governance_integration_is_neutral(monkeypatch, offload_spy):
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+    monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(governance.governance_report(days=30))
+
+    assert exc_info.value.status_code == 404
+    assert "AGENT_BOM_" not in str(exc_info.value.detail)
+    assert "pip install" not in str(exc_info.value.detail)
+    assert offload_spy == []

@@ -294,6 +294,23 @@ class TestAuditHMAC:
             os.environ.pop("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", None)
             importlib.reload(audit_log)
 
+    def test_shared_postgres_requires_persistent_audit_hmac(self):
+        """A durable shared chain cannot be signed by a process-ephemeral key."""
+        import importlib
+
+        from agent_bom.api import audit_log
+
+        with patch.dict(os.environ, {"AGENT_BOM_POSTGRES_URL": "postgresql://db.example/agent_bom"}, clear=False):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", None)
+            with pytest.raises(RuntimeError, match="AGENT_BOM_AUDIT_HMAC_KEY is required"):
+                importlib.reload(audit_log)
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AGENT_BOM_POSTGRES_URL", None)
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            importlib.reload(audit_log)
+
 
 # ── Exception Narrowing ────────────────────────────────────────────────────
 

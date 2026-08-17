@@ -35,6 +35,17 @@ _logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
 
 
+def _reject_public_demo_operator_surface() -> None:
+    """Keep deployment wiring and backend diagnostics off the public demo."""
+    from agent_bom.demo_estate.bootstrap import demo_estate_enabled
+
+    if demo_estate_enabled():
+        raise HTTPException(
+            status_code=404,
+            detail="This operator integration is not exposed on the public demo.",
+        )
+
+
 async def _offload(build: Callable[[], _T]) -> _T:
     """Run a synchronous Snowflake-mining callable off the event loop.
 
@@ -63,6 +74,7 @@ async def governance_report(days: int = 30) -> dict[str, Any]:
     import os
 
     days = max(1, min(days, 365))
+    _reject_public_demo_operator_surface()
 
     if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         raise HTTPException(
@@ -105,6 +117,7 @@ async def governance_findings(
     import os
 
     days = max(1, min(days, 365))
+    _reject_public_demo_operator_surface()
     safe_limit = max(1, min(limit, 1000))
     safe_offset = max(0, offset)
 

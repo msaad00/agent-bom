@@ -47,9 +47,13 @@ export function useDemoMode(): { isDemoMode: boolean; loading: boolean } {
   // auth provider is configured.
   const serverIsOpen = Boolean(health?.unauthenticated_allowed) && !health?.auth_configured;
 
-  // The viewer is anonymous — a signed-in user on the same deployment must not
-  // see the "sign in" funnel.
-  const viewerIsAnonymous = session ? !session.authenticated : true;
+  // The no-auth server issues a real, tenant-scoped viewer principal so the
+  // session is authenticated for authorization purposes. Its auth method is
+  // still explicitly anonymous; use that canonical signal instead of treating
+  // every authenticated principal as a signed-in operator.
+  const viewerIsAnonymous = session
+    ? session.auth_method === "anonymous" || !session.authenticated
+    : true;
 
   const isDemoMode = !loading && serverIsOpen && viewerIsAnonymous;
 

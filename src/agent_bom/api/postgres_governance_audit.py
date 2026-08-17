@@ -87,32 +87,29 @@ class PostgresGovernanceAuditLog:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "governance_audit_log"):
-                return
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS governance_audit_log (
-                    seq         BIGSERIAL PRIMARY KEY,
-                    action_id   TEXT NOT NULL,
-                    tenant_id   TEXT NOT NULL,
-                    action      TEXT NOT NULL,
-                    observed_at TEXT NOT NULL,
-                    record_hash TEXT NOT NULL,
-                    data        TEXT NOT NULL
+            if ensure_postgres_schema_version(conn, "governance_audit_log"):
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS governance_audit_log (
+                        seq         BIGSERIAL PRIMARY KEY,
+                        action_id   TEXT NOT NULL,
+                        tenant_id   TEXT NOT NULL,
+                        action      TEXT NOT NULL,
+                        observed_at TEXT NOT NULL,
+                        record_hash TEXT NOT NULL,
+                        prev_hash   TEXT NOT NULL DEFAULT '',
+                        data        TEXT NOT NULL
+                    )
+                """)
+                conn.execute("ALTER TABLE governance_audit_log DROP CONSTRAINT IF EXISTS governance_audit_log_action_id_key")
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action ON governance_audit_log(tenant_id, action_id)"
                 )
-            """)
-            # Migrate away the old GLOBAL UNIQUE(action_id) if a pre-tenant-scope
-            # table exists (Postgres auto-names an inline column unique
-            # <table>_<column>_key); idempotent no-op on fresh installs.
-            conn.execute("ALTER TABLE governance_audit_log DROP CONSTRAINT IF EXISTS governance_audit_log_action_id_key")
-            # Tenant-scoped uniqueness — the ON CONFLICT arbiter and the
-            # defense-in-depth against a caller crossing tenants with a pre-built
-            # id. Idempotent for both fresh and migrated tables.
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_governance_audit_tenant_action ON governance_audit_log(tenant_id, action_id)"
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant ON governance_audit_log(tenant_id, seq)")
-            _ensure_tenant_rls(conn, "governance_audit_log", "tenant_id")
-            conn.commit()
+                conn.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_GOVERNANCE_FORK_GUARD_INDEX} ON governance_audit_log(tenant_id, prev_hash)"
+                )
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_governance_audit_tenant ON governance_audit_log(tenant_id, seq)")
+                _ensure_tenant_rls(conn, "governance_audit_log", "tenant_id")
+                conn.commit()
 
     def _get_within_tenant(self, conn: Any, action_id: str) -> GovernanceAuditRecord | None:
         row = conn.execute(
@@ -122,30 +119,29 @@ class PostgresGovernanceAuditLog:
         return GovernanceAuditRecord(**json.loads(row[0])) if row else None
 
     def append(self, record: GovernanceAuditRecord) -> GovernanceAuditRecord:
-        """Append one record to this tenant's chain, re-sealing on a fork race.
+        """Append one record under a tenant-scoped transaction lock.
 
-        Reading the head and inserting against it is not atomic: two writers
-        that read the same head both seal against it, and the chain forks. An
-        in-process lock cannot help, because the writers are separate uvicorn
-        workers or replicas. Measured before the guard: 6 processes x 8 appends
-        produced 48 rows over 15 distinct predecessors.
-
-        ``UNIQUE (tenant_id, prev_hash)`` makes the database reject the loser,
-        which is then re-sealed against the winner's hash and retried — the same
-        shape ``PostgresAuditLog.append`` has used since 20260719_01. Retrying
-        is what keeps the guard from turning a race into a dropped audit record.
+        The advisory lock serializes head-read, sealing, and insert across
+        workers and replicas. The unique predecessor guard and bounded retry
+        remain as rolling-upgrade protection while older replicas may still
+        use the pre-lock append protocol.
         """
         # Bind the record's own tenant so the head lookup and RLS WITH CHECK
         # resolve to that tenant's chain — never the ambient request tenant.
         token = _current_tenant.set(record.tenant_id)
+        attempts = 0
         try:
-            with _tenant_connection(self._pool) as conn:
-                existing = self._get_within_tenant(conn, record.action_id)
-                if existing is not None:
-                    return existing
-                attempts = 0
-                while True:
-                    attempts += 1
+            while True:
+                attempts += 1
+                with _tenant_connection(self._pool) as conn:
+                    conn.execute(
+                        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                        (f"governance_audit:{record.tenant_id}",),
+                    )
+                    existing = self._get_within_tenant(conn, record.action_id)
+                    if existing is not None:
+                        conn.commit()
+                        return existing
                     head_row = conn.execute(
                         "SELECT record_hash FROM governance_audit_log WHERE tenant_id = %s ORDER BY seq DESC LIMIT 1",
                         (record.tenant_id,),
@@ -168,19 +164,14 @@ class PostgresGovernanceAuditLog:
                                 json.dumps(asdict(sealed), sort_keys=True),
                             ),
                         )
+                        stored = self._get_within_tenant(conn, sealed.action_id)
                         conn.commit()
-                        break
                     except Exception as exc:  # noqa: BLE001 - narrowed by _is_chain_fork_conflict
                         conn.rollback()
                         if _is_chain_fork_conflict(exc) and attempts <= _MAX_APPEND_RETRIES:
-                            # Another writer took our predecessor. Re-read the
-                            # head and seal against theirs instead of ours.
                             continue
                         raise
-                # A concurrent replica may have won the UNIQUE race between our
-                # existence check and insert; re-read so the canonical row wins.
-                stored = self._get_within_tenant(conn, sealed.action_id)
-                return stored if stored is not None else sealed
+                    return stored if stored is not None else sealed
         finally:
             _current_tenant.reset(token)
 

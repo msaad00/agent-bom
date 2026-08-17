@@ -79,6 +79,10 @@ class _FakeConnection:
         s = " ".join(sql.lower().split())
         params = params or ()
 
+        if "pg_advisory_xact_lock" in s:
+            self._state.setdefault("events", []).append(("lock", str(params[0])))
+            return _FakeCursor()
+
         if "select version from control_plane_schema_versions" in s:
             return _FakeCursor([(1,)])
         if "set_config('app.tenant_id'" in s:
@@ -114,6 +118,7 @@ class _FakeConnection:
                     "data": data,
                 }
             )
+            self._state.setdefault("events", []).append(("insert", tenant_id))
             return _FakeCursor()
 
         if "from governance_audit_log where action_id" in s:
@@ -121,6 +126,7 @@ class _FakeConnection:
             return _FakeCursor([(match[0]["data"],)] if match else [])
 
         if "select record_hash from governance_audit_log where tenant_id" in s:
+            self._state.setdefault("events", []).append(("head", str(params[0])))
             rows = sorted(
                 (r for r in self._visible() if r["tenant_id"] == params[0]),
                 key=lambda r: r["seq"],
@@ -225,6 +231,19 @@ def test_append_read_and_chain_verifies():
     result = store.verify_chain()
     assert result["tampered"] == 0
     assert result["verified"] == 2
+
+
+def test_append_locks_tenant_before_reading_head_and_inserting() -> None:
+    state: dict[str, Any] = {"rows": [], "seq": 0, "events": []}
+    store = _postgres_store(_FakePool(state=state))
+
+    store.append(_rec("acme", "id-1", "w1"))
+
+    assert state["events"] == [
+        ("lock", "governance_audit:acme"),
+        ("head", "acme"),
+        ("insert", "acme"),
+    ]
 
 
 def test_idempotent_append():

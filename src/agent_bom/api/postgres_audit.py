@@ -115,49 +115,43 @@ class PostgresAuditLog:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "audit_log"):
-                return
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS audit_log (
-                    entry_id TEXT PRIMARY KEY,
-                    timestamp TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    actor TEXT NOT NULL DEFAULT '',
-                    resource TEXT NOT NULL DEFAULT '',
-                    team_id TEXT NOT NULL DEFAULT 'default',
-                    details JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    prev_signature TEXT NOT NULL DEFAULT '',
-                    hmac_signature TEXT NOT NULL
+            if ensure_postgres_schema_version(conn, "audit_log"):
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        entry_id TEXT PRIMARY KEY,
+                        timestamp TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        actor TEXT NOT NULL DEFAULT '',
+                        resource TEXT NOT NULL DEFAULT '',
+                        team_id TEXT NOT NULL DEFAULT 'default',
+                        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        prev_signature TEXT NOT NULL DEFAULT '',
+                        hmac_signature TEXT NOT NULL
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_team_ts ON audit_log(team_id, timestamp DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_team_action_ts ON audit_log(team_id, action, timestamp DESC)")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_audit_log_team_resource_ts "
+                    "ON audit_log(team_id, resource text_pattern_ops, timestamp DESC)"
                 )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_team_ts ON audit_log(team_id, timestamp DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_team_action_ts ON audit_log(team_id, action, timestamp DESC)")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_audit_log_team_resource_ts ON audit_log(team_id, resource text_pattern_ops, timestamp DESC)"
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
-                    tenant_id TEXT PRIMARY KEY,
-                    entry_count INTEGER NOT NULL,
-                    head_signature TEXT NOT NULL
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
+                        tenant_id TEXT PRIMARY KEY,
+                        entry_count INTEGER NOT NULL,
+                        head_signature TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            _ensure_tenant_rls(conn, "audit_log", "team_id")
-            # Parity with the ~47 other tenant tables: the checkpoint cache is a
-            # per-tenant summary of the audit_log chain head, so it lives under
-            # the same FORCE ROW LEVEL SECURITY backstop keyed on tenant_id. The
-            # append path writes it under the request tenant context (the same
-            # value it inserts into audit_log.team_id on the same connection, so
-            # it passes WITH CHECK whenever the audit_log insert does); the
-            # cross-tenant startup rebuild below runs under an explicit
-            # bypass_tenant_rls maintenance context.
-            _ensure_tenant_rls(conn, "audit_chain_checkpoint", "tenant_id")
-            conn.commit()
+                _ensure_tenant_rls(conn, "audit_log", "team_id")
+                _ensure_tenant_rls(conn, "audit_chain_checkpoint", "tenant_id")
+                conn.commit()
+        # Migration-owned deployments skip runtime DDL, but still need the
+        # fork guard and legacy checkpoint reconciliation.
         self._ensure_fork_guard_index()
         self._hydrate_checkpoints()
 
@@ -368,24 +362,29 @@ class PostgresAuditLog:
         token = _current_tenant.set(tenant_id)
         try:
             with _tenant_connection(self._pool) as conn:
-                row = conn.execute(
-                    """
-                    SELECT a.hmac_signature
-                    FROM audit_log a
-                    WHERE a.team_id = %s
-                      AND NOT EXISTS (
-                          SELECT 1 FROM audit_log b
-                          WHERE b.team_id = a.team_id
-                            AND b.prev_signature = a.hmac_signature
-                      )
-                    ORDER BY a.hmac_signature
-                    LIMIT 1
-                    """,
-                    (tenant_id,),
-                ).fetchone()
+                return self._chain_tip_signature_from_log_on_connection(conn, tenant_id)
         finally:
             _current_tenant.reset(token)
-        return row[0] if row else ""
+
+    @staticmethod
+    def _chain_tip_signature_from_log_on_connection(conn: Any, tenant_id: str) -> str:
+        """Read the true successor-free tip on an already-scoped transaction."""
+        row = conn.execute(
+            """
+            SELECT hmac_signature
+            FROM audit_log a
+            WHERE a.team_id = %s
+              AND NOT EXISTS (
+                  SELECT 1 FROM audit_log b
+                  WHERE b.team_id = a.team_id
+                    AND b.prev_signature = a.hmac_signature
+              )
+            ORDER BY a.hmac_signature
+            LIMIT 1
+            """,
+            (tenant_id,),
+        ).fetchone()
+        return str(row[0]) if row else ""
 
     def _hydrate_last_signatures(self) -> None:
         # Cross-tenant enumeration hidden by FORCE ROW LEVEL SECURITY; run under a
@@ -402,12 +401,9 @@ class PostgresAuditLog:
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = str((entry.details or {}).get("tenant_id") or _current_tenant.get())
-        # The head read and the INSERT run on separate connections, so nothing
-        # serializes them in-process — and across `uvicorn --workers N` processes
-        # nothing could. The DB-level UNIQUE (team_id, prev_signature) rejects a
-        # fork: a writer that lost the race re-reads the advanced head, re-signs,
-        # and re-inserts. Both statements share one transaction so a rejected
-        # INSERT rolls back its checkpoint bump too.
+        # Serialize one tenant's head-read + append across workers/replicas.
+        # Bounded fork retries remain only for rolling upgrades where an older
+        # replica does not yet participate in the advisory-lock protocol.
         attempts = 0
         # Bind the entry's own tenant for the INSERT, not just the head read:
         # callers may emit audit events before installing the request tenant
@@ -418,10 +414,14 @@ class PostgresAuditLog:
         try:
             while True:
                 attempts += 1
-                entry.prev_signature = self._latest_signature_for_tenant(tenant_id)
-                entry.sign()
                 try:
                     with _tenant_connection(self._pool) as conn:
+                        conn.execute(
+                            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                            (f"audit_chain:{tenant_id}",),
+                        )
+                        entry.prev_signature = self._chain_tip_signature_from_log_on_connection(conn, tenant_id)
+                        entry.sign()
                         conn.execute(
                             """INSERT INTO audit_log
                                (entry_id, timestamp, action, actor, resource, team_id, details, prev_signature, hmac_signature)

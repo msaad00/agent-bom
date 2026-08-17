@@ -120,6 +120,14 @@ def test_path_gated_jobs_remain_cancellable() -> None:
         assert "always()" not in condition
 
 
+def test_postgres_integration_uses_a_persistent_audit_signing_key() -> None:
+    """A durable shared audit ledger must never use a process-local key."""
+    postgres_env = _ci()["jobs"]["postgres-integration"]["env"]
+
+    assert postgres_env["AGENT_BOM_POSTGRES_URL"]
+    assert postgres_env["AGENT_BOM_AUDIT_HMAC_KEY"] == "ci-postgres-audit-signing-key"
+
+
 def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     """Keep bounded headroom over the Python 3.11 coverage lane on main.
 

@@ -80,7 +80,8 @@ def _production_audit_hmac_required() -> bool:
     )
     production_env = deployment in {"prod", "production"}
     clustered = _configured_control_plane_replicas() > 1
-    return (production_env or clustered) and not _env_enabled("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC")
+    shared_postgres = bool((os.environ.get("AGENT_BOM_POSTGRES_URL") or "").strip())
+    return (production_env or clustered or shared_postgres) and not _env_enabled("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC")
 
 
 def _audit_hmac_required() -> bool:
@@ -193,7 +194,7 @@ else:
         raise RuntimeError(
             "AGENT_BOM_AUDIT_HMAC_KEY is required when AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled, "
             "AGENT_BOM_ENV/AGENT_BOM_DEPLOYMENT_ENV/ENVIRONMENT is production, or "
-            "AGENT_BOM_CONTROL_PLANE_REPLICAS is greater than 1"
+            "AGENT_BOM_CONTROL_PLANE_REPLICAS is greater than 1, or AGENT_BOM_POSTGRES_URL uses a durable shared audit chain"
         )
     import secrets as _secrets
 

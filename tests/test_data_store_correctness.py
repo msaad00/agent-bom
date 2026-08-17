@@ -41,6 +41,7 @@ class _FakeAuditPool:
         # (tenant, bypass) captured for every audit_log SELECT — lets a test
         # prove reads are bound to the right tenant rather than 'default'.
         self.audit_read_sessions: list[tuple[str, bool]] = shared_with.audit_read_sessions if shared_with is not None else []
+        self.audit_write_events: list[tuple[str, str]] = shared_with.audit_write_events if shared_with is not None else []
 
     def connection(self):
         return _FakeAuditConn(self)
@@ -77,6 +78,9 @@ class _FakeAuditConn:
             self.bypass = p[0] == "1"
             return _FakeResult([])
         if "set_config('statement_timeout'" in s:
+            return _FakeResult([])
+        if "pg_advisory_xact_lock" in s:
+            self.pool.audit_write_events.append(("lock", str(p[0])))
             return _FakeResult([])
 
         upper = s.upper()
@@ -119,6 +123,7 @@ class _FakeAuditConn:
                 latest[r["team_id"]] = r
             return _FakeResult([(t, r["hmac_signature"]) for t, r in latest.items()])
         if "SELECT hmac_signature FROM audit_log" in s:
+            self.pool.audit_write_events.append(("head", str(p[0])))
             self.pool.audit_read_sessions.append((self.tenant, self.bypass))
             rows = [r for r in self._visible_audit() if r["team_id"] == p[0]]
             rows.sort(key=lambda r: (r["timestamp"], r["entry_id"]), reverse=True)
@@ -175,6 +180,7 @@ class _FakeAuditConn:
                     "hmac_signature": hmac_sig,
                 }
             )
+            self.pool.audit_write_events.append(("insert", str(team_id)))
             return _FakeResult([])
 
         return _FakeResult([])
@@ -231,6 +237,18 @@ def test_postgres_audit_chain_links_for_non_default_tenant():
     non_default_reads = [t for (t, _b) in pool.audit_read_sessions if t == "acme"]
     assert non_default_reads, "expected audit reads bound to the 'acme' tenant session"
     assert all(t != "default" or b for (t, b) in pool.audit_read_sessions)
+
+
+def test_postgres_audit_append_locks_tenant_before_head_and_insert():
+    log, pool = _make_audit_log()
+
+    _append_entry(log, "acme", "scan", "2026-07-09T00:00:01Z")
+
+    assert pool.audit_write_events == [
+        ("lock", "audit_chain:acme"),
+        ("head", "acme"),
+        ("insert", "acme"),
+    ]
 
 
 def test_postgres_audit_chains_are_isolated_per_tenant():

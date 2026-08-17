@@ -21,6 +21,8 @@ import {
 import type { GovernanceReport, GovernanceFinding } from "@/lib/api";
 import { useChartTheme } from "@/lib/theme-colors";
 import { IntegrationRequiredState } from "@/components/integration-required-state";
+import { PageEmptyState } from "@/components/states/page-state";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import {
   ResponsiveContainer,
   BarChart,
@@ -33,6 +35,7 @@ import {
 } from "recharts";
 
 export default function GovernancePage() {
+  const { isDemoMode, loading: demoModeLoading } = useDemoMode();
   const chart = useChartTheme();
   const [report, setReport] = useState<GovernanceReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +45,10 @@ export default function GovernancePage() {
   const [severityFilter, setSeverityFilter] = useState<string | null>(null);
 
   const load = () => {
+    if (demoModeLoading || isDemoMode) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     api
@@ -56,9 +63,20 @@ export default function GovernancePage() {
       load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [days, demoModeLoading, isDemoMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) {
+  if (isDemoMode) {
+    return (
+      <PageEmptyState
+        data-testid="governance-public-demo"
+        title="Cloud governance telemetry is not configured on this public demo"
+        detail="The showcase remains read-only and does not disclose operator integration details. Self-hosted deployments can connect their own telemetry source and keep credentials inside their boundary."
+        action={{ label: "Explore compliance evidence", href: "/compliance" }}
+      />
+    );
+  }
+
+  if (demoModeLoading || loading) {
     return (
       <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />

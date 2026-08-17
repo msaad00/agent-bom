@@ -1099,6 +1099,8 @@ jobs:
       # Mirror Compose: the URL contains no password; the app reads it from a
       # mounted file through the shared Postgres connection factory.
       AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app@127.0.0.1:5432/agentbom_test
+      # The shared audit ledger must use one stable key across test processes.
+      AGENT_BOM_AUDIT_HMAC_KEY: ci-postgres-audit-signing-key
       AGENT_BOM_POSTGRES_PASSWORD_FILE: /tmp/agent-bom-postgres-app-password
       AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance@127.0.0.1:5432/agentbom_test
       AGENT_BOM_POSTGRES_MAINTENANCE_PASSWORD_FILE: /tmp/agent-bom-postgres-maintenance-password

@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.rbac import require_authenticated_permission
 
@@ -38,7 +38,14 @@ async def get_self_posture(request: Request) -> dict[str, Any]:
     """
     from agent_bom.api.governance_audit_log import get_governance_audit_log
     from agent_bom.api.tenancy import require_request_tenant_id
+    from agent_bom.demo_estate.bootstrap import demo_estate_enabled
     from agent_bom.self_posture import self_posture
+
+    if demo_estate_enabled():
+        raise HTTPException(
+            status_code=404,
+            detail="Operator self-posture is not exposed on the public demo.",
+        )
 
     tenant_id = require_request_tenant_id(request)
 

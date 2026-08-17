@@ -82,10 +82,20 @@ def test_self_posture_returns_honest_report() -> None:
         "audit.hmac_integrity",
         "supply_chain.dependency_surface",
     } <= ids
-
     for check in body["checks"]:
         assert check["status"] in {"pass", "fail", "warn", "unknown"}
         assert check["title"] and check["detail"]
+
+
+def test_public_demo_does_not_expose_operator_self_posture(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
+
+    resp = TestClient(app).get("/v1/self-posture", headers=_AUTH_HEADERS)
+
+    assert resp.status_code == 404
+    payload = str(resp.json())
+    assert "AGENT_BOM_" not in payload
+    assert "distribution" not in payload.lower()
 
 
 def test_self_posture_surfaces_tenant_audit_chain_integrity() -> None:

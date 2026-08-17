@@ -29,6 +29,7 @@ def test_postgres_scale_workflow_migrates_before_workload() -> None:
     assert "AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:" in workflow
     assert "AGENT_BOM_POSTGRES_MAINTENANCE_URL: postgresql://agent_bom_maintenance:" in workflow
     assert "AGENT_BOM_POSTGRES_ADMIN_URL: postgresql://agent_bom:" in workflow
+    assert "AGENT_BOM_AUDIT_HMAC_KEY: postgres-scale-evidence-audit-signing-key" in workflow
     assert "ALTER DATABASE agent_bom SET init.maintenance_password = 'benchmark_maintenance'" in workflow
     assert "AGENT_BOM_ALLOW_SUPERUSER_DB" not in workflow
 

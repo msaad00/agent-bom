@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SelfPosturePage from "@/app/self-posture/page";
 import type { SelfPostureReport } from "@/lib/api";
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, demoMode } = vi.hoisted(() => ({
   apiMock: {
     getSelfPosture: vi.fn(),
   },
+  demoMode: { isDemoMode: false, loading: false },
 }));
 
 vi.mock("next/link", () => ({
@@ -22,6 +23,10 @@ vi.mock("@/lib/api", async () => {
     api: apiMock,
   };
 });
+
+vi.mock("@/hooks/use-demo-mode", () => ({
+  useDemoMode: () => demoMode,
+}));
 
 function report(overrides: Partial<SelfPostureReport> = {}): SelfPostureReport {
   return {
@@ -47,6 +52,18 @@ function report(overrides: Partial<SelfPostureReport> = {}): SelfPostureReport {
 describe("SelfPosturePage", () => {
   beforeEach(() => {
     apiMock.getSelfPosture.mockReset();
+    demoMode.isDemoMode = false;
+    demoMode.loading = false;
+  });
+
+  it("does not request or render operator configuration on the public demo", () => {
+    demoMode.isDemoMode = true;
+
+    render(<SelfPosturePage />);
+
+    expect(screen.getByTestId("self-posture-public-demo")).toHaveTextContent(/not exposed/i);
+    expect(screen.queryByText(/AGENT_BOM_/)).not.toBeInTheDocument();
+    expect(apiMock.getSelfPosture).not.toHaveBeenCalled();
   });
 
   it("shows a loading state while the report resolves", () => {

@@ -20,7 +20,8 @@ import type {
 } from "@/lib/api";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { Collapsible } from "@/components/collapsible";
-import { PageErrorState, PageLoadingState } from "@/components/states/page-state";
+import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 
 // Headless equivalent for agents/CI — the panel is the human surface, this is
 // the same posture from the CLI/API (§11 human + headless parity).
@@ -162,11 +163,16 @@ function CheckRow({ check }: { check: SelfPostureCheck }) {
 }
 
 export default function SelfPosturePage() {
+  const { isDemoMode, loading: demoModeLoading } = useDemoMode();
   const [report, setReport] = useState<SelfPostureReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
+    if (demoModeLoading || isDemoMode) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     api
@@ -174,13 +180,25 @@ export default function SelfPosturePage() {
       .then(setReport)
       .catch((e) => setError(userFacingApiErrorMessage(e, "Self-posture could not be evaluated")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [demoModeLoading, isDemoMode]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  if (loading) {
+  if (isDemoMode) {
+    return (
+      <PageEmptyState
+        data-testid="self-posture-public-demo"
+        title="Operator self-posture is not exposed here"
+        detail="This public demo is intentionally read-only and does not disclose its deployment configuration. Self-hosted operators can evaluate their own instance from the dashboard, CLI, or authenticated API."
+        command={HEADLESS_CLI}
+        action={{ label: "Explore findings", href: "/findings" }}
+      />
+    );
+  }
+
+  if (demoModeLoading || loading) {
     return (
       <PageLoadingState
         data-testid="self-posture-loading"

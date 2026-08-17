@@ -64,7 +64,7 @@ SEARCH_SUFFIXES = {".md", ".py", ".ts", ".tsx", ".json", ".svg", ".yaml", ".yml"
 # these, and sweeping them too would report one drift twice.
 EXCLUDED_PARTS = {"node_modules", ".next", "__pycache__", "openapi", "archive", "egg-info"}
 # The registry bundle is the source of truth, not a claim about itself — and each
-# of its 1081 entries records that server's own tool count.
+# of its entries records that server's own tool count.
 EXCLUDED_FILES = {REGISTRY}
 # Lines of leeway when looking for the vocabulary that makes a number a claim
 # about the registry. An SVG puts its "MCP Registry" label one line above the

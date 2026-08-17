@@ -263,7 +263,7 @@ def _is_access_denied(exc: Exception, psutil_module: Any) -> bool:
 
 def _bind_scope(value: str) -> str:
     text = str(value or "").split("%", 1)[0]
-    if text in {"0.0.0.0", "::", "", "*"}:
+    if text in {"0.0.0.0", "::", "", "*"}:  # nosec B104 - classifies an observed listener address; does not bind a socket
         return "all_interfaces"
     try:
         address = ipaddress.ip_address(text)

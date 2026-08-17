@@ -25,6 +25,12 @@ def test_workstation_process_inventory_dependency_is_installed_by_default() -> N
     assert any(str(requirement).startswith("psutil>=") for requirement in pyproject["project"]["dependencies"])
 
 
+def test_observed_wildcard_listener_address_has_reasoned_bandit_suppression() -> None:
+    source = Path("src/agent_bom/endpoint/inventory.py").read_text()
+
+    assert "# nosec B104 - classifies an observed listener address; does not bind a socket" in source
+
+
 def _result(stdout: str = "", *, returncode: int = 0, status: str = "complete") -> CommandResult:
     return CommandResult(status=status, returncode=returncode, stdout=stdout, message="")
 

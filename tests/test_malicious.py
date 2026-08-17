@@ -111,6 +111,24 @@ def test_typosquat_single_char_substitution_short_name():
     assert check_typosquat("djanga", "pypi") == "django"
 
 
+def test_typosquat_known_legitimate_successor_not_flagged():
+    # `httpx2` is the real httpx successor by httpx's own author, and reaches
+    # most dependency trees transitively through the openai SDK. It scores 0.909
+    # against `httpx`, so without the allowlist the scanner calls a genuine
+    # package MALICIOUS and fails any build that depends on openai.
+    assert check_typosquat("httpx2", "pypi") is None
+    assert check_typosquat("langchainhub", "pypi") is None
+
+
+def test_typosquat_numeric_suffix_still_flagged():
+    # Guards the allowlist against being "simplified" into a rule that exempts
+    # every trailing-digit name. `requests2`/`requests3` were real typosquat
+    # campaigns — that shape must stay caught.
+    assert check_typosquat("requests2", "pypi") == "requests"
+    assert check_typosquat("requests3", "pypi") == "requests"
+    assert check_typosquat("flask2", "pypi") == "flask"
+
+
 def test_typosquat_legit_packages_not_flagged_no_regressions():
     from agent_bom.malicious import _POPULAR_PACKAGES
 

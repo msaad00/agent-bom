@@ -128,6 +128,29 @@ _POPULAR_PACKAGES: dict[str, frozenset[str]] = {
 }
 
 
+# Genuine packages whose names resemble a popular neighbour closely enough to
+# trip the ratio gate below. Each entry is a real, upstream-maintained project
+# verified against its registry metadata — not a suppression of a real hit.
+#
+# Deliberately a curated list rather than a rule. The obvious general rule —
+# "a trailing major-version digit means a legitimate successor" — is wrong in
+# the dangerous direction: ``requests2`` and ``requests3`` were real typosquat
+# campaigns, so exempting that shape would trade a false positive for a false
+# negative. Names only land here once the upstream project is confirmed.
+_KNOWN_LEGITIMATE: dict[str, frozenset[str]] = {
+    "npm": frozenset(),
+    "pypi": frozenset(
+        {
+            # The httpx successor, by httpx's own author (github.com/pydantic/httpx2).
+            # Reaches most dependency trees transitively via the openai SDK.
+            "httpx2",
+            # Official LangChain Hub API client.
+            "langchainhub",
+        }
+    ),
+}
+
+
 # Names at least this long are eligible for the single-substitution catch below.
 # Below this, one edited character is too weak a signal (``core`` vs ``cors``,
 # ``flask`` vs ``flash``) and would create false positives on real packages.
@@ -170,6 +193,9 @@ def check_typosquat(name: str, ecosystem: str, threshold: float = 0.85) -> str |
 
     # Exact match = not a typosquat
     if normalized in {p.lower() for p in popular}:
+        return None
+
+    if normalized in _KNOWN_LEGITIMATE.get(ecosystem.lower(), frozenset()):
         return None
 
     best_ratio = 0.0

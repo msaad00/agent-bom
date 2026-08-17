@@ -4,16 +4,21 @@ Usage:
     agent-bom scan --baseline-file scan-main.json --delta
     agent-bom scan --delta   # auto-loads last saved baseline from ~/.agent-bom/baseline.json
 
-The delta key for deduplication is (vulnerability_id, package_name, package_version).
-Exit code is based on *new* findings only; pre-existing findings are suppressed.
+The delta key for deduplication is (vulnerability_id, ecosystem, package_name).
+Package versions stay in inventory diffs, but do not reclassify an existing CVE
+as new during remediation. Exit code is based on *new* findings only;
+pre-existing findings are suppressed.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Optional
+
+from agent_bom.package_utils import vulnerability_occurrence_key
 
 _logger = logging.getLogger(__name__)
 
@@ -25,18 +30,13 @@ _DEFAULT_BASELINE_PATH = Path.home() / ".agent-bom" / "baseline.json"
 # Finding key type
 # ---------------------------------------------------------------------------
 
-# A delta key uniquely identifies a vulnerability in a package at a version.
-# Using (vuln_id, package_name, package_version) gives stable, human-readable keys.
+# A delta key identifies a vulnerability occurrence across package upgrades.
 DeltaKey = tuple[str, str, str]
 
 
-def _make_key(vuln_id: str, package: str) -> DeltaKey:
-    """Build a delta key from a blast_radius JSON item.
-
-    ``package`` is in ``name@version`` format as serialized by json_fmt.py.
-    """
-    name, _, version = package.partition("@")
-    return (vuln_id.upper(), name.lower(), version or "")
+def _make_key(vuln_id: str, package: str, ecosystem: str = "") -> DeltaKey:
+    """Build a version-stable delta key from a blast-radius JSON item."""
+    return vulnerability_occurrence_key(vuln_id, package, ecosystem)
 
 
 def extract_delta_keys(scan_json: dict) -> set[DeltaKey]:
@@ -46,7 +46,7 @@ def extract_delta_keys(scan_json: dict) -> set[DeltaKey]:
         vuln_id = item.get("vulnerability_id", "")
         package = item.get("package", "")
         if vuln_id and package:
-            keys.add(_make_key(vuln_id, package))
+            keys.add(_make_key(vuln_id, package, item.get("ecosystem", "")))
     return keys
 
 
@@ -140,8 +140,13 @@ def compute_delta(
         :class:`DeltaResult` with ``new_items`` (not in baseline) and
         ``pre_existing_items`` (already in baseline).
     """
-    baseline_keys = extract_delta_keys(baseline)
-    _logger.debug("Baseline has %d findings", len(baseline_keys))
+    baseline_counts: Counter[DeltaKey] = Counter()
+    for item in baseline.get("blast_radius", []):
+        vuln_id = item.get("vulnerability_id", "")
+        package = item.get("package", "")
+        if vuln_id and package:
+            baseline_counts[_make_key(vuln_id, package, item.get("ecosystem", ""))] += 1
+    _logger.debug("Baseline has %d findings", sum(baseline_counts.values()))
 
     new_items: list[dict] = []
     pre_existing_items: list[dict] = []
@@ -152,8 +157,11 @@ def compute_delta(
         if not vuln_id or not package:
             _logger.debug("Skipping malformed blast_radius item: %s", item)
             continue
-        key = _make_key(vuln_id, package)
-        if key in baseline_keys:
+        key = _make_key(vuln_id, package, item.get("ecosystem", ""))
+        legacy_key: DeltaKey = (key[0], "", key[2])
+        matched_key = key if baseline_counts[key] else legacy_key
+        if baseline_counts[matched_key]:
+            baseline_counts[matched_key] -= 1
             pre_existing_items.append(item)
         else:
             new_items.append(item)
@@ -162,7 +170,7 @@ def compute_delta(
         "Delta: %d new, %d pre-existing (baseline had %d)",
         len(new_items),
         len(pre_existing_items),
-        len(baseline_keys),
+        sum(baseline_counts.values()) + len(pre_existing_items),
     )
     return DeltaResult(
         new_items=new_items,

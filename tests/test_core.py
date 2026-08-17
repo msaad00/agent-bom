@@ -680,6 +680,83 @@ def test_diff_resolved_finding():
     assert len(diff["resolved"]) == 1
 
 
+def test_diff_package_upgrade_keeps_finding_identity_and_reports_inventory_change():
+    from agent_bom.history import diff_reports
+
+    def report(version: str) -> dict:
+        return {
+            "generated_at": "2025-01-01T00:00:00",
+            "agents": [
+                {
+                    "name": "a",
+                    "mcp_servers": [
+                        {
+                            "packages": [
+                                {
+                                    "name": "requests",
+                                    "version": version,
+                                    "ecosystem": "pypi",
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ],
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-2024-99",
+                    "package": f"requests@{version}",
+                    "ecosystem": "pypi",
+                    "severity": "HIGH",
+                }
+            ],
+        }
+
+    diff = diff_reports(report("2.19.1"), report("2.20.0"))
+
+    assert diff["summary"]["new_findings"] == 0
+    assert diff["summary"]["resolved_findings"] == 0
+    assert diff["summary"]["unchanged_findings"] == 1
+    assert diff["new_packages"] == ["pypi:requests@2.20.0"]
+    assert diff["removed_packages"] == ["pypi:requests@2.19.1"]
+
+
+def test_diff_package_upgrade_does_not_hide_an_added_vulnerable_instance():
+    from agent_bom.history import diff_reports
+
+    baseline = {
+        "agents": [],
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-2024-99",
+                "package": "requests@2.19.1",
+                "ecosystem": "pypi",
+            }
+        ],
+    }
+    current = {
+        "agents": [],
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-2024-99",
+                "package": "requests@2.20.0",
+                "ecosystem": "pypi",
+            },
+            {
+                "vulnerability_id": "CVE-2024-99",
+                "package": "requests@2.21.0",
+                "ecosystem": "pypi",
+            },
+        ],
+    }
+
+    diff = diff_reports(baseline, current)
+
+    assert diff["summary"]["unchanged_findings"] == 1
+    assert diff["summary"]["new_findings"] == 1
+    assert diff["summary"]["resolved_findings"] == 0
+
+
 def test_diff_reports_inventory_changes():
     from agent_bom.history import diff_reports
 

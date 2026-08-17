@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The consumer pre-commit dependency hook now scopes scans to the downstream
+  repository instead of including unrelated workstation MCP configuration.
+- Baseline and history diffs keep a CVE attached to the same normalized package
+  across version upgrades, while inventory diffs continue to report the package
+  version change separately.
+
 ## [0.101.0] - 2026-08-16
 
 A workflow-completion and deployment-portability release. The same finding can

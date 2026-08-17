@@ -171,6 +171,31 @@ def canonical_package_key(name: str, version: str, ecosystem: str, purl: str | N
     return f"{normalized_ecosystem}:{normalized_name}{suffix}"
 
 
+def vulnerability_occurrence_key(vulnerability_id: str, package_ref: str, ecosystem: str = "") -> tuple[str, str, str]:
+    """Return stable finding identity across package-version remediation.
+
+    ``package_ref`` is the report form ``name@version``. The version is
+    deliberately excluded: upgrading a package must not turn an already-known
+    vulnerability into a phantom new finding. Package inventory diffing remains
+    version-aware and reports the upgrade separately.
+    """
+    raw_ref = (package_ref or "").strip()
+    package_name = raw_ref
+    if raw_ref.startswith("@"):
+        separator = raw_ref.rfind("@")
+        if separator > 0:
+            package_name = raw_ref[:separator]
+    elif "@" in raw_ref:
+        package_name = raw_ref.rsplit("@", 1)[0]
+
+    normalized_ecosystem = normalize_package_ecosystem(ecosystem)
+    return (
+        (vulnerability_id or "").strip().upper(),
+        normalized_ecosystem,
+        normalize_package_name(package_name, normalized_ecosystem),
+    )
+
+
 @lru_cache(maxsize=4096)
 def debian_release_branch(distro_version: str) -> str:
     """Normalize Debian ``VERSION_ID`` to the advisory release key.
@@ -332,4 +357,5 @@ __all__ = [
     "reference_host_and_path",
     "synthesize_purl",
     "ubuntu_release_branch",
+    "vulnerability_occurrence_key",
 ]

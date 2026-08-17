@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.models import Package
-from agent_bom.package_utils import canonical_package_key
+from agent_bom.package_utils import canonical_package_key, vulnerability_occurrence_key
 from agent_bom.sbom import parse_sbom_document
 from agent_bom.security import sanitize_path_label, sanitize_text
 
@@ -210,16 +210,16 @@ def _vuln_key(vuln: dict) -> tuple:
     return (vuln.get("id", ""), vuln.get("package", ""), vuln.get("ecosystem", ""))
 
 
-def _extract_blast_vulns(report: dict) -> dict[tuple, dict]:
-    """Build a map of vuln_key → blast_radius entry from a report dict."""
-    result = {}
+def _extract_blast_vulns(report: dict) -> dict[tuple, list[dict]]:
+    """Group blast-radius entries by version-stable vulnerability identity."""
+    result: dict[tuple, list[dict]] = {}
     for br in report.get("blast_radius", []):
-        key = (
+        key = vulnerability_occurrence_key(
             br.get("vulnerability_id", ""),
             br.get("package", ""),
             br.get("ecosystem", ""),
         )
-        result[key] = br
+        result.setdefault(key, []).append(br)
     return result
 
 
@@ -235,16 +235,16 @@ def diff_reports(baseline: dict, current: dict) -> dict:
     baseline_vulns = _extract_blast_vulns(baseline)
     current_vulns = _extract_blast_vulns(current)
 
-    baseline_keys = set(baseline_vulns)
-    current_keys = set(current_vulns)
-
-    new_keys = current_keys - baseline_keys
-    resolved_keys = baseline_keys - current_keys
-    unchanged_keys = baseline_keys & current_keys
-
-    new = [current_vulns[k] for k in sorted(new_keys)]
-    resolved = [baseline_vulns[k] for k in sorted(resolved_keys)]
-    unchanged = [current_vulns[k] for k in sorted(unchanged_keys)]
+    new: list[dict] = []
+    resolved: list[dict] = []
+    unchanged: list[dict] = []
+    for key in sorted(set(baseline_vulns) | set(current_vulns)):
+        baseline_entries = baseline_vulns.get(key, [])
+        current_entries = current_vulns.get(key, [])
+        matched_count = min(len(baseline_entries), len(current_entries))
+        unchanged.extend(current_entries[:matched_count])
+        new.extend(current_entries[matched_count:])
+        resolved.extend(baseline_entries[matched_count:])
 
     # Package-level changes
     baseline_pkgs = _extract_packages(baseline)

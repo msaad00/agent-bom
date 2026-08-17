@@ -27,7 +27,7 @@
     vulnerabilities; fail the commit on high-or-above severity findings.
   entry: agent-bom scan
   language: python
-  args: ["--fail-on-severity", "high"]
+  args: ["-p", ".", "--fail-on-severity", "high"]
   pass_filenames: false
   always_run: true
   minimum_pre_commit_version: "2.9.0"

@@ -31,13 +31,14 @@ def _scan_json(*blast_items) -> dict:
     }
 
 
-def _br(vuln_id: str, pkg: str = "requests@2.0.0", severity: str = "high") -> dict:
+def _br(vuln_id: str, pkg: str = "requests@2.0.0", severity: str = "high", ecosystem: str = "pypi") -> dict:
     return {
         "vulnerability_id": vuln_id,
         "package": pkg,
         "severity": severity,
         "risk_score": 7.0,
         "fixed_version": "2.1.0",
+        "ecosystem": ecosystem,
     }
 
 
@@ -49,8 +50,8 @@ def _br(vuln_id: str, pkg: str = "requests@2.0.0", severity: str = "high") -> di
 def test_extract_delta_keys_basic():
     scan = _scan_json(_br("CVE-2024-001"), _br("CVE-2024-002", "flask@1.0.0"))
     keys = extract_delta_keys(scan)
-    assert ("CVE-2024-001", "requests", "2.0.0") in keys
-    assert ("CVE-2024-002", "flask", "1.0.0") in keys
+    assert ("CVE-2024-001", "pypi", "requests") in keys
+    assert ("CVE-2024-002", "pypi", "flask") in keys
 
 
 def test_extract_delta_keys_empty_scan():
@@ -60,7 +61,7 @@ def test_extract_delta_keys_empty_scan():
 def test_extract_delta_keys_normalizes_vuln_id_to_upper():
     scan = _scan_json(_br("cve-2024-001"))
     keys = extract_delta_keys(scan)
-    assert ("CVE-2024-001", "requests", "2.0.0") in keys
+    assert ("CVE-2024-001", "pypi", "requests") in keys
 
 
 def test_extract_delta_keys_skips_malformed():
@@ -72,7 +73,7 @@ def test_extract_delta_keys_skips_malformed():
 def test_extract_delta_keys_package_without_version():
     scan = _scan_json({"vulnerability_id": "CVE-2024-001", "package": "requests", "severity": "high"})
     keys = extract_delta_keys(scan)
-    assert ("CVE-2024-001", "requests", "") in keys
+    assert ("CVE-2024-001", "", "requests") in keys
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +119,66 @@ def test_compute_delta_same_vuln_different_package_is_new():
     result = compute_delta(current, baseline)
     assert result.new_count == 1  # requests not in baseline
     assert result.pre_existing_count == 0
+
+
+def test_compute_delta_same_vuln_and_name_in_different_ecosystem_is_new():
+    baseline = _scan_json(_br("CVE-2024-001", pkg="shared@1.0.0", ecosystem="npm"))
+    current = _scan_json(_br("CVE-2024-001", pkg="shared@1.0.0", ecosystem="pypi"))
+
+    result = compute_delta(current, baseline)
+
+    assert result.new_count == 1
+    assert result.pre_existing_count == 0
+
+
+def test_compute_delta_package_upgrade_does_not_reclassify_same_cve_as_new():
+    """A remediation version change must not create a phantom new finding."""
+    baseline = _scan_json(_br("CVE-2024-001", pkg="requests@2.19.1"))
+    current = _scan_json(_br("CVE-2024-001", pkg="requests@2.20.0"))
+
+    result = compute_delta(current, baseline)
+
+    assert result.new_count == 0
+    assert result.pre_existing_count == 1
+
+
+def test_compute_delta_preserves_occurrence_multiplicity_across_upgrade():
+    baseline = _scan_json(_br("CVE-2024-001", pkg="requests@2.19.1"))
+    current = _scan_json(
+        _br("CVE-2024-001", pkg="requests@2.20.0"),
+        _br("CVE-2024-001", pkg="requests@2.21.0"),
+    )
+
+    result = compute_delta(current, baseline)
+
+    assert result.new_count == 1
+    assert result.pre_existing_count == 1
+
+
+def test_compute_delta_scoped_package_upgrade_preserves_package_identity():
+    baseline = _scan_json(_br("CVE-2024-001", pkg="@scope/server@1.0.0"))
+    current = _scan_json(_br("CVE-2024-001", pkg="@scope/server@1.1.0"))
+
+    result = compute_delta(current, baseline)
+
+    assert result.new_count == 0
+    assert result.pre_existing_count == 1
+
+
+def test_compute_delta_legacy_baseline_without_ecosystem_matches_current_package():
+    baseline = _scan_json(
+        {
+            "vulnerability_id": "CVE-2024-001",
+            "package": "requests@2.19.1",
+            "severity": "high",
+        }
+    )
+    current = _scan_json(_br("CVE-2024-001", pkg="requests@2.20.0", ecosystem="pypi"))
+
+    result = compute_delta(current, baseline)
+
+    assert result.new_count == 0
+    assert result.pre_existing_count == 1
 
 
 def test_compute_delta_case_insensitive_vuln_id():

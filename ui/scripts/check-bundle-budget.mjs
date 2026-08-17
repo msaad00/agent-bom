@@ -95,7 +95,11 @@ const BUDGETS = {
   // Legitimate feature copy, not bloat (the api-types additions are erased at
   // compile). Restore ~16 KiB to 3776 KiB on the same terms as every raise
   // above; largest-chunk and shared-runtime budgets are unchanged.
-  totalClientJsBytes: 3_866_624,
+  // The endpoint fleet panel adds one measured 6.7 KiB route surface for
+  // search, evidence-state filtering, pagination, and partial-state detail.
+  // Linux CI measures 3783.0 KiB total with no new heavyweight dependency;
+  // keep bounded headroom at 3792 KiB while leaving both chunk ceilings fixed.
+  totalClientJsBytes: 3_883_008,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

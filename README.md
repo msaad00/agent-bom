@@ -37,6 +37,9 @@ into one Finding + UnifiedGraph model for prioritized investigation and action.
 - **Act with context:** follow Path → Impact → Owner → Fix → Verify, then export, rescan, or enforce at runtime.
 - **Keep evidence honest:** raw source and credentials stay local; collected, inferred, static, and runtime relationships stay distinct, while partial and unavailable evidence remains explicit.
 
+<details>
+<summary><b>Evidence workflow</b></summary>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-dark.svg">
@@ -46,6 +49,8 @@ into one Finding + UnifiedGraph model for prioritized investigation and action.
 
 See [how the evidence workflow works](docs/HOW_IT_WORKS.md) for commands,
 artifacts, and the boundary between collected, partial, and unavailable state.
+
+</details>
 
 <details>
 <summary><b>Control-plane architecture</b></summary>

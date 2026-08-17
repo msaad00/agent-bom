@@ -29,6 +29,83 @@
       "source_path": "Category Icons/Compute/SVG/Compute-512-color.svg",
       "sha256": "a078045aeaffb6c52c55938fe7909169805cf851c1b35bf6c4debdc8c581e1ae",
       "terms": "Google provides the official icon library for diagrams and technical documentation. Google Cloud marks remain Google property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/amazonwebservices.svg",
+      "vendor": "Amazon Web Services",
+      "source_page": "https://simpleicons.org/?q=amazonwebservices",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/amazonwebservices.svg",
+      "sha256": "f67734a0f5a7f925c84b6a9ea6e5489fe7af96e4ae167da6b71506a5d6afcab4",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; AWS trademarks remain AWS property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/microsoftazure.svg",
+      "vendor": "Microsoft Azure",
+      "source_page": "https://simpleicons.org/?q=microsoftazure",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/microsoftazure.svg",
+      "sha256": "666f3d9597b7272e61e137bcdc88c99d689d2de7530f4a0a9a56d74d919f51c9",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Microsoft trademarks remain Microsoft property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/googlecloud.svg",
+      "vendor": "Google Cloud",
+      "source_page": "https://simpleicons.org/?q=googlecloud",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/googlecloud.svg",
+      "sha256": "534a0359c2784e152f5c88ce64a56976036d7336c7831775c995977fd3432713",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Google Cloud trademarks remain Google property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/kubernetes.svg",
+      "vendor": "Kubernetes",
+      "source_page": "https://simpleicons.org/?q=kubernetes",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/kubernetes.svg",
+      "sha256": "ceee2f4e87fa1533600672190c156194039f744fa9b5da10e83f002178e84b47",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Kubernetes trademarks remain with their owner."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/snowflake.svg",
+      "vendor": "Snowflake",
+      "source_page": "https://simpleicons.org/?q=snowflake",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/snowflake.svg",
+      "sha256": "75690c4c666a406278286284f89896e8ef55dd0bfbc791acb910ce40e4a46aa9",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Snowflake trademarks remain Snowflake property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/databricks.svg",
+      "vendor": "Databricks",
+      "source_page": "https://simpleicons.org/?q=databricks",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/databricks.svg",
+      "sha256": "454aa3efdb318c655e3da2ea844e3577a9c47a20e24d20fff6489362176e5fe4",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Databricks trademarks remain Databricks property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/clickhouse.svg",
+      "vendor": "ClickHouse",
+      "source_page": "https://simpleicons.org/?q=clickhouse",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "2c8496410e28d8c3a3149fec139a1f178bb501f6",
+      "source_path": "docs/images/vendor-icons/clickhouse.svg",
+      "sha256": "9fa7c12613763111ca26bbc1fe10994960028bc3da9faf47247de231a0b27589",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; ClickHouse trademarks remain ClickHouse property."
     }
   ],
   "neutral_icon_policy": "Use agent-bom neutral category icons when a vendor does not publish redistributable diagram assets or when trademark terms are unclear."

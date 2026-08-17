@@ -29,11 +29,19 @@ from agent_bom.parsers.os_parsers import parse_rpm_packages
 
 FIXTURE = Path(__file__).parent / "fixtures" / "rpmdb_sqlite_min.sqlite"
 
-_TAG_NAME, _TAG_VERSION, _TAG_RELEASE = 1000, 1001, 1002
+_TAG_NAME, _TAG_VERSION, _TAG_RELEASE, _TAG_EPOCH = 1000, 1001, 1002, 1003
+_TYPE_INT32 = 4
 _TYPE_STRING = 6
 
 
-def _rpm_header(name: str, version: str, release: str, *, with_magic: bool) -> bytes:
+def _rpm_header(
+    name: str,
+    version: str,
+    release: str,
+    *,
+    with_magic: bool,
+    epoch: int | None = None,
+) -> bytes:
     """Build one RPM header record in either framing."""
     entries = [(_TAG_NAME, name), (_TAG_VERSION, version), (_TAG_RELEASE, release)]
     data = b""
@@ -41,6 +49,10 @@ def _rpm_header(name: str, version: str, release: str, *, with_magic: bool) -> b
     for tag, value in entries:
         index += struct.pack(">IIII", tag, _TYPE_STRING, len(data), 1)
         data += value.encode() + b"\x00"
+    if epoch is not None:
+        index += struct.pack(">IIII", _TAG_EPOCH, _TYPE_INT32, len(data), 1)
+        data += struct.pack(">I", epoch)
+        entries.append((_TAG_EPOCH, str(epoch)))
     body = struct.pack(">II", len(entries), len(data)) + index + data
     return (_RPM_HDR_MAGIC + body) if with_magic else body
 
@@ -55,6 +67,13 @@ def test_header_blob_parses_in_both_framings() -> None:
         "package on RHEL 9+, UBI9, Fedora 33+, Amazon Linux 2023 and Rocky 9"
     )
     assert _parse_rpm_header_blob(legacy_framed) == ("bash", "5.1.8-9.el9")
+
+
+def test_header_blob_preserves_nonzero_rpm_epoch() -> None:
+    """RPM epoch is part of EVR identity and must survive snapshot parsing."""
+    blob = _rpm_header("openssl-libs", "3.5.5", "6.el9_8", with_magic=False, epoch=1)
+
+    assert _parse_rpm_header_blob(blob) == ("openssl-libs", "1:3.5.5-6.el9_8")
 
 
 def test_header_blob_rejects_garbage_without_scanning_gigabytes() -> None:

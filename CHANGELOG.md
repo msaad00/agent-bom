@@ -16,6 +16,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Baseline and history diffs keep a CVE attached to the same normalized package
   across version upgrades, while inventory diffs continue to report the package
   version change separately.
+- RPM scans preserve nonzero epochs, cloud benchmark PASS results require a
+  verified account boundary, and structural dependency closure no longer
+  masquerades as an evidence-backed reachable attack path.
+- Security-relevant native AST flows now surface through unified findings,
+  SARIF, policy gates, and source-to-tool graph provenance; inventory-only LLM
+  client calls remain inventory rather than vulnerabilities.
 
 ## [0.101.0] - 2026-08-16
 

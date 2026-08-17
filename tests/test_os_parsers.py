@@ -230,7 +230,7 @@ def test_parse_rpm_packages_success() -> None:
     always reports the host's own database — which is only the right answer when
     the host IS what we are scanning.
     """
-    mock_stdout = "bash\t5.2.15-3.fc39\tx86_64\nglibc\t2.38-16.fc39\tx86_64\n"
+    mock_stdout = "bash\t(none)\t5.2.15-3.fc39\tx86_64\nglibc\t0\t2.38-16.fc39\tx86_64\n"
     mock_result = type("R", (), {"returncode": 0, "stdout": mock_stdout})()
     with patch("subprocess.run", return_value=mock_result):
         packages = parse_rpm_packages(Path("/"))
@@ -238,6 +238,21 @@ def test_parse_rpm_packages_success() -> None:
     assert packages[0].name == "bash"
     assert packages[0].version == "5.2.15-3.fc39"
     assert packages[0].ecosystem == "rpm"
+
+
+def test_parse_rpm_packages_preserves_epoch_from_live_query() -> None:
+    """The live rpm path must emit the same epoch-aware EVR as snapshots."""
+    mock_stdout = "openssl-libs\t1\t3.5.5-6.el9_8\tx86_64\nbash\t(none)\t5.2.15-3.fc39\tx86_64\n"
+    mock_result = type("R", (), {"returncode": 0, "stdout": mock_stdout})()
+
+    with patch("subprocess.run", return_value=mock_result) as run:
+        packages = parse_rpm_packages(Path("/"))
+
+    assert [(package.name, package.version) for package in packages] == [
+        ("openssl-libs", "1:3.5.5-6.el9_8"),
+        ("bash", "5.2.15-3.fc39"),
+    ]
+    assert "%{EPOCH}" in run.call_args.args[0][3]
 
 
 def test_parse_rpm_packages_never_queries_the_host_for_a_snapshot(tmp_path: Path) -> None:
@@ -248,7 +263,10 @@ def test_parse_rpm_packages_never_queries_the_host_for_a_snapshot(tmp_path: Path
     under scan — wrong data, which is worse than missing data. With a non-``/``
     root the command must not be consulted at all.
     """
-    with patch("subprocess.run", return_value=type("R", (), {"returncode": 0, "stdout": "bash\t5.2.15-3.fc39\tx86_64\n"})()) as run:
+    with patch(
+        "subprocess.run",
+        return_value=type("R", (), {"returncode": 0, "stdout": "bash\t(none)\t5.2.15-3.fc39\tx86_64\n"})(),
+    ) as run:
         packages = parse_rpm_packages(tmp_path)
     assert packages == [], "host rpm output leaked into a snapshot scan"
     assert run.call_count == 0, "the rpm binary was queried for a non-live root"
@@ -271,7 +289,7 @@ def test_parse_rpm_packages_timeout(tmp_path: Path) -> None:
 
 
 def test_parse_rpm_packages_purl_format() -> None:
-    mock_stdout = "bash\t5.2.15-3.fc39\tx86_64\n"
+    mock_stdout = "bash\t(none)\t5.2.15-3.fc39\tx86_64\n"
     mock_result = type("R", (), {"returncode": 0, "stdout": mock_stdout})()
     with patch("subprocess.run", return_value=mock_result):
         packages = parse_rpm_packages(Path("/"))

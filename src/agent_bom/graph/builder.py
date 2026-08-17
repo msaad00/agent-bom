@@ -1183,6 +1183,15 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("repo-structure overlay failed", exc_info=True)
 
+    # Native AST tool signatures are source-level tool entrypoints, not merely
+    # a JSON side block. Materialise them after the repo files exist so the
+    # graph preserves file -> tool provenance and flow findings can drill into
+    # the exact code surface.
+    try:
+        _apply_ast_tool_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("AST tool overlay failed", exc_info=True)
+
     # CODE_MODULE from SOURCE_FILE evidence (after repo-structure places files).
     try:
         _apply_code_graph_overlay(graph, report_json)
@@ -1292,6 +1301,73 @@ def _apply_repo_structure_overlay(graph: UnifiedGraph, report_json: Mapping[str,
     from agent_bom.graph.repo_structure_overlay import apply_repo_structure_overlay
 
     apply_repo_structure_overlay(graph, dict(report_json), datetime.now(timezone.utc))
+
+
+def _apply_ast_tool_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Materialise source-defined tool entrypoints with file provenance."""
+    inventory = report_json.get("ai_inventory")
+    if not isinstance(inventory, Mapping):
+        return
+    analysis = inventory.get("ast_analysis")
+    if not isinstance(analysis, Mapping):
+        return
+    raw_tools = analysis.get("tools")
+    if not isinstance(raw_tools, list):
+        return
+
+    for raw in raw_tools:
+        if not isinstance(raw, Mapping):
+            continue
+        tool_name = sanitize_text(raw.get("name", ""), max_len=200).strip()
+        source_file = sanitize_text(raw.get("file", ""), max_len=500).strip().replace("\\", "/")
+        while source_file.startswith("./"):
+            source_file = source_file[2:]
+        if not tool_name or not source_file:
+            continue
+
+        file_id = f"{EntityType.SOURCE_FILE.value}:{source_file}"
+        if file_id not in graph.nodes:
+            graph.add_node(
+                UnifiedNode(
+                    id=file_id,
+                    entity_type=EntityType.SOURCE_FILE,
+                    label=source_file.rsplit("/", 1)[-1],
+                    attributes={
+                        "path": source_file,
+                        "evidence_tier": "static_scan",
+                        "canonical_id": canonical_graph_node_id(EntityType.SOURCE_FILE.value, file_id),
+                    },
+                    data_sources=["ast_analysis"],
+                    dimensions=NodeDimensions(surface="code"),
+                )
+            )
+
+        tool_id = f"tool:source:{stable_node_id(source_file, tool_name)}"
+        graph.add_node(
+            UnifiedNode(
+                id=tool_id,
+                entity_type=EntityType.TOOL,
+                label=tool_name,
+                attributes={
+                    "description": sanitize_text(raw.get("description", ""), max_len=1_000),
+                    "source_file": source_file,
+                    "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
+                    "parameters": sanitize_sensitive_payload(raw.get("parameters", [])),
+                    "discovery_source": "ast_analysis",
+                    "canonical_id": canonical_graph_node_id(EntityType.TOOL.value, tool_id),
+                },
+                data_sources=["ast_analysis"],
+                dimensions=NodeDimensions(surface="code"),
+            )
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=file_id,
+                target=tool_id,
+                relationship=RelationshipType.DEFINES,
+                evidence={"source": "ast_analysis", "line": raw.get("line")},
+            )
+        )
 
 
 def _apply_code_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:

@@ -398,6 +398,17 @@ def scan_cloned_repo_tree(
         except Exception:
             pass  # AI inventory must not block repo scans
 
+    try:
+        from agent_bom.ast_analyzer import analyze_project, project_has_analyzable_sources
+
+        if project_has_analyzable_sources(root):
+            if update_progress is not None:
+                update_progress("Analyzing source-defined tools and sensitive data flows")
+            ast_result = analyze_project(root)
+            ai_inventory["ast_analysis"] = ast_result.to_dict()
+    except Exception:
+        pass  # Native AST analysis is additive and must not block repo scans.
+
     if ai_inventory:
         result.ai_inventory_data = ai_inventory
 

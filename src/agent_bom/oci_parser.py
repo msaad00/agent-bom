@@ -252,7 +252,9 @@ _RPM_HDR_MAGIC = b"\x8e\xad\xe8\x01\x00\x00\x00\x00"
 _RPMTAG_NAME = 1000
 _RPMTAG_VERSION = 1001
 _RPMTAG_RELEASE = 1002
+_RPMTAG_EPOCH = 1003
 _RPMTAG_ARCH = 1022
+_RPM_TYPE_INT32 = 4
 _RPM_TYPE_STRING = 6
 
 
@@ -478,12 +480,24 @@ def _parse_rpm_header_blob(blob: bytes) -> Optional[tuple[str, str]]:
                 return ""
             return blob[abs_pos:end].decode("utf-8", errors="ignore")
 
+        def _read_int32(tag_id: int) -> int:
+            if tag_id not in tags:
+                return 0
+            type_, offset = tags[tag_id]
+            abs_pos = data_start + offset
+            if type_ != _RPM_TYPE_INT32 or abs_pos < data_start or abs_pos + 4 > len(blob):
+                return 0
+            return struct.unpack_from(">I", blob, abs_pos)[0]
+
         name = _read_str(_RPMTAG_NAME)
         version = _read_str(_RPMTAG_VERSION)
         release = _read_str(_RPMTAG_RELEASE)
+        epoch = _read_int32(_RPMTAG_EPOCH)
         if not name or not version:
             return None
         full_version = f"{version}-{release}" if release else version
+        if epoch:
+            full_version = f"{epoch}:{full_version}"
         return name, full_version
     except (struct.error, OverflowError):
         return None

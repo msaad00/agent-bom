@@ -2868,6 +2868,16 @@ def run_benchmark(
     _run_check("4.5", _check_4_5, _get_client("logs"), _get_client("cloudtrail"))
     _run_check("4.16", _check_4_16, _get_client("securityhub"))
 
+    if not account_id:
+        report.warnings.append("AWS account identity could not be verified; affirmative CIS results were withheld.")
+        for check in report.checks:
+            if check.status == CheckStatus.PASS:
+                check.status = CheckStatus.ERROR
+                check.evidence = (
+                    "AWS account identity could not be verified with STS GetCallerIdentity; "
+                    "PASS withheld because the evaluated account boundary is unknown."
+                )
+
     # Sort checks by check_id for consistent output
     report.checks.sort(key=lambda c: [int(x) if x.isdigit() else x for x in c.check_id.replace(".", " ").split()])
 

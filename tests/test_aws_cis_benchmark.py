@@ -2566,6 +2566,32 @@ class TestRunBenchmark:
             assert report.total == 2
             assert {c.check_id for c in report.checks} == {"1.4", "1.5"}
 
+    def test_missing_account_identity_withholds_affirmative_passes(self):
+        """A session that cannot prove its AWS boundary cannot certify PASS."""
+        modules_patch, mock_boto3 = _mock_boto3_modules()
+        with modules_patch:
+            mock_session = MagicMock()
+            mock_boto3.Session.return_value = mock_session
+            mock_session.region_name = "us-east-1"
+
+            mock_sts = MagicMock()
+            mock_sts.get_caller_identity.return_value = {}
+            mock_iam = _iam_client()
+
+            def client_factory(service, **_kwargs):
+                if service == "sts":
+                    return mock_sts
+                return mock_iam
+
+            mock_session.client.side_effect = client_factory
+
+            report = run_benchmark(checks=["1.10", "1.16"])
+
+        assert report.account_id == ""
+        assert report.passed == 0
+        assert {check.status for check in report.checks} == {CheckStatus.ERROR}
+        assert all("account identity" in check.evidence.lower() for check in report.checks)
+
     def test_error_path_titles_are_own_descriptors_not_verbatim_cis(self):
         """Copyright guard for the AWS error path.
 

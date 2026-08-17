@@ -918,11 +918,9 @@ class BlastRadius:
     transitive_credentials: list[str] = field(default_factory=list)  # Credentials exposed transitively
     transitive_risk_score: float = 0.0  # Risk score weighted by hop distance
 
-    # Graph-walk reachability (populated by agent_bom.graph.dependency_reach
-    # via apply_dependency_reachability_to_blast_radii after the unified
-    # graph is built). ``None`` means the engine did not run for this scan;
-    # ``False`` means the package sits in the closure but no agent traversal
-    # along USES / DEPENDS_ON / CONTAINS / PROVIDES_TOOL reaches it.
+    # Evidence-backed attack-path reachability. These fields are populated
+    # only by a matched persisted attack path (or another equally strong
+    # path proof), never by structural dependency closure alone.
     graph_reachable: Optional[bool] = None
     graph_min_hop_distance: Optional[int] = None
     graph_reachable_from_agents: list[str] = field(default_factory=list)
@@ -935,6 +933,13 @@ class BlastRadius:
     # advisory symbols when function-reachable.
     symbol_reachability: Optional[str] = None
     reachable_affected_symbols: list[str] = field(default_factory=list)
+
+    # Appended after the existing reachability fields to preserve positional
+    # construction compatibility. Structural closure proves an agent-to-package
+    # topology exists; it does not by itself prove an exploitable path.
+    dependency_reachable: Optional[bool] = None
+    dependency_min_hop_distance: Optional[int] = None
+    dependency_reachable_from_agents: list[str] = field(default_factory=list)
 
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius.
@@ -1330,6 +1335,39 @@ class AIBOMReport:
 
         return [secret_dict_to_finding(s) for s in block.get("findings", []) if isinstance(s, dict)]
 
+    def _ast_flow_findings(self) -> "list[Finding]":
+        """Native AST flow risks promoted from the source-analysis side block."""
+        inventory = self.ai_inventory_data or {}
+        block = inventory.get("ast_analysis") if isinstance(inventory, dict) else None
+        if not isinstance(block, dict):
+            return []
+        from agent_bom.finding import ast_flow_dict_to_finding, is_ast_security_flow
+
+        severity_rank = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+        by_sink: dict[tuple[object, ...], Finding] = {}
+        for raw in block.get("flow_findings", []):
+            if not isinstance(raw, dict) or not is_ast_security_flow(raw):
+                continue
+            finding = ast_flow_dict_to_finding(raw)
+            key = (
+                finding.asset.location,
+                finding.evidence.get("line"),
+                finding.evidence.get("entrypoint"),
+                finding.evidence.get("sink") or finding.evidence.get("category"),
+            )
+            current = by_sink.get(key)
+            categories = {str(finding.evidence.get("category", ""))}
+            if current is not None:
+                categories.add(str(current.evidence.get("category", "")))
+                categories.update(str(item) for item in current.evidence.get("detector_categories", []))
+            categories.discard("")
+            if current is None or severity_rank.get(finding.severity, 0) > severity_rank.get(current.severity, 0):
+                finding.evidence["detector_categories"] = sorted(categories)
+                by_sink[key] = finding
+            else:
+                current.evidence["detector_categories"] = sorted(categories)
+        return list(by_sink.values())
+
     def _toxic_combination_findings(self) -> "list[Finding]":
         """Graph toxic-combination findings, rehydrated from the side block.
 
@@ -1426,6 +1464,8 @@ class AIBOMReport:
         # finding, but do not suppress unrelated secret findings in the side block.
         existing_ids = {getattr(f, "canonical_id", getattr(f, "id", None)) for f in base}
         base.extend(finding for finding in self._secret_findings() if finding.id not in existing_ids)
+        ast_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._ast_flow_findings() if finding.id not in ast_existing)
         cis_existing = existing_ids | {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)
         toxic_existing = {getattr(f, "id", None) for f in base}

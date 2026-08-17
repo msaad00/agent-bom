@@ -2540,7 +2540,7 @@ def scan(
             try:
                 _ast_result = _ast_analyze(project)
                 _ast_result_for_reach = _ast_result
-                if _ast_result.prompts or _ast_result.guardrails or _ast_result.tools:
+                if _ast_result.prompts or _ast_result.guardrails or _ast_result.tools or _ast_result.flow_findings:
                     report.ai_inventory_data = report.ai_inventory_data or {}
                     report.ai_inventory_data["ast_analysis"] = _ast_result.to_dict()
                     _n_prompts = len(_ast_result.prompts)

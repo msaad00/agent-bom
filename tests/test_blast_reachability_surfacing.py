@@ -1,13 +1,10 @@
 """End-to-end test for graph-walk reachability surfacing.
 
 Pins the contract that:
-1. ``apply_dependency_reachability_to_blast_radii`` stamps the new
-   ``graph_reachable`` / ``graph_min_hop_distance`` / ``graph_reachable_from_agents``
-   fields on each BlastRadius row whose vulnerability has a corresponding
-   reachability record from the engine.
-2. The risk score moves up for reachable findings (boost applied) and
-   down for explicitly-unreachable findings (penalty applied), within
-   the ``[0, 10]`` clamp.
+1. ``apply_dependency_reachability_to_blast_radii`` exposes structural
+   dependency closure separately from evidence-backed attack-path reachability.
+2. Structural topology alone never upgrades ``graph_reachable`` or the risk
+   score. Matched attack paths and function reach remain explicit evidence.
 3. Failures inside the engine downgrade to a no-op — the helper
    returns ``0`` and the BlastRadius rows stay untouched, so a graph
    bug never breaks the scan path.
@@ -76,17 +73,20 @@ def reachable_setup() -> tuple[list[BlastRadius], list[Agent]]:
     return [blast], [agent]
 
 
-def test_stamps_reachable_findings(reachable_setup) -> None:
+def test_stamps_structural_dependency_reach_without_claiming_attack_path(reachable_setup) -> None:
     blast_radii, agents = reachable_setup
     stamped = apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
 
     assert stamped == 1
     br = blast_radii[0]
-    assert br.graph_reachable is True
-    assert br.graph_min_hop_distance is not None
-    assert br.graph_min_hop_distance >= 1
+    assert br.dependency_reachable is True
+    assert br.dependency_min_hop_distance is not None
+    assert br.dependency_min_hop_distance >= 1
     # The agent we wired up must appear in the reachable_from list.
-    assert any("cursor" in node_id for node_id in br.graph_reachable_from_agents)
+    assert any("cursor" in node_id for node_id in br.dependency_reachable_from_agents)
+    assert br.graph_reachable is None
+    assert br.graph_min_hop_distance is None
+    assert br.graph_reachable_from_agents == []
 
 
 def test_no_op_when_no_blast_radii() -> None:
@@ -101,7 +101,7 @@ def test_no_op_when_no_agents(reachable_setup) -> None:
     assert blast_radii[0].graph_reachable is None
 
 
-def test_rescore_changes_risk_score_when_reachable(reachable_setup) -> None:
+def test_structural_dependency_reach_does_not_change_risk_score(reachable_setup) -> None:
     blast_radii, agents = reachable_setup
     br = blast_radii[0]
 
@@ -111,12 +111,11 @@ def test_rescore_changes_risk_score_when_reachable(reachable_setup) -> None:
     assert br.graph_reachable is None
 
     apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
-    boosted_score = br.risk_score
+    rescored = br.risk_score
 
-    assert br.graph_reachable is True
-    assert boosted_score > base_score
-    # Boost is ~0.5 by default; allow some floor for clamp at 10.0.
-    assert boosted_score - base_score == pytest.approx(0.5, abs=0.05) or boosted_score == 10.0
+    assert br.dependency_reachable is True
+    assert br.graph_reachable is None
+    assert rescored == base_score
 
 
 def test_engine_failure_is_a_no_op(monkeypatch, reachable_setup) -> None:

@@ -836,6 +836,8 @@ def to_sarif(
             finding.asset.location or "agent-bom-report.json",
             _ecosystem_from_purl(finding.asset.identifier),
         )
+        raw_start_line = finding.evidence.get("line_number") or finding.evidence.get("line")
+        start_line = raw_start_line if isinstance(raw_start_line, int) and raw_start_line > 0 else 1
         fp_input = f"{finding.id}:{file_path}:{finding.asset.stable_id}"
         finding_result: dict = {
             "ruleId": rule_id,
@@ -848,12 +850,12 @@ def to_sarif(
                     fallback=_sanitize_scanner_text("description", finding.description, fallback=finding.finding_type.value),
                 )
             },
-            **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=1),
+            **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=start_line),
             "locations": [
                 {
                     "physicalLocation": {
                         "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
-                        "region": {"startLine": 1, "startColumn": 1},
+                        "region": {"startLine": start_line, "startColumn": 1},
                     },
                 }
             ],

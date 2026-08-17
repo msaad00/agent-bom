@@ -831,6 +831,87 @@ def _safe_secret_preview(value: object) -> str:
     return "***REDACTED***"
 
 
+_AST_FLOW_CRITICAL_MARKERS = ("command_execution", "unsafe_deserialization")
+_AST_FLOW_HIGH_MARKERS = (
+    "dangerous",
+    "unguarded_tool_sink",
+    "command_string",
+    "dynamic_require",
+    "path_access",
+    "path_traversal",
+    "sql",
+    "ssrf",
+    "xss",
+)
+_AST_SECURITY_FLOW_MARKERS = (*_AST_FLOW_CRITICAL_MARKERS, *_AST_FLOW_HIGH_MARKERS)
+_AST_FLOW_CWE_BY_MARKER = {
+    "command_execution": "CWE-78",
+    "unsafe_deserialization": "CWE-502",
+    "path_access": "CWE-22",
+    "path_traversal": "CWE-22",
+    "sql": "CWE-89",
+    "ssrf": "CWE-918",
+    "xss": "CWE-79",
+}
+
+
+def is_ast_security_flow(raw: dict) -> bool:
+    """Return whether an AST side-block row represents a security risk."""
+    from agent_bom.security import sanitize_text
+
+    category = sanitize_text(raw.get("category", "") or "", max_len=120).lower()
+    return any(marker in category for marker in _AST_SECURITY_FLOW_MARKERS)
+
+
+def ast_flow_dict_to_finding(raw: dict) -> "Finding":
+    """Promote one native AST flow result into the unified finding stream."""
+    from agent_bom.security import sanitize_text
+
+    category = sanitize_text(raw.get("category", "ast_flow") or "ast_flow", max_len=120).lower()
+    file_path = sanitize_text(raw.get("file", "") or "", max_len=500)
+    entrypoint = sanitize_text(raw.get("entrypoint", "") or "", max_len=200)
+    sink = sanitize_text(raw.get("sink", "") or "", max_len=200)
+    raw_line = raw.get("line")
+    line = raw_line if isinstance(raw_line, int) and raw_line > 0 else 1
+    severity = "critical" if any(marker in category for marker in _AST_FLOW_CRITICAL_MARKERS) else "high"
+    if not any(marker in category for marker in _AST_SECURITY_FLOW_MARKERS):
+        severity = "medium"
+    cwe_ids = sorted({cwe for marker, cwe in _AST_FLOW_CWE_BY_MARKER.items() if marker in category})
+    title = sanitize_text(raw.get("title", "") or f"Unsafe flow reaches {sink or 'a sensitive sink'}", max_len=300)
+    detail = sanitize_text(raw.get("detail", "") or title, max_len=2_000)
+    call_path = [sanitize_text(item, max_len=200) for item in raw.get("call_path", []) if isinstance(item, str)][:20]
+
+    return Finding(
+        finding_type=FindingType.SAST,
+        source=FindingSource.SAST,
+        asset=Asset(
+            name=f"{entrypoint or sink or category} in {file_path}" if file_path else entrypoint or sink or category,
+            asset_type="source_file",
+            identifier=f"{file_path}:{line}:{entrypoint}:{sink}",
+            location=file_path or None,
+        ),
+        severity=severity,
+        title=title,
+        description=detail,
+        cwe_ids=cwe_ids,
+        remediation_guidance=(
+            "Validate and constrain tool-controlled input before it reaches the sensitive sink; "
+            "prefer structured APIs over shell, path, query, or deserialization string construction."
+        ),
+        evidence={
+            "category": category,
+            "file": file_path,
+            "line": line,
+            "entrypoint": entrypoint,
+            "sink": sink,
+            "source": sanitize_text(raw.get("source", "") or "", max_len=200),
+            "call_path": call_path,
+        },
+        risk_score=9.5 if severity == "critical" else 8.0 if severity == "high" else 6.0,
+        exposed_tools=[entrypoint] if entrypoint else [],
+    )
+
+
 def secret_dict_to_finding(secret: dict) -> "Finding":
     """Convert a secret_scanner result dict into a unified CREDENTIAL_EXPOSURE Finding.
 
@@ -1210,6 +1291,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "transitive_packages": _sanitized_evidence_field(getattr(br, "transitive_packages", [])),
         "transitive_credential_count": len(getattr(br, "transitive_credentials", []) or []),
         "transitive_risk_score": getattr(br, "transitive_risk_score", 0.0),
+        "dependency_reachable": getattr(br, "dependency_reachable", None),
+        "dependency_min_hop_distance": getattr(br, "dependency_min_hop_distance", None),
+        "dependency_reachable_from_agents": _sanitized_evidence_field(getattr(br, "dependency_reachable_from_agents", [])),
         "graph_reachable": getattr(br, "graph_reachable", None),
         "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
         "graph_reachable_from_agents": _sanitized_evidence_field(getattr(br, "graph_reachable_from_agents", [])),

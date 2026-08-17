@@ -265,7 +265,7 @@ def parse_rpm_packages(root: Path = Path("/")) -> list[Package]:
     if root == Path("/"):
         try:
             result = subprocess.run(
-                ["rpm", "-qa", "--queryformat", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n"],
+                ["rpm", "-qa", "--queryformat", "%{NAME}\t%{EPOCH}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n"],
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -273,13 +273,17 @@ def parse_rpm_packages(root: Path = Path("/")) -> list[Package]:
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
                     parts = line.strip().split("\t")
-                    if len(parts) >= 2 and parts[0] and parts[1]:
+                    if len(parts) >= 3 and parts[0] and parts[2]:
+                        epoch = parts[1].strip()
+                        version = parts[2]
+                        if epoch not in ("", "0", "(none)"):
+                            version = f"{epoch}:{version}"
                         packages.append(
                             Package(
                                 name=parts[0],
-                                version=parts[1],
+                                version=version,
                                 ecosystem="rpm",
-                                purl=f"pkg:rpm/redhat/{parts[0]}@{parts[1]}",
+                                purl=f"pkg:rpm/redhat/{parts[0]}@{version}",
                             )
                         )
         except (FileNotFoundError, subprocess.TimeoutExpired):

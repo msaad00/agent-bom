@@ -31,6 +31,13 @@ retrieval date, exact digest, and use terms are pinned in
 are unclear, diagrams use a neutral product-category icon instead of a
 look-alike mark.
 
+The compact cloud, data-platform, and Kubernetes marks under
+`docs/images/vendor/simple-icons/` are unmodified Simple Icons vectors reused
+from `msaad00/cloud-ai-security-skills`. They are pinned to the source commit
+and digest in the same provenance manifest and retain the upstream CC0-1.0
+license. Product names and marks remain trademarks of their owners and are used
+only to identify supported evidence sources.
+
 ## Adding a mark
 
 1. Add a 32×32 full-color SVG under `ui/public/logos/frameworks/`.

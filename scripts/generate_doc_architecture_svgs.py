@@ -21,6 +21,7 @@ OUT = ROOT / "docs" / "images"
 VENDOR_LOGO_DIR = ROOT / "ui" / "public" / "logos"
 VENDOR_WORDMARK_DIR = VENDOR_LOGO_DIR / "wordmarks"
 DIAGRAM_VENDOR_DIR = ROOT / "docs" / "images" / "vendor"
+SIMPLE_ICON_DIR = DIAGRAM_VENDOR_DIR / "simple-icons"
 MCP_TOOL_COUNT = len(_SERVER_CARD_TOOLS)
 _OPENAPI = json.loads((ROOT / "docs" / "openapi" / "v1.json").read_text(encoding="utf-8"))
 REST_OPERATION_COUNT = sum(
@@ -36,6 +37,16 @@ CLOUD_VENDOR_LOGOS = (
     ("gcp", "GCP", "#4285F4"),
     ("snowflake", "Snowflake", "#29B5E8"),
 )
+
+SIMPLE_ICON_MARKS = {
+    "aws": ("amazonwebservices.svg", "AWS", "#FF9900"),
+    "azure": ("microsoftazure.svg", "Azure", "#0078D4"),
+    "gcp": ("googlecloud.svg", "Google Cloud", "#4285F4"),
+    "kubernetes": ("kubernetes.svg", "Kubernetes", "#326CE5"),
+    "snowflake": ("snowflake.svg", "Snowflake", "#29B5E8"),
+    "databricks": ("databricks.svg", "Databricks", "#FF3621"),
+    "clickhouse": ("clickhouse.svg", "ClickHouse", "#FFCC01"),
+}
 
 THEMES = {
     "dark": {
@@ -427,6 +438,24 @@ def _diagram_vendor_inner(filename: str, *, uid: str) -> tuple[str, float, float
     inner = re.sub(r"<title\b[^>]*>.*?</title>", "", inner, flags=re.DOTALL | re.IGNORECASE)
     inner = "\n".join(line.strip() for line in inner.splitlines() if line.strip())
     return _namespace_svg_ids(inner.strip(), uid=uid), vb_w, vb_h
+
+
+def _simple_icon_mark(x: float, y: float, size: int, vendor: str, t: dict, *, uid: str) -> str:
+    """Render a provenance-pinned Simple Icons vector in a neutral diagram tile."""
+    filename, label, color = SIMPLE_ICON_MARKS[vendor]
+    raw = (SIMPLE_ICON_DIR / filename).read_text(encoding="utf-8")
+    vb_w, vb_h = _vendor_viewbox(raw)
+    inner = re.sub(r"^.*?<svg[^>]*>", "", raw, count=1, flags=re.DOTALL)
+    inner = re.sub(r"</svg>\s*$", "", inner, flags=re.DOTALL)
+    inner = re.sub(r"<title\b[^>]*>.*?</title>", "", inner, flags=re.DOTALL | re.IGNORECASE)
+    inner = _namespace_svg_ids(inner.strip(), uid=uid)
+    pad = max(4, round(size * 0.2))
+    scale = min((size - 2 * pad) / vb_w, (size - 2 * pad) / vb_h)
+    return (
+        f'<g data-vendor="{_esc(label)}"><title>{_esc(label)} vector mark</title>'
+        f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="7" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>'
+        f'<g transform="translate({x + pad},{y + pad}) scale({scale})" fill="{color}">{inner}</g></g>'
+    )
 
 
 def _cloud_logos(
@@ -1196,7 +1225,10 @@ def workflow(theme_name: str) -> str:
         x = (width - row_width) / 2 + col * (card_w + gap)
         y = source_y + row * (source_h + gap)
         parts.append(f'<rect x="{x}" y="{y}" width="{card_w}" height="{source_h}" rx="14" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(x + 16, y + 16, source_icons[key], t, accent=True, size=34))
+        if key == "cluster":
+            parts.append(_simple_icon_mark(x + 16, y + 16, 34, "kubernetes", t, uid=f"wf-{theme_name}-kubernetes"))
+        else:
+            parts.append(_icon_box(x + 16, y + 16, source_icons[key], t, accent=True, size=34))
         parts.append(
             _text(
                 x + 62,
@@ -1223,33 +1255,16 @@ def workflow(theme_name: str) -> str:
             )
         )
         if key == "cloud":
-            logo_y = y + 82
-            official_icons = (
-                ("aws-cloud.svg", "AWS"),
-                ("azure-cloud.svg", "Azure"),
-                ("gcp-compute.svg", "GCP"),
-            )
-            for logo_index, (filename, label) in enumerate(official_icons):
-                inner, vb_w, vb_h = _diagram_vendor_inner(
-                    filename,
-                    uid=f"wf-{theme_name}-{logo_index}",
-                )
-                chip_x = x + 16 + logo_index * 100
-                logo_size = 22
-                scale = min(logo_size / vb_w, logo_size / vb_h)
+            logo_y = y + 80
+            for logo_index, vendor in enumerate(("aws", "azure", "gcp", "snowflake", "databricks", "clickhouse")):
                 parts.append(
-                    f'<rect x="{chip_x}" y="{logo_y}" width="92" height="26" rx="7" fill="#ffffff" stroke="#d4d4d8"/>'
-                    f'<g transform="translate({chip_x + 5},{logo_y + 2}) scale({scale})">{inner}</g>'
-                    + _text(
-                        chip_x + 36,
-                        logo_y + 18,
-                        label,
-                        **{
-                            "font-family": "Inter,system-ui,sans-serif",
-                            "font-size": "13.5",
-                            "font-weight": "700",
-                            "fill": "#18181b",
-                        },
+                    _simple_icon_mark(
+                        x + 16 + logo_index * 42,
+                        logo_y,
+                        32,
+                        vendor,
+                        t,
+                        uid=f"wf-{theme_name}-{vendor}",
                     )
                 )
 
@@ -1497,14 +1512,29 @@ def architecture(theme_name: str) -> str:
             )
         )
 
-    def card(x: int, y: int, width: int, height: int, icon: str, title: str, detail: str, layer: str, *, highlight: bool = False) -> None:
+    def card(
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        icon: str,
+        title: str,
+        detail: str,
+        layer: str,
+        *,
+        highlight: bool = False,
+        vendor: str | None = None,
+    ) -> None:
         accent = ARCH_LAYER_COLORS[layer][1]
         fill = t["accent_fill"] if highlight else t["card"]
         stroke = accent if highlight else t["card_stroke"]
         parts.append(
             f'<rect x="{x}" y="{y}" width="{width}" height="{height}" rx="12" fill="{fill}" stroke="{stroke}" stroke-width="{"1.6" if highlight else "1"}"/>'
         )
-        parts.append(_icon_box(x + 16, y + 18, ICONS[icon], t, accent=highlight, size=38))
+        if vendor is None:
+            parts.append(_icon_box(x + 16, y + 18, ICONS[icon], t, accent=highlight, size=38))
+        else:
+            parts.append(_simple_icon_mark(x + 16, y + 18, 38, vendor, t, uid=f"arch-{theme_name}-{vendor}-{x}-{y}"))
         parts.append(
             _text(
                 x + 68,
@@ -1531,11 +1561,11 @@ def architecture(theme_name: str) -> str:
     y1, h1 = 122, 260
     band(y1, h1, "sources", "1", "INTAKE SOURCES", "read-only collectors")
     source_cards = (
-        ("package", "Code + supply chain", "repos · CI · packages · secrets"),
-        ("mcp", "Agents + MCP + models", "clients · servers · model files"),
-        ("cloud", "Cloud + data", "AWS · Azure · GCP · Snowflake"),
-        ("iac", "Images + infrastructure", "OCI · K8s · IaC · workloads"),
-        ("sbom", "Imported evidence", "CDX · SPDX · SARIF · scans"),
+        ("package", "Code + supply chain", "repos · CI · packages · secrets", None),
+        ("mcp", "Agents + MCP + models", "clients · servers · model files", None),
+        ("cloud", "Cloud + data", "AWS · Azure · GCP · Snowflake", "snowflake"),
+        ("iac", "Images + infrastructure", "OCI · K8s · IaC · workloads", "kubernetes"),
+        ("sbom", "Imported evidence", "CDX · SPDX · SARIF · scans", None),
     )
     card_w, card_h, card_gap = 330, 82, 12
     for index, item in enumerate(source_cards):
@@ -1544,7 +1574,8 @@ def architecture(theme_name: str) -> str:
         row_width = count * card_w + (count - 1) * card_gap
         x = (w - row_width) // 2 + col * (card_w + card_gap)
         y = y1 + 54 + row * (card_h + 12)
-        card(x, y, card_w, card_h, *item, "sources")
+        icon, title, detail, vendor = item
+        card(x, y, card_w, card_h, icon, title, detail, "sources", vendor=vendor)
 
     parts.append(_tier_down_arrow(w // 2, y1 + h1 + 2, "COLLECT", ARCH_LAYER_COLORS["sources"][1]))
 

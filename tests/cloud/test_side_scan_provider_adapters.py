@@ -21,6 +21,7 @@ from agent_bom.cloud.side_scan_provider_adapters import (
     GcpPersistentDiskLifecycleAdapter,
     SideScanLifecycleTimeoutError,
     SideScanPermissionDeniedError,
+    _resource_id,
 )
 from agent_bom.cloud.side_scan_targets import (
     CloudSideScanTarget,
@@ -176,6 +177,16 @@ class FakeMount:
 
     def unmount(self, mount_point: Path) -> None:
         self.unmounted.append(mount_point)
+
+
+def test_gcp_resource_id_prefers_canonical_self_link_over_numeric_id() -> None:
+    resource = SimpleNamespace(
+        id=2066392976257397481,
+        self_link="https://compute.googleapis.com/compute/v1/projects/proj-1/global/snapshots/abom-owned-snapshot",
+        name="abom-owned-snapshot",
+    )
+
+    assert _resource_id(resource) == resource.self_link
 
 
 def _target(provider: str) -> CloudSideScanTarget:

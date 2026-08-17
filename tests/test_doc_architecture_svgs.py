@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -79,6 +81,34 @@ def test_workflow_maps_sources_to_verified_outcomes() -> None:
     assert _audit_github_safe(svg) == []
 
 
+def test_workflow_and_architecture_use_provenance_pinned_vendor_vectors() -> None:
+    workflow_svg = workflow("dark")
+    architecture_svg = architecture("light")
+    for vendor in ("AWS", "Azure", "Google Cloud", "Kubernetes", "Snowflake", "Databricks", "ClickHouse"):
+        assert f'data-vendor="{vendor}"' in workflow_svg, vendor
+    for vendor in ("Kubernetes", "Snowflake"):
+        assert f'data-vendor="{vendor}"' in architecture_svg, vendor
+
+    provenance = json.loads((IMAGES / "vendor" / "provenance.json").read_text(encoding="utf-8"))
+    by_path = {entry["path"]: entry for entry in provenance["assets"]}
+    for filename in (
+        "amazonwebservices.svg",
+        "microsoftazure.svg",
+        "googlecloud.svg",
+        "kubernetes.svg",
+        "snowflake.svg",
+        "databricks.svg",
+        "clickhouse.svg",
+    ):
+        path = f"docs/images/vendor/simple-icons/{filename}"
+        assert path in by_path
+        record = by_path[path]
+        assert record["license"] == "CC0-1.0"
+        assert record["source_repo"] == "https://github.com/msaad00/cloud-ai-security-skills"
+        assert record["source_commit"] == "2c8496410e28d8c3a3149fec139a1f178bb501f6"
+        assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == record["sha256"]
+
+
 def test_architecture_includes_core_surfaces() -> None:
     svg = architecture("light")
     assert "Unified Finding" in svg
@@ -142,6 +172,15 @@ def test_readme_surfaces_the_end_to_end_workflow_before_architecture_detail() ->
     assert "workflow-light.svg" in readme[workflow_heading:architecture_detail]
     assert "raw source and credentials stay local" in readme[workflow_heading:architecture_detail].lower()
     assert "### From source to verified action" not in readme
+
+
+def test_readme_keeps_detailed_workflow_and_architecture_collapsed() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    workflow_summary = readme.index("<summary><b>Evidence workflow</b></summary>")
+    workflow_art = readme.index("workflow-dark.svg", workflow_summary)
+    workflow_close = readme.index("</details>", workflow_art)
+    architecture_summary = readme.index("<summary><b>Control-plane architecture</b></summary>", workflow_close)
+    assert workflow_summary < workflow_art < workflow_close < architecture_summary
 
 
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:

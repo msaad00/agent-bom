@@ -671,7 +671,7 @@ def _resource_id(resource: Any) -> str:
     if isinstance(resource, Mapping):
         value = resource.get("self_link") or resource.get("selfLink") or resource.get("id") or resource.get("name")
     else:
-        value = getattr(resource, "id", None) or getattr(resource, "self_link", None) or getattr(resource, "name", None)
+        value = getattr(resource, "self_link", None) or getattr(resource, "id", None) or getattr(resource, "name", None)
     result = str(value or "").strip()
     if not result:
         raise RuntimeError("provider operation returned no resource id")

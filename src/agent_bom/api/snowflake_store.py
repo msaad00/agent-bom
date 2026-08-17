@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
 
 from .exception_store import ExceptionStatus, VulnException
-from .fleet_store import FleetAgent, FleetLifecycleState
+from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
 from .server import ScanJob
 from .store import _literal_like_pattern
@@ -48,6 +48,7 @@ _SNOWFLAKE_TENANT_ROW_ACCESS_POLICY = "agent_bom_tenant_isolation"
 _SNOWFLAKE_TENANT_TABLES = (
     "scan_jobs",
     "fleet_agents",
+    "fleet_endpoints",
     "scan_schedules",
     "exceptions",
     "gateway_policies",
@@ -413,7 +414,17 @@ class SnowflakeFleetStore:
             """)
             cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id VARCHAR NOT NULL DEFAULT ''")
             cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
-            _ensure_tenant_row_access_policy(cur, ("fleet_agents",))
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS fleet_endpoints (
+                    tenant_id VARCHAR NOT NULL,
+                    endpoint_id VARCHAR NOT NULL,
+                    completeness VARCHAR NOT NULL,
+                    updated_at TIMESTAMP_TZ NOT NULL,
+                    data VARIANT NOT NULL,
+                    PRIMARY KEY (tenant_id, endpoint_id)
+                )
+            """)
+            _ensure_tenant_row_access_policy(cur, ("fleet_agents", "fleet_endpoints"))
 
     def put(self, agent: FleetAgent) -> None:
         with self._connect() as conn:
@@ -608,6 +619,81 @@ class SnowflakeFleetStore:
             total += len(batch)
 
         return total
+
+    def put_endpoint(self, endpoint: FleetEndpoint) -> None:
+        with self._connect() as conn:
+            conn.cursor().execute(
+                """MERGE INTO fleet_endpoints t USING (SELECT %s AS tenant_id, %s AS endpoint_id) s
+                   ON t.tenant_id = s.tenant_id AND t.endpoint_id = s.endpoint_id
+                   WHEN MATCHED THEN UPDATE SET completeness = %s, updated_at = %s, data = PARSE_JSON(%s)
+                   WHEN NOT MATCHED THEN INSERT (tenant_id, endpoint_id, completeness, updated_at, data)
+                   VALUES (%s, %s, %s, %s, PARSE_JSON(%s))""",
+                (
+                    endpoint.tenant_id,
+                    endpoint.endpoint_id,
+                    endpoint.completeness,
+                    endpoint.updated_at,
+                    endpoint.model_dump_json(),
+                    endpoint.tenant_id,
+                    endpoint.endpoint_id,
+                    endpoint.completeness,
+                    endpoint.updated_at,
+                    endpoint.model_dump_json(),
+                ),
+            )
+
+    def get_endpoint(self, endpoint_id: str, *, tenant_id: str) -> FleetEndpoint | None:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT data FROM fleet_endpoints WHERE tenant_id = %s AND endpoint_id = %s",
+                (tenant_id, endpoint_id),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return FleetEndpoint.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+
+    def delete_endpoint(self, endpoint_id: str, *, tenant_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM fleet_endpoints WHERE tenant_id = %s AND endpoint_id = %s",
+                (tenant_id, endpoint_id),
+            )
+            return (cur.rowcount or 0) > 0
+
+    def query_endpoints(
+        self,
+        tenant_id: str,
+        *,
+        search: str | None = None,
+        completeness: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FleetEndpoint], int]:
+        clauses = ["tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+        if completeness:
+            clauses.append("completeness = %s")
+            params.append(completeness)
+        if search:
+            clauses.append("(lower(endpoint_id) LIKE %s OR lower(TO_VARCHAR(data)) LIKE %s)")
+            needle = f"%{search.casefold()}%"
+            params.extend((needle, needle))
+        where = " AND ".join(clauses)
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(f"SELECT COUNT(*) FROM fleet_endpoints WHERE {where}", params)  # nosec B608
+            total_row = cur.fetchone()
+            cur.execute(
+                f"SELECT data FROM fleet_endpoints WHERE {where} "  # nosec B608
+                "ORDER BY updated_at DESC, endpoint_id LIMIT %s OFFSET %s",
+                [*params, int(limit), int(offset)],
+            )
+            rows = cur.fetchall()
+        endpoints = [FleetEndpoint.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]
+        return endpoints, int(total_row[0] if total_row else 0)
 
 
 # ─── Schedule Store ───────────────────────────────────────────────────────────

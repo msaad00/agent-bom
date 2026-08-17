@@ -43,6 +43,15 @@ CREATE TABLE IF NOT EXISTS core.fleet_agents (
     PRIMARY KEY (tenant_id, agent_id)
 );
 
+CREATE TABLE IF NOT EXISTS core.fleet_endpoints (
+    tenant_id VARCHAR NOT NULL,
+    endpoint_id VARCHAR NOT NULL,
+    completeness VARCHAR NOT NULL,
+    updated_at TIMESTAMP_TZ NOT NULL,
+    data VARIANT NOT NULL,
+    PRIMARY KEY (tenant_id, endpoint_id)
+);
+
 CREATE TABLE IF NOT EXISTS core.gateway_policies (
     policy_id VARCHAR PRIMARY KEY,
     name VARCHAR NOT NULL,

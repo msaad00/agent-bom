@@ -22,7 +22,7 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 if TYPE_CHECKING:
     # Imported lazily at runtime (inside methods) to avoid a circular import
     # with fleet_store; TYPE_CHECKING keeps the annotations resolvable.
-    from .fleet_store import FleetAgent, FleetLifecycleState
+    from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
 
 # Every predicate that names a single agent: the caller's tenant and the RLS
 # session tenant must both match, so neither an unscoped caller nor an
@@ -80,7 +80,21 @@ class PostgresFleetStore:
             # three need an index or quarantine enforcement pages the roster.
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant_agent_id_lower ON fleet_agents(tenant_id, lower(agent_id))")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant_canonical_id_lower ON fleet_agents(tenant_id, lower(canonical_id))")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fleet_endpoints (
+                    tenant_id TEXT NOT NULL,
+                    endpoint_id TEXT NOT NULL,
+                    completeness TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    data JSONB NOT NULL,
+                    PRIMARY KEY (tenant_id, endpoint_id)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_fleet_endpoints_tenant_updated ON fleet_endpoints(tenant_id, updated_at DESC, endpoint_id)"
+            )
             _ensure_tenant_rls(conn, "fleet_agents", "tenant_id")
+            _ensure_tenant_rls(conn, "fleet_endpoints", "tenant_id")
             conn.commit()
 
     def put(self, agent: FleetAgent) -> None:
@@ -294,3 +308,74 @@ class PostgresFleetStore:
             self.put(agent)
             count += 1
         return count
+
+    def put_endpoint(self, endpoint: FleetEndpoint) -> None:
+        with _tenant_connection(self._pool) as conn:
+            conn.execute(
+                """INSERT INTO fleet_endpoints (tenant_id, endpoint_id, completeness, updated_at, data)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (tenant_id, endpoint_id) DO UPDATE SET
+                     completeness = EXCLUDED.completeness,
+                     updated_at = EXCLUDED.updated_at,
+                     data = EXCLUDED.data""",
+                (
+                    endpoint.tenant_id,
+                    endpoint.endpoint_id,
+                    endpoint.completeness,
+                    endpoint.updated_at,
+                    endpoint.model_dump_json(),
+                ),
+            )
+            conn.commit()
+
+    def get_endpoint(self, endpoint_id: str, *, tenant_id: str) -> FleetEndpoint | None:
+        from .fleet_store import FleetEndpoint
+
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                "SELECT data FROM fleet_endpoints WHERE tenant_id = %s AND endpoint_id = %s",
+                (tenant_id, endpoint_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return FleetEndpoint.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+
+    def delete_endpoint(self, endpoint_id: str, *, tenant_id: str) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                "DELETE FROM fleet_endpoints WHERE tenant_id = %s AND endpoint_id = %s",
+                (tenant_id, endpoint_id),
+            )
+            conn.commit()
+            return bool(cursor.rowcount > 0)
+
+    def query_endpoints(
+        self,
+        tenant_id: str,
+        *,
+        search: str | None = None,
+        completeness: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FleetEndpoint], int]:
+        from .fleet_store import FleetEndpoint
+
+        clauses = ["tenant_id = %s"]
+        params: list[object] = [tenant_id]
+        if completeness:
+            clauses.append("completeness = %s")
+            params.append(completeness)
+        if search:
+            clauses.append("(lower(endpoint_id) LIKE %s OR lower(data::text) LIKE %s)")
+            needle = f"%{search.casefold()}%"
+            params.extend((needle, needle))
+        where = " AND ".join(clauses)
+        with _tenant_connection(self._pool) as conn:
+            total_row = conn.execute(f"SELECT COUNT(*) FROM fleet_endpoints WHERE {where}", tuple(params)).fetchone()  # nosec B608
+            rows = conn.execute(
+                f"SELECT data FROM fleet_endpoints WHERE {where} "  # nosec B608
+                "ORDER BY updated_at DESC, endpoint_id LIMIT %s OFFSET %s",
+                (*params, int(limit), int(offset)),
+            ).fetchall()
+        endpoints = [FleetEndpoint.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]
+        return endpoints, int(total_row[0] if total_row else 0)

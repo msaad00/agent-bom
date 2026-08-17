@@ -41,6 +41,8 @@ ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id TEXT NOT NULL DEF
 CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id ON fleet_agents(canonical_id);
 CREATE INDEX IF NOT EXISTS idx_fleet_tenant_state_trust_name ON fleet_agents(tenant_id,lifecycle_state,trust_score DESC,name);
 CREATE INDEX IF NOT EXISTS idx_fleet_tenant_name_lower ON fleet_agents(tenant_id,LOWER(name));
+CREATE TABLE IF NOT EXISTS fleet_endpoints (tenant_id TEXT NOT NULL,endpoint_id TEXT NOT NULL,completeness TEXT NOT NULL,updated_at TEXT NOT NULL,data JSONB NOT NULL,PRIMARY KEY(tenant_id,endpoint_id));
+CREATE INDEX IF NOT EXISTS idx_fleet_endpoints_tenant_updated ON fleet_endpoints(tenant_id,updated_at DESC,endpoint_id);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_batch ON scan_jobs(team_id,batch_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_parent ON scan_jobs(team_id,parent_job_id,created_at DESC);
@@ -242,7 +244,7 @@ BEGIN
     'idempotency_keys','proxy_replay_log','tenant_quota_overrides','tenant_graph_retention_overrides','tenant_score_config_overrides',
     'mcp_client_configs','model_provider_keys','model_virtual_keys','risk_campaign_workflows','governance_audit_log','cloud_connections','ticketing_connections','ticket_links',
     'control_plane_sources','credential_refs','audit_chain_checkpoint','managed_trial_invitations','managed_trial_tenants','compliance_hub_findings','hub_findings_current',
-    'hub_findings_current_observations','hub_cve_intel','hub_framework_refs'
+    'hub_findings_current_observations','hub_cve_intel','hub_framework_refs','fleet_endpoints'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY',t);

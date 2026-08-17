@@ -53,7 +53,7 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Agent.agent_type` enum values | 30 |
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
-| `docs/openapi/v1.json` | paths | 328 |
+| `docs/openapi/v1.json` | paths | 330 |
 | `docs/openapi/v1.json` | component schemas | 143 |
 
 <!-- DATA_MODEL_ATLAS:END -->
@@ -353,6 +353,7 @@ single-node `agent-bom serve` deployment.
 | `vulns`, `affected`, `cpe_matches`, `epss_scores`, `kev_entries` | Offline OSV/GHSA/NVD/Alpine/Debian-Security-Tracker/EPSS/KEV catalog plus NVD CPE applicability (`cpe_matches`) (`affected` rows are release-scoped for distro ecosystems, e.g. `debian:10`) | n/a (read-only catalog) |
 | `jobs` | Scan job state | yes (per-tenant SQLite path or in-row column) |
 | `fleet_agents` | Fleet inventory | yes |
+| `fleet_endpoints` | Latest privacy-safe workstation evidence per source ID | yes |
 | `gateway_policies` | Gateway policy rules | yes |
 | `policy_audit_log` | Gateway policy mutation audit | yes |
 | `sources` | Source registry | yes |
@@ -370,6 +371,7 @@ list/put plus session-scoped `app.current_tenant` for RLS.
 | `scan_jobs` | `ScanJob` (api/models.py) | global `job_id` PK + tenant column (`team_id` / `tenant_id`) |
 | `cis_benchmark_checks` | CIS benchmark JSON blobs normalized via `analytics_contract.build_cis_benchmark_check_rows` | indexed cloud/status/priority remediation rows for `/v1/cis/checks`; backfilled by `scripts/migrations/backfill_cis_benchmark_checks.py` |
 | `fleet_agents` | `FleetAgent` (api/fleet_store.py) | trust score + lifecycle state |
+| `fleet_endpoints` | `FleetEndpoint` (api/fleet_store.py) | platform, bounded counts, collector truth, and privacy contract; no raw process rows |
 | `api_keys` | `ApiKey` (api/auth.py) | scrypt hashes, expiry, role, tenant |
 | `exceptions` | `Exception` (api/exceptions.py) | suppression workflow |
 | `gateway_policies` + `policy_audit_log` | `GatewayPolicy` | RBAC-gated mutations, tenant-native reads |

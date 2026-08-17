@@ -193,6 +193,55 @@ async def fleet_stats(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get("/fleet/endpoints", tags=["fleet"])
+async def list_fleet_endpoints(
+    request: Request,
+    search: str | None = None,
+    completeness: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """List latest privacy-safe workstation evidence, one row per endpoint."""
+
+    if completeness not in (None, "complete", "partial"):
+        raise HTTPException(status_code=422, detail="completeness must be complete or partial")
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    tenant_id = require_request_tenant_id(request)
+    store = _get_fleet_store()
+    query = getattr(store, "query_endpoints", None)
+    if not callable(query):
+        return {"endpoints": [], "count": 0, "total": 0, "limit": limit, "offset": offset, "has_more": False}
+    endpoints, total = await _store_call(
+        query,
+        tenant_id,
+        search=(search or "").strip() or None,
+        completeness=completeness,
+        limit=limit,
+        offset=offset,
+    )
+    return {
+        "endpoints": [endpoint.model_dump() for endpoint in endpoints],
+        "count": len(endpoints),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + len(endpoints) < total,
+    }
+
+
+@router.get("/fleet/endpoints/{endpoint_id}", tags=["fleet"])
+async def get_fleet_endpoint(request: Request, endpoint_id: str) -> dict[str, Any]:
+    """Return one tenant-scoped endpoint inventory summary."""
+
+    tenant_id = require_request_tenant_id(request)
+    getter = getattr(_get_fleet_store(), "get_endpoint", None)
+    endpoint = await _store_call(getter, endpoint_id, tenant_id=tenant_id) if callable(getter) else None
+    if endpoint is None:
+        raise HTTPException(status_code=404, detail="Fleet endpoint not found")
+    return cast(dict[str, Any], endpoint.model_dump())
+
+
 @router.get("/fleet/{agent_id}", tags=["fleet"])
 async def get_fleet_agent(request: Request, agent_id: str) -> dict[str, Any]:
     """Get a single fleet agent with trust score breakdown."""

@@ -41,6 +41,7 @@ import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useChartTheme } from "@/lib/theme-colors";
+import { EndpointFleetPanel } from "@/components/endpoint-fleet-panel";
 
 function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -257,6 +258,8 @@ export default function FleetPage() {
           </button>
         </div>
       </div>
+
+      <EndpointFleetPanel />
 
       {/* Trust Threshold Settings */}
       <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl p-4">

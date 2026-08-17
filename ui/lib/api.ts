@@ -88,6 +88,8 @@ import type {
   FleetQuarantineResult,
   FleetStatsResponse,
   FleetSyncResult,
+  FleetEndpoint,
+  FleetEndpointsResponse,
   ScanSchedule,
   ScheduleCreateRequest,
   GatewayPolicy,
@@ -322,6 +324,8 @@ export type {
   FleetQuarantineResult,
   FleetStatsResponse,
   FleetSyncResult,
+  FleetEndpoint,
+  FleetEndpointsResponse,
   ScanSchedule,
   ScheduleCreateRequest,
   PolicyMode,
@@ -1409,6 +1413,22 @@ export const api = {
   quarantineFleetAgent: (agentId: string) =>
     post<FleetQuarantineResult>(`/v1/fleet/${encodeURIComponent(agentId)}/quarantine`, {}),
   getFleetStats: () => get<FleetStatsResponse>("/v1/fleet/stats"),
+  listFleetEndpoints: (filters?: {
+    search?: string | undefined;
+    completeness?: "complete" | "partial" | undefined;
+    limit?: number | undefined;
+    offset?: number | undefined;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.completeness) params.set("completeness", filters.completeness);
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    const qs = params.toString();
+    return get<FleetEndpointsResponse>(`/v1/fleet/endpoints${qs ? `?${qs}` : ""}`);
+  },
+  getFleetEndpoint: (endpointId: string) =>
+    get<FleetEndpoint>(`/v1/fleet/endpoints/${encodeURIComponent(endpointId)}`),
 
   // ── Connectors / sources ──
   listConnectors: () => get<ConnectorsResponse>("/v1/connectors"),

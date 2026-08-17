@@ -917,6 +917,8 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 "results push payload missing recognized fields; expected at least one of source_id, agents, blast_radii, warnings, summary"
             ),
         )
+    if body.endpoint_inventory is not None and not body.source_id:
+        raise HTTPException(status_code=422, detail="endpoint_inventory requires a stable source_id")
     tenant_id = _tenant_id(request)
     job = ScanJob(
         job_id=str(uuid.uuid4()),
@@ -934,6 +936,21 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         job_result["pushed"] = True
         job.result = job_result
         job.progress.append(f"Received via push from source={body.source_id}")
+        if body.source_id and body.endpoint_inventory:
+            from agent_bom.api.fleet_store import endpoint_inventory_evidence, endpoint_summary_from_inventory
+
+            endpoint = endpoint_summary_from_inventory(
+                endpoint_id=body.source_id,
+                tenant_id=tenant_id,
+                inventory=body.endpoint_inventory,
+                scan_id=str(job_result.get("scan_id") or job.job_id),
+                observed_at=str(job_result.get("observed_at") or job_result.get("scan_timestamp") or job.created_at),
+            )
+            _get_fleet_store().put_endpoint(endpoint)
+            # Store and graph only the bounded evidence summary. Raw process,
+            # application, service, listener, container, and image rows remain
+            # on the source endpoint and never enter the control-plane job.
+            job_result["endpoint_inventory"] = endpoint_inventory_evidence(endpoint)
         try:
             _persist_graph_snapshot(job, job_result)
         except Exception as exc:  # noqa: BLE001

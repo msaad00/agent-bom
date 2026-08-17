@@ -128,7 +128,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     markers = [
-        "## What it is",
+        "## Scan, correlate, and act",
         "<summary><b>Control-plane architecture</b></summary>",
         "## Who it is for",
         "## Quick start",
@@ -181,18 +181,14 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "demo.agent-bom.com" not in readme
     assert "## How it works" not in readme
 
-    # Two paragraphs, not three: what it does and where it runs, then the
-    # provenance guarantee. The middle paragraph restated the first.
-    current_what_it_is = """`agent-bom` scans repositories, images, and cloud accounts, then correlates what
-it finds into one Finding + UnifiedGraph model — powering CLI and CI artifacts,
-fleet and browser investigations, compliance evidence, and runtime policy. Run
-the scanner without an account, or deploy the control plane inside your own
-cloud, VPC, cluster, database, identity, and audit boundary.
-
-Graph provenance stays explicit: collected, inferred, static, and runtime
-relationships remain distinct, and unavailable evidence is never upgraded to
-observed."""
-    assert current_what_it_is in readme
+    # The opening is one Agent-Bom product paragraph plus four scannable
+    # outcome/trust bullets. Workflow and architecture detail belongs in the
+    # diagrams, not in a second prose manifesto.
+    intro = readme.split("## Scan, correlate, and act", 1)[1].split("workflow-dark.svg", 1)[0]
+    assert "one Finding + UnifiedGraph model" in intro
+    for label in ("Start locally or in CI", "Centralize when ready", "Act with context", "Keep evidence honest"):
+        assert f"**{label}:**" in intro
+    assert "### From source to verified action" not in intro
 
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
     primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)

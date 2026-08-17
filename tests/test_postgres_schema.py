@@ -87,6 +87,7 @@ def test_all_expected_tables_exist():
         "job_queue",
         "api_rate_limits",
         "fleet_agents",
+        "fleet_endpoints",
         "gateway_policies",
         "policy_audit_log",
         "audit_log",
@@ -599,6 +600,13 @@ def test_rls_helpers_exist():
 def test_fleet_agents_rls_policy_exists():
     assert "ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY" in SQL
     assert "CREATE POLICY fleet_agents_tenant_isolation ON fleet_agents" in SQL
+
+
+def test_fleet_endpoints_has_tenant_key_and_rls_policy():
+    assert {"tenant_id", "endpoint_id", "completeness", "updated_at", "data"}.issubset(_columns_for("fleet_endpoints"))
+    assert "PRIMARY KEY (tenant_id, endpoint_id)" in SQL
+    assert "ALTER TABLE fleet_endpoints ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY fleet_endpoints_tenant_isolation ON fleet_endpoints" in SQL
 
 
 def test_scan_schedules_rls_policy_exists():

@@ -63,7 +63,7 @@ def test_workflow_maps_sources_to_verified_outcomes() -> None:
         assert label in svg
     for source in (
         "Repository + CI",
-        "Workstation / endpoint",
+        "Workstation + endpoint",
         "Images + Kubernetes",
         "Cloud + data platforms",
         "MCP + runtime",
@@ -72,7 +72,7 @@ def test_workflow_maps_sources_to_verified_outcomes() -> None:
     for outcome in ("SARIF", "CycloneDX", "SPDX", "Control plane", "Runtime policy"):
         assert outcome in svg
     assert "Finding + UnifiedGraph" in svg
-    assert "Path -&gt; Impact -&gt; Owner -&gt; Fix -&gt; Verify" in svg
+    assert "PATH  ›  IMPACT  ›  OWNER  ›  FIX  ›  VERIFY" in svg
     assert "Unavailable remains unavailable" in svg
     assert "Raw source + credentials stay local" in svg
     assert _audit_layout(svg) == []
@@ -84,10 +84,10 @@ def test_architecture_includes_core_surfaces() -> None:
     assert "Unified Finding" in svg
     assert "UnifiedGraph" in svg
     assert f"{MCP_TOOL_COUNT} tools" in svg
-    assert f"{REST_OPERATION_COUNT} ops" in svg
-    assert "Agents &amp; MCP" in svg
-    assert "4 connect · 16 scan" in svg
-    assert "Scheduler / events" in svg
+    assert f"{REST_OPERATION_COUNT} operations" in svg
+    assert "Agents + MCP + models" in svg
+    assert "Cloud + data" in svg
+    assert "Fleet + scheduler" in svg
 
 
 def test_persona_value_renders_buyer_lanes() -> None:
@@ -135,12 +135,13 @@ def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
 
 def test_readme_surfaces_the_end_to_end_workflow_before_architecture_detail() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    workflow_heading = readme.index("### From source to verified action")
+    workflow_heading = readme.index("## Scan, correlate, and act")
     workflow_art = readme.index("workflow-dark.svg", workflow_heading)
     architecture_detail = readme.index("<summary><b>Control-plane architecture</b></summary>")
     assert workflow_heading < workflow_art < architecture_detail
     assert "workflow-light.svg" in readme[workflow_heading:architecture_detail]
     assert "raw source and credentials stay local" in readme[workflow_heading:architecture_detail].lower()
+    assert "### From source to verified action" not in readme
 
 
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:
@@ -237,7 +238,8 @@ def test_readme_flow_diagrams_keep_a_ten_pixel_rendered_text_floor() -> None:
 
     for name, (svg, readme_scale) in {
         "how-it-works": (how_it_works("light"), 1100 / 1120),
-        "workflow": (workflow("light"), 1100 / 1400),
+        "workflow": (workflow("light"), 1100 / 1120),
+        "architecture": (architecture("light"), 1000 / 1120),
         "blast-radius": (blast_radius("light"), 900 / 960),
     }.items():
         sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]
@@ -259,12 +261,11 @@ def test_dense_diagrams_hold_their_improved_rendered_text_floor() -> None:
     than the clipped version did *and* fits: 7.77px against the 7.05px that was
     overflowing.
 
-    Architecture keeps a single row and so keeps the lower floor. Reaching the
-    flow diagrams' 10px would need the same treatment — a design change rather
-    than a scale factor.
+    Architecture now uses the same layered reflow as the workflow diagram, so
+    it is covered by the ten-pixel README floor above. The persona band remains
+    intentionally denser because it is paired with an accessible HTML table.
     """
     for name, (svg, readme_scale, floor) in {
-        "architecture": (architecture("light"), 900 / 960, 6.5),
         "persona-value": (persona_value("light"), 900 / 1280, 7.5),
     }.items():
         sizes = [float(value) for value in re.findall(r'font-size="([0-9.]+)"', svg)]

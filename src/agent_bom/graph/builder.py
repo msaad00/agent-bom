@@ -1201,6 +1201,13 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("ci-graph overlay failed", exc_info=True)
 
+    try:
+        from agent_bom.graph.endpoint_overlay import apply_endpoint_inventory_overlay
+
+        apply_endpoint_inventory_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("endpoint-inventory overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")

@@ -644,7 +644,7 @@ class EvaluateRequest(BaseModel):
 
 class ProxyAuditIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    source_id: str = ""
+    source_id: str = Field(default="", max_length=200)
     session_id: str = ""
     idempotency_key: str = ""
     alerts: list[dict[str, Any]] = Field(default_factory=list)
@@ -765,12 +765,13 @@ class ScanRunPayload(BaseModel):
 class PushPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    source_id: str = ""
+    source_id: str = Field(default="", max_length=200)
     idempotency_key: str = ""
     agents: list[dict[str, Any]] = Field(default_factory=list)
     blast_radii: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
     scan_run: ScanRunPayload | None = None
+    endpoint_inventory: dict[str, Any] | None = None
 
 
 class ScheduleCreate(BaseModel):

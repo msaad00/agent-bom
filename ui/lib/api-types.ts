@@ -2511,6 +2511,29 @@ export interface FleetStatsResponse {
   low_trust_count: number;
 }
 
+export interface FleetEndpoint {
+  endpoint_id: string;
+  tenant_id: string;
+  platform: Record<string, string>;
+  counts: Record<string, number | null>;
+  collector_status: Record<string, string>;
+  collector_messages: Record<string, string>;
+  privacy: Record<string, boolean>;
+  completeness: "complete" | "partial";
+  last_scan_id: string;
+  observed_at: string;
+  updated_at: string;
+}
+
+export interface FleetEndpointsResponse {
+  endpoints: FleetEndpoint[];
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
 export interface FleetSyncResult {
   synced: number;
   new: number;

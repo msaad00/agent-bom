@@ -22,13 +22,35 @@ Fleet](proxy-vs-gateway-vs-fleet.md).
 
 ## What ships today
 
-The endpoint-fleet path is real, but it is an opt-in scan + push model:
+The endpoint-fleet path is real, but it is an opt-in scan + push model with two
+complementary commands:
 
 1. the laptop runs `agent-bom agents`
 2. discovery and live MCP introspection happen locally
 3. the result is sanitized and pushed to the control plane with `--push-url`
 4. the control plane surfaces it in `/fleet`, `/agents`, `/mesh`, `/security-graph`,
    `/gateway`, and `/findings`
+
+A bounded workstation sweep adds installed applications, running processes,
+services, local listeners, containers, and images. It collects names, state,
+counts, and local listener posture; it does not collect process arguments,
+environment values, browser history, arbitrary home-directory contents, or
+remote network addresses.
+
+```bash
+agent-bom scan \
+  --preset workstation \
+  --offline \
+  --push-url https://agent-bom.internal.example.com \
+  --push-api-key "$AGENT_BOM_PUSH_API_KEY"
+```
+
+The push client adds a stable hashed source ID by default. Set
+`AGENT_BOM_PUSH_SOURCE_ID` when an MDM or enrollment system owns the endpoint
+identity. The control plane keeps the latest bounded summary per tenant and
+source ID in `/fleet`; raw process/service rows remain in the authenticated scan
+result, not the fleet list or graph node. A missing runtime or denied collector
+is shown as partial/unavailable, never as zero or clean.
 
 The endpoint command is:
 
@@ -66,7 +88,7 @@ Inventory confidence on this path:
 
 Important boundary:
 
-- this is not a managed endpoint agent
+- this is not a managed endpoint agent or EDR
 - there is no MDM or quarantine control channel today
 - the pilot model is explicit local execution on a schedule you control
 

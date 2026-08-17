@@ -192,6 +192,17 @@ CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name);
 CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state);
 CREATE INDEX IF NOT EXISTS idx_fleet_tenant ON fleet_agents(tenant_id);
 
+CREATE TABLE IF NOT EXISTS fleet_endpoints (
+    tenant_id    TEXT NOT NULL,
+    endpoint_id  TEXT NOT NULL,
+    completeness TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    data         JSONB NOT NULL,
+    PRIMARY KEY (tenant_id, endpoint_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fleet_endpoints_tenant_updated
+    ON fleet_endpoints(tenant_id, updated_at DESC, endpoint_id);
+
 -- ── Tables: Gateway Policies ──────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS gateway_policies (
@@ -875,6 +886,9 @@ ALTER TABLE trend_history FORCE ROW LEVEL SECURITY;
 ALTER TABLE fleet_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fleet_agents FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE fleet_endpoints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fleet_endpoints FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY;
 
@@ -892,6 +906,21 @@ BEGIN
         CREATE POLICY teams_tenant_isolation ON teams
             USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
             WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'fleet_endpoints'
+          AND policyname = 'fleet_endpoints_tenant_isolation'
+    ) THEN
+        CREATE POLICY fleet_endpoints_tenant_isolation ON fleet_endpoints
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
     END IF;
 END
 $$;

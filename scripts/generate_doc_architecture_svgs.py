@@ -241,7 +241,7 @@ def _tier_down_arrow(cx: int, y: int, label: str, color: str) -> str:
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7",
+                "font-size": "11.5",
                 "font-weight": "800",
                 "letter-spacing": "0.1em",
                 "fill": color,
@@ -297,7 +297,7 @@ def _hub_node(
     )
 
 
-def _trust_footer(w: int, h: int, t: dict, message: str, *, height: int = 28) -> str:
+def _trust_footer(w: int, h: int, t: dict, message: str, *, height: int = 28, font_size: float = 8.5) -> str:
     y = h - height - 12
     return f'<rect x="24" y="{y}" width="{w - 48}" height="{height}" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>' + _text(
         w // 2,
@@ -306,7 +306,7 @@ def _trust_footer(w: int, h: int, t: dict, message: str, *, height: int = 28) ->
         **{
             "text-anchor": "middle",
             "font-family": "Inter,system-ui,sans-serif",
-            "font-size": "8.5",
+            "font-size": str(font_size),
             "font-weight": "600",
             "fill": t["trust"],
         },
@@ -1120,7 +1120,11 @@ def how_it_works(theme_name: str) -> str:
 def workflow(theme_name: str) -> str:
     """Render the end-to-end evidence workflow from source to verified action."""
     t = THEMES[theme_name]
-    width, height = 1400, 720
+    # README renders this image at roughly 900px. A wide five-column canvas
+    # made technically-correct copy land below a comfortable reading size.
+    # Keep the canvas close to its rendered width and use vertical layers:
+    # sources -> processing -> decisions -> outcomes -> trust boundary.
+    width, height = 1120, 1290
     parts = _svg_open(
         width,
         height,
@@ -1130,12 +1134,12 @@ def workflow(theme_name: str) -> str:
     parts.append(f'<rect width="{width}" height="{height}" rx="24" fill="{t["bg"]}"/>')
     parts.append(
         _text(
-            40,
-            50,
+            36,
+            45,
             "FROM SOURCE TO VERIFIED ACTION",
             **{
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "13",
+                "font-size": "15",
                 "font-weight": "800",
                 "letter-spacing": "0.16em",
                 "fill": t["accent"],
@@ -1144,12 +1148,12 @@ def workflow(theme_name: str) -> str:
     )
     parts.append(
         _text(
-            40,
-            86,
-            "One workflow across developer, endpoint, CI, cloud, control plane, and runtime",
+            36,
+            82,
+            "One evidence workflow across every environment",
             **{
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "24",
+                "font-size": "28",
                 "font-weight": "750",
                 "fill": t["title"],
             },
@@ -1157,8 +1161,8 @@ def workflow(theme_name: str) -> str:
     )
 
     source_cards = (
-        ("repo", "Repository + CI", "code · deps · IaC · secrets"),
-        ("endpoint", "Workstation / endpoint", "configs · agents · MCP · browsers"),
+        ("repo", "Repository + CI", "code · dependencies · IaC · secrets"),
+        ("endpoint", "Workstation + endpoint", "apps · processes · agents · MCP"),
         ("cluster", "Images + Kubernetes", "registry · filesystem · workloads"),
         ("cloud", "Cloud + data platforms", "accounts · identity · posture"),
         ("runtime", "MCP + runtime", "servers · tools · live decisions"),
@@ -1170,15 +1174,15 @@ def workflow(theme_name: str) -> str:
         "cloud": ICONS["cloud"],
         "runtime": ICONS["tool"],
     }
-    left, gap, card_w, source_y, source_h = 40, 14, 252, 126, 96
+    left, gap, card_w, source_y, source_h = 36, 14, 340, 128, 112
     parts.append(
         _text(
             left,
             source_y - 14,
-            "SOURCES",
+            "1 · EVIDENCE SOURCES",
             **{
                 "font-family": "ui-monospace,monospace",
-                "font-size": "13",
+                "font-size": "15",
                 "font-weight": "800",
                 "letter-spacing": "0.13em",
                 "fill": t["lane"],
@@ -1186,19 +1190,21 @@ def workflow(theme_name: str) -> str:
         )
     )
     for index, (key, title, detail) in enumerate(source_cards):
-        x = left + index * (card_w + gap)
-        parts.append(
-            f'<rect x="{x}" y="{source_y}" width="{card_w}" height="{source_h}" rx="12" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-        )
-        parts.append(_icon_box(x + 14, source_y + 15, source_icons[key], t, accent=True, size=28))
+        row, col = divmod(index, 3)
+        row_count = 3 if row == 0 else 2
+        row_width = row_count * card_w + (row_count - 1) * gap
+        x = (width - row_width) / 2 + col * (card_w + gap)
+        y = source_y + row * (source_h + gap)
+        parts.append(f'<rect x="{x}" y="{y}" width="{card_w}" height="{source_h}" rx="14" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(x + 16, y + 16, source_icons[key], t, accent=True, size=34))
         parts.append(
             _text(
-                x + 52,
-                source_y + 34,
+                x + 62,
+                y + 40,
                 title,
                 **{
                     "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "14",
+                    "font-size": "18",
                     "font-weight": "750",
                     "fill": t["text"],
                 },
@@ -1206,18 +1212,18 @@ def workflow(theme_name: str) -> str:
         )
         parts.append(
             _text(
-                x + 14,
-                source_y + 61,
+                x + 16,
+                y + 76,
                 detail,
                 **{
                     "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "13",
+                    "font-size": "14",
                     "fill": t["text_muted"],
                 },
             )
         )
         if key == "cloud":
-            logo_y = source_y + 69
+            logo_y = y + 82
             official_icons = (
                 ("aws-cloud.svg", "AWS"),
                 ("azure-cloud.svg", "Azure"),
@@ -1228,19 +1234,19 @@ def workflow(theme_name: str) -> str:
                     filename,
                     uid=f"wf-{theme_name}-{logo_index}",
                 )
-                chip_x = x + 14 + logo_index * 74
-                logo_size = 18
+                chip_x = x + 16 + logo_index * 100
+                logo_size = 22
                 scale = min(logo_size / vb_w, logo_size / vb_h)
                 parts.append(
-                    f'<rect x="{chip_x}" y="{logo_y}" width="68" height="22" rx="6" fill="#ffffff" stroke="#d4d4d8"/>'
-                    f'<g transform="translate({chip_x + 4},{logo_y + 2}) scale({scale})">{inner}</g>'
+                    f'<rect x="{chip_x}" y="{logo_y}" width="92" height="26" rx="7" fill="#ffffff" stroke="#d4d4d8"/>'
+                    f'<g transform="translate({chip_x + 5},{logo_y + 2}) scale({scale})">{inner}</g>'
                     + _text(
-                        chip_x + 27,
-                        logo_y + 16,
+                        chip_x + 36,
+                        logo_y + 18,
                         label,
                         **{
                             "font-family": "Inter,system-ui,sans-serif",
-                            "font-size": "13",
+                            "font-size": "13.5",
                             "font-weight": "700",
                             "fill": "#18181b",
                         },
@@ -1248,41 +1254,55 @@ def workflow(theme_name: str) -> str:
                 )
 
     stages = (
-        ("01", "COLLECT + SCAN", "Read-only intake", "scope + completeness"),
-        ("02", "NORMALIZE", "Finding + UnifiedGraph", "identity + provenance"),
-        ("03", "CORRELATE + PRIORITIZE", "reachability + blast radius", "evidence-backed rank"),
-        ("04", "OWN + REMEDIATE", "owner + SLA + ticket", "fix or accept risk"),
-        ("05", "VERIFY + ACT", "rescan + terminal state", "export · centralize · enforce"),
+        ("01", "COLLECT + SCAN", "Read-only intake", "Scope and completeness stay explicit", "#38bdf8", "bug"),
+        ("02", "NORMALIZE", "Finding + UnifiedGraph", "Identity, provenance, and evidence state", "#818cf8", "package"),
+        ("03", "CORRELATE + PRIORITIZE", "Reachability + blast radius", "Rank paths with evidence, not raw volume", "#a78bfa", "graph"),
+        ("04", "OWN + REMEDIATE", "Owner + SLA + ticket", "Fix, accept risk, or mark a false positive", "#34d399", "tool"),
+        ("05", "VERIFY + ACT", "Rescan + terminal state", "Export, centralize, or enforce at runtime", "#fbbf24", "shield"),
     )
-    stage_y, stage_h = 286, 176
-    for index, (number, title, line_one, line_two) in enumerate(stages):
-        x = left + index * (card_w + gap)
-        accent = ("#38bdf8", "#818cf8", "#a78bfa", "#34d399", "#fbbf24")[index]
+    stage_left, stage_w, stage_y, stage_h, stage_gap = 84, 952, 454, 102, 14
+    parts.append(
+        _text(
+            left,
+            stage_y - 18,
+            "2 · EVIDENCE PIPELINE",
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "15",
+                "font-weight": "800",
+                "letter-spacing": "0.13em",
+                "fill": t["lane"],
+            },
+        )
+    )
+    for index, (number, title, line_one, line_two, accent, icon_key) in enumerate(stages):
+        x = stage_left
+        y = stage_y + index * (stage_h + stage_gap)
         parts.append(
-            f'<rect x="{x}" y="{stage_y}" width="{card_w}" height="{stage_h}" rx="14" '
-            f'fill="{t["panel"]}" stroke="{accent}" stroke-width="1.4"/>'
+            f'<rect x="{x}" y="{y}" width="{stage_w}" height="{stage_h}" rx="16" fill="{t["panel"]}" stroke="{accent}" stroke-width="1.6"/>'
         )
         parts.append(
             _text(
-                x + 16,
-                stage_y + 30,
+                x + 22,
+                y + 38,
                 number,
                 **{
                     "font-family": "ui-monospace,monospace",
-                    "font-size": "13",
+                    "font-size": "17",
                     "font-weight": "800",
                     "fill": accent,
                 },
             )
         )
+        parts.append(_icon_box(x + 70, y + 22, ICONS[icon_key], t, accent=True, size=42))
         parts.append(
             _text(
-                x + 16,
-                stage_y + 61,
+                x + 130,
+                y + 39,
                 title,
                 **{
                     "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "13",
+                    "font-size": "18",
                     "font-weight": "800",
                     "fill": t["text"],
                 },
@@ -1290,45 +1310,46 @@ def workflow(theme_name: str) -> str:
         )
         parts.append(
             _text(
-                x + 16,
-                stage_y + 104,
+                x + 130,
+                y + 72,
                 line_one,
                 **{
                     "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "13",
-                    "font-weight": "650",
+                    "font-size": "15",
+                    "font-weight": "700",
                     "fill": t["text"],
                 },
             )
         )
         parts.append(
             _text(
-                x + 16,
-                stage_y + 132,
+                x + 470,
+                y + 72,
                 line_two,
                 **{
                     "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "13",
+                    "font-size": "15",
                     "fill": t["text_muted"],
                 },
             )
         )
         if index < len(stages) - 1:
-            start = x + card_w + 3
-            end = x + card_w + gap - 3
-            mid_y = stage_y + stage_h // 2
+            mid_x = width / 2
+            start_y = y + stage_h
+            end_y = y + stage_h + stage_gap
             parts.append(
-                f'<line x1="{start}" y1="{mid_y}" x2="{end - 5}" y2="{mid_y}" '
+                f'<line x1="{mid_x}" y1="{start_y + 2}" x2="{mid_x}" y2="{end_y - 5}" '
                 f'stroke="{t["arrow_accent"]}" stroke-width="2"/>'
-                f'<polygon points="{end},{mid_y} {end - 7},{mid_y - 5} {end - 7},{mid_y + 5}" fill="{t["arrow_accent"]}"/>'
+                f'<polygon points="{mid_x},{end_y} {mid_x - 5},{end_y - 7} {mid_x + 5},{end_y - 7}" fill="{t["arrow_accent"]}"/>'
             )
 
-    parts.append(f'<rect x="40" y="488" width="1316" height="52" rx="12" fill="{t["accent_fill"]}" stroke="{t["accent_stroke"]}"/>')
+    decision_y = stage_y + len(stages) * (stage_h + stage_gap) + 10
+    parts.append(f'<rect x="84" y="{decision_y}" width="952" height="54" rx="12" fill="{t["accent_fill"]}" stroke="{t["accent_stroke"]}"/>')
     parts.append(
         _text(
-            698,
-            521,
-            "Path -> Impact -> Owner -> Fix -> Verify",
+            width / 2,
+            decision_y + 35,
+            "3 · INVESTIGATE  ›  PATH  ›  IMPACT  ›  OWNER  ›  FIX  ›  VERIFY",
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
@@ -1339,51 +1360,66 @@ def workflow(theme_name: str) -> str:
         )
     )
 
-    outcomes = ("SARIF", "CycloneDX", "SPDX", "HTML / JSON", "Control plane", "Runtime policy")
-    chip_y, chip_gap, chip_w = 568, 12, 207
+    outcomes = ("SARIF", "CycloneDX", "SPDX", "HTML + JSON", "Control plane", "Runtime policy")
+    chip_y, chip_gap, chip_w = decision_y + 84, 12, 164
+    parts.append(
+        _text(
+            left,
+            chip_y - 14,
+            "4 · VERIFIED OUTCOMES",
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "15",
+                "font-weight": "800",
+                "letter-spacing": "0.13em",
+                "fill": t["lane"],
+            },
+        )
+    )
     for index, label in enumerate(outcomes):
         x = left + index * (chip_w + chip_gap)
-        parts.append(f'<rect x="{x}" y="{chip_y}" width="{chip_w}" height="46" rx="10" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(f'<rect x="{x}" y="{chip_y}" width="{chip_w}" height="52" rx="11" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
         parts.append(
             _text(
                 x + chip_w / 2,
-                chip_y + 29,
+                chip_y + 33,
                 label,
                 **{
                     "text-anchor": "middle",
                     "font-family": "ui-monospace,monospace",
-                    "font-size": "13",
+                    "font-size": "14",
                     "font-weight": "750",
                     "fill": t["chip"],
                 },
             )
         )
 
-    parts.append(f'<rect x="40" y="642" width="650" height="44" rx="10" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>')
+    trust_y = chip_y + 80
+    parts.append(f'<rect x="36" y="{trust_y}" width="516" height="50" rx="11" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>')
     parts.append(
         _text(
-            365,
-            670,
+            294,
+            trust_y + 32,
             "Raw source + credentials stay local",
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "13",
+                "font-size": "14",
                 "font-weight": "700",
                 "fill": t["trust"],
             },
         )
     )
-    parts.append(f'<rect x="706" y="642" width="650" height="44" rx="10" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>')
+    parts.append(f'<rect x="568" y="{trust_y}" width="516" height="50" rx="11" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>')
     parts.append(
         _text(
-            1031,
-            670,
+            826,
+            trust_y + 32,
             "Unavailable remains unavailable · partial stays explicit",
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "13",
+                "font-size": "14",
                 "font-weight": "700",
                 "fill": t["text_muted"],
             },
@@ -1394,305 +1430,202 @@ def workflow(theme_name: str) -> str:
 
 
 def architecture(theme_name: str) -> str:
-    """Layered control-plane map — visually distinct from the horizontal how-it-works pipeline."""
+    """Readable layered control-plane map for the README-scale embed."""
     t = THEMES[theme_name]
-    w, h = 960, 620
-    margin_x = 28
-    tier_w = w - 2 * margin_x
-    icon_size = 24
-
-    sources = [
-        ("package", "Supply chain", "15 eco"),
-        ("mcp", "Agents & MCP", "29 clients"),
-        ("cloud", "Cloud", "4 connect · 16 scan"),
-        ("iac", "IaC & OCI", "TF·K8s·img"),
-        ("lock", "Secrets", "refs only"),
-        ("model", "Models", "13 formats"),
-        ("sbom", "SBOM import", "CDX·SPDX"),
-    ]
-    engine_items = [
-        ("bug", "OSV scan", "batch"),
-        ("zap", "Enrichment", "NVD·EPSS"),
-        ("shield", "Posture", "CIS·MCP"),
-        ("graph", "Blast radius", "fusion"),
-        ("file", "Policy", "as-code"),
-    ]
-    evidence_items = [
-        ("finding", "Unified Finding", "one schema"),
-        ("graph", "UnifiedGraph", "attack paths"),
-        ("db", "Stores", "PG·SQLite"),
-        ("audit", "Audit chain", "signed"),
-    ]
-    platform_items = [
-        ("api", "REST API", f"{REST_OPERATION_COUNT} ops"),
-        ("gate", "Gateway", "runtime"),
-        ("mcp", "MCP server", f"{MCP_TOOL_COUNT} tools"),
-        ("fleet", "Fleet jobs", "Helm·EKS"),
-        ("audit", "Scheduler / events", "cadence·change"),
-    ]
-    people = [("cli", "CLI"), ("ui", "Web UI")]
-    agents = [("mcp", "MCP"), ("api", "SDK")]
-    artifacts = ["SARIF", "CDX", "SPDX", "OCSF", "HTML", "JSON"]
-
-    tier_y = [78, 192, 300, 448]
-    tier_h = [102, 96, 136, 140]
-    cx = w // 2
-
+    w, h = 1120, 1320
+    margin_x, band_w = 36, 1048
     parts = _svg_open(
         w,
         h,
         "agent-bom control-plane architecture",
-        "Layered sources, processing engine, platform, and consumers.",
+        "Sources enter a local processing engine, become tenant-scoped evidence, and leave through human, agent, and artifact surfaces.",
     )
     parts += [
-        f'<rect width="{w}" height="{h}" rx="14" fill="{t["bg"]}"/>',
-        f'<rect x="12" y="12" width="{w - 24}" height="{h - 24}" rx="18" fill="none" stroke="#6366f1" stroke-width="2" opacity="0.22"/>',
-        f'<rect x="{w - 118}" y="20" width="90" height="22" rx="11" fill="#312e81" opacity="0.85"/>',
+        f'<rect width="{w}" height="{h}" rx="22" fill="{t["bg"]}"/>',
         _text(
-            w - 73,
-            35,
-            "LAYERED",
+            36,
+            48,
+            "CONTROL-PLANE ARCHITECTURE",
             **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "8",
+                "font-family": "ui-monospace,monospace",
+                "font-size": "15",
                 "font-weight": "800",
                 "letter-spacing": "0.14em",
-                "fill": "#c7d2fe",
+                "fill": t["accent"],
             },
         ),
         _text(
-            margin_x,
-            40,
-            "Control-plane architecture",
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "20", "font-weight": "800", "fill": t["title"]},
-        ),
-        _text(
-            margin_x,
-            60,
-            "Vertical tiers · sources feed engine · evidence + platform · people + agents consume",
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
+            36,
+            86,
+            "Four layers from read-only intake to verified action",
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "28", "font-weight": "800", "fill": t["title"]},
         ),
     ]
 
-    def _tier_band(y: int, th: int, layer_key: str) -> str:
-        _, accent, _text_c = ARCH_LAYER_COLORS[layer_key]
-        return (
-            f'<rect x="{margin_x}" y="{y}" width="{tier_w}" height="{th}" rx="12" fill="{t["panel"]}" '
-            f'stroke="{accent}" stroke-width="1.2" opacity="0.95"/>'
-            f'<rect x="{margin_x}" y="{y}" width="{tier_w}" height="3" rx="12" fill="{accent}" opacity="0.55"/>'
-        )
-
-    def _tier_chip(
-        x: int,
-        y: int,
-        cw: int,
-        ch: int,
-        icon: str,
-        title: str,
-        badge: str,
-        layer_key: str,
-        *,
-        highlight: bool = False,
-    ) -> None:
-        _, accent, text_c = ARCH_LAYER_COLORS[layer_key]
-        fill = t["accent_fill"] if highlight else t["card"]
-        stroke = accent if highlight else t["card_stroke"]
-        text_x = x + icon_size + 14
+    def band(y: int, height: int, layer: str, number: str, title: str, boundary: str) -> None:
+        accent = ARCH_LAYER_COLORS[layer][1]
         parts.append(
-            f'<rect x="{x}" y="{y}" width="{cw}" height="{ch}" rx="8" fill="{fill}" stroke="{stroke}" '
-            f'stroke-width="{"1.5" if highlight else "1"}"/>'
+            f'<rect x="{margin_x}" y="{y}" width="{band_w}" height="{height}" rx="16" fill="{t["panel"]}" stroke="{accent}" stroke-width="1.5"/>'
         )
-        parts.append(_icon_box(x + 8, y + (ch - icon_size) // 2, ICONS[icon], t, accent=highlight, size=icon_size))
+        parts.append(f'<rect x="{margin_x}" y="{y}" width="6" height="{height}" rx="3" fill="{accent}"/>')
         parts.append(
             _text(
-                text_x,
-                y + ch // 2 - 1,
-                title,
-                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "8.5", "font-weight": "700", "fill": t["text"]},
+                margin_x + 22,
+                y + 35,
+                f"{number} · {title}",
+                **{
+                    "font-family": "Inter,system-ui,sans-serif",
+                    "font-size": "17",
+                    "font-weight": "800",
+                    "letter-spacing": "0.06em",
+                    "fill": accent,
+                },
             )
         )
         parts.append(
             _text(
-                text_x,
-                y + ch // 2 + 10,
-                badge,
+                margin_x + band_w - 22,
+                y + 35,
+                boundary,
                 **{
-                    "font-family": "ui-monospace,monospace",
-                    "font-size": "6.5",
+                    "text-anchor": "end",
+                    "font-family": "Inter,system-ui,sans-serif",
+                    "font-size": "14",
+                    "font-weight": "700",
+                    "fill": t["text_muted"],
+                },
+            )
+        )
+
+    def card(x: int, y: int, width: int, height: int, icon: str, title: str, detail: str, layer: str, *, highlight: bool = False) -> None:
+        accent = ARCH_LAYER_COLORS[layer][1]
+        fill = t["accent_fill"] if highlight else t["card"]
+        stroke = accent if highlight else t["card_stroke"]
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{width}" height="{height}" rx="12" fill="{fill}" stroke="{stroke}" stroke-width="{"1.6" if highlight else "1"}"/>'
+        )
+        parts.append(_icon_box(x + 16, y + 18, ICONS[icon], t, accent=highlight, size=38))
+        parts.append(
+            _text(
+                x + 68,
+                y + 39,
+                title,
+                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "17", "font-weight": "800", "fill": t["text"]},
+            )
+        )
+        parts.append(
+            _text(
+                x + 68,
+                y + 65,
+                detail,
+                **{
+                    "font-family": "Inter,system-ui,sans-serif",
+                    "font-size": "14",
                     "font-weight": "600",
                     "fill": accent if highlight else t["text_muted"],
                 },
             )
         )
 
-    # Tier 1 — sources
-    y0, h0 = tier_y[0], tier_h[0]
-    parts.append(_tier_band(y0, h0, "sources"))
-    parts.append(_arch_tier_label(margin_x + 12, y0 + 10, tier_w - 24, "INTAKE SOURCES", "read-only", "sources", t))
-    chip_gap = 8
-    chip_h = 44
-    chip_w = (tier_w - 24 - (len(sources) - 1) * chip_gap) // len(sources)
-    for i, (icon, title, badge) in enumerate(sources):
-        cx_chip = margin_x + 12 + i * (chip_w + chip_gap)
-        _tier_chip(cx_chip, y0 + 32, chip_w, chip_h, icon, title, badge, "sources")
+    # 1. Five source families, arranged 3 + 2 rather than seven tiny columns.
+    y1, h1 = 122, 260
+    band(y1, h1, "sources", "1", "INTAKE SOURCES", "read-only collectors")
+    source_cards = (
+        ("package", "Code + supply chain", "repos · CI · packages · secrets"),
+        ("mcp", "Agents + MCP + models", "clients · servers · model files"),
+        ("cloud", "Cloud + data", "AWS · Azure · GCP · Snowflake"),
+        ("iac", "Images + infrastructure", "OCI · K8s · IaC · workloads"),
+        ("sbom", "Imported evidence", "CDX · SPDX · SARIF · scans"),
+    )
+    card_w, card_h, card_gap = 330, 82, 12
+    for index, item in enumerate(source_cards):
+        row, col = divmod(index, 3)
+        count = 3 if row == 0 else 2
+        row_width = count * card_w + (count - 1) * card_gap
+        x = (w - row_width) // 2 + col * (card_w + card_gap)
+        y = y1 + 54 + row * (card_h + 12)
+        card(x, y, card_w, card_h, *item, "sources")
 
-    parts.append(_tier_down_arrow(cx, y0 + h0 + 2, "INGEST", ARCH_LAYER_COLORS["sources"][1]))
+    parts.append(_tier_down_arrow(w // 2, y1 + h1 + 2, "COLLECT", ARCH_LAYER_COLORS["sources"][1]))
 
-    # Tier 2 — processing engine
-    y1, h1 = tier_y[1], tier_h[1]
-    parts.append(_tier_band(y1, h1, "engine"))
-    parts.append(_arch_tier_label(margin_x + 12, y1 + 10, tier_w - 24, "PROCESSING ENGINE", "local scan", "engine", t))
-    eng_gap = 10
-    eng_w = (tier_w - 24 - (len(engine_items) - 1) * eng_gap) // len(engine_items)
-    for i, (icon, title, badge) in enumerate(engine_items):
-        ex = margin_x + 12 + i * (eng_w + eng_gap)
-        _tier_chip(ex, y1 + 36, eng_w, 52, icon, title, badge, "engine")
+    # 2. Processing is a short sequence, not a wall of independent boxes.
+    y2, h2 = 414, 224
+    band(y2, h2, "engine", "2", "LOCAL PROCESSING ENGINE", "bounded + failure-honest")
+    engine = (
+        ("bug", "Scan", "OSV · SAST · posture"),
+        ("zap", "Enrich", "NVD · EPSS · KEV"),
+        ("graph", "Correlate", "identity · reachability"),
+        ("shield", "Prioritize", "blast radius · policy"),
+    )
+    eng_w = 244
+    for index, item in enumerate(engine):
+        x = margin_x + 22 + index * (eng_w + 10)
+        card(x, y2 + 62, eng_w, 104, *item, "engine")
 
-    parts.append(_tier_down_arrow(cx, y1 + h1 + 2, "PROCESS", ARCH_LAYER_COLORS["engine"][1]))
+    parts.append(_tier_down_arrow(w // 2, y2 + h2 + 2, "PERSIST", ARCH_LAYER_COLORS["engine"][1]))
 
-    # Tier 3 — evidence + platform (two columns, 2x2 grids)
-    y2, h2 = tier_y[2], tier_h[2]
-    parts.append(_tier_band(y2, h2, "platform"))
-    parts.append(_arch_tier_label(margin_x + 12, y2 + 10, tier_w - 24, "EVIDENCE & PLATFORM", "auth · self-hosted", "platform", t))
-    col_gap = 16
-    col_w = (tier_w - 24 - col_gap) // 2
-    left_x = margin_x + 12
-    right_x = left_x + col_w + col_gap
-    mini_gap = 4
-    mini_w = (col_w - mini_gap) // 2
-    mini_h = 29
-    grid_y = y2 + 32
-
-    def _mini_chip(gx: int, gy: int, icon: str, title: str, badge: str, *, highlight: bool = False) -> None:
-        _tier_chip(gx, gy, mini_w, mini_h, icon, title, badge, "platform", highlight=highlight)
-
-    for i, (icon, title, badge) in enumerate(evidence_items):
-        col, row = i % 2, i // 2
-        gx = left_x + col * (mini_w + mini_gap)
-        gy = grid_y + row * (mini_h + mini_gap)
-        _mini_chip(gx, gy, icon, title, badge, highlight=title in ("Unified Finding", "UnifiedGraph"))
-
-    for i, (icon, title, badge) in enumerate(platform_items):
-        col, row = i % 2, i // 2
-        gx = right_x + col * (mini_w + mini_gap)
-        gy = grid_y + row * (mini_h + mini_gap)
-        _mini_chip(gx, gy, icon, title, badge)
-
-    parts.append(_tier_down_arrow(cx, y2 + h2 + 2, "DELIVER", ARCH_LAYER_COLORS["platform"][1]))
-
-    # Tier 4 — consumers
-    y3, h3 = tier_y[3], tier_h[3]
-    parts.append(_tier_band(y3, h3, "consumers"))
-    parts.append(_arch_tier_label(margin_x + 12, y3 + 10, tier_w - 24, "CONSUMERS & ARTIFACTS", "deliver", "consumers", t))
-
-    cons_gap = 12
-    cons_col_w = (tier_w - 24 - 2 * cons_gap) // 3
-    cons_left = margin_x + 12
-    cons_right = cons_left + cons_col_w + cons_gap
-
-    def _consumer_mini(y: int, x: int, cw: int, icon: str, label: str) -> int:
-        mh = 30
-        parts.append(f'<rect x="{x}" y="{y}" width="{cw}" height="{mh}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(x + 10, y + 3, ICONS[icon], t, size=22))
-        parts.append(
-            _text(
-                x + 40,
-                y + 19,
-                label,
-                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]},
-            )
-        )
-        return mh
-
-    cy = y3 + 34
+    # 3. Separate the evidence model from the serving plane.
+    y3, h3 = 670, 342
+    band(y3, h3, "platform", "3", "EVIDENCE + SERVING PLANE", "tenant-scoped · authenticated")
+    col_gap, col_w = 18, 497
+    left_x, right_x = margin_x + 18, margin_x + 18 + col_w + col_gap
     parts.append(
         _text(
-            cons_left + cons_col_w // 2,
-            cy,
-            "PEOPLE",
+            left_x,
+            y3 + 70,
+            "EVIDENCE MODEL",
             **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7.5",
+                "font-family": "ui-monospace,monospace",
+                "font-size": "14",
                 "font-weight": "800",
                 "letter-spacing": "0.1em",
-                "fill": ARCH_LAYER_COLORS["consumers"][1],
+                "fill": ARCH_LAYER_COLORS["platform"][1],
             },
         )
     )
-    cy += 10
-    for icon, label in people:
-        h_card = _consumer_mini(cy, cons_left, cons_col_w, icon, label)
-        cy += h_card + 5
-
-    ay = y3 + 34
     parts.append(
         _text(
-            cons_right + cons_col_w // 2,
-            ay,
-            "AGENTS",
+            right_x,
+            y3 + 70,
+            "CONTROL + DELIVERY",
             **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7.5",
+                "font-family": "ui-monospace,monospace",
+                "font-size": "14",
                 "font-weight": "800",
                 "letter-spacing": "0.1em",
-                "fill": ARCH_LAYER_COLORS["consumers"][1],
+                "fill": ARCH_LAYER_COLORS["platform"][1],
             },
         )
     )
-    ay += 10
-    for icon, label in agents:
-        h_card = _consumer_mini(ay, cons_right, cons_col_w, icon, label)
-        ay += h_card + 5
+    evidence = (
+        ("finding", "Unified Finding", "scope · completeness · provenance", True),
+        ("graph", "UnifiedGraph", "assets · identities · paths", True),
+        ("db", "Portable stores", "SQLite · Postgres · Snowflake", False),
+    )
+    delivery = (
+        ("api", "REST API + MCP", f"{REST_OPERATION_COUNT} operations · {MCP_TOOL_COUNT} tools", False),
+        ("fleet", "Fleet + scheduler", "endpoints · jobs · change events", False),
+        ("gate", "Gateway + policy", "observe · decide · enforce", False),
+    )
+    for index, (icon, title, detail, highlight) in enumerate(evidence):
+        card(left_x, y3 + 88 + index * 74, col_w, 64, icon, title, detail, "platform", highlight=highlight)
+    for index, (icon, title, detail, highlight) in enumerate(delivery):
+        card(right_x, y3 + 88 + index * 74, col_w, 64, icon, title, detail, "platform", highlight=highlight)
 
-    art_y = y3 + 34
-    art_x = cons_right + cons_col_w + cons_gap
-    art_w = cons_col_w
-    parts.append(
-        _text(
-            art_x + art_w // 2,
-            art_y,
-            "ARTIFACTS",
-            **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7.5",
-                "font-weight": "800",
-                "letter-spacing": "0.1em",
-                "fill": ARCH_LAYER_COLORS["consumers"][1],
-            },
-        )
+    parts.append(_tier_down_arrow(w // 2, y3 + h3 + 2, "DELIVER", ARCH_LAYER_COLORS["platform"][1]))
+
+    # 4. Three outcome groups keep the audience and artifact story obvious.
+    y4, h4 = 1044, 206
+    band(y4, h4, "consumers", "4", "CONSUMERS + VERIFIED OUTCOMES", "least-privilege delivery")
+    outcomes = (
+        ("ui", "People", "CLI · Web UI · operators"),
+        ("mcp", "Agents", "MCP · SDK · automation"),
+        ("file", "Artifacts", "SBOM · SARIF · OCSF · HTML/JSON"),
     )
-    art_y += 10
-    chip_cols = 3
-    chip_gap = 5
-    chip_w = (art_w - (chip_cols - 1) * chip_gap) // chip_cols
-    chip_h = 20
-    for i, label in enumerate(artifacts):
-        col, row = i % chip_cols, i // chip_cols
-        ax = art_x + col * (chip_w + chip_gap)
-        ay_chip = art_y + row * (chip_h + chip_gap)
-        parts.append(
-            f'<rect x="{ax}" y="{ay_chip}" width="{chip_w}" height="{chip_h}" rx="5" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
-            f'<text x="{ax + chip_w / 2}" y="{ay_chip + 13}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" '
-            f'font-weight="700" fill="{t["chip"]}">{_esc(label)}</text>'
-        )
-    parts.append(
-        _text(
-            art_x + art_w // 2,
-            art_y + 2 * (chip_h + chip_gap) + 10,
-            "SIEM · webhooks",
-            **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7",
-                "font-weight": "600",
-                "fill": t["lane_muted"],
-            },
-        )
-    )
+    out_w = 330
+    for index, item in enumerate(outcomes):
+        x = margin_x + 22 + index * (out_w + 10)
+        card(x, y4 + 66, out_w, 92, *item, "consumers")
 
     parts.append(
         _trust_footer(
@@ -1700,11 +1633,12 @@ def architecture(theme_name: str) -> str:
             h,
             t,
             "READ-ONLY BY DEFAULT · no target writes · no secret values · self-hosted · signed evidence",
-            height=26,
+            height=38,
+            font_size=12.5,
         )
     )
     parts.append("</svg>")
-    return _scale_type("\n".join(parts), _ARCHITECTURE_TYPE_SCALE)
+    return "\n".join(parts)
 
 
 # Persona band accents — one restrained hue per buyer lane, on neutral cards.
@@ -2123,6 +2057,10 @@ def main() -> None:
         issues = _audit_layout(svg)
         if issues:
             raise SystemExit(f"{filename} layout issues: {issues[:5]}")
+        if filename.startswith(("workflow-", "architecture-")):
+            fit_issues = _audit_text_fit(svg)
+            if fit_issues:
+                raise SystemExit(f"{filename} text-fit issues: {fit_issues[:5]}")
         github_issues = _audit_github_safe(svg)
         if github_issues:
             raise SystemExit(f"{filename} GitHub SVG issues: {github_issues}")

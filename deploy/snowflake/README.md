@@ -19,7 +19,7 @@ never leave your account. There are two packagings here:
 
 | File | Purpose |
 | --- | --- |
-| `setup.sql` | One-shot SPCS bring-up: database/schema, the four backing tables (`scan_jobs`, `fleet_agents`, `gateway_policies`, `policy_audit_log` — the same schema `snowflake_store.py` auto-creates), image repository, compute pool, and the `agent_bom_service`. |
+| `setup.sql` | One-shot SPCS bring-up: database/schema and backing tables (`scan_jobs`, `fleet_agents`, `fleet_endpoints`, `gateway_policies`, `policy_audit_log` — the same schema `snowflake_store.py` auto-creates), image repository, compute pool, and the `agent_bom_service`. |
 | `service-spec.yaml` | SPCS service spec for the two containers — the FastAPI API (`8422`) and the Next.js UI (`3000`). Both share the service network namespace, so the UI reaches the API on `localhost` with **no public egress**; both endpoints are declared `public: false`. |
 | `streamlit_app.py` | Streamlit-in-Snowflake dashboard that reads the backing tables **directly** (no HTTP round-trip) via `st.connection("snowflake")`. |
 | `environment.yml` | Conda environment (`plotly`, `pandas`) for the Streamlit-in-Snowflake app. |

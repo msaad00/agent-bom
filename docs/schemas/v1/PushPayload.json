@@ -187,6 +187,19 @@
       "title": "Blast Radii",
       "type": "array"
     },
+    "endpoint_inventory": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Endpoint Inventory"
+    },
     "idempotency_key": {
       "default": "",
       "title": "Idempotency Key",
@@ -205,6 +218,7 @@
     },
     "source_id": {
       "default": "",
+      "maxLength": 200,
       "title": "Source Id",
       "type": "string"
     },

@@ -53,7 +53,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("compliance_hub", "sqlite/postgres", ("compliance_hub_findings", "hub_findings_current")),
     StorageSchemaComponent("access_review_campaigns", "sqlite/postgres", ("access_review_campaigns", "access_review_items")),
     StorageSchemaComponent("risk_campaign_workflows", "sqlite/postgres", ("risk_campaign_workflows",)),
-    StorageSchemaComponent("fleet", "sqlite/postgres/clickhouse", ("fleet_agents",)),
+    StorageSchemaComponent("fleet", "sqlite/postgres/snowflake", ("fleet_agents", "fleet_endpoints")),
     StorageSchemaComponent("graph", "sqlite/postgres", ("graph_nodes", "graph_edges", "graph_node_search")),
     StorageSchemaComponent("identity_scim", "sqlite/postgres", ("scim_users", "scim_groups")),
     # Agent-identity lifecycle is durable by default (SQLite single-node) and

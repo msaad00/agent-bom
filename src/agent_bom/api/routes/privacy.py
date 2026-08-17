@@ -109,6 +109,14 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
     unavailable: dict[str, str] = {}
     jobs = _try_records("jobs", lambda: _get_store().list_summary(tenant_id=tenant_id), unavailable)
     fleet = _try_records("fleet_agents", lambda: _get_fleet_store().list_by_tenant(tenant_id), unavailable)
+    fleet_endpoints: list[Any] = []
+    fleet_endpoint_total = 0
+    try:
+        query_endpoints = getattr(_get_fleet_store(), "query_endpoints", None)
+        if callable(query_endpoints):
+            fleet_endpoints, fleet_endpoint_total = query_endpoints(tenant_id, limit=record_limit, offset=0)
+    except RuntimeError:
+        unavailable["fleet_endpoints"] = _TENANT_STORE_UNAVAILABLE
     policies = _try_records("gateway_policies", lambda: _get_policy_store().list_policies(tenant_id=tenant_id), unavailable)
     schedules = _try_records("scan_schedules", lambda: _get_schedule_store().list_all(tenant_id=tenant_id), unavailable)
     sources = _try_records("sources", lambda: _get_source_store().list_all(tenant_id=tenant_id), unavailable)
@@ -139,6 +147,7 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
     counts = {
         "jobs": len(jobs),
         "fleet_agents": len(fleet),
+        "fleet_endpoints": fleet_endpoint_total,
         "gateway_policies": len(policies),
         "scan_schedules": len(schedules),
         "sources": len(sources),
@@ -167,6 +176,7 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
         payload["records"] = {
             "jobs": jobs[:limit],
             "fleet_agents": [_dump_record(record) for record in fleet[:limit]],
+            "fleet_endpoints": [_dump_record(record) for record in fleet_endpoints[:limit]],
             "gateway_policies": [_dump_record(record) for record in policies[:limit]],
             "scan_schedules": [_dump_record(record) for record in schedules[:limit]],
             "sources": [_redact_source(record) for record in sources[:limit]],
@@ -191,6 +201,8 @@ def _delete_graph_tenant(tenant_id: str) -> int:
 def _delete_records(tenant_id: str) -> dict[str, int]:
     jobs = _get_store().list_summary(tenant_id=tenant_id)
     fleet = _get_fleet_store().list_by_tenant(tenant_id)
+    query_endpoints = getattr(_get_fleet_store(), "query_endpoints", None)
+    fleet_endpoints, _ = query_endpoints(tenant_id, limit=_MAX_EXPORT_RECORDS, offset=0) if callable(query_endpoints) else ([], 0)
     policies = _get_policy_store().list_policies(tenant_id=tenant_id)
     schedules = _get_schedule_store().list_all(tenant_id=tenant_id)
     sources = _get_source_store().list_all(tenant_id=tenant_id)
@@ -201,6 +213,9 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
     deleted = {
         "jobs": sum(1 for record in jobs if _get_store().delete(str(record["job_id"]), tenant_id=tenant_id)),
         "fleet_agents": sum(1 for record in fleet if _get_fleet_store().delete(record.agent_id, tenant_id=tenant_id)),
+        "fleet_endpoints": sum(
+            1 for record in fleet_endpoints if _get_fleet_store().delete_endpoint(record.endpoint_id, tenant_id=tenant_id)
+        ),
         "gateway_policies": sum(1 for record in policies if _get_policy_store().delete_policy(record.policy_id, tenant_id=tenant_id)),
         "scan_schedules": sum(1 for record in schedules if _get_schedule_store().delete(record.schedule_id, tenant_id=tenant_id)),
         "sources": sum(1 for record in sources if _get_source_store().delete(record.source_id)),

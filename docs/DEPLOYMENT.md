@@ -384,6 +384,7 @@ Additional env vars: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_DATABASE`
 |-------|---------|
 | `scan_jobs` | Scan job persistence (status, results as VARIANT) |
 | `fleet_agents` | Fleet agent lifecycle (trust scores, states) |
+| `fleet_endpoints` | Latest privacy-safe workstation sweep summary per tenant/source ID |
 | `gateway_policies` | Runtime MCP gateway policies |
 | `policy_audit_log` | Policy enforcement audit trail |
 

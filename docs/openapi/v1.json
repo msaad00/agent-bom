@@ -5879,6 +5879,7 @@
           },
           "source_id": {
             "default": "",
+            "maxLength": 200,
             "title": "Source Id",
             "type": "string"
           },
@@ -5958,6 +5959,18 @@
             "title": "Blast Radii",
             "type": "array"
           },
+          "endpoint_inventory": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Inventory"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -5975,6 +5988,7 @@
           },
           "source_id": {
             "default": "",
+            "maxLength": 200,
             "title": "Source Id",
             "type": "string"
           },
@@ -18878,6 +18892,139 @@
           }
         },
         "summary": "List Fleet",
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
+    "/v1/fleet/endpoints": {
+      "get": {
+        "description": "List latest privacy-safe workstation evidence, one row per endpoint.",
+        "operationId": "list_fleet_endpoints_v1_fleet_endpoints_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "completeness",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completeness"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Fleet Endpoints V1 Fleet Endpoints Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Fleet Endpoints",
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
+    "/v1/fleet/endpoints/{endpoint_id}": {
+      "get": {
+        "description": "Return one tenant-scoped endpoint inventory summary.",
+        "operationId": "get_fleet_endpoint_v1_fleet_endpoints__endpoint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "endpoint_id",
+            "required": true,
+            "schema": {
+              "title": "Endpoint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Fleet Endpoint V1 Fleet Endpoints  Endpoint Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Fleet Endpoint",
         "tags": [
           "fleet"
         ]

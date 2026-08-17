@@ -26,23 +26,16 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-## What it is
+## Scan, correlate, and act
 
-`agent-bom` scans repositories, images, and cloud accounts, then correlates what
-it finds into one Finding + UnifiedGraph model — powering CLI and CI artifacts,
-fleet and browser investigations, compliance evidence, and runtime policy. Run
-the scanner without an account, or deploy the control plane inside your own
-cloud, VPC, cluster, database, identity, and audit boundary.
+`agent-bom` scans repositories, developer endpoints, images, clusters, cloud and
+data platforms, MCP servers, and runtime activity, then normalizes the evidence
+into one Finding + UnifiedGraph model for prioritized investigation and action.
 
-Graph provenance stays explicit: collected, inferred, static, and runtime
-relationships remain distinct, and unavailable evidence is never upgraded to
-observed.
-
-### From source to verified action
-
-Repository, workstation, image, cluster, cloud, data-platform, MCP, and runtime
-evidence follows one workflow. Raw source and credentials stay local; only
-normalized evidence crosses into shared control-plane or fleet state.
+- **Start locally or in CI:** produce findings, SARIF, SBOMs, HTML reports, and graph exports without an account.
+- **Centralize when ready:** self-host fleet, browser, compliance, and audit evidence inside your cloud and identity boundary.
+- **Act with context:** follow Path → Impact → Owner → Fix → Verify, then export, rescan, or enforce at runtime.
+- **Keep evidence honest:** raw source and credentials stay local; collected, inferred, static, and runtime relationships stay distinct, while partial and unavailable evidence remains explicit.
 
 <p align="center">
   <picture>

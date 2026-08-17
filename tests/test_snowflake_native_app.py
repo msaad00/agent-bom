@@ -311,6 +311,13 @@ def test_dcm_project_has_v001_migration():
     assert v001.is_file(), f"DCM project must have V001__core_schema.sql at {v001}"
 
 
+def test_dcm_v003_adds_tenant_scoped_fleet_endpoints_without_rewriting_v001():
+    v003 = (DCM_DIR / "V003__fleet_endpoints.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS core.fleet_endpoints" in v003
+    assert "PRIMARY KEY (tenant_id, endpoint_id)" in v003
+    assert "fleet_endpoints" not in (DCM_DIR / "V001__core_schema.sql").read_text(encoding="utf-8")
+
+
 def test_dcm_v001_creates_compliance_hub_table():
     """V001 must create the compliance_hub_findings table — Phase 2's
     Snowpark proc target. If V001 doesn't materialise the schema, Phase 2

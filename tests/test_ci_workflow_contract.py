@@ -130,6 +130,18 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     assert _ci()["jobs"]["test"]["timeout-minutes"] == 35
 
 
+def test_version_alignment_fails_fast_when_uv_lock_is_stale() -> None:
+    """Reject dependency drift before Docker and full-suite jobs consume runners."""
+    steps = _ci()["jobs"]["version-check"]["steps"]
+    lock_check_index = next(index for index, step in enumerate(steps) if step.get("name") == "Verify uv lockfile freshness")
+    dependency_install_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Install dependencies for CLI smoke checks"
+    )
+
+    assert steps[lock_check_index]["run"] == "uv lock --check"
+    assert lock_check_index < dependency_install_index
+
+
 def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:
     """Full-suite Alpine runs must leave cleanup margin over the 34m51s baseline."""
     assert _ci()["jobs"]["test-alpine"]["timeout-minutes"] == 45

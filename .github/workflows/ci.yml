@@ -1444,6 +1444,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Verify uv lockfile freshness
+        run: uv lock --check
+
       - name: Verify version consistency
         run: |
           PYPROJECT_VER=$(python -c "import re, pathlib; text = pathlib.Path('pyproject.toml').read_text(); print(re.search(r'^version\\s*=\\s*\"([^\"]+)\"', text, re.M).group(1))")

@@ -48,6 +48,7 @@ async def compliance_impl(
         from agent_bom.atlas import ATLAS_TECHNIQUES
         from agent_bom.nist_ai_rmf import NIST_AI_RMF
         from agent_bom.owasp import OWASP_LLM_TOP10
+        from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
         from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
         agents, blast_radii, _warnings, scan_sources = await _run_scan_pipeline(config_path, image)
@@ -65,11 +66,12 @@ async def compliance_impl(
                     "atlas_tags": list(br.atlas_tags),
                     "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
                     "owasp_mcp_tags": list(br.owasp_mcp_tags),
+                    "owasp_agentic_tags": list(getattr(br, "owasp_agentic_tags", [])),
                     "nist_800_53_tags": list(getattr(br, "nist_800_53_tags", [])),
                 }
             )
 
-        def _build_controls(catalog, tag_field, id_key):
+        def _build_controls(catalog, tag_field, id_key, *, scored: bool):
             controls = []
             for code, name in sorted(catalog.items()):
                 sev_bk = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -84,17 +86,17 @@ async def compliance_impl(
                             pkgs.add(br["package"])
                         for a in br.get("affected_agents", []):
                             ags.add(a)
-                # A control with no mapped finding is NOT a pass. These
-                # catalogues (OWASP LLM/MCP, ATLAS, NIST AI RMF) are all
-                # corrective/preventive: they are attested by the absence of an
-                # open weakness, and absence of a CVE is not proof the control
-                # is implemented. Scoring them as passes made a clean scan
-                # return "100% / pass" over 99 never-evaluated controls — the
-                # same false green /v1/compliance removed. Mirrors the API's
-                # not_evaluated semantics (see evidence/control_modes.py).
-                status = (
-                    "fail" if findings and (sev_bk["critical"] > 0 or sev_bk["high"] > 0) else "warning" if findings else "not_evaluated"
-                )
+                if not scored:
+                    status = "applicable" if findings else "not_applicable"
+                else:
+                    # A scored control with no mapped finding is NOT a pass.
+                    status = (
+                        "fail"
+                        if findings and (sev_bk["critical"] > 0 or sev_bk["high"] > 0)
+                        else "warning"
+                        if findings
+                        else "not_evaluated"
+                    )
                 controls.append(
                     {
                         id_key: code,
@@ -104,30 +106,39 @@ async def compliance_impl(
                         "severity_breakdown": sev_bk,
                         "affected_packages": sorted(pkgs),
                         "affected_agents": sorted(ags),
+                        "scored": scored,
                     }
                 )
             return controls
 
-        owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
-        atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
-        nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
-        owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
+        owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code", scored=False)
+        atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code", scored=False)
+        nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code", scored=True)
+        owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code", scored=False)
+        owasp_agentic = _build_controls(
+            OWASP_AGENTIC_TOP10,
+            "owasp_agentic_tags",
+            "code",
+            scored=False,
+        )
 
-        all_controls = owasp + atlas + nist + owasp_mcp
-        total = len(all_controls)
+        all_catalog_entries = owasp + atlas + nist + owasp_mcp + owasp_agentic
+        scored_controls = [control for control in all_catalog_entries if control["scored"]]
+        total = len(all_catalog_entries)
+        scored_total = len(scored_controls)
         # Same scorer as /v1/compliance, the per-framework route, the HTML
         # report and the evidence bundle. None of these catalogues carry
         # detective controls, so every evaluated control here is substantive.
         from agent_bom.evidence.scoring import score_compliance
 
         verdict = score_compliance(
-            passed=sum(1 for c in all_controls if c["status"] == "pass"),
-            warned=sum(1 for c in all_controls if c["status"] == "warning"),
-            failed=sum(1 for c in all_controls if c["status"] == "fail"),
+            passed=sum(1 for c in scored_controls if c["status"] == "pass"),
+            warned=sum(1 for c in scored_controls if c["status"] == "warning"),
+            failed=sum(1 for c in scored_controls if c["status"] == "fail"),
             has_evidence=has_evidence,
         )
         evaluated_controls = verdict.evaluated
-        not_evaluated_controls = total - evaluated_controls
+        not_evaluated_controls = scored_total - evaluated_controls
         score = verdict.score
 
         # Catalog-backed NIST SP 800-53 Rev 5 line (vendor-asserted), scored
@@ -148,12 +159,16 @@ async def compliance_impl(
                     "overall_score": score,
                     "overall_status": verdict.status,
                     "total_controls": total,
+                    "total_catalog_entries": len(all_catalog_entries),
+                    "scored_controls": scored_total,
+                    "unscored_catalog_entries": total - scored_total,
                     "evaluated_controls": evaluated_controls,
                     "not_evaluated_controls": not_evaluated_controls,
                     "owasp_llm_top10": owasp,
                     "mitre_atlas": atlas,
                     "nist_ai_rmf": nist,
                     "owasp_mcp_top10": owasp_mcp,
+                    "owasp_agentic_top10": owasp_agentic,
                     "nist_800_53_catalog": nist_800_53_catalog,
                 },
                 indent=2,

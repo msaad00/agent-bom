@@ -195,9 +195,18 @@ _ENTROPY_ASSIGN_RE = re.compile(
 )
 # Obvious non-secrets to skip even when assigned to a secret-named key.
 _ENTROPY_PLACEHOLDER_RE = re.compile(
-    r"(?i)^(?:your[_-]|xxx|placeholder|example|changeme|none|null|true|false|enabled|disabled|"
-    r"\$\{|\{\{|<[a-z]|/[a-z]|https?://|[a-z]+(?:[._-][a-z]+)+$)"
+    r"(?i)^(?:your[-_][a-z0-9_.-]+|x{3,}|placeholder(?:[-_][a-z0-9_.-]+)?|"
+    r"example(?:[-_][a-z0-9_.-]+)?|changeme(?:[-_]?\d*)?|none|null|true|false|"
+    r"enabled|disabled|\$\{[^}]*\}|\{\{[^}]*\}\}|<[a-z][^>]*>|/[a-z][^\s]*|"
+    r"https?://[^\s]+)$"
 )
+_ASSIGNED_VALUE_RE = re.compile(r"[=:]\s*['\"]?([^'\"\s,;#]+)")
+
+
+def _matched_assignment_is_placeholder(match: re.Match) -> bool:
+    """Return whether a secret-pattern match is an explicit sample value."""
+    assigned = _ASSIGNED_VALUE_RE.search(match.group(0))
+    return bool(assigned and _ENTROPY_PLACEHOLDER_RE.fullmatch(assigned.group(1)))
 
 
 def _shannon_entropy(value: str) -> float:
@@ -378,6 +387,8 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
         for name, pattern in CREDENTIAL_PATTERNS:
             match = pattern.search(line)
             if match:
+                if _matched_assignment_is_placeholder(match):
+                    break
                 # A secret-named variable assigned to a function/method call
                 # (e.g. OAuth token minting:
                 # `access_token = self.signing_key.sign(claims)`) is derived
@@ -403,7 +414,8 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
 
         # File-specific secret patterns (HIGH)
         for name, pattern in _FILE_SECRET_PATTERNS:
-            if pattern.search(line):
+            match = pattern.search(line)
+            if match and not _matched_assignment_is_placeholder(match):
                 findings.append(
                     SecretFinding(
                         file_path=rel_path,

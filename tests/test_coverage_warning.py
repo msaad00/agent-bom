@@ -61,6 +61,19 @@ def _deb_packages(distro_version, count=8):
     ]
 
 
+def _rpm_packages(distro_name: str, distro_version: str, count: int = 8):
+    return [
+        Package(
+            name=f"rpm-pkg-{i}",
+            version="1.0-1",
+            ecosystem="rpm",
+            distro_name=distro_name,
+            distro_version=distro_version,
+        )
+        for i in range(count)
+    ]
+
+
 def test_uncovered_release_emits_warning(tmp_path):
     """A release with packages present but zero advisory rows (while the family
     is broadly covered) is flagged as an incomplete-coverage gap."""
@@ -99,6 +112,42 @@ def test_empty_db_no_false_positive(tmp_path):
     conn = init_db(tmp_path / "vulns.db")  # no rows
 
     warnings = detect_release_coverage_gaps(_deb_packages("10"), conn=conn)
+    conn.close()
+
+    assert warnings == []
+
+
+@pytest.mark.parametrize(
+    ("distro_name", "distro_version", "expected_release"),
+    [
+        ("amzn", "2023", "amazon-linux:2023"),
+        ("ol", "9.5", "oracle-linux:9"),
+        ("sles", "15.5", "sles:15"),
+    ],
+)
+def test_unsupported_rpm_advisory_family_never_looks_clean(tmp_path, distro_name, distro_version, expected_release):
+    """A known unsupported feed must warn even when the local DB is empty."""
+    conn = init_db(tmp_path / "vulns.db")
+
+    warnings = detect_release_coverage_gaps(
+        _rpm_packages(distro_name, distro_version),
+        conn=conn,
+    )
+    conn.close()
+
+    assert len(warnings) == 1
+    assert warnings[0]["release"] == expected_release
+    assert warnings[0]["reason"] == "advisory_source_unavailable"
+    assert "not a clean bill of health" in warnings[0]["detail"].lower()
+
+
+def test_supported_opensuse_release_is_not_marked_source_unavailable(tmp_path):
+    conn = init_db(tmp_path / "vulns.db")
+
+    warnings = detect_release_coverage_gaps(
+        _rpm_packages("opensuse-leap", "15.5"),
+        conn=conn,
+    )
     conn.close()
 
     assert warnings == []

@@ -121,6 +121,13 @@ class TestPromptPassthroughRule:
         )
         assert not [f for f in evaluate_tool(tool) if f.rule_id == "MCP-TOOL-06-prompt-passthrough"]
 
+    def test_silent_when_description_only_contains_ecosystem(self) -> None:
+        tool = _tool(
+            "lookup_package",
+            ecosystem={"type": "string", "description": "Package ecosystem identifier"},
+        )
+        assert not [f for f in evaluate_tool(tool) if f.rule_id == "MCP-TOOL-06-prompt-passthrough"]
+
 
 class TestWeakDescriptionRule:
     def test_fires_when_description_missing(self) -> None:

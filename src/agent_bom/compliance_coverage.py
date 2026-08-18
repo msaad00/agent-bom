@@ -92,8 +92,9 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         report_label="OWASP LLM Top 10",
         bundled_unit="controls",
         source_standard_size="10",
-        coverage="Full Top-10",
+        coverage="Applicability overlay (not scored): risks evidenced by observed AI/LLM findings",
         full_catalog_size=10,
+        scored=False,
     ),
     ComplianceFrameworkMetadata(
         family="OWASP",
@@ -106,8 +107,9 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         report_label="OWASP MCP Top 10",
         bundled_unit="controls",
         source_standard_size="10",
-        coverage="Full Top-10",
+        coverage="Applicability overlay (not scored): risks evidenced by observed MCP findings",
         full_catalog_size=10,
+        scored=False,
     ),
     ComplianceFrameworkMetadata(
         family="OWASP",
@@ -120,8 +122,9 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         report_label="OWASP Agentic Top 10",
         bundled_unit="controls",
         source_standard_size="10",
-        coverage="Full Top-10",
+        coverage="Applicability overlay (not scored): risks evidenced by observed agentic findings",
         full_catalog_size=10,
+        scored=False,
     ),
     ComplianceFrameworkMetadata(
         family="NIST / FedRAMP",

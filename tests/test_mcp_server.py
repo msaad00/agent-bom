@@ -832,11 +832,13 @@ def test_compliance_no_agents(mock_pipeline):
     assert result["overall_score"] == 0.0
     assert result["overall_status"] == "no_data"
     assert result["evaluated_controls"] == 0
-    assert result["not_evaluated_controls"] == result["total_controls"]
+    assert result["not_evaluated_controls"] == result["scored_controls"]
+    assert result["unscored_catalog_entries"] > 0
     assert len(result["owasp_llm_top10"]) == 10
     assert len(result["mitre_atlas"]) >= 50
     assert len(result["nist_ai_rmf"]) == 14
-    assert all(control["status"] == "not_evaluated" for control in result["owasp_llm_top10"])
+    assert all(control["status"] == "not_applicable" for control in result["owasp_llm_top10"])
+    assert all(control["status"] == "not_evaluated" for control in result["nist_ai_rmf"])
 
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")
@@ -883,9 +885,9 @@ def test_compliance_with_findings(mock_pipeline):
     assert result["overall_status"] == "fail"
     assert result["overall_score"] < 100.0
 
-    # LLM05 should be fail
+    # OWASP Top 10 is a risk-applicability overlay, not a passed/failed control.
     lmm05 = next(c for c in result["owasp_llm_top10"] if c["code"] == "LLM05")
-    assert lmm05["status"] == "fail"
+    assert lmm05["status"] == "applicable"
     assert lmm05["findings"] == 1
 
 

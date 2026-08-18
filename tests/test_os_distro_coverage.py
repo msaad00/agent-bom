@@ -308,6 +308,7 @@ def test_covered_os_distros_reads_from_db(tmp_db):
         ("almalinux", "rpm"),
         ("opensuse-leap", "rpm"),
         ("sles", "rpm"),
+        ("amzn", "rpm"),
         ("wolfi", "apk"),
         ("chainguard", "apk"),
     ],

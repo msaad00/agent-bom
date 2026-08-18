@@ -405,9 +405,9 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 <!-- compliance-coverage:start -->
 | Family | Framework | Bundled controls | Source-standard size (approx.) | What's covered |
 |---|---|---|---|---|
-| OWASP | LLM Top 10 (2025) | 10 / 10 | 10 | Full Top-10 |
-| OWASP | MCP Top 10 (2025) | 10 / 10 | 10 | Full Top-10 |
-| OWASP | Agentic Top 10 (2026) | 10 / 10 | 10 | Full Top-10 |
+| OWASP | LLM Top 10 (2025) | 10 / 10 | 10 | Applicability overlay (not scored): risks evidenced by observed AI/LLM findings |
+| OWASP | MCP Top 10 (2025) | 10 / 10 | 10 | Applicability overlay (not scored): risks evidenced by observed MCP findings |
+| OWASP | Agentic Top 10 (2026) | 10 / 10 | 10 | Applicability overlay (not scored): risks evidenced by observed agentic findings |
 | OWASP | AISVS v1.0 | 9 checks | ~50 verification reqs | Programmatically verifiable subset (AI-4/5/6/7/8 categories) |
 | NIST / FedRAMP | AI RMF 1.0 | 14 subcategories | ~70 | Govern / Map / Measure / Manage controls relevant to AI supply chain + MCP |
 | NIST / FedRAMP | CSF 2.0 | 14 categories | ~108 | Supply-chain, identity, asset, monitoring categories |

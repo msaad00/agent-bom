@@ -587,10 +587,12 @@ async def test_compliance_impl_never_passes_controls_it_did_not_evaluate():
     assert data["overall_status"] == "no_data", "a clean scan read as a compliant estate"
     assert data["overall_score"] == 0.0, "no_data still carried a score"
     assert data["evaluated_controls"] == 0
-    assert data["not_evaluated_controls"] == data["total_controls"]
-    for line in ("owasp_llm_top10", "mitre_atlas", "nist_ai_rmf", "owasp_mcp_top10"):
+    assert data["not_evaluated_controls"] == data["scored_controls"]
+    assert data["unscored_catalog_entries"] > 0
+    for line in ("owasp_llm_top10", "mitre_atlas", "owasp_mcp_top10", "owasp_agentic_top10"):
         statuses = {c["status"] for c in data[line]}
-        assert statuses == {"not_evaluated"}, f"{line} asserted a status it never evaluated: {statuses}"
+        assert statuses == {"not_applicable"}, f"{line} asserted a risk with no evidence: {statuses}"
+    assert {control["status"] for control in data["nist_ai_rmf"]} == {"not_evaluated"}
 
 
 @pytest.mark.asyncio

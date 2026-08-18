@@ -111,6 +111,28 @@ def test_scan_secrets_still_flags_literal_token_passed_to_a_call(tmp_path: Path)
     assert any(finding.secret_type == "AWS Access Key" and finding.severity == "critical" for finding in result.findings)
 
 
+def test_scan_secrets_ignores_explicit_placeholder_assignments(tmp_path: Path):
+    (tmp_path / ".env").write_text(
+        'DB_PASSWORD=changeme\nAUTH_TOKEN=your-token-here\nsecret_key = "placeholder-secret"\n',
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    assert result.total == 0
+
+
+def test_scan_secrets_does_not_suppress_real_assigned_secrets(tmp_path: Path):
+    (tmp_path / ".env").write_text(
+        "DB_PASSWORD=correct-horse-battery-staple\n",
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    assert any(finding.secret_type == ".env password" for finding in result.findings)
+
+
 def test_scan_secrets_warns_on_non_directory(tmp_path: Path):
     target = tmp_path / "not-a-dir.txt"
     target.write_text("hello", encoding="utf-8")

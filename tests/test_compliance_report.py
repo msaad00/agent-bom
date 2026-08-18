@@ -451,7 +451,7 @@ def test_report_with_no_completed_scans_marks_controls_not_evaluated() -> None:
     assert body["scope"]["completed_scan_count"] == 0
     assert body["summary"]["pass"] == 0
     assert body["summary"]["not_evaluated"] == 1
-    assert body["summary"]["score"] == 0.0
+    assert body["summary"]["score"] is None
     control = body["controls"][0]
     assert control["source_status"] == "pass"
     assert control["status"] == "not_evaluated"
@@ -476,7 +476,7 @@ def test_report_with_missing_control_evidence_is_incomplete_not_pass() -> None:
     assert body["scope"]["completed_scan_count"] == 1
     assert body["summary"]["pass"] == 0
     assert body["summary"]["incomplete"] == 1
-    assert body["summary"]["score"] == 0.0
+    assert body["summary"]["score"] is None
     control = body["controls"][0]
     assert control["source_status"] == "pass"
     assert control["status"] == "incomplete"

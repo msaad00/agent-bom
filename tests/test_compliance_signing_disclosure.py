@@ -277,7 +277,7 @@ def test_ed25519_bundle_discloses_it_is_verifiable_and_still_verifies(ed25519_en
     ed25519_env.verify(bytes.fromhex(body["signature"]), canonical)
 
     tampered = json.loads(json.dumps(body))
-    tampered["summary"]["fail"] = 0
+    tampered["framework_label"] = f"{tampered['framework_label']} tampered"
     from agent_bom.api.compliance_signing import verify_compliance_bundle
 
     assert verify_compliance_bundle(tampered) is False
@@ -292,7 +292,7 @@ def test_tampered_bundle_rejected_under_every_signer(
     body = _fetch_bundle(seeded_client)
     assert verify_compliance_bundle(body) is True
     tampered = json.loads(json.dumps(body))
-    tampered["summary"]["fail"] = 0
+    tampered["framework_label"] = f"{tampered['framework_label']} tampered"
     assert verify_compliance_bundle(tampered) is False
 
 
@@ -380,7 +380,7 @@ def test_cli_refuses_to_trust_the_key_embedded_in_the_bundle(ed25519_env: Ed2551
 
 def test_cli_rejects_a_tampered_ed25519_bundle(ed25519_env: Ed25519PublicKey, seeded_client: TestClient, tmp_path) -> None:
     body = _fetch_bundle(seeded_client)
-    body["summary"]["fail"] = 0
+    body["framework_label"] = f"{body['framework_label']} tampered"
     bundle = _write_bundle(tmp_path, body)
     key_file = tmp_path / "pub.pem"
     key_file.write_text(_public_pem(ed25519_env))

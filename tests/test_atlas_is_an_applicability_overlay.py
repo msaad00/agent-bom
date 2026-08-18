@@ -52,8 +52,16 @@ def test_control_frameworks_remain_scored() -> None:
 
     Unscoring everything would make the score vacuous rather than accurate.
     """
-    for slug in ("owasp-llm", "nist", "nist-800-53", "iso-27001", "soc2", "pci-dss"):
+    for slug in ("nist", "nist-800-53", "iso-27001", "soc2", "pci-dss"):
         assert _BY_SLUG[slug].scored is True, slug
+
+
+def test_risk_catalogs_are_applicability_overlays_not_control_scores() -> None:
+    """Top-risk catalogs identify applicable risks, not controls that passed."""
+    for slug in ("owasp-llm", "owasp-mcp", "owasp-agentic"):
+        metadata = _BY_SLUG[slug]
+        assert metadata.scored is False, slug
+        assert "not scored" in metadata.coverage.lower(), slug
 
 
 def test_overlay_coverage_text_says_it_is_not_scored() -> None:

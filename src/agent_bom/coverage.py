@@ -10,12 +10,16 @@ bill of health. It is a *warning-only* signal: it does not change version
 matching, suppression, or which advisories are reported. The per-release
 matching is correct; the data is simply absent.
 
-The check is data-source-agnostic and threshold-based — it fires for any
+For distro families with a supported advisory source, the check is
+data-source-agnostic and threshold-based — it fires for any
 ``ecosystem:release`` that has many packages present in the image but
 (near-)zero advisory rows in the local DB, *while the feed clearly carries the
 distro family at other releases*. That last gate keeps it quiet when the local
 DB is empty (e.g. a default online scan that resolves against the remote API),
-where every release legitimately has zero local rows.
+where every release legitimately has zero local rows. Known parsed RPM
+families without a supported advisory source are the exception: they emit an
+explicit source-unavailable warning even with an empty DB, because remote OSV
+cannot turn that missing feed into complete evidence.
 """
 
 from __future__ import annotations
@@ -41,6 +45,12 @@ _MAX_ROWS_FOR_UNCOVERED = 5
 # release". This gates out the empty/absent-DB case where every release has zero
 # local rows and the remote API is the live source.
 _MIN_FAMILY_ROWS = 50
+
+# These distro families are parsed, but their advisory sources are not present
+# in the supported OSV/local-DB routes. Keep their evidence explicitly partial
+# until dedicated, version-verified feeds land; never turn an empty lookup into
+# a clean result.
+_UNSUPPORTED_RPM_FAMILIES = frozenset({"amazon-linux", "oracle-linux", "sles"})
 
 
 @dataclass(frozen=True)
@@ -152,6 +162,15 @@ def _release_key(pkg: "Package") -> Optional[tuple[str, str]]:
             "alma": ("almalinux", f"almalinux:{major}"),
             "rocky": ("rocky", f"rocky linux:{major}"),
             "rocky linux": ("rocky", f"rocky linux:{major}"),
+            "amzn": ("amazon-linux", f"amazon-linux:{major}"),
+            "amazon": ("amazon-linux", f"amazon-linux:{major}"),
+            "amazon linux": ("amazon-linux", f"amazon-linux:{major}"),
+            "ol": ("oracle-linux", f"oracle-linux:{major}"),
+            "oracle": ("oracle-linux", f"oracle-linux:{major}"),
+            "oracle linux": ("oracle-linux", f"oracle-linux:{major}"),
+            "sles": ("sles", f"sles:{major}"),
+            "sled": ("sles", f"sles:{major}"),
+            "suse": ("sles", f"sles:{major}"),
         }
         return rpm_families.get(distro_name)
     return None
@@ -214,16 +233,40 @@ def detect_release_coverage_gaps(
     if not candidates:
         return []
 
+    warnings: list[dict] = []
+    supported_candidates: dict[tuple[str, str], int] = {}
+    for (family, release_key), pkg_count in sorted(candidates.items()):
+        if family not in _UNSUPPORTED_RPM_FAMILIES:
+            supported_candidates[(family, release_key)] = pkg_count
+            continue
+        warnings.append(
+            CoverageWarning(
+                ecosystem=family,
+                release=release_key,
+                reason="advisory_source_unavailable",
+                detail=(
+                    f"Vulnerability coverage for {release_key} is unavailable: Agent-Bom can "
+                    "inventory these RPM packages, but no supported, version-verified advisory "
+                    "feed is configured for this distro family. Findings may under-report and a "
+                    "low or zero vulnerability count is not a clean bill of health."
+                ),
+                package_count=pkg_count,
+                advisory_rows=0,
+            ).to_dict()
+        )
+
+    if not supported_candidates:
+        return warnings
+
     owns_conn = False
     if conn is None:
         conn = _open_readonly_db()
         owns_conn = conn is not None
     if conn is None:
-        return []
+        return warnings
 
     try:
-        warnings: list[dict] = []
-        for (family, release_key), pkg_count in sorted(candidates.items()):
+        for (family, release_key), pkg_count in sorted(supported_candidates.items()):
             try:
                 family_rows = _count_family_rows(conn, family)
             except sqlite3.Error as exc:

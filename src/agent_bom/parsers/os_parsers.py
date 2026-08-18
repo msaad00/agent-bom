@@ -413,6 +413,8 @@ def detect_os_type(root: Path = Path("/")) -> str | None:
                     "rocky",
                     "alma",
                     "almalinux",
+                    "amzn",
+                    "amazon",
                     "ol",
                     "opensuse",
                     "opensuse-leap",

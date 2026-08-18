@@ -214,6 +214,26 @@ def test_tool_schema_resource_and_prompt_lint_findings():
     assert any("required-freeform-argument" in finding for finding in prompt_findings)
 
 
+def test_tool_schema_does_not_treat_ecosystem_as_a_system_prompt():
+    from agent_bom.mcp_introspect import _lint_tool_schema
+
+    tool = MCPTool(
+        name="lookup_package",
+        description="Look up a package",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "ecosystem": {
+                    "type": "string",
+                    "description": "Package ecosystem identifier",
+                }
+            },
+        },
+    )
+
+    assert not any("prompt-bearing-input" in finding for finding in _lint_tool_schema(tool))
+
+
 def test_server_introspection_captures_fingerprint_and_auth_mode():
     from agent_bom.mcp_introspect import ServerIntrospection
 

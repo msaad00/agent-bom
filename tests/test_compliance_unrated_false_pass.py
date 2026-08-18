@@ -94,17 +94,16 @@ def test_api_all_unrated_control_is_not_evaluated_not_pass() -> None:
 
     llm05 = next(c for c in data["owasp_llm_top10"] if c["control_id"] == "LLM05")
     assert llm05["findings"] == 1
-    assert llm05["status"] == "not_evaluated"  # NOT "pass"
+    assert llm05["status"] == "applicable"
 
-    # No control passes (the only mapped one is unrated), so score is not inflated.
-    assert data["summary"]["owasp_pass"] == 0
-    assert data["summary"]["owasp_not_evaluated"] == 10
+    # Risk applicability is reported without contributing to the control score.
+    assert data["summary"]["owasp_applicable"] == 1
+    assert data["summary"]["owasp_not_applicable"] == 9
     assert data["overall_score"] == 0.0
     _clear_jobs()
 
 
-def test_api_rated_finding_unchanged() -> None:
-    """A rated (high) finding still fails — the fix only touches the all-unrated case."""
+def test_api_rated_finding_is_applicable_without_becoming_a_failed_control() -> None:
     _clear_jobs()
     _add_done_job(
         [
@@ -120,8 +119,8 @@ def test_api_rated_finding_unchanged() -> None:
     client = TestClient(app)
     data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
     llm05 = next(c for c in data["owasp_llm_top10"] if c["control_id"] == "LLM05")
-    assert llm05["status"] == "fail"
-    assert data["summary"]["owasp_fail"] == 1
+    assert llm05["status"] == "applicable"
+    assert data["summary"]["owasp_applicable"] == 1
     _clear_jobs()
 
 

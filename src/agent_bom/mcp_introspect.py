@@ -35,7 +35,10 @@ DEFAULT_TIMEOUT = 10.0
 _PATH_HINT_RE = re.compile(r"(path|file|dir|cwd|workspace)", re.IGNORECASE)
 _URL_HINT_RE = re.compile(r"(url|uri|endpoint|host|domain|webhook)", re.IGNORECASE)
 _SHELL_HINT_RE = re.compile(r"(cmd|command|shell|exec|script)", re.IGNORECASE)
-_PROMPT_HINT_RE = re.compile(r"(prompt|instruction|system|markdown|html|svg)", re.IGNORECASE)
+_PROMPT_HINT_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:prompt|instruction|system|markdown|html|svg)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 
 
 def _safe_runtime_text(value: object, *, max_len: int = 1000) -> str:

@@ -43,7 +43,10 @@ _PATH_HINT_RE = re.compile(r"(path|file|dir|cwd|workspace)", re.IGNORECASE)
 _URL_HINT_RE = re.compile(r"(url|uri|endpoint|host|domain|webhook)", re.IGNORECASE)
 _SHELL_HINT_RE = re.compile(r"(cmd|command|shell|exec|script)", re.IGNORECASE)
 _SQL_HINT_RE = re.compile(r"(query|sql|statement|stmt)", re.IGNORECASE)
-_PROMPT_HINT_RE = re.compile(r"(prompt|instruction|system|markdown|html|svg)", re.IGNORECASE)
+_PROMPT_HINT_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:prompt|instruction|system|markdown|html|svg)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 _CRED_HINT_RE = re.compile(r"(token|secret|password|credential|api[_-]?key|access[_-]?key)", re.IGNORECASE)
 
 

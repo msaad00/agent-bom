@@ -27,6 +27,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
   require persistent HMAC signing for shared durable ledgers.
 - Bare ASGI startup enforces the database RLS-role preflight, while public-demo
   operator pages withhold deployment posture and integration diagnostics.
+- OWASP LLM, MCP, and Agentic Top 10 risks are reported as applicability
+  overlays instead of passed or failed controls across REST and MCP; the MCP
+  surface now includes the Agentic catalog and preserves scored totals.
+- Secret scans suppress explicit sample placeholders without hiding real
+  assigned passphrases, and MCP prompt heuristics no longer match words such as
+  `ecosystem` merely because they contain `system`.
+- Amazon Linux, Oracle Linux, and SLES package inventories now emit explicit
+  advisory-source-unavailable evidence instead of a false-clean zero while
+  their dedicated advisory feeds remain unsupported.
 
 ## [0.101.0] - 2026-08-16
 

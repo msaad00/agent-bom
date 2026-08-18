@@ -120,7 +120,7 @@ def test_run_benchmarks_does_not_render_cis_inline(monkeypatch):
     fake_report.pass_rate = 50.0
     fake_report.to_dict.return_value = {"checks": []}
 
-    monkeypatch.setattr("agent_bom.cloud.aws_cis_benchmark.run_benchmark", lambda **kwargs: fake_report)
+    monkeypatch.setattr("agent_bom.cloud.aws_cis_benchmark.run_benchmark_all_regions", lambda **kwargs: fake_report)
     monkeypatch.setattr(
         "agent_bom.cli.agents._cloud.render_cis_findings_from_context",
         lambda _ctx: (_ for _ in ()).throw(AssertionError("CIS must not render mid-scan")),

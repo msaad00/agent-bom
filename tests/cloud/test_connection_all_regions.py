@@ -77,9 +77,36 @@ class TestAwsScanFansOutOnAllRegions:
 
         class _Cis:
             def to_dict(self) -> dict[str, Any]:
-                return {"benchmark": "cis", "passed": 0, "failed": 0, "total": 0, "pass_rate": 0}
+                return {
+                    "benchmark": "cis",
+                    "scope": "enabled-regions",
+                    "completeness": "complete",
+                    "accounts_scanned": ["123456789012"],
+                    "regions_scanned": ["us-east-1", "eu-west-1"],
+                    "passed": 0,
+                    "failed": 0,
+                    "errored": 0,
+                    "not_applicable": 0,
+                    "evaluated": 0,
+                    "total": 0,
+                    "pass_rate": 0,
+                }
 
-        monkeypatch.setattr(aws_cis_benchmark, "run_benchmark", lambda **_kw: _Cis())
+        def _cis_single(**_kw: Any) -> _Cis:
+            calls["cis_single"] = True
+            return _Cis()
+
+        def _cis_multi(**_kw: Any) -> _Cis:
+            calls["cis_multi"] = True
+            calls["cis_multi_session"] = _kw.get("session")
+            return _Cis()
+
+        monkeypatch.setattr(aws_cis_benchmark, "run_benchmark", _cis_single)
+        monkeypatch.setattr(
+            aws_cis_benchmark,
+            "run_benchmark_all_regions",
+            _cis_multi,
+        )
         monkeypatch.setattr(
             routes,
             "_persist_connection_report",
@@ -93,7 +120,12 @@ class TestAwsScanFansOutOnAllRegions:
         assert calls.get("multi") is True
         assert calls.get("single") is None
         assert calls.get("multi_session") is not None  # brokered session threaded in
+        assert calls.get("cis_multi") is True
+        assert calls.get("cis_single") is None
+        assert calls.get("cis_multi_session") is not None
         assert result["scan_id"] == "scan-123"
+        assert result["cis_benchmark"]["completeness"] == "complete"
+        assert result["cis_benchmark"]["regions_scanned"] == 2
 
     def test_single_region_uses_single_discovery(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: dict[str, Any] = {}
@@ -102,3 +134,5 @@ class TestAwsScanFansOutOnAllRegions:
         assert calls.get("single") is True
         assert calls.get("multi") is None
         assert calls.get("single_region") == "us-east-1"
+        assert calls.get("cis_single") is True
+        assert calls.get("cis_multi") is None

@@ -313,7 +313,12 @@ def test_summarize_account_scan_buckets_by_status() -> None:
 
 
 def _cis_report(account_id: str) -> CISBenchmarkReport:
-    report = CISBenchmarkReport(account_id=account_id)
+    report = CISBenchmarkReport(
+        account_id=account_id,
+        completeness="complete",
+        scope="enabled-regions",
+        regions_scanned=["us-east-1", "eu-west-1"],
+    )
     report.checks.append(CISCheckResult(check_id="1.4", title="t", status=CheckStatus.PASS, severity="critical"))
     report.checks.append(CISCheckResult(check_id="3.1", title="t", status=CheckStatus.FAIL, severity="high"))
     return report
@@ -330,7 +335,7 @@ def test_cis_fanout_per_account_attribution(monkeypatch) -> None:
     def _fake_run(*, session=None, checks=None):
         return _cis_report(str(session).split("::")[-1])
 
-    monkeypatch.setattr(aws_cis, "run_benchmark", _fake_run)
+    monkeypatch.setattr(aws_cis, "run_benchmark_all_regions", _fake_run)
 
     report = aws_cis.run_all_account_benchmarks()
     assert report.accounts_scanned == ["111111111111", "222222222222"]
@@ -338,6 +343,9 @@ def test_cis_fanout_per_account_attribution(monkeypatch) -> None:
     assert report.passed == 2
     assert report.failed == 2
     assert report.total == 4
+    assert report.completeness == "complete"
+    assert report.scope == "organization-enabled-regions"
+    assert report.regions_scanned == ["us-east-1", "eu-west-1"]
     payload = report.to_dict()
     assert payload["accounts_scanned"] == ["111111111111", "222222222222"]
     assert {c["account_id"] for c in payload["checks"]} == {"111111111111", "222222222222"}
@@ -352,12 +360,17 @@ def test_cis_fanout_skips_denied_account_with_warning(monkeypatch) -> None:
         return f"session::{aid}"
 
     monkeypatch.setattr(aws_orgs, "assume_account_session", _fake_assume)
-    monkeypatch.setattr(aws_cis, "run_benchmark", lambda *, session=None, checks=None: _cis_report(str(session).split("::")[-1]))
+    monkeypatch.setattr(
+        aws_cis,
+        "run_benchmark_all_regions",
+        lambda *, session=None, checks=None: _cis_report(str(session).split("::")[-1]),
+    )
 
     report = aws_cis.run_all_account_benchmarks()
     assert report.accounts_scanned == ["ok-acct"]
     assert {c.account_id for c in report.checks} == {"ok-acct"}
     assert any("denied-acct skipped" in w for w in report.warnings)
+    assert report.completeness == "partial"
     assert report.total == 2
 
 
@@ -365,11 +378,16 @@ def test_cis_fanout_caps_accounts_with_warning(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_AWS_MAX_ACCOUNTS", "1")
     monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["a1", "a2", "a3"])
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
-    monkeypatch.setattr(aws_cis, "run_benchmark", lambda *, session=None, checks=None: _cis_report(str(session).split("::")[-1]))
+    monkeypatch.setattr(
+        aws_cis,
+        "run_benchmark_all_regions",
+        lambda *, session=None, checks=None: _cis_report(str(session).split("::")[-1]),
+    )
 
     report = aws_cis.run_all_account_benchmarks()
     assert report.accounts_scanned == ["a1"]
     assert any("capped at 1 of 3" in w for w in report.warnings)
+    assert report.completeness == "partial"
 
 
 def test_cis_fanout_falls_back_to_single_account(monkeypatch) -> None:
@@ -380,7 +398,7 @@ def test_cis_fanout_falls_back_to_single_account(monkeypatch) -> None:
         called.append(True)
         return _cis_report("solo")
 
-    monkeypatch.setattr(aws_cis, "run_benchmark", _single)
+    monkeypatch.setattr(aws_cis, "run_benchmark_all_regions", _single)
     report = aws_cis.run_all_account_benchmarks()
     assert called == [True]
     assert report.account_id == "solo"

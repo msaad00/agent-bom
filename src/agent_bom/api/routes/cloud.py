@@ -385,9 +385,14 @@ def _run_cis_benchmark(
     report: Any
     try:
         if requested == "aws":
-            from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
+            if region_arg:
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark
 
-            report = run_aws_cis(region=region_arg, profile=profile_arg, checks=check_list)
+                report = run_benchmark(region=region_arg, profile=profile_arg, checks=check_list)
+            else:
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
+
+                report = run_benchmark_all_regions(region=region_arg, profile=profile_arg, checks=check_list)
         elif requested == "azure":
             from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
 

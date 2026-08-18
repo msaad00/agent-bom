@@ -701,8 +701,15 @@ def _cis_summary(cis_dict: dict[str, Any]) -> dict[str, Any]:
     return {
         "benchmark": cis_dict.get("benchmark"),
         "benchmark_version": cis_dict.get("benchmark_version"),
+        "scope": cis_dict.get("scope"),
+        "completeness": cis_dict.get("completeness"),
+        "accounts_scanned": len(cis_dict.get("accounts_scanned") or []),
+        "regions_scanned": len(cis_dict.get("regions_scanned") or []),
         "passed": cis_dict.get("passed"),
         "failed": cis_dict.get("failed"),
+        "errored": cis_dict.get("errored"),
+        "not_applicable": cis_dict.get("not_applicable"),
+        "evaluated": cis_dict.get("evaluated"),
         "total": cis_dict.get("total"),
         "pass_rate": cis_dict.get("pass_rate"),
     }
@@ -834,11 +841,11 @@ def _run_aws_connection_scan(
 ) -> dict[str, Any]:
     """Broker the connection into a read-only session and run inventory + CIS.
 
-    Calls the **same** ``aws_inventory.discover_inventory`` and AWS CIS
-    ``run_benchmark`` the sibling cloud routes use — passing the brokered session
-    so the read-only code path runs against the assumed role — then persists the
-    result through the existing scan/graph stores (the pipeline's persistence
-    path), not a parallel one. Returns a non-secret scan summary.
+    Calls the same AWS inventory and CIS runners as the sibling cloud routes —
+    passing the brokered session so the read-only code path runs against the
+    assumed role — then persists the result through the existing scan/graph
+    stores (the pipeline's persistence path), not a parallel one. Returns a
+    non-secret scan summary.
 
     When ``connection_org_fanout_enabled(record)``, fans inventory (and CIS)
     across member accounts via the brokered management session — gated by the
@@ -848,6 +855,7 @@ def _run_aws_connection_scan(
     from agent_bom.cloud import aws_inventory, aws_organizations
     from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
     from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
+    from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions as run_aws_cis_all_regions
     from agent_bom.cloud.connection_broker import broker_session
     from agent_bom.mcp_tools.posture import _summarize_inventory_payload
     from agent_bom.models import AIBOMReport
@@ -879,7 +887,7 @@ def _run_aws_connection_scan(
             )
         elif all_regions:
             inventory_payload = aws_inventory.discover_inventory_all_regions(force=True, session=session)
-            cis_report = run_aws_cis(region=region, session=session)
+            cis_report = run_aws_cis_all_regions(region=region, session=session)
         else:
             inventory_payload = aws_inventory.discover_inventory(region=region, force=True, session=session)
             cis_report = run_aws_cis(region=region, session=session)

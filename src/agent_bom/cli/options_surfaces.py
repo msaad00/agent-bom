@@ -241,7 +241,12 @@ def cloud_options(fn):
     return _apply(
         [
             click.option("--aws", is_flag=True, help="Discover AI agents from AWS (Bedrock, Lambda, ECS — on by default)"),
-            click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)"),
+            click.option(
+                "--aws-region",
+                default=None,
+                metavar="REGION",
+                help="Limit AWS work to one region; CIS scans all enabled regions when omitted",
+            ),
             click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile"),
             click.option("--no-aws-lambda", is_flag=True, help="Skip standalone Lambda discovery when using --aws"),
             click.option("--aws-include-eks", is_flag=True, help="Discover EKS cluster workloads via kubectl (used with --aws)"),

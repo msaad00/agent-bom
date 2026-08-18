@@ -366,20 +366,24 @@ def run_benchmarks(
                 # member account of the organization (same boundary set the inventory
                 # fan-out uses) and aggregate with per-account attribution. Each
                 # account is reached via a read-only AssumeRole; an account that denies
-                # the role is skipped. Off = unchanged single-account/region run.
+                # the role is skipped. Off keeps one account while still
+                # enumerating all enabled regions for account-wide CIS truth.
                 if aws_organizations.org_fanout_enabled():
                     from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
 
                     ctx.cis_benchmark_report = run_all_account_benchmarks(profile=aws_profile)
                 else:
-                    from agent_bom.cloud import aws_inventory
                     from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
                     from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
 
-                    if aws_inventory.all_regions_enabled():
-                        ctx.cis_benchmark_report = run_benchmark_all_regions(profile=aws_profile, region=aws_region)
+                    # CIS is an estate benchmark: enumerate every enabled
+                    # region by default so a quiet home region cannot produce
+                    # an account-wide PASS while resources exist elsewhere.
+                    # An explicit region remains a deliberate partial scope.
+                    if aws_region:
+                        ctx.cis_benchmark_report = run_cis(profile=aws_profile, region=aws_region)
                     else:
-                        ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
+                        ctx.cis_benchmark_report = run_benchmark_all_regions(profile=aws_profile)
             passed = ctx.cis_benchmark_report.passed
             failed = ctx.cis_benchmark_report.failed
             total = ctx.cis_benchmark_report.total
@@ -387,9 +391,12 @@ def run_benchmarks(
             errored = getattr(ctx.cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.cis_benchmark_report, "accounts_scanned", []) or []
             regions_scanned = getattr(ctx.cis_benchmark_report, "regions_scanned", []) or []
+            completeness = str(getattr(ctx.cis_benchmark_report, "completeness", "partial") or "partial")
             scope = f"{len(scanned)} account(s)" if len(scanned) > 1 else ""
             if len(regions_scanned) > 1:
                 scope = f"{len(regions_scanned)} region(s)" if not scope else f"{scope}, {len(regions_scanned)} region(s)"
+            if completeness != "complete":
+                scope = f"{completeness} evidence" if not scope else f"{scope}, {completeness} evidence"
             if not quiet:
                 print_benchmark_line(
                     con,

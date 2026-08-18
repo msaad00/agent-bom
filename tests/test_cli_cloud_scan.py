@@ -465,7 +465,7 @@ class TestRequestedProviderHardFailExits:
         def _raise_cis(**kwargs):
             raise CloudDiscoveryError("boto3 is required for AWS scanning.")
 
-        monkeypatch.setattr("agent_bom.cloud.aws_cis_benchmark.run_benchmark", _raise_cis)
+        monkeypatch.setattr("agent_bom.cloud.aws_cis_benchmark.run_benchmark_all_regions", _raise_cis)
 
         r = CliRunner().invoke(main, ["scan", "--aws", "--aws-cis-benchmark", "--no-discover", "--offline"])
         assert r.exit_code == 1

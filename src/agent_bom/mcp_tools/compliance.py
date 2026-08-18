@@ -203,9 +203,14 @@ async def cis_benchmark_impl(
 
         cis_report: object
         if provider == "aws":
-            from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
+            if region:
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark
 
-            cis_report = run_aws_cis(region=region, profile=profile, checks=check_list)
+                cis_report = run_benchmark(region=region, profile=profile, checks=check_list)
+            else:
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
+
+                cis_report = run_benchmark_all_regions(region=region, profile=profile, checks=check_list)
         elif provider == "snowflake":
             from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
 

@@ -126,6 +126,10 @@ class CISBenchmarkReport:
     # read-only role could not be assumed). Empty on a single-account run.
     accounts_scanned: list[str] = field(default_factory=list)
     regions_scanned: list[str] = field(default_factory=list)
+    # Estate-scope truth. A selected-region benchmark is inherently partial for
+    # regional CIS controls; only an enabled-region fan-out may claim complete.
+    completeness: str = "partial"
+    scope: str = "selected-region"
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -167,6 +171,8 @@ class CISBenchmarkReport:
             "account_id": self.account_id,
             "accounts_scanned": self.accounts_scanned,
             "regions_scanned": self.regions_scanned,
+            "completeness": self.completeness,
+            "scope": self.scope,
             "region": self.region,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
@@ -2762,6 +2768,7 @@ def run_benchmark(
     checks: list[str] | None = None,
     *,
     session: Any = None,
+    region_scope_complete: bool = False,
 ) -> CISBenchmarkReport:
     """Run CIS AWS Foundations Benchmark v3.0 checks.
 
@@ -2774,8 +2781,11 @@ def run_benchmark(
             Runs all checks if *None*.
         session: Optional pre-built boto3 session (e.g. the read-only session
             the credential broker assumes from a stored connection). When
-            supplied it is used as-is and ``region`` / ``profile`` are ignored,
-            so the same read-only checks run against the brokered credentials.
+            supplied it provides credentials; ``region`` may still select the
+            regional client target while ``profile`` is ignored.
+        region_scope_complete: Internal fan-out proof. False for a direct
+            selected-region call; true only when the enabled-region wrapper has
+            established the complete region set.
 
     Returns:
         CISBenchmarkReport with per-check pass/fail results.
@@ -2794,7 +2804,7 @@ def run_benchmark(
             session_kwargs["profile_name"] = profile
 
         session = boto3.Session(**session_kwargs)
-    resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    resolved_region = region or session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
     # Get account ID for the report
     account_id = ""
@@ -2805,7 +2815,14 @@ def run_benchmark(
         # Account ID lookup is non-fatal; continue with empty value
         logger.debug("Could not get AWS account ID: %s", exc)
 
-    report = CISBenchmarkReport(region=resolved_region, account_id=account_id)
+    report = CISBenchmarkReport(
+        region=resolved_region,
+        account_id=account_id,
+        accounts_scanned=[account_id] if account_id else [],
+        regions_scanned=[resolved_region],
+        completeness="complete" if region_scope_complete and account_id else ("partial" if account_id else "unavailable"),
+        scope="enabled-regions" if region_scope_complete else "selected-region",
+    )
 
     # Lazy client cache (one per service)
     clients: dict[str, Any] = {}
@@ -2887,6 +2904,16 @@ def run_benchmark(
 
     attach_all(report, cloud="aws")
 
+    if account_id and not region_scope_complete:
+        _demote_passes_to_unknown(
+            report,
+            check_ids=_REGIONAL_CIS_CHECK_IDS,
+            reason=(
+                "Only one selected region was evaluated. Run the enabled-region benchmark "
+                "before certifying regional CIS controls across all enabled AWS regions."
+            ),
+        )
+
     return report
 
 
@@ -2941,6 +2968,22 @@ _STATUS_RANK = {
 }
 
 
+def _demote_passes_to_unknown(
+    report: CISBenchmarkReport,
+    *,
+    check_ids: frozenset[str] | None,
+    reason: str,
+) -> None:
+    """Replace only optimistic PASS states when the evidence boundary is incomplete."""
+    for check in report.checks:
+        if check.status is not CheckStatus.PASS:
+            continue
+        if check_ids is not None and check.check_id not in check_ids:
+            continue
+        check.status = CheckStatus.ERROR
+        check.evidence = reason
+
+
 def _merge_regional_cis_check(existing: CISCheckResult, incoming: CISCheckResult, region: str) -> CISCheckResult:
     """Merge two results for the same check_id across regions (worst status wins)."""
     if _STATUS_RANK[incoming.status] < _STATUS_RANK[existing.status]:
@@ -2972,6 +3015,7 @@ def run_benchmark_all_regions(
     checks: list[str] | None = None,
     *,
     regions: list[str] | None = None,
+    session: Any = None,
 ) -> CISBenchmarkReport:
     """Run CIS AWS checks across every enabled region in the account.
 
@@ -2986,25 +3030,50 @@ def run_benchmark_all_regions(
     from agent_bom.cloud.aws_inventory import _resolve_region_list
     from agent_bom.cloud.normalization import sanitize_discovery_warning
 
-    session_kwargs: dict[str, Any] = {}
-    if region:
-        session_kwargs["region_name"] = region
-    if profile:
-        session_kwargs["profile_name"] = profile
-    session = boto3.Session(**session_kwargs)
+    if session is None:
+        session_kwargs: dict[str, Any] = {}
+        if region:
+            session_kwargs["region_name"] = region
+        if profile:
+            session_kwargs["profile_name"] = profile
+        session = boto3.Session(**session_kwargs)
     default_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     scan_warnings: list[str] = []
     region_list = _resolve_region_list(session, default_region, regions=regions, warnings=scan_warnings)
     if len(region_list) <= 1:
-        report = run_benchmark(region=default_region, profile=profile, checks=checks, session=session)
+        complete = not scan_warnings
+        report = run_benchmark(
+            region=default_region,
+            profile=profile,
+            checks=checks,
+            session=session,
+            region_scope_complete=complete,
+        )
+        report.regions_scanned = list(region_list)
+        report.scope = "enabled-regions"
+        report.completeness = "complete" if complete and report.account_id else "partial" if report.account_id else "unavailable"
         report.warnings.extend(scan_warnings)
+        if not complete:
+            _demote_passes_to_unknown(
+                report,
+                check_ids=_REGIONAL_CIS_CHECK_IDS,
+                reason="Region enumeration was incomplete; PASS is unavailable for regional CIS controls.",
+            )
         return report
 
     home_region = region_list[0]
-    merged = run_benchmark(region=home_region, profile=profile, checks=checks)
+    merged = run_benchmark(
+        region=home_region,
+        profile=profile,
+        checks=checks,
+        session=session,
+        region_scope_complete=True,
+    )
     merged.regions_scanned = list(region_list)
     merged.region = f"multi:{','.join(region_list)}"
     merged.warnings.extend(scan_warnings)
+    merged.scope = "enabled-regions"
+    merged.completeness = "complete" if not scan_warnings and merged.account_id else "partial" if merged.account_id else "unavailable"
 
     if checks is None:
         regional_ids = sorted(_REGIONAL_CIS_CHECK_IDS)
@@ -3014,10 +3083,18 @@ def run_benchmark_all_regions(
         return merged
 
     by_id = {check.check_id: check for check in merged.checks}
+    regional_failures = False
     for scan_region in region_list[1:]:
         try:
-            partial = run_benchmark(region=scan_region, profile=profile, checks=regional_ids)
+            partial = run_benchmark(
+                region=scan_region,
+                profile=profile,
+                checks=regional_ids,
+                session=session,
+                region_scope_complete=True,
+            )
         except Exception as exc:  # noqa: BLE001
+            regional_failures = True
             merged.warnings.append(f"CIS benchmark skipped region {scan_region}: {sanitize_discovery_warning(exc)}")
             continue
         for check in partial.checks:
@@ -3034,6 +3111,13 @@ def run_benchmark_all_regions(
     from agent_bom.cloud.cis_remediation import attach_all
 
     attach_all(merged, cloud="aws")
+    if scan_warnings or regional_failures:
+        merged.completeness = "partial" if merged.account_id else "unavailable"
+        _demote_passes_to_unknown(
+            merged,
+            check_ids=_REGIONAL_CIS_CHECK_IDS,
+            reason="Region enumeration was incomplete; PASS is unavailable for regional CIS controls.",
+        )
     return merged
 
 
@@ -3094,12 +3178,17 @@ def run_all_account_benchmarks(
 
     if not account_ids:
         # Standalone account (not in an org) — single-account benchmark.
-        return run_benchmark(profile=profile, checks=checks, session=session)
+        return run_benchmark_all_regions(profile=profile, checks=checks, session=session)
 
     cap = aws_organizations.max_accounts()
     capped = account_ids[:cap]
 
-    aggregate = CISBenchmarkReport(account_id=", ".join(capped))
+    aggregate = CISBenchmarkReport(
+        account_id=", ".join(capped),
+        scope="organization-enabled-regions",
+        completeness="complete",
+    )
+    scope_partial = len(account_ids) > cap
     if len(account_ids) > cap:
         aggregate.warnings.append(
             f"AWS multi-account CIS benchmark capped at {cap} of {len(account_ids)} accounts (set AGENT_BOM_AWS_MAX_ACCOUNTS to raise)."
@@ -3113,7 +3202,7 @@ def run_all_account_benchmarks(
             external_id=external_id,
             base_session=session,
         )
-        return account_id, run_benchmark(session=assumed, checks=checks)
+        return account_id, run_benchmark_all_regions(session=assumed, checks=checks)
 
     # Deterministic aggregation: collect per-account reports keyed by id, then
     # merge in enumeration order so output is stable across runs.
@@ -3126,6 +3215,7 @@ def run_all_account_benchmarks(
                 _aid, account_report = future.result()
                 reports[account_id] = account_report
             except Exception as exc:  # noqa: BLE001 — one unreadable account must not sink the rest
+                scope_partial = True
                 aggregate.warnings.append(f"Account {account_id} skipped: {sanitize_discovery_warning(exc)}")
 
     for account_id in capped:
@@ -3133,9 +3223,19 @@ def run_all_account_benchmarks(
         if merged is None:
             continue
         aggregate.accounts_scanned.append(account_id)
+        for scan_region in merged.regions_scanned:
+            if scan_region not in aggregate.regions_scanned:
+                aggregate.regions_scanned.append(scan_region)
+        if merged.completeness != "complete":
+            scope_partial = True
         for check in merged.checks:
             check.account_id = account_id
             aggregate.checks.append(check)
         aggregate.warnings.extend(merged.warnings)
+
+    if not aggregate.accounts_scanned:
+        aggregate.completeness = "unavailable"
+    elif scope_partial:
+        aggregate.completeness = "partial"
 
     return aggregate

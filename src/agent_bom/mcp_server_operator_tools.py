@@ -486,7 +486,7 @@ def register_operator_tools(
         ] = None,
         region: Annotated[
             str | None,
-            Field(description="AWS region (only for provider=aws). Defaults to us-east-1."),
+            Field(description="Optional AWS region scope. Omit to evaluate CIS across all enabled AWS regions."),
         ] = None,
         profile: Annotated[
             str | None,

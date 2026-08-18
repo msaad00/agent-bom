@@ -535,6 +535,7 @@ _FINDING_SEARCH_FIELDS = (
     "resource_name",
 )
 _CVSS_VECTOR_RE = re.compile(r"^[A-Za-z0-9.:/_-]{1,256}$")
+_STRUCTURAL_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/@+ -]{0,511}$")
 _LIFECYCLE_STATUSES = frozenset({"open", "reopened", "resolved", "suppressed", "accepted", "not_affected", "fixed"})
 
 
@@ -571,6 +572,65 @@ def _safe_finding_provenance(value: Any) -> dict[str, Any] | None:
     return sanitized or None
 
 
+def _safe_structural_text(value: Any, *, max_len: int) -> str | None:
+    """Return a bounded display identifier, never a path or credential value."""
+    safe = _safe_optional_text(value, max_len=max_len)
+    if safe is None or not _STRUCTURAL_TOKEN_RE.fullmatch(safe):
+        return None
+    return safe
+
+
+def _safe_asset_projection(value: Any) -> dict[str, str] | None:
+    """Project only the asset fields required to identify a finding in the UI.
+
+    Raw identifiers and locations can contain account ids, local paths, URLs, or
+    credentials. They remain default-deny. The human label, type, and stable
+    opaque id are enough to avoid a meaningless ``asset`` placeholder while
+    preserving the response's privacy boundary.
+    """
+    if not isinstance(value, Mapping):
+        return None
+    result: dict[str, str] = {}
+    name = _safe_optional_text(value.get("name"), max_len=256)
+    if name is not None and not name.startswith("<"):
+        result["name"] = name
+    for key, max_len in (("asset_type", 64), ("stable_id", 128)):
+        safe = _safe_structural_text(value.get(key), max_len=max_len)
+        if safe is not None:
+            result[key] = safe
+    if not result:
+        return None
+    return result
+
+
+def _safe_control_projection(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    controls: list[dict[str, Any]] = []
+    for raw in value[:100]:
+        if not isinstance(raw, Mapping):
+            continue
+        framework = _safe_structural_text(raw.get("framework"), max_len=64)
+        control = _safe_structural_text(
+            raw.get("control") or raw.get("control_id") or raw.get("id"),
+            max_len=128,
+        )
+        if framework is None or control is None:
+            continue
+        item: dict[str, Any] = {"framework": framework, "control": control}
+        for key in ("version", "source", "via"):
+            safe = _safe_structural_text(raw.get(key), max_len=128)
+            if safe is not None:
+                item[key] = safe
+        confidence = raw.get("confidence")
+        if isinstance(confidence, int | float) and not isinstance(confidence, bool):
+            score = float(confidence)
+            if math.isfinite(score) and 0.0 <= score <= 1.0:
+                item["confidence"] = score
+        controls.append(item)
+    return controls
+
+
 def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     """Return the canonical public finding projection without replay-only data.
 
@@ -584,6 +644,20 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 
     redacted = redact_for_persistence(dict(row), EvidenceTier.SAFE_TO_STORE)
     payload = dict(redacted) if isinstance(redacted, dict) else {}
+
+    asset = _safe_asset_projection(row.get("asset"))
+    if asset is not None:
+        payload["asset"] = asset
+
+    framework_tags = row.get("framework_tags")
+    if isinstance(framework_tags, list):
+        safe_tags = [safe for value in framework_tags[:200] if (safe := _safe_structural_text(value, max_len=128)) is not None]
+        if safe_tags:
+            payload["framework_tags"] = safe_tags
+
+    controls = _safe_control_projection(row.get("controls"))
+    if controls:
+        payload["controls"] = controls
 
     for key in _FINDING_RESPONSE_TIMESTAMPS:
         safe_value = _safe_timestamp(row.get(key))

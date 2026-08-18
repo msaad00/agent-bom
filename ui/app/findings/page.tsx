@@ -102,7 +102,13 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       effective_reach_score?: number;
       attack_vector_summary?: string;
     };
-    const assetName = finding.asset?.name?.trim() || finding.asset?.identifier || finding.asset?.stable_id || "asset";
+    const assetName =
+      finding.asset?.name?.trim() ||
+      finding.package?.trim() ||
+      finding.package_name?.trim() ||
+      finding.asset?.identifier ||
+      finding.asset?.stable_id ||
+      "Unavailable";
     const findingLabel = finding.cve_id || finding.title || finding.id;
     const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
     const evidence = finding.evidence ?? {};

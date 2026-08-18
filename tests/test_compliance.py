@@ -92,7 +92,7 @@ def test_compliance_tag_registry_covers_every_blast_radius_tag_field() -> None:
     assert set(COMPLIANCE_TAG_FIELDS).issubset(row)
 
 
-def test_narrative_and_evidence_index_preserve_all_framework_tags(monkeypatch) -> None:
+def test_evidence_index_preserves_all_framework_tags() -> None:
     from agent_bom.api.routes import compliance as route
     from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 
@@ -110,14 +110,6 @@ def test_narrative_and_evidence_index_preserve_all_framework_tags(monkeypatch) -
         created_at="2026-07-29T00:00:00Z",
         completed_at="2026-07-29T00:01:00Z",
     )
-    monkeypatch.setattr(route, "_tenant_jobs", lambda _request: [job])
-
-    report = route._latest_report(object())
-    assert report is not None
-    rebuilt = report.blast_radii[0]
-    for field in COMPLIANCE_TAG_FIELDS:
-        assert getattr(rebuilt, field) == [f"tag:{field}"]
-
     index = route._index_blast_radii_by_tag([job])
     for field in COMPLIANCE_TAG_FIELDS:
         assert f"tag:{field}" in index

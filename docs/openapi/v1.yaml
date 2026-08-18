@@ -9536,12 +9536,12 @@ paths:
       - compliance
   /v1/compliance/narrative:
     get:
-      description: "Generate a review-ready compliance narrative from all completed\
-        \ scans.\n\nProduces human-readable stories for all supported framework mappings,\
-        \ a\ncross-framework executive summary, and a remediation-compliance bridge\n\
-        showing which package upgrades resolve which controls.\n\nNo LLM is required\
-        \ \u2014 narratives are generated from template strings\nand the structured\
-        \ blast radius data in completed scan results."
+      description: "Generate a review-ready compliance narrative from current tenant\
+        \ evidence.\n\nProduces human-readable stories for all supported framework\
+        \ mappings, a\ncross-framework executive summary, and a remediation-compliance\
+        \ bridge\nshowing which package upgrades resolve which controls.\n\nNo LLM\
+        \ is required \u2014 narratives are generated from template strings and\n\
+        the canonical current finding queue used by the REST/CLI/UI surfaces."
       operationId: get_compliance_narrative_v1_compliance_narrative_get
       parameters:
       - in: header

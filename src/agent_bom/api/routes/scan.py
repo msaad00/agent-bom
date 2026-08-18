@@ -83,7 +83,6 @@ from agent_bom.api.tenancy import require_body_tenant_match, require_request_ten
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id
-from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.finding_scope import (
     FINDING_SEVERITY_FILTERS,
     FindingClass,
@@ -361,6 +360,58 @@ def iter_tenant_scan_spine_findings(
     if scope:
         rows = [item for item in rows if _row_matches_scope(item, dict(scope))]
     return [safe_finding_response_payload(row) for row in rows]
+
+
+def persisted_finding_evidence(
+    *,
+    tenant_id: str,
+    cve_id: str,
+    scan_id: str | None = None,
+) -> dict[str, Any]:
+    """Return one vulnerability from the same persisted finding sources as REST.
+
+    MCP tools call this in-process instead of running a second laptop scan. The
+    response distinguishes an empty persisted estate from a process that has no
+    persisted scan evidence at all, allowing standalone MCP mode to retain its
+    local-scan fallback without mixing the two scopes.
+    """
+    scan_jobs = _completed_jobs_for_tenant(tenant_id)
+    if scan_id:
+        scan_jobs = [job for job in scan_jobs if str((job.result or {}).get("scan_id") or job.job_id) == scan_id]
+    rows = iter_tenant_scan_spine_findings(tenant_id, scan_id=scan_id, status="all")
+    bulk_rows = _bulk_ingested_findings_for_tenant(tenant_id)
+    if scan_id:
+        bulk_rows = [row for row in bulk_rows if str(row.get("scan_id") or "") == scan_id]
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    rows.extend(safe_finding_response_payload(row) for row in bulk_rows)
+    deduped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (
+            str(row.get("canonical_id") or row.get("id") or ""),
+            str(row.get("cve_id") or row.get("vulnerability_id") or ""),
+            str(row.get("package") or row.get("package_name") or ""),
+        )
+        deduped[key] = row
+    wanted = cve_id.strip().upper()
+    matched = [
+        row
+        for row in deduped.values()
+        if str(row.get("cve_id") or row.get("vulnerability_id") or row.get("id") or "").strip().upper() == wanted
+    ]
+    # An explicit scan scope must never fall through to an unrelated local MCP
+    # scan merely because the requested persisted scan is absent.
+    source_available = bool(scan_jobs or bulk_rows or scan_id)
+    return {
+        "available": source_available,
+        "source": "persisted_scan_findings",
+        "scope": {"tenant_id": tenant_id, "scan_id": scan_id},
+        "completeness": {
+            "status": "complete",
+            "reason": "",
+        },
+        "findings": matched,
+    }
 
 
 class BulkFindingsRequest(BaseModel):
@@ -1165,7 +1216,9 @@ def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str,
     findings = result.get("findings")
     if not isinstance(findings, list):
         return redacted
-    redacted["findings"] = redact_for_persistence(findings, EvidenceTier.SAFE_TO_STORE)
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    redacted["findings"] = [safe_finding_response_payload(item) for item in findings if isinstance(item, Mapping)]
     return redacted
 
 
@@ -2992,6 +3045,115 @@ def _list_findings_impl(
             "completeness": facet_completeness,
         }
     return envelope
+
+
+def current_findings_snapshot(request: Request, *, max_findings: int = 50_000) -> dict[str, Any]:
+    """Collect the canonical current finding queue for an internal consumer.
+
+    Compliance narratives and other in-process surfaces need the same merged
+    scan-job + current-ingest evidence as ``GET /v1/findings``. The walk uses
+    that endpoint's keyset contract and is explicitly bounded; a bound hit is
+    returned as partial evidence rather than silently called complete.
+    """
+    rows: list[dict[str, Any]] = []
+    cursor: str | None = None
+    first_total: int | None = None
+    first_metadata: dict[str, Any] | None = None
+    warnings: list[str] = []
+    while len(rows) < max_findings:
+        page = _list_findings_impl(
+            request,
+            q=None,
+            severity=None,
+            scan_id=None,
+            sort="effective_reach",
+            limit=min(1000, max_findings - len(rows)),
+            offset=0,
+            cursor=cursor,
+            approximate_total=cursor is not None,
+            window_days=None,
+            status=_DEFAULT_FINDING_STATUS,
+        )
+        if first_metadata is None:
+            first_metadata = page.get("count_metadata") if isinstance(page.get("count_metadata"), dict) else {}
+            first_total = page.get("total") if isinstance(page.get("total"), int) else None
+        page_rows = page.get("findings")
+        if isinstance(page_rows, list):
+            rows.extend(row for row in page_rows if isinstance(row, dict))
+        warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
+        cursor = str(page.get("next_cursor") or "") or None
+        if not cursor:
+            break
+
+    tenant_id = _tenant_id(request)
+    jobs = _completed_jobs_for_tenant(tenant_id)
+    agent_names: set[str] = set()
+    package_keys: set[tuple[str, str, str]] = set()
+    summary_agent_counts: list[int] = []
+    summary_package_counts: list[int] = []
+    generated_values: list[str] = []
+    completed_scan_ids: set[str] = set()
+    for job in jobs:
+        result = job.result if isinstance(job.result, dict) else {}
+        completed_scan_ids.add(str(result.get("scan_id") or job.job_id))
+        for agent in result.get("agents", []) if isinstance(result.get("agents"), list) else []:
+            if isinstance(agent, dict) and str(agent.get("name") or "").strip():
+                agent_names.add(str(agent["name"]).strip())
+        for package in result.get("packages", []) if isinstance(result.get("packages"), list) else []:
+            if isinstance(package, dict):
+                package_keys.add(
+                    (
+                        str(package.get("name") or ""),
+                        str(package.get("version") or ""),
+                        str(package.get("ecosystem") or ""),
+                    )
+                )
+        raw_summary = result.get("summary")
+        summary: dict[str, Any] = raw_summary if isinstance(raw_summary, dict) else {}
+        if isinstance(summary.get("total_agents"), int):
+            summary_agent_counts.append(summary["total_agents"])
+        if isinstance(summary.get("total_packages"), int):
+            summary_package_counts.append(summary["total_packages"])
+        generated = result.get("generated_at") or job.completed_at
+        if isinstance(generated, str) and generated:
+            generated_values.append(generated)
+
+    # Bulk-ingested/current findings can carry useful inventory identity even
+    # when no full report envelope exists. Count the observed identities; never
+    # manufacture placeholder agents or packages to match a summary scalar.
+    for row in rows:
+        raw_agents = row.get("affected_agents")
+        if isinstance(raw_agents, list):
+            agent_names.update(str(name).strip() for name in raw_agents if str(name).strip())
+        raw_asset = row.get("asset")
+        asset = raw_asset if isinstance(raw_asset, dict) else {}
+        package_value = str(row.get("package") or row.get("package_name") or "").strip()
+        if package_value:
+            package_keys.add((package_value, str(row.get("package_version") or ""), str(row.get("ecosystem") or "")))
+        elif str(asset.get("asset_type") or "").lower() == "package" and str(asset.get("name") or "").strip():
+            package_keys.add((str(asset["name"]).strip(), "", ""))
+
+    truncated = cursor is not None
+    if truncated:
+        warnings.append(f"Narrative evidence is bounded to {max_findings} current findings; additional rows remain.")
+    return {
+        "schema_version": "finding-snapshot.v1",
+        "tenant_id": tenant_id,
+        "findings": rows,
+        "count": len(rows),
+        "total": first_total,
+        "total_agents": len(agent_names) if agent_names else max(summary_agent_counts, default=0),
+        "total_packages": len(package_keys) if package_keys else max(summary_package_counts, default=0),
+        "generated_at": max(generated_values, default=""),
+        "scan_ids": sorted(completed_scan_ids | {str(row.get("scan_id")) for row in rows if row.get("scan_id")}),
+        "completed_scan_count": len(jobs),
+        "warnings": list(dict.fromkeys(warnings)),
+        "count_metadata": first_metadata or {},
+        "completeness": {
+            "status": "partial" if truncated else "complete",
+            "reason": "snapshot row bound reached" if truncated else "",
+        },
+    }
 
 
 @router.post(

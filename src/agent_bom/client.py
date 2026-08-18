@@ -338,6 +338,17 @@ class AgentBomClient:
         offset: int = 0,
         framework: str | None = None,
         control: str | None = None,
+        scan_id: str | None = None,
+        query: str | None = None,
+        domain: str | None = None,
+        provider: str | None = None,
+        account: str | None = None,
+        environment: str | None = None,
+        finding_class: str | None = None,
+        status: str | None = None,
+        kev: bool | None = None,
+        window_days: int | None = None,
+        cursor: str | None = None,
     ) -> JsonObject:
         """List normalized findings from scan jobs and bulk ingests.
 
@@ -357,6 +368,17 @@ class AgentBomClient:
                     "offset": offset,
                     "framework": framework,
                     "control": control,
+                    "scan_id": scan_id,
+                    "q": query,
+                    "domain": domain,
+                    "provider": provider,
+                    "account": account,
+                    "environment": environment,
+                    "finding_class": finding_class,
+                    "status": status,
+                    "kev": kev,
+                    "window_days": window_days,
+                    "cursor": cursor,
                 }
             ),
         )

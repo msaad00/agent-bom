@@ -2095,6 +2095,7 @@ export interface ControlNarrative {
   narrative: string;
   affected_packages: string[];
   affected_agents: string[];
+  affected_findings: string[];
   remediation_steps: string[];
 }
 
@@ -2123,6 +2124,19 @@ export interface ComplianceNarrativeResponse {
   remediation_impact: RemediationImpact[];
   risk_narrative: string;
   generated_at: string;
+  claim_boundary: string;
+  evidence_snapshot?: {
+    schema_version?: string | null;
+    source: "scan_and_current_ingest_findings" | string;
+    tenant_id?: string | null;
+    scan_ids: string[];
+    completed_scan_count: number;
+    returned: number;
+    total: number | null;
+    completeness: { status: "complete" | "partial" | "unknown"; reason: string } | null;
+    count_metadata: Record<string, unknown>;
+    warnings: string[];
+  } | undefined;
 }
 
 export interface ComplianceControl {

@@ -109,6 +109,30 @@ describe("FindingsPage", () => {
     });
   });
 
+  it("uses the persisted package identity when an older finding has no asset object", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        {
+          id: "finding-legacy-asset",
+          finding_class: "vulnerability",
+          severity: "high",
+          cve_id: "CVE-2026-7777",
+          package: "requests@2.32.4",
+          source: "osv",
+        },
+      ],
+      total: 1,
+      has_more: false,
+      next_cursor: "",
+    });
+
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("requests@2.32.4")).toBeInTheDocument();
+    expect(screen.queryByText("asset")).not.toBeInTheDocument();
+  });
+
   it("projects canonical vulnerability intelligence into the finding drawer without inventing missing facts", async () => {
     apiMock.listFindings.mockResolvedValue({
       total: 1,

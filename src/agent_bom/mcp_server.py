@@ -520,6 +520,13 @@ async def _run_scan_pipeline(
     )
 
 
+def _persisted_finding_evidence(*, tenant_id: str, cve_id: str, scan_id: str | None = None) -> dict[str, Any]:
+    """Read the API's canonical persisted finding spine without an HTTP self-call."""
+    from agent_bom.api.routes.scan import persisted_finding_evidence
+
+    return persisted_finding_evidence(tenant_id=tenant_id, cve_id=cve_id, scan_id=scan_id)
+
+
 # ---------------------------------------------------------------------------
 # MCP Server factory
 # ---------------------------------------------------------------------------
@@ -915,13 +922,14 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     @mcp.tool(annotations=_READ_ONLY, title="Blast Radius Analysis")
     async def blast_radius(
         cve_id: Annotated[str, Field(description="CVE identifier to look up, e.g. 'CVE-2024-1234' or 'GHSA-xxxx'.")],
+        tenant_id: Annotated[str, Field(description="Tenant scope for persisted findings. Defaults to 'default'.")] = "default",
+        scan_id: Annotated[str | None, Field(description="Optional persisted scan scope.")] = None,
     ) -> str:
         """Look up the blast radius of a specific CVE across your AI agent setup.
 
-        Scans local MCP configurations, finds the specified CVE, and returns
-        the full attack chain: which packages are affected, which MCP servers
-        use those packages, which agents connect to those servers, and what
-        credentials and tools are exposed.
+        Reads the tenant's persisted control-plane finding evidence when it is
+        available. Standalone MCP mode falls back to a local MCP configuration
+        scan and labels that narrower source explicitly.
 
         Args:
             cve_id: The CVE identifier (e.g. "CVE-2024-1234" or "GHSA-xxxx").
@@ -935,8 +943,11 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             "blast_radius",
             blast_radius_impl,
             cve_id=cve_id,
+            tenant_id=tenant_id,
+            scan_id=scan_id,
             _validate_cve_id=_validate_cve_id,
             _run_scan_pipeline=_run_scan_pipeline,
+            _get_persisted_evidence=_persisted_finding_evidence,
             _truncate_response=_truncate_response,
         )
 

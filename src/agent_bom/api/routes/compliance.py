@@ -62,7 +62,6 @@ from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
 if TYPE_CHECKING:
-    from agent_bom.models import AIBOMReport
     from agent_bom.output.compliance_narrative import ComplianceNarrative
 
 
@@ -1064,97 +1063,19 @@ def _bucket_for(measured_at_iso: str, unit: str) -> str:
 # ─── Compliance Narrative ─────────────────────────────────────────────────
 
 
-def _latest_report(request: Request) -> "AIBOMReport | None":
-    """Return a synthetic AIBOMReport built from the latest completed scan result.
+def _current_narrative_evidence(request: Request) -> dict[str, Any] | None:
+    """Return the same persisted current finding snapshot the queue exposes."""
+    from agent_bom.api.routes.scan import current_findings_snapshot
 
-    The narrative generator expects a real ``AIBOMReport`` model object, but the
-    API layer stores scan results as plain dicts (the JSON-serialised output).
-    We reconstruct a minimal report with only the fields the narrative generator
-    reads (``blast_radii``, ``agents``, ``total_packages``, ``total_agents``).
-    """
-    from agent_bom.compliance_coverage import blast_radius_tag_kwargs
-    from agent_bom.models import (
-        Agent,
-        AgentType,
-        AIBOMReport,
-        BlastRadius,
-        MCPServer,
-        Package,
-        Severity,
-        Vulnerability,
-    )
-
-    # Merge blast_radius entries from ALL completed scans (same as /v1/compliance)
-    all_blast_dicts: list[dict] = []
-    total_agents_count = 0
-    total_packages_count = 0
-
-    for job in _tenant_jobs(request):
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        all_blast_dicts.extend(job.result.get("blast_radius", []))
-        summary = job.result.get("summary", {})
-        total_agents_count += summary.get("total_agents", 0)
-        total_packages_count += summary.get("total_packages", 0)
-
-    if not all_blast_dicts and total_agents_count == 0:
+    snapshot = current_findings_snapshot(request)
+    if not snapshot["findings"] and not snapshot["completed_scan_count"]:
         return None
-
-    # Build minimal BlastRadius objects the narrative module can read
-    blast_radii: list[BlastRadius] = []
-    for bd in all_blast_dicts:
-        raw_pkg = bd.get("package", "unknown@0.0")
-        if "@" in raw_pkg:
-            pkg_name, pkg_ver = raw_pkg.rsplit("@", 1)
-        else:
-            pkg_name, pkg_ver = raw_pkg, "0.0"
-
-        sev_str = (bd.get("severity") or "unknown").upper()
-        try:
-            sev = Severity(sev_str.lower())
-        except ValueError:
-            sev = Severity.UNKNOWN
-
-        vuln = Vulnerability(
-            id=bd.get("vulnerability_id", "UNKNOWN"),
-            summary="",
-            severity=sev,
-            fixed_version=bd.get("fixed_version"),
-            is_kev=bool(bd.get("is_kev") or bd.get("cisa_kev")),
-        )
-        pkg = Package(name=pkg_name, version=pkg_ver, ecosystem=bd.get("ecosystem", ""))
-
-        # Minimal affected agents (name only)
-        agents = [Agent(name=n, agent_type=AgentType.CUSTOM, config_path="") for n in bd.get("affected_agents", [])]
-        servers = [MCPServer(name=n) for n in bd.get("affected_servers", [])]
-
-        br = BlastRadius(
-            vulnerability=vuln,
-            package=pkg,
-            affected_servers=servers,
-            affected_agents=agents,
-            exposed_credentials=bd.get("exposed_credentials", []),
-            exposed_tools=[],
-            risk_score=float(bd.get("risk_score") or 0),
-        )
-        for tag_field, tags in blast_radius_tag_kwargs(bd).items():
-            setattr(br, tag_field, tags)
-        blast_radii.append(br)
-
-    # Pad agents list to match counts from scan summaries (narrative uses len(agents))
-    agents_list = [Agent(name=f"agent-{i}", agent_type=AgentType.CUSTOM, config_path="") for i in range(total_agents_count)]
-    # Pad packages via a synthetic server on the first agent
-    if agents_list and total_packages_count > 0:
-        dummy_pkgs = [Package(name=f"pkg-{i}", version="0.0", ecosystem="unknown") for i in range(total_packages_count)]
-        agents_list[0].mcp_servers.append(MCPServer(name="__summary__", packages=dummy_pkgs))
-
-    report = AIBOMReport(agents=agents_list, blast_radii=blast_radii)
-    return report
+    return snapshot
 
 
-def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
+def _narrative_to_dict(narrative: "ComplianceNarrative", *, evidence: dict[str, Any] | None = None) -> dict:
     """Serialise a ComplianceNarrative dataclass to a JSON-safe dict."""
-    return {
+    payload: dict[str, Any] = {
         "executive_summary": narrative.executive_summary,
         "risk_narrative": narrative.risk_narrative,
         "generated_at": narrative.generated_at,
@@ -1195,26 +1116,37 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
             for ri in narrative.remediation_impact
         ],
     }
+    if evidence is not None:
+        payload["evidence_snapshot"] = {
+            "schema_version": evidence.get("schema_version"),
+            "source": "scan_and_current_ingest_findings",
+            "tenant_id": evidence.get("tenant_id"),
+            "scan_ids": evidence.get("scan_ids", []),
+            "completed_scan_count": evidence.get("completed_scan_count", 0),
+            "returned": evidence.get("count", 0),
+            "total": evidence.get("total"),
+            "completeness": evidence.get("completeness"),
+            "count_metadata": evidence.get("count_metadata", {}),
+            "warnings": evidence.get("warnings", []),
+        }
+    return payload
 
 
 @router.get("/compliance/narrative", tags=["compliance"])
 async def get_compliance_narrative(request: Request) -> dict:
-    """Generate a review-ready compliance narrative from all completed scans.
+    """Generate a review-ready compliance narrative from current tenant evidence.
 
     Produces human-readable stories for all supported framework mappings, a
     cross-framework executive summary, and a remediation-compliance bridge
     showing which package upgrades resolve which controls.
 
-    No LLM is required — narratives are generated from template strings
-    and the structured blast radius data in completed scan results.
+    No LLM is required — narratives are generated from template strings and
+    the canonical current finding queue used by the REST/CLI/UI surfaces.
     """
-    from agent_bom.output.compliance_narrative import (
-        COMPLIANCE_CLAIM_BOUNDARY,
-        generate_compliance_narrative,
-    )
+    from agent_bom.output.compliance_narrative import COMPLIANCE_CLAIM_BOUNDARY
 
-    report = _latest_report(request)
-    if report is None:
+    evidence = _current_narrative_evidence(request)
+    if evidence is None:
         return {
             "executive_summary": "No completed scans available. Run agent-bom scan first.",
             "framework_narratives": [],
@@ -1224,8 +1156,15 @@ async def get_compliance_narrative(request: Request) -> dict:
             "claim_boundary": COMPLIANCE_CLAIM_BOUNDARY,
         }
 
-    narrative: ComplianceNarrative = generate_compliance_narrative(report)
-    return _narrative_to_dict(narrative)
+    from agent_bom.output.compliance_narrative import generate_compliance_narrative_from_findings
+
+    narrative: ComplianceNarrative = generate_compliance_narrative_from_findings(
+        evidence["findings"],
+        total_agents=evidence["total_agents"],
+        total_packages=evidence["total_packages"],
+        generated_at=evidence["generated_at"],
+    )
+    return _narrative_to_dict(narrative, evidence=evidence)
 
 
 @router.get("/compliance/narrative/{framework}", tags=["compliance"])
@@ -1242,7 +1181,6 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
     from agent_bom.output.compliance_narrative import (
         ALL_FRAMEWORK_SLUGS,
         COMPLIANCE_CLAIM_BOUNDARY,
-        generate_compliance_narrative,
     )
 
     canonical = normalize_framework_slug(framework)
@@ -1252,8 +1190,8 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
             detail=(f"Unknown framework '{framework}'. Supported: {', '.join(ALL_FRAMEWORK_SLUGS)}"),
         )
 
-    report = _latest_report(request)
-    if report is None:
+    evidence = _current_narrative_evidence(request)
+    if evidence is None:
         return {
             "executive_summary": "No completed scans available. Run agent-bom scan first.",
             "framework_narratives": [],
@@ -1263,8 +1201,16 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
             "claim_boundary": COMPLIANCE_CLAIM_BOUNDARY,
         }
 
-    narrative: ComplianceNarrative = generate_compliance_narrative(report, framework=canonical)
-    return _narrative_to_dict(narrative)
+    from agent_bom.output.compliance_narrative import generate_compliance_narrative_from_findings
+
+    narrative: ComplianceNarrative = generate_compliance_narrative_from_findings(
+        evidence["findings"],
+        total_agents=evidence["total_agents"],
+        total_packages=evidence["total_packages"],
+        generated_at=evidence["generated_at"],
+        framework=canonical,
+    )
+    return _narrative_to_dict(narrative, evidence=evidence)
 
 
 @router.get("/compliance/verification-key", tags=["compliance"])

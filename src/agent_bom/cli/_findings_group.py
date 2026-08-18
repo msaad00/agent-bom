@@ -190,11 +190,26 @@ def push_findings_cmd(
 
 @findings_cmd.command("list")
 @click.option("--severity", help="Filter findings by severity.")
+@click.option("--scan-id", help="Restrict results to one persisted scan id.")
+@click.option("--query", help="Search canonical finding identity and structural fields.")
+@click.option("--domain", help="Security lens filter (cspm, vuln, aspm, dspm, aispm).")
+@click.option("--provider", help="Provider scope, for example aws, azure, gcp, or snowflake.")
+@click.option("--account", help="Normalized account scope, for example aws:111111111111.")
+@click.option("--environment", help="Environment scope, for example prod or staging.")
+@click.option(
+    "--finding-class",
+    type=click.Choice(["vulnerability", "misconfiguration", "secret", "identity", "unclassified"]),
+    help="Canonical finding class.",
+)
+@click.option("--status", type=click.Choice(["open", "resolved", "all"]), help="Lifecycle status scope.")
+@click.option("--kev", is_flag=True, default=None, help="Return only CISA KEV findings.")
+@click.option("--window-days", type=click.IntRange(min=0, max=3650), help="Current-state lookback; 0 means all retained history.")
 @click.option("--framework", help="Compliance framework drill-through (e.g. soc2, nist-csf).")
 @click.option("--control", help="Framework control code; narrows within --framework (e.g. CC6.1).")
 @click.option("--sort", default="effective_reach", show_default=True, help="Sort field used by the API.")
 @click.option("--limit", default=500, show_default=True, type=click.IntRange(min=1, max=1000), help="Maximum rows to return.")
 @click.option("--offset", default=0, show_default=True, type=click.IntRange(min=0), help="Rows to skip.")
+@click.option("--cursor", help="Keyset cursor returned by the prior page.")
 @click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", show_default=True)
 @_common_api_options
 def list_findings_cmd(
@@ -203,20 +218,50 @@ def list_findings_cmd(
     bearer_token: str | None,
     tenant_id: str | None,
     severity: str | None,
+    scan_id: str | None,
+    query: str | None,
+    domain: str | None,
+    provider: str | None,
+    account: str | None,
+    environment: str | None,
+    finding_class: str | None,
+    status: str | None,
+    kev: bool | None,
+    window_days: int | None,
     framework: str | None,
     control: str | None,
     sort: str,
     limit: int,
     offset: int,
+    cursor: str | None,
     output_format: str,
 ) -> None:
     """List findings with the same filters as the REST API."""
 
     client = _make_client(api_url, api_key, bearer_token, tenant_id)
-    payload = _run_request(
-        client,
-        lambda api: api.list_findings(severity=severity, sort=sort, limit=limit, offset=offset, framework=framework, control=control),
-    )
+    filters: dict[str, Any] = {
+        "severity": severity,
+        "sort": sort,
+        "limit": limit,
+        "offset": offset,
+        "framework": framework,
+        "control": control,
+    }
+    optional_filters = {
+        "scan_id": scan_id,
+        "query": query,
+        "domain": domain,
+        "provider": provider,
+        "account": account,
+        "environment": environment,
+        "finding_class": finding_class,
+        "status": status,
+        "kev": kev,
+        "window_days": window_days,
+        "cursor": cursor,
+    }
+    filters.update({key: value for key, value in optional_filters.items() if value is not None})
+    payload = _run_request(client, lambda api: api.list_findings(**filters))
     if output_format == "json":
         _emit_json(payload)
     else:

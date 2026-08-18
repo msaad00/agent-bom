@@ -25,9 +25,11 @@ Supported frameworks (slug → display name):
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
@@ -640,9 +642,16 @@ def _build_risk_narrative(
     total_agents: int,
     total_vulns: int,
     critical_count: int,
+    finding_label: str = "vulnerability",
 ) -> str:
     """Plain-English top-risk explanation from scan data."""
+    plural_label = "vulnerabilities" if finding_label == "vulnerability" else f"{finding_label}s"
     if not blast_radii_dicts:
+        if finding_label != "vulnerability":
+            return (
+                "No security findings were detected in the current evidence scope. "
+                "This is not a claim that unscanned or unavailable sources are clean."
+            )
         return (
             "No vulnerabilities were detected in this scan. "
             "The AI agent environment appears clean based on the packages assessed. "
@@ -664,7 +673,9 @@ def _build_risk_narrative(
 
     # Lead sentence
     agent_str = f"{total_agents} agent{'s' if total_agents != 1 else ''}"
-    parts.append(f"This scan identified {total_vulns} vulnerabilit{'ies' if total_vulns != 1 else 'y'} across {agent_str}.")
+    item_word = finding_label if total_vulns == 1 else plural_label
+    evidence_subject = "This scan" if finding_label == "vulnerability" else "Current evidence"
+    parts.append(f"{evidence_subject} identified {total_vulns} {item_word} across {agent_str}.")
 
     # KEV callout
     if kev_entries:
@@ -713,30 +724,39 @@ def _build_executive_summary(
     total_vulns: int,
     critical_count: int,
     generated_at: str,
+    finding_label: str = "vulnerability",
 ) -> str:
     """3-5 sentence executive summary for compliance stakeholders."""
     action_fws = [fn for fn in framework_narratives if fn.status == "action_required"]
     review_fws = [fn for fn in framework_narratives if fn.status == "review"]
     evaluated_fws = [fn for fn in framework_narratives if fn.status in ("evidence_current", "review", "action_required")]
     # Lead: what was scanned
+    evidence_verb = "scanned on" if finding_label == "vulnerability" else "represented in current evidence through"
     sentences: list[str] = [
         f"This AI-BOM compliance report covers {total_agents} AI agent"
         f"{'s' if total_agents != 1 else ''} "
         f"and {total_packages} package{'s' if total_packages != 1 else ''} "
-        f"scanned on {generated_at[:10]}."
+        f"{evidence_verb} {generated_at[:10]}."
     ]
 
-    # Vulnerability posture
+    plural_label = "vulnerabilities" if finding_label == "vulnerability" else f"{finding_label}s"
+    item_word = finding_label if total_vulns == 1 else plural_label
+    # Finding posture
     if total_vulns == 0:
-        sentences.append("No vulnerabilities were detected; all assessed dependencies are clean.")
+        if finding_label == "vulnerability":
+            sentences.append("No vulnerabilities were detected; all assessed dependencies are clean.")
+        else:
+            sentences.append(
+                "No security findings were detected in the current evidence scope; unavailable or unscanned sources are not claimed clean."
+            )
     elif critical_count > 0:
         sentences.append(
-            f"{total_vulns} vulnerabilit{'ies were' if total_vulns > 1 else 'y was'} identified "
+            f"{total_vulns} {item_word} {'were' if total_vulns > 1 else 'was'} identified "
             f"including {critical_count} critical finding"
             f"{'s' if critical_count > 1 else ''} that require immediate remediation."
         )
     else:
-        sentences.append(f"{total_vulns} vulnerabilit{'ies were' if total_vulns > 1 else 'y was'} identified across the assessed packages.")
+        sentences.append(f"{total_vulns} {item_word} {'were' if total_vulns > 1 else 'was'} identified across the assessed evidence.")
 
     # Framework posture
     total_fws = len(framework_narratives)
@@ -760,7 +780,7 @@ def _build_executive_summary(
     # Closing action
     if action_fws or review_fws:
         sentences.append(
-            "Remediation of identified vulnerabilities is the highest-priority action; control owners must validate compliance separately."
+            f"Remediation of identified {plural_label} is the highest-priority action; control owners must validate compliance separately."
         )
     else:
         sentences.append("Continue regular scanning and independent control validation to maintain current evidence coverage.")
@@ -774,6 +794,8 @@ def _build_executive_summary(
 def generate_compliance_narrative(
     report: "AIBOMReport",
     framework: str | None = None,
+    *,
+    finding_label: str = "vulnerability",
 ) -> ComplianceNarrative:
     """Generate review-ready compliance narrative from scan results.
 
@@ -843,6 +865,7 @@ def generate_compliance_narrative(
         total_agents=report.total_agents,
         total_vulns=total_vulns,
         critical_count=critical_count,
+        finding_label=finding_label,
     )
 
     executive_summary = _build_executive_summary(
@@ -851,7 +874,8 @@ def generate_compliance_narrative(
         total_packages=report.total_packages,
         total_vulns=total_vulns,
         critical_count=critical_count,
-        generated_at=generated_at,
+        generated_at=_latest_scan or generated_at,
+        finding_label=finding_label,
     )
 
     # Catalog-backed NIST 800-53 line (vendor-asserted, scored over evaluated
@@ -874,3 +898,118 @@ def generate_compliance_narrative(
         claim_boundary=COMPLIANCE_CLAIM_BOUNDARY,
         nist_800_53_catalog=nist_800_53_catalog,
     )
+
+
+def generate_compliance_narrative_from_findings(
+    findings: list[Mapping[str, object]],
+    *,
+    total_agents: int,
+    total_packages: int,
+    generated_at: str | None = None,
+    framework: str | None = None,
+) -> ComplianceNarrative:
+    """Generate the narrative from the canonical persisted finding stream.
+
+    The control plane stores complete unified findings, not Python model
+    instances. Re-running a scanner or padding a model with ``agent-0`` and
+    ``pkg-0`` placeholders makes the narrative answer a different question from
+    the finding queue. This adapter preserves each persisted finding and its
+    control mappings, then reuses the established narrative calculation.
+    """
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+    tag_aliases: dict[str, str] = {}
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        for alias in (
+            metadata.slug,
+            metadata.slug.replace("-", "_"),
+            metadata.output_key,
+            metadata.summary_prefix,
+            metadata.tag_field.removesuffix("_tags"),
+        ):
+            tag_aliases[alias.lower().replace("-", "_")] = metadata.tag_field
+
+    blast_radii: list[SimpleNamespace] = []
+    for row in findings:
+        tag_values: dict[str, list[str]] = {metadata.tag_field: [] for metadata in TAG_MAPPED_FRAMEWORKS}
+        for metadata in TAG_MAPPED_FRAMEWORKS:
+            raw_tags = row.get(metadata.tag_field)
+            if isinstance(raw_tags, (list, tuple, set)):
+                tag_values[metadata.tag_field].extend(str(tag) for tag in raw_tags if str(tag).strip())
+
+        controls = row.get("controls")
+        if isinstance(controls, list):
+            for control in controls:
+                if not isinstance(control, Mapping):
+                    continue
+                framework_name = str(control.get("framework") or "").strip().lower().replace("-", "_")
+                tag_field = tag_aliases.get(framework_name)
+                control_id = str(control.get("control") or control.get("id") or "").strip()
+                if tag_field and control_id:
+                    tag_values[tag_field].append(control_id)
+
+        flattened = row.get("framework_tags")
+        if isinstance(flattened, list):
+            for item in flattened:
+                prefix, separator, control_id = str(item).partition(":")
+                tag_field = tag_aliases.get(prefix.strip().lower().replace("-", "_"))
+                if separator and tag_field and control_id.strip():
+                    tag_values[tag_field].append(control_id.strip())
+
+        for tag_field, values in tag_values.items():
+            tag_values[tag_field] = list(dict.fromkeys(values))
+
+        raw_asset = row.get("asset")
+        asset: Mapping[str, object] = raw_asset if isinstance(raw_asset, Mapping) else {}
+        package_value = str(row.get("package") or row.get("package_name") or asset.get("name") or "Unavailable")
+        if "@" in package_value:
+            package_name, package_version = package_value.rsplit("@", 1)
+        else:
+            package_name = package_value
+            package_version = str(row.get("package_version") or "")
+        severity = str(row.get("effective_severity") or row.get("severity") or "unknown").lower()
+        vulnerability_id = str(row.get("cve_id") or row.get("vulnerability_id") or row.get("id") or "Unavailable")
+        raw_risk_score = row.get("risk_score") or row.get("effective_reach_score") or 0
+        try:
+            risk_score = float(raw_risk_score) if isinstance(raw_risk_score, int | float | str) else 0.0
+        except ValueError:
+            risk_score = 0.0
+        raw_agents = row.get("affected_agents")
+        affected_agents = raw_agents if isinstance(raw_agents, (list, tuple, set)) else []
+        raw_servers = row.get("affected_servers")
+        affected_servers = raw_servers if isinstance(raw_servers, (list, tuple, set)) else []
+        raw_credentials = row.get("exposed_credentials")
+        exposed_credentials = raw_credentials if isinstance(raw_credentials, (list, tuple, set)) else []
+        blast_radii.append(
+            SimpleNamespace(
+                vulnerability=SimpleNamespace(
+                    id=vulnerability_id,
+                    severity=SimpleNamespace(value=severity),
+                    fixed_version=row.get("fixed_version"),
+                    is_kev=bool(row.get("is_kev")),
+                ),
+                package=SimpleNamespace(name=package_name, version=package_version),
+                risk_score=risk_score,
+                affected_agents=[SimpleNamespace(name=str(name)) for name in affected_agents],
+                affected_servers=[SimpleNamespace(name=str(name)) for name in affected_servers],
+                exposed_credentials=[str(name) for name in exposed_credentials],
+                **tag_values,
+            )
+        )
+
+    observed_at: datetime | None = None
+    if generated_at:
+        try:
+            observed_at = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+        except ValueError:
+            observed_at = None
+    report = cast(
+        "AIBOMReport",
+        SimpleNamespace(
+            blast_radii=blast_radii,
+            total_agents=max(0, int(total_agents)),
+            total_packages=max(0, int(total_packages)),
+            generated_at=observed_at,
+        ),
+    )
+    return generate_compliance_narrative(report, framework=framework, finding_label="security finding")

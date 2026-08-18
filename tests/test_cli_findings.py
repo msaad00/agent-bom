@@ -171,6 +171,62 @@ def test_findings_list_passes_framework_and_control_filters(monkeypatch) -> None
     )
 
 
+def test_findings_list_passes_persisted_scan_and_scope_filters(monkeypatch) -> None:
+    fake = _install_fake_client(monkeypatch)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "findings",
+            "list",
+            "--scan-id",
+            "scan-42",
+            "--query",
+            "payments",
+            "--domain",
+            "aspm",
+            "--provider",
+            "aws",
+            "--account",
+            "aws:111111111111",
+            "--environment",
+            "prod",
+            "--finding-class",
+            "vulnerability",
+            "--status",
+            "open",
+            "--kev",
+            "--window-days",
+            "30",
+            "--cursor",
+            "next-page",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert fake.calls[0][1] == {
+        "severity": None,
+        "sort": "effective_reach",
+        "limit": 500,
+        "offset": 0,
+        "framework": None,
+        "control": None,
+        "scan_id": "scan-42",
+        "query": "payments",
+        "domain": "aspm",
+        "provider": "aws",
+        "account": "aws:111111111111",
+        "environment": "prod",
+        "finding_class": "vulnerability",
+        "status": "open",
+        "kev": True,
+        "window_days": 30,
+        "cursor": "next-page",
+    }
+
+
 def test_findings_triage_create_and_decide(monkeypatch) -> None:
     fake = _install_fake_client(monkeypatch)
     runner = CliRunner()

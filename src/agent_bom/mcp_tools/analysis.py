@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any, Callable
 
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.mcp_errors import (
@@ -22,9 +23,12 @@ logger = logging.getLogger(__name__)
 async def blast_radius_impl(
     *,
     cve_id: str,
+    tenant_id: str = "default",
+    scan_id: str | None = None,
     _validate_cve_id,
     _run_scan_pipeline,
     _truncate_response,
+    _get_persisted_evidence: Callable[..., dict[str, Any]] | None = None,
 ) -> str:
     """Implementation of the blast_radius tool."""
     try:
@@ -34,10 +38,46 @@ async def blast_radius_impl(
         return mcp_error_json(CODE_VALIDATION_INVALID_VULN_ID, exc, details={"argument": "cve_id"})
 
     try:
+        from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
+
+        tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
+        if _get_persisted_evidence is not None:
+            persisted = _get_persisted_evidence(tenant_id=tenant_id, cve_id=validated_cve, scan_id=scan_id)
+            if persisted.get("available"):
+                findings = persisted.get("findings")
+                rows = findings if isinstance(findings, list) else []
+                persisted_matches = [row for row in rows if isinstance(row, dict)]
+                if not persisted_matches:
+                    return mcp_error_json(
+                        CODE_NOT_FOUND_RESOURCE,
+                        "CVE not found in persisted tenant findings",
+                        details={
+                            "cve_id": validated_cve,
+                            "source": persisted.get("source"),
+                            "scope": persisted.get("scope"),
+                        },
+                    )
+                results = [_finding_blast_radius(row, validated_cve) for row in persisted_matches]
+                return _truncate_response(
+                    json.dumps(
+                        {
+                            "cve_id": validated_cve,
+                            "found": True,
+                            "source": persisted.get("source", "persisted_scan_findings"),
+                            "scope": persisted.get("scope", {"tenant_id": tenant_id, "scan_id": scan_id}),
+                            "count": len(results),
+                            "completeness": persisted.get("completeness", {"status": "complete", "reason": ""}),
+                            "blast_radii": results,
+                        },
+                        indent=2,
+                        default=str,
+                    )
+                )
+
         _agents, blast_radii, _warnings, _srcs = await _run_scan_pipeline()
 
-        matches = [br for br in blast_radii if br.vulnerability.id.upper() == validated_cve.upper()]
-        if not matches:
+        local_matches = [br for br in blast_radii if br.vulnerability.id.upper() == validated_cve.upper()]
+        if not local_matches:
             return mcp_error_json(
                 CODE_NOT_FOUND_RESOURCE,
                 "CVE not found in current scan results",
@@ -45,7 +85,7 @@ async def blast_radius_impl(
             )
 
         results = []
-        for br in matches:
+        for br in local_matches:
             results.append(
                 {
                     "cve_id": br.vulnerability.id,
@@ -62,10 +102,56 @@ async def blast_radius_impl(
                     "ai_risk_context": br.ai_risk_context,
                 }
             )
-        return _truncate_response(json.dumps({"cve_id": cve_id, "found": True, "blast_radii": results}, indent=2, default=str))
+        return _truncate_response(
+            json.dumps(
+                {
+                    "cve_id": validated_cve,
+                    "found": True,
+                    "source": "local_scan",
+                    "scope": {"tenant_id": None, "scan_id": None},
+                    "count": len(results),
+                    "completeness": {"status": "complete", "reason": "standalone MCP local scan"},
+                    "blast_radii": results,
+                },
+                indent=2,
+                default=str,
+            )
+        )
     except Exception as exc:
         logger.exception("MCP tool error")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc)
+
+
+def _finding_blast_radius(row: dict[str, Any], fallback_cve: str) -> dict[str, Any]:
+    """Project a canonical persisted finding into the legacy blast-radius row."""
+
+    def string_list(value: object) -> list[str]:
+        return [str(item) for item in value] if isinstance(value, list | tuple | set) else []
+
+    raw_asset = row.get("asset")
+    asset: dict[str, Any] = raw_asset if isinstance(raw_asset, dict) else {}
+    package = row.get("package") or row.get("package_name") or asset.get("name") or ""
+    exposed_tools = row.get("exposed_tools")
+    if not isinstance(exposed_tools, list):
+        exposed_tools = row.get("reachable_tools")
+    return {
+        "finding_id": row.get("id"),
+        "cve_id": row.get("cve_id") or row.get("vulnerability_id") or fallback_cve,
+        "severity": row.get("effective_severity") or row.get("severity") or "unknown",
+        "cvss_score": row.get("cvss_score"),
+        "risk_score": row.get("risk_score") or row.get("effective_reach_score") or 0,
+        "package": package,
+        "ecosystem": row.get("ecosystem"),
+        "affected_servers": string_list(row.get("affected_servers")),
+        "affected_agents": string_list(row.get("affected_agents")),
+        "exposed_credentials": string_list(row.get("exposed_credentials")),
+        "exposed_tools": string_list(exposed_tools),
+        "fixed_version": row.get("fixed_version"),
+        "graph_reachable": row.get("graph_reachable"),
+        "graph_min_hop_distance": row.get("graph_min_hop_distance"),
+        "owner": row.get("owner"),
+        "sla_due_at": row.get("sla_due_at"),
+    }
 
 
 async def context_graph_impl(

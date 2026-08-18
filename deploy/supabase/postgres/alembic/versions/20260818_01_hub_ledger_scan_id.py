@@ -21,13 +21,17 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("ALTER TABLE IF EXISTS compliance_hub_findings ADD COLUMN IF NOT EXISTS scan_id TEXT NOT NULL DEFAULT ''")
-    op.execute(
-        "UPDATE compliance_hub_findings SET scan_id = "
-        "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') "
-        "WHERE scan_id = '' AND "
-        "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') <> ''"
-    )
-    op.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id <> ''")
+    ledger_exists = op.get_bind().exec_driver_sql("SELECT to_regclass('public.compliance_hub_findings')").scalar()
+    if ledger_exists is not None:
+        op.execute(
+            "UPDATE compliance_hub_findings SET scan_id = "
+            "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') "
+            "WHERE scan_id = '' AND "
+            "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') <> ''"
+        )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id <> ''"
+        )
     # The original tenant policy named ``agent_bom_app`` before that optional
     # runtime role necessarily existed, so a pristine Alembic-only database
     # could fail mid-upgrade.  A role-neutral policy applies to every caller and

@@ -616,6 +616,36 @@ def test_trusted_maintenance_queue_policy_does_not_require_precreated_app_role()
     assert "TO agent_bom_app" not in forward_policy
 
 
+def test_hub_ledger_scan_id_migration_skips_backfill_when_ledger_is_absent() -> None:
+    """A pristine Alembic path may not provision the optional ledger table."""
+    migration = _load_module(HUB_LEDGER_SCAN_ID, "hub_ledger_scan_id_pristine")
+    statements: list[str] = []
+    probes: list[str] = []
+
+    class _MissingRelationResult:
+        @staticmethod
+        def scalar() -> None:
+            return None
+
+    class _PristineBind:
+        @staticmethod
+        def exec_driver_sql(statement: str) -> _MissingRelationResult:
+            probes.append(statement)
+            return _MissingRelationResult()
+
+    migration.op = SimpleNamespace(
+        get_bind=lambda: _PristineBind(),
+        execute=statements.append,
+    )
+
+    migration.upgrade()
+
+    assert probes == ["SELECT to_regclass('public.compliance_hub_findings')"]
+    assert any("ALTER TABLE IF EXISTS compliance_hub_findings" in statement for statement in statements)
+    assert not any("UPDATE compliance_hub_findings" in statement for statement in statements)
+    assert not any("idx_hub_findings_tenant_scan" in statement for statement in statements)
+
+
 def test_trusted_maintenance_migration_preserves_explicit_superuser_acknowledgement(monkeypatch) -> None:
     """The dev escape hatch must not grant the app maintenance-marker membership."""
     monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))

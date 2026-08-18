@@ -141,12 +141,16 @@ function derivePostureBlurb({
 
   if (hasOpen) {
     const sevBits = [
-      critical > 0 ? `${critical} critical` : null,
-      high > 0 ? `${high} high` : null,
+      critical > 0
+        ? `${critical.toLocaleString("en-US")} critical finding${critical === 1 ? "" : "s"}`
+        : null,
+      high > 0
+        ? `${high.toLocaleString("en-US")} high finding${high === 1 ? "" : "s"}`
+        : null,
     ].filter(Boolean);
     const sev = sevBits.join(" · ");
     if (openCves > 0) {
-      return `${openCves} open CVE${openCves === 1 ? "" : "s"}${sev ? ` · ${sev}` : ""} across connected surfaces.`;
+      return `${openCves.toLocaleString("en-US")} unique open CVE${openCves === 1 ? "" : "s"}${sev ? ` · ${sev}` : ""} across connected surfaces.`;
     }
     return `${sev} in the current snapshot.`;
   }
@@ -254,6 +258,10 @@ export function OverviewCockpit({
           defaultOpen
         >
           <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
+          <TeamOutcomeJourney
+            pathCount={exposurePaths.length > 0 ? exposurePaths.length : topPath ? 1 : 0}
+            urgentFindingCount={critical + high}
+          />
 
           {/* 1 — Posture headline + open issues by severity.
               Posture track is capped (minmax) so a long summary can't grow it
@@ -311,6 +319,92 @@ export function OverviewCockpit({
         />
       </section>
     </div>
+  );
+}
+
+function TeamOutcomeJourney({
+  pathCount,
+  urgentFindingCount,
+}: {
+  pathCount: number;
+  urgentFindingCount: number;
+}) {
+  const pathLabel = `${pathCount.toLocaleString("en-US")} ranked path${pathCount === 1 ? "" : "s"}`;
+  const urgentLabel = `${urgentFindingCount.toLocaleString("en-US")} critical/high finding${urgentFindingCount === 1 ? "" : "s"}`;
+
+  return (
+    <section
+      data-testid="overview-team-journey"
+      aria-labelledby="overview-team-journey-title"
+      className="mb-4 overflow-hidden rounded-xl border border-emerald-500/25 bg-gradient-to-r from-emerald-500/10 via-[color:var(--surface-muted)] to-sky-500/10"
+    >
+      <div className="flex flex-col gap-1 border-b border-[color:var(--border-subtle)] px-3 py-2.5 sm:flex-row sm:items-baseline sm:justify-between">
+        <h2
+          id="overview-team-journey-title"
+          className="text-sm font-semibold text-[color:var(--foreground)]"
+        >
+          Turn exposure into a verified fix
+        </h2>
+        <p className="text-[11px] text-[color:var(--text-tertiary)]">
+          One evidence chain from detection to closure
+        </p>
+      </div>
+      <div className="grid md:grid-cols-3">
+        <div className="px-3 py-3 md:border-r md:border-[color:var(--border-subtle)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+            1 · Investigate
+          </p>
+          <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
+            Prioritize reachable risk
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            Follow correlated paths from vulnerabilities to agents, tools, and secrets.
+          </p>
+          <Link
+            href="/security-graph"
+            aria-label={`Investigate ${pathLabel}`}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-500"
+          >
+            Investigate {pathLabel} <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <div className="border-t border-[color:var(--border-subtle)] px-3 py-3 md:border-r md:border-t-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+            2 · Remediate
+          </p>
+          <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
+            Assign owner and SLA
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            Turn {urgentLabel} into accountable, prioritized work.
+          </p>
+          <Link
+            href="/remediation"
+            aria-label="Open remediation"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-500"
+          >
+            Open remediation <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <div className="border-t border-[color:var(--border-subtle)] px-3 py-3 md:border-t-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">
+            3 · Prove
+          </p>
+          <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
+            Verify with new evidence
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            Re-scan after the fix and close only when canonical evidence confirms the risk is gone.
+          </p>
+          <Link
+            href="/remediation"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-500"
+          >
+            Review verification queue <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
 

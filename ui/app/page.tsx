@@ -359,7 +359,7 @@ export default function Dashboard() {
       <PageLaneHeader
         lane="command"
         title="Overview"
-        subtitle="Exec briefing: posture, open issues, compliance evidence, and live surfaces. Use Findings and Investigation for engineer drill-down."
+        subtitle="See what is exposed, why it matters, who should fix it, and whether the fix worked."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-200">
             {deploymentModeLabel(counts?.deployment_mode)} · {countActiveServices(counts?.services)} services live

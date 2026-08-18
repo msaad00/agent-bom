@@ -299,7 +299,38 @@ describe("OverviewCockpit", () => {
     );
 
     expect(screen.queryByText(/no vulnerabilities/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/78 open CVEs across connected surfaces/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/78 unique open CVEs across connected surfaces/i),
+    ).toBeInTheDocument();
+  });
+
+  it("distinguishes unique CVEs from finding instances in the posture headline", () => {
+    render(<OverviewCockpit {...baseProps} cves={799} critical={440} high={1337} />);
+
+    expect(
+      screen.getByText(
+        /799 unique open CVEs · 440 critical findings · 1,337 high findings across connected surfaces/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/799 open CVEs · 440 critical · 1337 high/i)).not.toBeInTheDocument();
+  });
+
+  it("opens with a complete team journey from reachable risk to verified remediation", () => {
+    render(<OverviewCockpit {...baseProps} exposurePaths={[baseProps.topPath]} />);
+
+    const journey = screen.getByTestId("overview-team-journey");
+    expect(within(journey).getByText("Turn exposure into a verified fix")).toBeInTheDocument();
+    expect(within(journey).getByText("Prioritize reachable risk")).toBeInTheDocument();
+    expect(within(journey).getByText("Assign owner and SLA")).toBeInTheDocument();
+    expect(within(journey).getByText("Verify with new evidence")).toBeInTheDocument();
+    expect(within(journey).getByRole("link", { name: /Investigate 1 ranked path/i })).toHaveAttribute(
+      "href",
+      "/security-graph",
+    );
+    expect(within(journey).getByRole("link", { name: /Open remediation/i })).toHaveAttribute(
+      "href",
+      "/remediation",
+    );
   });
 
   it("shows the posture score as a percentage alongside the letter grade", () => {

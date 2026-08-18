@@ -18,10 +18,10 @@ const COLUMN_GAP = 132;
 // boards). Long chains collapse their middle instead — see `shouldCollapsePath`.
 
 /**
- * Drawable board width at the widest desktop the app shell allows. The shell
- * caps content at `max-w-[1400px]` with `lg:px-8` (1400 - 2 x 32 = 1336 CSS px);
- * the command-center card spends 44px on `sm:p-5 sm:pl-6` and the board wrapper
- * another 24px on its `p-1` + `p-2` insets, leaving 1268px of board.
+ * Conservative drawable-board reference width. The app shell can now grow to
+ * 1920px on ultrawide displays, but the graph also renders in narrower
+ * master-detail panels. Keeping this reference at the proven 1400px-shell
+ * budget prevents layout decisions from becoming unreadable in those panels.
  */
 export const FIT_REFERENCE_WIDTH = 1268;
 

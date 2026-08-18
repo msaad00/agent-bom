@@ -142,7 +142,12 @@ describe("RiskCampaignCommandCenter", () => {
 
     const title = await screen.findByText(response.campaigns[0]!.title);
     expect(title.closest("details")).toHaveAttribute("open");
-    expect(screen.getByText(/Start with the highest-priority campaign/i)).toBeInTheDocument();
+    expect(screen.getByText(/Start with Upgrade openssl to 3.0.14/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 prioritized action covers 2 findings/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 assigned/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 with SLA/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 awaiting proof/i)).toBeInTheDocument();
+    expect(screen.queryByText(/campaigns cluster/i)).not.toBeInTheDocument();
   });
 
   it("progressively discloses large campaign queues", async () => {
@@ -253,7 +258,7 @@ describe("RiskCampaignCommandCenter", () => {
 
     render(<RiskCampaignCommandCenter />);
 
-    expect(await screen.findByText(/Workflow actions are paused/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Membership incomplete · workflow locked/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Create campaign tickets/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Sync tickets/i })).toBeDisabled();
     expect(screen.getByLabelText(/Campaign state/i)).toBeDisabled();

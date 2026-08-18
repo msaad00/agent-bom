@@ -109,6 +109,10 @@ describe("FindingsPage", () => {
       expect.stringContaining("/security-graph"),
     );
     expect(within(drawer).queryByRole("tab", { name: "Exposure path" })).not.toBeInTheDocument();
+    expect(drawer.querySelector("aside")).toHaveClass("max-w-2xl");
+    expect(within(drawer).queryByText("Unavailable")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("Last scanned")).not.toBeInTheDocument();
+    expect(within(drawer).getByText(/Source did not provide/i)).toBeInTheDocument();
 
     const closeButtons = within(drawer).getAllByRole("button", { name: "Close" });
     fireEvent.click(closeButtons.at(-1)!);
@@ -227,10 +231,10 @@ describe("FindingsPage", () => {
     expect(within(drawer).getByText("Known exploited")).toBeInTheDocument();
     expect(within(drawer).getByText(/First seen/i)).toBeInTheDocument();
     expect(within(drawer).getByText(/Last observed/i)).toBeInTheDocument();
-    expect(within(drawer).getByText(/Last scanned/i)).toBeInTheDocument();
+    expect(within(drawer).queryByText(/Last scanned/i)).not.toBeInTheDocument();
     expect(within(drawer).getByText("5.3 → 6.0.2")).toBeInTheDocument();
     expect(within(drawer).getByText("security-platform")).toBeInTheDocument();
-    expect(within(drawer).getByLabelText(/SLA: unavailable/i)).toBeInTheDocument();
+    expect(within(drawer).queryByLabelText(/SLA: unavailable/i)).not.toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("tab", { name: "Evidence" }));
     expect(within(drawer).getByRole("link", { name: /OSV/i })).toHaveAttribute(

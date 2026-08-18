@@ -1623,6 +1623,42 @@ async function installRoutes(page) {
     limit: 1000,
     offset: 0,
   }));
+  await page.route("**/v1/fleet/endpoints?**", (route) => fulfill(route, {
+    endpoints: [
+      {
+        endpoint_id: "workstation-01",
+        tenant_id: "default",
+        platform: { system: "Darwin", release: "15.6", machine: "arm64" },
+        counts: {
+          applications: 42,
+          processes: 118,
+          services: 16,
+          listeners: 9,
+          containers: 6,
+          images: 11,
+        },
+        collector_status: {
+          applications: "complete",
+          processes: "complete",
+          services: "complete",
+          listeners: "complete",
+          containers: "complete",
+          images: "complete",
+        },
+        collector_messages: {},
+        privacy: { process_arguments_collected: false, environment_values_collected: false },
+        completeness: "complete",
+        last_scan_id: SCAN_ID,
+        observed_at: CREATED_AT,
+        updated_at: CREATED_AT,
+      },
+    ],
+    count: 1,
+    total: 1,
+    limit: 25,
+    offset: 0,
+    has_more: false,
+  }));
   await page.route("**/v1/fleet/stats", (route) => fulfill(route, {
     total: fleetAgents.length,
     by_state: fleetAgents.reduce((acc, item) => {
@@ -2114,7 +2150,7 @@ async function main() {
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     await capture(page, "/?capture=1", "dashboard-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
+      expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
@@ -2342,7 +2378,7 @@ async function main() {
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
     await capture(lightPage, "/?capture=1", "dashboard-light-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
+      expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(lightPage, "/security-graph?capture=1", "security-graph-light-live.png", async (securityGraphPage) => {
@@ -2363,7 +2399,7 @@ async function main() {
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
     await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", undefined, {
-      expectedText: [/Overview/i, /Risk posture/i, /15 open CVEs/i],
+      expectedText: [/Overview/i, /Risk posture/i, /15 unique open CVEs/i],
       expectedApiPaths: ["/v1/posture/counts", "/v1/overview"],
     });
     await capture(mobilePage, "/security-graph?capture=1", "security-graph-mobile-live.png", async (securityGraphPage) => {

@@ -457,7 +457,12 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   await page.goto("/security-graph");
   await page.waitForLoadState("networkidle");
 
-  await expect(page.getByText("Large estate · 1,241 nodes")).toBeVisible();
+  const evidenceScope = page.getByRole("button", { name: /Evidence scope/ });
+  await expect(evidenceScope).toHaveAttribute("aria-expanded", "false");
+  await evidenceScope.click();
+  await expect(
+    page.getByText("1,241 nodes. Use a focused lens before opening the full topology."),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore clusters" })).toHaveAttribute(
     "href",
     "/graph?scan=scan-cockpit-fixture&rollup=1",

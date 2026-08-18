@@ -616,8 +616,9 @@ def test_trusted_maintenance_queue_policy_does_not_require_precreated_app_role()
     assert "TO agent_bom_app" not in forward_policy
 
 
-def test_hub_ledger_scan_id_migration_skips_backfill_when_ledger_is_absent() -> None:
+def test_hub_ledger_scan_id_migration_skips_backfill_when_ledger_is_absent(monkeypatch) -> None:
     """A pristine Alembic path may not provision the optional ledger table."""
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
     migration = _load_module(HUB_LEDGER_SCAN_ID, "hub_ledger_scan_id_pristine")
     statements: list[str] = []
     probes: list[str] = []

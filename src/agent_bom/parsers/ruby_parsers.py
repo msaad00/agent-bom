@@ -11,6 +11,7 @@ import logging
 import re
 from pathlib import Path
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,11 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
         content = lockfile.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         logger.warning("Cannot read %s: %s", lockfile, exc)
+        record_manifest_parse_warning(
+            ecosystem="rubygems",
+            path=str(lockfile),
+            detail="Gemfile.lock could not be read; Ruby dependencies were not scanned",
+        )
         return []
 
     packages: list[Package] = []
@@ -61,8 +67,13 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
             # Match: gem "name" or gem 'name'
             for m in re.finditer(r"""gem\s+["']([^"']+)["']""", gf_content):
                 direct_names.add(m.group(1).strip())
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Cannot read %s for direct dependency attribution: %s", gemfile, exc)
+            record_manifest_parse_warning(
+                ecosystem="rubygems",
+                path=str(gemfile),
+                detail="Gemfile could not be read; direct dependency attribution is incomplete",
+            )
 
     # Parse the GEM specs section
     in_gem_section = False
@@ -148,6 +159,11 @@ def parse_ruby_packages(directory: str | Path) -> list[Package]:
         content = gemfile.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         logger.warning("Cannot read %s: %s", gemfile, exc)
+        record_manifest_parse_warning(
+            ecosystem="rubygems",
+            path=str(gemfile),
+            detail="Gemfile could not be read; Ruby dependencies were not scanned",
+        )
         return []
 
     packages = []

@@ -13,6 +13,7 @@ import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -91,8 +92,13 @@ def _parse_nuget_lock_json(directory: Path) -> list[Package]:
                         is_direct=(dep_type == "Direct"),
                     )
                 )
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError, OSError, UnicodeDecodeError) as exc:
         logger.debug("Failed to parse packages.lock.json at %s: %s", lock_file, exc)
+        record_manifest_parse_warning(
+            ecosystem="nuget",
+            path=str(lock_file),
+            detail="packages.lock.json could not be read or parsed; NuGet dependencies were not scanned",
+        )
 
     return packages
 
@@ -128,7 +134,12 @@ def _parse_csproj_files(directory: Path) -> list[Package]:
                         is_direct=True,
                     )
                 )
-        except ET.ParseError as exc:
+        except (ET.ParseError, OSError) as exc:
             logger.debug("Failed to parse .csproj at %s: %s", csproj, exc)
+            record_manifest_parse_warning(
+                ecosystem="nuget",
+                path=str(csproj),
+                detail=f"{csproj.name} could not be read or parsed; NuGet project dependencies were not scanned",
+            )
 
     return packages

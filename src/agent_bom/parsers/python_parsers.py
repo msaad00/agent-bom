@@ -12,6 +12,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 from agent_bom.version_utils import strip_pip_extras
@@ -148,8 +149,6 @@ def parse_poetry_lock(directory: Path) -> list[Package]:
             )
     except Exception as exc:
         logger.debug("Failed to parse poetry.lock at %s: %s", lock_file, exc)
-        from agent_bom.coverage import record_manifest_parse_warning
-
         record_manifest_parse_warning(
             ecosystem="pypi",
             path=str(lock_file),
@@ -212,8 +211,6 @@ def parse_uv_lock(directory: Path) -> list[Package]:
             )
     except Exception as exc:
         logger.debug("Failed to parse uv.lock at %s: %s", lock_file, exc)
-        from agent_bom.coverage import record_manifest_parse_warning
-
         record_manifest_parse_warning(
             ecosystem="pypi",
             path=str(lock_file),
@@ -279,6 +276,11 @@ def parse_conda_environment(directory: Path) -> list[Package]:
                         )
     except Exception as exc:
         logger.debug("Failed to parse conda environment at %s: %s", env_file, exc)
+        record_manifest_parse_warning(
+            ecosystem="conda",
+            path=str(env_file),
+            detail=f"{env_file.name} could not be read or parsed; Conda dependencies were not scanned",
+        )
 
     return packages
 
@@ -309,36 +311,44 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     # Try requirements.txt
     req_file = directory / "requirements.txt"
     if req_file.exists():
-        for line in read_text_limited(req_file).splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("-"):
-                continue
-            # Git URL/SHA reference (``flask @ git+…@<sha>``): version can't be
-            # pinned from the ref, so flag it floating rather than dropping it.
-            git_pkg = _git_reference_package(line, is_direct=True)
-            if git_pkg is not None:
-                packages.append(git_pkg)
-                continue
-            # Parse name==version, name>=version, etc.
-            match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
-            if match:
-                raw_name, operator, version = match.groups()
-                name, _ = strip_pip_extras(raw_name)
-                packages.append(_requirement_package(name, operator, version, is_direct=True))
-            else:
-                # Just a name, no version
-                name_match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", line)
-                if name_match:
-                    name, _ = strip_pip_extras(name_match.group(1))
-                    packages.append(
-                        Package(
-                            name=name,
-                            version="unknown",
-                            ecosystem="pypi",
-                            is_direct=True,
-                            reachability_evidence="declaration_only",
+        try:
+            for line in read_text_limited(req_file).splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("-"):
+                    continue
+                # Git URL/SHA reference (``flask @ git+…@<sha>``): version can't be
+                # pinned from the ref, so flag it floating rather than dropping it.
+                git_pkg = _git_reference_package(line, is_direct=True)
+                if git_pkg is not None:
+                    packages.append(git_pkg)
+                    continue
+                # Parse name==version, name>=version, etc.
+                match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
+                if match:
+                    raw_name, operator, version = match.groups()
+                    name, _ = strip_pip_extras(raw_name)
+                    packages.append(_requirement_package(name, operator, version, is_direct=True))
+                else:
+                    # Just a name, no version
+                    name_match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", line)
+                    if name_match:
+                        name, _ = strip_pip_extras(name_match.group(1))
+                        packages.append(
+                            Package(
+                                name=name,
+                                version="unknown",
+                                ecosystem="pypi",
+                                is_direct=True,
+                                reachability_evidence="declaration_only",
+                            )
                         )
-                    )
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.debug("Failed to read requirements.txt in %s: %s", directory, exc)
+            record_manifest_parse_warning(
+                ecosystem="pypi",
+                path=str(req_file),
+                detail="requirements.txt could not be read; Python dependencies were not scanned",
+            )
 
     # Try Pipfile.lock
     pipfile_lock = directory / "Pipfile.lock"
@@ -358,8 +368,13 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                                 is_direct=section == "default",
                             )
                         )
-        except (json.JSONDecodeError, KeyError) as exc:
+        except (json.JSONDecodeError, KeyError, OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to parse Pipfile.lock in %s: %s", directory, exc)
+            record_manifest_parse_warning(
+                ecosystem="pypi",
+                path=str(pipfile_lock),
+                detail="Pipfile.lock could not be read or parsed; Python dependencies were not scanned",
+            )
 
     # Try pyproject.toml
     pyproject = directory / "pyproject.toml"
@@ -400,8 +415,6 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                         )
         except Exception as e:
             logger.debug(f"Failed to parse pyproject.toml at {pyproject}: {e}")
-            from agent_bom.coverage import record_manifest_parse_warning
-
             record_manifest_parse_warning(
                 ecosystem="pypi",
                 path=str(pyproject),
@@ -492,8 +505,13 @@ def parse_pip_compile_inputs(directory: Path) -> list[Package]:
         try:
             in_lines = in_file.read_text(encoding="utf-8").splitlines()
             packages.extend(_parse_requirements_lines(in_lines, is_direct=True))
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to read %s: %s", in_file, exc)
+            record_manifest_parse_warning(
+                ecosystem="pypi",
+                path=str(in_file),
+                detail=f"{in_file.name} could not be read; pip-compile dependencies were not scanned",
+            )
 
     # constraints.txt — version pins for transitive deps; not direct installs
     constraints_file = directory / "constraints.txt"
@@ -501,8 +519,13 @@ def parse_pip_compile_inputs(directory: Path) -> list[Package]:
         try:
             c_lines = constraints_file.read_text(encoding="utf-8").splitlines()
             packages.extend(_parse_requirements_lines(c_lines, is_direct=False))
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to read %s: %s", constraints_file, exc)
+            record_manifest_parse_warning(
+                ecosystem="pypi",
+                path=str(constraints_file),
+                detail="constraints.txt could not be read; constrained Python dependencies were not scanned",
+            )
 
     return packages
 

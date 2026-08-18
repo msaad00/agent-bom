@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,11 @@ def parse_hex_packages(directory: Path) -> list[Package]:
         text = lockfile.read_text(encoding="utf-8", errors="replace")
     except Exception as exc:  # noqa: BLE001
         logger.debug("Could not read mix.lock at %s: %s", lockfile, exc)
+        record_manifest_parse_warning(
+            ecosystem="hex",
+            path=str(lockfile),
+            detail="mix.lock could not be read; Hex dependencies were not scanned",
+        )
         return []
 
     packages: list[Package] = []
@@ -65,6 +71,11 @@ def _load_pubspec_lock(lockfile: Path) -> dict[str, Any]:
         data = yaml.safe_load(lockfile.read_text(encoding="utf-8", errors="replace"))
     except Exception as exc:  # noqa: BLE001
         logger.debug("Could not parse pubspec.lock at %s: %s", lockfile, exc)
+        record_manifest_parse_warning(
+            ecosystem="pub",
+            path=str(lockfile),
+            detail="pubspec.lock could not be read or parsed; Pub dependencies were not scanned",
+        )
         return {}
     return data if isinstance(data, dict) else {}
 

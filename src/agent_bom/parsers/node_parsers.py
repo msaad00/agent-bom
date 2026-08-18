@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from agent_bom.checksums import parse_sri
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 from agent_bom.traversal import iter_discovery_files
@@ -344,8 +345,6 @@ def parse_npm_packages(directory: Path) -> list[Package]:
         # deny the scanner. Degrade with a named coverage warning instead.
         except (json.JSONDecodeError, KeyError, OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to parse package-lock.json in %s: %s", directory, exc)
-            from agent_bom.coverage import record_manifest_parse_warning
-
             record_manifest_parse_warning(
                 ecosystem="npm",
                 path=str(lock_file),
@@ -402,8 +401,6 @@ def parse_npm_packages(directory: Path) -> list[Package]:
         # gap to report, never a scan-aborting exception.
         except (json.JSONDecodeError, KeyError, OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to parse package.json in %s: %s", directory, exc)
-            from agent_bom.coverage import record_manifest_parse_warning
-
             record_manifest_parse_warning(
                 ecosystem="npm",
                 path=str(directory / "package.json"),
@@ -501,6 +498,11 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                     current_names = []
     except Exception as exc:
         logger.debug("Failed to parse yarn.lock at %s: %s", lock_file, exc)
+        record_manifest_parse_warning(
+            ecosystem="npm",
+            path=str(lock_file),
+            detail="yarn.lock could not be read or parsed; Yarn dependencies were not scanned",
+        )
 
     return packages
 
@@ -558,6 +560,11 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
                 )
     except Exception as exc:
         logger.debug("Failed to parse pnpm-lock.yaml at %s: %s", lock_file, exc)
+        record_manifest_parse_warning(
+            ecosystem="npm",
+            path=str(lock_file),
+            detail="pnpm-lock.yaml could not be read or parsed; pnpm dependencies were not scanned",
+        )
 
     return packages
 
@@ -634,6 +641,11 @@ def parse_bun_packages(directory: Path) -> list[Package]:
                 )
     except Exception as exc:
         logger.debug("Failed to parse bun.lock at %s: %s", bun_lock, exc)
+        record_manifest_parse_warning(
+            ecosystem="npm",
+            path=str(bun_lock),
+            detail="bun.lock could not be read or parsed; Bun dependencies were not scanned",
+        )
 
     return packages
 

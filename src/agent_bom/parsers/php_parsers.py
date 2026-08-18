@@ -11,6 +11,7 @@ import json
 import logging
 from pathlib import Path
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 from agent_bom.parsers.file_limits import read_json_limited
 
@@ -37,6 +38,11 @@ def parse_composer_lock(directory: str | Path) -> list[Package]:
         data = read_json_limited(lockfile, encoding="utf-8", errors="replace")
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Cannot read %s: %s", lockfile, exc)
+        record_manifest_parse_warning(
+            ecosystem="composer",
+            path=str(lockfile),
+            detail="composer.lock could not be read or parsed; Composer dependencies were not scanned",
+        )
         return []
 
     # Read direct deps from composer.json for is_direct marking
@@ -51,8 +57,13 @@ def parse_composer_lock(directory: str | Path) -> list[Package]:
                     if name == "php" or name.startswith("ext-"):
                         continue
                     direct_names.add(name.lower())
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.debug("Cannot read %s for direct dependency attribution: %s", composer_json, exc)
+            record_manifest_parse_warning(
+                ecosystem="composer",
+                path=str(composer_json),
+                detail="composer.json could not be read or parsed; direct dependency attribution is incomplete",
+            )
 
     packages: list[Package] = []
     seen: set[tuple[str, str]] = set()
@@ -119,6 +130,11 @@ def parse_php_packages(directory: str | Path) -> list[Package]:
         data = read_json_limited(composer_json, encoding="utf-8", errors="replace")
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Cannot read %s: %s", composer_json, exc)
+        record_manifest_parse_warning(
+            ecosystem="composer",
+            path=str(composer_json),
+            detail="composer.json could not be read or parsed; Composer dependencies were not scanned",
+        )
         return []
 
     packages = []

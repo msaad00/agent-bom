@@ -10,6 +10,7 @@ import json
 import logging
 from pathlib import Path
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,11 @@ def parse_package_resolved(directory: str | Path) -> list[Package]:
         data = json.loads(resolved.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Cannot read %s: %s", resolved, exc)
+        record_manifest_parse_warning(
+            ecosystem="swift",
+            path=str(resolved),
+            detail=f"{resolved.name} could not be read or parsed; Swift dependencies were not scanned",
+        )
         return []
 
     packages: list[Package] = []

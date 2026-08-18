@@ -21,6 +21,7 @@ from typing import Optional
 
 import httpx
 
+from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,11 @@ def verify_go_checksums(
                 sum_entries[f"{mod}@{ver}"] = h1
         except OSError as exc:
             logger.warning("Could not read go.sum at %s: %s", go_sum, exc)
+            record_manifest_parse_warning(
+                ecosystem="go",
+                path=str(go_sum),
+                detail="go.sum could not be read; Go checksum verification was not completed",
+            )
             return {}
 
     results: dict[str, str] = {}
@@ -408,7 +414,13 @@ def _parse_go_mod_requires(
 
     try:
         content = go_mod.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except OSError as exc:
+        logger.debug("Could not read go.mod at %s: %s", go_mod, exc)
+        record_manifest_parse_warning(
+            ecosystem="go",
+            path=str(go_mod),
+            detail="go.mod could not be read; Go dependencies were not scanned",
+        )
         return direct, indirect, replace_map
 
     block_re = re.compile(r"require\s*\(([^)]+)\)", re.DOTALL)
@@ -467,7 +479,13 @@ def parse_go_workspace(directory: Path) -> list[Package]:
 
     try:
         content = go_work.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except OSError as exc:
+        logger.debug("Could not read go.work at %s: %s", go_work, exc)
+        record_manifest_parse_warning(
+            ecosystem="go",
+            path=str(go_work),
+            detail="go.work could not be read; Go workspace dependencies were not scanned",
+        )
         return []
 
     # Parse "use ./module_path" directives (single-line and block forms)
@@ -609,7 +627,13 @@ def parse_go_packages(
         seen: set[tuple[str, str]] = set()
         try:
             lines = go_sum.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
+        except OSError as exc:
+            logger.debug("Could not read go.sum at %s: %s", go_sum, exc)
+            record_manifest_parse_warning(
+                ecosystem="go",
+                path=str(go_sum),
+                detail="go.sum could not be read; Go dependencies were not scanned",
+            )
             return []
         for line in lines:
             parts = line.strip().split()
@@ -661,14 +685,12 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
     try:
         tree = safe_xml_parse(str(pom))
         xml_root = tree.getroot()
-    except ET.ParseError as exc:
+    except (ET.ParseError, OSError) as exc:
         logger.debug("Failed to parse pom.xml in %s: %s", root_dir, exc)
-        from agent_bom.coverage import record_manifest_parse_warning
-
         record_manifest_parse_warning(
             ecosystem="maven",
             path=str(pom),
-            detail=f"pom.xml failed to parse ({exc}); Maven dependencies were not scanned",
+            detail="pom.xml could not be read or parsed; Maven dependencies were not scanned",
         )
         return []
 
@@ -838,7 +860,13 @@ def _parse_cargo_toml(cargo_toml: Path) -> list[Package]:
         import tomllib
 
         data = tomllib.loads(cargo_toml.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.debug("Could not parse Cargo.toml at %s: %s", cargo_toml, exc)
+        record_manifest_parse_warning(
+            ecosystem="cargo",
+            path=str(cargo_toml),
+            detail="Cargo.toml could not be read or parsed; Cargo dependencies were not scanned",
+        )
         return []
 
     pkgs: list[Package] = []
@@ -884,7 +912,17 @@ def parse_cargo_packages(directory: Path, *, resolve_versions: bool = False) -> 
     if cargo_lock.exists():
         current_name: Optional[str] = None
         current_version: Optional[str] = None
-        for raw_line in cargo_lock.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            cargo_lines = cargo_lock.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            logger.debug("Could not read Cargo.lock at %s: %s", cargo_lock, exc)
+            record_manifest_parse_warning(
+                ecosystem="cargo",
+                path=str(cargo_lock),
+                detail="Cargo.lock could not be read; Cargo dependencies were not scanned",
+            )
+            cargo_lines = []
+        for raw_line in cargo_lines:
             stripped_line = raw_line.strip()
             if stripped_line.startswith('name = "'):
                 current_name = stripped_line.split('"')[1]
@@ -967,7 +1005,13 @@ def parse_gradle_packages(directory: Path) -> list[Package]:
         packages: list[Package] = []
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Could not read Gradle version catalog at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="maven",
+                path=str(path),
+                detail="libs.versions.toml could not be read; Gradle catalog dependencies were not scanned",
+            )
             return []
 
         # Parse [versions] section — simple key = "value" pairs
@@ -1044,7 +1088,13 @@ def parse_gradle_packages(directory: Path) -> list[Package]:
         packages: list[Package] = []
         try:
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
+        except OSError as exc:
+            logger.debug("Could not read Gradle lockfile at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="maven",
+                path=str(path),
+                detail="gradle.lockfile could not be read; Gradle dependencies were not scanned",
+            )
             return []
         for line in lines:
             line = line.strip()
@@ -1066,7 +1116,13 @@ def parse_gradle_packages(directory: Path) -> list[Package]:
         packages: list[Package] = []
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Could not read Gradle build file at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="maven",
+                path=str(path),
+                detail=f"{path.name} could not be read; Gradle dependencies were not scanned",
+            )
             return []
 
         # Match Kotlin DSL: configName("group:artifact:version")
@@ -1169,7 +1225,13 @@ def parse_conda_packages(directory: Path) -> list[Package]:
         pkgs: list[Package] = []
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Could not read Conda environment at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="conda",
+                path=str(path),
+                detail=f"{path.name} could not be read; Conda dependencies were not scanned",
+            )
             return pkgs
 
         # Try YAML first; fall back to line-by-line
@@ -1178,7 +1240,15 @@ def parse_conda_packages(directory: Path) -> list[Package]:
             import yaml  # type: ignore[import-untyped]
 
             data = yaml.safe_load(content) or {}
-        except Exception:
+        except ImportError:
+            data = None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not parse Conda environment at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="conda",
+                path=str(path),
+                detail=f"{path.name} could not be parsed; Conda dependency coverage may be incomplete",
+            )
             data = None
 
         if data is not None:
@@ -1277,7 +1347,13 @@ def parse_conda_packages(directory: Path) -> list[Package]:
         pkgs: list[Package] = []
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Could not read Conda lockfile at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="conda",
+                path=str(path),
+                detail="conda-lock.yml could not be read; Conda dependencies were not scanned",
+            )
             return pkgs
 
         data: dict | None = None
@@ -1285,7 +1361,15 @@ def parse_conda_packages(directory: Path) -> list[Package]:
             import yaml  # type: ignore[import-untyped]
 
             data = yaml.safe_load(content) or {}
-        except Exception:
+        except ImportError:
+            data = None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not parse Conda lockfile at %s: %s", path, exc)
+            record_manifest_parse_warning(
+                ecosystem="conda",
+                path=str(path),
+                detail="conda-lock.yml could not be parsed; Conda dependencies were not scanned",
+            )
             data = None
 
         if data is None:

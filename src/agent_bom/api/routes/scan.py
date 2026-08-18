@@ -2291,7 +2291,11 @@ def _resolve_bulk_findings_total(
             return bulk_total, False
         cached = get_cached_total(key)
         if cached is not None:
-            return cached, True
+            # Cache entries are populated only from an exact store COUNT.  A
+            # normal request reusing that value remains complete; labelling it
+            # approximate made the campaign workflow reject a second request
+            # as provisional even though the underlying membership was exact.
+            return cached, False
         return bulk_total, False
 
     if offset == 0 and bulk_total is not None:

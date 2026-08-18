@@ -127,9 +127,7 @@ def _configure_runtime_passwords() -> None:
             # PostgreSQL utility statements do not accept bind parameters.
             # psycopg composition quotes the fixed allowlisted identifier and
             # secret literal without raw string interpolation.
-            driver_connection.execute(
-                sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(role), sql.Literal(password))
-            )
+            driver_connection.execute(sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
         elif password is not None and not _bootstrap_password_was_applied(bind, role, password):
             _validate_existing_runtime_login(os.environ[url_name].strip(), password, role)
 
@@ -218,7 +216,7 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE POLICY scan_dispatch_queue_tenant_isolation ON scan_dispatch_queue
-          FOR ALL TO agent_bom_app
+          FOR ALL
           USING (tenant_id = public.abom_current_tenant())
           WITH CHECK (tenant_id = public.abom_current_tenant())
         """

@@ -152,6 +152,41 @@ def test_ingest_csv_classifies_cve_rows():
     assert body["ingested"] == 1
 
 
+def test_ingest_reconcile_absent_uses_the_import_stream_not_parser_source():
+    """A second import must resolve rows absent from the same format stream.
+
+    Parser findings use the semantic source ``EXTERNAL``.  Reconciliation is
+    scoped to the import stream (``csv``/``sarif``/...), so those two concepts
+    must not be conflated or an apparently successful reconcile resolves zero
+    findings.
+    """
+    client = _client()
+    first = client.post(
+        "/v1/compliance/ingest",
+        json={"format": "csv", "content": "Title,Severity\nkept,high\ndropped,medium\n"},
+    )
+    assert first.status_code == 201, first.text
+
+    second = client.post(
+        "/v1/compliance/ingest",
+        json={
+            "format": "csv",
+            "content": "Title,Severity\nkept,high\n",
+            "reconcile_absent": True,
+            "observed_at": "2026-08-18T12:00:00Z",
+        },
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["reconciled"] == 1
+
+    resolved = client.get("/v1/findings", params={"status": "resolved", "limit": 50})
+    assert resolved.status_code == 200, resolved.text
+    rows = resolved.json()["findings"]
+    assert len(rows) == 1
+    assert rows[0]["title"] == "dropped"
+    assert rows[0]["source"] == "EXTERNAL"
+
+
 # ─── GET /v1/compliance/hub/findings ─────────────────────────────────────────
 
 
@@ -327,9 +362,9 @@ def test_list_hub_findings_cursor_crosses_native_prefix_into_durable_rows():
         "native_scan",
         "native_scan",
         "native_scan",
-        "durable_hub",
-        "durable_hub",
-        "durable_hub",
+        "bulk_ingest",
+        "bulk_ingest",
+        "bulk_ingest",
     ]
 
 

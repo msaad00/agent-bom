@@ -173,14 +173,12 @@ ALTER TABLE scan_dispatch_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_dispatch_queue FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS scan_dispatch_queue_tenant_isolation ON scan_dispatch_queue;
 DROP POLICY IF EXISTS scan_dispatch_queue_maintenance ON scan_dispatch_queue;
+CREATE POLICY scan_dispatch_queue_tenant_isolation ON scan_dispatch_queue
+  FOR ALL
+  USING (tenant_id = public.abom_current_tenant())
+  WITH CHECK (tenant_id = public.abom_current_tenant());
 DO $queue_rls$
 BEGIN
- IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_bom_app') THEN
-   CREATE POLICY scan_dispatch_queue_tenant_isolation ON scan_dispatch_queue
-     FOR ALL TO agent_bom_app
-     USING (tenant_id = public.abom_current_tenant())
-     WITH CHECK (tenant_id = public.abom_current_tenant());
- END IF;
  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_bom_rls_maintenance') THEN
    CREATE POLICY scan_dispatch_queue_maintenance ON scan_dispatch_queue
      FOR ALL TO agent_bom_rls_maintenance
@@ -205,7 +203,7 @@ CREATE INDEX IF NOT EXISTS idx_credential_refs_tenant_updated ON credential_refs
 -- Audit-chain checkpoint is separated from the append-only audit rows.
 CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (tenant_id TEXT PRIMARY KEY,entry_count BIGINT NOT NULL DEFAULT 0,head_signature TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL DEFAULT '');
 
-CREATE TABLE IF NOT EXISTS compliance_hub_findings (tenant_id TEXT NOT NULL,finding_id TEXT NOT NULL,ingested_at TEXT NOT NULL,source TEXT NOT NULL,applicable_frameworks_csv TEXT NOT NULL DEFAULT '',payload JSONB NOT NULL,ordinal BIGSERIAL NOT NULL,effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,origin TEXT NOT NULL DEFAULT '',severity TEXT NOT NULL DEFAULT '',severity_rank INTEGER NOT NULL DEFAULT 0,cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,PRIMARY KEY(tenant_id,finding_id));
+CREATE TABLE IF NOT EXISTS compliance_hub_findings (tenant_id TEXT NOT NULL,finding_id TEXT NOT NULL,ingested_at TEXT NOT NULL,source TEXT NOT NULL,applicable_frameworks_csv TEXT NOT NULL DEFAULT '',payload JSONB NOT NULL,ordinal BIGSERIAL NOT NULL,effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,origin TEXT NOT NULL DEFAULT '',severity TEXT NOT NULL DEFAULT '',severity_rank INTEGER NOT NULL DEFAULT 0,cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,scan_id TEXT NOT NULL DEFAULT '',PRIMARY KEY(tenant_id,finding_id));
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id,ordinal);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_reach ON compliance_hub_findings(tenant_id,origin,effective_reach_score DESC,ordinal);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin ON compliance_hub_findings(tenant_id,origin);
@@ -216,6 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_reach_all ON compliance_hub_f
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_cvss_all ON compliance_hub_findings(tenant_id,cvss_score DESC,ordinal);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_all ON compliance_hub_findings(tenant_id,severity_rank DESC,ordinal);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_ci ON compliance_hub_findings(tenant_id,LOWER(severity)) WHERE severity <> '';
+CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id,scan_id) WHERE scan_id <> '';
 CREATE TABLE IF NOT EXISTS hub_findings_current (tenant_id TEXT NOT NULL,canonical_id TEXT NOT NULL,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',severity TEXT NOT NULL DEFAULT '',severity_rank INTEGER NOT NULL DEFAULT 0,cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,scan_count INTEGER NOT NULL DEFAULT 1,resolved_at TEXT,reopened_at TEXT,updated_at TEXT NOT NULL,payload JSONB NOT NULL,ledger_finding_id TEXT,origin TEXT NOT NULL DEFAULT '',scan_id TEXT NOT NULL DEFAULT '',ledger_ordinal BIGINT NOT NULL DEFAULT 9223372036854775807,PRIMARY KEY(tenant_id,canonical_id));
 CREATE TABLE IF NOT EXISTS hub_findings_current_observations (tenant_id TEXT NOT NULL,canonical_id TEXT NOT NULL,scan_id TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(tenant_id,canonical_id,scan_id));
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen ON hub_findings_current(tenant_id,last_seen DESC);

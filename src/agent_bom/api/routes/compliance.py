@@ -2498,6 +2498,12 @@ async def ingest_compliance_findings(request: Request) -> dict:
 
     payloads = [f.to_dict() for f in findings]
     for payload in payloads:
+        # Preserve the parser's semantic finding source (for example
+        # ``EXTERNAL``) separately from the durable import stream used to scope
+        # absent reconciliation.  Conflating the two made a CSV/SARIF
+        # reconcile report success while resolving zero prior findings.
+        payload["ingest_source"] = fmt
+        payload["origin"] = "bulk_ingest"
         frameworks = payload.get("applicable_frameworks")
         if isinstance(frameworks, list):
             payload["applicable_frameworks"] = [normalize_framework_slug(str(slug)) for slug in frameworks if slug]

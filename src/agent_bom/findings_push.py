@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agent_bom.finding import FindingType
 from agent_bom.models import Package, Severity
 
 
@@ -41,6 +42,7 @@ def packages_to_bulk_findings(
                     "fixed_version": vuln.fixed_version,
                     "cvss_score": vuln.cvss_score,
                     "is_kev": bool(vuln.is_kev),
+                    "finding_type": FindingType.CVE.value,
                     "source": source,
                     "origin": "bulk_ingest",
                 }

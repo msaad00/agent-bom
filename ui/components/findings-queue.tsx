@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
 import { useLayoutEffect, useState } from "react";
 
+import { useAuthState } from "@/components/auth-provider";
 import { severityColor, severityDot, type FindingTriageItem } from "@/lib/api";
 import type { FindingsLens } from "@/lib/findings-lens";
 import type { EnrichedVuln, SortKey } from "@/lib/findings-view";
@@ -131,6 +132,8 @@ export function FindingsQueueTable({
   lens?: FindingsLens;
   triageByKey?: ReadonlyMap<string, FindingTriageItem>;
 }) {
+  const { hasCapability } = useAuthState();
+  const canManageExceptions = hasCapability("exceptions.manage");
   const compactLayout = useCompactFindingsLayout();
   const emptyLabel =
     lens === "trust"
@@ -153,6 +156,7 @@ export function FindingsQueueTable({
               suppressed={suppressed.has(vuln.id)}
               onSelect={() => onSelect(rowKey)}
               onMarkFP={() => onMarkFP(vuln.id, vuln.packages[0] ?? "")}
+              canMarkFalsePositive={canManageExceptions}
             />
           );
         })}
@@ -216,6 +220,7 @@ export function FindingsQueueTable({
                       suppressed={suppressed.has(v.id)}
                       onSelect={() => onSelect(rowKey)}
                       onMarkFP={() => onMarkFP(v.id, v.packages[0] ?? "")}
+                      canMarkFalsePositive={canManageExceptions}
                     />
                   </>
                 )}
@@ -259,6 +264,7 @@ function MobileFindingCard({
   suppressed,
   onSelect,
   onMarkFP,
+  canMarkFalsePositive,
 }: {
   vuln: EnrichedVuln;
   lens: FindingsLens;
@@ -267,6 +273,7 @@ function MobileFindingCard({
   suppressed: boolean;
   onSelect: () => void;
   onMarkFP: () => void;
+  canMarkFalsePositive: boolean;
 }) {
   const controls = controlLabels(vuln);
   const evidenceSources = vuln.sources.filter((source) => source !== "finding");
@@ -361,6 +368,8 @@ function MobileFindingCard({
             <button
               type="button"
               onClick={onMarkFP}
+              disabled={!canMarkFalsePositive}
+              title={!canMarkFalsePositive ? "Contributor role required to mark false positives" : undefined}
               className="rounded-md border border-[var(--border-subtle)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)]"
             >
               Mark false positive
@@ -460,12 +469,14 @@ function EngineeringCells({
   suppressed,
   onSelect,
   onMarkFP,
+  canMarkFalsePositive,
 }: {
   vuln: EnrichedVuln;
   triage: FindingTriageItem | undefined;
   suppressed: boolean;
   onSelect: () => void;
   onMarkFP: () => void;
+  canMarkFalsePositive: boolean;
 }) {
   const verifyCommand = vuln.remediation_items.find((item) => item.verify_command)?.verify_command;
   const sla = formatSlaDue(vuln.sla_due_at);
@@ -553,7 +564,9 @@ function EngineeringCells({
                 event.stopPropagation();
                 onMarkFP();
               }}
-              className="px-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+              disabled={!canMarkFalsePositive}
+              title={!canMarkFalsePositive ? "Contributor role required to mark false positives" : undefined}
+              className="px-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark false positive
             </button>

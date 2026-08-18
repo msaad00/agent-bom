@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agent_bom.finding_scope import domain_for_row
 from agent_bom.findings_push import load_push_findings, load_push_findings_file, packages_to_bulk_findings
 from agent_bom.parsers.external_scanners import parse_trivy_json
 from tests.test_external_scanners import TRIVY_BASIC
@@ -17,6 +18,8 @@ def test_packages_to_bulk_findings_projects_scanner_rows() -> None:
     assert findings
     assert findings[0]["source"] == "trivy-ci"
     assert findings[0]["origin"] == "bulk_ingest"
+    assert findings[0]["finding_type"] == "CVE"
+    assert domain_for_row(findings[0]) == "vuln"
     assert findings[0]["package_name"] == packages[0].name
     assert findings[0]["vulnerability_id"]
 

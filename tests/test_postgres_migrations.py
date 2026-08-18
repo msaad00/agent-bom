@@ -35,6 +35,7 @@ AUDIT_FORK_GUARD_INDEX = VERSIONS_DIR / "20260719_01_audit_fork_guard_index.py"
 HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partition.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 RUNTIME_SCHEMA_SQL = POSTGRES_DIR / "runtime-schema.sql"
+HUB_LEDGER_SCAN_ID = VERSIONS_DIR / "20260818_01_hub_ledger_scan_id.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -46,7 +47,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260812_01"
+ALEMBIC_HEAD = "20260818_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -595,6 +596,24 @@ def test_trusted_maintenance_migration_is_forward_only_and_preserves_queue_rows(
         "DELETE FROM scan_dispatch_queue",
     ):
         assert destructive not in sql
+
+
+def test_trusted_maintenance_queue_policy_does_not_require_precreated_app_role() -> None:
+    """Alembic must upgrade an empty database before runtime roles exist."""
+    sql = TRUSTED_MAINTENANCE_RLS.read_text()
+    policy = sql.split("CREATE POLICY scan_dispatch_queue_tenant_isolation", 1)[1].split('"""', 1)[0]
+    assert "TO agent_bom_app" not in policy
+    assert "tenant_id = public.abom_current_tenant()" in policy
+
+    runtime = RUNTIME_SCHEMA_SQL.read_text()
+    runtime_policy = runtime.split("CREATE POLICY scan_dispatch_queue_tenant_isolation", 1)[1].split(";", 1)[0]
+    assert "TO agent_bom_app" not in runtime_policy
+
+    forward = HUB_LEDGER_SCAN_ID.read_text()
+    assert "DROP POLICY IF EXISTS scan_dispatch_queue_tenant_isolation" in forward
+    assert "CREATE POLICY scan_dispatch_queue_tenant_isolation" in forward
+    forward_policy = forward.split("CREATE POLICY scan_dispatch_queue_tenant_isolation", 1)[1].split('"', 1)[0]
+    assert "TO agent_bom_app" not in forward_policy
 
 
 def test_trusted_maintenance_migration_preserves_explicit_superuser_acknowledgement(monkeypatch) -> None:

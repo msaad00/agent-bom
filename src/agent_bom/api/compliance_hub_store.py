@@ -447,7 +447,7 @@ def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
         clean["id"] = str(payload["id"])
     if "source" not in clean and "source" in payload:
         clean["source"] = str(payload["source"])
-    for key in ("origin", "batch_id", "bulk_ordinal", "intel_ref", "framework_ref"):
+    for key in ("origin", "ingest_source", "batch_id", "bulk_ordinal", "intel_ref", "framework_ref"):
         if key not in clean and key in payload:
             clean[key] = payload[key]
     return clean
@@ -1476,7 +1476,8 @@ class InMemoryComplianceHubStore:
             if canonical_id in present_canonical_ids:
                 continue
             payload = row.get("payload") or {}
-            if scope_source is not None and str(payload.get("source") or "") != scope_source:
+            payload_scope = str(payload.get("ingest_source") or payload.get("source") or "")
+            if scope_source is not None and payload_scope != scope_source:
                 continue
             merged = dict(row)
             merged["status"] = "resolved"
@@ -1984,7 +1985,7 @@ class SQLiteComplianceHubStore:
                     str(payload.get("severity") or ""),
                     _severity_rank(payload),
                     _cvss_value(payload),
-                    str(payload.get("scan_id") or ""),
+                    str(payload.get("batch_id") or payload.get("scan_id") or ""),
                 )
             )
         existing_ids = self._existing_finding_ids(tenant_id, finding_ids)
@@ -2555,7 +2556,7 @@ class SQLiteComplianceHubStore:
         where = ["tenant_id = ?", "status IN ('open', 'reopened')"]
         params: list[Any] = [tenant_id]
         if scope_source is not None:
-            where.append("json_extract(payload, '$.source') = ?")
+            where.append("COALESCE(json_extract(payload, '$.ingest_source'), json_extract(payload, '$.source')) = ?")
             params.append(scope_source)
         where_sql = " AND ".join(where)
         rows = self._conn.execute(

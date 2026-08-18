@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ExternalLink, FileSearch, Loader2 } from "lucide-react";
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
+import { useAuthState } from "@/components/auth-provider";
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
 import { Drawer } from "@/components/drawer";
@@ -51,6 +52,8 @@ export function FindingDrawer({
   onClose: () => void;
   lens?: FindingsLens | undefined;
 }) {
+  const { hasCapability } = useAuthState();
+  const canManageExceptions = hasCapability("exceptions.manage");
   const [tab, setTab] = useState<TabKey>(lens === "trust" ? "evidence" : "overview");
 
   useEffect(() => {
@@ -108,6 +111,7 @@ export function FindingDrawer({
           triageBusy={triageBusy}
           onTriageDecision={onTriageDecision}
           lens={lens}
+          canTriage={canManageExceptions}
         />
       ) : null}
     </Drawer>
@@ -456,6 +460,7 @@ function TriageTab({
   triageBusy,
   onTriageDecision,
   lens,
+  canTriage,
 }: {
   vuln: EnrichedVuln;
   triage: FindingTriageItem | undefined;
@@ -466,6 +471,7 @@ function TriageTab({
     justification?: FindingTriageJustification,
   ) => void;
   lens: FindingsLens;
+  canTriage: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -495,10 +501,13 @@ function TriageTab({
           <p className="mt-3 text-xs text-[color:var(--text-tertiary)]">No triage item recorded for this finding/package pair.</p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
-          <TriageButton label="Investigate" busy={triageBusy} disabled={Boolean(triage)} onClick={() => onTriageDecision(vuln, "under_investigation")} />
-          <TriageButton label="Affected" busy={triageBusy} onClick={() => onTriageDecision(vuln, "affected")} />
-          <TriageButton label="Not affected" busy={triageBusy} tone="green" onClick={() => onTriageDecision(vuln, "not_affected", "vulnerable_code_not_in_execute_path")} />
+          <TriageButton label="Investigate" busy={triageBusy} disabled={!canTriage || Boolean(triage)} onClick={() => onTriageDecision(vuln, "under_investigation")} />
+          <TriageButton label="Affected" busy={triageBusy} disabled={!canTriage} onClick={() => onTriageDecision(vuln, "affected")} />
+          <TriageButton label="Not affected" busy={triageBusy} disabled={!canTriage} tone="green" onClick={() => onTriageDecision(vuln, "not_affected", "vulnerable_code_not_in_execute_path")} />
         </div>
+        {!canTriage ? (
+          <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">Contributor role required to update triage.</p>
+        ) : null}
       </Panel>
 
       <div className="flex flex-wrap gap-2">

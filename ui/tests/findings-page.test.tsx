@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import FindingsPage from "@/app/findings/page";
 
-const { apiMock, navigationState } = vi.hoisted(() => ({
+const { apiMock, navigationState, authState } = vi.hoisted(() => ({
   apiMock: {
     listFindings: vi.fn(),
     listFindingTriage: vi.fn(),
@@ -13,6 +13,7 @@ const { apiMock, navigationState } = vi.hoisted(() => ({
     getPostureCounts: vi.fn(),
   },
   navigationState: { query: "" },
+  authState: { canManageExceptions: true },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -32,6 +33,13 @@ vi.mock("@/lib/api", async () => {
     api: apiMock,
   };
 });
+
+vi.mock("@/components/auth-provider", () => ({
+  useAuthState: () => ({
+    session: { auth_required: true, role: authState.canManageExceptions ? "analyst" : "viewer" },
+    hasCapability: (capability: string) => capability === "exceptions.manage" && authState.canManageExceptions,
+  }),
+}));
 
 const canonicalFinding = {
   id: "finding-1",
@@ -57,6 +65,7 @@ const canonicalFinding = {
 
 describe("FindingsPage", () => {
   beforeEach(() => {
+    authState.canManageExceptions = true;
     navigationState.query = "";
     apiMock.listFindings.mockReset();
     apiMock.listFindingTriage.mockReset();
@@ -107,6 +116,20 @@ describe("FindingsPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Finding details for CVE-2026-1234" })).not.toBeInTheDocument();
     });
+  });
+
+  it("renders exception and triage writes disabled for a viewer", async () => {
+    authState.canManageExceptions = false;
+    render(<FindingsPage />);
+
+    expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark false positive" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-1234" }));
+    const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-1234" });
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Triage" }));
+    expect(within(drawer).getByRole("button", { name: "Investigate" })).toBeDisabled();
+    expect(within(drawer).getByRole("button", { name: "Affected" })).toBeDisabled();
+    expect(within(drawer).getByRole("button", { name: "Not affected" })).toBeDisabled();
   });
 
   it("uses the persisted package identity when an older finding has no asset object", async () => {

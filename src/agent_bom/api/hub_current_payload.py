@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
-_OVERLAY_KEYS = ("origin", "batch_id", "scan_id", "source", "id", "canonical_id")
+_OVERLAY_KEYS = ("origin", "ingest_source", "batch_id", "scan_id", "source", "id", "canonical_id")
 
 
 def resolve_ledger_finding_id(payload: Mapping[str, Any], *, canonical_id: str = "") -> str:

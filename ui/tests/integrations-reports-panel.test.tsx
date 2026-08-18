@@ -3,15 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReportsPanel } from "@/components/integrations/reports-panel";
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, authState } = vi.hoisted(() => ({
   apiMock: {
     createReportJob: vi.fn(),
     getReportJob: vi.fn(),
     downloadReportArtifact: vi.fn(),
   },
+  authState: { canCreate: true },
 }));
 
 vi.mock("@/lib/api", () => ({ api: apiMock, formatDate: (s: string) => s }));
+vi.mock("@/components/auth-provider", () => ({
+  useAuthState: () => ({
+    session: { auth_required: true, role: authState.canCreate ? "analyst" : "viewer" },
+    hasCapability: (capability: string) => capability === "scan.run" && authState.canCreate,
+  }),
+}));
 
 const PENDING = {
   job_id: "job-abcdef12",
@@ -31,6 +38,7 @@ const PENDING = {
 const DONE = { ...PENDING, status: "done", row_count: 128, download_token: "test", download_token_header: "X-Agent-Bom-Download-Token" };
 
 beforeEach(() => {
+  authState.canCreate = true;
   Object.values(apiMock).forEach((fn) => fn.mockReset());
   URL.createObjectURL = vi.fn(() => "blob:mock");
   URL.revokeObjectURL = vi.fn();
@@ -41,6 +49,12 @@ afterEach(() => {
 });
 
 describe("ReportsPanel", () => {
+  it("keeps export creation read-only for viewers", () => {
+    authState.canCreate = false;
+    render(<ReportsPanel />);
+    expect(screen.getByTestId("report-create-submit")).toBeDisabled();
+  });
+
   it("queues an export and shows the job row", async () => {
     apiMock.createReportJob.mockResolvedValue(PENDING);
     render(<ReportsPanel />);

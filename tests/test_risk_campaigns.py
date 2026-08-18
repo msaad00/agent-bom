@@ -561,6 +561,21 @@ def test_campaign_api_derives_from_bulk_findings_spine() -> None:
     body = response.json()
     assert body["count"] == 2
     assert {campaign["source"] for campaign in body["campaigns"]} == {"canonical_findings_spine"}
+    assert body["membership_complete"] is True
+    assert body["truncated"] is False
+
+    campaign = body["campaigns"][0]
+    updated = client.patch(
+        f"/v1/campaigns/{campaign['id']}",
+        json={
+            "version": campaign["version"],
+            "owner": "security-platform",
+            "state": "in_progress",
+        },
+        headers=_headers(tenant="default"),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["owner"] == "security-platform"
 
 
 def test_findings_window_excludes_old_completed_scan_but_keeps_recent_bulk() -> None:

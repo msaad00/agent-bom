@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, FileDown, Loader2, Play } from "lucide-react";
 
 import { api, formatDate, type ReportJobRecord, type ReportSort } from "@/lib/api";
+import { useAuthState } from "@/components/auth-provider";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import {
   Field,
@@ -30,6 +31,8 @@ function isTerminal(status: string): boolean {
 }
 
 export function ReportsPanel() {
+  const { hasCapability } = useAuthState();
+  const canCreateReports = hasCapability("scan.run");
   // No server-side list endpoint exists for reports, so we track the jobs
   // created in this session and poll each until it reaches a terminal state.
   const [jobs, setJobs] = useState<ReportJobRecord[]>([]);
@@ -60,6 +63,7 @@ export function ReportsPanel() {
   }, [poll]);
 
   const create = async () => {
+    if (!canCreateReports) return;
     setCreating(true);
     setNotice(null);
     try {
@@ -219,7 +223,13 @@ export function ReportsPanel() {
             </select>
           </Field>
         </div>
-        <PanelButton tone="primary" type="submit" disabled={creating} data-testid="report-create-submit">
+        <PanelButton
+          tone="primary"
+          type="submit"
+          disabled={creating || !canCreateReports}
+          title={!canCreateReports ? "Contributor role required to queue exports" : undefined}
+          data-testid="report-create-submit"
+        >
           {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           Queue export
         </PanelButton>

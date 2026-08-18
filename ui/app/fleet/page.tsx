@@ -42,6 +42,7 @@ import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useChartTheme } from "@/lib/theme-colors";
 import { EndpointFleetPanel } from "@/components/endpoint-fleet-panel";
+import { useAuthState } from "@/components/auth-provider";
 
 function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -94,6 +95,8 @@ function trustTextColor(score: number): string {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function FleetPage() {
+  const { hasCapability } = useAuthState();
+  const canManageFleet = hasCapability("fleet.manage");
   const chart = useChartTheme();
   const [agents, setAgents] = useState<FleetAgent[]>([]);
   const [stats, setStats] = useState<FleetStatsResponse | null>(null);
@@ -169,6 +172,7 @@ export default function FleetPage() {
   }, [search, stateFilter]);
 
   const handleSync = async () => {
+    if (!canManageFleet) return;
     setSyncing(true);
     try {
       await api.syncFleet();
@@ -179,12 +183,14 @@ export default function FleetPage() {
   };
 
   const handleStateChange = async (agentId: string, newState: FleetLifecycleState) => {
+    if (!canManageFleet) return;
     if (!confirm(`Change this agent state to ${newState}?`)) return;
     await api.updateFleetState(agentId, newState);
     void load();
   };
 
   const handleQuarantine = async (agentId: string, agentName: string) => {
+    if (!canManageFleet) return;
     if (
       !confirm(
         `Quarantine "${agentName}" and enforce a gateway DENY policy for its identity?\n\n` +
@@ -250,7 +256,8 @@ export default function FleetPage() {
           )}
           <button
             onClick={handleSync}
-            disabled={syncing}
+            disabled={syncing || !canManageFleet}
+            title={!canManageFleet ? "Admin role required to sync fleet state" : undefined}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
@@ -519,6 +526,8 @@ export default function FleetPage() {
                         {transitions?.map((t) => (
                           <button
                             key={t}
+                            disabled={!canManageFleet}
+                            title={!canManageFleet ? "Admin role required to change fleet state" : undefined}
                             onClick={(e) => {
                               e.stopPropagation();
                               void handleStateChange(agent.agent_id, t);
@@ -538,8 +547,12 @@ export default function FleetPage() {
                             e.stopPropagation();
                             void handleQuarantine(agent.agent_id, agent.name);
                           }}
-                          disabled={quarantiningId === agent.agent_id}
-                          title="Quarantine this agent and enforce a gateway DENY policy for its identity"
+                          disabled={!canManageFleet || quarantiningId === agent.agent_id}
+                          title={
+                            !canManageFleet
+                              ? "Admin role required to quarantine agents"
+                              : "Quarantine this agent and enforce a gateway DENY policy for its identity"
+                          }
                           className="flex items-center gap-1.5 rounded-md border border-red-500/30 dark:border-red-800 bg-red-500/10 dark:bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 transition-colors hover:bg-red-500/10 dark:hover:bg-red-900/40 disabled:opacity-50"
                           data-testid="fleet-quarantine-deny"
                         >

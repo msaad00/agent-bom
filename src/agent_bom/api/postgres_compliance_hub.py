@@ -386,6 +386,7 @@ class PostgresComplianceHubStore:
                     severity TEXT NOT NULL DEFAULT '',
                     severity_rank INTEGER NOT NULL DEFAULT 0,
                     cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    scan_id TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (tenant_id, finding_id)
                 )
                 """
@@ -439,6 +440,17 @@ class PostgresComplianceHubStore:
                 "UPDATE compliance_hub_findings SET cvss_score = COALESCE((payload->>'cvss_score')::float8, 0) "
                 "WHERE cvss_score = 0 AND COALESCE((payload->>'cvss_score')::float8, 0) <> 0",
             )
+            # Keep the append ledger filterable without decoding every JSONB
+            # payload.  ``batch_id`` is the canonical ingest snapshot key; a
+            # direct ``scan_id`` remains supported for scan-produced rows.
+            conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS scan_id TEXT NOT NULL DEFAULT ''")
+            _run_gated_backfill(
+                conn,
+                "compliance_hub_findings.scan_id",
+                "UPDATE compliance_hub_findings SET scan_id = "
+                "COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') "
+                "WHERE scan_id = '' AND COALESCE(NULLIF(payload->>'batch_id', ''), payload->>'scan_id', '') <> ''",
+            )
             self._migrate_primary_key(conn)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
             conn.execute("DROP INDEX IF EXISTS idx_hub_findings_tenant_reach")
@@ -491,6 +503,9 @@ class PostgresComplianceHubStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_severity_ci "
                 "ON compliance_hub_findings(tenant_id, LOWER(severity)) WHERE severity <> ''"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_scan ON compliance_hub_findings(tenant_id, scan_id) WHERE scan_id <> ''"
             )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             from agent_bom.api.finding_lifecycle import (
@@ -682,6 +697,7 @@ class PostgresComplianceHubStore:
                 str(payload.get("severity") or ""),
                 _severity_rank(payload),
                 _cvss_value(payload),
+                str(payload.get("batch_id") or payload.get("scan_id") or ""),
             )
             for finding_id, frameworks_csv, payload in rows_to_insert
         ]
@@ -691,8 +707,8 @@ class PostgresComplianceHubStore:
                     """
                     INSERT INTO compliance_hub_findings
                         (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
-                         effective_reach_score, origin, severity, severity_rank, cvss_score)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+                         effective_reach_score, origin, severity, severity_rank, cvss_score, scan_id)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (tenant_id, finding_id) DO UPDATE SET
                         ingested_at = EXCLUDED.ingested_at,
                         source = EXCLUDED.source,
@@ -702,7 +718,8 @@ class PostgresComplianceHubStore:
                         origin = EXCLUDED.origin,
                         severity = EXCLUDED.severity,
                         severity_rank = EXCLUDED.severity_rank,
-                        cvss_score = EXCLUDED.cvss_score
+                        cvss_score = EXCLUDED.cvss_score,
+                        scan_id = EXCLUDED.scan_id
                     """,
                     insert_params,
                 )
@@ -802,10 +819,10 @@ class PostgresComplianceHubStore:
             # Filter on the materialised severity STRING (exact, lowercased) so
             # every backend agrees; ``severity_rank`` collapses info==low and is
             # kept for ORDER BY only (#3192).
-            where.append("LOWER(severity) = %s")
+            where.append("severity <> '' AND LOWER(severity) = %s")
             params.append(severity.lower())
         if scan_id is not None:
-            where.append("payload->>'scan_id' = %s")
+            where.append("scan_id = %s AND scan_id <> ''")
             params.append(scan_id)
         where_sql = " AND ".join(where)
         order_sql = _postgres_order_clause(sort)
@@ -1451,7 +1468,7 @@ class PostgresComplianceHubStore:
         where = ["tenant_id = %s", "status IN ('open', 'reopened')"]
         params: list[Any] = [tenant_id]
         if scope_source is not None:
-            where.append("payload->>'source' = %s")
+            where.append("COALESCE(payload->>'ingest_source', payload->>'source') = %s")
             params.append(scope_source)
         where_sql = " AND ".join(where)
         total = 0

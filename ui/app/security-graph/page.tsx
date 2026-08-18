@@ -684,147 +684,6 @@ function SecurityGraphPageContent() {
         </div>
       ) : null}
 
-      {/* "Should I deploy?" is a deliberate, occasional action. It does not earn
-          a permanent band of vertical space on every visit. */}
-      {!captureMode && (
-        <Collapsible
-          title="Should I deploy?"
-          subtitle="Check an agent, service, image, or package against this snapshot's exposure paths."
-          icon={Rocket}
-          defaultOpen={false}
-        >
-          <DeployGatePanel scanId={selectedScanId || undefined} />
-        </Collapsible>
-      )}
-
-      <Collapsible
-        title="Exposure paths"
-        subtitle="Agent-native exposure-path lens over persisted graph evidence."
-        icon={Route}
-        defaultOpen={false}
-      >
-        <ExposurePathLens scanId={selectedScanId || undefined} />
-      </Collapsible>
-
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Snapshot</p>
-                <h2 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
-                  {selectedSnapshot ? `Scan ${selectedSnapshot.scan_id.slice(0, 8)}…` : "No graph snapshot yet"}
-                </h2>
-                {selectedSnapshot && (
-                  <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
-                    {formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges
-                  </p>
-                )}
-                {selectedSnapshot && estateMode.large ? (
-                  <div className="mt-3 max-w-2xl rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-[color:var(--text-secondary)]">
-                    <p className="font-semibold text-amber-800 dark:text-amber-200">
-                      Large estate · {estateMode.summary}
-                    </p>
-                    <p className="mt-1 leading-relaxed">
-                      Start with ranked attack paths or clustered estate groups. Raw topology is available as a drill-down and may be dense.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Link
-                        href={estateMode.clusteredHref}
-                        className="rounded-lg border border-amber-500/30 bg-[color:var(--surface)] px-2.5 py-1 font-medium text-[color:var(--foreground)]"
-                      >
-                        Explore clusters
-                      </Link>
-                      <Link
-                        href={estateMode.rawHref}
-                        className="rounded-lg px-2.5 py-1 text-[color:var(--text-secondary)] underline decoration-[color:var(--border-strong)] underline-offset-2"
-                      >
-                        Open raw topology
-                      </Link>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              {posture && (
-                <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Posture</p>
-                  <div className="mt-1 flex items-baseline gap-2">
-                    <span className="font-mono text-xl font-semibold text-red-300">{posture.grade}</span>
-                    <span className="font-mono text-sm text-[color:var(--foreground)]">{posture.score}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            {loadingSnapshots && (
-              <span className="mt-2 inline-flex items-center gap-2 text-xs text-sky-400">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                loading snapshots
-              </span>
-            )}
-          </div>
-          {fixFirstView && (
-            <div className="flex flex-wrap gap-2 text-xs">
-              <QuickStat label="Matched paths" value={String(fixFirstView.summary.matched_paths)} tone="blue" />
-              <QuickStat label="Covered findings" value={String(fixFirstView.summary.covered_findings)} tone="amber" />
-              <QuickStat label="Highest risk" value={fixFirstView.summary.highest_risk.toFixed(1)} tone="red" />
-            </div>
-          )}
-        </div>
-
-        {snapshots.length > 0 ? (
-              <>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {displayedSnapshots.map((snapshot) => {
-                    const selected = snapshot.scan_id === selectedScanId;
-                    return (
-                      <button
-                        key={snapshot.scan_id}
-                        type="button"
-                        onClick={() => selectSnapshot(snapshot.scan_id)}
-                        className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-                          selected
-                            ? "border-emerald-700 bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200"
-                            : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                        }`}
-                      >
-                        <div className="font-mono">{snapshot.scan_id.slice(0, 8)}…</div>
-                        <div className="mt-1 text-[11px] opacity-80">{snapshot.node_count} nodes</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {(hiddenSnapshotCount > 0 || showAllSnapshots) && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllSnapshots((current) => !current)}
-                    className="mt-3 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  >
-                    {showAllSnapshots
-                      ? "Show active snapshots"
-                      : `Show all ${snapshots.length} snapshots (${hiddenSnapshotCount} empty or older)`}
-                  </button>
-                )}
-              </>
-            ) : (
-              !loadingSnapshots && (
-                <div className="mt-4">
-                  <GraphEmptyState
-                    title="No persisted graph snapshots yet"
-                    detail="Run a scan first so the security graph can build historical attack-path views from persisted graph evidence."
-                    suggestions={[
-                      "Run a local scan with graph output enabled.",
-                      "Confirm the graph persistence backend is enabled.",
-                      "Open the full graph after the first snapshot appears.",
-                    ]}
-                    command="agent-bom scan -p . -f graph"
-                    actions={[{ label: "Run a scan", href: "/scan" }]}
-                  />
-                </div>
-              )
-            )}
-
-      </section>
-
       {loadingGraph ? (
         <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <GraphPanelSkeleton
@@ -866,7 +725,7 @@ function SecurityGraphPageContent() {
             detail={`No persisted graph snapshot exists for scan ${focus.scanId}. The investigation did not substitute evidence from a different scan.`}
             suggestions={[
               "Run or re-sync the requested scan with graph persistence enabled.",
-              "Choose one of the available snapshots above to investigate older evidence explicitly.",
+              "Choose another scan under Evidence scope to investigate older evidence explicitly.",
               "Review the requested scan's findings while its graph snapshot is unavailable.",
             ]}
           />
@@ -1061,6 +920,128 @@ function SecurityGraphPageContent() {
           }
         />
       )}
+
+      <Collapsible
+        title="Evidence scope"
+        subtitle={selectedSnapshot
+          ? `Current scan evidence · ${formatDate(selectedSnapshot.created_at)} · ${selectedSnapshot.node_count} nodes · ${selectedSnapshot.edge_count} edges`
+          : "No persisted graph evidence selected."
+        }
+        icon={GitBranch}
+        defaultOpen={false}
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                Current scan evidence
+              </p>
+              <p className="mt-1 font-mono text-sm text-[color:var(--foreground)]">
+                {selectedSnapshot ? selectedSnapshot.scan_id : "No scan selected"}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {posture ? <QuickStat label="Posture" value={`${posture.grade} ${posture.score}`} tone="red" /> : null}
+              {fixFirstView ? (
+                <>
+                  <QuickStat label="Matched paths" value={String(fixFirstView.summary.matched_paths)} tone="blue" />
+                  <QuickStat label="Covered findings" value={String(fixFirstView.summary.covered_findings)} tone="amber" />
+                  <QuickStat label="Highest risk" value={fixFirstView.summary.highest_risk.toFixed(1)} tone="red" />
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          {loadingSnapshots ? (
+            <span className="inline-flex items-center gap-2 text-xs text-sky-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading scan evidence
+            </span>
+          ) : snapshots.length > 0 ? (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                Manage snapshots
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {displayedSnapshots.map((snapshot) => {
+                  const selected = snapshot.scan_id === selectedScanId;
+                  return (
+                    <button
+                      key={snapshot.scan_id}
+                      type="button"
+                      onClick={() => selectSnapshot(snapshot.scan_id)}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                        selected
+                          ? "border-emerald-700 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
+                          : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                      }`}
+                    >
+                      <span className="block font-mono">{snapshot.scan_id.slice(0, 8)}…</span>
+                      <span className="mt-1 block text-[11px] opacity-80">{snapshot.node_count} nodes</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {hiddenSnapshotCount > 0 || showAllSnapshots ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllSnapshots((current) => !current)}
+                  className="mt-3 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                >
+                  {showAllSnapshots
+                    ? "Show active snapshots"
+                    : `Show all ${snapshots.length} snapshots (${hiddenSnapshotCount} empty or older)`}
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <GraphEmptyState
+              title="No persisted graph snapshots yet"
+              detail="Run a scan first so Investigation can rank paths from persisted graph evidence."
+              suggestions={[
+                "Run a local scan with graph output enabled.",
+                "Confirm the graph persistence backend is enabled.",
+              ]}
+              command="agent-bom scan -p . -f graph"
+              actions={[{ label: "Run a scan", href: "/scan" }]}
+            />
+          )}
+
+          {selectedSnapshot && estateMode.large ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] pt-3 text-xs text-[color:var(--text-secondary)]">
+              <span>{estateMode.summary}. Use a focused lens before opening the full topology.</span>
+              <div className="flex flex-wrap gap-3">
+                <Link href={estateMode.clusteredHref} className="font-medium text-[color:var(--accent-mint)] hover:underline">
+                  Explore clusters
+                </Link>
+                <Link href={estateMode.rawHref} className="font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:underline">
+                  Open raw topology
+                </Link>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Collapsible>
+
+      {!captureMode ? (
+        <Collapsible
+          title="Should I deploy?"
+          subtitle="Check an agent, service, image, or package against the selected evidence scope."
+          icon={Rocket}
+          defaultOpen={false}
+        >
+          <DeployGatePanel scanId={selectedScanId || undefined} />
+        </Collapsible>
+      ) : null}
+
+      <Collapsible
+        title="Exposure paths"
+        subtitle="Broader agent-native exposure analysis over the selected evidence scope."
+        icon={Route}
+        defaultOpen={false}
+      >
+        <ExposurePathLens scanId={selectedScanId || undefined} />
+      </Collapsible>
     </div>
   );
 }

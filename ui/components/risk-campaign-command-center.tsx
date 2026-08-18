@@ -381,8 +381,8 @@ function CampaignCard({
         </div>
       </div>
       {!workflowActionable ? (
-        <p role="status" className="risk-campaign-warning">
-          Workflow actions are paused until the complete campaign membership is available. No partial ticket or verification state will be written.
+        <p role="status" className="mt-2 text-xs text-[color:var(--status-warn)]">
+          Membership incomplete · workflow locked to prevent partial ticket or verification state.
         </p>
       ) : null}
       {editingAssignment ? (
@@ -602,6 +602,11 @@ export function RiskCampaignCommandCenter() {
   useEffect(() => { void load(); }, [load]);
 
   const campaignFindingCount = useMemo(() => campaigns.reduce((sum, campaign) => sum + campaign.finding_count, 0), [campaigns]);
+  const workflowSummary = useMemo(() => ({
+    assigned: campaigns.filter((campaign) => Boolean(campaign.owner)).length,
+    withSla: campaigns.filter((campaign) => Boolean(campaign.sla_due_at)).length,
+    awaitingProof: campaigns.filter((campaign) => campaign.verification_status !== "verified").length,
+  }), [campaigns]);
   const visibleCampaigns = useMemo(
     () => campaigns.slice(0, visibleCampaignCount),
     [campaigns, visibleCampaignCount],
@@ -622,7 +627,20 @@ export function RiskCampaignCommandCenter() {
         <div>
           <div className="risk-campaign-kicker">Prioritized remediation</div>
           <h2 id="risk-campaigns-title" className="risk-page-title">Risk campaigns</h2>
-          <p className="risk-page-copy">{campaigns.length} campaigns cluster {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} into owner-ready work. Start with the highest-priority campaign, opened below.</p>
+          <p className="risk-page-copy">
+            Start with {campaigns[0]!.title}. {campaigns.length} prioritized action{campaigns.length === 1 ? "" : "s"} cover{campaigns.length === 1 ? "s" : ""} {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} in the current evidence window.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Remediation workflow summary">
+            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+              {workflowSummary.assigned} assigned
+            </span>
+            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+              {workflowSummary.withSla} with SLA
+            </span>
+            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+              {workflowSummary.awaitingProof} awaiting proof
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <Link href="/security-graph" className="risk-campaign-investigate">Open investigation</Link>

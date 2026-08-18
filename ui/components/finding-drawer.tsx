@@ -64,7 +64,7 @@ export function FindingDrawer({
     <Drawer
       open
       onClose={onClose}
-      size="4xl"
+      size="2xl"
       ariaLabel={`Finding details for ${vuln.id}`}
       eyebrow={findingsDrawerEyebrow(lens)}
       title={<span className="break-all font-mono">{vuln.id}</span>}
@@ -127,62 +127,84 @@ function OverviewTab({ vuln, triage }: { vuln: EnrichedVuln; triage: FindingTria
   const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
   const version = cvssVersion(vuln.cvss_vector);
-  const cvssDetail = [version ? `v${version}` : "version unavailable", vuln.cvss_severity ?? "severity unavailable"].join(" · ");
+  const cvssDetail = [version ? `v${version}` : null, vuln.cvss_severity].filter(Boolean).join(" · ");
   const epssDetail = typeof vuln.epss_percentile === "number"
     ? `${vuln.epss_percentile.toFixed(1)}th percentile`
-    : "Percentile unavailable";
+    : undefined;
   const fixValue = vuln.current_version && vuln.fixed_version
     ? `${vuln.current_version} → ${vuln.fixed_version}`
     : vuln.fixed_version
       ? `Upgrade to ${vuln.fixed_version}`
-      : "Unavailable";
-  const stats: { label: string; value: string; detail?: string }[] = [
-    {
+      : null;
+  const stats: Array<{ label: string; value: string; detail?: string }> = [
+    typeof vuln.cvss_score === "number" ? {
       label: "CVSS",
-      value: typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Unavailable",
-      detail: cvssDetail,
-    },
-    {
+      value: vuln.cvss_score.toFixed(1),
+      ...(cvssDetail ? { detail: cvssDetail } : {}),
+    } : null,
+    typeof vuln.epss_score === "number" ? {
       label: "EPSS",
-      value: typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Unavailable",
-      detail: epssDetail,
-    },
-    {
+      value: `${(vuln.epss_score * 100).toFixed(1)}%`,
+      ...(epssDetail ? { detail: epssDetail } : {}),
+    } : null,
+    typeof vuln.is_kev === "boolean" ? {
       label: "CISA KEV",
-      value: typeof vuln.is_kev === "boolean" ? (vuln.is_kev ? "Known exploited" : "Not listed") : "Unavailable",
-      detail: vuln.kev_date_added ? `Added ${formatDateOnly(vuln.kev_date_added)}` : "Catalog date unavailable",
-    },
-    { label: "Affected → fixed", value: fixValue },
-  ];
+      value: vuln.is_kev ? "Known exploited" : "Not listed",
+      ...(vuln.kev_date_added ? { detail: `Added ${formatDateOnly(vuln.kev_date_added)}` } : {}),
+    } : null,
+    fixValue ? { label: "Affected → fixed", value: fixValue } : null,
+  ].filter((stat): stat is { label: string; value: string; detail?: string } => stat !== null);
+  const workflowFacts = [
+    vuln.first_seen ? { label: "First seen", value: formatFindingTimestamp(vuln.first_seen) } : null,
+    vuln.last_observed || vuln.last_seen
+      ? { label: "Last observed", value: formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen) }
+      : null,
+    vuln.lifecycle_status || triage?.queue_state
+      ? { label: "Status", value: vuln.lifecycle_status ? findingStatusLabel(vuln.lifecycle_status) : triage!.queue_state }
+      : null,
+    typeof vuln.occurrence_count === "number"
+      ? { label: "Occurrences", value: String(vuln.occurrence_count) }
+      : null,
+    vuln.owner || triage?.assignee ? { label: "Owner", value: vuln.owner || triage!.assignee! } : null,
+    vuln.sla_due_at ? { label: "SLA", value: formatFindingTimestamp(vuln.sla_due_at) } : null,
+  ].filter((fact): fact is { label: string; value: string } => fact !== null);
+  const intelligenceFacts = [
+    vuln.cvss_vector ? { label: "CVSS vector", value: vuln.cvss_vector } : null,
+    vuln.severity_source ? { label: "Severity source", value: vuln.severity_source } : null,
+    published ? { label: "Published", value: formatDateOnly(published) } : null,
+    vuln.modified_at ? { label: "Modified", value: formatDateOnly(vuln.modified_at) } : null,
+  ].filter((fact): fact is { label: string; value: string } => fact !== null);
+  const omittedFactCount = (4 - stats.length) + (6 - workflowFacts.length) + (4 - intelligenceFacts.length);
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2">
         {stats.map((stat) => (
           <DetailStat key={stat.label} label={stat.label} value={stat.value} detail={stat.detail} />
         ))}
       </div>
 
-      <Section title="Observation and workflow">
-        <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2 lg:grid-cols-3">
-          <KeyVal label="First seen" value={vuln.first_seen ? formatFindingTimestamp(vuln.first_seen) : "Unavailable"} />
-          <KeyVal label="Last observed" value={vuln.last_observed || vuln.last_seen ? formatFindingTimestamp(vuln.last_observed ?? vuln.last_seen) : "Unavailable"} />
-          <KeyVal label="Last scanned" value="Unavailable" />
-          <KeyVal label="Status" value={vuln.lifecycle_status ? findingStatusLabel(vuln.lifecycle_status) : triage?.queue_state ?? "Unavailable"} />
-          <KeyVal label="Occurrences" value={typeof vuln.occurrence_count === "number" ? String(vuln.occurrence_count) : "Unavailable"} />
-          <KeyVal label="Owner" value={vuln.owner || triage?.assignee || "Unavailable"} />
-          <KeyVal label="SLA" value={vuln.sla_due_at ? formatFindingTimestamp(vuln.sla_due_at) : "Unavailable"} />
-        </div>
-      </Section>
+      {omittedFactCount > 0 ? (
+        <p className="text-xs text-[color:var(--text-tertiary)]">
+          Source did not provide {omittedFactCount} optional intelligence or workflow fields; omitted instead of showing placeholder tiles.
+        </p>
+      ) : null}
 
-      <Section title="Security intelligence">
-        <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
-          <KeyVal label="CVSS vector" value={vuln.cvss_vector ?? "Unavailable"} />
-          <KeyVal label="Severity source" value={vuln.severity_source ?? "Unavailable"} />
-          <KeyVal label="Published" value={published ? formatDateOnly(published) : "Unavailable"} />
-          <KeyVal label="Modified" value={vuln.modified_at ? formatDateOnly(vuln.modified_at) : "Unavailable"} />
-        </div>
-      </Section>
+      {workflowFacts.length > 0 ? (
+        <Section title="Observation and workflow">
+          <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+            {workflowFacts.map((fact) => <KeyVal key={fact.label} label={fact.label} value={fact.value} />)}
+          </div>
+        </Section>
+      ) : null}
+
+      {intelligenceFacts.length > 0 ? (
+        <Section title="Security intelligence">
+          <div className="grid gap-x-5 gap-y-1.5 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+            {intelligenceFacts.map((fact) => <KeyVal key={fact.label} label={fact.label} value={fact.value} />)}
+          </div>
+        </Section>
+      ) : null}
 
       <ReachBadges vuln={vuln} />
 

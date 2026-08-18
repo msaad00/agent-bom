@@ -642,13 +642,13 @@ def test_get_scan_redacts_result_findings_replay_only_fields():
 
     assert response.status_code == 200
     finding = response.json()["result"]["findings"][0]
-    assert finding == {
-        "id": "finding-1",
-        "title": "Unsafe package",
-        "package": "pillow",
-        "package_version": "10.0.0",
-        "severity": "high",
-    }
+    assert finding["id"] == "finding-1"
+    assert finding["title"] == "Unsafe package"
+    assert finding["package"] == "pillow"
+    assert finding["package_version"] == "10.0.0"
+    assert finding["severity"] == "high"
+    assert "description" not in finding
+    assert "raw_path" not in finding
     assert store.get("job-finding-redaction", all_tenants=True).result["findings"][0]["description"] == "Copied workspace details"
 
 

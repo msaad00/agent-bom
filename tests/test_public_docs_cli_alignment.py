@@ -186,8 +186,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     # diagrams, not in a second prose manifesto.
     intro = readme.split("## Scan, correlate, and act", 1)[1].split("workflow-dark.svg", 1)[0]
     assert "one Finding + UnifiedGraph model" in intro
-    for label in ("Start locally or in CI", "Centralize when ready", "Act with context", "Keep evidence honest"):
+    for label in ("Run where you deploy", "Centralize when ready", "Act with context", "Keep evidence honest"):
         assert f"**{label}:**" in intro
+    for execution_target in ("workstation", "CI", "Docker/Kubernetes", "control plane"):
+        assert execution_target in intro
     assert "### From source to verified action" not in intro
 
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]

@@ -32,7 +32,7 @@
 data platforms, MCP servers, and runtime activity, then normalizes the evidence
 into one Finding + UnifiedGraph model for prioritized investigation and action.
 
-- **Start locally or in CI:** produce findings, SARIF, SBOMs, HTML reports, and graph exports without an account.
+- **Run where you deploy:** the same deterministic scanner produces findings, SARIF, SBOMs, HTML reports, and graph exports on a workstation, in CI, in Docker/Kubernetes, or in your control plane.
 - **Centralize when ready:** self-host fleet, browser, compliance, and audit evidence inside your cloud and identity boundary.
 - **Act with context:** follow Path → Impact → Owner → Fix → Verify, then export, rescan, or enforce at runtime.
 - **Keep evidence honest:** raw source and credentials stay local; collected, inferred, static, and runtime relationships stay distinct, while partial and unavailable evidence remains explicit.
@@ -58,7 +58,7 @@ artifacts, and the boundary between collected, partial, and unavailable state.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="Sources, evidence engine, control plane, API, MCP, and operator surfaces in the self-hosted agent-bom architecture" width="1000" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="Sources flow into the agent-bom scan and correlation runtime on a workstation, in CI, Docker, Kubernetes, EKS, or a customer control plane, then into tenant-scoped evidence and verified outcomes" width="1000" />
   </picture>
 </p>
 
@@ -66,12 +66,17 @@ artifacts, and the boundary between collected, partial, and unavailable state.
 
 ## Who it is for
 
+<details>
+<summary><b>Persona workflow map</b></summary>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="AI engineer, security engineer, GRC, and leadership workflows on the shared evidence model" width="1000" />
   </picture>
 </p>
+
+</details>
 
 | Role | Start here | Primary outcome |
 |---|---|---|

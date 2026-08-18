@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from scripts.generate_doc_architecture_svgs import (
+    ICONS,
     MCP_TOOL_COUNT,
     REST_OPERATION_COUNT,
     _audit_github_safe,
@@ -81,6 +82,17 @@ def test_workflow_maps_sources_to_verified_outcomes() -> None:
     assert _audit_github_safe(svg) == []
 
 
+def test_workflow_uses_semantic_scan_and_action_icons() -> None:
+    """The visual vocabulary should describe actions, not decorate them."""
+    svg = workflow("dark")
+    collect = svg.split("COLLECT + SCAN", 1)[0].rsplit('<rect x="84"', 1)[-1]
+    assert ICONS["search"] in collect
+    assert ICONS["bug"] not in collect
+    assert ICONS["graph"] in svg
+    assert ICONS["tool"] in svg
+    assert ICONS["shield"] in svg
+
+
 def test_workflow_and_architecture_use_provenance_pinned_vendor_vectors() -> None:
     workflow_svg = workflow("dark")
     architecture_svg = architecture("light")
@@ -118,6 +130,24 @@ def test_architecture_includes_core_surfaces() -> None:
     assert "Agents + MCP + models" in svg
     assert "Cloud + data" in svg
     assert "Fleet + scheduler" in svg
+    assert "SCAN + CORRELATION RUNTIME" in svg
+    assert "runs where you deploy it" in svg
+    assert "Workstation + CI" in svg
+    assert "Docker + Kubernetes" in svg
+    assert "Customer control plane" in svg
+    assert "VPC · EKS · Helm" in svg
+    assert "LOCAL PROCESSING ENGINE" not in svg
+    assert "local processing engine" not in svg
+    assert 'data-vendor="AWS"' in svg
+    assert 'data-vendor="Kubernetes"' in svg
+
+
+def test_architecture_does_not_present_snowflake_as_a_hosting_target() -> None:
+    svg = architecture("dark")
+    execution = svg.split("EXECUTION LOCATIONS", 1)[1].split("Scan", 1)[0]
+    assert "Snowflake" not in execution
+    assert "Customer control plane" in execution
+    assert "Snowflake" in svg
 
 
 def test_persona_value_renders_buyer_lanes() -> None:
@@ -131,6 +161,19 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert "Agent-native surface" in svg
     assert "Triage by reachability" in svg
     assert "Audit-ready exports" in svg
+    for command in (
+        "agent-bom scan .",
+        "agent-bom serve",
+        "agent-bom report compliance-narrative",
+    ):
+        assert command in svg
+    for artifact in (
+        "AI BOM · SARIF · graph",
+        "Paths · owners · verification",
+        "Mappings · signed evidence",
+        "Posture · coverage · trends",
+    ):
+        assert artifact in svg
     assert "SCAN + CI · CENTRALIZE EVIDENCE · ENFORCE AT RUNTIME — one Finding + UnifiedGraph" in svg
     assert "LOCAL SCAN · CONTROL PLANE · RUNTIME" not in svg
     assert _audit_layout(svg) == []
@@ -160,7 +203,9 @@ def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
     role_table = readme.index("| Role | Start here | Primary outcome |", who_it_is_for)
     assert who_it_is_for < persona_artwork < role_table
     assert "persona-value-light.svg" in readme[who_it_is_for:role_table]
-    assert "<summary><b>Audience workflow map</b></summary>" not in readme
+    persona_summary = readme.index("<summary><b>Persona workflow map</b></summary>", who_it_is_for)
+    persona_close = readme.index("</details>", persona_artwork)
+    assert who_it_is_for < persona_summary < persona_artwork < persona_close < role_table
 
 
 def test_readme_surfaces_the_end_to_end_workflow_before_architecture_detail() -> None:
@@ -295,10 +340,8 @@ def test_dense_diagrams_hold_their_improved_rendered_text_floor() -> None:
     "381 API ops · 77 MCP tools · SARIF" all clipped in the README.
 
     With a box-aware audit the honest ceiling was lower — until the persona band
-    was relaid out. Five cards on a 1280px row gave each 211px, leaving nothing
-    to scale into; three per row gives ~402px, and the type now renders larger
-    than the clipped version did *and* fits: 7.77px against the 7.05px that was
-    overflowing.
+    was relaid out. Two cards per row provide enough room for a literal command,
+    outcome, and proof artifact while keeping the type readable at README width.
 
     Architecture now uses the same layered reflow as the workflow diagram, so
     it is covered by the ten-pixel README floor above. The persona band remains

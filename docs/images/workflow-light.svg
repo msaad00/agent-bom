@@ -35,7 +35,7 @@
 <text x="36" y="436" font-family="ui-monospace,monospace" font-size="15" font-weight="800" letter-spacing="0.13em" fill="#7c3aed">2 · EVIDENCE PIPELINE</text>
 <rect x="84" y="454" width="952" height="102" rx="16" fill="#fafafa" stroke="#38bdf8" stroke-width="1.6"/>
 <text x="106" y="492" font-family="ui-monospace,monospace" font-size="17" font-weight="800" fill="#38bdf8">01</text>
-<rect x="154" y="476" width="42" height="42" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(158,480) scale(1.4166666666666667)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
+<rect x="154" y="476" width="42" height="42" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(158,480) scale(1.4166666666666667)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><path d="M15 15l4 4"/></g>
 <text x="214" y="493" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800" fill="#18181b">COLLECT + SCAN</text>
 <text x="214" y="526" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="700" fill="#18181b">Read-only intake</text>
 <text x="554" y="526" font-family="Inter,system-ui,sans-serif" font-size="15" fill="#71717a">Scope and completeness stay explicit</text>

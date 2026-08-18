@@ -1269,7 +1269,7 @@ def workflow(theme_name: str) -> str:
                 )
 
     stages = (
-        ("01", "COLLECT + SCAN", "Read-only intake", "Scope and completeness stay explicit", "#38bdf8", "bug"),
+        ("01", "COLLECT + SCAN", "Read-only intake", "Scope and completeness stay explicit", "#38bdf8", "search"),
         ("02", "NORMALIZE", "Finding + UnifiedGraph", "Identity, provenance, and evidence state", "#818cf8", "package"),
         ("03", "CORRELATE + PRIORITIZE", "Reachability + blast radius", "Rank paths with evidence, not raw volume", "#a78bfa", "graph"),
         ("04", "OWN + REMEDIATE", "Owner + SLA + ticket", "Fix, accept risk, or mark a false positive", "#34d399", "tool"),
@@ -1447,13 +1447,13 @@ def workflow(theme_name: str) -> str:
 def architecture(theme_name: str) -> str:
     """Readable layered control-plane map for the README-scale embed."""
     t = THEMES[theme_name]
-    w, h = 1120, 1320
+    w, h = 1120, 1396
     margin_x, band_w = 36, 1048
     parts = _svg_open(
         w,
         h,
         "agent-bom control-plane architecture",
-        "Sources enter a local processing engine, become tenant-scoped evidence, and leave through human, agent, and artifact surfaces.",
+        "Sources enter the scan and correlation runtime wherever it is deployed, become tenant-scoped evidence, and leave through human, agent, and artifact surfaces.",
     )
     parts += [
         f'<rect width="{w}" height="{h}" rx="22" fill="{t["bg"]}"/>',
@@ -1579,11 +1579,38 @@ def architecture(theme_name: str) -> str:
 
     parts.append(_tier_down_arrow(w // 2, y1 + h1 + 2, "COLLECT", ARCH_LAYER_COLORS["sources"][1]))
 
-    # 2. Processing is a short sequence, not a wall of independent boxes.
-    y2, h2 = 414, 224
-    band(y2, h2, "engine", "2", "LOCAL PROCESSING ENGINE", "bounded + failure-honest")
+    # 2. The deterministic scanner is location-neutral: the same runtime can
+    # execute on a workstation, in CI, in a container/Kubernetes deployment,
+    # or inside the customer's control plane. "Local" is an entry point, not
+    # the product or compute boundary.
+    y2, h2 = 414, 300
+    band(y2, h2, "engine", "2", "SCAN + CORRELATION RUNTIME", "runs where you deploy it")
+    parts.append(
+        _text(
+            margin_x + 22,
+            y2 + 72,
+            "EXECUTION LOCATIONS",
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "12",
+                "font-weight": "800",
+                "letter-spacing": "0.1em",
+                "fill": ARCH_LAYER_COLORS["engine"][1],
+            },
+        )
+    )
+    execution = (
+        ("ci", "Workstation + CI", "same deterministic scanner", None),
+        ("package", "Docker + Kubernetes", "container · cluster · Helm", "kubernetes"),
+        ("cloud", "Customer control plane", "VPC · EKS · Helm", "aws"),
+    )
+    exec_w = 320
+    for index, (icon, title, detail, vendor) in enumerate(execution):
+        x = margin_x + 22 + index * (exec_w + 12)
+        card(x, y2 + 84, exec_w, 72, icon, title, detail, "engine", vendor=vendor)
+
     engine = (
-        ("bug", "Scan", "OSV · SAST · posture"),
+        ("search", "Scan", "OSV · SAST · posture"),
         ("zap", "Enrich", "NVD · EPSS · KEV"),
         ("graph", "Correlate", "identity · reachability"),
         ("shield", "Prioritize", "blast radius · policy"),
@@ -1591,12 +1618,12 @@ def architecture(theme_name: str) -> str:
     eng_w = 244
     for index, item in enumerate(engine):
         x = margin_x + 22 + index * (eng_w + 10)
-        card(x, y2 + 62, eng_w, 104, *item, "engine")
+        card(x, y2 + 184, eng_w, 90, *item, "engine")
 
     parts.append(_tier_down_arrow(w // 2, y2 + h2 + 2, "PERSIST", ARCH_LAYER_COLORS["engine"][1]))
 
     # 3. Separate the evidence model from the serving plane.
-    y3, h3 = 670, 342
+    y3, h3 = 746, 342
     band(y3, h3, "platform", "3", "EVIDENCE + SERVING PLANE", "tenant-scoped · authenticated")
     col_gap, col_w = 18, 497
     left_x, right_x = margin_x + 18, margin_x + 18 + col_w + col_gap
@@ -1631,7 +1658,7 @@ def architecture(theme_name: str) -> str:
     evidence = (
         ("finding", "Unified Finding", "scope · completeness · provenance", True),
         ("graph", "UnifiedGraph", "assets · identities · paths", True),
-        ("db", "Portable stores", "SQLite · Postgres · Snowflake", False),
+        ("db", "Portable evidence stores", "SQLite · Postgres · Snowflake", False),
     )
     delivery = (
         ("api", "REST API + MCP", f"{REST_OPERATION_COUNT} operations · {MCP_TOOL_COUNT} tools", False),
@@ -1646,7 +1673,7 @@ def architecture(theme_name: str) -> str:
     parts.append(_tier_down_arrow(w // 2, y3 + h3 + 2, "DELIVER", ARCH_LAYER_COLORS["platform"][1]))
 
     # 4. Three outcome groups keep the audience and artifact story obvious.
-    y4, h4 = 1044, 206
+    y4, h4 = 1120, 206
     band(y4, h4, "consumers", "4", "CONSUMERS + VERIFIED OUTCOMES", "least-privilege delivery")
     outcomes = (
         ("ui", "People", "CLI · Web UI · operators"),
@@ -1714,8 +1741,10 @@ class PersonaLane(NamedTuple):
 
     title: str
     capabilities: str  # "·"-separated tags
+    start: str
     value_title: str
     value_sub: str
+    proof: str
     accent_key: str
 
 
@@ -1730,29 +1759,37 @@ PERSONA_LANES: tuple[PersonaLane, ...] = (
     PersonaLane(
         "AI engineer",
         "agents · MCP servers · models",
+        "agent-bom scan .",
         "Agent-native surface",
-        f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools · SARIF",
+        f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools",
+        "AI BOM · SARIF · graph",
         "mcp",
     ),
     PersonaLane(
         "Security engineer",
         "exposure paths · reachability · identities",
+        "agent-bom serve",
         "Triage by reachability",
-        "blast radius · CI gates · 15 ecosystems",
+        "Path -> Impact -> Owner -> Fix -> Verify",
+        "Paths · owners · verification",
         "appsec",
     ),
     PersonaLane(
         "GRC / audit",
         "compliance · evidence · frameworks",
+        "agent-bom report compliance-narrative",
         "Audit-ready exports",
-        "control mappings · signed bundles",
+        "Explicit gaps stay explicit",
+        "Mappings · signed evidence",
         "grc",
     ),
     PersonaLane(
         "Leadership / CISO",
         "posture · coverage · change over time",
+        "agent-bom serve",
         "One correlated view",
-        "material risk · trend · explicit gaps",
+        "Material risk, not raw volume",
+        "Posture · coverage · trends",
         "platform",
     ),
 )
@@ -1761,12 +1798,12 @@ PERSONA_LANES: tuple[PersonaLane, ...] = (
 #
 # Five cards on one 1280px row gave each 211px, and GitHub renders the band at
 # ~900px — so every value line sat flush against its pill and several clipped.
-# Three per row nearly doubles the card to ~400px, which buys room for readable
-# type instead of trading legibility against overflow.
+# Two per row gives each persona room for a literal first command, an outcome,
+# and a proof artifact without shrinking the type at README width.
 PERSONA_BAND_WIDTH = 1280
 PERSONA_BAND_MARGIN_X = 23
 PERSONA_BAND_GAP = 14
-PERSONA_CARDS_PER_ROW = 3
+PERSONA_CARDS_PER_ROW = 2
 PERSONA_CARD_WIDTH = (
     PERSONA_BAND_WIDTH - PERSONA_BAND_MARGIN_X * 2 - PERSONA_BAND_GAP * (PERSONA_CARDS_PER_ROW - 1)
 ) // PERSONA_CARDS_PER_ROW
@@ -1780,8 +1817,10 @@ PERSONA_CARD_PAD_X = 16
 # edge was shortened after the box-aware fit audit showed it clipping; 33 is the
 # widest that now ships, and the audit fails anything past its box.
 PERSONA_TITLE_MAX_CHARS = 24
+PERSONA_START_MAX_CHARS = 40
 PERSONA_VALUE_TITLE_MAX_CHARS = 34
 PERSONA_VALUE_SUB_MAX_CHARS = 46
+PERSONA_PROOF_MAX_CHARS = 34
 
 
 def _persona_tag_width(tag: str) -> int:
@@ -1802,10 +1841,14 @@ def _audit_persona_copy() -> list[str]:
     for lane in PERSONA_LANES:
         if len(lane.title) > PERSONA_TITLE_MAX_CHARS:
             issues.append(f"{lane.title!r} title is {len(lane.title)} chars (max {PERSONA_TITLE_MAX_CHARS})")
+        if len(lane.start) > PERSONA_START_MAX_CHARS:
+            issues.append(f"{lane.start!r} start is {len(lane.start)} chars (max {PERSONA_START_MAX_CHARS})")
         if len(lane.value_title) > PERSONA_VALUE_TITLE_MAX_CHARS:
             issues.append(f"{lane.value_title!r} value title is {len(lane.value_title)} chars (max {PERSONA_VALUE_TITLE_MAX_CHARS})")
         if len(lane.value_sub) > PERSONA_VALUE_SUB_MAX_CHARS:
             issues.append(f"{lane.value_sub!r} value line is {len(lane.value_sub)} chars (max {PERSONA_VALUE_SUB_MAX_CHARS})")
+        if len(lane.proof) > PERSONA_PROOF_MAX_CHARS:
+            issues.append(f"{lane.proof!r} proof is {len(lane.proof)} chars (max {PERSONA_PROOF_MAX_CHARS})")
         row_width = _persona_tag_row_width(lane.capabilities)
         if row_width > tag_budget:
             issues.append(f"{lane.title!r} tag row is {row_width}px wide (max {tag_budget}px)")
@@ -1819,8 +1862,10 @@ def _persona_lane_card(
     h: int,
     persona_title: str,
     persona_sub: str,
+    start: str,
     value_title: str,
     value_sub: str,
+    proof: str,
     accent_key: str,
     theme: str,
     t: dict,
@@ -1898,44 +1943,110 @@ def _persona_lane_card(
         f'fill="{accent}" opacity="0.9"/>'
     )
 
-    value_y = divider_y + 16
+    # A literal first command turns the persona card into a usable entry point,
+    # not just positioning copy.
+    parts.append(
+        _text(
+            x + 18,
+            divider_y + 34,
+            "START",
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "9",
+                "font-weight": "800",
+                "letter-spacing": "0.1em",
+                "fill": accent,
+            },
+        )
+    )
+    parts.append(
+        _text(
+            x + 92,
+            divider_y + 34,
+            start,
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "11",
+                "font-weight": "700",
+                "fill": t["text"],
+            },
+        )
+    )
+
+    value_y = divider_y + 48
     value_h = h - (value_y - y) - 14
     parts.append(f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" fill="{accent}" opacity="{tint_opacity}"/>')
     parts.append(
         f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" fill="none" stroke="{accent}" opacity="0.4"/>'
     )
-    # Accent marker keys the headline value to the persona hue.
-    parts.append(f'<rect x="{x + 20}" y="{value_y + 16}" width="3" height="14" rx="1.5" fill="{accent}"/>')
+    # Outcome and proof are separate so users can see both the value and the
+    # concrete artifact/state that demonstrates it.
     parts.append(
         _text(
-            x + 30,
+            x + 22,
             value_y + 24,
-            value_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "13.5", "font-weight": "800", "fill": t["text"]},
+            "OUTCOME",
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "9",
+                "font-weight": "800",
+                "letter-spacing": "0.08em",
+                "fill": accent,
+            },
         )
     )
     parts.append(
         _text(
-            x + 30,
-            value_y + 44,
+            x + 102,
+            value_y + 24,
+            value_title,
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "13", "font-weight": "800", "fill": t["text"]},
+        )
+    )
+    parts.append(
+        _text(
+            x + 102,
+            value_y + 45,
             value_sub,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "600", "fill": t["text_muted"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10.5", "font-weight": "600", "fill": t["text_muted"]},
+        )
+    )
+    parts.append(
+        _text(
+            x + 22,
+            value_y + 70,
+            "PROOF",
+            **{
+                "font-family": "ui-monospace,monospace",
+                "font-size": "9",
+                "font-weight": "800",
+                "letter-spacing": "0.08em",
+                "fill": accent,
+            },
+        )
+    )
+    parts.append(
+        _text(
+            x + 102,
+            value_y + 70,
+            proof,
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10.5", "font-weight": "700", "fill": t["text"]},
         )
     )
     return parts
 
 
 def persona_value(theme: str) -> str:
-    """Compact single-row buyer-lane band — persona -> value proof per card."""
+    """Readable 2x2 buyer map — persona -> first command -> outcome -> proof."""
     t = THEMES[theme]
-    # Five cards need extra width so titles/tags fit without overflow.
+    # Two columns keep commands and proof artifacts readable at README scale.
     w, h = PERSONA_BAND_WIDTH, 236
     persona_bg = "#16161d" if theme == "dark" else t["bg"]
 
     margin_y = 18
     gap = PERSONA_BAND_GAP
     card_w = PERSONA_CARD_WIDTH
-    card_h = 174
+    card_h = 242
     per_row = PERSONA_CARDS_PER_ROW
     rows = math.ceil(len(PERSONA_LANES) / per_row)
     h = margin_y * 2 + rows * card_h + (rows - 1) * gap + 44
@@ -1980,9 +2091,8 @@ _GLYPH_ADVANCE_EM = 0.54
 # authored at 960 and 1280, so their type is downscaled to ~6px on screen —
 # below the 10px floor the flow diagrams already hold themselves to, which is
 # why they read as unreadable in the README while being correct at full size.
-# Scaled as far as `_audit_text_fit` allows. The persona band was relaid out to
-# three cards per row to earn that headroom — at five per row a 211px card left
-# no space to scale into.
+# Scaled as far as `_audit_text_fit` allows. The persona band uses two cards per
+# row so commands, outcomes, and proof artifacts retain readable type.
 _ARCHITECTURE_TYPE_SCALE = 1.1
 _PERSONA_TYPE_SCALE = 1.3
 

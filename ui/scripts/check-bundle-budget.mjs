@@ -99,7 +99,11 @@ const BUDGETS = {
   // search, evidence-state filtering, pagination, and partial-state detail.
   // Linux CI measures 3783.0 KiB total with no new heavyweight dependency;
   // keep bounded headroom at 3792 KiB while leaving both chunk ceilings fixed.
-  totalClientJsBytes: 3_883_008,
+  // Public-demo operator boundaries add the shared demo-mode guard to the
+  // governance and self-posture routes. Linux CI measures 3794.0 KiB; retain
+  // 14 KiB of explicit headroom at 3808 KiB without changing either per-chunk
+  // ceiling or introducing a new dependency.
+  totalClientJsBytes: 3_899_392,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

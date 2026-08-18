@@ -7,6 +7,7 @@ def test_server_postgres_preflight_runs_for_bare_asgi_start(monkeypatch) -> None
     from agent_bom.api import postgres_common, server
 
     calls: list[str] = []
+    monkeypatch.delenv("SNOWFLAKE_ACCOUNT", raising=False)
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://db.example/agent_bom")
     monkeypatch.setattr(postgres_common, "preflight_rls_capable_role", lambda: calls.append("guarded"))
 
@@ -20,6 +21,19 @@ def test_server_postgres_preflight_is_noop_without_postgres(monkeypatch) -> None
 
     calls: list[str] = []
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.setattr(postgres_common, "preflight_rls_capable_role", lambda: calls.append("guarded"))
+
+    server._preflight_postgres_tenant_isolation()
+
+    assert calls == []
+
+
+def test_server_postgres_preflight_respects_snowflake_backend_priority(monkeypatch) -> None:
+    from agent_bom.api import postgres_common, server
+
+    calls: list[str] = []
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "customer-account")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://unused.example/agent_bom")
     monkeypatch.setattr(postgres_common, "preflight_rls_capable_role", lambda: calls.append("guarded"))
 
     server._preflight_postgres_tenant_isolation()

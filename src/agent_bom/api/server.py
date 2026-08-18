@@ -282,7 +282,10 @@ def _apply_worker_thread_limit() -> None:
 
 def _preflight_postgres_tenant_isolation() -> None:
     """Fail bare ASGI startup before traffic when the DB role can bypass RLS."""
-    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    # Store selection is Snowflake > Postgres > SQLite. A dormant Postgres URL
+    # must not load an optional driver or contact an unused backend when the
+    # selected Snowflake control plane starts.
+    if os.environ.get("SNOWFLAKE_ACCOUNT") or not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         return
     from agent_bom.api.postgres_common import preflight_rls_capable_role
 

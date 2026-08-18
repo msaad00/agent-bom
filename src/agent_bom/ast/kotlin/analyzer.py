@@ -34,6 +34,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from agent_bom.ast.source_reader import read_source_for_analysis
 from agent_bom.ast_models import (
     CallEdge,
     DependencySymbolReach,
@@ -463,12 +464,8 @@ def scan_kotlin_file(
     _KotlinFileAnalysis | None,
 ]:
     """Extract MCP/tool signals and call sites from Kotlin source files."""
-    try:
-        source = file_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return [], [], [], [], [], [], None
-
-    if len(source) > _MAX_FILE_SIZE:
+    source = read_source_for_analysis(file_path, rel_path, scanner="ast-kotlin", max_size=_MAX_FILE_SIZE)
+    if source is None:
         return [], [], [], [], [], [], None
 
     scope_match = _KOTLIN_SCOPE_RE.search(mask_line_comments_and_strings(source))

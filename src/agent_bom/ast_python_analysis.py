@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 
+from agent_bom.ast.source_reader import read_source_for_analysis
 from agent_bom.ast_models import (
     CallEdge,
     ControlFlowEdge,
@@ -760,12 +761,8 @@ def _analyze_file(
     list[FlowFinding],
 ]:
     """Analyze a single Python file with full AST parsing."""
-    try:
-        source = file_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return [], [], [], [], [], []
-
-    if len(source) > _MAX_FILE_SIZE:
+    source = read_source_for_analysis(file_path, rel_path, scanner="ast-python", max_size=_MAX_FILE_SIZE)
+    if source is None:
         return [], [], [], [], [], []
 
     try:

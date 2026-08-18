@@ -94,6 +94,31 @@ def record_manifest_parse_warning(*, ecosystem: str, path: str, detail: str) -> 
         pass
 
 
+def record_scan_input_warning(*, scanner: str, path: str, reason: str, detail: str) -> None:
+    """Record a structured warning when a scanner cannot inspect an input.
+
+    Best-effort scanners should continue past one unreadable or deliberately
+    bounded input, but that branch must not be indistinguishable from a clean
+    analysis. The warning is intentionally free of raw exception text so scan
+    artifacts cannot expose local paths, credentials, or platform details.
+    """
+    warning = CoverageWarning(
+        ecosystem=scanner,
+        release=f"{scanner}:{path}",
+        reason=reason,
+        detail=detail,
+        package_count=0,
+        advisory_rows=0,
+    )
+    _logger.warning("Input not scanned (%s/%s): %s", scanner, path, detail)
+    try:
+        from agent_bom.scanners.state import record_coverage_warning
+
+        record_coverage_warning(warning.to_dict())
+    except Exception:  # noqa: BLE001 - warning surfacing must never break a scan
+        pass
+
+
 def covered_os_distros(conn: sqlite3.Connection) -> list[str]:
     """Return the OS-distro families the local DB actually carries advisories for.
 

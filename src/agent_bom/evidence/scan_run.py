@@ -173,9 +173,10 @@ def effective_scan_run(report: Any) -> ScanRun:
         source = str(warning.get("ecosystem") or "vulnerability-data")
         release = str(warning.get("release") or "unknown release")
         detail = str(warning.get("detail") or warning.get("reason") or "Vulnerability coverage is incomplete")
+        issue_code = "scanner_coverage_gap" if source.startswith("ast-") else "vulnerability_coverage_gap"
         run.add_issue(
             ScanIssue(
-                code="vulnerability_coverage_gap",
+                code=issue_code,
                 stage="scanning",
                 source=source,
                 message=f"{release}: {detail}",

@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from agent_bom.ast.source_reader import read_source_for_analysis
 from agent_bom.ast_models import (
     CallEdge,
     DependencySymbolReach,
@@ -558,12 +559,8 @@ def scan_swift_file(
     list[CallEdge],
     _SwiftFileAnalysis | None,
 ]:
-    try:
-        source = file_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return [], [], [], [], [], [], None
-
-    if len(source) > _MAX_FILE_SIZE:
+    source = read_source_for_analysis(file_path, rel_path, scanner="ast-swift", max_size=_MAX_FILE_SIZE)
+    if source is None:
         return [], [], [], [], [], [], None
 
     scope_name = Path(rel_path).stem

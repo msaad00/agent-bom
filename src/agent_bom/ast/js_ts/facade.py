@@ -19,6 +19,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from agent_bom.ast.source_reader import read_source_for_analysis
 from agent_bom.ast_models import CallEdge, DependencySymbolReach, DetectedGuardrail, ExtractedPrompt, FlowFinding, ToolSignature
 from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS, _balanced_segment, check_prompt_risks, classify_prompt_type
 from agent_bom.ast_source_mask import mask_line_comments_and_strings
@@ -660,12 +661,8 @@ def scan_js_ts_file(
     JSTSAstAnalysis | None,
 ]:
     """Extract prompt/tool/guardrail/dangerous-call signals from JS/TS source files."""
-    try:
-        source = file_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return [], [], [], [], [], [], None
-
-    if len(source) > _MAX_FILE_SIZE:
+    source = read_source_for_analysis(file_path, rel_path, scanner="ast-js-ts", max_size=_MAX_FILE_SIZE)
+    if source is None:
         return [], [], [], [], [], [], None
 
     prompts: list[ExtractedPrompt] = []

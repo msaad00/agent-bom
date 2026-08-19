@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Optional
 
+from agent_bom.coverage import record_scan_input_warning
 from agent_bom.models import Package, PackageOccurrence
 from agent_bom.package_utils import parse_debian_source_name
 
@@ -246,6 +247,7 @@ _RPM_SQLITE_PATHS = ("var/lib/rpm/rpmdb.sqlite", "./var/lib/rpm/rpmdb.sqlite")
 _RPM_BDB_PATHS = ("var/lib/rpm/Packages", "./var/lib/rpm/Packages")
 _RPM_NDB_PATHS = ("var/lib/rpm/Packages.db", "./var/lib/rpm/Packages.db")
 _RPM_MANIFEST_PATHS = ("var/log/installed-rpms", "./var/log/installed-rpms")
+_RPM_MANIFEST_RE = re.compile(r"^(?P<name>.+)-(?P<version>[0-9][^-]*)-(?P<release>\S+)$")
 _MAX_LEGACY_RPMDB_BYTES = 512 * 1024 * 1024
 # RPM header magic (8 bytes)
 _RPM_HDR_MAGIC = b"\x8e\xad\xe8\x01\x00\x00\x00\x00"
@@ -267,6 +269,15 @@ class OCIManifest:
     layer_paths: list[str]  # paths inside the outer tarball
 
 
+@dataclass(frozen=True)
+class OCIInputWarning:
+    """One container input that could not be completely inspected."""
+
+    path: str
+    reason: str
+    detail: str
+
+
 @dataclass
 class OCIParseResult:
     """Result of parsing an OCI image tarball or directory."""
@@ -276,6 +287,41 @@ class OCIParseResult:
     layer_count: int
     image_tags: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    coverage_warnings: list[OCIInputWarning] = field(default_factory=list)
+
+
+_PACKAGE_METADATA_WARNING_DETAIL = "Container package metadata could not be parsed; image inventory is incomplete."
+
+
+def _append_oci_warning(
+    warnings: list[str],
+    coverage_warnings: list[OCIInputWarning],
+    *,
+    path: str,
+    reason: str,
+    detail: str,
+    message: str | None = None,
+) -> None:
+    """Preserve the parser diagnostic and its structured coverage consequence."""
+    warnings.append(message or f"{path}: {detail}")
+    coverage_warnings.append(OCIInputWarning(path=path, reason=reason, detail=detail))
+
+
+def _mark_package_metadata_gap(
+    warnings: list[str] | None,
+    coverage_warnings: list[OCIInputWarning] | None,
+    member_path: str,
+) -> None:
+    if warnings is None or coverage_warnings is None:
+        return
+    _append_oci_warning(
+        warnings,
+        coverage_warnings,
+        path=member_path,
+        reason="package_metadata_parse_error",
+        detail=_PACKAGE_METADATA_WARNING_DETAIL,
+        message=f"Container package metadata could not be parsed: {member_path}",
+    )
 
 
 class OCIParseError(Exception):
@@ -690,6 +736,7 @@ def _extract_packages_from_layer(
     deleted_paths: set[str],
     layer: LayerMetadata,
     warnings: list[str] | None = None,
+    coverage_warnings: list[OCIInputWarning] | None = None,
 ) -> set[str]:
     """Extract packages from an open layer TarFile.
 
@@ -700,6 +747,7 @@ def _extract_packages_from_layer(
         deleted_paths: Set of paths deleted in LATER layers (whiteouts already processed).
         layer: Layer provenance metadata for this concrete tar blob.
         warnings: Optional mutable list for non-fatal parser diagnostics.
+        coverage_warnings: Optional structured diagnostics for incomplete inputs.
 
     Returns:
         Set of paths marked as whiteout in THIS layer (for caller to accumulate).
@@ -750,12 +798,16 @@ def _extract_packages_from_layer(
         try:
             f = _safe_extractfile(layer_tf, member_name)
             if f is None:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
                 continue
             pkg_name, pkg_version = _parse_rfc822_name_version(f)
             if pkg_name and pkg_version:
                 _add_package(packages_by_key, packages, pkg_name, pkg_version, "pypi", layer=layer, package_path=member_name)
+            else:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
         except Exception:
             _logger.debug("Skipped Python %s metadata: %s", metadata_kind, member_name)
+            _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
 
     # --- Node: node_modules/*/package.json ---
     for member_name in names:
@@ -768,20 +820,25 @@ def _extract_packages_from_layer(
         try:
             f = _safe_extractfile(layer_tf, member_name)
             if f is None:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
                 continue
             data = json.loads(f.read().decode("utf-8", errors="ignore"))
             pkg_name = data.get("name", "")
             pkg_version = data.get("version", "unknown")
             if pkg_name:
                 _add_package(packages_by_key, packages, pkg_name, pkg_version, "npm", layer=layer, package_path=member_name)
+            else:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
         except Exception:
             _logger.debug("Skipped Node package.json: %s", member_name)
+            _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
 
     # --- Debian/Ubuntu: dpkg status ---
     for dpkg_path in ("var/lib/dpkg/status", "./var/lib/dpkg/status"):
         if dpkg_path not in names or _is_deleted(dpkg_path):
             continue
         try:
+            parsed_package = False
             f = _safe_extractfile(layer_tf, dpkg_path)
             if f:
                 content = f.read().decode("utf-8", errors="ignore")
@@ -806,6 +863,7 @@ def _extract_packages_from_layer(
                             layer=layer,
                             package_path=dpkg_path,
                         )
+                        parsed_package = True
                         pkg_name = pkg_version = ""
                         source_package = None
                 # Flush last entry
@@ -821,8 +879,14 @@ def _extract_packages_from_layer(
                         layer=layer,
                         package_path=dpkg_path,
                     )
+                    parsed_package = True
+                if content.strip() and not parsed_package:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, dpkg_path)
+            else:
+                _mark_package_metadata_gap(warnings, coverage_warnings, dpkg_path)
         except Exception:
             _logger.debug("Failed to parse dpkg status")
+            _mark_package_metadata_gap(warnings, coverage_warnings, dpkg_path)
         break
 
     # --- Alpine: apk installed ---
@@ -830,6 +894,7 @@ def _extract_packages_from_layer(
         if apk_path not in names or _is_deleted(apk_path):
             continue
         try:
+            parsed_package = False
             f = _safe_extractfile(layer_tf, apk_path)
             if f:
                 content = f.read().decode("utf-8", errors="ignore")
@@ -854,6 +919,7 @@ def _extract_packages_from_layer(
                             layer=layer,
                             package_path=apk_path,
                         )
+                        parsed_package = True
                         pkg_name = pkg_version = ""
                         apk_source_package = None
                 if pkg_name and pkg_version:
@@ -868,8 +934,14 @@ def _extract_packages_from_layer(
                         layer=layer,
                         package_path=apk_path,
                     )
+                    parsed_package = True
+                if content.strip() and not parsed_package:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, apk_path)
+            else:
+                _mark_package_metadata_gap(warnings, coverage_warnings, apk_path)
         except Exception:
             _logger.debug("Failed to parse Alpine apk db")
+            _mark_package_metadata_gap(warnings, coverage_warnings, apk_path)
         break
 
     # --- RPM log manifest ---
@@ -877,34 +949,41 @@ def _extract_packages_from_layer(
         if rpm_path not in names or _is_deleted(rpm_path):
             continue
         try:
+            parsed_package = False
             f = _safe_extractfile(layer_tf, rpm_path)
             if f:
+                had_content = False
                 for raw_line in f:
                     line = raw_line.decode("utf-8", errors="ignore").strip()
                     if not line:
                         continue
-                    parts = line.split()
-                    nvr = parts[0] if parts else line
-                    idx2 = nvr.rfind("-")
-                    if idx2 > 0:
-                        idx1 = nvr.rfind("-", 0, idx2)
-                        if idx1 > 0:
-                            rpm_name = nvr[:idx1]
-                            if rpm_name == "gpg-pubkey":
-                                continue
-                            rpm_ver = nvr[idx1 + 1 : idx2]
-                            _add_package(
-                                packages_by_key,
-                                packages,
-                                rpm_name,
-                                rpm_ver,
-                                "rpm",
-                                f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}",
-                                layer=layer,
-                                package_path=rpm_path,
-                            )
+                    had_content = True
+                    nvr = line.split()[0]
+                    match = _RPM_MANIFEST_RE.match(nvr)
+                    if match is None:
+                        continue
+                    parsed_package = True
+                    rpm_name = match.group("name")
+                    if rpm_name == "gpg-pubkey":
+                        continue
+                    rpm_ver = match.group("version")
+                    _add_package(
+                        packages_by_key,
+                        packages,
+                        rpm_name,
+                        rpm_ver,
+                        "rpm",
+                        f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}",
+                        layer=layer,
+                        package_path=rpm_path,
+                    )
+                if had_content and not parsed_package:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, rpm_path)
+            else:
+                _mark_package_metadata_gap(warnings, coverage_warnings, rpm_path)
         except Exception:
             _logger.debug("Failed to parse rpm manifest")
+            _mark_package_metadata_gap(warnings, coverage_warnings, rpm_path)
         break
 
     # --- RPM sqlite database (rpmdb.sqlite) ---
@@ -914,6 +993,7 @@ def _extract_packages_from_layer(
         try:
             f = _safe_extractfile(layer_tf, sqlite_path)
             if f is None:
+                _mark_package_metadata_gap(warnings, coverage_warnings, sqlite_path)
                 continue
             db_bytes = f.read()
             # Write to temp file so sqlite3 can open it
@@ -924,10 +1004,12 @@ def _extract_packages_from_layer(
                 conn = sqlite3.connect(tmp_path)
                 try:
                     rows = conn.execute("SELECT blob FROM Packages").fetchall()
+                    parsed_package = False
                     for (blob,) in rows:
                         if isinstance(blob, bytes):
                             result = _parse_rpm_header_blob(blob)
                             if result:
+                                parsed_package = True
                                 rpm_name, rpm_ver = result
                                 if rpm_name != "gpg-pubkey":
                                     _add_package(
@@ -940,8 +1022,8 @@ def _extract_packages_from_layer(
                                         layer=layer,
                                         package_path=sqlite_path,
                                     )
-                except sqlite3.DatabaseError:
-                    _logger.debug("Failed to query rpmdb.sqlite")
+                    if rows and not parsed_package:
+                        _mark_package_metadata_gap(warnings, coverage_warnings, sqlite_path)
                 finally:
                     conn.close()
             finally:
@@ -950,6 +1032,7 @@ def _extract_packages_from_layer(
                 _os.unlink(tmp_path)
         except Exception:
             _logger.debug("Failed to parse rpmdb.sqlite")
+            _mark_package_metadata_gap(warnings, coverage_warnings, sqlite_path)
         break
 
     # --- Legacy rpm database (BerkeleyDB / NDB) ---
@@ -983,11 +1066,24 @@ def _extract_packages_from_layer(
         if not any(hint in name_for_hint for hint in _JAR_DIR_HINTS):
             continue
         member = _safe_getmember(layer_tf, member_name)
-        if member is None or member.size == 0 or member.size > _JAR_MAX_BYTES:
+        if member is None or member.size == 0:
+            _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
+            continue
+        if member.size > _JAR_MAX_BYTES:
+            if warnings is not None and coverage_warnings is not None:
+                _append_oci_warning(
+                    warnings,
+                    coverage_warnings,
+                    path=member_name,
+                    reason="package_metadata_size_limit",
+                    detail="Container package metadata exceeds the JAR safety limit; image inventory is incomplete.",
+                    message=f"JAR exceeds package metadata size limit: {member_name}",
+                )
             continue
         try:
             f = layer_tf.extractfile(member)
             if f is None:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
                 continue
             jar_bytes = f.read()
             with zipfile.ZipFile(io.BytesIO(jar_bytes)) as zf:
@@ -1028,6 +1124,7 @@ def _extract_packages_from_layer(
                         _add_package(packages_by_key, packages, title, version, "maven", layer=layer, package_path=member_name)
         except Exception:
             _logger.debug("Skipped JAR: %s", member_name)
+            _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
 
     # --- Go binaries: embedded build info (go version -m equivalent) ---
     for member_name in names:
@@ -1072,6 +1169,7 @@ def _extract_packages_from_layer(
         try:
             f = _safe_extractfile(layer_tf, member_name)
             if f is None:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
                 continue
             content = f.read(32 * 1024).decode("utf-8", errors="ignore")
             name_m = _GEMSPEC_NAME_RE.search(content)
@@ -1089,8 +1187,11 @@ def _extract_packages_from_layer(
                     layer=layer,
                     package_path=member_name,
                 )
+            else:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
         except Exception:
             _logger.debug("Skipped gemspec: %s", member_name)
+            _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
 
     # --- .NET: *.deps.json (libraries section, type=package) ---
     for member_name in names:
@@ -1101,6 +1202,7 @@ def _extract_packages_from_layer(
         try:
             f = _safe_extractfile(layer_tf, member_name)
             if f is None:
+                _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
                 continue
             deps = json.loads(f.read().decode("utf-8", errors="ignore"))
             for lib_key, lib_val in deps.get("libraries", {}).items():
@@ -1122,6 +1224,7 @@ def _extract_packages_from_layer(
                         )
         except Exception:
             _logger.debug("Skipped deps.json: %s", member_name)
+            _mark_package_metadata_gap(warnings, coverage_warnings, member_name)
 
     # --- PHP: composer.lock ---
     for composer_path in (
@@ -1139,6 +1242,7 @@ def _extract_packages_from_layer(
             try:
                 f = _safe_extractfile(layer_tf, path)
                 if f is None:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, path)
                     continue
                 data = json.loads(f.read().decode("utf-8", errors="ignore"))
                 for section in ("packages", "packages-dev"):
@@ -1158,6 +1262,7 @@ def _extract_packages_from_layer(
                             )
             except Exception:
                 _logger.debug("Failed to parse composer.lock: %s", path)
+                _mark_package_metadata_gap(warnings, coverage_warnings, path)
 
     # --- Rust: Cargo.lock ---
     for cargo_path in ("app/Cargo.lock", "usr/src/Cargo.lock", "home/Cargo.lock", "opt/Cargo.lock", "srv/Cargo.lock"):
@@ -1168,11 +1273,13 @@ def _extract_packages_from_layer(
             try:
                 f = _safe_extractfile(layer_tf, path)
                 if f is None:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, path)
                     continue
                 content = f.read().decode("utf-8", errors="ignore")
                 # Parse TOML-style [[package]] sections
                 import re as _re
 
+                parsed_package = False
                 for block in _re.split(r"\[\[package\]\]", content):
                     name_m = _re.search(r'name\s*=\s*"([^"]+)"', block)
                     ver_m = _re.search(r'version\s*=\s*"([^"]+)"', block)
@@ -1187,8 +1294,12 @@ def _extract_packages_from_layer(
                             layer=layer,
                             package_path=path,
                         )
+                        parsed_package = True
+                if "[[package]]" in content and not parsed_package:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, path)
             except Exception:
                 _logger.debug("Failed to parse Cargo.lock: %s", path)
+                _mark_package_metadata_gap(warnings, coverage_warnings, path)
 
     # --- Swift: Package.resolved ---
     for swift_path in ("app/Package.resolved", "Package.resolved", "Sources/Package.resolved"):
@@ -1199,6 +1310,7 @@ def _extract_packages_from_layer(
             try:
                 f = _safe_extractfile(layer_tf, path)
                 if f is None:
+                    _mark_package_metadata_gap(warnings, coverage_warnings, path)
                     continue
                 data = json.loads(f.read().decode("utf-8", errors="ignore"))
                 pins = data.get("pins", [])
@@ -1222,6 +1334,7 @@ def _extract_packages_from_layer(
                         )
             except Exception:
                 _logger.debug("Failed to parse Package.resolved: %s", path)
+                _mark_package_metadata_gap(warnings, coverage_warnings, path)
 
     return whiteouts
 
@@ -1311,18 +1424,19 @@ def _parse_layers_from_tarball(
     outer_tf: tarfile.TarFile,
     layer_paths: list[str],
     layer_metadata: list[LayerMetadata] | None = None,
-) -> tuple[list[Package], list[str]]:
+) -> tuple[list[Package], list[str], list[OCIInputWarning]]:
     """Open each layer tarball from the outer tarball and extract packages.
 
     Layers are processed in order (base → top). Whiteout files in later
     layers are accumulated to suppress packages deleted from earlier layers.
 
     Returns:
-        (packages, warnings)
+        (packages, warnings, coverage_warnings)
     """
     packages_by_key: dict[tuple[str, str], Package] = {}
     packages: list[Package] = []
     warnings: list[str] = []
+    coverage_warnings: list[OCIInputWarning] = []
     detected_distro_name: str | None = None
     detected_distro_version: str | None = None
     layer_metadata = layer_metadata or _build_layer_metadata(layer_paths)
@@ -1337,12 +1451,26 @@ def _parse_layers_from_tarball(
         member = _resolve_tar_member(outer_tf, layer_path)
 
         if member is None:
-            warnings.append(f"Layer not found in tarball: {layer_path}")
+            _append_oci_warning(
+                warnings,
+                coverage_warnings,
+                path=layer_path,
+                reason="oci_layer_missing",
+                detail="Container layer was not present; image inventory is incomplete.",
+                message=f"Layer not found in tarball: {layer_path}",
+            )
             continue
 
         layer_fobj = outer_tf.extractfile(member)
         if layer_fobj is None:
-            warnings.append(f"Layer is not a regular file: {layer_path}")
+            _append_oci_warning(
+                warnings,
+                coverage_warnings,
+                path=layer_path,
+                reason="oci_layer_unreadable",
+                detail="Container layer could not be read safely; image inventory is incomplete.",
+                message=f"Layer is not a regular file: {layer_path}",
+            )
             continue
 
         # Read into memory to allow tarfile to seek.
@@ -1350,27 +1478,63 @@ def _parse_layers_from_tarball(
         max_layer_bytes = 2 * 1024 * 1024 * 1024  # 2 GB
         layer_bytes = layer_fobj.read(max_layer_bytes + 1)
         if len(layer_bytes) > max_layer_bytes:
-            warnings.append(f"Layer {layer_path} exceeds 2 GB — skipped to avoid OOM")
+            _append_oci_warning(
+                warnings,
+                coverage_warnings,
+                path=layer_path,
+                reason="oci_layer_size_limit",
+                detail="Container layer exceeds the 2 GiB compressed safety limit; image inventory is incomplete.",
+                message=f"Layer {layer_path} exceeds 2 GB — skipped to avoid OOM",
+            )
             continue
         try:
             with tarfile.open(fileobj=io.BytesIO(layer_bytes), mode="r:*") as layer_tf:
                 uncompressed_bytes = _tar_uncompressed_regular_size(layer_tf)
                 if uncompressed_bytes > _max_layer_uncompressed_bytes():
-                    warnings.append(f"Layer {layer_path} exceeds uncompressed extraction limit — skipped")
+                    _append_oci_warning(
+                        warnings,
+                        coverage_warnings,
+                        path=layer_path,
+                        reason="oci_layer_size_limit",
+                        detail="Container layer exceeds the uncompressed safety limit; image inventory is incomplete.",
+                        message=f"Layer {layer_path} exceeds uncompressed extraction limit — skipped",
+                    )
                     continue
                 if _decompression_ratio_exceeded(uncompressed_bytes, member.size):
-                    warnings.append(f"Layer {layer_path} exceeds decompression ratio limit — skipped")
+                    _append_oci_warning(
+                        warnings,
+                        coverage_warnings,
+                        path=layer_path,
+                        reason="oci_layer_decompression_limit",
+                        detail="Container layer exceeds the decompression-ratio safety limit; image inventory is incomplete.",
+                        message=f"Layer {layer_path} exceeds decompression ratio limit — skipped",
+                    )
                     continue
                 layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, set())
                 if layer_distro_name:
                     detected_distro_name = layer_distro_name
                 if layer_distro_version:
                     detected_distro_version = layer_distro_version
-                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer, warnings)
+                whiteouts = _extract_packages_from_layer(
+                    layer_tf,
+                    packages_by_key,
+                    packages,
+                    set(),
+                    layer,
+                    warnings,
+                    coverage_warnings,
+                )
                 if whiteouts:
                     whiteouts_by_index.setdefault(layer.layer_index, set()).update(whiteouts)
-        except tarfile.TarError as e:
-            warnings.append(f"Failed to read layer {layer_path}: {e}")
+        except tarfile.TarError:
+            _append_oci_warning(
+                warnings,
+                coverage_warnings,
+                path=layer_path,
+                reason="oci_layer_parse_error",
+                detail="Container layer archive could not be parsed; image inventory is incomplete.",
+                message=f"Failed to read layer {layer_path}",
+            )
             continue
 
     packages = _drop_whiteout_deleted_packages(packages, whiteouts_by_index)
@@ -1381,7 +1545,7 @@ def _parse_layers_from_tarball(
                 pkg.distro_name = pkg.distro_name or detected_distro_name
                 pkg.distro_version = pkg.distro_version or detected_distro_version
 
-    return packages, warnings
+    return packages, warnings, coverage_warnings
 
 
 # ─── OCI image layout format ──────────────────────────────────────────────────
@@ -1470,18 +1634,31 @@ def parse_oci_tarball(path: Path) -> OCIParseResult:
             except OCIParseError:
                 raise
             if not manifests:
-                return OCIParseResult(packages=[], strategy="oci-tarball", layer_count=0, warnings=["Empty manifest.json"])
+                return OCIParseResult(
+                    packages=[],
+                    strategy="oci-tarball",
+                    layer_count=0,
+                    warnings=["Empty manifest.json"],
+                    coverage_warnings=[
+                        OCIInputWarning(
+                            path="manifest.json",
+                            reason="oci_manifest_empty",
+                            detail="Container manifest contains no images; image inventory is incomplete.",
+                        )
+                    ],
+                )
             # Use first image (most users save one image)
             manifest = manifests[0]
             config = _read_json_member_from_tar(outer_tf, manifest.config_digest)
             layer_metadata = _build_layer_metadata(manifest.layer_paths, config)
-            packages, warnings = _parse_layers_from_tarball(outer_tf, manifest.layer_paths, layer_metadata)
+            packages, warnings, coverage_warnings = _parse_layers_from_tarball(outer_tf, manifest.layer_paths, layer_metadata)
             return OCIParseResult(
                 packages=packages,
                 strategy="oci-tarball",
                 layer_count=len(manifest.layer_paths),
                 image_tags=manifest.repo_tags,
                 warnings=warnings,
+                coverage_warnings=coverage_warnings,
             )
 
         elif "index.json" in names or "./index.json" in names:
@@ -1491,12 +1668,13 @@ def parse_oci_tarball(path: Path) -> OCIParseResult:
             except OCIParseError:
                 raise
             layer_metadata = _build_layer_metadata(layer_paths, config)
-            packages, warnings = _parse_layers_from_tarball(outer_tf, layer_paths, layer_metadata)
+            packages, warnings, coverage_warnings = _parse_layers_from_tarball(outer_tf, layer_paths, layer_metadata)
             return OCIParseResult(
                 packages=packages,
                 strategy="oci-tarball",
                 layer_count=len(layer_paths),
                 warnings=warnings,
+                coverage_warnings=coverage_warnings,
             )
 
         else:
@@ -1561,6 +1739,7 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     packages_by_key: dict[tuple[str, str], Package] = {}
     packages: list[Package] = []
     warnings: list[str] = []
+    coverage_warnings: list[OCIInputWarning] = []
     detected_distro_name: str | None = None
     detected_distro_version: str | None = None
     whiteouts_by_index: dict[int, set[str]] = {}
@@ -1568,28 +1747,68 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     for layer_hash, layer in zip(layer_digests, layer_metadata, strict=False):
         blob_path = path / "blobs" / "sha256" / layer_hash
         if not blob_path.exists():
-            warnings.append(f"Layer blob not found: {blob_path}")
+            layer_path = f"blobs/sha256/{layer_hash}"
+            _append_oci_warning(
+                warnings,
+                coverage_warnings,
+                path=layer_path,
+                reason="oci_layer_missing",
+                detail="Container layer was not present; image inventory is incomplete.",
+                message=f"Layer blob not found: {layer_path}",
+            )
             continue
         try:
             with tarfile.open(str(blob_path), mode="r:*") as layer_tf:
                 uncompressed_bytes = _tar_uncompressed_regular_size(layer_tf)
                 if uncompressed_bytes > _max_layer_uncompressed_bytes():
-                    warnings.append(f"Layer {layer_hash[:12]} exceeds uncompressed extraction limit — skipped")
+                    layer_path = f"blobs/sha256/{layer_hash}"
+                    _append_oci_warning(
+                        warnings,
+                        coverage_warnings,
+                        path=layer_path,
+                        reason="oci_layer_size_limit",
+                        detail="Container layer exceeds the uncompressed safety limit; image inventory is incomplete.",
+                        message=f"Layer {layer_hash[:12]} exceeds uncompressed extraction limit — skipped",
+                    )
                     continue
                 compressed_bytes = blob_path.stat().st_size
                 if _decompression_ratio_exceeded(uncompressed_bytes, compressed_bytes):
-                    warnings.append(f"Layer {layer_hash[:12]} exceeds decompression ratio limit — skipped")
+                    layer_path = f"blobs/sha256/{layer_hash}"
+                    _append_oci_warning(
+                        warnings,
+                        coverage_warnings,
+                        path=layer_path,
+                        reason="oci_layer_decompression_limit",
+                        detail="Container layer exceeds the decompression-ratio safety limit; image inventory is incomplete.",
+                        message=f"Layer {layer_hash[:12]} exceeds decompression ratio limit — skipped",
+                    )
                     continue
                 layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, set())
                 if layer_distro_name:
                     detected_distro_name = layer_distro_name
                 if layer_distro_version:
                     detected_distro_version = layer_distro_version
-                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer, warnings)
+                whiteouts = _extract_packages_from_layer(
+                    layer_tf,
+                    packages_by_key,
+                    packages,
+                    set(),
+                    layer,
+                    warnings,
+                    coverage_warnings,
+                )
                 if whiteouts:
                     whiteouts_by_index.setdefault(layer.layer_index, set()).update(whiteouts)
-        except tarfile.TarError as e:
-            warnings.append(f"Failed to read layer blob {layer_hash[:12]}: {e}")
+        except tarfile.TarError:
+            layer_path = f"blobs/sha256/{layer_hash}"
+            _append_oci_warning(
+                warnings,
+                coverage_warnings,
+                path=layer_path,
+                reason="oci_layer_parse_error",
+                detail="Container layer archive could not be parsed; image inventory is incomplete.",
+                message=f"Failed to read layer blob {layer_hash[:12]}",
+            )
 
     packages = _drop_whiteout_deleted_packages(packages, whiteouts_by_index)
 
@@ -1604,6 +1823,7 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
         strategy="oci-layout-dir",
         layer_count=len(layer_digests),
         warnings=warnings,
+        coverage_warnings=coverage_warnings,
     )
 
 
@@ -1623,8 +1843,12 @@ def scan_oci(path: str | Path) -> tuple[list[Package], str]:
     else:
         result = parse_oci_tarball(p)
 
-    if result.warnings:
-        for w in result.warnings:
-            _logger.warning("OCI parser: %s", w)
+    for warning in result.coverage_warnings:
+        record_scan_input_warning(
+            scanner="oci",
+            path=warning.path,
+            reason=warning.reason,
+            detail=warning.detail,
+        )
 
     return result.packages, result.strategy

@@ -53,12 +53,25 @@ async def _version_published(name: str, version: str, ecosystem: str, client) ->
     """
     from urllib.parse import quote
 
+    from agent_bom.http_client import request_with_retry
+
+    # Package coordinates are path data, never URL structure. Encoding every
+    # reserved character also makes scoped npm names (``@scope/name``) a
+    # single registry path segment instead of allowing caller-controlled path
+    # separators. The shared request wrapper validates the fixed registry
+    # origin before opening a socket.
+    encoded_name = quote(name, safe="")
+    encoded_version = quote(version, safe="")
+
     try:
         if ecosystem == "pypi":
-            resp = await client.get(f"https://pypi.org/pypi/{quote(name)}/{quote(version)}/json")
+            url = f"https://pypi.org/pypi/{encoded_name}/{encoded_version}/json"
         elif ecosystem == "npm":
-            resp = await client.get(f"https://registry.npmjs.org/{quote(name, safe='@/')}/{quote(version)}")
+            url = f"https://registry.npmjs.org/{encoded_name}/{encoded_version}"
         else:
+            return True
+        resp = await request_with_retry(client, "GET", url, max_retries=0)
+        if resp is None:
             return True
         return resp.status_code == 200
     except Exception:  # noqa: BLE001 — best-effort existence check; fail open
@@ -526,6 +539,9 @@ async def check_impl(
                             "id": v.id,
                             "severity": v.severity.value,
                             "cvss_score": v.cvss_score,
+                            "cvss_vector": v.cvss_vector,
+                            "epss_score": v.epss_score,
+                            "is_kev": v.is_kev,
                             "fixed_version": v.fixed_version,
                             "summary": (v.summary or "")[:200],
                             "compliance_tags": v.compliance_tags,

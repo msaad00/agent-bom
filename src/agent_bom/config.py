@@ -359,6 +359,12 @@ HUB_OBSERVATIONS_RETENTION_DAYS = _int("AGENT_BOM_HUB_OBSERVATIONS_RETENTION_DAY
 # growth. ``<= 0`` disables pruning.
 
 ANALYTICS_MAX_EVENTS = _int("AGENT_BOM_ANALYTICS_MAX_EVENTS", 50_000)
+# Caps finding rows in the local scan mirror. Old scan runs are removed atomically;
+# the newest run is always retained. ``<= 0`` disables this cap.
+ANALYTICS_MAX_FINDINGS = _int("AGENT_BOM_ANALYTICS_MAX_FINDINGS", 250_000)
+# Caps package rows in the local scan mirror. Old scan runs are removed atomically;
+# the newest run is always retained. ``<= 0`` disables this cap.
+ANALYTICS_MAX_PACKAGES = _int("AGENT_BOM_ANALYTICS_MAX_PACKAGES", 500_000)
 
 
 # ── Graph Backend Selection ───────────────────────────────────────────────

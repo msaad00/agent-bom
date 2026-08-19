@@ -401,10 +401,14 @@ def enrichment_options(fn):
             click.option(
                 "--auto-update-db/--no-auto-update-db",
                 "auto_update_db",
-                default=True,
+                default=False,
                 envvar="AGENT_BOM_AUTO_UPDATE_DB",
                 show_default=True,
-                help="Auto-refresh local vuln DB when older than the daily freshness target. --no-auto-update-db to disable.",
+                help=(
+                    "Refresh the full local vulnerability DB before scanning when it misses the daily freshness target. "
+                    "Disabled by default: online scans continue immediately with cached data plus targeted advisory "
+                    "lookups. Use `agent-bom db update` for a deliberate bulk refresh."
+                ),
             ),
             click.option(
                 "--require-fresh-db",

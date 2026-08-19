@@ -244,6 +244,84 @@ class TestAnalyticsCap:
         assert len(runs) == 2
         assert {row["scan_id"] for row in runs} == {"scan-2", "scan-3"}
 
+    def test_local_analytics_prunes_whole_runs_by_package_and_finding_volume(self, monkeypatch, tmp_path):
+        from agent_bom.db.local_analytics import LocalAnalyticsStore
+
+        db_path = tmp_path / "analytics.sqlite"
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_EVENTS", "100")
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_PACKAGES", "3")
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_FINDINGS", "3")
+
+        store = LocalAnalyticsStore(db_path)
+        for index in range(3):
+            store.record_scan_report(
+                {
+                    "scan_id": f"scan-{index}",
+                    "generated_at": f"2026-01-0{index + 1}T00:00:00+00:00",
+                    "summary": {},
+                    "agents": [
+                        {
+                            "name": "agent",
+                            "mcp_servers": [
+                                {
+                                    "name": "server",
+                                    "packages": [
+                                        {"name": f"pkg-{index}-a", "version": "1", "ecosystem": "pypi"},
+                                        {"name": f"pkg-{index}-b", "version": "1", "ecosystem": "pypi"},
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                    "findings": [
+                        {"id": f"finding-{index}-a", "severity": "high"},
+                        {"id": f"finding-{index}-b", "severity": "high"},
+                    ],
+                },
+                source="test",
+            )
+
+        runs = store.list_scan_runs(limit=10)
+        assert [row["scan_id"] for row in runs] == ["scan-2"]
+        assert store.query("SELECT COUNT(*) AS count FROM scan_packages") == [{"count": 2}]
+        assert store.query("SELECT COUNT(*) AS count FROM scan_findings") == [{"count": 2}]
+
+    def test_local_analytics_keeps_latest_oversized_run(self, monkeypatch, tmp_path):
+        from agent_bom.db.local_analytics import LocalAnalyticsStore
+
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_EVENTS", "1")
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_PACKAGES", "1")
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_FINDINGS", "1")
+        store = LocalAnalyticsStore(tmp_path / "analytics.sqlite")
+
+        store.record_scan_report(
+            {
+                "scan_id": "oversized",
+                "summary": {},
+                "agents": [
+                    {
+                        "name": "agent",
+                        "mcp_servers": [
+                            {
+                                "name": "server",
+                                "packages": [
+                                    {"name": "one", "version": "1", "ecosystem": "pypi"},
+                                    {"name": "two", "version": "1", "ecosystem": "pypi"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+                "findings": [
+                    {"id": "finding-one", "severity": "high"},
+                    {"id": "finding-two", "severity": "high"},
+                ],
+            },
+            source="test",
+        )
+
+        assert [row["scan_id"] for row in store.list_scan_runs()] == ["oversized"]
+
     def test_runtime_observations_prune_oldest_per_tenant(self, monkeypatch):
         from agent_bom.api.runtime_event_store import InMemoryRuntimeEventStore, RuntimeObservationRecord
 

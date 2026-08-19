@@ -603,6 +603,10 @@ controlPlane:
       #   value: "500"
       # - name: AGENT_BOM_ANALYTICS_MAX_EVENTS
       #   value: "50000"
+      # - name: AGENT_BOM_ANALYTICS_MAX_FINDINGS
+      #   value: "250000"
+      # - name: AGENT_BOM_ANALYTICS_MAX_PACKAGES
+      #   value: "500000"
       # Async findings exports: upload completed artifacts to customer S3 (IRSA recommended).
       # - name: AGENT_BOM_REPORT_S3_BUCKET
       #   value: "my-org-agent-bom-reports"

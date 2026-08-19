@@ -1592,6 +1592,22 @@ def test_offline_scan_summary_marks_partial_unpinned_coverage(monkeypatch):
     assert "coverage is partial" in result.output
 
 
+def test_default_scan_skips_optional_license_metadata_resolution(monkeypatch, tmp_path):
+    pkg = Package(name="unpinned", version="unknown", ecosystem="pypi")
+    server = MCPServer(name="test-server", command="npx", packages=[pkg])
+    agent = Agent(name="test-agent", agent_type=AgentType.CUSTOM, config_path="/tmp/test", mcp_servers=[server])
+    resolver = MagicMock(return_value=1)
+
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [agent])
+    monkeypatch.setattr("agent_bom.cli.agents.resolve_all_versions_sync", resolver)
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
+
+    result = _run(["scan", "--project", str(tmp_path), "--no-auto-update-db", "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert resolver.call_args.kwargs["enrich_license_metadata"] is False
+
+
 def test_scan_offline_mode_does_not_leak_after_cli_invocation(monkeypatch):
     from agent_bom.http_client import create_sync_client
     from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType

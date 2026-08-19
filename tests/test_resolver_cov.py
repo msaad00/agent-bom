@@ -434,6 +434,27 @@ class TestResolveAllVersions:
         assert packages[1].version_source == "registry_fallback"
         assert mock_request.call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_can_skip_optional_license_enrichment(self):
+        packages = [Package(name="example-mcp", version="unknown", ecosystem="npm", registry_version="1.2.3")]
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = AsyncMock()
+        client_cm.__aexit__.return_value = None
+
+        with (
+            patch("agent_bom.resolver.create_client", return_value=client_cm),
+            patch("agent_bom.resolver.resolve_package_version", return_value=True),
+            patch("agent_bom.resolver.enrich_licenses", return_value=0) as mock_enrich,
+        ):
+            await resolve_all_versions(
+                packages,
+                quiet=True,
+                global_timeout=0.5,
+                enrich_license_metadata=False,
+            )
+
+        mock_enrich.assert_not_called()
+
 
 class TestEnrichLicenses:
     @pytest.mark.asyncio
@@ -477,6 +498,25 @@ class TestEnrichLicenses:
         assert perf["license_enrichment"]["unique_lookups"] == 1
         assert perf["license_enrichment"]["reused_entries"] == 1
         assert perf["license_enrichment"]["enriched"] == 2
+
+    @pytest.mark.asyncio
+    async def test_registry_failure_does_not_discard_other_license_results(self):
+        packages = [
+            Package(name="unavailable", version="1.0.0", ecosystem="npm"),
+            Package(name="available", version="2.0.0", ecosystem="npm"),
+        ]
+
+        async def resolve(name: str, _client: AsyncMock):
+            if name == "unavailable":
+                raise TimeoutError("registry unavailable")
+            return None, "MIT"
+
+        with patch("agent_bom.resolver.resolve_npm_metadata", side_effect=resolve):
+            count = await enrich_licenses(packages, AsyncMock())
+
+        assert count == 1
+        assert packages[0].license is None
+        assert packages[1].license == "MIT"
 
 
 class TestEnrichSupplyChainMetadata:

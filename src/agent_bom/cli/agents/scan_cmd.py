@@ -1458,7 +1458,11 @@ def scan(
             if not quiet:
                 con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
             with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():
-                resolved = _agents_patchable("resolve_all_versions_sync")(all_packages, quiet=quiet)
+                resolved = _agents_patchable("resolve_all_versions_sync")(
+                    all_packages,
+                    quiet=quiet,
+                    enrich_license_metadata=enrich,
+                )
             if not quiet:
                 resolved_count = int(resolved or 0)
                 fallback_count = sum(1 for p in unresolved if p.version_source == "registry_fallback")

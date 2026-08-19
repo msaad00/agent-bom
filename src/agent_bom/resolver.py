@@ -478,10 +478,14 @@ async def enrich_licenses(packages: list[Package], client: httpx.AsyncClient) ->
     async def _resolve_registry_license(key: tuple[str, str], grouped: list[Package]) -> tuple[list[Package], str | None]:
         eco, _name = key
         representative = grouped[0]
-        if eco == "npm":
-            _, lic = await resolve_npm_metadata(representative.name, client)
-        else:
-            _, lic = await resolve_pypi_metadata(representative.name, client)
+        try:
+            if eco == "npm":
+                _, lic = await resolve_npm_metadata(representative.name, client)
+            else:
+                _, lic = await resolve_pypi_metadata(representative.name, client)
+        except Exception:  # noqa: BLE001 - optional license metadata must not invalidate version evidence
+            _logger.debug("License metadata unavailable for %s", representative.name)
+            lic = None
         return grouped, lic
 
     if registry_groups:
@@ -603,6 +607,7 @@ async def resolve_all_versions(
     *,
     quiet: bool = False,
     global_timeout: float = 30.0,
+    enrich_license_metadata: bool = True,
 ) -> int:
     """Resolve unresolved package versions from registries.
 
@@ -610,6 +615,9 @@ async def resolve_all_versions(
         packages: Packages to resolve.
         quiet: Suppress console output.
         global_timeout: Max total seconds for all resolution (prevents hangs).
+        enrich_license_metadata: Query registries for optional license metadata
+            after resolving versions. Disable for latency-sensitive scans that
+            did not explicitly request enrichment.
     """
     unresolved = [p for p in packages if p.version in ("latest", "unknown", "")]
     if not unresolved:
@@ -702,10 +710,13 @@ async def resolve_all_versions(
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
 
-            # Enrich licenses for packages that already had versions
-            lic_count = await enrich_licenses(packages, client)
-            if lic_count and not quiet:
-                console.print(f"  [green]✓[/green] Enriched {lic_count} package license(s)")
+            # License metadata is optional and can require one registry lookup
+            # per already-versioned package. Keep it behind the caller's
+            # explicit enrichment boundary so version resolution stays bounded.
+            if enrich_license_metadata:
+                lic_count = await enrich_licenses(packages, client)
+                if lic_count and not quiet:
+                    console.print(f"  [green]✓[/green] Enriched {lic_count} package license(s)")
 
             unresolved_after = [p for p in unresolved if p.version in ("latest", "unknown", "")]
             if unresolved_after:
@@ -745,8 +756,19 @@ async def resolve_all_versions(
     return resolved_count
 
 
-def resolve_all_versions_sync(packages: list[Package], *, quiet: bool = False) -> int:
-    return asyncio.run(resolve_all_versions(packages, quiet=quiet))
+def resolve_all_versions_sync(
+    packages: list[Package],
+    *,
+    quiet: bool = False,
+    enrich_license_metadata: bool = True,
+) -> int:
+    return asyncio.run(
+        resolve_all_versions(
+            packages,
+            quiet=quiet,
+            enrich_license_metadata=enrich_license_metadata,
+        )
+    )
 
 
 # Backward-compatible aliases (used by registry.py)

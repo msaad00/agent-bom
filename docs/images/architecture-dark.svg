@@ -85,7 +85,7 @@
 <rect x="569" y="834" width="497" height="64" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="585" y="852" width="38" height="38" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(589,856) scale(1.25)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
 <text x="637" y="873" font-family="Inter,system-ui,sans-serif" font-size="17" font-weight="800" fill="#e9e9ec">REST API + MCP</text>
-<text x="637" y="899" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="600" fill="#82828c">391 operations · 81 tools</text>
+<text x="637" y="899" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="600" fill="#82828c">392 operations · 81 tools</text>
 <rect x="569" y="908" width="497" height="64" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1"/>
 <rect x="585" y="926" width="38" height="38" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(589,930) scale(1.25)" fill="none" stroke="#c4c4ce" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
 <text x="637" y="947" font-family="Inter,system-ui,sans-serif" font-size="17" font-weight="800" fill="#e9e9ec">Fleet + scheduler</text>

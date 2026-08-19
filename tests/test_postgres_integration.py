@@ -7,6 +7,7 @@ against a real server instead of the MockConnection unit-test harness.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import replace
 from uuid import uuid4
@@ -156,6 +157,74 @@ def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_te
             store.delete(cross_write.job_id, tenant_id=tenant_id)
         finally:
             reset_current_tenant(cleanup_token)
+
+
+def test_postgres_tenant_binding_verifier_keeps_keys_out_of_the_app_role():
+    """A caller-settable GUC cannot substitute for a valid signed claim."""
+    import psycopg
+
+    from agent_bom.api.postgres_common import _get_pool
+    from agent_bom.api.tenant_binding import issue_tenant_binding_claim
+
+    admin_dsn = os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL", "").strip()
+    if not admin_dsn:
+        pytest.skip("AGENT_BOM_POSTGRES_ADMIN_URL is required to provision a rotation key")
+
+    key = uuid4().hex.encode("utf-8")
+    key_id = hashlib.sha256(key).hexdigest()
+    claim = issue_tenant_binding_claim("tenant-binding-contract", nonce=uuid4().hex, key=key)
+    stale_claim = issue_tenant_binding_claim(
+        claim.tenant_id,
+        issued_at=claim.issued_at - 31,
+        nonce=uuid4().hex,
+        key=key,
+    )
+
+    with psycopg.connect(admin_dsn) as admin:
+        admin.execute(
+            "INSERT INTO public.agent_bom_tenant_binding_keys(key_id, key_material) VALUES (%s, %s)",
+            (key_id, key),
+        )
+
+    try:
+        with _get_pool().connection() as conn:
+            privileges = conn.execute(
+                "SELECT "
+                "has_function_privilege(current_user, "
+                "'public.abom_verify_tenant_binding_claim(text,bigint,text,text)', 'EXECUTE'), "
+                "has_table_privilege(current_user, 'public.agent_bom_tenant_binding_keys', 'SELECT')"
+            ).fetchone()
+            assert privileges == (True, False)
+
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute("SELECT key_id FROM public.agent_bom_tenant_binding_keys")
+            conn.rollback()
+
+            conn.execute("SELECT set_config('app.tenant_id', 'attacker-controlled', false)")
+            verified = conn.execute(
+                "SELECT current_setting('app.tenant_id'), "
+                "public.abom_verify_tenant_binding_claim(%s, %s, %s, %s), "
+                "public.abom_verify_tenant_binding_claim(%s, %s, %s, %s), "
+                "public.abom_verify_tenant_binding_claim(%s, %s, %s, %s)",
+                (
+                    claim.tenant_id,
+                    claim.issued_at,
+                    claim.nonce,
+                    claim.signature,
+                    "other-tenant",
+                    claim.issued_at,
+                    claim.nonce,
+                    claim.signature,
+                    stale_claim.tenant_id,
+                    stale_claim.issued_at,
+                    stale_claim.nonce,
+                    stale_claim.signature,
+                ),
+            ).fetchone()
+            assert verified == ("attacker-controlled", True, False, False)
+    finally:
+        with psycopg.connect(admin_dsn) as admin:
+            admin.execute("DELETE FROM public.agent_bom_tenant_binding_keys WHERE key_id = %s", (key_id,))
 
 
 def test_postgres_ticketing_store_real_dml_role_roundtrip_and_tenant_filter():

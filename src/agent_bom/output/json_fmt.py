@@ -886,8 +886,26 @@ def _blast_radius_json_entry(
     exposure_path: dict[str, Any],
 ) -> dict[str, Any]:
     """Build one blast_radius JSON row from a unified Finding plus legacy BlastRadius fields."""
+    asset = finding.asset
     return {
         "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
+        # The blast-radius block is a compatibility projection of this exact
+        # unified finding.  Preserve its identity so API consumers do not
+        # materialize a second anonymous row for the same CVE/package/asset.
+        "canonical_id": finding.canonical_id,
+        "asset": {
+            "name": asset.name,
+            "asset_type": asset.asset_type,
+            "identifier": asset.identifier,
+            "location": asset.location,
+            "stable_id": asset.stable_id,
+            "canonical_id": asset.canonical_id,
+            "source_ids": asset.source_ids,
+            "provider": asset.provider,
+            "account_ref": asset.account_ref,
+            "region": asset.region,
+            "environment": asset.environment,
+        },
         "exposure_path": exposure_path,
         **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
         "package_canonical_id": br.package.canonical_id,

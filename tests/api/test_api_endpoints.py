@@ -23,6 +23,7 @@ from agent_bom.api.server import (
     set_job_store,
 )
 from agent_bom.api.store import InMemoryJobStore
+from agent_bom.models import Severity, Vulnerability
 
 
 @pytest.fixture(autouse=True)
@@ -416,6 +417,37 @@ def test_docs_csp_relaxation_is_exact_route_scoped():
 # ---------------------------------------------------------------------------
 # 4. Create scan — 202
 # ---------------------------------------------------------------------------
+
+
+def test_package_check_matches_cli_and_mcp_intelligence_fields():
+    async def fake_scan(packages, **_kwargs):
+        packages[0].vulnerabilities.append(
+            Vulnerability(
+                id="CVE-2026-REST-CHECK",
+                summary="REST parity",
+                severity=Severity.CRITICAL,
+                cvss_score=9.8,
+                cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                epss_score=0.91,
+                is_kev=True,
+            )
+        )
+
+    client, _ = _fresh_client()
+    with patch("agent_bom.scanners.scan_packages", side_effect=fake_scan):
+        response = client.post(
+            "/v1/scan/check",
+            json={"package": "flask@2.0.0", "ecosystem": "pypi"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["package"] == "flask"
+    assert payload["version"] == "2.0.0"
+    detail = payload["details"][0]
+    assert detail["is_kev"] is True
+    assert detail["epss_score"] == 0.91
+    assert detail["cvss_vector"].startswith("CVSS:3.1/")
 
 
 def test_create_scan_returns_202():

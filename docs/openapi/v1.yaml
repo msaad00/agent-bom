@@ -3973,6 +3973,31 @@ components:
       - graph_projection
       title: NormalizedEnterpriseEvent
       type: object
+    PackageCheckRequest:
+      additionalProperties: false
+      description: Pinned package check shared with the CLI and MCP surfaces.
+      properties:
+        ecosystem:
+          default: npm
+          maxLength: 32
+          minLength: 1
+          title: Ecosystem
+          type: string
+        package:
+          maxLength: 512
+          minLength: 1
+          title: Package
+          type: string
+        version:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Version
+      required:
+      - package
+      title: PackageCheckRequest
+      type: object
     PolicyCreate:
       additionalProperties: false
       properties:
@@ -21324,6 +21349,34 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Scan Browser Extensions Endpoint
+      tags:
+      - scan
+  /v1/scan/check:
+    post:
+      description: Check one package with the same vulnerability intelligence as MCP.
+      operationId: check_package_v1_scan_check_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageCheckRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Check Package V1 Scan Check Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Check Package
       tags:
       - scan
   /v1/scan/dataset-cards:

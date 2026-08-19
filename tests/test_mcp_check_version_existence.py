@@ -1,6 +1,7 @@
 """check must not read a nonexistent explicit version as clean (P1 audit fix)."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,6 +9,36 @@ import pytest
 
 def _trunc(s):
     return s
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "version", "ecosystem", "expected_url"),
+    [
+        (
+            "../../internal",
+            "1.0/../../metadata",
+            "pypi",
+            "https://pypi.org/pypi/..%2F..%2Finternal/1.0%2F..%2F..%2Fmetadata/json",
+        ),
+        (
+            "@scope/package",
+            "1.0/next",
+            "npm",
+            "https://registry.npmjs.org/%40scope%2Fpackage/1.0%2Fnext",
+        ),
+    ],
+)
+async def test_version_existence_request_keeps_coordinates_out_of_url_structure(name, version, ecosystem, expected_url):
+    from agent_bom.mcp_tools import scanning
+
+    request = AsyncMock(return_value=SimpleNamespace(status_code=200))
+    client = object()
+    with patch("agent_bom.http_client.request_with_retry", new=request):
+        published = await scanning._version_published(name, version, ecosystem, client)
+
+    assert published is True
+    request.assert_awaited_once_with(client, "GET", expected_url, max_retries=0)
 
 
 @pytest.mark.asyncio

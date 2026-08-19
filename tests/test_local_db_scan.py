@@ -130,13 +130,16 @@ def test_local_vuln_epss_fields():
 
 
 def test_scan_packages_local_db_no_db():
-    """When no local DB exists, returns (0, empty set) without crashing."""
+    """An online cache miss falls through without claiming lost coverage."""
     from agent_bom.scanners import _scan_packages_local_db
+    from agent_bom.scanners.state import consume_scan_warnings, reset_scan_warnings
 
+    reset_scan_warnings()
     with patch("agent_bom.db.schema.db_freshness_days", return_value=None):
         count, covered = _scan_packages_local_db([_make_pkg()])
     assert count == 0
     assert covered == set()
+    assert consume_scan_warnings() == []
 
 
 def test_scan_packages_local_db_db_unavailable():

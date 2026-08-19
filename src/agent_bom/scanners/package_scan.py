@@ -1037,7 +1037,11 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 
         freshness = db_freshness_days()
         if freshness is None:
-            _emit_scan_warning("local vulnerability DB not found; falling back to remote lookups")
+            # A cache miss is not a coverage gap while the online OSV path is
+            # available.  The remote lookup result below is authoritative; its
+            # failure path records a coverage warning via
+            # ``_flag_remote_lookup_gap``.
+            _logger.info("Local vulnerability DB not found; falling back to remote lookups")
             return 0, set()  # No DB yet — fall through to OSV entirely
     except Exception as exc:
         _logger.debug("Local DB freshness check failed (falling through to OSV): %s", exc)

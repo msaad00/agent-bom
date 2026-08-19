@@ -187,12 +187,14 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
     path_vuln_ids = {vid for path in paths for vid in (path.get("vuln_ids") or [])}
     assert KNOWN_CVE in path_vuln_ids, f"known vuln missing from attack paths: {path_vuln_ids}"
 
-    matching_paths = [path for path in paths if KNOWN_CVE in (path.get("vuln_ids") or [])]
-    expected_min_hops = min(len(path["hops"]) - 1 for path in matching_paths)
     reachable = next(row for row in finding_rows if row.get("vulnerability_id") == KNOWN_CVE)
-    assert reachable["graph_reachable"] is True
-    assert reachable["graph_min_hop_distance"] == expected_min_hops
-    assert reachable["graph_reachable_from_agents"] == ["agent:demo-agent"]
+    # A derived agent -> server -> package -> CVE dependency chain is useful
+    # topology, but it is not evidence that the vulnerability is reachable at
+    # runtime. Keep the finding unknown until the path carries an explicit
+    # execution, network, or exploit edge.
+    assert reachable["graph_reachable"] is None
+    assert reachable["graph_min_hop_distance"] is None
+    assert reachable["graph_reachable_from_agents"] == []
 
     unassessed = next(row for row in finding_rows if row.get("vulnerability_id") == NON_OVERLAP_CVE)
     assert unassessed["graph_reachable"] is None
@@ -221,6 +223,7 @@ def test_findings_reachability_projection_is_tenant_scoped_and_bounded():
                 source="agent:reachable",
                 target=f"vuln:{KNOWN_CVE}",
                 hops=["agent:reachable", "server:demo", f"vuln:{KNOWN_CVE}"],
+                edges=["invoked", "vulnerable_to"],
                 vuln_ids=[KNOWN_CVE],
             )
             return "scan-alpha", "2026-07-27T00:00:00Z", [path], MAX_FINDING_REACHABILITY_PATHS + 1
@@ -250,6 +253,35 @@ def test_findings_reachability_projection_is_tenant_scoped_and_bounded():
     assert result.rows[0]["graph_min_hop_distance"] == 2
     assert result.rows[0]["graph_reachable_from_agents"] == ["agent:reachable"]
     assert result.rows[1]["graph_reachable"] is None
+
+
+def test_structural_dependency_path_does_not_assert_graph_reachability():
+    class StructuralGraphStore:
+        def attack_paths(self, **_kwargs):
+            path = AttackPath(
+                source="agent:structural",
+                target=f"vuln:{KNOWN_CVE}",
+                hops=[
+                    "agent:structural",
+                    "server:demo",
+                    "pkg:pypi:demo-lib@1.0.0",
+                    f"vuln:{KNOWN_CVE}",
+                ],
+                edges=["uses", "depends_on", "vulnerable_to"],
+                vuln_ids=[KNOWN_CVE],
+            )
+            return "scan-alpha", "2026-07-27T00:00:00Z", [path], 1
+
+    result = project_persisted_graph_reachability(
+        [{"id": "structural", "cve_id": KNOWN_CVE, "finding_node_id": f"vuln:{KNOWN_CVE}"}],
+        graph_store=StructuralGraphStore(),  # type: ignore[arg-type]
+        tenant_id="tenant-alpha",
+        scan_id="scan-alpha",
+    )
+
+    assert result.rows[0]["graph_reachable"] is None
+    assert result.rows[0]["graph_min_hop_distance"] is None
+    assert result.rows[0]["graph_reachable_from_agents"] == []
 
 
 def test_findings_read_survives_unavailable_graph_backend(wired_client, monkeypatch):

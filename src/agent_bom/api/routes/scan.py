@@ -2,6 +2,7 @@
 
 Endpoints:
     POST /v1/scan                      start a scan (async, returns job_id)
+    POST /v1/scan/check                check one package before installation
     GET  /v1/scan/{job_id}             fetch scan status + full results
     GET  /v1/scan/{job_id}/status      poll lightweight scan status
     GET  /v1/scan/{job_id}/attack-flow attack flow graph (React Flow)
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import math
 import os
@@ -450,6 +452,32 @@ class BulkFindingsRequest(BaseModel):
         return normalized
 
 
+class PackageCheckRequest(BaseModel):
+    """Pinned package check shared with the CLI and MCP surfaces."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    package: str = Field(min_length=1, max_length=512)
+    ecosystem: str = Field(default="npm", min_length=1, max_length=32)
+    version: str | None = Field(default=None, max_length=256)
+
+    @field_validator("package")
+    @classmethod
+    def _package_must_not_be_blank(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("package is required")
+        return normalized
+
+    @field_validator("ecosystem")
+    @classmethod
+    def _ecosystem_must_be_supported(cls, value: str) -> str:
+        from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
+        from agent_bom.mcp_server_runtime import validate_ecosystem
+
+        return validate_ecosystem(value, SUPPORTED_PACKAGE_ECOSYSTEM_SET)
+
+
 def _bulk_ingested_findings_for_tenant(tenant_id: str) -> list[dict[str, Any]]:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
@@ -763,8 +791,11 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
         vex_suppressed = bool(item.get("vex_suppressed"))
     else:
         vex_suppressed = risk_score == 0.0 and vex_status in {"not_affected", "fixed"}
+    canonical_id = item.get("canonical_id") or item.get("finding_id")
     row = {
-        "id": item.get("finding_id") or f"{vulnerability_id}:{package}",
+        "id": canonical_id or f"{vulnerability_id}:{package}",
+        "canonical_id": canonical_id,
+        "asset": item.get("asset"),
         "vulnerability_id": vulnerability_id,
         "package": package,
         "severity": (item.get("severity") or "unknown").lower(),
@@ -1056,6 +1087,16 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
 
     def _absorb(row: dict[str, Any]) -> None:
         key = _canonical_group_key(row)
+        # Older persisted blast/package projections did not carry ``asset``.
+        # If exactly one authoritative row already exists for this
+        # vulnerability+package, fold the anonymous compatibility row into it.
+        # Never guess when multiple assets match: preserving a separate row is
+        # safer than silently combining distinct estate assets.
+        if _row_vuln_id(row) and not _row_asset_key(row):
+            prefix = f"vuln:{_row_vuln_id(row).lower()}:{_package_base_name(row)}:"
+            candidates = [candidate for candidate in order if candidate.startswith(prefix)]
+            if len(candidates) == 1:
+                key = candidates[0]
         existing = grouped.get(key)
         if existing is None:
             grouped[key] = row
@@ -1446,6 +1487,33 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
             request_hash=request_hash,
         )
     return job
+
+
+@router.post("/scan/check", tags=["scan"])
+async def check_package(body: PackageCheckRequest) -> dict[str, Any]:
+    """Check one package with the same vulnerability intelligence as MCP."""
+
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
+    from agent_bom.mcp_server_runtime import validate_ecosystem
+    from agent_bom.mcp_tools.scanning import check_impl
+
+    try:
+        result = await check_impl(
+            package=body.package,
+            ecosystem=body.ecosystem,
+            version=body.version,
+            _validate_ecosystem=lambda value: validate_ecosystem(value, SUPPORTED_PACKAGE_ECOSYSTEM_SET),
+            _truncate_response=lambda value: value,
+        )
+    except ToolError as exc:
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
+
+    payload = json.loads(result)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=500, detail="Package check returned an invalid response")
+    return payload
 
 
 @router.get("/scan/drivers", tags=["scan"])

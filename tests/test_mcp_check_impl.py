@@ -27,7 +27,17 @@ async def test_check_impl_requires_explicit_os_package_version():
 @pytest.mark.asyncio
 async def test_check_impl_uses_full_scan_pipeline():
     async def fake_scan(packages: list[Package], **_kwargs):
-        packages[0].vulnerabilities.append(Vulnerability(id="CVE-2026-TEST", summary="test", severity=Severity.HIGH))
+        packages[0].vulnerabilities.append(
+            Vulnerability(
+                id="CVE-2026-TEST",
+                summary="test",
+                severity=Severity.HIGH,
+                cvss_score=9.1,
+                cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                epss_score=0.87,
+                is_kev=True,
+            )
+        )
 
     with patch("agent_bom.scanners.scan_packages", side_effect=fake_scan):
         result = await check_impl(
@@ -41,6 +51,10 @@ async def test_check_impl_uses_full_scan_pipeline():
     assert payload["package"] == "Django"
     assert payload["version"] == "3.2.0"
     assert payload["vulnerabilities"] == 1
+    detail = payload["details"][0]
+    assert detail["is_kev"] is True
+    assert detail["epss_score"] == 0.87
+    assert detail["cvss_vector"].startswith("CVSS:3.1/")
 
 
 @pytest.mark.asyncio

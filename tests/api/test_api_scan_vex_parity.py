@@ -291,6 +291,17 @@ def test_api_pipeline_applies_vex_and_rebuilds_findings(monkeypatch, tmp_path):
     br_item = job.result["blast_radius"][0]
     assert br_item["vex_status"] == "not_affected"
     assert br_item["vex_suppressed"] is True
+    # The legacy blast-radius projection is the same canonical finding, not a
+    # second anonymous row.  Carrying the unified identity lets REST collapse
+    # both representations and keeps owner/SLA/triage joins stable.
+    assert br_item["canonical_id"] == finding["canonical_id"]
+    assert br_item["asset"] == finding["asset"]
+
+    api_rows = [row for row in _iter_scan_findings(job) if (row.get("cve_id") or row.get("vulnerability_id")) == "CVE-2024-7100"]
+    from agent_bom.api.routes.scan import _canonical_group_key
+
+    assert len(api_rows) == 1, [_canonical_group_key(row) for row in api_rows]
+    assert api_rows[0]["canonical_id"] == finding["canonical_id"]
 
 
 def test_sarif_emits_vex_properties_from_finding_evidence():

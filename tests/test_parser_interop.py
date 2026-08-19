@@ -101,6 +101,29 @@ class TestPoetryLock:
         assert pkgs[0].is_direct is True
 
 
+def test_requirements_packages_preserve_manifest_locations(tmp_path):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask==0.12.2\n# retained comment\npyyaml==5.3\n")
+
+    packages = {package.name: package for package in parse_pip_packages(tmp_path)}
+
+    assert packages["flask"].version_evidence == [{"type": "manifest", "source_file": str(requirements), "line": 1}]
+    assert packages["pyyaml"].version_evidence == [{"type": "manifest", "source_file": str(requirements), "line": 3}]
+
+
+def test_package_json_packages_preserve_manifest_locations(tmp_path):
+    package_json = tmp_path / "package.json"
+    package_json.write_text(
+        '{\n  "name": "demo",\n  "scripts": {"axios": "not-a-dependency"},\n  "dependencies": {\n'
+        '    "axios": "1.0.0",\n    "lodash": "4.17.20"\n  }\n}\n'
+    )
+
+    packages = {package.name: package for package in parse_npm_packages(tmp_path)}
+
+    assert packages["axios"].version_evidence == [{"type": "manifest", "source_file": str(package_json), "line": 5}]
+    assert packages["lodash"].version_evidence == [{"type": "manifest", "source_file": str(package_json), "line": 6}]
+
+
 # ── uv.lock ──────────────────────────────────────────────────────────────────
 
 UV_LOCK = textwrap.dedent("""\

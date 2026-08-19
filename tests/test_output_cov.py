@@ -415,6 +415,19 @@ class TestToSarif:
         assert props["package_version_provenance"]["confidence"] == "exact"
         assert props["agent_discovery_provenance"][0]["collector"] == "cmdb-export"
 
+    def test_cve_result_uses_package_manifest_location(self, tmp_path):
+        requirements = tmp_path / "requirements.txt"
+        requirements.write_text("flask==0.12.2\njinja2==2.10\npyyaml==5.3\n")
+        pkg = _make_pkg(name="pyyaml", version="5.3", ecosystem="pypi")
+        pkg.version_evidence = [{"type": "manifest", "source_file": str(requirements), "line": 3}]
+        br = _make_blast_radius(pkg=pkg)
+
+        result = to_sarif(_make_report(blast_radii=[br]))["runs"][0]["results"][0]
+        physical = result["locations"][0]["physicalLocation"]
+
+        assert physical["artifactLocation"]["uri"] == "requirements.txt"
+        assert physical["region"]["startLine"] == 3
+
 
 # ── to_cyclonedx ─────────────────────────────────────────────────────────────
 

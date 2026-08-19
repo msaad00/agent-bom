@@ -40,6 +40,42 @@ def _npm_purl(name: str, version: str) -> str:
     return f"pkg:npm/{name}@{version}"
 
 
+def _json_object_property_line(text: str, object_name: str, property_name: str) -> int | None:
+    """Return an exact property line inside one top-level JSON object."""
+    object_match = re.search(rf"{re.escape(json.dumps(object_name))}\s*:\s*\{{", text)
+    if object_match is None:
+        return None
+    opening_brace = text.find("{", object_match.start())
+    depth = 0
+    in_string = False
+    escaped = False
+    closing_brace = len(text)
+    for index in range(opening_brace, len(text)):
+        character = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                closing_brace = index
+                break
+    object_text = text[opening_brace + 1 : closing_brace]
+    property_match = re.search(rf"(?m)^[ \t]*{re.escape(json.dumps(property_name))}[ \t]*:", object_text)
+    if property_match is not None:
+        return text.count("\n", 0, opening_brace + 1 + property_match.start()) + 1
+    return None
+
+
 def _resolve_npx_cached_version(name: str) -> tuple[str, Path] | None:
     """Return an exact package version from npm's local npx cache, if present."""
     cache_root = Path(os.environ.get("npm_config_cache") or Path.home() / ".npm")
@@ -366,7 +402,9 @@ def parse_npm_packages(directory: Path) -> list[Package]:
     # Fallback to package.json only
     elif (directory / "package.json").exists():
         try:
-            pkg_data = read_json_limited(directory / "package.json")
+            package_json = directory / "package.json"
+            package_json_text = read_text_limited(package_json)
+            pkg_data = json.loads(package_json_text)
             for dep_type in ("dependencies", "devDependencies"):
                 for name, version_spec in pkg_data.get(dep_type, {}).items():
                     declared_version = str(version_spec)
@@ -375,6 +413,15 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                     resolved_version = None
                     version_confidence = None
                     version_evidence: list[dict] = []
+                    line_number = _json_object_property_line(package_json_text, dep_type, name)
+                    if line_number is not None:
+                        version_evidence.append(
+                            {
+                                "type": "manifest",
+                                "source_file": str(package_json),
+                                "line": line_number,
+                            }
+                        )
                     if workspace_resolution:
                         version, declared_version = workspace_resolution
                         version_source = "workspace"

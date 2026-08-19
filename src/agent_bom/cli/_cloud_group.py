@@ -30,15 +30,16 @@ from agent_bom.cli._tenant import resolve_cli_tenant_id
 
 
 def _auto_update_db_default() -> bool:
-    """Cloud scans refresh the vuln DB to latest by default, matching ``agent-bom scan``.
+    """Return whether cloud scans should block on a full vuln-DB refresh.
 
-    Honors ``AGENT_BOM_AUTO_UPDATE_DB`` (set falsy to pin the DB for reproducible
-    CI). Offline runs skip the refresh downstream regardless of this value.
+    Full refresh is explicit because it can download gigabytes before discovery.
+    Online scans still use cached records plus targeted advisory lookups. Set
+    ``AGENT_BOM_AUTO_UPDATE_DB`` truthy to opt into the blocking refresh.
     """
     raw = os.environ.get("AGENT_BOM_AUTO_UPDATE_DB")
     if raw is None:
-        return True
-    return raw.strip().lower() not in ("0", "false", "no", "off")
+        return False
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

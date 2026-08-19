@@ -1429,6 +1429,98 @@ def test_scan_warning_is_preserved_in_json_and_marks_partial(monkeypatch, tmp_pa
     assert payload["warnings"] == ["package lookup coverage degraded"]
 
 
+def test_zero_finding_partial_secret_scan_is_preserved_and_fails_closed(monkeypatch, tmp_path):
+    from agent_bom.secret_scanner import SecretScanResult
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    output = tmp_path / "secret-partial.json"
+    monkeypatch.setattr(
+        "agent_bom.secret_scanner.scan_secrets",
+        lambda *_args, **_kwargs: SecretScanResult(files_scanned=2, warnings=["Stopped at 2 files"]),
+    )
+
+    result = _run(
+        [
+            "scan",
+            str(project),
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["ai_inventory"]["secrets"]["total"] == 0
+    assert payload["ai_inventory"]["secrets"]["warnings"] == ["Stopped at 2 files"]
+    assert "secret_scan" in payload["scan_sources"]
+    assert payload["scan_run"]["outcome"] == "partial"
+    assert payload["scan_run"]["issues"] == [
+        {
+            "code": "scanner_coverage_gap",
+            "stage": "scanning",
+            "source": "secret-scan",
+            "message": "Secret scan incomplete: Stopped at 2 files",
+            "severity": "warning",
+            "affects_coverage": True,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("patch_target", "source"),
+    [
+        ("agent_bom.ast_analyzer.analyze_project", "ast-analysis"),
+        ("agent_bom.secret_scanner.scan_secrets", "secret-scan"),
+    ],
+)
+def test_project_scanner_exception_is_sanitized_and_marks_partial(monkeypatch, tmp_path, patch_target, source):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    output = tmp_path / f"{source}-partial.json"
+    private_detail = "sentinel-private-scanner-detail"
+
+    def _fail(*_args, **_kwargs):
+        raise RuntimeError(private_detail)
+
+    monkeypatch.setattr(patch_target, _fail)
+    result = _run(
+        [
+            "scan",
+            str(project),
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    matching = [issue for issue in payload["scan_run"]["issues"] if issue["source"] == source]
+    assert matching == [
+        {
+            "code": "scanner_unavailable",
+            "stage": "scanning",
+            "source": source,
+            "message": f"{'AST analysis' if source == 'ast-analysis' else 'Secret scanning'} could not complete.",
+            "severity": "warning",
+            "affects_coverage": True,
+        }
+    ]
+    assert private_detail not in json.dumps(payload)
+
+
 def test_scan_expands_local_docker_mcp_image():
     from agent_bom.cli.agents import _expand_docker_mcp_packages
     from agent_bom.models import MCPServer, Package, TransportType

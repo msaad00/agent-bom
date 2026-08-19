@@ -2553,8 +2553,19 @@ def scan(
                             f"{_n_guards} guardrails, {_n_tools} tools" + (f" [red]({_n_risky} risky prompts)[/red]" if _n_risky else "")
                         )
                     _scan_sources.append("ast_analysis")
-            except Exception:
-                pass  # AST analysis not available
+            except Exception as exc:  # noqa: BLE001
+                from agent_bom.security import sanitize_error
+
+                logger.debug("AST analysis unavailable: %s", sanitize_error(exc, generic=True))
+                report.scan_run.add_issue(
+                    ScanIssue(
+                        code="scanner_unavailable",
+                        stage="scanning",
+                        source="ast-analysis",
+                        message="AST analysis could not complete.",
+                        affects_coverage=True,
+                    )
+                )
 
     # ── Step 1n: Secret scanning (auto-detect in project) ──────────
     if not skill_only and not no_discover and project and not dry_run:
@@ -2562,15 +2573,44 @@ def scan(
             from agent_bom.secret_scanner import scan_secrets as _scan_secrets
 
             _secret_result = _scan_secrets(project)
-            if _secret_result.total > 0:
+            if _secret_result.total > 0 or _secret_result.warnings:
                 report.ai_inventory_data = report.ai_inventory_data or {}
                 report.ai_inventory_data["secrets"] = _secret_result.to_dict()
+                _scan_sources.append("secret_scan")
+            if _secret_result.total > 0:
                 con.print(
                     f"  [red]![/red] Secrets: {_secret_result.total} hardcoded secrets/PII found ({_secret_result.critical_count} critical)"
                 )
-                _scan_sources.append("secret_scan")
-        except Exception:
-            pass  # Secret scanning not available
+            for _secret_warning in _secret_result.warnings:
+                report.scan_run.add_issue(
+                    ScanIssue(
+                        code="scanner_coverage_gap",
+                        stage="scanning",
+                        source="secret-scan",
+                        message=f"Secret scan incomplete: {_secret_warning}",
+                        affects_coverage=True,
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            from agent_bom.security import sanitize_error
+
+            logger.debug("Secret scanning unavailable: %s", sanitize_error(exc, generic=True))
+            report.scan_run.add_issue(
+                ScanIssue(
+                    code="scanner_unavailable",
+                    stage="scanning",
+                    source="secret-scan",
+                    message="Secret scanning could not complete.",
+                    affects_coverage=True,
+                )
+            )
+
+    # AST source-budget diagnostics are recorded after the early scanner-state
+    # drain above. Fold that late evidence into the report at the last producer
+    # boundary so JSON/SARIF and the process exit all see the same outcome.
+    for _warning in consume_coverage_warnings():
+        if str(_warning.get("release", "")) not in {str(w.get("release", "")) for w in report.coverage_warnings}:
+            report.coverage_warnings.append(_warning)
 
     if report.model_files or report.model_provenance or report.model_hash_verification_data:
         from agent_bom.model_files import evaluate_model_provenance_policy, summarize_model_supply_chain

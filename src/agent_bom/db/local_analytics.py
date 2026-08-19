@@ -15,11 +15,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from agent_bom.analytics_retention import prune_local_scan_runs
+from agent_bom.analytics_retention import (
+    analytics_max_events,
+    analytics_max_findings,
+    analytics_max_packages,
+    plan_local_scan_prune,
+    prune_local_scan_runs,
+)
 from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.config import LOCAL_ANALYTICS_DB
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DEFAULT_LOCAL_ANALYTICS_PATH = Path.home() / ".agent-bom" / "local-analytics.sqlite"
 
 
@@ -50,6 +56,7 @@ class LocalAnalyticsStore:
             self._migrate_v1_schema(conn)
         self._create_schema(conn)
         self._migrate_canonical_columns(conn)
+        self._migrate_retention_columns(conn)
         conn.execute(
             """
             INSERT INTO local_schema_meta(component, version, applied_at)
@@ -83,7 +90,9 @@ class LocalAnalyticsStore:
                 total_packages INTEGER NOT NULL DEFAULT 0,
                 total_vulnerabilities INTEGER NOT NULL DEFAULT 0,
                 critical_findings INTEGER NOT NULL DEFAULT 0,
-                high_findings INTEGER NOT NULL DEFAULT 0
+                high_findings INTEGER NOT NULL DEFAULT 0,
+                finding_rows INTEGER NOT NULL DEFAULT 0,
+                package_rows INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS scan_findings (
@@ -151,6 +160,33 @@ class LocalAnalyticsStore:
             """
         )
 
+    def _migrate_retention_columns(self, conn: sqlite3.Connection) -> None:
+        columns = _table_columns(conn, "scan_runs")
+        added_finding_rows = "finding_rows" not in columns
+        added_package_rows = "package_rows" not in columns
+        if added_finding_rows:
+            conn.execute("ALTER TABLE scan_runs ADD COLUMN finding_rows INTEGER NOT NULL DEFAULT 0")
+        if added_package_rows:
+            conn.execute("ALTER TABLE scan_runs ADD COLUMN package_rows INTEGER NOT NULL DEFAULT 0")
+        if added_finding_rows:
+            conn.execute(
+                """
+                UPDATE scan_runs
+                SET finding_rows = (
+                    SELECT COUNT(*) FROM scan_findings WHERE scan_findings.run_id = scan_runs.run_id
+                )
+                """
+            )
+        if added_package_rows:
+            conn.execute(
+                """
+                UPDATE scan_runs
+                SET package_rows = (
+                    SELECT COUNT(*) FROM scan_packages WHERE scan_packages.run_id = scan_runs.run_id
+                )
+                """
+            )
+
     def _migrate_v1_schema(self, conn: sqlite3.Connection) -> None:
         """Move the initial artifact-keyed mirror into run-keyed tables."""
         conn.execute("PRAGMA foreign_keys=OFF")
@@ -189,6 +225,17 @@ class LocalAnalyticsStore:
             FROM scan_packages_v1
             """
         )
+        conn.execute(
+            """
+            UPDATE scan_runs
+            SET finding_rows = (
+                    SELECT COUNT(*) FROM scan_findings WHERE scan_findings.run_id = scan_runs.run_id
+                ),
+                package_rows = (
+                    SELECT COUNT(*) FROM scan_packages WHERE scan_packages.run_id = scan_runs.run_id
+                )
+            """
+        )
         conn.execute("DROP TABLE scan_findings_v1")
         conn.execute("DROP TABLE scan_packages_v1")
         conn.execute("DROP TABLE scan_runs_v1")
@@ -221,9 +268,10 @@ class LocalAnalyticsStore:
                 """
                 INSERT INTO scan_runs(
                     run_id, scan_id, generated_at, recorded_at, tenant_id, source, artifact_path,
-                    total_agents, total_packages, total_vulnerabilities, critical_findings, high_findings
+                    total_agents, total_packages, total_vulnerabilities, critical_findings, high_findings,
+                    finding_rows, package_rows
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     scan_id = excluded.scan_id,
                     generated_at = excluded.generated_at,
@@ -235,7 +283,9 @@ class LocalAnalyticsStore:
                     total_packages = excluded.total_packages,
                     total_vulnerabilities = excluded.total_vulnerabilities,
                     critical_findings = excluded.critical_findings,
-                    high_findings = excluded.high_findings
+                    high_findings = excluded.high_findings,
+                    finding_rows = excluded.finding_rows,
+                    package_rows = excluded.package_rows
                 """,
                 (
                     run_id,
@@ -250,6 +300,8 @@ class LocalAnalyticsStore:
                     _int(summary.get("total_vulnerabilities")),
                     _int(summary.get("critical_findings")),
                     sum(1 for item in findings if _finding_severity(item) == "high"),
+                    len(findings),
+                    len(package_rows),
                 ),
             )
             conn.execute("DELETE FROM scan_findings WHERE run_id = ?", (run_id,))
@@ -311,6 +363,73 @@ class LocalAnalyticsStore:
                     (bounded_limit,),
                 ).fetchall()
         return [dict(row) for row in rows]
+
+    def storage_stats(self) -> dict[str, Any]:
+        """Return bounded local-mirror usage without including deployment state."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS scan_runs,
+                    COALESCE(SUM(finding_rows), 0) AS findings,
+                    COALESCE(SUM(package_rows), 0) AS packages
+                FROM scan_runs
+                """
+            ).fetchone()
+        limits = {
+            "scan_runs": analytics_max_events(),
+            "findings": analytics_max_findings(),
+            "packages": analytics_max_packages(),
+        }
+        counts = {
+            "scan_runs": int(row["scan_runs"]),
+            "findings": int(row["findings"]),
+            "packages": int(row["packages"]),
+        }
+        return {
+            "db_path": str(self.db_path),
+            "bytes": self._storage_bytes(),
+            **counts,
+            "limits": limits,
+            "over_limit": any(limits[key] > 0 and counts[key] > limits[key] for key in limits),
+        }
+
+    def prune(
+        self,
+        *,
+        max_runs: int | None = None,
+        max_packages: int | None = None,
+        max_findings: int | None = None,
+        apply: bool = False,
+        compact: bool = False,
+    ) -> dict[str, Any]:
+        """Plan or apply whole-run retention, optionally compacting SQLite."""
+        bytes_before = self._storage_bytes()
+        with self._connect() as conn:
+            stale = plan_local_scan_prune(
+                conn,
+                max_events=max_runs,
+                max_packages=max_packages,
+                max_findings=max_findings,
+            )
+            if apply and stale:
+                conn.executemany("DELETE FROM scan_runs WHERE run_id = ?", ((run_id,) for run_id in stale))
+                conn.commit()
+            if apply and compact:
+                conn.execute("VACUUM")
+        return {
+            "db_path": str(self.db_path),
+            "applied": apply,
+            "compacted": bool(apply and compact),
+            "deleted_runs": len(stale),
+            "bytes_before": bytes_before,
+            "bytes_after": self._storage_bytes(),
+        }
+
+    def _storage_bytes(self) -> int:
+        return sum(
+            path.stat().st_size for path in (self.db_path, Path(f"{self.db_path}-wal"), Path(f"{self.db_path}-shm")) if path.exists()
+        )
 
     def query(self, sql: str, params: Iterable[Any] = ()) -> list[dict[str, Any]]:
         """Run a read query against the local analytics store."""

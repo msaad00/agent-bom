@@ -803,6 +803,7 @@ def scan(
     from agent_bom.vuln_freshness import bundled_demo_freshness, compute_freshness, should_refresh
 
     _vuln_freshness = None
+    _pre_scan_step_timings: dict[str, float] = {}
     if demo:
         _vuln_freshness = bundled_demo_freshness()
     else:
@@ -824,12 +825,15 @@ def scan(
             if not quiet and not no_scan:
                 src_msg = f" (sources: {', '.join(source_list)})" if source_list else ""
                 con.print(f"[dim]Refreshing local vuln DB{src_msg} …[/dim]")
+            _refresh_t0 = _time.monotonic()
             try:
                 sync_db(sources=source_list)
                 # Recompute so the surfaced freshness reflects the fresh cache.
                 _vuln_freshness = compute_freshness(offline=offline)
             except Exception as _db_exc:
                 logger.warning("Auto DB refresh failed: %s", _db_exc)
+            finally:
+                _pre_scan_step_timings["db refresh"] = _time.monotonic() - _refresh_t0
 
     # ── Dry-run: show access plan without scanning ────────────────────────────
     if dry_run:
@@ -955,6 +959,7 @@ def scan(
 
     # Create shared context object
     ctx = ScanContext(con=con, quiet=quiet, verbose=verbose)
+    ctx.step_timings.update(_pre_scan_step_timings)
     if repo_trust_data:
         ctx.repo_trust_data = repo_trust_data
     try:
@@ -1453,7 +1458,11 @@ def scan(
             if not quiet:
                 con.print(f"\n[bold blue]Resolving {len(unresolved)} package version(s)...[/bold blue]\n")
             with con.status("[bold]Querying package registries...[/bold]", spinner="dots") if not quiet else _nullcontext():
-                resolved = _agents_patchable("resolve_all_versions_sync")(all_packages, quiet=quiet)
+                resolved = _agents_patchable("resolve_all_versions_sync")(
+                    all_packages,
+                    quiet=quiet,
+                    enrich_license_metadata=enrich,
+                )
             if not quiet:
                 resolved_count = int(resolved or 0)
                 fallback_count = sum(1 for p in unresolved if p.version_source == "registry_fallback")
@@ -3009,7 +3018,7 @@ def scan(
         # Per-step timing breakdown
         _timings = ctx.step_timings
         _timing_parts = []
-        for _step_name in ("discovery", "cloud", "extraction", "scanning", "output"):
+        for _step_name in ("db refresh", "discovery", "cloud", "extraction", "scanning", "output"):
             _t = _timings.get(_step_name, 0.0)
             if _t >= 0.1:
                 _timing_parts.append(f"{_step_name}: {_t:.1f}s")

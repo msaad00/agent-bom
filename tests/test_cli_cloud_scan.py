@@ -165,23 +165,23 @@ class TestAliases:
         for name in ("scan", "aws", "azure", "gcp"):
             assert name in cloud_group.commands
 
-    def test_aliases_auto_update_db_default_on(self, monkeypatch):
-        # Cloud scans get-latest by default, matching `agent-bom scan`.
+    def test_aliases_do_not_block_on_db_refresh_by_default(self, monkeypatch):
+        # Cloud scans use cached data plus targeted lookups unless explicitly opted in.
         monkeypatch.delenv("AGENT_BOM_AUTO_UPDATE_DB", raising=False)
         seen = _capture_scan(monkeypatch)
         for command in ("aws", "azure", "gcp"):
             r = CliRunner().invoke(cloud_group, [command])
             assert r.exit_code == 0
-        assert [item["auto_update_db"] for item in seen] == [True, True, True]
+        assert [item["auto_update_db"] for item in seen] == [False, False, False]
 
-    def test_aliases_auto_update_db_env_opt_out(self, monkeypatch):
-        # AGENT_BOM_AUTO_UPDATE_DB=0 pins the DB (reproducible CI), like the main path.
-        monkeypatch.setenv("AGENT_BOM_AUTO_UPDATE_DB", "0")
+    def test_aliases_auto_update_db_env_opt_in(self, monkeypatch):
+        # Operators can explicitly choose the blocking full refresh.
+        monkeypatch.setenv("AGENT_BOM_AUTO_UPDATE_DB", "1")
         seen = _capture_scan(monkeypatch)
         for command in ("aws", "azure", "gcp"):
             r = CliRunner().invoke(cloud_group, [command])
             assert r.exit_code == 0
-        assert [item["auto_update_db"] for item in seen] == [False, False, False]
+        assert [item["auto_update_db"] for item in seen] == [True, True, True]
 
     def test_azure_alias_forwards_subscription(self, monkeypatch):
         seen = _capture_scan(monkeypatch)

@@ -312,6 +312,10 @@ def test_local_analytics_store_migrates_initial_scan_id_keyed_schema(tmp_path):
     assert store.query("SELECT run_id, scan_id, package_name FROM scan_packages") == [
         {"run_id": "legacy-scan", "scan_id": "legacy-scan", "package_name": "pkg"}
     ]
+    stats = store.storage_stats()
+    assert stats["scan_runs"] == 1
+    assert stats["findings"] == 1
+    assert stats["packages"] == 1
 
 
 def test_local_analytics_store_migrates_v2_canonical_columns(tmp_path):
@@ -372,5 +376,7 @@ def test_local_analytics_store_migrates_v2_canonical_columns(tmp_path):
 
     finding_columns = {row["name"] for row in store.query("SELECT name FROM pragma_table_info('scan_findings')")}
     package_columns = {row["name"] for row in store.query("SELECT name FROM pragma_table_info('scan_packages')")}
+    run_columns = {row["name"] for row in store.query("SELECT name FROM pragma_table_info('scan_runs')")}
     assert {"canonical_id", "asset_canonical_id"} <= finding_columns
     assert "package_canonical_id" in package_columns
+    assert {"finding_rows", "package_rows"} <= run_columns

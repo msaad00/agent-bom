@@ -75,6 +75,8 @@ so they cannot regress silently, but they are not part of this reference.
 | Env var | Type | Default | Description |
 |---|---|---|---|
 | `AGENT_BOM_ANALYTICS_MAX_EVENTS` | `int` | `50000` | Caps local analytics mirrors and runtime observation tables on write. ClickHouse analytics tables carry their own TTL clauses; this knob bounds SQLite/Postgres growth. ``<= 0`` disables pruning. |
+| `AGENT_BOM_ANALYTICS_MAX_FINDINGS` | `int` | `250000` | Caps finding rows in the local scan mirror. Old scan runs are removed atomically; the newest run is always retained. ``<= 0`` disables this cap. |
+| `AGENT_BOM_ANALYTICS_MAX_PACKAGES` | `int` | `500000` | Caps package rows in the local scan mirror. Old scan runs are removed atomically; the newest run is always retained. ``<= 0`` disables this cap. |
 
 ## Blast Radius Risk Scoring
 | Env var | Type | Default | Description |

@@ -150,5 +150,7 @@ the sqlite demo intentionally leaves it off so login works over plain HTTP.
 - Graph snapshot retention defaults to ``AGENT_BOM_GRAPH_RETENTION_DAYS`` (180). Per-tenant
   windows can be set with ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` JSON on the API deployment or
   persisted in the control-plane tenant retention store. Local analytics and runtime observations
-  are capped on write with ``AGENT_BOM_ANALYTICS_MAX_EVENTS``; on-disk CLI history uses
+  are capped on write by run count with ``AGENT_BOM_ANALYTICS_MAX_EVENTS`` and by local
+  mirror row volume with ``AGENT_BOM_ANALYTICS_MAX_FINDINGS`` and
+  ``AGENT_BOM_ANALYTICS_MAX_PACKAGES``; on-disk CLI history uses
   ``AGENT_BOM_HISTORY_MAX_REPORTS``.

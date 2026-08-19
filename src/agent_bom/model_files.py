@@ -370,6 +370,22 @@ MODEL_FLAG_PROMOTIONS: dict[str, dict] = {
         ),
         "requires_signature_policy": False,
     },
+    "TRUNCATED_PICKLE_UNSCANNED": {
+        "detector": "pickletools-static-disassembly",
+        "finding_type": "MODEL_INTEGRITY",
+        "default_severity": "HIGH",
+        "title": "Model artifact opcode scan incomplete",
+        "is_malicious": False,
+        "malicious_reason": None,
+        "cwe_ids": ["CWE-502"],
+        "risk_score": 6.5,
+        "remediation": (
+            "The pickle opcode walk stopped before the complete stream was inspected. Raise "
+            "AGENT_BOM_PICKLE_MAX_OPCODES when the opcode bound was reached, or replace an incomplete "
+            "artifact with a trusted safetensors/ONNX distribution and scan it again."
+        ),
+        "requires_signature_policy": False,
+    },
     "PICKLE_SCAN_ERROR": {
         "detector": "pickletools-static-disassembly",
         "finding_type": "MODEL_INTEGRITY",

@@ -98,6 +98,11 @@ _SCAN_EXTENSIONS = frozenset(
         ".ps1",
         ".md",
         ".txt",
+        # Private keys and certificate bundles commonly carry one of these
+        # suffixes. Excluding them made the scanner blind to the credential
+        # format it already knows how to detect.
+        ".pem",
+        ".key",
     }
 )
 
@@ -321,6 +326,11 @@ def _should_scan(path: Path) -> bool:
     if path.name.startswith("test_") or path.name.endswith("_test.py"):
         return False
     if path.name in _SCAN_FILENAMES:
+        return True
+    # SSH keys and credential stores are frequently extensionless (id_rsa,
+    # credentials, token, ...). Content patterns decide whether they contain a
+    # secret; the absence of a suffix must not exclude them before inspection.
+    if not path.suffix:
         return True
     return path.suffix.lower() in _SCAN_EXTENSIONS
 

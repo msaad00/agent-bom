@@ -203,6 +203,34 @@ def test_opcode_bound_enforced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert res.truncated
 
 
+def test_opcode_bound_emits_unscanned_tail_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Hitting the opcode bound is partial analysis, never a clean verdict."""
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_OPCODES", "3")
+    p = tmp_path / "bounded.pkl"
+    p.write_bytes(pickle.dumps(list(range(1000))))
+
+    flags, results = scan_pickle_file_flags(p)
+
+    assert results[0].truncated is True
+    assert "TRUNCATED_PICKLE_UNSCANNED" in {flag["type"] for flag in flags}
+
+
+def test_opcode_bound_becomes_canonical_integrity_finding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The incomplete disassembly must survive model inventory and promotion."""
+    from agent_bom.finding import FindingType
+    from agent_bom.model_files import model_file_findings
+
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_OPCODES", "3")
+    p = tmp_path / "bounded.pkl"
+    p.write_bytes(pickle.dumps(list(range(1000))))
+
+    models, _ = scan_model_files(tmp_path)
+    findings = model_file_findings(models)
+
+    assert any(finding.finding_type == FindingType.MODEL_INTEGRITY for finding in findings)
+    assert any("opcode" in finding.description.lower() for finding in findings)
+
+
 def test_wired_into_scan_model_files(tmp_path: Path):
     """A normal model scan now reports the malicious-pickle finding end-to-end."""
     (tmp_path / "model.pkl").write_bytes(_malicious_bytes())

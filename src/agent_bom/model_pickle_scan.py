@@ -224,7 +224,9 @@ class PickleScanResult:
            also failed to read keeps its HIGH signal instead of collapsing to
            a LOW scan error (which the finding promoter treats as coverage
            loss, not as evasion).
-        3. ``error`` — the scan could not complete.
+        3. ``truncated`` — the opcode bound or an incomplete stream stopped
+           analysis before a complete verdict was possible.
+        4. ``error`` — the scan could not complete.
         """
         if self.verdict in {"malicious", "suspicious"}:
             location = f" (zip member {self.member})" if self.member else ""
@@ -259,6 +261,18 @@ class PickleScanResult:
                     "disassembled and the remainder was NOT scanned. Padding a pickle past the "
                     "cap is a known evasion — treat as suspicious; prefer safetensors/ONNX or "
                     "raise AGENT_BOM_PICKLE_MAX_BYTES to scan it fully."
+                ),
+            }
+        if self.truncated:
+            location = f" (zip member {self.member})" if self.member else ""
+            return {
+                "severity": "HIGH",
+                "type": "TRUNCATED_PICKLE_UNSCANNED",
+                "description": (
+                    f"Pickle opcode analysis{location} stopped before the stream was fully inspected "
+                    f"after {self.opcodes_scanned} opcode(s). The remaining payload is unverified and "
+                    "must not be treated as clean; raise AGENT_BOM_PICKLE_MAX_OPCODES when the opcode "
+                    "bound was reached, or replace the incomplete artifact and scan again."
                 ),
             }
         if self.verdict == "error":

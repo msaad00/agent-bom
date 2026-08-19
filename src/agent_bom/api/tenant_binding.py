@@ -54,9 +54,7 @@ class TenantBindingClaim:
 
 def _validate_key(key: bytes) -> bytes:
     if len(key) < _MINIMUM_KEY_BYTES:
-        raise TenantBindingConfigurationError(
-            f"{_TENANT_BINDING_KEY_ENV} entries must be at least {_MINIMUM_KEY_BYTES} bytes"
-        )
+        raise TenantBindingConfigurationError(f"{_TENANT_BINDING_KEY_ENV} entries must be at least {_MINIMUM_KEY_BYTES} bytes")
     return key
 
 
@@ -65,15 +63,11 @@ def tenant_binding_keys() -> tuple[bytes, ...]:
     try:
         configured = resolve_secret(_TENANT_BINDING_KEY_ENV, required=True)
     except ValueError as exc:
-        raise TenantBindingConfigurationError(
-            f"{_TENANT_BINDING_KEY_ENV} or {_TENANT_BINDING_KEY_ENV}_FILE is required"
-        ) from exc
+        raise TenantBindingConfigurationError(f"{_TENANT_BINDING_KEY_ENV} or {_TENANT_BINDING_KEY_ENV}_FILE is required") from exc
 
     keys = tuple(_validate_key(chunk.strip().encode("utf-8")) for chunk in configured.split(",") if chunk.strip())
     if not keys:
-        raise TenantBindingConfigurationError(
-            f"{_TENANT_BINDING_KEY_ENV} or {_TENANT_BINDING_KEY_ENV}_FILE is required"
-        )
+        raise TenantBindingConfigurationError(f"{_TENANT_BINDING_KEY_ENV} or {_TENANT_BINDING_KEY_ENV}_FILE is required")
     return keys
 
 

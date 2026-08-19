@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import textwrap
 
+import pytest
+
 from agent_bom.parsers import (
     parse_conda_environment,
     parse_npm_packages,
@@ -344,6 +346,29 @@ def test_package_json_resolves_workspace_dependencies(tmp_path):
     assert by_name["@repo/eslint-config"].version == "0.0.0"
     assert by_name["next"].version == "16.2.6"
     assert by_name["typescript"].version == "5.9.3"
+
+
+@pytest.mark.parametrize("root_pattern", [".", "./", ""])
+def test_package_json_resolves_root_workspace_pattern(tmp_path, root_pattern):
+    (tmp_path / "pnpm-workspace.yaml").write_text(f'packages:\n  - "{root_pattern}"\n')
+    (tmp_path / "package.json").write_text(
+        textwrap.dedent("""\
+            {
+              "name": "@repo/root",
+              "version": "1.2.3",
+              "dependencies": {
+                "@repo/root": "workspace:*"
+              }
+            }
+        """)
+    )
+
+    by_name = {pkg.name: pkg for pkg in parse_npm_packages(tmp_path)}
+
+    assert by_name["@repo/root"].version == "1.2.3"
+    assert by_name["@repo/root"].version_source == "workspace"
+    assert by_name["@repo/root"].declared_version == "workspace:*"
+    assert by_name["@repo/root"].resolved_version == "1.2.3"
 
 
 # ── ECOSYSTEM_MAP includes conda ──────────────────────────────────────────────

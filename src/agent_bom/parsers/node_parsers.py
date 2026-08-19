@@ -66,13 +66,25 @@ def _resolve_npx_cached_version(name: str) -> tuple[str, Path] | None:
 
 
 def _coerce_workspace_patterns(value: object) -> list[str]:
+    items: list[object]
     if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, dict):
+        items = value
+    elif isinstance(value, dict):
         packages = value.get("packages")
         if isinstance(packages, list):
-            return [str(item).strip() for item in packages if str(item).strip()]
-    return []
+            items = packages
+        else:
+            return []
+    else:
+        return []
+
+    patterns: list[str] = []
+    for item in items:
+        if item is None:
+            continue
+        pattern = str(item).strip()
+        patterns.append("." if pattern in {"", ".", "./"} else pattern)
+    return patterns
 
 
 def _workspace_root_for(directory: Path) -> Path | None:
@@ -102,9 +114,7 @@ def _workspace_package_versions(root: str) -> dict[str, str]:
 
             data = yaml.safe_load(read_text_limited(pnpm_workspace)) or {}
             if isinstance(data, dict):
-                packages = data.get("packages")
-                if isinstance(packages, list):
-                    patterns.extend(str(item).strip() for item in packages if str(item).strip())
+                patterns.extend(_coerce_workspace_patterns(data.get("packages")))
         except Exception as exc:
             logger.debug("Failed to parse pnpm workspace at %s: %s", pnpm_workspace, exc)
 
@@ -123,7 +133,9 @@ def _workspace_package_versions(root: str) -> dict[str, str]:
             continue
 
         package_jsons: list[Path] = []
-        if "**" in pattern:
+        if pattern == ".":
+            package_jsons.append(root_pkg_json)
+        elif "**" in pattern:
             recursive_suffix = "/**"
             if pattern.endswith(recursive_suffix) and pattern.count("**") == 1:
                 base = workspace_root / pattern[: -len(recursive_suffix)].rstrip("/")

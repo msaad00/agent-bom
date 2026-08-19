@@ -11,12 +11,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping
 
+from agent_bom.graph.types import RelationshipType
+
 if TYPE_CHECKING:
     from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.graph.container import AttackPath
 
 
 MAX_FINDING_REACHABILITY_PATHS = 1000
+
+_REACHABILITY_EVIDENCE_EDGES = frozenset(
+    {
+        RelationshipType.EXPLOITABLE_VIA.value,
+        RelationshipType.EXPOSED_TO.value,
+        RelationshipType.INVOKED.value,
+        RelationshipType.CALLED.value,
+        RelationshipType.USED_CREDENTIAL.value,
+        RelationshipType.ACCESSED.value,
+        RelationshipType.DELEGATED_TO.value,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +75,20 @@ def _path_vulnerability_ids(path: AttackPath) -> set[str]:
     values.append(path.target)
     values.extend(path.hops)
     return {identifier for value in values if (identifier := _vulnerability_id(value)).startswith(("CVE-", "GHSA-", "MAL-"))}
+
+
+def _path_has_reachability_evidence(path: AttackPath) -> bool:
+    """Return whether a path contains an observed reachability edge.
+
+    Static inventory edges such as ``uses`` and ``depends_on`` describe useful
+    topology, but they do not prove that an agent can reach a vulnerable
+    component at runtime. Positive reachability requires an explicit exploit,
+    network-exposure, or runtime-execution relationship.
+    """
+
+    return any(
+        (edge.value if isinstance(edge, RelationshipType) else _text(edge).lower()) in _REACHABILITY_EVIDENCE_EDGES for edge in path.edges
+    )
 
 
 def _row_node_ids(row: Mapping[str, Any]) -> set[str]:
@@ -149,6 +177,8 @@ def project_persisted_graph_reachability(
     paths_by_finding: dict[str, list[AttackPath]] = {}
     paths_by_vulnerability: dict[str, list[AttackPath]] = {}
     for path in paths:
+        if not _path_has_reachability_evidence(path):
+            continue
         for finding_id in set(path.finding_ids):
             paths_by_finding.setdefault(finding_id, []).append(path)
         for vulnerability_id in _path_vulnerability_ids(path):

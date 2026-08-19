@@ -87,8 +87,7 @@ def _path_has_reachability_evidence(path: AttackPath) -> bool:
     """
 
     return any(
-        (edge.value if isinstance(edge, RelationshipType) else _text(edge).lower()) in _REACHABILITY_EVIDENCE_EDGES
-        for edge in path.edges
+        (edge.value if isinstance(edge, RelationshipType) else _text(edge).lower()) in _REACHABILITY_EVIDENCE_EDGES for edge in path.edges
     )
 
 

@@ -625,6 +625,7 @@ def parse_go_packages(
     packages = []
     if go_sum.exists():
         seen: set[tuple[str, str]] = set()
+        malformed_lines = False
         try:
             lines = go_sum.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError as exc:
@@ -637,22 +638,32 @@ def parse_go_packages(
             return []
         for line in lines:
             parts = line.strip().split()
-            if len(parts) >= 2:
-                name = parts[0]
-                raw_ver = parts[1].split("/")[0]  # strip /go.mod suffix
-                clean_ver = raw_ver[1:] if raw_ver.startswith("v") else raw_ver
-                mod_key = (name, clean_ver)
-                if mod_key not in seen:
-                    seen.add(mod_key)
-                    packages.append(
-                        Package(
-                            name=name,
-                            version=clean_ver,
-                            ecosystem="go",
-                            purl=f"pkg:golang/{name}@{raw_ver}",
-                            is_direct=True,
-                        )
+            if not parts:
+                continue
+            if len(parts) != 3 or not parts[2].startswith("h1:") or len(parts[2]) <= len("h1:"):
+                malformed_lines = True
+                continue
+            name = parts[0]
+            raw_ver = parts[1].split("/")[0]  # strip /go.mod suffix
+            clean_ver = raw_ver[1:] if raw_ver.startswith("v") else raw_ver
+            mod_key = (name, clean_ver)
+            if mod_key not in seen:
+                seen.add(mod_key)
+                packages.append(
+                    Package(
+                        name=name,
+                        version=clean_ver,
+                        ecosystem="go",
+                        purl=f"pkg:golang/{name}@{raw_ver}",
+                        is_direct=True,
                     )
+                )
+        if malformed_lines:
+            record_manifest_parse_warning(
+                ecosystem="go",
+                path=str(go_sum),
+                detail="go.sum contains malformed or truncated entries; Go dependency coverage is partial",
+            )
     return packages
 
 

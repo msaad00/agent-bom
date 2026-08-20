@@ -591,6 +591,7 @@ def prompt_scan_data_to_findings(prompt_scan: dict[str, Any]):
                 description=str(item.get("detail") or title),
                 remediation_guidance=str(item.get("recommendation") or "") or None,
                 owasp_tags=["LLM01"] if "injection" in category else [],
+                cwe_ids=["CWE-1427"] if "injection" in category or "jailbreak" in category else [],
                 nist_ai_rmf_tags=["MAP-4.1", "MEASURE-2.6"],
                 evidence={
                     "category": category,

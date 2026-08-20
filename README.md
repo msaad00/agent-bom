@@ -32,6 +32,21 @@
 data platforms, MCP servers, and runtime activity, then normalizes the evidence
 into one Finding + UnifiedGraph model for prioritized investigation and action.
 
+Blast radius connects a package finding to the AI surfaces that can reach it:
+
+```text
+package
+  └─ vulnerability finding
+       └─ MCP server
+            ├─ connected agent
+            ├─ credential env names
+            └─ reachable tools
+```
+
+The terminal report shows this attack path for human review. MCP clients can
+query the same evidence through `exposure_paths` and use `should_i_deploy` for
+a bounded pre-deployment verdict.
+
 - **Run where you deploy:** the same deterministic scanner produces findings, SARIF, SBOMs, HTML reports, and graph exports on a workstation, in CI, in Docker/Kubernetes, or in your control plane.
 - **Centralize when ready:** self-host fleet, browser, compliance, and audit evidence inside your cloud and identity boundary.
 - **Act with context:** follow Path → Impact → Owner → Fix → Verify, then export, rescan, or enforce at runtime.
@@ -69,17 +84,24 @@ The sample environment is visibly labeled in the UI.
 ## Quick start
 
 **Start here. This is the front door — two commands, no account, no config.**
-Every other surface below (demo, self-host, Docker, Helm, MCP, CI action, SDKs)
-is an expansion path you reach for once this works.
+The offline sample completes without downloading an advisory database and
+shows the inventory, finding, and blast-radius output shape.
 
 ```bash
 pip install agent-bom
+agent-bom scan --demo --offline
+```
+
+The sample intentionally contains a known-malicious package, so exit status `1` is expected
+and the printed report is complete. Scan a repository next:
+
+```bash
 agent-bom scan .
 ```
 
-The console shows inventory, findings, and reachable impact. `agent-bom scan .`
-and `agent-bom scan -p .` are the same command; `PATH` is an alias for
-`--project`.
+The repository scan shows inventory, findings, and reachable impact.
+`agent-bom scan .` and `agent-bom scan -p .` are the same command; `PATH` is an
+alias for `--project`.
 
 **A non-zero exit is a verdict, not a crash.** `scan` exits `0` when nothing
 matched a gate, and `1` when one did — a `--fail-on-*` threshold you set, a
@@ -95,7 +117,7 @@ the [first-run guide](docs/FIRST_RUN.md) for formats and CI use.
 
 | You want to | Go to |
 |---|---|
-| See output without scanning your own code | `agent-bom scan --demo --offline` (expands "Try without a repository" below) |
+| Scan your repository | `agent-bom scan .` |
 | A dashboard on your laptop | [Self-host](#self-host) |
 | A shared deployment (Docker, Helm, EKS, Snowflake) | [Self-host](#self-host) table |
 | Gate a pull request | [first-run guide §5](docs/FIRST_RUN.md#5-gate-ci-on-the-result) |
@@ -114,8 +136,7 @@ output shape:
 agent-bom scan --demo --offline
 ```
 
-The sample intentionally contains a known-malicious package, which fails closed,
-so exit status `1` is expected here and the printed report is complete.
+The sample intentionally contains a known-malicious package, which fails closed.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="Synthetic agent-bom console scan showing inventory, findings, and remediation" width="820" />

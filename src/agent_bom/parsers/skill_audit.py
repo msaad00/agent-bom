@@ -525,6 +525,7 @@ def skill_audit_data_to_findings(skill_audit: dict) -> list:
     ``FindingType.SKILL_RISK`` (and MCP blocklist hits) instead of leaving
     skill results only in the ``skill_audit_data`` sidecar.
     """
+    from agent_bom.compliance_hub import apply_hub_classification
     from agent_bom.finding import Asset, Finding, FindingSource
 
     if not isinstance(skill_audit, dict):
@@ -544,34 +545,37 @@ def skill_audit_data_to_findings(skill_audit: dict) -> list:
         asset_type = "mcp_server" if item.get("server") else ("package" if item.get("package") else "skill_file")
         identifier = item.get("server") or item.get("package") or source_file or None
         unified.append(
-            Finding(
-                finding_type=_finding_type_for_skill_category(category),
-                source=FindingSource.SKILL,
-                asset=Asset(
-                    name=asset_name,
-                    asset_type=asset_type,
-                    identifier=str(identifier) if identifier else None,
-                    location=source_file or None,
-                ),
-                severity=severity,
-                title=title,
-                description=str(item.get("detail") or title),
-                remediation_guidance=str(item.get("recommendation") or "") or None,
-                owasp_tags=["LLM01"] if "injection" in category or "prompt" in category else [],
-                owasp_mcp_tags=["MCP04", "MCP07"] if category == "mcp_blocklist" else [],
-                nist_ai_rmf_tags=["MAP-4.1", "MEASURE-2.6"],
-                evidence={
-                    "category": category,
-                    "package": item.get("package"),
-                    "server": item.get("server"),
-                    "context": item.get("context"),
-                    "confidence": item.get("confidence"),
-                    "evidence_source": item.get("evidence_source"),
-                    "source_line": item.get("source_line"),
-                    "ai_detected": item.get("ai_detected"),
-                    "scanner": "skill_audit",
-                },
-                risk_score=_risk_score(severity),
+            apply_hub_classification(
+                Finding(
+                    finding_type=_finding_type_for_skill_category(category),
+                    source=FindingSource.SKILL,
+                    asset=Asset(
+                        name=asset_name,
+                        asset_type=asset_type,
+                        identifier=str(identifier) if identifier else None,
+                        location=source_file or None,
+                    ),
+                    severity=severity,
+                    title=title,
+                    description=str(item.get("detail") or title),
+                    remediation_guidance=str(item.get("recommendation") or "") or None,
+                    owasp_tags=["LLM01"] if "injection" in category or "prompt" in category else [],
+                    cwe_ids=["CWE-1427"] if "injection" in category or "jailbreak" in category else [],
+                    owasp_mcp_tags=["MCP04", "MCP07"] if category == "mcp_blocklist" else [],
+                    nist_ai_rmf_tags=["MAP-4.1", "MEASURE-2.6"],
+                    evidence={
+                        "category": category,
+                        "package": item.get("package"),
+                        "server": item.get("server"),
+                        "context": item.get("context"),
+                        "confidence": item.get("confidence"),
+                        "evidence_source": item.get("evidence_source"),
+                        "source_line": item.get("source_line"),
+                        "ai_detected": item.get("ai_detected"),
+                        "scanner": "skill_audit",
+                    },
+                    risk_score=_risk_score(severity),
+                )
             )
         )
     return unified

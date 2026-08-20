@@ -43,6 +43,55 @@ _PYTHON_MANIFESTS = frozenset(
     }
 )
 
+_CODEOWNERS_LOCATIONS = (
+    Path(".github/CODEOWNERS"),
+    Path("CODEOWNERS"),
+    Path("docs/CODEOWNERS"),
+)
+
+
+def load_codeowners(root: Path) -> dict[str, str]:
+    """Return stable path-prefix ownership from the repository CODEOWNERS.
+
+    GitHub searches the three canonical locations in order and uses only the
+    first file found.  The ASPM graph needs joinable application prefixes, so
+    patterns without a stable directory prefix (for example ``*.md``) are
+    omitted; a repository-wide ``*`` rule is retained as the empty prefix.
+    Within a file, later rules replace earlier rules for the same prefix.
+    """
+    if not root.is_dir():
+        return {}
+    owners_file = next((root / rel for rel in _CODEOWNERS_LOCATIONS if (root / rel).is_file()), None)
+    if owners_file is None:
+        return {}
+
+    owners: dict[str, str] = {}
+    try:
+        lines = owners_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {}
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        pattern, owner_values = parts[0], [value for value in parts[1:] if value.startswith("@")]
+        if not owner_values:
+            continue
+        if pattern in {"*", "/*", "/**", "/**/*"}:
+            prefix = ""
+        else:
+            normalized = pattern.lstrip("/").rstrip("/")
+            wildcard_at = min((normalized.find(char) for char in "*?[" if char in normalized), default=-1)
+            stable = normalized if wildcard_at < 0 else normalized[:wildcard_at]
+            prefix = stable.rstrip("/")
+            if not prefix or "/" not in normalized and wildcard_at >= 0:
+                continue
+        owners[prefix] = ", ".join(owner_values)
+    return owners
+
 
 @dataclass(frozen=True)
 class RepoStaticSurface:

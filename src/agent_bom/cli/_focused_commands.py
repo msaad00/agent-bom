@@ -393,7 +393,8 @@ def secrets_cmd(
     output_format = _validate_json_or_console_format("secrets", output_format)
     setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=log_file)
 
-    con = Console(stderr=True, quiet=quiet, no_color=no_color)
+    report_con = Console(file=click.get_text_stream("stdout"), quiet=quiet, no_color=no_color)
+    diagnostic_con = Console(stderr=True, quiet=quiet, no_color=no_color)
     result = scan_secrets(path, detect_entropy=detect_entropy)
 
     if output_format == "json":
@@ -402,7 +403,7 @@ def secrets_cmd(
             from pathlib import Path as _Path
 
             _Path(output_path).write_text(output)
-            con.print(f"[green]Secrets report written[/green] → {output_path}")
+            diagnostic_con.print(f"[green]Secrets report written[/green] → {output_path}")
         else:
             click.echo(output)
         if _has_finding_at_or_above(result.findings):
@@ -410,16 +411,16 @@ def secrets_cmd(
         return
 
     # Console output
-    con.print(f"\n[bold]Secret scan:[/bold] {result.files_scanned} files scanned\n")
+    report_con.print(f"\n[bold]Secret scan:[/bold] {result.files_scanned} files scanned\n")
     if not result.findings:
-        con.print("[green]No secrets or PII found.[/green]")
+        report_con.print("[green]No secrets or PII found.[/green]")
         return
 
     for f in result.findings:
         sev_color = {"critical": "red", "high": "yellow", "medium": "blue"}.get(f.severity, "white")
-        con.print(f"  [{sev_color}]{f.severity.upper()}[/{sev_color}]  {f.file_path}:{f.line_number}  {f.secret_type}")
+        report_con.print(f"  [{sev_color}]{f.severity.upper()}[/{sev_color}]  {f.file_path}:{f.line_number}  {f.secret_type}")
 
-    con.print(f"\n[bold]{result.total} findings[/bold] ({result.critical_count} critical)")
+    report_con.print(f"\n[bold]{result.total} findings[/bold] ({result.critical_count} critical)")
     if _has_finding_at_or_above(result.findings):
         raise click.exceptions.Exit(1)
 

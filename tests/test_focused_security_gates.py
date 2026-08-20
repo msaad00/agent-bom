@@ -38,6 +38,30 @@ def test_secrets_command_exits_one_for_high_confidence_findings(tmp_path: Path):
     assert "AWS Access Key" in result.output
 
 
+def test_secrets_console_report_is_redirectable_to_stdout(tmp_path: Path):
+    result_payload = SecretScanResult(
+        findings=[
+            SecretFinding(
+                file_path=".env",
+                line_number=1,
+                secret_type="AWS Access Key",
+                severity="critical",
+                matched_preview="AWS Access Key",
+                category="credential",
+            )
+        ],
+        files_scanned=1,
+    )
+
+    with patch("agent_bom.secret_scanner.scan_secrets", return_value=result_payload):
+        result = CliRunner().invoke(main, ["secrets", str(tmp_path), "--no-color"])
+
+    assert result.exit_code == 1
+    assert "Secret scan: 1 files scanned" in result.stdout
+    assert "AWS Access Key" in result.stdout
+    assert "AWS Access Key" not in result.stderr
+
+
 def test_secrets_command_json_writes_report_before_failing_gate(tmp_path: Path):
     result_payload = SecretScanResult(
         findings=[
@@ -60,6 +84,8 @@ def test_secrets_command_json_writes_report_before_failing_gate(tmp_path: Path):
     assert result.exit_code == 1
     assert output.exists()
     assert "Secrets report written" in result.output
+    assert "Secrets report written" in result.stderr
+    assert "Secrets report written" not in result.stdout
 
 
 def test_secrets_command_exits_zero_when_clean(tmp_path: Path):

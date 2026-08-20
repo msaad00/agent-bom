@@ -107,6 +107,27 @@ describe("an asset-type page asks for its own type", () => {
     expect(vi.mocked(api.getGraph).mock.calls[0]?.[0]?.entityTypes).toBeUndefined();
   });
 
+  it("pushes the URL-owned minimum severity into every server graph page", async () => {
+    vi.mocked(api.getGraph).mockResolvedValue(agentOnlyPage() as never);
+
+    render(
+      <InventoryProvider
+        entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}
+        minSeverity="high"
+      >
+        <div />
+      </InventoryProvider>,
+    );
+
+    await waitFor(() => expect(api.getGraph).toHaveBeenCalled());
+    expect(vi.mocked(api.getGraph).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        entityTypes: ASSET_KIND_BY_ID.agents.entityTypes,
+        minSeverity: "high",
+      }),
+    );
+  });
+
   it("renders the kind's rows instead of an empty state", async () => {
     vi.mocked(api.getGraph).mockResolvedValue(agentOnlyPage() as never);
     const { AssetInventoryView } = await import("@/components/inventory/asset-inventory-view");

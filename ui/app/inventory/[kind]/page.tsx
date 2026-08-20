@@ -8,6 +8,7 @@
 // delegates to the client child (which reads the kind from the URL).
 import InventoryKindClient from "./InventoryKindClient";
 import { ASSET_KINDS } from "@/lib/inventory";
+import { Suspense } from "react";
 
 export function generateStaticParams() {
   return ASSET_KINDS.map((kind) => ({ kind: kind.id }));
@@ -18,5 +19,9 @@ export function generateStaticParams() {
 export const dynamicParams = false;
 
 export default function InventoryKindPage() {
-  return <InventoryKindClient />;
+  return (
+    <Suspense fallback={null}>
+      <InventoryKindClient />
+    </Suspense>
+  );
 }

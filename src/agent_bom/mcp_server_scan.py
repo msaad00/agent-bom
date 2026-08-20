@@ -186,6 +186,7 @@ async def run_scan_pipeline(
     transitive: bool = False,
     offline: bool = False,
     ecosystem: Optional[str] = None,
+    no_discover: bool = False,
 ):
     """Run discovery -> extraction -> scanning and return agents + findings."""
     from agent_bom.discovery import discover_all
@@ -216,7 +217,9 @@ async def run_scan_pipeline(
         except Exception as exc:
             raise McpScanValidationError(CODE_VALIDATION_INVALID_IMAGE_REF, exc, argument="image") from exc
 
-    agents = discover_all(project_dir=config_path)
+    # Match the CLI's deterministic CI mode: explicit repo/config/SBOM/image
+    # inputs can be scanned without merging unrelated host-level MCP clients.
+    agents = [] if no_discover else discover_all(project_dir=config_path)
     if agents:
         scan_sources.append("agent_discovery")
 

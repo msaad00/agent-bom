@@ -209,7 +209,7 @@ class PickleScanResult:
     has_reduce: bool = False
     dangerous_imports: list[str] = field(default_factory=list)  # "module.callable"
     severity: str | None = None  # CRITICAL | HIGH | MEDIUM | None
-    verdict: str = "clean"  # clean | suspicious | malicious | error | not_pickle
+    verdict: str = "clean"  # clean | suspicious | malicious | incomplete | error | not_pickle
     oversize_unscanned: bool = False  # member exceeded the byte cap; tail unscanned
     declared_size: int | None = None  # declared (uncompressed) size when oversize
 
@@ -463,6 +463,12 @@ def _scan_opcode_stream(data: bytes, path: str, member: str | None) -> PickleSca
         # before REDUCE), or a global whose operands could not be recovered —
         # still a suspicious supply-chain signal that must not be ignored.
         result.verdict = "suspicious"
+        result.severity = "HIGH"
+    elif result.truncated:
+        # A bounded or malformed stream whose tail was not inspected is not a
+        # clean result.  The security flag already fails safe; keep the primary
+        # verdict aligned so every consumer sees the same incomplete evidence.
+        result.verdict = "incomplete"
         result.severity = "HIGH"
     else:
         result.verdict = "clean"

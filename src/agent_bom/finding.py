@@ -912,6 +912,43 @@ def ast_flow_dict_to_finding(raw: dict) -> "Finding":
     )
 
 
+def enforcement_dict_to_finding(raw: dict) -> "Finding":
+    """Promote a passive/full MCP enforcement row to the unified stream."""
+    from agent_bom.security import sanitize_text
+
+    category = sanitize_text(raw.get("category", "injection") or "injection", max_len=80).lower()
+    server_name = sanitize_text(raw.get("server_name", "unknown-server") or "unknown-server", max_len=200)
+    tool_name = sanitize_text(raw.get("tool_name", "") or "", max_len=200)
+    reason = sanitize_text(raw.get("reason", "MCP description security finding") or "", max_len=2_000)
+    recommendation = sanitize_text(raw.get("recommendation", "") or "", max_len=1_000)
+    severity = sanitize_text(raw.get("severity", "high") or "high", max_len=40)
+    finding_type = FindingType.TOOL_DRIFT if "drift" in category else FindingType.INJECTION
+    surface_name = tool_name or server_name
+
+    return Finding(
+        finding_type=finding_type,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(
+            name=f"{surface_name} on {server_name}" if tool_name else server_name,
+            asset_type="mcp_tool" if tool_name else "mcp_server",
+            identifier=f"{server_name}:{tool_name or category}",
+        ),
+        severity=severity,
+        title=f"MCP {category.replace('_', ' ')} on {surface_name}",
+        description=reason,
+        remediation_guidance=recommendation or None,
+        evidence={
+            "category": category,
+            "server_name": server_name,
+            "tool_name": tool_name or None,
+            "detector": "mcp_enforcement",
+        },
+        risk_score=9.0 if severity.lower() == "critical" else 8.0 if severity.lower() == "high" else 6.0,
+        affected_servers=[server_name],
+        exposed_tools=[tool_name] if tool_name else [],
+    )
+
+
 def secret_dict_to_finding(secret: dict) -> "Finding":
     """Convert a secret_scanner result dict into a unified CREDENTIAL_EXPOSURE Finding.
 

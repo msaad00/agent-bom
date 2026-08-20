@@ -6,9 +6,10 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
-from agent_bom.ast_analyzer import analyze_project, project_has_analyzable_sources
+from agent_bom.ast_analyzer import _is_test_source_path, analyze_project, project_has_analyzable_sources
 from agent_bom.ast_go import scan_go_file
 from agent_bom.cli import main
 
@@ -37,6 +38,37 @@ def test_analyze_project_scans_js_ts_prompts_tools_and_guardrails(tmp_path: Path
     assert any(tool.name == "read_file" and tool.file_path == "server.ts" for tool in result.tools)
     assert any(guard.file_path == "server.ts" for guard in result.guardrails)
     assert any(finding.category == "js_ts_dangerous_call" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_python_agent_frameworks(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "from mcp.server.fastmcp import FastMCP\nfrom langchain.agents import AgentExecutor\nfrom crewai import Agent\n",
+        encoding="utf-8",
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert {"MCP", "LangChain", "CrewAI"}.issubset(result.frameworks_detected)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/agent.py",
+        "pkg/__tests__/server.ts",
+        "pkg/server.test.ts",
+        "pkg/server.spec.js",
+        "pkg/test_agent.py",
+        "pkg/agent_test.py",
+        "fixtures/unsafe.py",
+    ],
+)
+def test_test_only_source_paths_are_not_production_reachability(path: str):
+    assert _is_test_source_path(path)
+
+
+def test_production_source_path_is_reachability_evidence():
+    assert not _is_test_source_path("src/agent/server.py")
 
 
 def test_analyze_project_builds_js_ts_call_edges_and_tool_flow(tmp_path: Path):

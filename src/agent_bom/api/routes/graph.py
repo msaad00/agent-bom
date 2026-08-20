@@ -3154,7 +3154,14 @@ async def get_graph_node_neighbors(
             "truncated": False,
             "neighbors": [],
             "edges": [],
-            "completeness": graph_completeness(returned=0, total=0),
+            # The node was not found, so zero returned neighbors is not proof
+            # that the node has a complete zero-degree neighborhood.
+            "completeness": graph_completeness(
+                returned=0,
+                total=None,
+                truncated=True,
+                reason="node_not_found",
+            ),
         }
 
     selected_edges: list = []

@@ -65,7 +65,11 @@ def _py_import(module: str) -> str:
 def _js_import(module: str) -> str:
     """JS/TS import/require pattern."""
     escaped = re.escape(module)
-    return rf"""(?:import\s+.*?from\s+['"](?:@[^/]+/)?{escaped}['"]|require\s*\(\s*['"](?:@[^/]+/)?{escaped}['"]\s*\))"""
+    # SDKs commonly publish subpath exports (for example
+    # ``@modelcontextprotocol/sdk/server/mcp.js``). Requiring the quote directly
+    # after the package root missed the imports real servers use.
+    subpath = r"(?:/[^'\"]+)?"
+    return rf"""(?:import\s+.*?from\s+['"](?:@[^/]+/)?{escaped}{subpath}['"]|require\s*\(\s*['"](?:@[^/]+/)?{escaped}{subpath}['"]\s*\))"""
 
 
 def _java_import(package: str) -> str:
@@ -174,6 +178,14 @@ PYTHON_SDK_PATTERNS: list[SDKPattern] = [
         "semantic-kernel",
         AIComponentType.AGENT_FRAMEWORK,
         "semantic-kernel",
+        "pypi",
+        "python",
+    ),
+    SDKPattern(
+        re.compile(_py_import("mcp")),
+        "mcp-sdk",
+        AIComponentType.AGENT_FRAMEWORK,
+        "mcp",
         "pypi",
         "python",
     ),

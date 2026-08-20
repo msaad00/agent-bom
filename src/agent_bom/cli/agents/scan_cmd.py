@@ -1417,7 +1417,18 @@ def scan(
             except _HCError as exc:
                 con.print(f"  [yellow]⚠[/yellow] {exc}")
 
-        # Step 2c: Tool poisoning detection + enforcement (--enforce)
+        # Step 2c: Passive tool/resource description poisoning detection.
+        # These surfaces are already in the discovered config and require no
+        # active connection or policy action, so their findings must not depend
+        # on the broader --enforce mode.
+        from agent_bom.enforcement import scan_description_surfaces
+
+        _description_report = scan_description_surfaces([s for a in agents for s in a.mcp_servers])
+        if _description_report.findings:
+            _enforcement_data = _description_report.to_dict()
+            ctx.enforcement_data = _enforcement_data
+
+        # Step 2d: Full tool poisoning detection + enforcement (--enforce)
         if enforce:
             from agent_bom.enforcement import run_enforcement
 
@@ -2319,21 +2330,6 @@ def scan(
         if not quiet:
             con.print(f"  [green]✓[/green] VEX applied: {_vex_count} vulnerabilities updated from {vex_path}")
 
-    if generate_vex_flag and report.blast_radii:
-        from agent_bom.vex import export_openvex, generate_vex
-        from agent_bom.vex import to_serializable as _vex_to_ser
-
-        _vex_doc = generate_vex(report, auto_triage=True)
-        report.vex_data = _vex_to_ser(_vex_doc)
-        _vex_out = vex_output_path or "agent-bom.vex.json"
-        import json as _vex_json
-
-        with open(_vex_out, "w") as _vf:
-            _vex_json.dump(export_openvex(_vex_doc), _vf, indent=2)
-        if not quiet:
-            _n_stmts = len(_vex_doc.statements)
-            con.print(f"  [green]✓[/green] VEX generated: {_n_stmts} statements → {_vex_out}")
-
     # ── Toxic combination detection ──────────────────────────────────
     if report.blast_radii and (enrich or preset == "enterprise"):
         from agent_bom.toxic_combos import detect_toxic_combinations as _detect_toxic
@@ -2398,6 +2394,38 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] {w}")
             for w in manifest_warnings:
                 con.print(f"  [yellow]⚠[/yellow] {w}")
+            # Refused/missing scan roots and bounded pickle analysis are
+            # coverage facts, not merely console warnings.  Preserve them on
+            # scan_run so JSON/SARIF and the process exit fail closed together.
+            for _model_warning in [*mf_warnings, *manifest_warnings]:
+                if _model_warning.startswith(("Model scan:", "Model manifest scan:")):
+                    report.scan_run.add_issue(
+                        ScanIssue(
+                            code="scanner_coverage_gap",
+                            stage="scanning",
+                            source="model-scan",
+                            message=_model_warning,
+                            affects_coverage=True,
+                        )
+                    )
+            _incomplete_model_flags = {
+                "TRUNCATED_PICKLE_UNSCANNED",
+                "OVERSIZE_PICKLE_UNSCANNED",
+                "PICKLE_SCAN_ERROR",
+            }
+            for _model_result in mf_results:
+                for _model_flag in _model_result.get("security_flags", []) or []:
+                    _flag_type = str(_model_flag.get("type") or "")
+                    if _flag_type in _incomplete_model_flags:
+                        report.scan_run.add_issue(
+                            ScanIssue(
+                                code="scanner_coverage_gap",
+                                stage="scanning",
+                                source="model-scan",
+                                message=f"Model artifact analysis incomplete: {_flag_type}",
+                                affects_coverage=True,
+                            )
+                        )
             if mf_results:
                 security_count = sum(1 for m in mf_results if m["security_flags"])
                 con.print(
@@ -2857,6 +2885,24 @@ def scan(
     except Exception:  # noqa: BLE001
         # Reachability is best-effort enrichment — don't let it fail the scan.
         pass
+
+    # Generate VEX only after dependency/function reachability has been
+    # stamped and CVE findings have been resynchronized. Otherwise automatic
+    # ``not_affected`` decisions can never use symbol execution evidence.
+    if generate_vex_flag and report.blast_radii:
+        from agent_bom.vex import export_openvex, generate_vex
+        from agent_bom.vex import to_serializable as _vex_to_ser
+
+        _vex_doc = generate_vex(report, auto_triage=True)
+        report.vex_data = _vex_to_ser(_vex_doc)
+        _vex_out = vex_output_path or "agent-bom.vex.json"
+        import json as _vex_json
+
+        with open(_vex_out, "w") as _vf:
+            _vex_json.dump(export_openvex(_vex_doc), _vf, indent=2)
+        if not quiet:
+            _n_stmts = len(_vex_doc.statements)
+            con.print(f"  [green]✓[/green] VEX generated: {_n_stmts} statements → {_vex_out}")
 
     # Attach blast_radii and report to context for downstream phases
     ctx.blast_radii = blast_radii

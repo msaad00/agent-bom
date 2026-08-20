@@ -72,9 +72,16 @@ def doctor_cmd() -> None:
 
     # Network — OSV API
     try:
+        import json
         import urllib.request
 
-        urllib.request.urlopen("https://api.osv.dev/v1", timeout=5)  # nosec B310 — hardcoded HTTPS URL
+        request = urllib.request.Request(  # nosec B310 — hardcoded HTTPS URL
+            "https://api.osv.dev/v1/query",
+            data=json.dumps({"package": {"name": "jinja2", "ecosystem": "PyPI"}, "version": "3.1.4"}).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": "agent-bom-doctor"},
+            method="POST",
+        )
+        urllib.request.urlopen(request, timeout=5)  # nosec B310 — hardcoded HTTPS URL
         core_checks.append(("Network", "api.osv.dev reachable", "ok"))
     except Exception:
         core_checks.append(("Network", "api.osv.dev unreachable", "warn"))

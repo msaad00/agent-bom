@@ -15,7 +15,8 @@ from agent_bom.enforcement import (
     scan_tool_descriptions,
     score_capability_risk,
 )
-from agent_bom.models import MCPServer, MCPTool, Package, Severity, Vulnerability
+from agent_bom.finding import FindingSource, FindingType
+from agent_bom.models import AIBOMReport, MCPServer, MCPTool, Package, Severity, Vulnerability
 
 
 def _server(name: str, tools: list[MCPTool] | None = None, packages: list[Package] | None = None) -> MCPServer:
@@ -39,6 +40,30 @@ def test_detects_injection_in_tool_description():
     assert findings[0].severity == "high"
     assert findings[0].server_name == "evil-server"
     assert findings[0].tool_name == "do_stuff"
+
+
+def test_tool_description_injection_enters_unified_finding_stream():
+    report = AIBOMReport(agents=[])
+    report.enforcement_data = {
+        "findings": [
+            {
+                "severity": "high",
+                "category": "injection",
+                "server_name": "evil-server",
+                "tool_name": "do_stuff",
+                "reason": "Tool description contains injection pattern: Ignore previous instructions",
+                "recommendation": "Remove unsafe instructions from tool descriptions.",
+            }
+        ]
+    }
+
+    findings = report.to_findings()
+
+    assert len(findings) == 1
+    assert findings[0].finding_type is FindingType.INJECTION
+    assert findings[0].source is FindingSource.MCP_SCAN
+    assert findings[0].severity == "high"
+    assert findings[0].asset.identifier == "evil-server:do_stuff"
 
 
 def test_clean_tool_description_passes():

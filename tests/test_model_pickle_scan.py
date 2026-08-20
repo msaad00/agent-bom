@@ -150,7 +150,7 @@ def test_truncated_pickle_is_safe(tmp_path: Path):
     assert len(results) == 1
     # Truncated-but-still-dangerous import should be at least suspicious, and
     # the scanner must never raise.
-    assert results[0].verdict in {"suspicious", "malicious", "clean", "error", "not_pickle"}
+    assert results[0].verdict in {"suspicious", "malicious", "clean", "error", "not_pickle", "incomplete"}
 
 
 def test_garbage_bytes_is_safe(tmp_path: Path):
@@ -201,6 +201,7 @@ def test_opcode_bound_enforced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     res = scan_pickle_file(p)[0]
     assert res.opcodes_scanned <= 4
     assert res.truncated
+    assert res.verdict == "incomplete"
 
 
 def test_opcode_bound_emits_unscanned_tail_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -213,6 +214,36 @@ def test_opcode_bound_emits_unscanned_tail_flag(tmp_path: Path, monkeypatch: pyt
 
     assert results[0].truncated is True
     assert "TRUNCATED_PICKLE_UNSCANNED" in {flag["type"] for flag in flags}
+
+
+def test_truncated_pickle_scan_marks_cli_run_partial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A bounded model scan must not serialize a complete scan_run."""
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_OPCODES", "3")
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    (model_dir / "bounded.pkl").write_bytes(pickle.dumps(list(range(1000))))
+    output = tmp_path / "report.json"
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "scan",
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--model-files",
+            str(model_dir),
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code != 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["scan_run"]["outcome"] == "partial"
+    assert any(issue["source"] == "model-scan" for issue in payload["scan_run"]["issues"])
 
 
 def test_opcode_bound_becomes_canonical_integrity_finding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

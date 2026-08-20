@@ -45,11 +45,34 @@ def validate_cve_id(cve_id: str, cve_re, ghsa_re) -> str:  # noqa: ANN001
 def truncate_response(response_str: str, max_response_chars: int) -> str:
     if len(response_str) <= max_response_chars:
         return response_str
-    return (
-        response_str[:max_response_chars] + '\n\n{"_truncated": true, "message": '
-        '"Response truncated at 500,000 characters. '
-        'Use more specific parameters to reduce output size."}'
-    )
+    # MCP tool results are JSON contracts. Appending a second JSON object to a
+    # sliced first object produced invalid JSON on large estates.
+    envelope: dict[str, object] = {
+        "_truncated": True,
+        "message": f"Response truncated at {max_response_chars:,} characters; use more specific parameters.",
+        "original_length": len(response_str),
+        "preview": "",
+    }
+    fixed = json.dumps(envelope, separators=(",", ":"))
+    preview_budget = max(0, max_response_chars - len(fixed) - 16)
+    preview = response_str[:preview_budget]
+    envelope["preview"] = preview
+    rendered = json.dumps(envelope, separators=(",", ":"))
+    # JSON escaping can expand the preview (quotes, slashes, control chars).
+    # Keep reducing it until the configured transport budget is truly met.
+    while len(rendered) > max_response_chars and preview:
+        overflow = len(rendered) - max_response_chars
+        preview = preview[: -max(1, overflow)]
+        envelope["preview"] = preview
+        rendered = json.dumps(envelope, separators=(",", ":"))
+    if len(rendered) <= max_response_chars:
+        return rendered
+    # Extremely small custom limits cannot fit the full metadata envelope.
+    minimal = json.dumps({"_truncated": True}, separators=(",", ":"))
+    if len(minimal) <= max_response_chars:
+        return minimal
+    # Preserve valid JSON even for unrealistic one- or two-character limits.
+    return "{}" if max_response_chars >= 2 else "0" if max_response_chars == 1 else ""
 
 
 def safe_path(path_str: str) -> Path:

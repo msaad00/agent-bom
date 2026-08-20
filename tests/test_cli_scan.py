@@ -19,6 +19,20 @@ from agent_bom.cli._agent_mode import dumps_envelope, success_envelope, summariz
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.scanners import IncompleteScanError
 
+
+def test_cli_generates_vex_after_reachability_stamping():
+    """The CLI must not auto-triage before symbol evidence reaches findings."""
+    from inspect import getsource
+
+    from agent_bom.cli.agents.scan_cmd import scan
+
+    source = getsource(scan.callback)
+    stamp_index = source.index("apply_symbol_reachability_to_blast_radii")
+    vex_index = source.index("_vex_doc = generate_vex(report, auto_triage=True)")
+
+    assert stamp_index < vex_index
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1471,6 +1485,37 @@ def test_zero_finding_partial_secret_scan_is_preserved_and_fails_closed(monkeypa
             "affects_coverage": True,
         }
     ]
+
+
+def test_model_scan_refusal_is_preserved_and_fails_closed(tmp_path):
+    output = tmp_path / "model-refusal.json"
+
+    result = _run(
+        [
+            "scan",
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--model-files",
+            "/etc",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert result.exit_code != 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["scan_run"]["outcome"] == "partial"
+    issues = payload["scan_run"]["issues"]
+    assert len(issues) == 2
+    assert {issue["source"] for issue in issues} == {"model-scan"}
+    assert {issue["code"] for issue in issues} == {"scanner_coverage_gap"}
+    assert all(issue["affects_coverage"] is True for issue in issues)
+    assert any(issue["message"].startswith("Model scan:") for issue in issues)
+    assert any(issue["message"].startswith("Model manifest scan:") for issue in issues)
+    assert "escapes safe scan roots" in payload["scan_run"]["issues"][0]["message"]
 
 
 @pytest.mark.parametrize(

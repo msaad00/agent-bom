@@ -19,6 +19,7 @@ from agent_bom.models import (
     BlastRadius,
     MCPServer,
     Package,
+    ServerSurface,
     Severity,
     TransportType,
     Vulnerability,
@@ -73,6 +74,26 @@ def test_mcp_server_no_credentials():
         env={"PORT": "3000", "HOST": "localhost"},
     )
     assert not server.has_credentials
+
+
+def test_report_total_servers_excludes_dependency_only_surfaces():
+    report = AIBOMReport(
+        agents=[
+            Agent(
+                name="repo",
+                agent_type=AgentType.CUSTOM,
+                config_path="/repo/.mcp.json",
+                mcp_servers=[
+                    MCPServer(name="real-mcp"),
+                    MCPServer(name="package-json", surface=ServerSurface.FILESYSTEM),
+                    MCPServer(name="uploaded-sbom", surface=ServerSurface.SBOM),
+                ],
+            )
+        ]
+    )
+
+    assert report.total_servers == 1
+    assert report.total_packages == 0
 
 
 def test_blast_radius_scoring():

@@ -210,6 +210,30 @@ class TestScanner:
         assert "anthropic" in names
         assert "openai" in names
 
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'import { Server } from "@modelcontextprotocol/sdk/server/index.js";',
+            'const sdk = require("@modelcontextprotocol/sdk/server/mcp.js");',
+        ],
+    )
+    def test_scan_mcp_sdk_subpath_exports(self, tmp_path: Path, source: str):
+        (tmp_path / "server.ts").write_text(source, encoding="utf-8")
+
+        report = scan_source(str(tmp_path))
+
+        assert any(component.name == "mcp-sdk" for component in report.components)
+
+    def test_scan_python_mcp_sdk_import(self, tmp_path: Path):
+        (tmp_path / "server.py").write_text(
+            "from mcp.server.fastmcp import FastMCP\n",
+            encoding="utf-8",
+        )
+
+        report = scan_source(str(tmp_path))
+
+        assert any(component.name == "mcp-sdk" and component.language == "python" for component in report.components)
+
     def test_scan_go_imports(self, tmp_project: Path):
         report = scan_source(str(tmp_project))
         go_comps = [c for c in report.components if c.language == "go"]

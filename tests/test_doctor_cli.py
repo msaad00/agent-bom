@@ -6,6 +6,30 @@ from agent_bom.cli import main
 from agent_bom.models import Agent, AgentType, MCPServer
 
 
+def test_doctor_uses_supported_osv_health_probe(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, *, timeout: int):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["data"] = request.data
+        captured["timeout"] = timeout
+        return object()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    result = CliRunner().invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert captured == {
+        "url": "https://api.osv.dev/v1/query",
+        "method": "POST",
+        "data": b'{"package": {"name": "jinja2", "ecosystem": "PyPI"}, "version": "3.1.4"}',
+        "timeout": 5,
+    }
+    assert "api.osv.dev reachable" in result.output
+
+
 def test_doctor_groups_output_and_shows_next_steps():
     result = CliRunner().invoke(main, ["doctor"])
 

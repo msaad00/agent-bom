@@ -1306,7 +1306,10 @@ class AIBOMReport:
 
     @property
     def total_servers(self) -> int:
-        return sum(len(a.mcp_servers) for a in self.agents)
+        # Package manifests, SBOMs, and container layers reuse MCPServer as a
+        # dependency-bearing surface model. They are not MCP servers and must
+        # not inflate the public MCP inventory count.
+        return sum(1 for agent in self.agents for server in agent.mcp_servers if server.is_mcp_surface)
 
     @property
     def total_packages(self) -> int:
@@ -1438,6 +1441,14 @@ class AIBOMReport:
 
         return ciem_over_privilege_findings_from_data(self.ciem_over_privilege_findings_data)
 
+    def _enforcement_findings(self) -> "list[Finding]":
+        """MCP description/enforcement findings promoted from the side block."""
+        if not isinstance(self.enforcement_data, dict):
+            return []
+        from agent_bom.finding import enforcement_dict_to_finding
+
+        return [enforcement_dict_to_finding(raw) for raw in self.enforcement_data.get("findings", []) or [] if isinstance(raw, dict)]
+
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.
 
@@ -1474,6 +1485,8 @@ class AIBOMReport:
         base.extend(finding for finding in self._nhi_governance_findings() if finding.id not in nhi_existing)
         ciem_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._ciem_over_privilege_findings() if finding.id not in ciem_existing)
+        enforcement_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._enforcement_findings() if finding.id not in enforcement_existing)
         mcp_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._mcp_tool_rule_findings() if finding.id not in mcp_existing)
         iac_existing = {getattr(f, "id", None) for f in base}

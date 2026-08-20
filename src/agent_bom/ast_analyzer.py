@@ -113,6 +113,19 @@ _HIGH_SIGNAL_SOURCE_NAMES = frozenset(
     }
 )
 
+_TEST_SOURCE_PARTS = frozenset({"test", "tests", "testing", "__tests__", "fixtures", "__fixtures__"})
+
+
+def _is_test_source_path(path: str) -> bool:
+    """Return whether analysis evidence came from test-only source material."""
+    candidate = Path(path)
+    name = candidate.name.lower()
+    return (
+        any(part.lower() in _TEST_SOURCE_PARTS for part in candidate.parts)
+        or name.startswith("test_")
+        or any(marker in name for marker in ("_test.", ".test.", ".spec."))
+    )
+
 
 def _analysis_priority(project: Path, path: Path) -> tuple[int, str]:
     """Rank public entrypoints ahead of helpers, then remain deterministic."""
@@ -574,6 +587,12 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             max_depth=_python_max_taint_depth(),
         )
     )
+
+    # Test fixtures remain visible in inventory, but are not production
+    # reachability evidence. Otherwise dev-only imports become build-blocking
+    # production CVEs.
+    result.flow_findings = [finding for finding in result.flow_findings if not _is_test_source_path(finding.file_path)]
+    result.dependency_symbol_reach = [reach for reach in result.dependency_symbol_reach if not _is_test_source_path(reach.file_path)]
 
     deduped_call_edges: list[CallEdge] = []
     seen_call_edges: set[tuple[str, str, str, int]] = set()

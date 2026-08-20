@@ -3083,6 +3083,10 @@ class TestGraphStoreBackendSelection:
         assert body["found"] is False
         assert body["neighbors"] == []
         assert body["total_neighbors"] == 0
+        assert body["completeness"]["complete"] is False
+        assert body["completeness"]["status"] == "truncated"
+        assert body["completeness"]["reason"] == "node_not_found"
+        assert "total" not in body["completeness"]
 
     def test_graph_query_truncates_on_edge_cap(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

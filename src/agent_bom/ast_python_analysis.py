@@ -128,6 +128,20 @@ _GUARDRAIL_IMPORTS = {
     "anthropic.types": ("Anthropic Safety", "content_filter"),
 }
 
+# Import roots that identify the Python agent/runtime framework. The result
+# model exposed ``frameworks_detected`` but this pass previously never appended
+# to it, so Python-only projects reported no framework.
+_FRAMEWORK_IMPORTS: dict[str, str] = {
+    "langchain": "LangChain",
+    "langgraph": "LangGraph",
+    "crewai": "CrewAI",
+    "autogen": "AutoGen",
+    "mcp": "MCP",
+    "modelcontextprotocol": "MCP",
+    "llama_index": "LlamaIndex",
+    "semantic_kernel": "Semantic Kernel",
+}
+
 
 def _import_matches_module(module: str, target: str) -> bool:
     """True when *module* is *target* or a submodule of it.
@@ -793,6 +807,9 @@ def _analyze_file(
 
             # Check guardrail imports
             for module in modules:
+                for framework_module, framework_name in _FRAMEWORK_IMPORTS.items():
+                    if _import_matches_module(module, framework_module) and framework_name not in frameworks:
+                        frameworks.append(framework_name)
                 for guard_module, (name, gtype) in _GUARDRAIL_IMPORTS.items():
                     if _import_matches_module(module, guard_module):
                         guardrails.append(

@@ -81,6 +81,7 @@ async def _version_published(name: str, version: str, ecosystem: str, client) ->
 async def scan_impl(
     *,
     config_path: str | None = None,
+    no_discover: bool = False,
     repo_url: str | None = None,
     image: str | None = None,
     sbom_path: str | None = None,
@@ -130,6 +131,7 @@ async def scan_impl(
 
         return await _scan_impl_inner(
             config_path=config_path,
+            no_discover=no_discover,
             image=image,
             sbom_path=sbom_path,
             package=package,
@@ -154,6 +156,7 @@ async def scan_impl(
 async def _scan_impl_inner(
     *,
     config_path: str | None = None,
+    no_discover: bool = False,
     image: str | None = None,
     sbom_path: str | None = None,
     package: str | None = None,
@@ -219,6 +222,7 @@ async def _scan_impl_inner(
             transitive=transitive,
             offline=offline,
             ecosystem=ecosystem,
+            no_discover=no_discover,
         )
         scan_warnings = [*pre_warnings, *scan_warnings]
         # Fail closed: a package spec that resolved to zero packages produced no

@@ -505,6 +505,7 @@ async def _run_scan_pipeline(
     transitive: bool = False,
     offline: bool = False,
     ecosystem: Optional[str] = None,
+    no_discover: bool = False,
 ):
     """Run discovery -> extraction -> scanning and return (agents, blast_radii, warnings)."""
     return await _mcp_scan.run_scan_pipeline(
@@ -517,6 +518,7 @@ async def _run_scan_pipeline(
         transitive=transitive,
         offline=offline,
         ecosystem=ecosystem,
+        no_discover=no_discover,
     )
 
 
@@ -601,11 +603,21 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             Field(
                 description=(
                     "Local directory to scan — a project root or an MCP client config "
-                    "directory. Auto-discovers all installed MCP clients if omitted. "
+                    "directory. Auto-discovers installed MCP clients if omitted unless "
+                    "no_discover=true. "
                     "Mutually exclusive with repo_url."
                 )
             ),
         ] = None,
+        no_discover: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Disable ambient host MCP-client discovery. Explicit repo/config, image, "
+                    "SBOM, and package targets are still scanned; use this for deterministic CI."
+                )
+            ),
+        ] = False,
         image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
         sbom_path: Annotated[str | None, Field(description="Path to existing CycloneDX or SPDX JSON SBOM file to ingest.")] = None,
         package: Annotated[
@@ -701,6 +713,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             "scan",
             scan_impl,
             config_path=config_path,
+            no_discover=no_discover,
             repo_url=repo_url,
             image=image,
             sbom_path=sbom_path,

@@ -750,3 +750,24 @@ def run_enforcement(
             break
 
     return report
+
+
+def scan_description_surfaces(
+    servers: list[MCPServer],
+    fail_on_severity: str = "high",
+) -> EnforcementReport:
+    """Scan passive MCP text surfaces without enabling active enforcement.
+
+    Tool, input-schema, and resource descriptions are already present in the
+    discovered configuration.  Scanning them is read-only and must not depend
+    on the operator selecting ``--enforce``; that flag controls the broader
+    policy verdict, capability, CVE, collision, and runtime-drift checks.
+    """
+    report = EnforcementReport(servers_checked=len(servers))
+    for server in servers:
+        report.tools_checked += len(server.tools)
+        report.findings.extend(scan_tool_descriptions(server))
+        report.findings.extend(scan_resource_descriptions(server))
+
+    report.passed = not any(severity_at_or_above(finding.severity, fail_on_severity) for finding in report.findings)
+    return report

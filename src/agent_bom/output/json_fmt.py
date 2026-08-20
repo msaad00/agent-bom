@@ -1294,6 +1294,8 @@ def to_json(report: AIBOMReport) -> dict:
         "scorecard_summary": summarize_scorecard_coverage(all_packages).to_dict(),
         "remediation_plan": _build_remediation_json(report),
     }
+    if report.codeowners:
+        result["codeowners"] = list(report.codeowners)
 
     # AI enrichment fields (only when present)
     if report.executive_summary:

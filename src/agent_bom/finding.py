@@ -170,6 +170,40 @@ _LEGACY_CONTROL_VERSION_BY_FRAMEWORK: dict[str, str] = {
 }
 
 
+def _inferred_control_tag(value: str) -> ControlTag | None:
+    """Promote well-known legacy prefixes without inventing crosswalks."""
+    raw = value.strip()
+    upper = raw.upper()
+    framework = ""
+    control = ""
+    version = "legacy"
+    if upper.startswith("NIST-CSF-"):
+        framework, control, version = "nist_csf", raw[len("NIST-CSF-") :], "2.0"
+    elif upper.startswith("NIST-AI-RMF-"):
+        framework, control, version = "nist_ai_rmf", raw[len("NIST-AI-RMF-") :], "1.0"
+    elif match := re.fullmatch(r"NIST-([A-Z]{2})-(.+)", upper):
+        framework, control, version = "nist_800_53", f"{match.group(1)}-{match.group(2)}", "rev5"
+    elif upper.startswith("SOC2-"):
+        framework, control, version = "soc2", raw[len("SOC2-") :], "2017"
+    else:
+        cis_match = re.fullmatch(r"CIS-(K8S|KUBERNETES|DOCKER)-(.+)", upper)
+        if cis_match:
+            product = "kubernetes" if cis_match.group(1) in {"K8S", "KUBERNETES"} else "docker"
+            framework = f"cis_{product}_benchmark"
+            control = cis_match.group(2)
+            version = "bundled"
+    if not framework or not control:
+        return None
+    return ControlTag(
+        framework=framework,
+        control=control,
+        version=version,
+        confidence=1.0,
+        source="legacy:compliance_tags",
+        via="compliance_tags",
+    )
+
+
 def _dedupe_control_tags(tags: list[ControlTag]) -> list[ControlTag]:
     seen: set[tuple[str, str]] = set()
     out: list[ControlTag] = []
@@ -464,6 +498,9 @@ class Finding:
             values = getattr(self, field_name)
             for value in values:
                 if value:
+                    if field_name == "compliance_tags" and (inferred := _inferred_control_tag(str(value))) is not None:
+                        tags.append(inferred)
+                        continue
                     tags.append(
                         ControlTag(
                             framework=framework,
@@ -889,7 +926,7 @@ def ast_flow_dict_to_finding(raw: dict) -> "Finding":
         asset=Asset(
             name=f"{entrypoint or sink or category} in {file_path}" if file_path else entrypoint or sink or category,
             asset_type="source_file",
-            identifier=f"{file_path}:{line}:{entrypoint}:{sink}",
+            identifier=file_path or None,
             location=file_path or None,
         ),
         severity=severity,
@@ -911,6 +948,7 @@ def ast_flow_dict_to_finding(raw: dict) -> "Finding":
         },
         risk_score=9.5 if severity == "critical" else 8.0 if severity == "high" else 6.0,
         exposed_tools=[entrypoint] if entrypoint else [],
+        id=stable_id("ast-flow", file_path, str(line), entrypoint, sink, category),
     )
 
 
@@ -973,7 +1011,7 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
         asset=Asset(
             name=f"{secret_type} in {file_path}" if file_path else secret_type,
             asset_type="file",
-            identifier=loc or None,
+            identifier=file_path or None,
             location=file_path or None,
         ),
         severity=severity,
@@ -991,6 +1029,7 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
             "category": category,
             "redacted_preview": _safe_secret_preview(secret.get("preview")),
         },
+        id=stable_id("secret", file_path, str(line or ""), secret_type, category),
     )
 
 
@@ -1089,6 +1128,20 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
         ),
         remediation_guidance=recommendation or None,
         compliance_tags=sorted(set(compliance)),
+        controls=(
+            [
+                ControlTag(
+                    framework=f"cis_{provider.lower()}_benchmark",
+                    control=check_id,
+                    version=benchmark_version or "bundled",
+                    confidence=1.0,
+                    source="cloud_cis_check",
+                    via="check_id",
+                )
+            ]
+            if not is_vendor_best_practice
+            else []
+        ),
         attack_tags=sorted(set(attack)),
         evidence={
             "provider": provider,
@@ -1158,7 +1211,7 @@ def iac_finding_to_finding(iac: dict) -> "Finding":
         asset=Asset(
             name=file_path,
             asset_type="iac_resource",
-            identifier=f"iac:{category}:{file_path}:{line_number}",
+            identifier=file_path,
             location=file_path,
         ),
         severity=severity,

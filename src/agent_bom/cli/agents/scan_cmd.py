@@ -1998,6 +1998,15 @@ def scan(
     _scan_outcome = (
         ScanOutcome.FAILED if ctx.cloud_provider_failures and not ctx.cloud_provider_successes and not agents else ScanOutcome.COMPLETE
     )
+    _codeowners: list[dict[str, object]] = []
+    try:
+        _project_root = Path(project or ".").resolve()
+        if _project_root.is_dir():
+            from agent_bom.graph.codeowners import load_codeowners
+
+            _codeowners = [rule.to_dict() for rule in load_codeowners(_project_root)]
+    except OSError:
+        _codeowners = []
     report = AIBOMReport(
         agents=agents,
         blast_radii=blast_radii,
@@ -2006,6 +2015,7 @@ def scan(
         scan_run=ScanRun(outcome=_scan_outcome, issues=_scan_issues),
         scan_id=_scan_id,
         endpoint_inventory_data=_endpoint_inventory_data,
+        codeowners=_codeowners,
         **_report_kwargs,
     )
     from agent_bom.advisory_sources import summarize_advisory_coverage

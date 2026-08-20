@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from agent_bom.compliance_hub import apply_hub_classification
-from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
 from agent_bom.graph.severity import normalize_severity
 from agent_bom.parsers.sarif import (
     NormalizedSarifResult,
@@ -166,7 +166,7 @@ def _normalized_sarif_result_to_finding(result: NormalizedSarifResult) -> Findin
         asset=Asset(
             name=asset_name,
             asset_type="file" if file_path else "external",
-            identifier=rule_id or None,
+            identifier=file_path or rule_id or None,
             location=file_path,
         ),
         severity=severity,
@@ -175,6 +175,14 @@ def _normalized_sarif_result_to_finding(result: NormalizedSarifResult) -> Findin
         cwe_ids=cwe_ids,
         cvss_score=result.security_severity,
         evidence=evidence,
+        id=stable_id(
+            "sarif",
+            result.tool_name,
+            rule_id,
+            file_path or "",
+            str(location.start_line if location is not None else ""),
+            result.message,
+        ),
     )
     return apply_hub_classification(finding)
 

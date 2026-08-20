@@ -1228,6 +1228,9 @@ class AIBOMReport:
     # Populated alongside blast_radii for backward compatibility.
     # Future phases will migrate cloud_reports and proxy alerts here too.
     findings: list["Finding"] = field(default_factory=list)
+    # Ordered CODEOWNERS rules loaded from the scanned project. They are
+    # applied to source findings and retained for graph ownership overlays.
+    codeowners: list[dict[str, Any]] = field(default_factory=list)
 
     # Scan context metadata — what input sources were actually processed.
     # Populated by the CLI/API after scan completes. Consumers use this to
@@ -1497,6 +1500,10 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_org_architecture_findings() if finding.id not in org_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._malicious_package_findings() if finding.id not in malicious_existing)
+        if self.codeowners:
+            from agent_bom.graph.codeowners import apply_codeowners
+
+            apply_codeowners(base, self.codeowners)
         return base
 
     def _malicious_package_findings(self) -> "list[Finding]":

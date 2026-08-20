@@ -185,7 +185,7 @@ def test_cis_rule_full_description_is_the_recommendation(rules: dict[str, dict])
 def test_unified_finding_rule_falls_back_to_its_title(rules: dict[str, dict]) -> None:
     """SAST/secret descriptions can quote the scanned repository, so the unified
     finding path keeps the conservative allowlist and shows the title instead."""
-    rule = next(rule for rule_id, rule in rules.items() if rule_id.startswith("finding/CREDENTIAL_EXPOSURE/"))
+    rule = rules["finding/CREDENTIAL_EXPOSURE"]
     assert rule["fullDescription"]["text"] == "Hardcoded AWS secret key"
     assert _SECRET_DESCRIPTION not in json.dumps(rule)
 

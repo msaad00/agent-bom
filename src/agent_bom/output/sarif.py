@@ -431,6 +431,30 @@ def _finding_artifact_uri(report: AIBOMReport, finding: Finding) -> str:
     return _to_relative_path("unknown", ecosystem=ecosystem)
 
 
+def _package_manifest_location(finding: Finding) -> tuple[str, int] | None:
+    """Return the canonical package declaration location carried by a finding."""
+    provenance = evidence(finding, "package_version_provenance", {})
+    if not isinstance(provenance, dict):
+        return None
+    entries = provenance.get("evidence")
+    if not isinstance(entries, list):
+        return None
+    ecosystem = package_ecosystem(finding) or None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("source_file") or entry.get("path")
+        line = entry.get("line")
+        if isinstance(path, str) and path and isinstance(line, int) and line > 0:
+            # Persisted version evidence intentionally reduces absolute paths to
+            # ``<path:basename>``. SARIF needs the safe basename as its artifact
+            # URI, never the original host path.
+            if path.startswith("<path:") and path.endswith(">"):
+                path = path[6:-1]
+            return _to_relative_path(path, ecosystem=ecosystem), line
+    return None
+
+
 def _agent_discovery_provenance_from_report(report: AIBOMReport, agent_names: list[str]) -> list[Any]:
     agents_by_name = {agent.name: agent for agent in report.agents}
     out: list[Any] = []
@@ -599,7 +623,8 @@ def _cve_sarif_result(
     if exposure_chain:
         message_text += f" Exposure path: {exposure_chain}. Blast radius: {exposure_path_blast_summary(exposure_path)}."
 
-    config_path = _finding_artifact_uri(report, finding)
+    manifest_location = _package_manifest_location(finding)
+    config_path, start_line = manifest_location or (_finding_artifact_uri(report, finding), 1)
     fp_input = f"{rule_id}:{pkg_name}:{pkg_version}:{config_path}"
     kind = "informational" if sev == Severity.NONE else "fail"
     result: dict = {
@@ -607,12 +632,12 @@ def _cve_sarif_result(
         "level": level,
         "kind": kind,
         "message": {"text": sanitize_advisory_text("title", message_text, fallback=f"{rule_id} package vulnerability")},
-        **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=config_path, start_line=1),
+        **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=config_path, start_line=start_line),
         "locations": [
             {
                 "physicalLocation": {
                     "artifactLocation": {"uri": config_path, "uriBaseId": "%SRCROOT%"},
-                    "region": {"startLine": 1, "startColumn": 1},
+                    "region": {"startLine": start_line, "startColumn": 1},
                 },
             }
         ],

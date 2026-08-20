@@ -110,6 +110,13 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
     if profile:
         import os as _os
 
+        from agent_bom.cli._profiles import load_active_profile
+
+        try:
+            load_active_profile(profile)
+        except click.ClickException as exc:
+            raise click.BadParameter(str(exc), param_hint="'--profile'") from exc
+
         _os.environ["AGENT_BOM_PROFILE"] = profile
     if agent_mode:
         import os as _os

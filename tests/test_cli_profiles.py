@@ -59,6 +59,29 @@ tenant_id = "team-a"
     assert "Available profiles: dev, prod" in message
 
 
+def test_top_level_profile_option_rejects_unknown_profile(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[profiles.dev]
+tenant_id = "default"
+
+[profiles.prod]
+tenant_id = "team-a"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+    monkeypatch.delenv("AGENT_BOM_PROFILE", raising=False)
+
+    result = CliRunner().invoke(main, ["--profile", "totally-bogus", "where"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--profile'" in result.output
+    assert "Profile 'totally-bogus' was not found" in result.output
+    assert "Available profiles: dev, prod" in result.output
+    assert "MCP config locations" not in result.output
+
+
 def test_scan_profile_defaults_do_not_override_explicit_cli_flags(monkeypatch, tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(

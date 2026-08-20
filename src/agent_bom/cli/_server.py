@@ -1089,7 +1089,7 @@ def mcp_server_cmd(
     """Start agent-bom as an MCP server.
 
     \b
-    Requires:  pip install 'agent-bom[mcp-server]'
+    The MCP SDK is included in the standard agent-bom install.
 
     \b
     Workflow prompts first:

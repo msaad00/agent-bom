@@ -994,7 +994,9 @@ def export_graph_html(
             top_risks=_graph_priority_summary(all_findings, collapse_cves=True),
             overview=_graph_overview(all_findings),
         )
-    Path(output_path).write_text(html_content, encoding="utf-8")
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(html_content, encoding="utf-8")
 
 
 #: Pinned vendor bundles inlined into the standalone graph HTML so the export
@@ -1260,7 +1262,7 @@ const topRisks={top_risks_json};
 const overview={overview_json};
 const categoryFindings={category_findings_json};
 let activeRiskNodeId=null;
-let focusedPathOnly=true;
+let focusedPathOnly=false;
 let credentialsOnly=false;
 let activeSeverity='all';
 const expandedPackages = new Map();
@@ -1380,7 +1382,7 @@ function severityClass(sev){{
 }}
 
 function escapeHtml(value){{
-  return String(value || '')
+  return String(value ?? '')
     .replace(/&/g,'&amp;')
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
@@ -1788,9 +1790,8 @@ function dlPng(){{
 renderRiskList();
 renderFindingList();
 updateOverview();
-document.getElementById('chip-focus').classList.add('active');
 cy.ready(function(){{
-  setTimeout(function(){{ focusTopRisk(); }}, 120);
+  setTimeout(function(){{ fitAll(); }}, 120);
 }});
 </script>
 </body>

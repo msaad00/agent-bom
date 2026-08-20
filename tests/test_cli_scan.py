@@ -1986,6 +1986,31 @@ def test_scan_format_graph_html_writes_file(tmp_path):
     assert "<html" in out.read_text().lower()
 
 
+def test_scan_format_graph_html_writes_nested_graph_html_extension(tmp_path):
+    """The format-specific suffix should work and create missing parents."""
+    out = tmp_path / "nested" / "mcp.graph-html"
+    with (
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "graph-html", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0, result.output
+    assert out.exists(), "nested graph-html output file was not created"
+    assert "<html" in out.read_text(encoding="utf-8").lower()
+
+
+def test_scan_infers_graph_html_from_graph_html_extension(tmp_path):
+    out = tmp_path / "nested" / "mcp.graph-html"
+    with (
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "<html" in out.read_text(encoding="utf-8").lower()
+
+
 def test_scan_format_graph_html_offline_omits_cdn_scripts(tmp_path):
     """--offline-html writes an airgap-safe static graph HTML file."""
     out = tmp_path / "graph.html"

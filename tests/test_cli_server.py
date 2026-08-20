@@ -453,6 +453,16 @@ def test_serve_cmd_requires_clickhouse_url_for_backend():
 # ---------------------------------------------------------------------------
 
 
+def test_mcp_server_help_does_not_require_an_optional_extra():
+    runner = CliRunner()
+
+    result = runner.invoke(mcp_server_cmd, ["--help"])
+
+    assert result.exit_code == 0
+    assert "pip install 'agent-bom[mcp-server]'" not in result.output
+    assert "included in the standard agent-bom install" in result.output
+
+
 def test_mcp_server_cmd_invalid_port_is_usage_error():
     runner = CliRunner()
     result = runner.invoke(mcp_server_cmd, ["--port", "99999"])

@@ -762,6 +762,23 @@ def test_to_graphml_empty_graph():
     assert "<node" not in gml
 
 
+def test_to_mermaid_limit_prioritizes_severe_vulnerability_paths():
+    graph = DepGraph()
+    graph.add_node("pkg:a", "@babel/a", "pkg_transitive")
+    graph.add_node("pkg:b", "@babel/b", "pkg_transitive")
+    graph.add_node("pkg:risk", "production-package", "pkg_vuln")
+    graph.add_node("cve:critical", "CVE-2026-0001", "cve", "critical")
+    graph.add_edge("pkg:risk", "cve:critical", "affects")
+
+    mermaid = to_mermaid(graph, max_nodes=2)
+
+    assert "production-package" in mermaid
+    assert "CVE-2026-0001" in mermaid
+    assert "@babel/a" not in mermaid
+    assert "@babel/b" not in mermaid
+    assert "-->|affects|" in mermaid
+
+
 def test_to_graphml_round_trips_through_networkx_with_escaped_labels():
     nx = pytest.importorskip("networkx")
     graph = DepGraph()

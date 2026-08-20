@@ -1215,3 +1215,17 @@ def test_graph_html_is_self_contained_and_carries_finding_categories(tmp_path):
     # Graph-derived finding categories reach the embedded data + risk panel.
     assert "COMBINATION" in html
     assert "AI agent can reach a credential or privileged tool" in html
+
+
+def test_graph_html_starts_with_full_graph_and_preserves_zero_counts(tmp_path):
+    from agent_bom.output.graph import export_graph_html
+
+    report = _make_report(agents=[_make_agent(servers=[_make_server()])])
+    out = tmp_path / "graph.html"
+
+    export_graph_html(report, [], str(out))
+    html = out.read_text(encoding="utf-8")
+
+    assert "String(value ?? '')" in html
+    assert "document.getElementById('chip-focus').classList.add('active')" not in html
+    assert "setTimeout(function(){ fitAll(); }, 120)" in html

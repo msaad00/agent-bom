@@ -76,7 +76,7 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "graph": ("agent-bom-graph.json", (".json",)),
     "mermaid": ("agent-bom-diagram.mmd", (".mmd", ".mermaid", ".md")),
     "svg": ("agent-bom-supply-chain.svg", (".svg",)),
-    "graph-html": ("agent-bom-graph.html", (".html", ".htm")),
+    "graph-html": ("agent-bom-graph.html", (".graph-html", ".html", ".htm")),
     "badge": ("agent-bom-badge.json", (".json",)),
     "plain": ("agent-bom-report.txt", (".txt", ".text", ".log")),
     "text": ("agent-bom-report.txt", (".txt", ".text", ".log")),
@@ -582,6 +582,10 @@ def render_output(
                 export_sarif(report, output, exclude_unfixable=exclude_unfixable)
             elif output.endswith(".spdx.json"):
                 export_spdx(report, output)
+            elif output.endswith(".graph-html"):
+                from agent_bom.output.graph import export_graph_html
+
+                export_graph_html(report, blast_radii, output, offline_assets=offline_html)
             elif output.endswith(".html"):
                 export_html(report, output, blast_radii, offline_assets=offline_html)
             elif output.endswith(".pdf"):

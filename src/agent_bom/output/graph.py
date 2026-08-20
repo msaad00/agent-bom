@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.graph import SEVERITY_BADGE as _SEVERITY_BADGE
 from agent_bom.graph import SEVERITY_RANK as _SEVERITY_RANK
-from agent_bom.security import sanitize_launch_command, sanitize_path_label
+from agent_bom.graph.node import stable_node_id
+from agent_bom.security import sanitize_launch_command, sanitize_path_label, sanitize_text
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
@@ -467,9 +468,90 @@ def build_graph_elements(
                             }
                         )
 
+    _append_source_tool_elements(elements, report)
     _append_repo_structure_elements(elements, report, collapse_cves=collapse_cves, vuln_pkg_keys=vuln_pkg_keys)
     elements.extend(_graph_policy_finding_elements(report))
     return elements
+
+
+def _append_source_tool_elements(elements: list[dict], report: "AIBOMReport") -> None:
+    """Append AST-discovered MCP tools and their defining source files."""
+    inventory = report.ai_inventory_data
+    if not isinstance(inventory, dict):
+        return
+    analysis = inventory.get("ast_analysis")
+    if not isinstance(analysis, dict):
+        return
+    raw_tools = analysis.get("tools")
+    if not isinstance(raw_tools, list):
+        return
+
+    known_nodes = {str(item["data"]["id"]) for item in elements if "id" in item.get("data", {})}
+    known_edges = {
+        (str(item["data"]["source"]), str(item["data"]["target"]), str(item["data"].get("type", "")))
+        for item in elements
+        if "source" in item.get("data", {}) and "target" in item.get("data", {})
+    }
+    for raw in raw_tools:
+        if not isinstance(raw, dict):
+            continue
+        tool_name = sanitize_text(raw.get("name", ""), max_len=200).strip()
+        source_file = sanitize_text(raw.get("file", ""), max_len=500).strip().replace("\\", "/")
+        while source_file.startswith("./"):
+            source_file = source_file[2:]
+        if not tool_name or not source_file:
+            continue
+
+        file_id = f"source_file:{source_file}"
+        if file_id not in known_nodes:
+            known_nodes.add(file_id)
+            elements.append(
+                {
+                    "data": {
+                        "id": file_id,
+                        "label": source_file.rsplit("/", 1)[-1],
+                        "type": "source_file",
+                        "path": source_file,
+                        "tip": f"Source file: {source_file}",
+                        "searchText": source_file.lower(),
+                    }
+                }
+            )
+
+        tool_id = f"tool:source:{stable_node_id(source_file, tool_name)}"
+        if tool_id not in known_nodes:
+            known_nodes.add(tool_id)
+            line = raw.get("line") if isinstance(raw.get("line"), int) else None
+            description = sanitize_text(raw.get("description", ""), max_len=1_000)
+            elements.append(
+                {
+                    "data": {
+                        "id": tool_id,
+                        "label": tool_name,
+                        "type": "tool",
+                        "tip": f"MCP tool: {tool_name}\nSource: {source_file}" + (f":{line}" if line else ""),
+                        "description": description,
+                        "sourceFile": source_file,
+                        "line": line,
+                        "discovery_source": "ast_analysis",
+                        "searchText": f"{tool_name} {source_file} {description}".lower(),
+                    }
+                }
+            )
+
+        edge_key = (file_id, tool_id, "defines")
+        if edge_key not in known_edges:
+            known_edges.add(edge_key)
+            elements.append(
+                {
+                    "data": {
+                        "source": file_id,
+                        "target": tool_id,
+                        "type": "defines",
+                        "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
+                    }
+                }
+            )
 
 
 def _graph_policy_findings(report: "AIBOMReport") -> list["Finding"]:

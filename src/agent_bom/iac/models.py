@@ -22,6 +22,8 @@ class IaCResourceType(str, Enum):
     DOCKERFILE = "dockerfile"
     # CloudFormation
     CFN_RESOURCE = "cfn_resource"
+    # Standalone AWS IAM policy / trust policy
+    IAM_POLICY = "iam_policy"
     # Helm
     HELM_RESOURCE = "helm_resource"
     # Snowflake DCM (Database Change Management)

@@ -1,4 +1,4 @@
-"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm, DCM, dbt.
+"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation, IAM, Helm, DCM, dbt.
 
 Coordinator module that discovers and scans IaC files across all supported
 formats.  Each scanner is regex/YAML-based with zero external dependencies.
@@ -34,6 +34,7 @@ from agent_bom.iac.dbt_security import is_dbt_file, scan_dbt_file
 from agent_bom.iac.dcm import is_dcm_migration, scan_dcm_migration
 from agent_bom.iac.dockerfile import scan_dockerfile
 from agent_bom.iac.helm import scan_chart_yaml, scan_values_yaml
+from agent_bom.iac.iam_policy import is_iam_policy_document, scan_iam_policy
 from agent_bom.iac.kubernetes import scan_k8s_manifest
 from agent_bom.iac.models import IaCFinding, ScanContext, ScannerVerdict, ScanResult
 from agent_bom.iac.terraform_security import scan_terraform_security
@@ -49,6 +50,7 @@ __all__ = [
     "scan_values_yaml",
     "scan_dcm_migration",
     "scan_dbt_file",
+    "scan_iam_policy",
     "ScanContext",
     "ScanResult",
     "ScannerVerdict",
@@ -64,6 +66,7 @@ _SCANNER_IDS: tuple[str, ...] = (
     "dbt",
     "kubernetes",
     "cloudformation",
+    "iam-policy",
 )
 
 # Dockerfile filename patterns
@@ -141,6 +144,8 @@ def is_iac_file(path: Path, root: Path | None = None) -> bool:
     if root is not None and is_dbt_file(path, root):
         return True
     if _is_k8s_manifest(path):
+        return True
+    if is_iam_policy_document(path):
         return True
     return bool(_is_cloudformation(path))
 
@@ -267,6 +272,10 @@ def scan_iac_with_context(
             if "cloudformation" not in disabled:
                 files_matched["cloudformation"] += 1
                 findings.extend(scan_cloudformation(path))
+        elif is_iam_policy_document(path):
+            if "iam-policy" not in disabled:
+                files_matched["iam-policy"] += 1
+                findings.extend(scan_iam_policy(path))
 
     # Enrich with MITRE ATT&CK and MITRE ATLAS technique IDs
     from agent_bom.iac.atlas_mapping import get_atlas_techniques

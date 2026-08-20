@@ -138,6 +138,7 @@ _EXPRESSION_FIELD_GETTERS = {
     "has_credentials": lambda b: bool(b.exposed_credentials),
     "ai_risk": lambda b: bool(b.ai_risk_context),
     "graph_reachable": lambda b: getattr(b, "graph_reachable", None),
+    "symbol_reachability": lambda b: getattr(b, "symbol_reachability", None),
     # Tags
     "owasp_tags": lambda b: getattr(b, "owasp_tags", []),
     "owasp_mcp_tags": lambda b: getattr(b, "owasp_mcp_tags", []),

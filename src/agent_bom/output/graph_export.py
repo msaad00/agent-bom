@@ -252,7 +252,7 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
                     graph.add_node(cve_id, vuln_id_str, "cve", severity)
                     graph.add_edge(pkg_id, cve_id, "affects")
 
-    _merge_cloud_graph(graph, data)
+    _merge_unified_graph_evidence(graph, data)
     return graph
 
 
@@ -285,8 +285,8 @@ _CLOUD_ENTITY_TYPES = frozenset(
 )
 
 
-def _merge_cloud_graph(graph: DepGraph, data: dict[str, Any]) -> None:
-    """Merge the cloud-aware unified graph's cloud/identity nodes into the DepGraph.
+def _merge_unified_graph_evidence(graph: DepGraph, data: dict[str, Any]) -> None:
+    """Merge unified-only cloud, identity, and source evidence into the DepGraph.
 
     The CLI graph export historically walked only agents→servers→tools→creds→
     packages→CVEs, so cloud-inventory, CIEM (HAS_PERMISSION), CIS misconfigs, and
@@ -294,6 +294,8 @@ def _merge_cloud_graph(graph: DepGraph, data: dict[str, Any]) -> None:
     ``build_unified_graph_from_report`` (the single source of cloud graph truth)
     and grafts its cloud/identity/posture nodes + edges onto the DepGraph so every
     existing serializer (json/dot/mermaid/graphml/cypher) shows the full estate.
+    Source-discovered MCP tools also originate only in the unified graph; graft
+    those tool/file nodes so graph export does not discard their provenance.
     Best-effort: never raises into the export path.
     """
     try:
@@ -306,7 +308,9 @@ def _merge_cloud_graph(graph: DepGraph, data: dict[str, Any]) -> None:
     added: set[str] = set()
     for node in unified.nodes.values():
         etype = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
-        if etype not in _CLOUD_ENTITY_TYPES or node.id in graph._nodes:
+        is_ast_tool = etype == "tool" and node.attributes.get("discovery_source") == "ast_analysis"
+        is_ast_source = etype == "source_file" and "ast_analysis" in node.data_sources
+        if (etype not in _CLOUD_ENTITY_TYPES and not is_ast_tool and not is_ast_source) or node.id in graph._nodes:
             continue
         graph.add_node(
             node.id,

@@ -675,3 +675,22 @@ class TestExpressionInRuleMatches:
         br = _make_blast_radius()
         br.graph_reachable = reachable
         assert _rule_matches(rule, br) is expected
+
+    @pytest.mark.parametrize(
+        ("symbol_reachability", "expected"),
+        [
+            ("function_reachable", True),
+            ("package_reachable", False),
+            ("unreachable", False),
+            (None, False),
+        ],
+    )
+    def test_symbol_reachability_condition(self, symbol_reachability, expected):
+        rule = {
+            "id": "symbol-reachable",
+            "condition": "symbol_reachability == 'function_reachable'",
+            "action": "fail",
+        }
+        br = _make_blast_radius()
+        br.symbol_reachability = symbol_reachability
+        assert _rule_matches(rule, br) is expected

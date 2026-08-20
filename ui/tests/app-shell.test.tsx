@@ -15,7 +15,7 @@ vi.mock("@/components/demo-estate-label", () => ({ DemoEstateLabel: () => null }
 vi.mock("@/components/nav", () => ({ Nav: () => null }));
 
 describe("AppShell", () => {
-  it("uses the ultrawide workspace instead of leaving 1400px of content between symmetric gutters", () => {
+  it("uses the ultrawide workspace instead of leaving symmetric empty gutters around investigations", () => {
     render(
       <AppShell>
         <div>Workspace content</div>
@@ -23,7 +23,7 @@ describe("AppShell", () => {
     );
 
     const content = screen.getByText("Workspace content").parentElement;
-    expect(content).toHaveClass("w-full", "max-w-[1920px]");
-    expect(content).not.toHaveClass("max-w-[1400px]");
+    expect(content).toHaveClass("w-full", "max-w-[2560px]");
+    expect(content).not.toHaveClass("max-w-[1920px]");
   });
 });

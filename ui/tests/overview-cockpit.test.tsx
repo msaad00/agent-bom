@@ -70,6 +70,9 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText("Connected estate")).not.toBeInTheDocument();
     expect(screen.queryByText("Live surfaces")).not.toBeInTheDocument();
     expect(screen.queryByTestId("overview-activated-services")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Trend unavailable/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Current evidence snapshot/i)).toBeInTheDocument();
+    expect(screen.getByText(/Why #1:/i)).toHaveTextContent(/critical path reaches an agent/i);
   });
 
   it("consolidates security coverage and estate operations into one compact section", async () => {
@@ -341,10 +344,10 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText("Grade C")).toBeInTheDocument();
   });
 
-  it("labels trend unavailable when this score model has no matching history contract", () => {
+  it("labels the grade as a current snapshot and points to ranked remediation evidence", () => {
     render(<OverviewCockpit {...baseProps} grade="C" score={62} />);
 
-    expect(screen.getByText(/trend unavailable.*current score model/i)).toBeInTheDocument();
+    expect(screen.getByText(/current evidence snapshot.*what to fix first/i)).toBeInTheDocument();
     expect(screen.queryByText(/improved|declined/i)).not.toBeInTheDocument();
   });
 

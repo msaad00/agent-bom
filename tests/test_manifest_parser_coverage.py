@@ -151,3 +151,74 @@ def test_empty_project_does_not_invent_manifest_coverage_gaps(tmp_path: Path) ->
     assert parse_go_packages(tmp_path, verify_checksums=False) == []
     assert parse_gradle_packages(tmp_path) == []
     assert scanner_state.consume_coverage_warnings() == []
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "ecosystem", "parser", "content", "expected_names"),
+    [
+        pytest.param(
+            "Gemfile.lock",
+            "rubygems",
+            parse_gemfile_lock,
+            """GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.1.3)
+    truncated (
+
+PLATFORMS
+  ruby
+""",
+            {"rails"},
+            id="gemfile-lock",
+        ),
+        pytest.param(
+            "go.sum",
+            "go",
+            _go_packages,
+            "example.com/valid v1.2.3 h1:YWJjZA==\nexample.com/nohash v9.9.9\n",
+            {"example.com/valid"},
+            id="go-sum",
+        ),
+        pytest.param(
+            "requirements.txt",
+            "pypi",
+            parse_pip_packages,
+            "requests==2.31.0\nflask==\n@@@broken\n",
+            {"requests"},
+            id="requirements",
+        ),
+    ],
+)
+def test_malformed_line_oriented_manifest_is_partial_not_silently_clean(
+    tmp_path: Path,
+    relative_path: str,
+    ecosystem: str,
+    parser: Parser,
+    content: str,
+    expected_names: set[str],
+) -> None:
+    target = tmp_path / relative_path
+    target.write_text(content, encoding="utf-8")
+
+    packages = parser(tmp_path)
+
+    assert {package.name for package in packages} == expected_names
+    warnings = scanner_state.consume_coverage_warnings()
+    assert len(warnings) == 1, warnings
+    assert warnings[0]["reason"] == "manifest_parse_error"
+    assert warnings[0]["ecosystem"] == ecosystem
+    assert target.name in warnings[0]["release"]
+    assert "partial" in warnings[0]["detail"].lower()
+
+
+def test_malformed_line_oriented_warning_reaches_partial_scan_artifact(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "requirements.txt").write_text("requests==2.31.0\nflask==\n", encoding="utf-8")
+
+    payload = _scan_dir_to_json(project, tmp_path / "report.json")
+
+    parse_errors = [warning for warning in payload["coverage_warnings"] if warning["reason"] == "manifest_parse_error"]
+    assert any(warning["ecosystem"] == "pypi" for warning in parse_errors), parse_errors
+    assert payload["scan_run"]["outcome"] == "partial"

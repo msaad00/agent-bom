@@ -728,6 +728,54 @@ def test_scan_sbom_does_not_merge_ambient_skill_packages(tmp_path, monkeypatch):
     assert "Scanning 1 skill file" not in result.output
 
 
+def test_scan_sbom_with_embedded_vulnerability_never_prints_clean_stage_message(tmp_path, monkeypatch):
+    sbom = tmp_path / "vulnerable.cdx.json"
+    sbom.write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.5",
+                "components": [
+                    {
+                        "type": "library",
+                        "bom-ref": "pkg:pypi/flask@2.0.0",
+                        "name": "flask",
+                        "version": "2.0.0",
+                        "purl": "pkg:pypi/flask@2.0.0",
+                    }
+                ],
+                "vulnerabilities": [
+                    {
+                        "id": "CVE-2026-0001",
+                        "ratings": [{"severity": "high"}],
+                        "affects": [{"ref": "pkg:pypi/flask@2.0.0"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
+
+    result = _run(
+        [
+            "scan",
+            "--sbom",
+            str(sbom),
+            "--no-discover",
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "console",
+            "--no-color",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Offline scan complete: no known vulnerabilities found in local data" not in result.output
+    assert "retained 1 vulnerability" in result.output.lower()
+
+
 def test_scan_inventory_only_round_trips_scan_report_snapshot_without_accretion(tmp_path):
     inventory = tmp_path / "inventory.json"
     inventory.write_text(

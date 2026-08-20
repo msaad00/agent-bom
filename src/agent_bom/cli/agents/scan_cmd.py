@@ -1549,6 +1549,7 @@ def scan(
             if not quiet:
                 con.print("  [dim]No packages to scan[/dim]")
         else:
+            input_vulnerability_count = sum(len(package.vulnerabilities) for package in all_packages)
             _unique_pkgs = len({(p.name, p.version, p.ecosystem) for a in agents for s in a.mcp_servers for p in s.packages})
             if not quiet:
                 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -1690,6 +1691,11 @@ def scan(
                 # only. Graph-derived findings surface after graph analysis
                 # below, and the all-categories totals line reconciles both.
                 con.print(f"  [red]⚠[/red] Scan complete — package CVEs: {_sev_str}")
+            elif input_vulnerability_count:
+                con.print(
+                    "  [yellow]⚠[/yellow] Scan complete — retained "
+                    f"{input_vulnerability_count} vulnerability record(s) supplied by the input inventory"
+                )
             elif offline:
                 if unresolved:
                     con.print(

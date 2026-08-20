@@ -22,6 +22,7 @@ if a schema file is unavailable the format falls back to structural assertions.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,11 +32,14 @@ jsonschema = pytest.importorskip("jsonschema")
 from jsonschema import Draft7Validator, Draft201909Validator  # noqa: E402
 from referencing import Registry, Resource  # noqa: E402
 
+from agent_bom.evidence.scan_run import ScanIssue, ScanRun  # noqa: E402
 from agent_bom.models import (  # noqa: E402
     Agent,
     AgentType,
     AIBOMReport,
     BlastRadius,
+    MCPPrompt,
+    MCPResource,
     MCPServer,
     MCPTool,
     Package,
@@ -342,6 +346,58 @@ def test_cyclonedx_services_are_top_level(report: AIBOMReport) -> None:
     assert not any("services" in c for c in cdx["components"]), "no component may carry a nested services array"
 
 
+def test_cyclonedx_exports_prompt_and_resource_evidence_as_native_data_components() -> None:
+    server = MCPServer(
+        name="context-server",
+        prompts=[MCPPrompt(name="summarize", description="Summarize a document")],
+        resources=[MCPResource(uri="file:///docs/runbook.md", name="runbook", mime_type="text/markdown")],
+    )
+    report = AIBOMReport(
+        agents=[Agent(name="agent", agent_type=AgentType.CUSTOM, config_path="/tmp/agent.json", mcp_servers=[server])],
+        scan_id="3c249b23-4088-4c46-911d-1d4daf950e47",
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    cdx = to_cyclonedx(report)
+
+    _assert_schema_valid(
+        "CycloneDX 1.7",
+        "cyclonedx-1.7.schema.json",
+        Draft7Validator,
+        cdx,
+        registry=_cyclonedx_registry(),
+    )
+    data_components = {component["name"]: component for component in cdx["components"] if component["type"] == "data"}
+    assert data_components["summarize"]["data"][0]["type"] == "definition"
+    assert data_components["runbook"]["data"][0]["type"] == "other"
+    resource_properties = {prop["name"]: prop["value"] for prop in data_components["runbook"]["properties"]}
+    assert resource_properties["agent-bom:uri"] == "file:///docs/runbook.md"
+    server_dependency = next(dependency for dependency in cdx["dependencies"] if dependency["ref"].startswith("mcp-server-"))
+    assert data_components["summarize"]["bom-ref"] in server_dependency["dependsOn"]
+    assert data_components["runbook"]["bom-ref"] in server_dependency["dependsOn"]
+
+
+def test_cyclonedx_composition_and_metadata_reflect_partial_scan_run(report: AIBOMReport) -> None:
+    partial_report = deepcopy(report)
+    partial_report.scan_run = ScanRun(
+        issues=[
+            ScanIssue(
+                code="scanner_coverage_gap",
+                stage="scanning",
+                source="osv",
+                message="Advisory source unavailable",
+            )
+        ]
+    )
+
+    cdx = to_cyclonedx(partial_report)
+
+    assert cdx["compositions"][0]["aggregate"] == "incomplete"
+    metadata_properties = {prop["name"]: prop["value"] for prop in cdx["metadata"]["properties"]}
+    assert metadata_properties["agent-bom:scan-outcome"] == "partial"
+    assert metadata_properties["agent-bom:scan-issue-count"] == "1"
+
+
 def test_spdx2_conforms_to_2_3_schema(report: AIBOMReport) -> None:
     _assert_schema_valid("SPDX 2.3", "spdx-2.3.schema.json", Draft201909Validator, to_spdx2(report))
 
@@ -363,7 +419,7 @@ def test_spdx_3_0_is_canonical_jsonld(report: AIBOMReport) -> None:
     assert creation_info["specVersion"] == "3.0.1"
 
     spdx_document = next(n for n in graph if n["type"] == "SpdxDocument")
-    assert spdx_document["spdxId"].startswith("SPDXRef-")
+    assert ":" in spdx_document["spdxId"] and not spdx_document["spdxId"].startswith("_:")
     assert spdx_document["creationInfo"] == creation_info["@id"]
     assert "core" in spdx_document["profileConformance"]
     assert spdx_document["rootElement"], "SpdxDocument must reference a root element"
@@ -378,8 +434,18 @@ def test_spdx_3_0_is_canonical_jsonld(report: AIBOMReport) -> None:
     for node in graph:
         if node["type"] == "CreationInfo":
             continue
-        assert node.get("spdxId", "").startswith("SPDXRef-"), node
+        assert ":" in node.get("spdxId", "") and not node.get("spdxId", "").startswith("_:"), node
         assert node.get("creationInfo") == creation_info["@id"], node
+
+    # SPDX 3 Element identifiers and originatedBy references are IRIs. A raw
+    # discovery-source label such as "project" must never be projected as an
+    # identity reference.
+    element_ids = {node["spdxId"] for node in graph if node.get("spdxId")}
+    for node in graph:
+        originated_by = node.get("originatedBy", [])
+        if isinstance(originated_by, str):
+            originated_by = [originated_by]
+        assert all(originator in element_ids for originator in originated_by), node
 
     valid_rel_types = {"contains", "dependsOn", "hasAssessmentFor", "affects", "describes", "generates"}
     relationships = [n for n in graph if str(n.get("type") or "").endswith("Relationship")]

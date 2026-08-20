@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.finding import Asset, ControlTag, Finding, FindingSource, FindingType
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -197,6 +197,38 @@ def test_unified_findings_populate_vulnerability_report(tmp_path: Path):
             "affected_servers": ["s1"],
         }
     ]
+
+
+def test_framework_tagged_non_cve_findings_populate_machine_compliance_evidence(tmp_path: Path):
+    report = AIBOMReport(
+        findings=[
+            Finding(
+                finding_type=finding_type,
+                source=source,
+                asset=Asset(name=name, asset_type="file", identifier=f"file:{name}"),
+                severity="high",
+                title=name,
+                controls=[ControlTag(framework="cmmc", control="RA.L2-3.11.2")],
+            )
+            for finding_type, source, name in (
+                (FindingType.SAST, FindingSource.SAST, "unsafe-code"),
+                (FindingType.PROMPT_SECURITY, FindingSource.PROMPT_SCAN, "unsafe-prompt"),
+                (FindingType.CREDENTIAL_EXPOSURE, FindingSource.SECRET_SCAN, "hardcoded-secret"),
+            )
+        ]
+    )
+    out = tmp_path / "evidence.zip"
+
+    export_compliance_bundle(report, "cmmc", str(out))
+
+    with zipfile.ZipFile(str(out)) as zf:
+        mapping = json.loads(zf.read("compliance_mapping.json"))
+        policy = json.loads(zf.read("policy_results.json"))
+    rows = mapping["RA.L2-3.11.2"]["evidence"]
+    assert {row["finding_id"] for row in rows} == {finding.id for finding in report.findings}
+    assert mapping["RA.L2-3.11.2"]["evidence_count"] == 3
+    assert policy["mapped_evidence_count"] == 3
+    assert policy["evidence_completeness"] == "complete"
 
 
 def test_manifest_has_digests_and_unsigned_status(tmp_path: Path):

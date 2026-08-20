@@ -13,6 +13,8 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _now
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 from agent_bom.demo_estate.showcase_graph import (
+    SHOWCASE_PACKAGES,
+    SHOWCASE_SERVERS,
     SHOWCASE_TENANT,
     seed_showcase_fleet_and_runtime,
     seed_showcase_graph_if_empty,
@@ -155,6 +157,42 @@ def _estate_blast_radii(tenant_id: str) -> list[Any]:
     return list(build_vulnerability_blast_radii(build_demo_estate(tenant_id=tenant_id)))
 
 
+def _stamp_showcase_graph_reachability(blast_radii: list[Any], agents: list[Any]) -> None:
+    """Join demo vulnerability rows to the exact persisted showcase paths.
+
+    The hand-built graph is the evidence authority for these paths.  Matching
+    stays deliberately exact on package version and vulnerability identity so
+    the demo never upgrades structural proximity into exploitability proof.
+    """
+    agents_by_name = {agent.name: agent for agent in agents}
+    servers_by_name = {server.name: server for agent in agents for server in agent.mcp_servers}
+
+    for blast_radius in blast_radii:
+        package_key = f"{blast_radius.package.name}@{blast_radius.package.version}".lower()
+        path = SHOWCASE_PACKAGES.get(package_key)
+        if path is None:
+            continue
+        server_name, vulnerability_id, _severity, _score = path
+        if blast_radius.vulnerability.id.upper() != vulnerability_id.upper():
+            continue
+
+        agent_name = SHOWCASE_SERVERS[server_name][0]
+        agent = agents_by_name.get(agent_name)
+        server = servers_by_name.get(server_name)
+        if agent is None or server is None:
+            continue
+
+        if all(existing.name != agent.name for existing in blast_radius.affected_agents):
+            blast_radius.affected_agents.append(agent)
+        if all(existing.name != server.name for existing in blast_radius.affected_servers):
+            blast_radius.affected_servers.append(server)
+
+        blast_radius.graph_reachable = True
+        blast_radius.graph_min_hop_distance = 3
+        blast_radius.graph_reachable_from_agents = [f"agent:{agent_name}"]
+        blast_radius.calculate_risk_score()
+
+
 def _run_demo_scan_report(*, tenant_id: str) -> dict[str, Any]:
     from agent_bom.cli._common import _build_agents_from_inventory
     from agent_bom.demo import DEMO_INVENTORY
@@ -173,13 +211,15 @@ def _run_demo_scan_report(*, tenant_id: str) -> dict[str, Any]:
         offline=True,
         demo_advisories=True,
     )
+    # Both halves of the vulnerability lane, or neither surfaces (see
+    # ``_estate_blast_radii``). Stamp the combined list before projecting it to
+    # findings so every API/export surface receives the same graph evidence.
+    blast_radii = [*blast_radii, *_estate_blast_radii(tenant_id)]
+    _stamp_showcase_graph_reachability(blast_radii, agents)
     findings = [blast_radius_to_finding(br) for br in blast_radii]
     findings.extend(blocklist_findings_for_agents(agents))
     findings.extend(evaluate_mcp_auth_posture(agents))
     findings.extend(_estate_findings(tenant_id))
-    # Both halves of the vulnerability lane, or neither surfaces (see
-    # ``_estate_blast_radii``).
-    blast_radii = [*blast_radii, *_estate_blast_radii(tenant_id)]
     report = to_json(
         AIBOMReport(
             agents=agents,

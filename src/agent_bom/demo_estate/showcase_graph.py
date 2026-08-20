@@ -54,6 +54,44 @@ SHOWCASE_BASELINE_CREATED_AT = (_SHOWCASE_CURRENT_STAMP - timedelta(days=7)).iso
 # as one estate rather than two unrelated roots.
 SHOWCASE_ORG_ID = "org:corp"
 
+# One shared definition for the hand-built vulnerability paths.  The graph
+# seeder and the demo scan both consume these records so a path cannot render in
+# the graph while the corresponding finding reports unknown reachability.
+SHOWCASE_AGENTS: dict[str, str] = {
+    "cursor": "Cursor IDE Agent",
+    "langchain-service": "LangChain Service Agent",
+    "support-copilot": "Support Copilot",
+    "data-pipeline": "Data Pipeline Agent",
+    "claude-desktop": "Claude Desktop Agent",
+}
+SHOWCASE_SERVERS: dict[str, tuple[str, list[str]]] = {
+    "filesystem-server": ("cursor", ["read_file", "write_file", "list_directory"]),
+    "shell-runner-server": ("cursor", ["run_shell", "exec_command", "read_file"]),
+    "llm-orchestrator-server": ("langchain-service", ["run_chain", "eval_expression", "http_get"]),
+    "vector-db-server": ("langchain-service", ["query_vectors", "upsert_vectors"]),
+    "helpdesk-server": ("support-copilot", ["create_ticket", "search_tickets", "send_reply"]),
+    "email-server": ("support-copilot", ["send_email", "list_inbox"]),
+    "warehouse-server": ("data-pipeline", ["run_query", "execute_sql", "export_csv"]),
+    "etl-server": ("data-pipeline", ["transform_image", "load_data"]),
+    "github-server": ("claude-desktop", ["create_issue", "search_repos", "push_files"]),
+    "team-chat-server": ("claude-desktop", ["send_message", "list_channels"]),
+}
+SHOWCASE_PACKAGES: dict[str, tuple[str, str, str, float]] = {
+    "pyyaml@5.3": ("shell-runner-server", "CVE-2020-14343", "critical", 9.8),
+    "langchain@0.0.150": ("llm-orchestrator-server", "CVE-2023-36258", "critical", 9.8),
+    "pillow@9.0.0": ("etl-server", "CVE-2023-4863", "high", 8.8),
+    "jsonwebtoken@8.5.1": ("helpdesk-server", "CVE-2022-23529", "high", 7.6),
+    "axios@1.4.0": ("helpdesk-server", "CVE-2023-45857", "high", 6.5),
+    "cryptography@39.0.0": ("warehouse-server", "CVE-2023-50782", "high", 7.5),
+    "ws@8.5.0": ("filesystem-server", "CVE-2024-37890", "high", 7.5),
+    "flask@2.2.0": ("team-chat-server", "CVE-2023-30861", "high", 7.5),
+    "certifi@2022.12.7": ("email-server", "CVE-2023-37920", "high", 7.5),
+    "lodash@4.17.20": ("github-server", "CVE-2021-23337", "high", 7.2),
+    "express@4.17.1": ("filesystem-server", "CVE-2024-29041", "medium", 6.1),
+    "requests@2.28.0": ("vector-db-server", "CVE-2023-32681", "medium", 6.1),
+    "jinja2@3.0.0": ("team-chat-server", "CVE-2024-22195", "medium", 5.4),
+}
+
 _logger = logging.getLogger(__name__)
 
 # Deterministic non-human-identity estate for the demo. Identity ids are stable
@@ -400,29 +438,10 @@ def build_showcase_graph(
     def edge(s: str, d: str, r: RelationshipType, **kw) -> None:
         g.add_edge(UnifiedEdge(source=s, target=d, relationship=r, **kw))
 
-    agents = {
-        "cursor": "Cursor IDE Agent",
-        "langchain-service": "LangChain Service Agent",
-        "support-copilot": "Support Copilot",
-        "data-pipeline": "Data Pipeline Agent",
-        "claude-desktop": "Claude Desktop Agent",
-    }
-    for aid, label in agents.items():
+    for aid, label in SHOWCASE_AGENTS.items():
         node(f"agent:{aid}", EntityType.AGENT, label, environment="production")
 
-    servers = {
-        "filesystem-server": ("cursor", ["read_file", "write_file", "list_directory"]),
-        "shell-runner-server": ("cursor", ["run_shell", "exec_command", "read_file"]),
-        "llm-orchestrator-server": ("langchain-service", ["run_chain", "eval_expression", "http_get"]),
-        "vector-db-server": ("langchain-service", ["query_vectors", "upsert_vectors"]),
-        "helpdesk-server": ("support-copilot", ["create_ticket", "search_tickets", "send_reply"]),
-        "email-server": ("support-copilot", ["send_email", "list_inbox"]),
-        "warehouse-server": ("data-pipeline", ["run_query", "execute_sql", "export_csv"]),
-        "etl-server": ("data-pipeline", ["transform_image", "load_data"]),
-        "github-server": ("claude-desktop", ["create_issue", "search_repos", "push_files"]),
-        "team-chat-server": ("claude-desktop", ["send_message", "list_channels"]),
-    }
-    for sid, (owner, tools) in servers.items():
+    for sid, (owner, tools) in SHOWCASE_SERVERS.items():
         node(f"server:{sid}", EntityType.SERVER, sid)
         edge(f"agent:{owner}", f"server:{sid}", RelationshipType.USES)
         for tname in tools:
@@ -431,23 +450,8 @@ def build_showcase_graph(
             edge(f"server:{sid}", tid, RelationshipType.PROVIDES_TOOL)
 
     # Real CVEs on real package@versions — mirrors the demo advisory catalog.
-    pkgs = {
-        "pyyaml@5.3": ("shell-runner-server", "CVE-2020-14343", "critical", 9.8),
-        "langchain@0.0.150": ("llm-orchestrator-server", "CVE-2023-36258", "critical", 9.8),
-        "pillow@9.0.0": ("etl-server", "CVE-2023-4863", "high", 8.8),
-        "jsonwebtoken@8.5.1": ("helpdesk-server", "CVE-2022-23529", "high", 7.6),
-        "axios@1.4.0": ("helpdesk-server", "CVE-2023-45857", "high", 6.5),
-        "cryptography@39.0.0": ("warehouse-server", "CVE-2023-50782", "high", 7.5),
-        "ws@8.5.0": ("filesystem-server", "CVE-2024-37890", "high", 7.5),
-        "flask@2.2.0": ("team-chat-server", "CVE-2023-30861", "high", 7.5),
-        "certifi@2022.12.7": ("email-server", "CVE-2023-37920", "high", 7.5),
-        "lodash@4.17.20": ("github-server", "CVE-2021-23337", "high", 7.2),
-        "express@4.17.1": ("filesystem-server", "CVE-2024-29041", "medium", 6.1),
-        "requests@2.28.0": ("vector-db-server", "CVE-2023-32681", "medium", 6.1),
-        "jinja2@3.0.0": ("team-chat-server", "CVE-2024-22195", "medium", 5.4),
-    }
     kev_cves = {"CVE-2023-4863"}
-    for purl, (sid, cve, sev, score) in pkgs.items():
+    for purl, (sid, cve, sev, score) in SHOWCASE_PACKAGES.items():
         pid = f"pkg:{purl}"
         node(pid, EntityType.PACKAGE, purl)
         edge(f"server:{sid}", pid, RelationshipType.DEPENDS_ON)

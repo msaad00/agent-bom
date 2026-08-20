@@ -343,6 +343,9 @@ class Finding:
     # Risk
     risk_score: float = 0.0  # 0-10 unified risk score
     reachability: Optional[str] = None
+    graph_reachable: Optional[bool] = None
+    graph_min_hop_distance: Optional[int] = None
+    graph_reachable_from_agents: list[str] = field(default_factory=list)
     is_actionable: Optional[bool] = None
     impact_category: Optional[str] = None
 
@@ -651,6 +654,9 @@ class Finding:
             "entity_type": self.entity_type,
             "risk_score": self.risk_score,
             "reachability": self.reachability,
+            "graph_reachable": self.graph_reachable,
+            "graph_min_hop_distance": self.graph_min_hop_distance,
+            "graph_reachable_from_agents": list(self.graph_reachable_from_agents),
             "is_actionable": self.is_actionable,
             "impact_category": self.impact_category,
             # Ownership + remediation SLA (derived, single source of truth in
@@ -1518,6 +1524,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
         evidence=evidence,
         risk_score=br.risk_score,
         reachability=getattr(br, "reachability", None),
+        graph_reachable=getattr(br, "graph_reachable", None),
+        graph_min_hop_distance=getattr(br, "graph_min_hop_distance", None),
+        graph_reachable_from_agents=list(getattr(br, "graph_reachable_from_agents", []) or []),
         is_actionable=getattr(br, "is_actionable", None),
         impact_category=getattr(br, "impact_category", None),
         suppressed=bool(getattr(br, "suppressed", False)) or is_vex_suppressed(vuln),

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DemoEstatePage from "@/app/demo-estate/page";
@@ -255,6 +255,51 @@ describe("DemoEstatePage", () => {
         `Showing ${story.events.length} of ${story.summary.observations} normalized events — the correlated incident included, then oldest first.`,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the enterprise story navigable and bounds correlation cards", async () => {
+    const correlations = Array.from({ length: 13 }, (_, index) => ({
+      ...correlation,
+      correlation_id: `corr-${index + 1}`,
+      trace_id: `trace-${index + 1}`,
+      kind: `correlation_${index + 1}`,
+    }));
+    apiMock.getEnterpriseDemoStory.mockResolvedValue({
+      ...story,
+      correlations,
+      summary: { ...story.summary, correlations: correlations.length },
+      bounds: {
+        ...story.bounds,
+        correlations: {
+          returned: correlations.length,
+          total: correlations.length,
+          limit: 50,
+          truncated: false,
+        },
+      },
+    });
+
+    render(<DemoEstatePage />);
+
+    const tabs = await screen.findByRole("tablist", { name: "Enterprise story views" });
+    expect(within(tabs).getByRole("tab", { name: "Risk posture" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByTestId("demo-estate-evidence-panel")).not.toBeVisible();
+    expect(screen.getByTestId("demo-estate-correlations-panel")).not.toBeVisible();
+
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Correlations" }));
+
+    expect(screen.getByTestId("demo-estate-correlations-panel")).toBeVisible();
+    expect(screen.getByText("Correlation 1")).toBeInTheDocument();
+    expect(screen.getByText("Correlation 6")).toBeInTheDocument();
+    expect(screen.queryByText("Correlation 7")).not.toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 3 (13 correlations)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    expect(screen.getByText("Correlation 7")).toBeInTheDocument();
+    expect(screen.queryByText("Correlation 1")).not.toBeInTheDocument();
   });
 
   it("never presents single-source traces as cross-vendor correlations", async () => {

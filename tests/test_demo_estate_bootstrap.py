@@ -221,6 +221,52 @@ def test_demo_estate_findings_include_critical_and_kev(demo_estate_client: TestC
     assert any(b.get("vulnerability_id") == "CVE-2023-4863" for b in kev), "expected KEV CVE in blast radius"
 
 
+def test_demo_estate_hero_findings_carry_the_persisted_graph_path(demo_estate_client: TestClient) -> None:
+    """The scan and graph surfaces must tell the same hero-path story."""
+    result = _demo_report(demo_estate_client)
+    blast = result.get("blast_radius") or []
+    hero = [
+        row
+        for row in blast
+        if row.get("vulnerability_id") == "CVE-2020-14343" and row.get("package_name") == "pyyaml" and row.get("package_version") == "5.3"
+    ]
+
+    assert len(hero) > 1, "the bundled inventory did not include estate-scoped pyyaml exposures"
+    for row in hero:
+        assert row.get("graph_reachable") is True
+        assert row.get("graph_min_hop_distance") == 3
+        assert "agent:cursor" in (row.get("graph_reachable_from_agents") or [])
+        assert "cursor" in (row.get("affected_agents") or [])
+        assert "shell-runner-server" in (row.get("affected_servers") or [])
+        assert (row.get("risk_score") or 0) > 0
+
+    listing = demo_estate_client.get(
+        "/v1/findings",
+        headers=VIEWER,
+        params={"limit": 1000},
+    ).json()
+    public_hero = [row for row in listing.get("findings") or [] if (row.get("vulnerability_id") or row.get("cve_id")) == "CVE-2020-14343"]
+    assert public_hero, "the persisted hero path did not reach the public findings route"
+    graph_hero = [row for row in public_hero if row.get("graph_reachable") is True]
+    assert graph_hero, [(row.get("id"), row.get("graph_reachable"), row.get("source"), row.get("asset")) for row in public_hero]
+    assert all(
+        row.get("package") == "pyyaml"
+        or (row.get("asset") or {}).get("name") == "pyyaml"
+        or (row.get("evidence") or {}).get("package_name") == "pyyaml"
+        for row in graph_hero
+    )
+    assert all("cursor" in (row.get("affected_agents") or []) for row in graph_hero)
+    assert all("shell-runner-server" in (row.get("affected_servers") or []) for row in graph_hero)
+
+
+def test_demo_estate_graph_evidence_covers_a_meaningful_finding_share(demo_estate_client: TestClient) -> None:
+    """The attack-path demo must cover more than a token handful of CVEs."""
+    blast = _demo_report(demo_estate_client).get("blast_radius") or []
+    evidenced = [row for row in blast if row.get("graph_reachable") is True]
+
+    assert len(evidenced) >= 100, f"only {len(evidenced)} of {len(blast)} vulnerability rows carry persisted graph evidence"
+
+
 def test_demo_estate_posture_findings_resolve_to_inventoried_assets(
     demo_estate_client: TestClient,
 ) -> None:

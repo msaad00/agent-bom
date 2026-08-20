@@ -77,6 +77,8 @@ _SECURITY_SEVERITY_SCORE = {
 # read the way ``graph.severity.normalize_severity`` reads it, which is what
 # ``Finding.__post_init__`` has already applied to anything in that stream.
 _SARIF_INFO_LABELS = frozenset({"info", "informational"})
+_UNIFIED_RULE_HELP_URI = "https://github.com/msaad00/agent-bom#readme"
+_SARIF_RULE_TOKEN_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _sarif_severity(label: object) -> tuple[str, str]:
@@ -99,6 +101,31 @@ def _sarif_severity(label: object) -> tuple[str, str]:
     except ValueError:
         severity = Severity.UNKNOWN
     return _SARIF_SEVERITY_MAP[severity], _SECURITY_SEVERITY_SCORE[severity]
+
+
+def _unified_finding_rule_id(finding: Finding) -> str:
+    """Return a stable SARIF rule ID for a unified non-CVE finding.
+
+    A broad finding family is not a scanner rule. Reusing ``finding/SAST``
+    for every static-analysis detector made GitHub attach the first result's
+    description to every later SAST alert. Prefer the producer's rule/category
+    identity and fall back to a title-derived token for legacy producers.
+    """
+    raw_token = next(
+        (
+            finding.evidence.get(key)
+            for key in ("rule_id", "check_id", "detector_id", "category")
+            if isinstance(finding.evidence, dict) and finding.evidence.get(key)
+        ),
+        finding.title or finding.id,
+    )
+    token = _SARIF_RULE_TOKEN_RE.sub("-", str(raw_token).strip()).strip("-._")
+    if not token:
+        token = hashlib.sha256(finding.id.encode()).hexdigest()[:16]
+    if len(token) > 96:
+        digest = hashlib.sha256(token.encode()).hexdigest()[:12]
+        token = f"{token[:80]}-{digest}"
+    return f"finding/{finding.finding_type.value}/{token}"
 
 
 _FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
@@ -829,7 +856,7 @@ def to_sarif(
         # exactly one SARIF result.
         if finding.finding_type == FindingType.CIS_FAIL and evidence.get("iac"):
             continue
-        rule_id = f"finding/{finding.finding_type.value}"
+        rule_id = _unified_finding_rule_id(finding)
         level, security_severity = _sarif_severity(finding.severity or "medium")
         if rule_id not in seen_rule_ids:
             seen_rule_ids.add(rule_id)
@@ -840,8 +867,15 @@ def to_sarif(
             )
             finding_rule: dict[str, Any] = {
                 "id": rule_id,
-                "shortDescription": {"text": sanitize_advisory_text("title", finding.finding_type.value.replace("_", " ").title())},
+                "shortDescription": {
+                    "text": sanitize_advisory_text(
+                        "title",
+                        finding.title,
+                        fallback=finding.finding_type.value.replace("_", " ").title(),
+                    )
+                },
                 "fullDescription": {"text": description},
+                "helpUri": _UNIFIED_RULE_HELP_URI,
                 "defaultConfiguration": {"level": level},
                 "properties": {
                     "security-severity": security_severity,
@@ -857,13 +891,25 @@ def to_sarif(
                 finding_rule["help"] = help_body
             rules.append(finding_rule)
 
-        file_path = _to_relative_path(
-            finding.asset.location or "agent-bom-report.json",
-            _ecosystem_from_purl(finding.asset.identifier),
+        file_path = (
+            _to_relative_path(
+                finding.asset.location,
+                _ecosystem_from_purl(finding.asset.identifier),
+            )
+            if finding.asset.location
+            else None
         )
         raw_start_line = finding.evidence.get("line_number") or finding.evidence.get("line")
         start_line = raw_start_line if isinstance(raw_start_line, int) and raw_start_line > 0 else 1
-        fp_input = f"{finding.id}:{file_path}:{finding.asset.stable_id}"
+        fingerprint_uri = file_path or f"{finding.asset.asset_type}:{finding.asset.stable_id}"
+        fp_input = f"{finding.id}:{fingerprint_uri}:{finding.asset.stable_id}"
+        fingerprint_fields = _sarif_fingerprint_fields(
+            stable_input=fp_input,
+            artifact_uri=fingerprint_uri,
+            start_line=start_line,
+        )
+        if file_path is None:
+            fingerprint_fields.pop("partialFingerprints", None)
         finding_result: dict = {
             "ruleId": rule_id,
             "level": level,
@@ -875,15 +921,7 @@ def to_sarif(
                     fallback=_sanitize_scanner_text("description", finding.description, fallback=finding.finding_type.value),
                 )
             },
-            **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=start_line),
-            "locations": [
-                {
-                    "physicalLocation": {
-                        "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
-                        "region": {"startLine": start_line, "startColumn": 1},
-                    },
-                }
-            ],
+            **fingerprint_fields,
             "properties": {
                 "risk_score": finding.risk_score,
                 "asset_type": finding.asset.asset_type,
@@ -912,6 +950,26 @@ def to_sarif(
                 ),
             },
         }
+        if file_path is not None:
+            finding_result["locations"] = [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
+                        "region": {"startLine": start_line, "startColumn": 1},
+                    },
+                }
+            ]
+        else:
+            finding_result["logicalLocations"] = [
+                {
+                    "name": sanitize_advisory_text(
+                        "title",
+                        finding.asset.name,
+                        fallback=finding.asset.asset_type,
+                    ),
+                    "kind": finding.asset.asset_type,
+                }
+            ]
         suppressions = _suppression_entries(finding)
         if suppressions:
             finding_result["suppressions"] = suppressions

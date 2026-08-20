@@ -212,6 +212,71 @@ def test_sarif_results_carry_required_fields(sarif_doc: dict) -> None:
     assert not dangling, f"results reference rules absent from the driver catalog: {dangling}"
 
 
+def test_unified_sarif_findings_keep_rule_identity_and_real_locations() -> None:
+    """Same-family findings must not borrow the first finding's rule metadata.
+
+    Locationless posture findings are logical alerts, not findings in the
+    generated ``agent-bom-report.json`` file.  Conversely, source-backed
+    findings must preserve the producer's line number.
+    """
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+    from agent_bom.output.sarif import to_sarif
+
+    report = AIBOMReport(
+        scan_id="sarif-unified-rule-identity",
+        findings=[
+            Finding(
+                finding_type=FindingType.SAST,
+                source=FindingSource.SAST,
+                asset=Asset(name="unsafe.py", asset_type="source_file", location="src/unsafe.py"),
+                severity="high",
+                title="Dynamic execution accepts tainted input",
+                description="Untrusted content reaches eval.",
+                evidence={"rule_id": "AB-SAST-001", "line_number": 27},
+            ),
+            Finding(
+                finding_type=FindingType.SAST,
+                source=FindingSource.SAST,
+                asset=Asset(name="query.py", asset_type="source_file", location="src/query.py"),
+                severity="high",
+                title="SQL query concatenates user input",
+                description="Untrusted content reaches a SQL query.",
+                evidence={"rule_id": "AB-SAST-002", "line_number": 41},
+            ),
+            Finding(
+                finding_type=FindingType.CREDENTIAL_EXPOSURE,
+                source=FindingSource.MCP_SCAN,
+                asset=Asset(name="payments-agent", asset_type="agent"),
+                severity="critical",
+                title="Agent exposes a production credential",
+                description="The agent can expose a production credential.",
+                evidence={"category": "agent_credential_exposure"},
+            ),
+        ],
+    )
+
+    doc = to_sarif(report)
+    run = doc["runs"][0]
+    results = [result for result in run["results"] if result["ruleId"].startswith("finding/")]
+    rules = {rule["id"]: rule for rule in run["tool"]["driver"]["rules"]}
+
+    assert len(results) == 3
+    assert len({result["ruleId"] for result in results}) == 3
+    assert all(rules[result["ruleId"]].get("helpUri") for result in results)
+    for result in results:
+        rule = rules[result["ruleId"]]
+        assert rule["shortDescription"]["text"] == result["message"]["text"]
+
+    by_rule = {result["ruleId"]: result for result in results}
+    assert by_rule["finding/SAST/AB-SAST-001"]["locations"][0]["physicalLocation"]["region"]["startLine"] == 27
+    assert by_rule["finding/SAST/AB-SAST-002"]["locations"][0]["physicalLocation"]["region"]["startLine"] == 41
+
+    logical = by_rule["finding/CREDENTIAL_EXPOSURE/agent_credential_exposure"]
+    assert "locations" not in logical
+    assert logical["logicalLocations"] == [{"name": "payments-agent", "kind": "agent"}]
+    assert "agent-bom-report.json" not in json.dumps(logical)
+
+
 def test_sarif_spans_multiple_finding_families(sarif_doc: dict) -> None:
     """Confirm the document actually exercised every finding family, so the
     schema-conformance assertion above is meaningful (not a one-rule log)."""
@@ -406,8 +471,8 @@ def test_sarif_cloud_cis_failure_emitted_once(sarif_validator: Draft7Validator) 
     # ...and the generic unified CIS rule no longer double-emits those checks.
     # Snowflake governance keeps the generic CIS rule; Databricks is explicitly
     # a vendor best-practice result, not a CIS result.
-    assert rule_ids.count("finding/CIS_FAIL") == 1, rule_ids
-    assert rule_ids.count("finding/CLOUD_BEST_PRACTICE_FAIL") == 1, rule_ids
+    assert rule_ids.count("finding/CIS_FAIL/write_access") == 1, rule_ids
+    assert rule_ids.count("finding/CLOUD_BEST_PRACTICE_FAIL/5.1") == 1, rule_ids
 
     # The single aws result keeps the richer structured remediation metadata.
     aws_result = next(r for r in results if r["ruleId"] == "cis/aws/1.4")
@@ -436,5 +501,5 @@ def test_sarif_cis_error_is_distinct_and_emitted_once() -> None:
         ]
     }
     rule_ids = [result["ruleId"] for result in to_sarif(report)["runs"][0]["results"]]
-    assert rule_ids.count("finding/CIS_ERROR") == 1
+    assert rule_ids.count("finding/CIS_ERROR/1.1") == 1
     assert "finding/CIS_FAIL" not in rule_ids

@@ -58,16 +58,20 @@ feed the same evidence model.
 
 | Lane | Start with | Produces |
 |------|------------|----------|
-| **Scan locally** | `docker run --rm agentbom/agent-bom:latest agents --demo` | findings, SARIF, SBOM, HTML, graph exports |
+| **Scan locally** | `docker run --rm -v agentbom-state:/home/abom/.agent-bom agentbom/agent-bom:latest scan --demo --offline` | findings, SARIF, SBOM, HTML, graph exports |
 | **Send evidence to a control plane** | `docker compose -f docker-compose.pilot.yml up -d` | fleet inventory, scan jobs, graph state, compliance exports |
 | **Enforce runtime behavior** | `agent-bom proxy` or `agent-bom mcp server` from this image | MCP tools, audit JSONL, policy blocks, runtime alerts |
 
 ## CLI And Runtime Quick Start
 
+The `agentbom-state` named volume reuses vulnerability and scan state across
+disposable containers. Keep this mount on project scans so later runs can use
+the existing advisory cache instead of downloading it again.
+
 **Discover and scan your AI agent environment**
 
 ```bash
-docker run --rm agentbom/agent-bom:latest agents
+docker run --rm -v agentbom-state:/home/abom/.agent-bom agentbom/agent-bom:latest agents
 ```
 
 **Workstation posture summary**
@@ -85,13 +89,19 @@ docker run --rm agentbom/agent-bom:latest check flask@2.0.0
 **Scan a project directory**
 
 ```bash
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace
+docker run --rm \
+  -v agentbom-state:/home/abom/.agent-bom \
+  -v "$(pwd):/workspace" \
+  agentbom/agent-bom:latest scan -p /workspace
 ```
 
 **Export AI BOM (CycloneDX / SPDX)**
 
 ```bash
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace -f cyclonedx -o /workspace/ai-bom.json
+docker run --rm \
+  -v agentbom-state:/home/abom/.agent-bom \
+  -v "$(pwd):/workspace" \
+  agentbom/agent-bom:latest scan -p /workspace -f cyclonedx -o /workspace/ai-bom.json
 ```
 
 **IaC misconfiguration scan**

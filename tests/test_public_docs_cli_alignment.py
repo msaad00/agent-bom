@@ -40,6 +40,38 @@ def test_public_docs_do_not_teach_removed_cli_surfaces() -> None:
         assert command not in combined
 
 
+def test_readme_promotes_offline_demo_before_repository_scan() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick start", 1)[1].split("## Self-host", 1)[0]
+
+    assert quick_start.index("agent-bom scan --demo --offline") < quick_start.index("agent-bom scan .")
+    assert "exit status `1` is expected" in quick_start
+
+
+def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    first_run = readme.split("## Scan, correlate, and act", 1)[1].split("## Self-host", 1)[0]
+
+    for marker in (
+        "Blast radius",
+        "package",
+        "vulnerability finding",
+        "MCP server",
+        "credential env names",
+        "reachable tools",
+        "exposure_paths",
+        "should_i_deploy",
+    ):
+        assert marker in first_run
+
+
+def test_primary_docker_scan_persists_vulnerability_state() -> None:
+    docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
+
+    assert docker_hub.count("-v agentbom-state:/home/abom/.agent-bom") >= 3
+    assert "reuses vulnerability and scan state" in docker_hub
+
+
 def test_connect_sources_do_not_teach_removed_cli_surfaces() -> None:
     # The `connect <provider>` guidance prints a scan command; it must point at a
     # real surface, not a removed/misleading one (e.g. `agent-bom cloud snowflake`,
@@ -196,7 +228,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
     assert primary_block is not None
     commands = [line for line in primary_block.group(1).splitlines() if line.strip()]
-    assert commands == ["pip install agent-bom", "agent-bom scan ."]
+    assert commands == ["pip install agent-bom", "agent-bom scan --demo --offline"]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
     assert "<summary><b>Product gallery</b></summary>" in readme

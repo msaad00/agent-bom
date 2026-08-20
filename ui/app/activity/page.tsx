@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Clock,
   Bot,
@@ -25,12 +26,38 @@ import {
   CartesianGrid,
 } from "recharts";
 
-export default function ActivityPage() {
+const ACTIVITY_WINDOWS = new Set([7, 30, 90, 365]);
+
+function activityWindowFromParams(searchParams: URLSearchParams): number {
+  const requested = Number(searchParams.get("days"));
+  return ACTIVITY_WINDOWS.has(requested) ? requested : 30;
+}
+
+export default function ActivityPageWrapper() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
+          <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+          Loading activity timeline...
+        </div>
+      }
+    >
+      <ActivityPage />
+    </Suspense>
+  );
+}
+
+function ActivityPage() {
   const chart = useChartTheme();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [days, setDays] = useState(30);
+  const requestedDays = activityWindowFromParams(searchParams);
+  const [days, setDays] = useState(requestedDays);
   const [search, setSearch] = useState("");
 
   const load = () => {
@@ -49,6 +76,17 @@ export default function ActivityPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setDays(requestedDays);
+  }, [requestedDays]);
+
+  const changeWindow = (nextDays: number) => {
+    setDays(nextDays);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("days", String(nextDays));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   if (loading) {
     return (
@@ -142,8 +180,9 @@ export default function ActivityPage() {
           </p>
         </div>
         <select
+          aria-label="Activity time window"
           value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
+          onChange={(e) => changeWindow(Number(e.target.value))}
           className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-md px-3 py-1.5 text-sm text-[var(--text-secondary)]"
         >
           <option value={7}>Last 7 days</option>

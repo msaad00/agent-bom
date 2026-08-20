@@ -85,6 +85,39 @@ def decode_finding_cursor(cursor: str, *, expected_sort: str) -> tuple[float, st
 
 
 _MERGED_SCAN_CURSOR_MARKER = "merge1"
+_GROUP_CURSOR_MARKER = "group1"
+
+
+def encode_finding_group_cursor(*, sort: str, offset: int) -> str:
+    """Encode the next offset in the fully materialized issue-group list."""
+    payload = {
+        "t": _GROUP_CURSOR_MARKER,
+        "sort": sort if sort in _ALLOWED_SORTS else "effective_reach",
+        "offset": max(0, int(offset)),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def decode_finding_group_cursor(cursor: str, *, expected_sort: str) -> int | None:
+    """Decode an issue-group cursor, returning ``None`` for another cursor type."""
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        payload = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(payload, dict) or payload.get("t") != _GROUP_CURSOR_MARKER:
+        return None
+    if str(payload.get("sort") or "") != expected_sort:
+        raise ValueError("Cursor sort mismatch")
+    try:
+        offset = int(payload.get("offset") or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid grouped findings cursor") from exc
+    if offset < 0:
+        raise ValueError("Invalid grouped findings cursor")
+    return offset
 
 
 def encode_merged_scan_cursor(*, sort: str, scan_index: int, bulk_cursor: str) -> str:

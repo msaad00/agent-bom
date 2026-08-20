@@ -12,6 +12,7 @@ import {
   formatDate,
   type PostureCountsResponse,
   type ComplianceResponse,
+  type TrendsResponse,
 } from "@/lib/api";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -63,6 +64,7 @@ export default function Dashboard() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [compliance, setCompliance] = useState<ComplianceResponse | null>(null);
+  const [trends, setTrends] = useState<TrendsResponse | null>(null);
   const [postureOverviewLoading, setPostureOverviewLoading] = useState(true);
   // Local display-format override; falls back to the persisted per-tenant
   // config carried on the overview posture. Toggling persists via the API (#3940).
@@ -88,10 +90,29 @@ export default function Dashboard() {
       },
       () => {},
     );
+    void api.getTrends(2).then(
+      (value) => {
+        if (!cancelled) setTrends(value);
+      },
+      () => {},
+    );
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const postureTrend = useMemo(() => {
+    const current = trends?.data_points?.[0];
+    const previous = trends?.data_points?.[1];
+    if (!current || !previous) return null;
+    const delta = current.posture_score - previous.posture_score;
+    return {
+      direction: delta > 0 ? "improved" as const : delta < 0 ? "worsened" as const : "unchanged" as const,
+      delta,
+      previousScore: previous.posture_score,
+      points: trends?.count ?? trends.data_points.length,
+    };
+  }, [trends]);
 
   useEffect(() => {
     let cancelled = false;
@@ -408,6 +429,7 @@ export default function Dashboard() {
         scoreBreakdown={scoreBreakdown}
         onScoreFormatChange={handleScoreFormatChange}
         postureSummary={overview?.posture.summary ?? posture?.summary}
+        postureTrend={postureTrend}
         critical={criticalCount}
         high={highCount}
         kev={summaryReady ? displayedKevCount : null}

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from agent_bom.baseline import TrendPoint
+from agent_bom.baseline import InMemoryTrendStore, SQLiteTrendStore, TrendPoint
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
-from agent_bom.models import CredentialIdentityBinding, MCPServer
+from agent_bom.models import Agent, AgentType, AIBOMReport, CredentialIdentityBinding, MCPServer
+from agent_bom.output.json_fmt import to_json
 
 
 def _finding(*, asset_id: str, cve_id: str = "CVE-2026-1000") -> Finding:
@@ -56,6 +57,45 @@ def test_trend_point_exposes_idempotent_scan_key() -> None:
     assert point.to_dict()["scan_id"] == "scan-123"
 
 
+def _trend_point(*, score: float = 70.0) -> TrendPoint:
+    return TrendPoint(
+        scan_id="scan-123",
+        timestamp="2026-08-20T12:00:00Z",
+        total_vulns=4,
+        critical=1,
+        high=1,
+        medium=1,
+        low=1,
+        posture_score=score,
+        posture_grade="C",
+        tenant_id="tenant-a",
+    )
+
+
+def test_inmemory_trend_store_upserts_scan_backed_points() -> None:
+    store = InMemoryTrendStore()
+
+    store.record(_trend_point(score=70.0))
+    store.record(_trend_point(score=80.0))
+
+    history = store.get_history(tenant_id="tenant-a")
+    assert len(history) == 1
+    assert history[0].scan_id == "scan-123"
+    assert history[0].posture_score == 80.0
+
+
+def test_sqlite_trend_store_upserts_and_round_trips_scan_id(tmp_path) -> None:
+    store = SQLiteTrendStore(str(tmp_path / "trends.db"))
+
+    store.record(_trend_point(score=70.0))
+    store.record(_trend_point(score=80.0))
+
+    history = store.get_history(tenant_id="tenant-a")
+    assert len(history) == 1
+    assert history[0].scan_id == "scan-123"
+    assert history[0].posture_score == 80.0
+
+
 def test_mcp_server_accepts_only_explicit_identity_bindings() -> None:
     binding = CredentialIdentityBinding(
         credential_ref="AWS_ROLE_ARN",
@@ -72,3 +112,21 @@ def test_mcp_server_accepts_only_explicit_identity_bindings() -> None:
         "evidence_source": "mcp-config",
         "provider": "aws",
     }
+
+
+def test_explicit_identity_bindings_survive_canonical_json_projection() -> None:
+    binding = CredentialIdentityBinding(
+        credential_ref="AWS_ROLE_ARN",
+        identity_canonical_id="managed_identity:aws:role/deployer",
+        evidence_source="mcp-config",
+        provider="aws",
+    )
+    server = MCPServer(name="deploy", env={"AWS_ROLE_ARN": "***"}, identity_bindings=[binding])
+    report = AIBOMReport(
+        scan_id="scan-123",
+        agents=[Agent(name="operator", agent_type=AgentType.CUSTOM, config_path="", mcp_servers=[server])],
+    )
+
+    payload = to_json(report)
+
+    assert payload["agents"][0]["mcp_servers"][0]["identity_bindings"] == [binding.to_dict()]

@@ -176,6 +176,12 @@ export interface OverviewCockpitProps {
   /** Called when the user picks a display format; parent persists it (#3940). */
   onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   postureSummary?: string | undefined;
+  postureTrend?: {
+    direction: "improved" | "worsened" | "unchanged";
+    delta: number;
+    previousScore: number;
+    points: number;
+  } | null | undefined;
   critical: number;
   high: number;
   kev: number | null;
@@ -215,6 +221,7 @@ export function OverviewCockpit({
   scoreBreakdown = null,
   onScoreFormatChange,
   postureSummary,
+  postureTrend = null,
   critical,
   high,
   kev,
@@ -275,6 +282,7 @@ export function OverviewCockpit({
               scoreFormat={scoreFormat}
               onScoreFormatChange={onScoreFormatChange}
               summary={postureSummary}
+              trend={postureTrend}
               critical={critical}
               high={high}
               cves={cves}
@@ -1144,6 +1152,7 @@ function PostureHero({
   scoreFormat = "percent",
   onScoreFormatChange,
   summary,
+  trend,
   critical,
   high,
   cves,
@@ -1154,6 +1163,7 @@ function PostureHero({
   scoreFormat?: PostureScoreFormat | undefined;
   onScoreFormatChange?: ((format: PostureScoreFormat) => void) | undefined;
   summary?: string | undefined;
+  trend?: OverviewCockpitProps["postureTrend"];
   critical: number;
   high: number;
   cves: number | null;
@@ -1217,9 +1227,21 @@ function PostureHero({
           )}
         </p>
         {graded ? (
-          <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
-            Current evidence snapshot · ranked exposure paths below show what to fix first
-          </p>
+          trend && trend.points >= 2 ? (
+            <p
+              className="mt-1 text-[10px] text-[color:var(--text-tertiary)]"
+              data-testid="overview-posture-trend"
+              title={`Previous posture score: ${Math.round(trend.previousScore)}%`}
+            >
+              {trend.direction === "unchanged"
+                ? "Unchanged since the previous scan"
+                : `${trend.direction === "improved" ? "Improved" : "Worsened"} ${Math.abs(Math.round(trend.delta))} points since the previous scan`}
+            </p>
+          ) : (
+            <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
+              Current evidence snapshot · ranked exposure paths below show what to fix first
+            </p>
+          )
         ) : null}
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>
       </div>

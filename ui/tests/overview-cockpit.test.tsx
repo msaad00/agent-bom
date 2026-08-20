@@ -75,6 +75,19 @@ describe("OverviewCockpit", () => {
     expect(screen.getByText(/Why #1:/i)).toHaveTextContent(/critical path reaches an agent/i);
   });
 
+  it("renders a scan-backed posture change when trend history exists", () => {
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        postureTrend={{ direction: "improved", delta: 8, previousScore: 29, points: 2 }}
+      />,
+    );
+
+    expect(screen.getByTestId("overview-posture-trend")).toHaveTextContent(
+      "Improved 8 points since the previous scan",
+    );
+  });
+
   it("consolidates security coverage and estate operations into one compact section", async () => {
     const user = userEvent.setup();
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} />);

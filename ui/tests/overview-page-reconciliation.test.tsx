@@ -7,6 +7,7 @@ const { apiMock, deploymentCounts } = vi.hoisted(() => ({
   apiMock: {
     getPosture: vi.fn(),
     getOverview: vi.fn(),
+    getTrends: vi.fn(),
     getCompliance: vi.fn(),
     listJobs: vi.fn(),
     listAgents: vi.fn(),
@@ -104,6 +105,7 @@ describe("Overview canonical finding counts", () => {
     vi.clearAllMocks();
     apiMock.getPosture.mockResolvedValue({ grade: "D", score: 49 });
     apiMock.getOverview.mockResolvedValue(overviewFixture());
+    apiMock.getTrends.mockResolvedValue({ tenant_id: "tenant-ui", count: 0, points: [] });
     apiMock.getCompliance.mockRejectedValue(new Error("not configured"));
     apiMock.listAgents.mockResolvedValue({ count: 4, agents: [] });
     apiMock.updateScoreConfig.mockResolvedValue({});

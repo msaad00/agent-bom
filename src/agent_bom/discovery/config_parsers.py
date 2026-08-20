@@ -12,14 +12,14 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 import toml  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.markup import escape
 
-from agent_bom.models import MCPServer, MCPTool, TransportType
+from agent_bom.models import CredentialIdentityBinding, MCPServer, MCPTool, TransportType
 from agent_bom.security import (
     SecurityError,
     sanitize_env_vars,
@@ -53,6 +53,46 @@ def _auto_approved_tool_names(value: object) -> list[str]:
         return []
     names = {item.strip() for item in value[:256] if isinstance(item, str) and item.strip() and len(item.strip()) <= 200}
     return sorted(names)
+
+
+def _explicit_identity_bindings(value: object, *, credential_refs: set[str]) -> list[CredentialIdentityBinding]:
+    """Parse bounded, explicit credential-to-identity evidence.
+
+    The credential slot must exist in the same server definition.  Provider and
+    identity are declarative non-secret metadata; provenance is derived from the
+    parser contract rather than trusting an arbitrary caller label.
+    """
+    if not isinstance(value, list):
+        return []
+    bindings: list[CredentialIdentityBinding] = []
+    seen: set[tuple[str, str]] = set()
+    for item in value[:64]:
+        if not isinstance(item, Mapping):
+            continue
+        credential_ref = str(item.get("credentialRef") or item.get("credential_ref") or "").strip()
+        identity_id = str(item.get("identityCanonicalId") or item.get("identity_canonical_id") or "").strip()
+        provider = str(item.get("provider") or "").strip()
+        if (
+            credential_ref not in credential_refs
+            or not identity_id
+            or len(credential_ref) > 200
+            or len(identity_id) > 512
+            or len(provider) > 64
+        ):
+            continue
+        key = (credential_ref, identity_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        bindings.append(
+            CredentialIdentityBinding(
+                credential_ref=credential_ref,
+                identity_canonical_id=identity_id,
+                evidence_source="mcp-config:identityBindings",
+                provider=provider or None,
+            )
+        )
+    return bindings
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +184,10 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         # ✅ Security: redact credential values before storing in MCPServer
         # Only env var NAMES appear in reports — values are replaced with ***REDACTED***
         env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
+        identity_bindings = _explicit_identity_bindings(
+            server_def.get("identityBindings", server_def.get("identity_bindings")),
+            credential_refs=set(env),
+        )
 
         auto_approved = _auto_approved_tool_names(server_def.get("autoApprove", server_def.get("auto_approve")))
         security_warnings: list[str] = []
@@ -174,6 +218,7 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
             tools=[MCPTool(name=tool_name, description="Tool configured for automatic approval") for tool_name in auto_approved],
             config_path=config_path,
             security_warnings=security_warnings,
+            identity_bindings=identity_bindings,
         )
 
         # Detect privilege indicators from command/args

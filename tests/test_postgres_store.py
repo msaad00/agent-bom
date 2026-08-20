@@ -237,7 +237,7 @@ class MockConnection:
                 cursor.rows = [(tenant_id, row[8]) for tenant_id, row in latest.items()]
             elif "from trend_history" in sql_lower:
                 rows = list(self._store.get("trend_history", {}).values())
-                cursor.rows = [(r[0], r[2], r[3], r[4], r[5], r[6], r[7], r[8]) for r in rows]
+                cursor.rows = [(r[0], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]) for r in rows]
             elif "from scan_schedules" in sql_lower:
                 rows = list(self._store.get("scan_schedules", {}).values())
                 if params:
@@ -1073,6 +1073,7 @@ def test_postgres_trend_store_roundtrip(mock_pool):
         low=4,
         posture_score=82.5,
         posture_grade="B",
+        scan_id="scan-1",
     )
     store.record(point)
     mock_pool._conn._store.setdefault("trend_history", {})["2026-01-01T00:00:00Z"] = (
@@ -1085,10 +1086,12 @@ def test_postgres_trend_store_roundtrip(mock_pool):
         point.low,
         point.posture_score,
         point.posture_grade,
+        point.scan_id,
     )
     history = store.get_history()
     assert len(history) == 1
     assert history[0].posture_grade == "B"
+    assert history[0].scan_id == "scan-1"
 
 
 # ─── Pool / Config ────────────────────────────────────────────────────────────

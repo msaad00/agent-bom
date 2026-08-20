@@ -1099,6 +1099,7 @@ def to_json(report: AIBOMReport) -> dict:
                         "mcp_version": server.mcp_version,
                         "has_credentials": server.has_credentials,
                         "credential_env_vars": server.credential_names,
+                        "identity_bindings": [binding.to_dict() for binding in server.identity_bindings],
                         "registry_verified": server.registry_verified,
                         "registry_badge": "verified" if server.registry_verified else "unknown",
                         "security_blocked": server.security_blocked,

@@ -80,6 +80,20 @@ from agent_bom.cloud.aws_cis_benchmark import (
 # ---------------------------------------------------------------------------
 
 
+def _targeting_alarm_for(logs_client: MagicMock) -> MagicMock:
+    """Attach one usable metric transformation and return its targeting alarm client."""
+    pages = logs_client.get_paginator.return_value.paginate.return_value
+    for page in pages:
+        for metric_filter in page.get("metricFilters", []):
+            metric_filter.setdefault(
+                "metricTransformations",
+                [{"metricName": "SecurityEvents", "metricNamespace": "Security"}],
+            )
+    cloudwatch = MagicMock()
+    cloudwatch.describe_alarms_for_metric.return_value = {"MetricAlarms": [{"AlarmName": "SecurityEventsAlarm"}]}
+    return cloudwatch
+
+
 def _iam_client(**overrides) -> MagicMock:
     """Create a mock IAM client with sensible defaults."""
     client = MagicMock()
@@ -1135,7 +1149,7 @@ class TestCheck44:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_4(client)
+        result = _check_4_4(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.4"
 
@@ -1185,7 +1199,7 @@ class TestCheck45:
             }
         ]
         logs.get_paginator.return_value = paginator
-        result = _check_4_5(logs, ct)
+        result = _check_4_5(logs, ct, _targeting_alarm_for(logs))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.5"
 
@@ -1929,7 +1943,7 @@ class TestCheck41:
         paginator = MagicMock()
         paginator.paginate.return_value = [{"metricFilters": [{"filterPattern": "{ $.errorCode = AccessDenied }"}]}]
         client.get_paginator.return_value = paginator
-        result = _check_4_1(client)
+        result = _check_4_1(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.1"
 
@@ -1956,7 +1970,7 @@ class TestCheck42:
             {"metricFilters": [{"filterPattern": '{ $.eventName = ConsoleLogin && $.additionalEventData.MFAUsed != "Yes" }'}]}
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_2(client)
+        result = _check_4_2(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.2"
 
@@ -1991,7 +2005,7 @@ class TestCheck46:
             {"metricFilters": [{"filterPattern": '{ $.eventName = ConsoleLogin && $.errorMessage = "Failed authentication" }'}]}
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_6(client)
+        result = _check_4_6(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.6"
 
@@ -2017,7 +2031,7 @@ class TestCheck47:
             {"metricFilters": [{"filterPattern": "{ $.eventName = DisableKey || $.eventName = ScheduleKeyDeletion }"}]}
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_7(client)
+        result = _check_4_7(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.7"
 
@@ -2051,7 +2065,7 @@ class TestCheck48:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_8(client)
+        result = _check_4_8(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.8"
 
@@ -2086,7 +2100,7 @@ class TestCheck49:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_9(client)
+        result = _check_4_9(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.9"
 
@@ -2122,7 +2136,7 @@ class TestCheck410:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_10(client)
+        result = _check_4_10(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.10"
 
@@ -2158,7 +2172,7 @@ class TestCheck411:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_11(client)
+        result = _check_4_11(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.11"
 
@@ -2194,7 +2208,7 @@ class TestCheck412:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_12(client)
+        result = _check_4_12(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.12"
 
@@ -2228,7 +2242,7 @@ class TestCheck413:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_13(client)
+        result = _check_4_13(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.13"
 
@@ -2258,7 +2272,7 @@ class TestCheck414:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_14(client)
+        result = _check_4_14(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.14"
 
@@ -2294,7 +2308,7 @@ class TestCheck415:
             }
         ]
         client.get_paginator.return_value = paginator
-        result = _check_4_15(client)
+        result = _check_4_15(client, _targeting_alarm_for(client))
         assert result.status == CheckStatus.PASS
         assert result.check_id == "4.15"
 

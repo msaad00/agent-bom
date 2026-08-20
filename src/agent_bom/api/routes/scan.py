@@ -84,7 +84,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.canonical_ids import canonical_finding_id
+from agent_bom.canonical_ids import canonical_finding_id, canonical_id
 from agent_bom.finding_scope import (
     FINDING_SEVERITY_FILTERS,
     FindingClass,
@@ -1976,6 +1976,17 @@ _ALLOWED_FINDING_STATUSES = ("open", "resolved", "all")
 _DEFAULT_FINDING_STATUS = "open"
 _ALLOWED_FINDING_SEVERITIES = FINDING_SEVERITY_FILTERS
 
+
+def _normalize_finding_sort(sort: str) -> str:
+    sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
+    if sort_key not in _ALLOWED_FINDING_SORTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid sort '{sort}'; accepted values: {', '.join(_ALLOWED_FINDING_SORTS)}",
+        )
+    return sort_key
+
+
 _FRESHNESS_BUCKETS = ("last_24_hours", "last_7_days", "last_30_days", "older", "unavailable")
 _FACET_SCAN_BUDGET = 50_000
 _FACET_DEADLINE_SECONDS = 1.5
@@ -2584,6 +2595,10 @@ async def list_findings(
     status: Annotated[str, Query(max_length=16)] = _DEFAULT_FINDING_STATUS,
     finding_class: FindingClass | None = None,
     kev: Annotated[bool | None, Query(description="Only known-exploited (KEV) findings, or only non-KEV when false")] = None,
+    group_occurrences: Annotated[
+        bool,
+        Query(description="Group vulnerability occurrences by advisory and package while preserving asset-scoped rows"),
+    ] = False,
     framework: Annotated[
         str | None,
         Query(max_length=64, description="Compliance framework drill-through, e.g. soc2 / nist-csf (compliance section id)"),
@@ -2620,8 +2635,9 @@ async def list_findings(
     """
     try:
         async with adaptive_backpressure("findings"):
+            implementation = _list_finding_groups_impl if group_occurrences else _list_findings_impl
             return await anyio.to_thread.run_sync(
-                _list_findings_impl,
+                implementation,
                 request,
                 q,
                 severity,
@@ -2705,13 +2721,8 @@ def _list_findings_impl(
     # window at scale. ``window_days=0`` widens to all history (#4009).
     resolved_window = time_window.normalize_window_days(window_days)
     window_since = time_window.window_since_iso(resolved_window)
-    sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
-    if sort_key not in _ALLOWED_FINDING_SORTS:
-        # Silently falling back masked typos as "wrong order"; reject clearly.
-        raise HTTPException(
-            status_code=422,
-            detail=f"invalid sort '{sort}'; accepted values: {', '.join(_ALLOWED_FINDING_SORTS)}",
-        )
+    # Silently falling back masked typos as "wrong order"; reject clearly.
+    sort_key = _normalize_finding_sort(sort)
     try:
         severity = canonical_finding_severity_filter(severity)
     except ValueError:
@@ -3140,6 +3151,214 @@ def _list_findings_impl(
             },
             "completeness": facet_completeness,
         }
+    return envelope
+
+
+_FINDING_GROUP_MAX_OCCURRENCES = 50_000
+_FINDING_GROUP_OCCURRENCE_SAMPLE = 25
+
+
+def _finding_group_identity(row: dict[str, Any]) -> tuple[str, str]:
+    """Return the canonical aggregate identity without changing occurrence IDs."""
+    supplied_id = str(row.get("finding_group_id") or "").strip()
+    supplied_key = str(row.get("finding_group_key") or "").strip()
+    if supplied_id and supplied_key:
+        return supplied_id, supplied_key
+
+    vulnerability_id = _row_vuln_id(row).lower()
+    if vulnerability_id:
+        group_key = f"vulnerability:{vulnerability_id}:{_package_base_name(row).lower()}"
+    else:
+        group_key = f"occurrence:{_finding_identity(row)}"
+    return supplied_id or canonical_id("finding-group", group_key), supplied_key or group_key
+
+
+def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
+    """Project the bounded fields needed to expand a grouped issue row."""
+    return {
+        key: row.get(key)
+        for key in (
+            "finding_id",
+            "occurrence_id",
+            "canonical_id",
+            "asset",
+            "severity",
+            "package_version",
+            "scan_id",
+            "status",
+            "owner",
+            "sla_due_at",
+            "last_seen",
+            "last_observed",
+            "graph_reachable",
+            "graph_min_hop_distance",
+        )
+        if row.get(key) is not None
+    }
+
+
+def _list_finding_groups_impl(
+    request: Request,
+    q: str | None,
+    severity: str | None,
+    scan_id: str | None,
+    sort: str,
+    limit: int,
+    offset: int,
+    cursor: str | None,
+    approximate_total: bool,
+    provider: str | None = None,
+    account: str | None = None,
+    environment: str | None = None,
+    domain: str | None = None,
+    window_days: int | None = None,
+    status: str = _DEFAULT_FINDING_STATUS,
+    finding_class: str | None = None,
+    kev: bool | None = None,
+    include_facets: bool = False,
+    framework: str | None = None,
+    control: str | None = None,
+    owner: str | None = None,
+    sla: str | None = None,
+) -> dict[str, Any]:
+    """Build a bounded server-side issue queue over canonical occurrence rows.
+
+    Raw ``GET /v1/findings`` remains the authoritative per-asset workflow
+    surface. This view walks that exact filtered queue, groups only rows sharing
+    the canonical asset-independent issue identity, and returns bounded
+    occurrence summaries for expansion. A row-budget hit is explicit partial
+    evidence; it is never described as a complete group count.
+    """
+    from agent_bom.api.finding_cursor import decode_finding_group_cursor, encode_finding_group_cursor
+
+    sort_key = _normalize_finding_sort(sort)
+    if cursor:
+        try:
+            group_offset = decode_finding_group_cursor(cursor, expected_sort=sort_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid grouped findings cursor") from exc
+        if group_offset is None:
+            raise HTTPException(status_code=400, detail="Cursor is not valid for grouped findings")
+    else:
+        group_offset = offset
+
+    rows: list[dict[str, Any]] = []
+    source_cursor: str | None = None
+    first_page: dict[str, Any] | None = None
+    warnings: list[str] = []
+    while len(rows) < _FINDING_GROUP_MAX_OCCURRENCES:
+        page = _list_findings_impl(
+            request,
+            q,
+            # Severity is applied after grouping so the issue histogram remains
+            # self-excluding. Otherwise two asset occurrences of one advisory
+            # would be presented as two separate severity-filter counts.
+            None,
+            scan_id,
+            sort_key,
+            min(1000, _FINDING_GROUP_MAX_OCCURRENCES - len(rows)),
+            0,
+            source_cursor,
+            True,
+            provider,
+            account,
+            environment,
+            domain,
+            window_days,
+            status,
+            finding_class,
+            kev,
+            include_facets and first_page is None,
+            framework,
+            control,
+            owner,
+            sla,
+        )
+        if first_page is None:
+            first_page = page
+        page_rows = page.get("findings")
+        if isinstance(page_rows, list):
+            rows.extend(row for row in page_rows if isinstance(row, dict))
+        warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
+        source_cursor = str(page.get("next_cursor") or "") or None
+        if not source_cursor:
+            break
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        group_id, group_key = _finding_group_identity(row)
+        group = grouped.get(group_id)
+        if group is None:
+            representative = dict(row)
+            representative["finding_group_id"] = group_id
+            representative["finding_group_key"] = group_key
+            representative["occurrence_count"] = 0
+            representative["occurrences"] = []
+            representative["occurrences_truncated"] = False
+            grouped[group_id] = representative
+            group = representative
+        group["occurrence_count"] = int(group["occurrence_count"]) + 1
+        occurrences = group["occurrences"]
+        if isinstance(occurrences, list) and len(occurrences) < _FINDING_GROUP_OCCURRENCE_SAMPLE:
+            occurrences.append(_finding_occurrence_summary(row))
+        else:
+            group["occurrences_truncated"] = True
+
+    all_groups = list(grouped.values())
+    grouped_severity_counts = {key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")}
+    for group in all_groups:
+        grouped_severity_counts[_normalize_facet_severity(group.get("severity"))] += 1
+    normalized_severity = severity.strip().lower() if severity and severity.strip() else None
+    groups = [
+        group
+        for group in all_groups
+        if normalized_severity is None or _normalize_facet_severity(group.get("severity")) == normalized_severity
+    ]
+    truncated = source_cursor is not None
+    if truncated:
+        warnings.append("Issue grouping stopped after 50,000 occurrence rows; group and occurrence counts are lower bounds.")
+    page_groups = groups[group_offset : group_offset + limit]
+    next_offset = group_offset + len(page_groups)
+    next_cursor = ""
+    if next_offset < len(groups):
+        next_cursor = encode_finding_group_cursor(sort=sort_key, offset=next_offset)
+
+    filters = dict(first_page.get("filters") or {}) if first_page else {}
+    filters["group_occurrences"] = True
+    if normalized_severity is not None:
+        filters["severity"] = normalized_severity
+    envelope = finding_list_envelope(
+        findings=page_groups,
+        total=len(groups),
+        limit=limit,
+        offset=0 if cursor else offset,
+        sort=sort_key,
+        scan_id=scan_id,
+        cursor=cursor or "",
+        next_cursor=next_cursor,
+        filters=filters,
+        warnings=list(dict.fromkeys(warnings)),
+        total_approximate=truncated,
+        source="scan_and_current_ingest_finding_groups",
+        scope="tenant current-state issue groups over asset-scoped occurrences",
+    )
+    envelope["grouping"] = {
+        "status": "partial" if truncated else "complete",
+        "scanned_occurrences": len(rows),
+        "scan_budget": _FINDING_GROUP_MAX_OCCURRENCES,
+        "occurrence_total": sum(int(group.get("occurrence_count") or 0) for group in groups),
+        "occurrence_sample_limit": _FINDING_GROUP_OCCURRENCE_SAMPLE,
+    }
+    if first_page:
+        if "window" in first_page:
+            envelope["window"] = first_page["window"]
+            envelope["count_metadata"]["window"] = first_page["window"]
+        for key in ("facets", "facets_approximate", "facet_metadata", "scope_completeness"):
+            if key in first_page:
+                envelope[key] = first_page[key]
+        if include_facets:
+            envelope.setdefault("facets", {})["severity"] = grouped_severity_counts
+            envelope["facet_metadata"]["severity_basis"] = "canonical issue groups"
     return envelope
 
 

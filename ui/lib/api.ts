@@ -37,6 +37,7 @@ import type {
   GraphExportFormat,
   AgentBomManifestResponse,
   PostureCountsResponse,
+  TrendsResponse,
   OverviewResponse,
   AccountSummaryResponse,
   ScoreConfigRuntime,
@@ -345,6 +346,7 @@ export type {
   FirewallDecisionRecord,
   EvaluateResult,
   PostureResponse,
+  TrendsResponse,
   EnrichmentSourcePosture,
   EnrichmentPostureResponse,
   GovernanceFinding,
@@ -1289,6 +1291,9 @@ export const api = {
   /** Full posture grade + dimensions */
   getPosture: () => get<PostureResponse>("/v1/posture"),
 
+  /** Idempotent scan-backed posture history, newest point first. */
+  getTrends: (limit = 30) => get<TrendsResponse>(`/v1/trends?limit=${encodeURIComponent(String(limit))}`),
+
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),
 
@@ -1544,6 +1549,7 @@ export const api = {
     offset?: number;
     cursor?: string;
     approximateTotal?: boolean;
+    groupOccurrences?: boolean;
     // First-class scope + taxonomy filters (issue #3946). All optional +
     // backward compatible; the server canonicalizes and never rejects them.
     provider?: string;
@@ -1575,6 +1581,7 @@ export const api = {
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.cursor) params.set("cursor", filters.cursor);
     if (filters?.approximateTotal) params.set("approximate_total", "true");
+    if (filters?.groupOccurrences) params.set("group_occurrences", "true");
     if (filters?.provider) params.set("provider", filters.provider);
     if (filters?.account) params.set("account", filters.account);
     if (filters?.environment) params.set("environment", filters.environment);

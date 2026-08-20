@@ -123,6 +123,12 @@ def test_audit_and_trend_tables_exist_with_rls():
     assert "CREATE POLICY trend_history_tenant_isolation ON trend_history" in SQL
 
 
+def test_trend_history_has_retry_safe_scan_identity():
+    assert "scan_id" in _columns_for("trend_history")
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_history_team_scan" in SQL
+    assert "ON trend_history(team_id, scan_id) WHERE scan_id IS NOT NULL" in SQL
+
+
 def test_remaining_tenant_tables_have_rls():
     for table in ("findings", "agents", "policy_results", "job_queue"):
         assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight, ChevronUp, ExternalLink } from "lucide-react";
-import { useLayoutEffect, useState } from "react";
+import { Fragment, useLayoutEffect, useState } from "react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { severityColor, severityDot, type FindingTriageItem } from "@/lib/api";
@@ -135,6 +135,15 @@ export function FindingsQueueTable({
   const { hasCapability } = useAuthState();
   const canManageExceptions = hasCapability("exceptions.manage");
   const compactLayout = useCompactFindingsLayout();
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleOccurrences = (rowKey: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  };
   const emptyLabel =
     lens === "trust"
       ? "No findings match the selected compliance query."
@@ -157,6 +166,8 @@ export function FindingsQueueTable({
               onSelect={() => onSelect(rowKey)}
               onMarkFP={() => onMarkFP(vuln.id, vuln.packages[0] ?? "")}
               canMarkFalsePositive={canManageExceptions}
+              occurrencesExpanded={expandedGroups.has(rowKey)}
+              onToggleOccurrences={() => toggleOccurrences(rowKey)}
             />
           );
         })}
@@ -198,33 +209,48 @@ export function FindingsQueueTable({
             const rowKey = vulnRowKey(v);
             const isSelected = selectedId === rowKey || selectedId === v.id;
             const triage = triageForFinding(v, triageByKey);
+            const occurrencesExpanded = expandedGroups.has(rowKey);
             return (
-              <tr
-                key={rowKey}
-                className={`cursor-pointer transition-colors ${isSelected ? "bg-[var(--surface)]/90 ring-1 ring-inset ring-emerald-900/60" : "hover:bg-[var(--surface)]"}`}
-                onClick={() => onSelect(rowKey)}
-              >
-                <FindingIdentity vuln={v} rowKey={rowKey} onSelect={onSelect} />
-                {lens === "trust" ? (
-                  <ComplianceCells vuln={v} triage={triage} onSelect={() => onSelect(rowKey)} />
-                ) : (
-                  <>
-                    <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
-                      {v.severity}
-                    </span>
+              <Fragment key={rowKey}>
+                <tr
+                  className={`cursor-pointer transition-colors ${isSelected ? "bg-[var(--surface)]/90 ring-1 ring-inset ring-emerald-900/60" : "hover:bg-[var(--surface)]"}`}
+                  onClick={() => onSelect(rowKey)}
+                >
+                  <FindingIdentity
+                    vuln={v}
+                    rowKey={rowKey}
+                    onSelect={onSelect}
+                    occurrencesExpanded={occurrencesExpanded}
+                    onToggleOccurrences={() => toggleOccurrences(rowKey)}
+                  />
+                  {lens === "trust" ? (
+                    <ComplianceCells vuln={v} triage={triage} onSelect={() => onSelect(rowKey)} />
+                  ) : (
+                    <>
+                      <td className="px-4 py-3">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
+                        {v.severity}
+                      </span>
+                      </td>
+                      <EngineeringCells
+                        vuln={v}
+                        triage={triage}
+                        suppressed={suppressed.has(v.id)}
+                        onSelect={() => onSelect(rowKey)}
+                        onMarkFP={() => onMarkFP(v.id, v.packages[0] ?? "")}
+                        canMarkFalsePositive={canManageExceptions}
+                      />
+                    </>
+                  )}
+                </tr>
+                {occurrencesExpanded ? (
+                  <tr className="bg-[var(--surface)]/45">
+                    <td colSpan={lens === "trust" ? 6 : 8} className="px-10 py-3">
+                      <OccurrenceList vuln={v} />
                     </td>
-                    <EngineeringCells
-                      vuln={v}
-                      triage={triage}
-                      suppressed={suppressed.has(v.id)}
-                      onSelect={() => onSelect(rowKey)}
-                      onMarkFP={() => onMarkFP(v.id, v.packages[0] ?? "")}
-                      canMarkFalsePositive={canManageExceptions}
-                    />
-                  </>
-                )}
-              </tr>
+                  </tr>
+                ) : null}
+              </Fragment>
             );
           })}
         </tbody>
@@ -265,6 +291,8 @@ function MobileFindingCard({
   onSelect,
   onMarkFP,
   canMarkFalsePositive,
+  occurrencesExpanded,
+  onToggleOccurrences,
 }: {
   vuln: EnrichedVuln;
   lens: FindingsLens;
@@ -274,6 +302,8 @@ function MobileFindingCard({
   onSelect: () => void;
   onMarkFP: () => void;
   canMarkFalsePositive: boolean;
+  occurrencesExpanded: boolean;
+  onToggleOccurrences: () => void;
 }) {
   const controls = controlLabels(vuln);
   const evidenceSources = vuln.sources.filter((source) => source !== "finding");
@@ -313,6 +343,12 @@ function MobileFindingCard({
           {vuln.severity}
         </span>
       </button>
+
+      <OccurrenceDisclosure
+        vuln={vuln}
+        expanded={occurrencesExpanded}
+        onToggle={onToggleOccurrences}
+      />
 
       {lens === "trust" ? (
         <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-xs">
@@ -406,10 +442,14 @@ function FindingIdentity({
   vuln,
   rowKey,
   onSelect,
+  occurrencesExpanded,
+  onToggleOccurrences,
 }: {
   vuln: EnrichedVuln;
   rowKey: string;
   onSelect: (vulnId: string | null) => void;
+  occurrencesExpanded: boolean;
+  onToggleOccurrences: () => void;
 }) {
   const secondary = findingSecondaryText(vuln);
   return (
@@ -457,9 +497,84 @@ function FindingIdentity({
               {secondary}
             </p>
           ) : null}
+          <OccurrenceDisclosure
+            vuln={vuln}
+            expanded={occurrencesExpanded}
+            onToggle={onToggleOccurrences}
+            showDetails={false}
+          />
         </div>
       </div>
     </td>
+  );
+}
+
+function OccurrenceDisclosure({
+  vuln,
+  expanded,
+  onToggle,
+  showDetails = true,
+}: {
+  vuln: EnrichedVuln;
+  expanded: boolean;
+  onToggle: () => void;
+  showDetails?: boolean;
+}) {
+  const count = vuln.occurrence_count ?? 1;
+  if (count <= 1) return null;
+  const label = `${expanded ? "Hide" : "Show"} ${count} affected asset occurrences`;
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={expanded}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+        className="inline-flex items-center gap-1 rounded border border-[var(--border-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+      >
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {count} occurrences
+      </button>
+      {expanded && showDetails ? <OccurrenceList vuln={vuln} /> : null}
+    </div>
+  );
+}
+
+function OccurrenceList({ vuln }: { vuln: EnrichedVuln }) {
+  const visible = (vuln.occurrences ?? []).slice(0, 8);
+  const remaining = Math.max(0, (vuln.occurrence_count ?? visible.length) - visible.length);
+  return (
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--background)] p-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
+        Asset-scoped occurrences
+      </p>
+      <ul className="grid gap-2 text-[11px] text-[var(--text-secondary)] sm:grid-cols-2 xl:grid-cols-4">
+        {visible.map((occurrence, index) => {
+          const asset = occurrence.asset;
+          const key = occurrence.finding_id ?? occurrence.occurrence_id ?? asset?.stable_id ?? String(index);
+          return (
+            <li key={key} className="min-w-0 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-2">
+              <span className="block truncate font-mono text-[var(--foreground)]" title={asset?.name || asset?.stable_id || undefined}>
+                {asset?.name || asset?.stable_id || "Asset unavailable"}
+              </span>
+              <span className="mt-0.5 block truncate text-[var(--text-tertiary)]">
+                {[asset?.asset_type, occurrence.package_version, occurrence.owner]
+                  .filter((value): value is string => Boolean(value))
+                  .join(" · ") || "Evidence retained"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {remaining > 0 || vuln.occurrences_truncated ? (
+        <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
+          {remaining > 0 ? `${remaining} more occurrences retained.` : "Additional occurrences are retained."} Narrow the query to inspect a specific asset.
+        </p>
+      ) : null}
+    </div>
   );
 }
 

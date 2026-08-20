@@ -114,6 +114,39 @@ class TestBuildUnifiedGraphFromReport:
         names = {a.label for a in agents}
         assert names == {"claude-desktop", "cursor"}
 
+    def test_explicit_credential_identity_binding_joins_cloud_identity(self):
+        report = _minimal_report()
+        server = report["agents"][0]["mcp_servers"][0]
+        server["identity_bindings"] = [
+            {
+                "credential_ref": "GITHUB_TOKEN",
+                "identity_canonical_id": "managed_identity:github:app/deployer",
+                "evidence_source": "mcp-config",
+                "provider": "github",
+            }
+        ]
+
+        graph = build_unified_graph_from_report(report)
+        credential = next(
+            node
+            for node in graph.nodes_by_type(EntityType.CREDENTIAL)
+            if node.label == "GITHUB_TOKEN" and node.attributes["server"].endswith(":mcp-fs")
+        )
+        identity = graph.get_node("managed_identity:github:app/deployer")
+
+        assert identity is not None
+        assert identity.entity_type is EntityType.MANAGED_IDENTITY
+        assert identity.attributes["evidence_source"] == "mcp-config"
+        assert any(
+            edge.source == credential.id and edge.target == identity.id and edge.relationship is RelationshipType.AUTHENTICATES_AS
+            for edge in graph.edges
+        )
+
+    def test_credential_slots_do_not_infer_cloud_identity_without_binding(self):
+        graph = build_unified_graph_from_report(_minimal_report())
+
+        assert graph.nodes_by_type(EntityType.MANAGED_IDENTITY) == []
+
     def test_agent_environment_lands_on_dimensions_and_stack(self):
         report = _minimal_report()
         report["agents"][0]["environment"] = "production"

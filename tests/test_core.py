@@ -159,6 +159,61 @@ def test_parse_empty_config():
     assert len(servers) == 0
 
 
+def test_parse_mcp_config_preserves_only_explicit_credential_identity_bindings():
+    """Credential names alone never imply a cloud identity relationship."""
+    config = {
+        "mcpServers": {
+            "deploy": {
+                "command": "node",
+                "args": ["deploy-agent.js"],
+                "env": {"AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/deploy"},
+                "identityBindings": [
+                    {
+                        "credentialRef": "AWS_ROLE_ARN",
+                        "identityCanonicalId": "managed_identity:aws:123456789012:role/deploy",
+                        "evidenceSource": "mcp-config:identityBindings",
+                        "provider": "AWS",
+                    },
+                    {
+                        "credentialRef": "MISSING",
+                        "identityCanonicalId": "managed_identity:aws:123456789012:role/missing",
+                        "evidenceSource": "mcp-config:identityBindings",
+                    },
+                    {"credentialRef": "AWS_ROLE_ARN"},
+                ],
+            }
+        }
+    }
+
+    [server] = parse_mcp_config(config, "/tmp/mcp.json")
+
+    assert [binding.to_dict() for binding in server.identity_bindings] == [
+        {
+            "credential_ref": "AWS_ROLE_ARN",
+            "identity_canonical_id": "managed_identity:aws:123456789012:role/deploy",
+            "evidence_source": "mcp-config:identityBindings",
+            "provider": "aws",
+        }
+    ]
+
+
+def test_parse_mcp_config_does_not_infer_identity_from_environment_names():
+    [server] = parse_mcp_config(
+        {
+            "mcpServers": {
+                "deploy": {
+                    "command": "node",
+                    "args": ["deploy-agent.js"],
+                    "env": {"AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/deploy"},
+                }
+            }
+        },
+        "/tmp/mcp.json",
+    )
+
+    assert server.identity_bindings == []
+
+
 # ─── Parser Tests ───────────────────────────────────────────────────────────
 
 

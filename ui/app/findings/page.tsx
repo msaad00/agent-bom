@@ -122,7 +122,9 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
     ]);
     return {
       id: findingLabel,
-      finding_id: finding.id,
+      finding_id: finding.finding_id ?? finding.id,
+      finding_group_id: finding.finding_group_id,
+      finding_group_key: finding.finding_group_key,
       node_id: finding.node_id ?? undefined,
       finding_node_id: finding.finding_node_id ?? undefined,
       entity_type: finding.entity_type ?? undefined,
@@ -200,6 +202,8 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       scan_count: finding.scan_count,
       last_observed: finding.last_observed ?? finding.last_seen ?? undefined,
       occurrence_count: finding.occurrence_count ?? finding.scan_count,
+      occurrences: finding.occurrences,
+      occurrences_truncated: finding.occurrences_truncated,
       remediation_versions: finding.remediation_versions ?? undefined,
       provenance: finding.provenance ?? undefined,
       owner: finding.owner ?? undefined,
@@ -594,6 +598,7 @@ function FindingsPage() {
           ...(!currentCursor ? { offset: (page - 1) * PAGE_SIZE } : {}),
           ...(currentCursor ? { cursor: currentCursor } : {}),
           approximateTotal: true,
+          groupOccurrences: true,
           includeFacets: true,
           windowDays,
         });
@@ -776,7 +781,7 @@ function FindingsPage() {
         title="Findings"
         subtitle={findingsPageSubtitle(
           lens,
-          `${findingsTotalLabel}${findingsTotal == null ? "" : " findings"}`,
+          `${findingsTotalLabel}${findingsTotal == null ? "" : " issues"}`,
           paramScan
             ? `from scan ${paramScan.slice(0, 8)}.`
             : `current state across completed scans · ${findingsWindowLabel}.`,
@@ -924,7 +929,7 @@ function FindingsPage() {
                   {findingsQueueTitle(lens)}
                 </span>
                 <span aria-hidden="true">·</span>
-                <span>{displayed.length} on this page</span>
+                <span>{displayed.length} issues on this page</span>
                 <span aria-hidden="true">·</span>
                 <span>{PAGE_SIZE} per page</span>
               </p>
@@ -1203,7 +1208,7 @@ function FindingsPage() {
             totalPages={totalPages}
             totalItems={findingsTotal}
             hasMore={hasMoreFindings}
-            itemLabel={findingsTotalApproximate ? "findings (approx.)" : "findings"}
+            itemLabel={findingsTotalApproximate ? "issues (approx.)" : "issues"}
             onPrevious={() => setPage((p) => Math.max(1, p - 1))}
             onNext={() => {
               if (nextFindingsCursor) {

@@ -1,5 +1,5 @@
 import type { Vulnerability } from "@/lib/api";
-import type { WorkloadRuntimeEvidence } from "@/lib/api-types";
+import type { FindingOccurrenceSummary, WorkloadRuntimeEvidence } from "@/lib/api-types";
 
 export interface EnrichedVuln extends Vulnerability {
   /**
@@ -10,6 +10,8 @@ export interface EnrichedVuln extends Vulnerability {
    * merge one row per CVE.
    */
   finding_id?: string | undefined;
+  finding_group_id?: string | undefined;
+  finding_group_key?: string | undefined;
   /** Estate UnifiedNode id (graph FK) when the API stamped the finding. */
   node_id?: string | undefined;
   finding_node_id?: string | undefined;
@@ -53,6 +55,8 @@ export interface EnrichedVuln extends Vulnerability {
   /** Canonical timestamp of the most recent observation, when available. */
   last_observed?: string | undefined;
   occurrence_count?: number | undefined;
+  occurrences?: FindingOccurrenceSummary[] | undefined;
+  occurrences_truncated?: boolean | undefined;
   remediation_versions?: string[] | undefined;
   provenance?: Record<string, unknown> | string | undefined;
   owner?: string | undefined;

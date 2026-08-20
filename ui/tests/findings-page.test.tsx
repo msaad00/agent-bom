@@ -126,6 +126,51 @@ describe("FindingsPage", () => {
     expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
   });
 
+  it("uses the server-backed issue view and expands preserved asset occurrences", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        {
+          ...canonicalFinding,
+          finding_group_id: "group-1",
+          occurrence_count: 2,
+          occurrences_truncated: false,
+          occurrences: [
+            {
+              finding_id: "finding-api",
+              asset: { name: "api-image", asset_type: "package", stable_id: "asset-api" },
+              severity: "critical",
+            },
+            {
+              finding_id: "finding-worker",
+              asset: { name: "worker-image", asset_type: "package", stable_id: "asset-worker" },
+              severity: "high",
+            },
+          ],
+        },
+      ],
+      total: 1,
+      has_more: false,
+      next_cursor: "",
+    });
+
+    render(<FindingsPage />);
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenCalledWith(
+        expect.objectContaining({ groupOccurrences: true }),
+      ),
+    );
+    expect(await screen.findByText(/1 issues · current state/)).toBeInTheDocument();
+    const expander = await screen.findByRole("button", { name: "Show 2 affected asset occurrences" });
+    expect(screen.queryByText("api-image")).not.toBeInTheDocument();
+
+    fireEvent.click(expander);
+
+    expect(await screen.findByText("api-image")).toBeInTheDocument();
+    expect(screen.getByText("worker-image")).toBeInTheDocument();
+  });
+
   it("keeps findings as a compact queue and opens evidence in a drawer", async () => {
     render(<FindingsPage />);
 

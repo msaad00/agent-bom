@@ -1042,8 +1042,33 @@ export interface Vulnerability {
   match_confidence_tier?: string | undefined;
 }
 
+export interface FindingOccurrenceSummary {
+  finding_id?: string | undefined;
+  occurrence_id?: string | undefined;
+  canonical_id?: string | undefined;
+  asset?: {
+    name?: string | undefined;
+    asset_type?: string | undefined;
+    stable_id?: string | undefined;
+  } | undefined;
+  severity?: string | undefined;
+  package_version?: string | null | undefined;
+  scan_id?: string | undefined;
+  status?: string | undefined;
+  owner?: string | null | undefined;
+  sla_due_at?: string | null | undefined;
+  last_seen?: string | null | undefined;
+  last_observed?: string | null | undefined;
+  graph_reachable?: boolean | null | undefined;
+  graph_min_hop_distance?: number | null | undefined;
+}
+
 export interface UnifiedFinding {
   id: string;
+  finding_id?: string | undefined;
+  occurrence_id?: string | undefined;
+  finding_group_id?: string | undefined;
+  finding_group_key?: string | undefined;
   finding_class: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
   canonical_id?: string | undefined;
   finding_type?: string | undefined;
@@ -1120,6 +1145,8 @@ export interface UnifiedFinding {
   scan_count?: number | undefined;
   last_observed?: string | null | undefined;
   occurrence_count?: number | null | undefined;
+  occurrences?: FindingOccurrenceSummary[] | undefined;
+  occurrences_truncated?: boolean | undefined;
   remediation_versions?: string[] | null | undefined;
   provenance?: Record<string, unknown> | string | null | undefined;
   owner?: string | null | undefined;
@@ -1150,6 +1177,13 @@ export interface FindingListEnvelope<T> {
   next_cursor: string;
   has_more: boolean;
   warnings: string[];
+  grouping?: {
+    status: "complete" | "partial";
+    scanned_occurrences: number;
+    scan_budget: number;
+    occurrence_total: number | null;
+    occurrence_sample_limit: number;
+  } | undefined;
   count_metadata: {
     definition: string;
     source: string;
@@ -2790,6 +2824,23 @@ export interface PostureResponse {
     string,
     { score: number; label: string; details?: string }
   >;
+}
+
+export interface TrendPointResponse {
+  scan_id?: string | null;
+  timestamp: string;
+  total_vulns: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  posture_score: number;
+  posture_grade: string;
+}
+
+export interface TrendsResponse {
+  data_points: TrendPointResponse[];
+  count: number;
 }
 
 // ─── Cross-domain overview (landing page) ────────────────────────────────────

@@ -789,6 +789,14 @@ def _persist_connection_report(
         # instead of minting an orphan result row.
         scan_job = queued_job
         scan_job.result = report_json
+    from agent_bom.api.trend_recording import record_scan_trend_best_effort
+
+    record_scan_trend_best_effort(
+        report_json,
+        tenant_id=tenant_id,
+        scan_id=scan_job.job_id,
+        completed_at=now,
+    )
     _persist_graph_snapshot(scan_job, report_json)
     return str(scan_job.job_id)
 

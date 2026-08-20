@@ -66,6 +66,17 @@ from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
 
+_AWS_RETRY_CONFIG = {"max_attempts": 5, "mode": "adaptive"}
+
+
+def _aws_client_config() -> Any | None:
+    """Return the bounded adaptive retry policy when botocore is available."""
+    try:
+        from botocore.config import Config
+    except ImportError:
+        return None
+    return Config(retries=_AWS_RETRY_CONFIG)
+
 
 def _safe_error_evidence(prefix: str, error_code: str) -> str:
     """Build client-safe evidence text without leaking raw exception details."""
@@ -1744,6 +1755,49 @@ def _check_3_11(cloudtrail_client: Any) -> CISCheckResult:
 _MONITORING_SECTION = "4 - Monitoring"
 
 
+def _require_targeting_alarm(
+    result: CISCheckResult,
+    logs_client: Any,
+    cloudwatch_client: Any,
+    *,
+    matches_filter: Callable[[str], bool],
+) -> CISCheckResult:
+    """Require a usable metric transform and an alarm targeting its metric."""
+    try:
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        transforms: list[tuple[str, str]] = []
+        for page in paginator.paginate():
+            for metric_filter in page.get("metricFilters", []):
+                pattern = str(metric_filter.get("filterPattern", ""))
+                if not matches_filter(pattern):
+                    continue
+                for transform in metric_filter.get("metricTransformations", []):
+                    metric_name = str(transform.get("metricName", "")).strip()
+                    namespace = str(transform.get("metricNamespace", "")).strip()
+                    if metric_name and namespace:
+                        transforms.append((metric_name, namespace))
+        if not transforms:
+            result.status = CheckStatus.FAIL
+            result.evidence = "A matching metric filter exists, but it has no usable metric transformation."
+            return result
+        for metric_name, namespace in dict.fromkeys(transforms):
+            response = cloudwatch_client.describe_alarms_for_metric(
+                MetricName=metric_name,
+                Namespace=namespace,
+            )
+            if response.get("MetricAlarms", []):
+                result.evidence = f"{result.evidence.rstrip('.')} and a targeting CloudWatch alarm exists."
+                return result
+        result.status = CheckStatus.FAIL
+        result.evidence = "A matching metric filter exists, but no CloudWatch alarm targets its metric."
+    except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        logger.debug("Could not verify metric alarm: %s (%s)", type(exc).__name__, error_code)
+        result.status = CheckStatus.ERROR
+        result.evidence = _safe_error_evidence("Could not query metric filters and alarms.", error_code)
+    return result
+
+
 def _check_4_3(logs_client: Any, cloudwatch_client: Any) -> CISCheckResult:
     """CIS 4.3 — Metric filter and alarm for root account usage."""
     result = CISCheckResult(
@@ -1800,7 +1854,7 @@ def _check_4_3(logs_client: Any, cloudwatch_client: Any) -> CISCheckResult:
     return result
 
 
-def _check_4_4(logs_client: Any) -> CISCheckResult:
+def _check_4_4(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.4 — Metric filter and alarm for IAM policy changes."""
     result = CISCheckResult(
         check_id="4.4",
@@ -1851,10 +1905,17 @@ def _check_4_4(logs_client: Any) -> CISCheckResult:
         logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in iam_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
+def _check_4_5(logs_client: Any, cloudtrail_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.5 — Metric filter and alarm for CloudTrail config changes."""
     result = CISCheckResult(
         check_id="4.5",
@@ -1904,10 +1965,17 @@ def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
         logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
         result.status = CheckStatus.ERROR
         result.evidence = _safe_error_evidence("Could not query metric filters.", error_code)
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in ct_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_1(logs_client: Any) -> CISCheckResult:
+def _check_4_1(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.1 — Metric filter and alarm for unauthorized API calls."""
     result = CISCheckResult(
         check_id="4.1",
@@ -1938,10 +2006,17 @@ def _check_4_1(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: any(token.lower() in pattern.lower() for token in patterns),
+        )
     return result
 
 
-def _check_4_2(logs_client: Any) -> CISCheckResult:
+def _check_4_2(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.2 — Metric filter and alarm for console sign-in without MFA."""
     result = CISCheckResult(
         check_id="4.2",
@@ -1972,10 +2047,17 @@ def _check_4_2(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: all(token.lower() in pattern.lower() for token in patterns),
+        )
     return result
 
 
-def _check_4_6(logs_client: Any) -> CISCheckResult:
+def _check_4_6(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.6 — Metric filter and alarm for console auth failures."""
     result = CISCheckResult(
         check_id="4.6",
@@ -2006,10 +2088,17 @@ def _check_4_6(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: all(token.lower() in pattern.lower() for token in patterns),
+        )
     return result
 
 
-def _check_4_7(logs_client: Any) -> CISCheckResult:
+def _check_4_7(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.7 — Metric filter and alarm for CMK disable or deletion."""
     result = CISCheckResult(
         check_id="4.7",
@@ -2041,10 +2130,17 @@ def _check_4_7(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: any(event in pattern for event in kms_event_names),
+        )
     return result
 
 
-def _check_4_8(logs_client: Any) -> CISCheckResult:
+def _check_4_8(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.8 — Metric filter and alarm for S3 bucket policy changes."""
     result = CISCheckResult(
         check_id="4.8",
@@ -2086,10 +2182,17 @@ def _check_4_8(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in s3_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_9(logs_client: Any) -> CISCheckResult:
+def _check_4_9(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.9 — Metric filter and alarm for AWS Config changes."""
     result = CISCheckResult(
         check_id="4.9",
@@ -2126,10 +2229,17 @@ def _check_4_9(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in config_event_names if event in pattern) >= 2,
+        )
     return result
 
 
-def _check_4_10(logs_client: Any) -> CISCheckResult:
+def _check_4_10(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.10 — Metric filter and alarm for security group changes."""
     result = CISCheckResult(
         check_id="4.10",
@@ -2168,10 +2278,17 @@ def _check_4_10(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in sg_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_11(logs_client: Any) -> CISCheckResult:
+def _check_4_11(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.11 — Metric filter and alarm for NACL changes."""
     result = CISCheckResult(
         check_id="4.11",
@@ -2210,10 +2327,17 @@ def _check_4_11(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in nacl_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_12(logs_client: Any) -> CISCheckResult:
+def _check_4_12(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.12 — Metric filter and alarm for network gateway changes."""
     result = CISCheckResult(
         check_id="4.12",
@@ -2252,10 +2376,17 @@ def _check_4_12(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in gw_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_13(logs_client: Any) -> CISCheckResult:
+def _check_4_13(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.13 — Metric filter and alarm for route table changes."""
     result = CISCheckResult(
         check_id="4.13",
@@ -2295,10 +2426,17 @@ def _check_4_13(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in rt_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_14(logs_client: Any) -> CISCheckResult:
+def _check_4_14(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.14 — Metric filter and alarm for VPC changes."""
     result = CISCheckResult(
         check_id="4.14",
@@ -2342,10 +2480,17 @@ def _check_4_14(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not query metric filters: {error_code or exc}"
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in vpc_event_names if event in pattern) >= 3,
+        )
     return result
 
 
-def _check_4_15(logs_client: Any) -> CISCheckResult:
+def _check_4_15(logs_client: Any, cloudwatch_client: Any = None) -> CISCheckResult:
     """CIS 4.15 — Metric filter and alarm for AWS Organizations changes."""
     result = CISCheckResult(
         check_id="4.15",
@@ -2385,6 +2530,13 @@ def _check_4_15(logs_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
         result.evidence = _safe_error_evidence("Could not query metric filters.", error_code)
+    if result.status is CheckStatus.PASS:
+        return _require_targeting_alarm(
+            result,
+            logs_client,
+            cloudwatch_client,
+            matches_filter=lambda pattern: sum(1 for event in org_event_names if event in pattern) >= 2,
+        )
     return result
 
 
@@ -2764,6 +2916,8 @@ _CHECKS: list[tuple[str, Callable]] = [
     ("ec2", _check_5_6),
 ]
 
+_MONITORING_ALARM_CHECKS = {check_fn for service, check_fn in _CHECKS if service == "logs"}
+
 # Checks that need special handling (multiple clients or account_id)
 _SPECIAL_CHECKS: list[tuple[str, Callable]] = [
     ("account", _check_1_1),  # needs account client
@@ -2832,8 +2986,12 @@ def run_benchmark(
 
     # Get account ID for the report
     account_id = ""
+    client_config = _aws_client_config()
     try:
-        sts = session.client("sts", region_name=resolved_region)
+        sts_kwargs = {"region_name": resolved_region}
+        if client_config is not None:
+            sts_kwargs["config"] = client_config
+        sts = session.client("sts", **sts_kwargs)
         account_id = sts.get_caller_identity()["Account"]
     except Exception as exc:
         # Account ID lookup is non-fatal; continue with empty value
@@ -2853,7 +3011,10 @@ def run_benchmark(
 
     def _get_client(svc: str) -> Any:
         if svc not in clients:
-            clients[svc] = session.client(svc, region_name=resolved_region)
+            client_kwargs = {"region_name": resolved_region}
+            if client_config is not None:
+                client_kwargs["config"] = client_config
+            clients[svc] = session.client(svc, **client_kwargs)
         return clients[svc]
 
     def _extract_check_id(fn: Callable) -> str:
@@ -2894,7 +3055,8 @@ def run_benchmark(
 
     # Standard checks (single client)
     for service, check_fn in _CHECKS:
-        _run_check(_extract_check_id(check_fn), check_fn, _get_client(service))
+        args = (_get_client(service), _get_client("cloudwatch")) if check_fn in _MONITORING_ALARM_CHECKS else (_get_client(service),)
+        _run_check(_extract_check_id(check_fn), check_fn, *args)
 
     # Special checks requiring multiple clients, account_id, or no client
     _run_check("1.1", _check_1_1, _get_client("account"))
@@ -2907,7 +3069,7 @@ def run_benchmark(
     _run_check("3.6", _check_3_6, _get_client("s3"), _get_client("cloudtrail"))
     _run_check("3.9", _check_3_9, _get_client("ec2"))
     _run_check("4.3", _check_4_3, _get_client("logs"), _get_client("cloudwatch"))
-    _run_check("4.5", _check_4_5, _get_client("logs"), _get_client("cloudtrail"))
+    _run_check("4.5", _check_4_5, _get_client("logs"), _get_client("cloudtrail"), _get_client("cloudwatch"))
     _run_check("4.16", _check_4_16, _get_client("securityhub"))
 
     if not account_id:

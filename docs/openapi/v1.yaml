@@ -12167,6 +12167,17 @@ paths:
           - type: 'null'
           description: Only known-exploited (KEV) findings, or only non-KEV when false
           title: Kev
+      - description: Group vulnerability occurrences by advisory and package while
+          preserving asset-scoped rows
+        in: query
+        name: group_occurrences
+        required: false
+        schema:
+          default: false
+          description: Group vulnerability occurrences by advisory and package while
+            preserving asset-scoped rows
+          title: Group Occurrences
+          type: boolean
       - description: Compliance framework drill-through, e.g. soc2 / nist-csf (compliance
           section id)
         in: query

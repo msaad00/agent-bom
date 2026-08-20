@@ -608,10 +608,15 @@ class PostgresTrendStore:
                     medium INTEGER NOT NULL DEFAULT 0,
                     low INTEGER NOT NULL DEFAULT 0,
                     posture_score REAL NOT NULL DEFAULT 0,
-                    posture_grade TEXT NOT NULL DEFAULT ''
+                    posture_grade TEXT NOT NULL DEFAULT '',
+                    scan_id TEXT
                 )
             """)
+            conn.execute("ALTER TABLE trend_history ADD COLUMN IF NOT EXISTS scan_id TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_trend_history_team_ts ON trend_history(team_id, timestamp DESC)")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_history_team_scan ON trend_history(team_id, scan_id) WHERE scan_id IS NOT NULL"
+            )
             _ensure_tenant_rls(conn, "trend_history", "team_id")
             conn.commit()
 
@@ -619,8 +624,17 @@ class PostgresTrendStore:
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """INSERT INTO trend_history
-                   (timestamp, team_id, total_vulns, critical, high, medium, low, posture_score, posture_grade)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   (timestamp, team_id, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (team_id, scan_id) WHERE scan_id IS NOT NULL DO UPDATE SET
+                     timestamp = EXCLUDED.timestamp,
+                     total_vulns = EXCLUDED.total_vulns,
+                     critical = EXCLUDED.critical,
+                     high = EXCLUDED.high,
+                     medium = EXCLUDED.medium,
+                     low = EXCLUDED.low,
+                     posture_score = EXCLUDED.posture_score,
+                     posture_grade = EXCLUDED.posture_grade""",
                 (
                     point.timestamp,
                     _current_tenant.get(),
@@ -631,6 +645,7 @@ class PostgresTrendStore:
                     point.low,
                     point.posture_score,
                     point.posture_grade,
+                    point.scan_id,
                 ),
             )
             conn.commit()
@@ -642,7 +657,7 @@ class PostgresTrendStore:
         try:
             with _tenant_connection(self._pool) as conn:
                 rows = conn.execute(
-                    "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade "
+                    "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id "
                     "FROM trend_history ORDER BY timestamp DESC LIMIT %s",
                     (limit,),
                 ).fetchall()
@@ -660,6 +675,7 @@ class PostgresTrendStore:
                 posture_score=row[6],
                 posture_grade=row[7],
                 tenant_id=tenant_id or _current_tenant.get(),
+                scan_id=row[8] if len(row) > 8 else None,
             )
             for row in rows
         ]

@@ -172,7 +172,15 @@ class InMemoryTrendStore:
 
     def record(self, point: TrendPoint) -> None:
         with self._lock:
-            self._points.append(point)
+            if point.scan_id:
+                for index, existing in enumerate(self._points):
+                    if existing.idempotency_key == point.idempotency_key:
+                        self._points[index] = point
+                        break
+                else:
+                    self._points.append(point)
+            else:
+                self._points.append(point)
             if len(self._points) > self._MAX_POINTS:
                 self._points = self._points[-self._MAX_POINTS :]
 
@@ -208,19 +216,34 @@ class SQLiteTrendStore:
             medium INTEGER NOT NULL DEFAULT 0,
             low INTEGER NOT NULL DEFAULT 0,
             posture_score REAL NOT NULL DEFAULT 0,
-            posture_grade TEXT NOT NULL DEFAULT ''
+            posture_grade TEXT NOT NULL DEFAULT '',
+            scan_id TEXT
         )""")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_trend_ts ON trend_history(timestamp)")
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(trend_history)").fetchall()}
         if "tenant_id" not in cols:
             self._conn.execute("ALTER TABLE trend_history ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        if "scan_id" not in cols:
+            self._conn.execute("ALTER TABLE trend_history ADD COLUMN scan_id TEXT")
+        self._conn.execute(
+            "DELETE FROM trend_history WHERE scan_id IS NOT NULL AND id NOT IN "
+            "(SELECT MAX(id) FROM trend_history WHERE scan_id IS NOT NULL GROUP BY tenant_id, scan_id)"
+        )
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_trend_tenant_ts ON trend_history(tenant_id, timestamp)")
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_tenant_scan ON trend_history(tenant_id, scan_id) WHERE scan_id IS NOT NULL"
+        )
         self._conn.commit()
 
     def record(self, point: TrendPoint) -> None:
         self._conn.execute(
-            "INSERT INTO trend_history (timestamp, tenant_id, total_vulns, critical, high, medium, low, posture_score, posture_grade) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO trend_history "
+            "(timestamp, tenant_id, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (tenant_id, scan_id) WHERE scan_id IS NOT NULL DO UPDATE SET "
+            "timestamp = excluded.timestamp, total_vulns = excluded.total_vulns, critical = excluded.critical, "
+            "high = excluded.high, medium = excluded.medium, low = excluded.low, "
+            "posture_score = excluded.posture_score, posture_grade = excluded.posture_grade",
             (
                 point.timestamp,
                 point.tenant_id,
@@ -231,6 +254,7 @@ class SQLiteTrendStore:
                 point.low,
                 point.posture_score,
                 point.posture_grade,
+                point.scan_id,
             ),
         )
         self._conn.commit()
@@ -238,13 +262,13 @@ class SQLiteTrendStore:
     def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
         if tenant_id is None:
             rows = self._conn.execute(
-                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id "
+                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id, scan_id "
                 "FROM trend_history ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id "
+                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id, scan_id "
                 "FROM trend_history WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT ?",
                 (tenant_id, limit),
             ).fetchall()
@@ -259,6 +283,7 @@ class SQLiteTrendStore:
                 posture_score=r[6],
                 posture_grade=r[7],
                 tenant_id=r[8] if len(r) > 8 else "default",
+                scan_id=r[9] if len(r) > 9 else None,
             )
             for r in rows
         ]

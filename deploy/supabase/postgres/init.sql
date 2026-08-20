@@ -380,10 +380,13 @@ CREATE TABLE IF NOT EXISTS trend_history (
     medium        INTEGER NOT NULL DEFAULT 0,
     low           INTEGER NOT NULL DEFAULT 0,
     posture_score REAL NOT NULL DEFAULT 0,
-    posture_grade TEXT NOT NULL DEFAULT ''
+    posture_grade TEXT NOT NULL DEFAULT '',
+    scan_id       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_trend_history_team_ts ON trend_history(team_id, timestamp DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_history_team_scan
+    ON trend_history(team_id, scan_id) WHERE scan_id IS NOT NULL;
 
 -- ── Tables: Scan Schedules ────────────────────────────────────────────────────
 

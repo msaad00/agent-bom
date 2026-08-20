@@ -114,3 +114,26 @@ def test_pipeline_surfaces_mcp_tool_rule_finding_end_to_end(tmp_path, monkeypatc
     findings = job.result.get("findings", [])
     mcp = [f for f in findings if isinstance(f.get("evidence"), dict) and f["evidence"].get("mcp_tool_rule")]
     assert mcp, "hosted scan must surface MCP tool-rule findings in job.result['findings']"
+
+
+def test_pipeline_records_one_scan_backed_trend_point(tmp_path, monkeypatch):
+    """A completed scan invokes the canonical, retry-safe trend boundary."""
+    _patch_scan(monkeypatch)
+    calls: list[tuple[dict, dict]] = []
+
+    def _record(result, **kwargs):
+        calls.append((result, kwargs))
+        return True
+
+    monkeypatch.setattr("agent_bom.api.trend_recording.record_scan_trend_best_effort", _record)
+
+    job = _scan_job(_empty_inventory(tmp_path))
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE, job.result
+    assert len(calls) == 1
+    result, metadata = calls[0]
+    assert result is job.result
+    assert metadata["tenant_id"] == "default"
+    assert metadata["scan_id"] == job.job_id
+    assert metadata["completed_at"]

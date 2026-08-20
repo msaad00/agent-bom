@@ -388,6 +388,43 @@ def build_unified_graph_from_report(
                             },
                         )
                     )
+                for binding in srv_dict.get("identity_bindings", []):
+                    if not isinstance(binding, Mapping) or binding.get("credential_ref") != env_key:
+                        continue
+                    identity_id = sanitize_text(str(binding.get("identity_canonical_id") or "").strip())
+                    evidence_source = sanitize_text(str(binding.get("evidence_source") or "").strip())
+                    if not identity_id or not evidence_source:
+                        continue
+                    provider = sanitize_text(str(binding.get("provider") or "").strip().lower())
+                    graph.add_node(
+                        UnifiedNode(
+                            id=identity_id,
+                            entity_type=EntityType.MANAGED_IDENTITY,
+                            label=identity_id.rsplit(":", 1)[-1],
+                            attributes={
+                                "canonical_id": identity_id,
+                                "provider": provider,
+                                "evidence_source": evidence_source,
+                                "credential_ref": env_key,
+                            },
+                            data_sources=[data_source_tag, evidence_source],
+                            dimensions=NodeDimensions(cloud_provider=provider),
+                        )
+                    )
+                    graph.add_edge(
+                        UnifiedEdge(
+                            source=cred_id,
+                            target=identity_id,
+                            relationship=RelationshipType.AUTHENTICATES_AS,
+                            evidence={
+                                "source": evidence_source,
+                                "credential_ref": env_key,
+                                "mapping_method": "explicit_identity_binding",
+                                "confidence": "high",
+                            },
+                            confidence=1.0,
+                        )
+                    )
 
     for vuln_node_id, srv_id, pkg_id, package_evidence, severity in pending_exploitable_edges:
         _add_exploitable_via_edges(

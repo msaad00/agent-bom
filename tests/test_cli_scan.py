@@ -774,6 +774,8 @@ def test_scan_sbom_with_embedded_vulnerability_never_prints_clean_stage_message(
     assert result.exit_code == 0, result.output
     assert "Offline scan complete: no known vulnerabilities found in local data" not in result.output
     assert "retained 1 vulnerability" in result.output.lower()
+    assert "no vulnerabilities found" not in result.output.lower()
+    assert "supply chain looks clean" not in result.output.lower()
 
 
 def test_scan_inventory_only_round_trips_scan_report_snapshot_without_accretion(tmp_path):

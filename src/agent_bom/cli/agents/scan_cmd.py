@@ -3133,6 +3133,7 @@ def scan(
             _execution_outcome is ScanOutcome.COMPLETE
             and not no_scan
             and total_packages > 0
+            and report.total_vulnerabilities == 0
             and not [f for f in report.to_findings() if f.finding_type.value != "CVE"]
         ):
             con.print("\n  [green]→[/green] no vulnerabilities found — supply chain looks clean")

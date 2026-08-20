@@ -138,6 +138,47 @@ async def test_bare_pip_dep_not_resolved_from_scanner_host(tmp_path, monkeypatch
     assert pkg.version_source != "installed"
 
 
+@pytest.mark.asyncio
+async def test_uppercase_unknown_sbom_version_is_not_advisory_matched(tmp_path, monkeypatch):
+    import agent_bom.resolvers.runtime_resolver as rr
+    import agent_bom.scanners as scanners
+    from agent_bom.sbom import parse_cyclonedx
+    from agent_bom.scanners.package_scan import ScanOptions, consume_scan_warnings, scan_packages
+
+    monkeypatch.setattr(rr, "resolve_pip_versions", lambda python_path=None: {})
+
+    queried: list[Package] = []
+
+    def fake_local_lookup(packages):
+        queried.extend(packages)
+        return 0, set()
+
+    monkeypatch.setattr(scanners, "_scan_packages_local_db", fake_local_lookup)
+
+    packages = parse_cyclonedx(
+        {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.6",
+            "components": [
+                {
+                    "bom-ref": "pkg:pypi/requests@UNKNOWN",
+                    "type": "library",
+                    "name": "requests",
+                    "version": "UNKNOWN",
+                    "purl": "pkg:pypi/requests@UNKNOWN",
+                }
+            ],
+        }
+    )
+    pkg = packages[0]
+    count = await scan_packages(packages, options=ScanOptions(offline=True, project_dir=str(tmp_path)))
+
+    assert count == 0
+    assert queried == []
+    assert pkg.vulnerabilities == []
+    assert any("unresolved version" in warning for warning in consume_scan_warnings())
+
+
 # --- Defect 3: multi-branch advisories report the branch-correct fix --------
 
 

@@ -1343,9 +1343,10 @@ jobs:
             echo "Release $TAG already exists — uploading assets"
             gh release upload "$TAG" dist/* --clobber
           else
+            HIGHLIGHTS=$(python scripts/render_release_highlights.py --tag "$TAG")
             gh release create "$TAG" dist/* \
               --title "agent-bom $TAG" \
-              --generate-notes
+              --generate-notes --notes "$HIGHLIGHTS"
           fi
 
       - name: Update floating major tag (v0)

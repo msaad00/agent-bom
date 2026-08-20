@@ -58,6 +58,7 @@ function classifyError(err: unknown): { message: string; kind: InventoryErrorKin
 export function InventoryProvider({
   children,
   entityTypes,
+  minSeverity,
 }: {
   children: ReactNode;
   /** Scope the read to one asset kind's graph entity types.
@@ -70,6 +71,8 @@ export function InventoryProvider({
    * below a misconfiguration-dominated cut, so those pages rendered "nothing
    * discovered yet" while their own card advertised hundreds. */
   entityTypes?: readonly string[] | undefined;
+  /** Server-owned minimum severity from the inventory URL. */
+  minSeverity?: string | undefined;
 }) {
   const [graph, setGraph] = useState<UnifiedGraphResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,6 +85,10 @@ export function InventoryProvider({
   // Stable dependency: the array identity changes on every render, the
   // membership does not.
   const entityTypesKey = (entityTypes ?? []).join(",");
+  const scopedEntityTypes = useMemo(
+    () => (entityTypesKey ? entityTypesKey.split(",") : []),
+    [entityTypesKey],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +100,8 @@ export function InventoryProvider({
       .getGraph({
         limit: GRAPH_NODE_PAGE,
         offset: 0,
-        ...(entityTypes && entityTypes.length > 0 ? { entityTypes: [...entityTypes] } : {}),
+        ...(scopedEntityTypes.length > 0 ? { entityTypes: scopedEntityTypes } : {}),
+        ...(minSeverity ? { minSeverity } : {}),
       })
       .then((page) => {
         if (cancelled) return;
@@ -112,7 +120,7 @@ export function InventoryProvider({
     return () => {
       cancelled = true;
     };
-  }, [nonce, entityTypesKey]);
+  }, [nonce, scopedEntityTypes, minSeverity]);
 
   const hasMore = Boolean(graph?.pagination?.has_more);
   const model = useMemo(() => (graph ? buildInventory(graph) : null), [graph]);
@@ -125,7 +133,10 @@ export function InventoryProvider({
       // The scope has to travel with the page. Without it the second page
       // widens back to a ranked read of the whole estate, so a kind page would
       // start correct and then fill with other people's rows.
-      const scope = entityTypes && entityTypes.length > 0 ? { entityTypes: [...entityTypes] } : {};
+      const scope = {
+        ...(scopedEntityTypes.length > 0 ? { entityTypes: scopedEntityTypes } : {}),
+        ...(minSeverity ? { minSeverity } : {}),
+      };
       const nextPage = nextCursor
         ? await api.getGraph({ limit: GRAPH_NODE_PAGE, cursor: nextCursor, ...scope })
         : await api.getGraph({
@@ -141,7 +152,7 @@ export function InventoryProvider({
     } finally {
       setLoadingMore(false);
     }
-  }, [graph, loadingMore, entityTypesKey]);
+  }, [graph, loadingMore, scopedEntityTypes, minSeverity]);
 
   const value = useMemo<InventoryState>(
     () => ({

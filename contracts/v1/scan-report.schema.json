@@ -121,9 +121,37 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["schema_version"],
+        "required": [
+          "schema_version",
+          "id",
+          "canonical_id",
+          "finding_type",
+          "source",
+          "asset",
+          "severity",
+          "title"
+        ],
         "properties": {
-          "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" }
+          "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
+          "id": { "type": "string", "minLength": 1 },
+          "canonical_id": { "type": "string", "minLength": 1 },
+          "finding_type": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "asset": {
+            "type": "object",
+            "required": ["name", "asset_type", "stable_id", "canonical_id"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "asset_type": { "type": "string", "minLength": 1 },
+              "stable_id": { "type": "string", "minLength": 1 },
+              "canonical_id": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": true
+          },
+          "severity": { "type": "string", "minLength": 1 },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "evidence": { "type": "object" }
         },
         "additionalProperties": true
       }

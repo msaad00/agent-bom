@@ -130,6 +130,32 @@ def test_scan_report_helper_findings_match_contract_schema() -> None:
     assert all(finding["schema_version"] == "1" for finding in helper_findings)
 
 
+def test_scan_report_contract_anchors_unified_finding_identity() -> None:
+    schema = _load(CONTRACTS / "scan-report.schema.json")
+    finding_schema = schema["properties"]["findings"]["items"]
+
+    assert {
+        "schema_version",
+        "id",
+        "canonical_id",
+        "finding_type",
+        "source",
+        "asset",
+        "severity",
+        "title",
+    } <= set(finding_schema["required"])
+    assert {
+        "id",
+        "canonical_id",
+        "finding_type",
+        "source",
+        "asset",
+        "severity",
+        "title",
+        "evidence",
+    } <= set(finding_schema["properties"])
+
+
 def test_scan_report_contract_accepts_agent_type_without_legacy_type() -> None:
     payload = _load(CONTRACTS / "examples" / "scan-report.minimal.json")
     payload["agents"][0].pop("type")

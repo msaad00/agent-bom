@@ -1220,6 +1220,9 @@ class AIBOMReport:
     # license, pushed_at, …). Best-effort read-only API metadata — never required
     # for the security scan itself.
     repo_trust_data: Optional[dict[str, Any]] = None
+    # Stable path-prefix ownership parsed from the repository's CODEOWNERS file.
+    # Carried as provenance so graph overlays never need filesystem access.
+    codeowners: dict[str, str] = field(default_factory=dict)
     introspection_data: Optional[dict[str, Any]] = None  # Runtime MCP introspection results (tools, resources, drift)
     health_check_data: Optional[dict[str, Any]] = None  # MCP server reachability/health results
     runtime_session_graph: Optional[dict[str, Any]] = None  # Structured runtime session graph/timeline evidence

@@ -40,6 +40,11 @@ from pathlib import Path
 DEFAULT_TIMEOUT_SECONDS = 120
 
 
+def _server_args() -> list[str]:
+    """Launch the profile represented by the published server card."""
+    return ["mcp", "server", "--profile", "full"]
+
+
 def _expected_surface() -> dict[str, set[str]]:
     """Derive the advertised surface from the installed package's server card."""
     metadata = importlib.import_module("agent_bom.mcp_server_metadata")
@@ -82,7 +87,7 @@ async def _smoke() -> dict[str, object]:
     executable = Path(sys.executable).with_name("agent-bom")
     if not executable.is_file():
         raise RuntimeError(f"installed agent-bom console script is missing: {executable}")
-    server = StdioServerParameters(command=str(executable), args=["mcp", "server"], env=child_env)
+    server = StdioServerParameters(command=str(executable), args=_server_args(), env=child_env)
 
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:

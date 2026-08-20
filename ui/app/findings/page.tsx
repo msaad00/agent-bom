@@ -251,6 +251,7 @@ function FindingsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const paramSeverity = searchParams.get("severity");
+  const paramFinding = searchParams.get("finding");
   const paramCve = searchParams.get("cve");
   const paramAgent = searchParams.get("agent");
   const paramQuery = searchParams.get("q");
@@ -279,7 +280,7 @@ function FindingsPage() {
   // matches the actual cause instead of always reading as a connect failure.
   const [errorKind, setErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [filter, setFilter] = useState<SeverityFilter>(
-    paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
+    paramSeverity && ["critical", "high", "medium", "low", "unrated"].includes(paramSeverity)
       ? (paramSeverity as SeverityFilter)
       : "all"
   );
@@ -315,12 +316,14 @@ function FindingsPage() {
   const [triageError, setTriageError] = useState("");
   const [triageBusyKey, setTriageBusyKey] = useState<string | null>(null);
   const [vexExporting, setVexExporting] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(paramCve ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(paramFinding ?? paramCve ?? null);
   const [page, setPage] = useState(() => {
     const parsed = Number(paramPage ?? "1");
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
   });
-  const [findingsTotal, setFindingsTotal] = useState<number | null>(0);
+  // The API owns the canonical total. ``null`` means it has not answered yet;
+  // initializing this to zero makes the loading state assert an all-clear count.
+  const [findingsTotal, setFindingsTotal] = useState<number | null>(null);
   const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
   const [findingFacets, setFindingFacets] = useState<FindingFacets | null>(null);
   const [findingFacetsApproximate, setFindingFacetsApproximate] = useState(false);
@@ -357,7 +360,7 @@ function FindingsPage() {
   // changes don't write to the URL, so these effects only fire on navigation.
   useEffect(() => {
     setFilter(
-      paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
+      paramSeverity && ["critical", "high", "medium", "low", "unrated"].includes(paramSeverity)
         ? (paramSeverity as SeverityFilter)
         : "all",
     );
@@ -373,8 +376,8 @@ function FindingsPage() {
   }, [paramPage]);
 
   useEffect(() => {
-    if (paramCve) setSelectedId(paramCve);
-  }, [paramCve]);
+    setSelectedId(paramFinding ?? paramCve ?? null);
+  }, [paramFinding, paramCve]);
 
   useEffect(() => {
     if (paramIssueType && ISSUE_TYPE_FILTERS.some((entry) => entry.key === paramIssueType)) {
@@ -420,6 +423,7 @@ function FindingsPage() {
     // other posture deep links. Preserve it while synchronizing page-local
     // controls so navigation does not silently narrow or rewrite that scope.
     if (paramScope === "all") params.set("scope", "all");
+    if (selectedId) params.set("finding", selectedId);
     if (filter !== "all") params.set("severity", filter);
     if (issueTypeFilter !== "all") params.set("issue", issueTypeFilter);
     if (lens !== "ops") params.set("lens", lens);
@@ -449,6 +453,7 @@ function FindingsPage() {
     controlFilter,
     windowDays,
     page,
+    selectedId,
     paramScope,
     paramScan,
     pathname,
@@ -555,10 +560,11 @@ function FindingsPage() {
       setError("");
       try {
         const currentCursor = pageCursors[page - 1] || undefined;
+        const findingQuery = search.trim() || paramFinding;
         const response = await api.listFindings({
           ...(paramScan ? { scanId: paramScan } : {}),
-          ...(search.trim() ? { query: search.trim() } : {}),
-          ...(filter !== "all" ? { severity: filter } : {}),
+          ...(findingQuery ? { query: findingQuery } : {}),
+          ...(filter !== "all" ? { severity: filter === "unrated" ? "unknown" : filter } : {}),
           ...(domainFilter !== "all" ? { domain: domainFilter } : {}),
           ...(providerFilter.trim() ? { provider: providerFilter.trim() } : {}),
           ...(accountFilter.trim() ? { account: accountFilter.trim() } : {}),
@@ -595,6 +601,7 @@ function FindingsPage() {
     void loadFindings();
   }, [
     paramScan,
+    paramFinding,
     search,
     page,
     filter,
@@ -728,6 +735,11 @@ function FindingsPage() {
     { key: "high", label: `High${findingFacets ? ` (${findingFacets.severity.high})` : ""}`, color: "text-orange-400" },
     { key: "medium", label: `Medium${findingFacets ? ` (${findingFacets.severity.medium})` : ""}`, color: "text-yellow-400" },
     { key: "low", label: `Low${findingFacets ? ` (${findingFacets.severity.low})` : ""}`, color: "text-blue-400" },
+    {
+      key: "unrated",
+      label: `Unrated${findingFacets ? ` (${findingFacets.severity.unknown})` : ""}`,
+      color: "text-[var(--text-muted)]",
+    },
   ];
 
   return (

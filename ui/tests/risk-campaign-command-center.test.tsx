@@ -150,7 +150,7 @@ describe("RiskCampaignCommandCenter", () => {
     expect(screen.queryByText(/campaigns cluster/i)).not.toBeInTheDocument();
   });
 
-  it("progressively discloses large campaign queues", async () => {
+  it("paginates large campaign queues without growing the page", async () => {
     const campaigns = Array.from({ length: 12 }, (_, index) => ({
       ...response.campaigns[0]!,
       id: `campaign-${index + 1}`,
@@ -170,9 +170,15 @@ describe("RiskCampaignCommandCenter", () => {
     await screen.findByText("Campaign 1");
 
     expect(container.querySelectorAll(".risk-campaign-card")).toHaveLength(10);
-    expect(screen.getByText(/Showing 10 of 12 prioritized campaigns/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Show 2 more campaigns/i }));
-    expect(container.querySelectorAll(".risk-campaign-card")).toHaveLength(12);
+    expect(screen.getByText(/Page 1 of 2 \(12 campaigns\)/i)).toBeInTheDocument();
+    expect(screen.queryByText("Campaign 11")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(container.querySelectorAll(".risk-campaign-card")).toHaveLength(2);
+    expect(screen.getByText(/Page 2 of 2 \(12 campaigns\)/i)).toBeInTheDocument();
+    expect(screen.getByText("Campaign 11")).toBeInTheDocument();
+    expect(screen.queryByText("Campaign 1")).not.toBeInTheDocument();
   });
 
   it("renders generic finding campaigns without assuming a CVE workflow", async () => {

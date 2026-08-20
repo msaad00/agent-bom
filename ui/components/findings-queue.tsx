@@ -480,6 +480,8 @@ function EngineeringCells({
 }) {
   const verifyCommand = vuln.remediation_items.find((item) => item.verify_command)?.verify_command;
   const sla = formatSlaDue(vuln.sla_due_at);
+  const packageName = vuln.packages[0];
+  const visibleAgents = vuln.agents.slice(0, 2);
   return (
     <>
       <td className="px-4 py-3">
@@ -503,12 +505,35 @@ function EngineeringCells({
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1 text-xs">
-          <span className="font-mono text-[var(--text-secondary)]">
-            {vuln.packages[0] ?? "Unavailable"}
-          </span>
-          <span className="text-[var(--text-tertiary)]">
-            {vuln.agents.length > 0 ? vuln.agents.slice(0, 2).join(", ") : "Agent unavailable"}
-          </span>
+          {packageName ? (
+            <a
+              href={`/findings?q=${encodeURIComponent(packageName)}`}
+              onClick={(event) => event.stopPropagation()}
+              className="font-mono text-[var(--text-secondary)] underline decoration-dotted underline-offset-2 transition hover:text-[var(--foreground)]"
+            >
+              {packageName}
+            </a>
+          ) : (
+            <span className="font-mono text-[var(--text-tertiary)]">Unavailable</span>
+          )}
+          {visibleAgents.length > 0 ? (
+            <span className="flex flex-wrap gap-x-1 text-[var(--text-tertiary)]">
+              {visibleAgents.map((agent, index) => (
+                <span key={agent}>
+                  {index > 0 ? ", " : null}
+                  <a
+                    href={`/findings?q=${encodeURIComponent(agent)}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="underline decoration-dotted underline-offset-2 transition hover:text-[var(--foreground)]"
+                  >
+                    {agent}
+                  </a>
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="text-[var(--text-tertiary)]">Agent unavailable</span>
+          )}
         </div>
       </td>
       <td className="px-4 py-3">

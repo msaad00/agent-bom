@@ -36,12 +36,23 @@ const COLUMN_TO_SORT: Record<string, AssetSortKey> = {
   findings: "findings",
 };
 
-export function AssetInventoryView({ kind }: { kind: AssetKindId }) {
+export function AssetInventoryView({
+  kind,
+  severityFilter,
+  onSeverityFilterChange,
+}: {
+  kind: AssetKindId;
+  /** Controlled by the URL on routed inventory pages. */
+  severityFilter?: string | undefined;
+  onSeverityFilterChange?: ((severity: string) => void) | undefined;
+}) {
   const config = ASSET_KIND_BY_ID[kind];
   const { model, loading, loadingMore, hasMore, error, errorKind, reload, loadMore } = useInventory();
 
   const [query, setQuery] = useState("");
-  const [severity, setSeverity] = useState("all");
+  const [localSeverity, setLocalSeverity] = useState("all");
+  const severity = severityFilter ?? localSeverity;
+  const setSeverity = onSeverityFilterChange ?? setLocalSeverity;
   const [source, setSource] = useState("all");
   const [withFindingsOnly, setWithFindingsOnly] = useState(false);
   const [sortKey, setSortKey] = useState<AssetSortKey>("severity");

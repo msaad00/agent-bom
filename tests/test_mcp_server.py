@@ -117,6 +117,61 @@ def test_mcp_server_tool_names():
     assert names == {t["name"] for t in _SERVER_CARD_TOOLS}
 
 
+def test_guided_mcp_profile_exposes_only_workflow_tools():
+    """The guided profile keeps the first agent turn focused and bounded."""
+    import json
+
+    from agent_bom.mcp_server import _GUIDED_TOOL_NAMES, create_mcp_server
+
+    full_tools = _run(create_mcp_server(profile="full").list_tools())
+    guided_tools = _run(create_mcp_server(profile="guided").list_tools())
+    guided_names = {tool.name for tool in guided_tools}
+
+    assert guided_names == _GUIDED_TOOL_NAMES
+    assert len(guided_tools) < len(full_tools) / 2
+    full_payload = json.dumps([tool.model_dump(by_alias=True) for tool in full_tools], separators=(",", ":"))
+    guided_payload = json.dumps([tool.model_dump(by_alias=True) for tool in guided_tools], separators=(",", ":"))
+    assert len(guided_payload) < len(full_payload) / 2
+
+
+def test_guided_mcp_profile_covers_every_documented_workflow_dependency():
+    from agent_bom.mcp_server import _GUIDED_TOOL_NAMES
+
+    workflow_dependencies = {
+        "scan",
+        "exposure_paths",
+        "compliance",
+        "check",
+        "registry_lookup",
+        "should_i_deploy",
+        "audit_integrity",
+        "fleet_scan",
+        "context_graph",
+        "policy_check",
+        "intel_lookup",
+        "runtime_correlate",
+        "remediate",
+        "generate_sbom",
+        "cloud_inventory",
+        "cis_benchmark",
+        "graph_export",
+        "gateway_status",
+        "proxy_alerts",
+        "firewall_check",
+    }
+
+    assert workflow_dependencies <= _GUIDED_TOOL_NAMES
+
+
+def test_unknown_mcp_profile_is_rejected():
+    import pytest
+
+    from agent_bom.mcp_server import create_mcp_server
+
+    with pytest.raises(ValueError, match="Unknown MCP tool profile"):
+        create_mcp_server(profile="everything")
+
+
 def test_create_mcp_server_enables_static_bearer_auth():
     """create_mcp_server should wire FastMCP auth when a bearer token is configured."""
     from agent_bom.mcp_server import _StaticBearerTokenVerifier, create_mcp_server

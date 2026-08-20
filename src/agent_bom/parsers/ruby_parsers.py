@@ -80,6 +80,7 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
     in_specs = False
     # Pattern: 4 spaces + gem_name (version)
     gem_pattern = re.compile(r"^    (\S+)\s+\(([^)]+)\)$")
+    malformed_specs = False
 
     for line in content.splitlines():
         stripped = line.rstrip()
@@ -104,6 +105,8 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
         # Match top-level gems (4-space indent)
         gm = gem_pattern.match(line)
         if not gm:
+            if len(line) - len(line.lstrip(" ")) == 4 and line.strip():
+                malformed_specs = True
             continue
 
         name = gm.group(1)
@@ -127,6 +130,12 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
 
     if packages:
         logger.info("Parsed %d gems from %s", len(packages), lockfile)
+    if malformed_specs:
+        record_manifest_parse_warning(
+            ecosystem="rubygems",
+            path=str(lockfile),
+            detail="Gemfile.lock contains malformed or truncated specifications; Ruby dependency coverage is partial",
+        )
 
     return packages
 

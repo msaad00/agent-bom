@@ -1,6 +1,6 @@
 """Repository folder/file structure overlay.
 
-A code / project scan (``agent-bom agents -p .`` or ``--repo``) already discovers
+A code / project scan (``agent-bom scan -p .``) already discovers
 manifests, lockfiles, packages, and file-scoped findings — but the graph stored
 them as a flat ``server → package → vulnerability`` fan-out with no notion of the
 *folder structure* the code actually lives in. The cloud graph, by contrast,

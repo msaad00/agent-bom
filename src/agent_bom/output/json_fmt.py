@@ -1040,6 +1040,7 @@ def to_json(report: AIBOMReport) -> dict:
         },
         "warnings": scan_run.warnings,
         "scan_sources": report.scan_sources,
+        "codeowners": dict(report.codeowners),
         "has_mcp_context": report.has_mcp_context,
         "has_agent_context": report.has_agent_context,
         "framework_catalogs": {

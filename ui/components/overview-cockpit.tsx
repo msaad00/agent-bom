@@ -975,48 +975,59 @@ function RiskChainRow({ path, rank }: { path: ExposurePathView; rank: number }) 
     path.nodes.filter((node) => node.type === type),
   );
   const hasCredential = path.nodes.some((node) => node.type === "credential");
+  const hasAgent = path.nodes.some((node) => node.type === "agent");
+  const topReason = `${
+    path.riskScore >= 9 ? "critical path" : path.riskScore >= 7 ? "high-risk path" : "ranked path"
+  }${hasAgent ? " reaches an agent" : ""}${hasCredential ? " and exposes a credential" : ""}`;
 
   return (
     <Link
       href={path.href}
-      className="group flex items-center gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
+      className="group block rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2.5 transition hover:border-[color:var(--border-strong)]"
     >
-      <span className="w-4 shrink-0 text-center font-mono text-xs text-[color:var(--text-tertiary)]">
-        {rank}
-      </span>
-      <span
-        className={`shrink-0 rounded-md border px-2 py-1 font-mono text-xs font-semibold ${riskScoreTone(path.riskScore)}`}
-        title={`Composite risk ${path.riskScore.toFixed(1)}`}
-      >
-        {path.riskScore.toFixed(1)}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1">
-        {ordered.map((node, index) => (
-          <span key={`${node.type}-${index}`} className="inline-flex items-center">
-            {index > 0 ? (
-              <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-[color:var(--text-tertiary)]" />
-            ) : null}
-            <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--surface)] px-1.5 py-0.5 text-[11px]">
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${RISK_NODE_META[node.type].dot}`}
-                aria-hidden="true"
-              />
-              <span
-                className="max-w-[18ch] truncate text-[color:var(--text-secondary)]"
-                title={node.label}
-              >
-                {node.label}
+      <div className="flex items-center gap-3">
+        <span className="w-4 shrink-0 text-center font-mono text-xs text-[color:var(--text-tertiary)]">
+          {rank}
+        </span>
+        <span
+          className={`shrink-0 rounded-md border px-2 py-1 font-mono text-xs font-semibold ${riskScoreTone(path.riskScore)}`}
+          title={`Composite risk ${path.riskScore.toFixed(1)}`}
+        >
+          {path.riskScore.toFixed(1)}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1">
+          {ordered.map((node, index) => (
+            <span key={`${node.type}-${index}`} className="inline-flex items-center">
+              {index > 0 ? (
+                <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-[color:var(--text-tertiary)]" />
+              ) : null}
+              <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--surface)] px-1.5 py-0.5 text-[11px]">
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${RISK_NODE_META[node.type].dot}`}
+                  aria-hidden="true"
+                />
+                <span
+                  className="max-w-[18ch] truncate text-[color:var(--text-secondary)]"
+                  title={node.label}
+                >
+                  {node.label}
+                </span>
               </span>
             </span>
+          ))}
+        </div>
+        {hasCredential ? (
+          <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200 sm:inline">
+            credential
           </span>
-        ))}
+        ) : null}
+        <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition group-hover:text-[color:var(--foreground)]" />
       </div>
-      {hasCredential ? (
-        <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-200 sm:inline">
-          credential
-        </span>
+      {rank === 1 ? (
+        <p className="mt-1.5 pl-20 text-[10px] font-medium text-[color:var(--text-secondary)]">
+          Why #1: {topReason}
+        </p>
       ) : null}
-      <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition group-hover:text-[color:var(--foreground)]" />
     </Link>
   );
 }
@@ -1207,7 +1218,7 @@ function PostureHero({
         </p>
         {graded ? (
           <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
-            Trend unavailable · history for the current score model is not recorded
+            Current evidence snapshot · ranked exposure paths below show what to fix first
           </p>
         ) : null}
         <p className="mt-0.5 line-clamp-2 text-xs text-[color:var(--text-secondary)]">{blurb}</p>

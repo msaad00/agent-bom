@@ -323,11 +323,13 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     # Try requirements.txt
     req_file = directory / "requirements.txt"
     if req_file.exists():
+        malformed_requirements = False
         try:
             for line_number, raw_line in enumerate(read_text_limited(req_file).splitlines(), start=1):
                 line = raw_line.strip()
                 if not line or line.startswith("#") or line.startswith("-"):
                     continue
+                line = re.split(r"\s+#", line, maxsplit=1)[0].strip()
                 # Git URL/SHA reference (``flask @ git+…@<sha>``): version can't be
                 # pinned from the ref, so flag it floating rather than dropping it.
                 git_pkg = _git_reference_package(line, is_direct=True)
@@ -348,7 +350,7 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                     )
                 else:
                     # Just a name, no version
-                    name_match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", line)
+                    name_match = re.fullmatch(r"([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)(?:\s*;.*)?", line)
                     if name_match:
                         name, _ = strip_pip_extras(name_match.group(1))
                         packages.append(
@@ -364,6 +366,8 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                                 line_number,
                             )
                         )
+                    else:
+                        malformed_requirements = True
         except (OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed to read requirements.txt in %s: %s", directory, exc)
             record_manifest_parse_warning(
@@ -371,6 +375,13 @@ def parse_pip_packages(directory: Path) -> list[Package]:
                 path=str(req_file),
                 detail="requirements.txt could not be read; Python dependencies were not scanned",
             )
+        else:
+            if malformed_requirements:
+                record_manifest_parse_warning(
+                    ecosystem="pypi",
+                    path=str(req_file),
+                    detail="requirements.txt contains malformed or truncated entries; Python dependency coverage is partial",
+                )
 
     # Try Pipfile.lock
     pipfile_lock = directory / "Pipfile.lock"

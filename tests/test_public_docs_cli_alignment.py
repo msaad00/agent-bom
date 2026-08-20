@@ -40,6 +40,38 @@ def test_public_docs_do_not_teach_removed_cli_surfaces() -> None:
         assert command not in combined
 
 
+def test_readme_promotes_offline_demo_before_repository_scan() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick start", 1)[1].split("## Self-host", 1)[0]
+
+    assert quick_start.index("agent-bom scan --demo --offline") < quick_start.index("agent-bom scan .")
+    assert "exit status `1` is expected" in quick_start
+
+
+def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    first_run = readme.split("## Scan, correlate, and act", 1)[1].split("## Self-host", 1)[0]
+
+    for marker in (
+        "Blast radius",
+        "package",
+        "vulnerability finding",
+        "MCP server",
+        "credential env names",
+        "reachable tools",
+        "exposure_paths",
+        "should_i_deploy",
+    ):
+        assert marker in first_run
+
+
+def test_primary_docker_scan_persists_vulnerability_state() -> None:
+    docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
+
+    assert docker_hub.count("-v agentbom-state:/home/abom/.agent-bom") >= 3
+    assert "reuses vulnerability and scan state" in docker_hub
+
+
 def test_connect_sources_do_not_teach_removed_cli_surfaces() -> None:
     # The `connect <provider>` guidance prints a scan command; it must point at a
     # real surface, not a removed/misleading one (e.g. `agent-bom cloud snowflake`,
@@ -129,7 +161,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     markers = [
         "## Scan, correlate, and act",
-        "<summary><b>Control-plane architecture</b></summary>",
+        "[Control-plane architecture](docs/ARCHITECTURE.md)",
         "## Who it is for",
         "## Quick start",
         "## Self-host",
@@ -184,7 +216,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     # The opening is one Agent-Bom product paragraph plus four scannable
     # outcome/trust bullets. Workflow and architecture detail belongs in the
     # diagrams, not in a second prose manifesto.
-    intro = readme.split("## Scan, correlate, and act", 1)[1].split("workflow-dark.svg", 1)[0]
+    intro = readme.split("## Scan, correlate, and act", 1)[1].split("## Who it is for", 1)[0]
     assert "one Finding + UnifiedGraph model" in intro
     for label in ("Run where you deploy", "Centralize when ready", "Act with context", "Keep evidence honest"):
         assert f"**{label}:**" in intro
@@ -196,12 +228,11 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     primary_block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
     assert primary_block is not None
     commands = [line for line in primary_block.group(1).splitlines() if line.strip()]
-    assert commands == ["pip install agent-bom", "agent-bom scan ."]
+    assert commands == ["pip install agent-bom", "agent-bom scan --demo --offline"]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
-    assert "<summary><b>Product gallery</b></summary>" in readme
-    assert "persona-value-dark.svg" in readme
-    assert "persona-value-light.svg" in readme
+    assert "[View the full product gallery](docs/GALLERY.md)" in readme
+    assert "security-graph-live.png" in readme
 
     # Persona surfaces keep security engineering and GRC as separate lanes
     # (never one card) — findings and reachability are not audit certification.
@@ -210,12 +241,12 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "| Security engineer |" in readme
     assert "| GRC / audit |" in readme
 
-    # Persona proof stays directly visible. Architecture and product
-    # screenshots remain collapsible, with the gallery open by default.
-    assert readme.count("architecture-dark.svg") == 1
-    assert "<summary><b>Audience workflow map</b></summary>" not in readme
-    assert "<summary><b>Control-plane architecture</b></summary>" in readme
-    assert "<details open>\n<summary><b>Product gallery</b></summary>" in readme
+    # Dense diagrams and the six-up gallery live in full-size docs; the README
+    # keeps one readable investigation proof.
+    assert "architecture-dark.svg" not in readme
+    assert "persona-value-dark.svg" not in readme
+    assert readme.count("-live.png") == 1
+    assert 'width="900"' in readme
     assert "blast-radius-dark.svg" not in readme
 
 

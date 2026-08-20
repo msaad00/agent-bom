@@ -14,6 +14,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from agent_bom.scan_contract import ScanConfig
@@ -208,6 +209,10 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
             findings=findings,
             scan_sources=["agent_discovery"],
         )
+        if cfg.project:
+            from agent_bom.repo_auto_detect import load_codeowners
+
+            report.codeowners = load_codeowners(Path(cfg.project).resolve())
 
         return ScanResult(
             agents=agents,

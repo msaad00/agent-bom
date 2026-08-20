@@ -53,6 +53,11 @@ def test_expected_surface_is_derived_from_the_shipped_server_card() -> None:
     assert expected["prompts"] == {str(p["name"]) for p in mcp_server_metadata._SERVER_CARD_PROMPTS}
 
 
+def test_wheel_smoke_boots_the_full_published_tool_profile() -> None:
+    """The server card describes the full catalog, not the guided front door."""
+    assert smoke._server_args() == ["mcp", "server", "--profile", "full"]
+
+
 class TestSurfaceComparison:
     def test_a_card_entry_never_registered_live_is_caught(self) -> None:
         problems = smoke._compare("resources", ["a://x"], {"a://x", "a://ghost"})

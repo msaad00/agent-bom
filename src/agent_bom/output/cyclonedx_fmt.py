@@ -23,6 +23,7 @@ from agent_bom.asset_provenance import (
 )
 from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.checksums import cyclonedx_hashes, integrity_verdict, strongest_checksum
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.package_utils import synthesize_purl
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -521,6 +522,50 @@ def _build_dataset_component(dataset: dict, comp_id: int) -> tuple[dict, str]:
     return component, ref
 
 
+def _build_mcp_prompt_component(prompt: Any) -> tuple[dict, str]:
+    """Build native CycloneDX data evidence for one MCP prompt template."""
+    ref = _sanitize_bom_ref(f"mcp-prompt-{prompt.stable_id}")
+    properties = [
+        {"name": "agent-bom:type", "value": "mcp-prompt"},
+        {"name": "agent-bom:canonical-id", "value": prompt.canonical_id},
+        {"name": "agent-bom:argument-count", "value": str(len(prompt.arguments))},
+    ]
+    properties.extend({"name": "agent-bom:content-finding", "value": finding} for finding in prompt.content_findings)
+    component: dict[str, Any] = {
+        "type": "data",
+        "bom-ref": ref,
+        "name": prompt.name,
+        "properties": properties,
+        "data": [{"type": "definition", "name": prompt.name}],
+    }
+    if prompt.description:
+        component["description"] = prompt.description[:300]
+    return component, ref
+
+
+def _build_mcp_resource_component(resource: Any) -> tuple[dict, str]:
+    """Build native CycloneDX data evidence for one MCP resource descriptor."""
+    ref = _sanitize_bom_ref(f"mcp-resource-{resource.stable_id}")
+    properties = [
+        {"name": "agent-bom:type", "value": "mcp-resource"},
+        {"name": "agent-bom:canonical-id", "value": resource.canonical_id},
+        {"name": "agent-bom:uri", "value": resource.uri},
+    ]
+    if resource.mime_type:
+        properties.append({"name": "agent-bom:mime-type", "value": resource.mime_type})
+    properties.extend({"name": "agent-bom:content-finding", "value": finding} for finding in resource.content_findings)
+    component: dict[str, Any] = {
+        "type": "data",
+        "bom-ref": ref,
+        "name": resource.name,
+        "properties": properties,
+        "data": [{"type": "other", "name": resource.name}],
+    }
+    if resource.description:
+        component["description"] = resource.description[:300]
+    return component, ref
+
+
 def _build_training_component(run: dict, comp_id: int) -> tuple[dict, str]:
     """Build a CycloneDX 1.7 component for a training pipeline run.
 
@@ -585,6 +630,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     and training run metadata via ``quantitativeAnalysis``.
     """
     components = []
+    scan_run = effective_scan_run(report)
     services: list[dict] = []
     vulnerabilities_by_id: dict[str, dict] = {}
     from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version, workflow_status
@@ -682,6 +728,14 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 if tool.description:
                     service_entry["description"] = tool.description
                 services.append(service_entry)
+            for prompt in server.prompts:
+                prompt_component, prompt_ref = _build_mcp_prompt_component(prompt)
+                components.append(prompt_component)
+                server_deps.append(prompt_ref)
+            for resource in server.resources:
+                resource_component, resource_ref = _build_mcp_resource_component(resource)
+                components.append(resource_component)
+                server_deps.append(resource_ref)
             agent_deps.append(server_ref)
 
             for pkg in server.packages:
@@ -859,6 +913,8 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 {"name": "agent-bom:total-mcp-servers", "value": str(report.total_servers)},
                 {"name": "agent-bom:total-vulnerabilities", "value": str(report.total_vulnerabilities)},
                 {"name": "agent-bom:ml-models", "value": str(len(report.model_provenance) + len(report.model_files))},
+                {"name": "agent-bom:scan-outcome", "value": scan_run.outcome.value},
+                {"name": "agent-bom:scan-issue-count", "value": str(len(scan_run.issues))},
             ],
         },
         "components": components,
@@ -897,7 +953,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
         )
         cdx["compositions"] = [
             {
-                "aggregate": "incomplete" if has_registry_resolved else "complete",
+                "aggregate": "incomplete" if has_registry_resolved or scan_run.outcome is not ScanOutcome.COMPLETE else "complete",
                 "assemblies": [c["bom-ref"] for c in components if isinstance(c, dict) and "bom-ref" in c],
             }
         ]

@@ -36,6 +36,7 @@ HUB_OBSERVATIONS_PARTITION = VERSIONS_DIR / "20260705_01_hub_observations_partit
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 RUNTIME_SCHEMA_SQL = POSTGRES_DIR / "runtime-schema.sql"
 HUB_LEDGER_SCAN_ID = VERSIONS_DIR / "20260818_01_hub_ledger_scan_id.py"
+TENANT_BINDING_AUTHORITY = VERSIONS_DIR / "20260819_01_tenant_binding_authority.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -47,7 +48,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260818_01"
+ALEMBIC_HEAD = "20260819_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -614,6 +615,49 @@ def test_trusted_maintenance_queue_policy_does_not_require_precreated_app_role()
     assert "CREATE POLICY scan_dispatch_queue_tenant_isolation" in forward
     forward_policy = forward.split("CREATE POLICY scan_dispatch_queue_tenant_isolation", 1)[1].split('"', 1)[0]
     assert "TO agent_bom_app" not in forward_policy
+
+
+def test_tenant_binding_authority_is_chained_secret_minimal_and_fail_closed() -> None:
+    """The DB verifier may authenticate claims without exposing its HMAC keys."""
+    sql = TENANT_BINDING_AUTHORITY.read_text()
+
+    assert re.search(r'revision\s*=\s*"20260819_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260818_01"', sql)
+    assert "CREATE EXTENSION IF NOT EXISTS pgcrypto" in sql
+    assert "CREATE TABLE IF NOT EXISTS public.agent_bom_tenant_binding_keys" in sql
+    assert "key_material BYTEA NOT NULL" in sql
+    assert "octet_length(key_material) >= 32" in sql
+    assert "CREATE OR REPLACE FUNCTION public.abom_verify_tenant_binding_claim" in sql
+    assert "SECURITY DEFINER" in sql
+    assert "SET search_path = pg_catalog" in sql
+    assert "clock_timestamp()" in sql
+    assert "p_issued_at > v_now + 30" in sql
+    assert "p_issued_at < v_now - 30" in sql
+    assert "p_nonce !~ '^[0-9a-f]{32}$'" in sql
+    assert "p_signature !~ '^[0-9a-f]{64}$'" in sql
+    assert "'v1:' || encode(convert_to(p_tenant_id, 'UTF8'), 'hex')" in sql
+    assert "public.hmac(convert_to(v_canonical, 'UTF8'), key_material, 'sha256')" in sql
+    assert "WHERE enabled" in sql
+    assert "REVOKE ALL ON TABLE public.agent_bom_tenant_binding_keys FROM PUBLIC" in sql
+    assert "REVOKE ALL ON FUNCTION public.abom_verify_tenant_binding_claim(TEXT, BIGINT, TEXT, TEXT) FROM PUBLIC" in sql
+    for runtime_role in ("agent_bom_app", "agent_bom_readonly", "agent_bom_rls_maintenance", "agent_bom_maintenance"):
+        assert f"REVOKE ALL ON TABLE public.agent_bom_tenant_binding_keys FROM {runtime_role}" in sql
+    assert "GRANT EXECUTE ON FUNCTION public.abom_verify_tenant_binding_claim" in sql
+    assert "raise NotImplementedError" in sql
+
+    # New-install and supplemental-schema paths must carry the same authority,
+    # but this mechanical stage deliberately leaves active RLS on app.tenant_id.
+    init_schema = (POSTGRES_DIR / "init.sql").read_text()
+    runtime_schema = RUNTIME_SCHEMA_SQL.read_text()
+    for schema in (init_schema, runtime_schema):
+        assert "CREATE TABLE IF NOT EXISTS public.agent_bom_tenant_binding_keys" in schema
+        assert "CREATE OR REPLACE FUNCTION public.abom_verify_tenant_binding_claim" in schema
+        assert "SECURITY DEFINER" in schema
+        assert "SET search_path = pg_catalog" in schema
+        assert "REVOKE ALL ON TABLE public.agent_bom_tenant_binding_keys FROM PUBLIC" in schema
+        assert "tenant_id = public.abom_current_tenant()" in schema
+
+    assert "COALESCE(NULLIF(current_setting('app.tenant_id', true), ''), 'default')" in init_schema
 
 
 def test_hub_ledger_scan_id_migration_skips_backfill_when_ledger_is_absent(monkeypatch) -> None:

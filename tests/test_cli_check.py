@@ -356,6 +356,18 @@ def test_sbom_missing_file_is_usage_error():
     assert "does not exist" in result.output
 
 
+def test_sbom_invalid_json_reports_stable_input_error(tmp_path):
+    bad_sbom = tmp_path / "bad.sbom.json"
+    bad_sbom.write_text("not-json")
+
+    result = CliRunner().invoke(main, ["sbom", str(bad_sbom), "--offline"])
+
+    assert result.exit_code == 1
+    assert "SBOM error: input is not valid JSON" in result.output
+    assert "Expecting value" not in result.output
+    assert "line 1 column 1" not in result.output
+
+
 def test_check_quiet_suppresses_scan_chatter(monkeypatch):
     async def _scan_packages(pkgs, **_kwargs):
         import agent_bom.scanners as scanners

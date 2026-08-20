@@ -280,6 +280,9 @@ def run_local_discovery(
                 mcp_servers=[sbom_server],
             )
             ctx.agents.append(sbom_agent)
+        except json.JSONDecodeError:
+            con.print("\n  [red]SBOM error: input is not valid JSON.[/red]")
+            sys.exit(1)
         except (FileNotFoundError, ValueError) as e:
             con.print(f"\n  [red]SBOM error: {e}[/red]")
             sys.exit(1)

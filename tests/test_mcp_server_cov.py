@@ -80,7 +80,7 @@ class TestTruncateResponse:
         text = "x" * 600_000
         result = _truncate_response(text)
         assert len(result) < len(text)
-        assert '"_truncated": true' in result
+        assert json.loads(result)["_truncated"] is True
 
 
 # ── Registry cache ───────────────────────────────────────────────────────────

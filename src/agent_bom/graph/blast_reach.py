@@ -100,6 +100,8 @@ def apply_dependency_reachability_to_blast_radii(
 def apply_symbol_reachability_to_blast_radii(
     blast_radii: list["BlastRadius"],
     ast_result: "ASTAnalysisResult",
+    *,
+    rescore: bool = True,
 ) -> int:
     """Join CVE affected-symbols to AST symbol reach on each BlastRadius row.
 
@@ -114,8 +116,11 @@ def apply_symbol_reachability_to_blast_radii(
     whose symbols were not individually captured reports ``package_reachable``
     rather than ``unreachable``.
 
-    Returns the count of rows whose signal was populated. Best-effort: any
-    failure downgrades to a no-op rather than failing the scan.
+    Returns the count of rows whose signal was populated. Scores are
+    recalculated by default so the report cannot carry a post-analysis verdict
+    beside a pre-analysis score; callers that are deliberately batching score
+    calculation may opt out with ``rescore=False``. Best-effort: any failure
+    downgrades to a no-op rather than failing the scan.
     """
     if not blast_radii or ast_result is None:
         return 0
@@ -152,6 +157,8 @@ def apply_symbol_reachability_to_blast_radii(
             continue
         br.symbol_reachability = signal.state
         br.reachable_affected_symbols = list(signal.matched_symbols)
+        if rescore:
+            br.calculate_risk_score()
         stamped += 1
 
     return stamped

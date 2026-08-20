@@ -326,7 +326,9 @@ function FindingsPage() {
     const parsed = Number(paramPage ?? "1");
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
   });
-  const [findingsTotal, setFindingsTotal] = useState<number | null>(0);
+  // The API owns the canonical total. ``null`` means it has not answered yet;
+  // initializing this to zero makes the loading state assert an all-clear count.
+  const [findingsTotal, setFindingsTotal] = useState<number | null>(null);
   const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
   const [findingFacets, setFindingFacets] = useState<FindingFacets | null>(null);
   const [findingFacetsApproximate, setFindingFacetsApproximate] = useState(false);

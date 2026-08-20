@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,6 +90,38 @@ describe("FindingsPage", () => {
       kev: 0,
       compound_issues: 0,
     });
+  });
+
+  it("does not assert zero findings while the authoritative total is loading", async () => {
+    let resolveFindings!: (value: {
+      schema_version: string;
+      findings: typeof canonicalFinding[];
+      total: number;
+      has_more: boolean;
+      next_cursor: string;
+    }) => void;
+    apiMock.listFindings.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFindings = resolve;
+      }),
+    );
+
+    render(<FindingsPage />);
+
+    expect(screen.getByTestId("findings-loading-state")).toBeInTheDocument();
+    expect(screen.getByText(/Total unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/0 findings/i)).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveFindings({
+        schema_version: "v1",
+        findings: [canonicalFinding],
+        total: 1,
+        has_more: false,
+        next_cursor: "",
+      });
+    });
+    expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
   });
 
   it("keeps findings as a compact queue and opens evidence in a drawer", async () => {

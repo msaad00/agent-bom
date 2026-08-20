@@ -179,53 +179,41 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert _audit_layout(svg) == []
 
 
-def test_readme_places_persona_artwork_before_the_compact_role_table() -> None:
-    """Public onboarding stays accessible while retaining visual workflow proof."""
+def test_readme_persona_table_covers_each_operating_lane() -> None:
+    """Public onboarding routes each audience to its actual first action."""
     titles = [row[0] for row in _readme_persona_rows()]
-    # The table and the artwork must name the SAME audiences. They had drifted
-    # to seven rows against five illustrated lanes, so the picture and the text
-    # described different products. Pinned as equality, not membership, so a new
-    # row cannot be added to one without the other.
     assert titles == [
         "AI engineer",
         "Security engineer",
+        "Platform / DevOps",
         "GRC / audit",
         "Leadership / CISO",
     ]
 
-    from scripts.generate_doc_architecture_svgs import PERSONA_LANES
-
-    assert [lane.title for lane in PERSONA_LANES] == titles
-
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     who_it_is_for = readme.index("## Who it is for")
-    persona_artwork = readme.index("persona-value-dark.svg", who_it_is_for)
     role_table = readme.index("| Role | Start here | Primary outcome |", who_it_is_for)
-    assert who_it_is_for < persona_artwork < role_table
-    assert "persona-value-light.svg" in readme[who_it_is_for:role_table]
-    persona_summary = readme.index("<summary><b>Persona workflow map</b></summary>", who_it_is_for)
-    persona_close = readme.index("</details>", persona_artwork)
-    assert who_it_is_for < persona_summary < persona_artwork < persona_close < role_table
+    assert who_it_is_for < role_table
+    assert "persona-value-dark.svg" not in readme
 
 
-def test_readme_surfaces_the_end_to_end_workflow_before_architecture_detail() -> None:
+def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     workflow_heading = readme.index("## Scan, correlate, and act")
-    workflow_art = readme.index("workflow-dark.svg", workflow_heading)
-    architecture_detail = readme.index("<summary><b>Control-plane architecture</b></summary>")
-    assert workflow_heading < workflow_art < architecture_detail
-    assert "workflow-light.svg" in readme[workflow_heading:architecture_detail]
-    assert "raw source and credentials stay local" in readme[workflow_heading:architecture_detail].lower()
+    workflow_link = readme.index("[Evidence workflow](docs/HOW_IT_WORKS.md)", workflow_heading)
+    persona_heading = readme.index("## Who it is for")
+    assert workflow_heading < workflow_link < persona_heading
+    assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme[workflow_heading:persona_heading]
+    assert "raw source and credentials stay local" in readme[workflow_heading:persona_heading].lower()
     assert "### From source to verified action" not in readme
 
 
-def test_readme_keeps_detailed_workflow_and_architecture_collapsed() -> None:
+def test_readme_moves_dense_workflow_and_architecture_art_to_full_size_docs() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    workflow_summary = readme.index("<summary><b>Evidence workflow</b></summary>")
-    workflow_art = readme.index("workflow-dark.svg", workflow_summary)
-    workflow_close = readme.index("</details>", workflow_art)
-    architecture_summary = readme.index("<summary><b>Control-plane architecture</b></summary>", workflow_close)
-    assert workflow_summary < workflow_art < workflow_close < architecture_summary
+    for diagram in ("workflow-dark.svg", "architecture-dark.svg", "persona-value-dark.svg"):
+        assert diagram not in readme
+    assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in readme
+    assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme
 
 
 def test_persona_table_rows_all_carry_a_runnable_command() -> None:

@@ -129,7 +129,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     markers = [
         "## Scan, correlate, and act",
-        "<summary><b>Control-plane architecture</b></summary>",
+        "[Control-plane architecture](docs/ARCHITECTURE.md)",
         "## Who it is for",
         "## Quick start",
         "## Self-host",
@@ -184,7 +184,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     # The opening is one Agent-Bom product paragraph plus four scannable
     # outcome/trust bullets. Workflow and architecture detail belongs in the
     # diagrams, not in a second prose manifesto.
-    intro = readme.split("## Scan, correlate, and act", 1)[1].split("workflow-dark.svg", 1)[0]
+    intro = readme.split("## Scan, correlate, and act", 1)[1].split("## Who it is for", 1)[0]
     assert "one Finding + UnifiedGraph model" in intro
     for label in ("Run where you deploy", "Centralize when ready", "Act with context", "Keep evidence honest"):
         assert f"**{label}:**" in intro
@@ -199,9 +199,8 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert commands == ["pip install agent-bom", "agent-bom scan ."]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
-    assert "<summary><b>Product gallery</b></summary>" in readme
-    assert "persona-value-dark.svg" in readme
-    assert "persona-value-light.svg" in readme
+    assert "[View the full product gallery](docs/GALLERY.md)" in readme
+    assert "security-graph-live.png" in readme
 
     # Persona surfaces keep security engineering and GRC as separate lanes
     # (never one card) — findings and reachability are not audit certification.
@@ -210,12 +209,12 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "| Security engineer |" in readme
     assert "| GRC / audit |" in readme
 
-    # Persona proof stays directly visible. Architecture and product
-    # screenshots remain collapsible, with the gallery open by default.
-    assert readme.count("architecture-dark.svg") == 1
-    assert "<summary><b>Audience workflow map</b></summary>" not in readme
-    assert "<summary><b>Control-plane architecture</b></summary>" in readme
-    assert "<details open>\n<summary><b>Product gallery</b></summary>" in readme
+    # Dense diagrams and the six-up gallery live in full-size docs; the README
+    # keeps one readable investigation proof.
+    assert "architecture-dark.svg" not in readme
+    assert "persona-value-dark.svg" not in readme
+    assert readme.count("-live.png") == 1
+    assert 'width="900"' in readme
     assert "blast-radius-dark.svg" not in readme
 
 

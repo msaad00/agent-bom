@@ -311,6 +311,18 @@ _DEBIAN_OSV_FALLBACKS = ("Debian:11", "Debian:12", "Debian:13", "Debian:14")
 _ALPINE_OSV_FALLBACKS = alpine_osv_fallback_ecosystems()
 
 
+def _is_unresolved_version(version: object) -> bool:
+    """Return whether *version* is a floating or missing package coordinate.
+
+    SBOM producers do not agree on sentinel casing (Syft commonly emits
+    ``UNKNOWN``). Advisory matching must never treat those sentinels as real
+    versions: range parsers can otherwise fail open and attach every advisory
+    for the package name.
+    """
+
+    return str(version or "").strip().lower() in {"", "*", "latest", "unknown"}
+
+
 def _resolve_osv_ecosystems(pkg: Package, *, for_local_db: bool) -> list[str]:
     """Return OSV ecosystem identifier(s) for a package.
 
@@ -1314,7 +1326,7 @@ async def scan_packages(
     # Try resolving versions from locally installed packages FIRST.
     # This is more accurate than registry fallback because it reflects
     # what's actually on disk (e.g. npm list, pip list).
-    unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "go")]
+    unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() in ("npm", "pypi", "go")]
     if unresolved:
         try:
             from agent_bom.resolvers.runtime_resolver import (
@@ -1379,7 +1391,7 @@ async def scan_packages(
     # ── Registry fallback for still-unresolved versions ──────────────────
     # Only hit npm/PyPI registries for packages we couldn't resolve locally.
     # In offline mode, skip all registry calls entirely.
-    still_unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "conda")]
+    still_unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() in ("npm", "pypi", "conda")]
     if still_unresolved and not scan_offline:
         try:
             from agent_bom.resolver import resolve_all_versions
@@ -1388,7 +1400,7 @@ async def scan_packages(
             if resolved_count:
                 # Mark these as registry-resolved so output shows confidence
                 for pkg in still_unresolved:
-                    if pkg.version not in ("latest", "unknown", ""):
+                    if not _is_unresolved_version(pkg.version):
                         pkg.version_source = "registry_fallback"
                 console.print(f"  [green]✓[/green] Auto-resolved {resolved_count} package version(s) from registry")
         except Exception as exc:
@@ -1429,10 +1441,10 @@ async def scan_packages(
                 _emit_scan_warning("transitive dependency resolution failed")
 
     # SAST packages already carry vulns from Semgrep — skip OSV query for them
-    scannable = [p for p in packages if p.version not in ("unknown", "latest", "") and p.ecosystem.lower() != "sast"]
+    scannable = [p for p in packages if not _is_unresolved_version(p.version) and p.ecosystem.lower() != "sast"]
 
     # Warn about packages that could not be resolved — no silent failures
-    still_unresolved = [p for p in packages if p.version in ("unknown", "latest", "") and p.ecosystem.lower() != "sast"]
+    still_unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() != "sast"]
     if still_unresolved:
         names = ", ".join(f"{p.name}@{p.version}" for p in still_unresolved[:10])
         suffix = f" (+{len(still_unresolved) - 10} more)" if len(still_unresolved) > 10 else ""

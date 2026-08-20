@@ -221,10 +221,26 @@ describe("CompliancePage (dense restyle)", () => {
     const injection = await screen.findByText("Prompt Injection");
     fireEvent.click(injection);
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("dialog", { name: /Control details for LLM01/i }),
-      ).toBeInTheDocument(),
+    const drawer = await screen.findByRole("dialog", {
+      name: /Control details for LLM01/i,
+    });
+    const tabs = within(drawer).getByRole("tablist", {
+      name: "Control detail views",
+    });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Evidence",
+      "Actions",
+    ]);
+    expect(within(tabs).getByRole("tab", { name: "Overview" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
+
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Evidence" }));
+    expect(within(drawer).getByText(/no affected package or agent identities/i)).toBeInTheDocument();
+
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Actions" }));
+    expect(within(drawer).getByRole("link", { name: "View findings" })).toBeInTheDocument();
   });
 });

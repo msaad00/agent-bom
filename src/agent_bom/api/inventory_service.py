@@ -224,6 +224,8 @@ async def build_summary(
 
     return {
         "schema_version": "inventory.summary.v1",
+        "scope": "unified_graph_estate",
+        "count_definition": ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot"),
         "tenant_id": tenant_id,
         "scan_id": stats.get("scan_id", scan_id or ""),
         "total_assets": total_assets,
@@ -317,6 +319,8 @@ async def build_asset_list(
         has_more = bool(next_cursor) if cursor else offset + len(rows) < total
         return {
             "schema_version": "inventory.assets.v1",
+            "scope": "unified_graph_estate",
+            "count_definition": ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot"),
             "tenant_id": tenant_id,
             "assets": rows,
             "filters": {
@@ -384,6 +388,8 @@ async def build_asset_list(
         has_more = bool(next_cursor_out)
     return {
         "schema_version": "inventory.assets.v1",
+        "scope": "unified_graph_estate",
+        "count_definition": ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot"),
         "tenant_id": tenant_id,
         "assets": page_rows,
         "filters": {

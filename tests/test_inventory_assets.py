@@ -111,6 +111,8 @@ def test_summary_counts_assets_by_type_and_group_excluding_findings(inventory_st
     assert resp.status_code == 200
     body = resp.json()
     assert body["schema_version"] == "inventory.summary.v1"
+    assert body["scope"] == "unified_graph_estate"
+    assert body["count_definition"] == ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot")
     # 16 non-finding nodes seeded; the vulnerability is not an asset.
     assert body["total_assets"] == 16
     assert body["finding_count"] == 1
@@ -142,6 +144,8 @@ def test_list_returns_asset_rows_and_excludes_findings(inventory_store):
     assert resp.status_code == 200
     body = resp.json()
     assert body["schema_version"] == "inventory.assets.v1"
+    assert body["scope"] == "unified_graph_estate"
+    assert body["count_definition"] == ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot")
     types = {row["type"] for row in body["assets"]}
     assert "vulnerability" not in types
     assert {"agent", "cloud_resource", "account", "role", "user"} <= types

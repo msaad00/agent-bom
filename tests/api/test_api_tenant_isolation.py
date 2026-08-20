@@ -992,10 +992,16 @@ async def test_asset_routes_are_tenant_scoped(tmp_path, monkeypatch):
 
         req = _request("tenant-alpha")
         data = await asset_routes.list_assets(req)
+        assert data["schema_version"] == "vulnerability-assets.v1"
+        assert data["scope"] == "vulnerability_asset_lifecycle"
+        assert data["count_definition"] == ("tracked vulnerability-package records after lifecycle filters; not unified estate assets")
         assert data["count"] == 1
         assert [asset["vuln_id"] for asset in data["assets"]] == ["CVE-alpha"]
 
         stats = await asset_routes.get_asset_stats(req)
+        assert stats["schema_version"] == "vulnerability-assets.stats.v1"
+        assert stats["scope"] == "vulnerability_asset_lifecycle"
+        assert stats["count_definition"] == ("tracked vulnerability-package records across lifecycle states; not unified estate assets")
         assert stats["stats"]["total"] == 1
         assert stats["stats"]["critical_open"] == 1
     finally:

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Package, Server, X } from "lucide-react";
+import { useState } from "react";
+import { Package, Server } from "lucide-react";
 
-import { useEscToClose } from "@/hooks/use-esc-to-close";
+import { DetailTabs } from "@/components/detail-tabs";
+import { Drawer } from "@/components/drawer";
 import {
   controlStatusLabel,
   evidenceReasonCta,
@@ -24,87 +26,69 @@ export function ComplianceControlDrawer({
   catalogName?: string | undefined;
   onClose: () => void;
 }) {
-  useEscToClose(true, onClose);
+  const [tab, setTab] = useState<"overview" | "evidence" | "actions">("overview");
   const name = catalogName ?? control.name;
   const sev = control.severity_breakdown;
   const unscored = isControlUnscored(control.status);
   const reasonLabel = evidenceReasonLabel(control.evidence_reason);
   const reasonCta = unscored ? evidenceReasonCta(control.evidence_reason) : null;
 
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex justify-end bg-black/45 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Control details for ${control.code}`}
+  const statusPill = (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+        control.status === "pass"
+          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+          : control.status === "warning"
+            ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300"
+            : unscored
+              ? "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
+              : "bg-red-500/15 text-red-700 dark:text-red-300"
+      }`}
     >
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Close control details"
-        onClick={onClose}
+      {controlStatusLabel(control.status)}
+    </span>
+  );
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      size="xl"
+      ariaLabel={`Control details for ${control.code}`}
+      eyebrow={frameworkLabel}
+      title={<span><span className="font-mono">{control.code}</span> · {name}</span>}
+      subtitle={`${control.findings} finding${control.findings === 1 ? "" : "s"} mapped to this control.`}
+      headerAside={statusPill}
+    >
+      <DetailTabs
+        tabs={[
+          { key: "overview", label: "Overview" },
+          { key: "evidence", label: "Evidence" },
+          { key: "actions", label: "Actions" },
+        ] as const}
+        value={tab}
+        onChange={setTab}
+        ariaLabel="Control detail views"
       />
-      <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-2xl">
-        <div className="mb-4 flex items-start justify-between gap-4 border-b border-[color:var(--border-subtle)] pb-4">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
-              {frameworkLabel}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm font-semibold text-[color:var(--foreground)]">
-                {control.code}
-              </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                  control.status === "pass"
-                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                    : control.status === "warning"
-                      ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300"
-                      : unscored
-                        ? "bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]"
-                        : "bg-red-500/15 text-red-700 dark:text-red-300"
-                }`}
-              >
-                {controlStatusLabel(control.status)}
-              </span>
-            </div>
-            <h2 className="mt-2 text-base font-medium leading-snug text-[color:var(--foreground)]">
-              {name}
-            </h2>
-            {unscored ? (
-              // Provenance for a control the scan couldn't grade: state WHY, and
-              // (when a missing input is implied) offer the next step. Never
-              // imply a source is connected/disconnected — "no observed signal"
-              // is an honest statement of absence.
-              <div className="mt-2" data-testid="control-unscored-provenance">
-                <p className="text-sm text-[color:var(--text-secondary)]">
-                  Not evaluated{reasonLabel ? ` — ${reasonLabel.toLowerCase()}` : ""}.
-                </p>
-                {reasonCta ? (
-                  <Link
-                    href={reasonCta.href}
-                    className="mt-2 inline-flex items-center rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent)] transition hover:bg-[color:var(--accent-soft-hover)]"
-                    data-testid="control-evidence-cta"
-                  >
-                    {reasonCta.label}
-                  </Link>
-                ) : null}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
-                {control.findings} finding{control.findings === 1 ? "" : "s"} mapped to this control.
+
+      {tab === "overview" ? (
+        <div>
+          {unscored ? (
+            <div className="mb-4" data-testid="control-unscored-provenance">
+              <p className="text-sm text-[color:var(--text-secondary)]">
+                Not evaluated{reasonLabel ? ` — ${reasonLabel.toLowerCase()}` : ""}.
               </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--foreground)]"
-            aria-label="Close control drawer"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+              {reasonCta ? (
+                <Link
+                  href={reasonCta.href}
+                  className="mt-2 inline-flex items-center rounded-lg border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent)] transition hover:bg-[color:var(--accent-soft-hover)]"
+                  data-testid="control-evidence-cta"
+                >
+                  {reasonCta.label}
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
 
         {(sev.critical ?? 0) + (sev.high ?? 0) + (sev.medium ?? 0) + (sev.low ?? 0) > 0 ? (
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -129,6 +113,11 @@ export function ComplianceControlDrawer({
           </div>
         ) : null}
 
+        </div>
+      ) : null}
+
+      {tab === "evidence" ? (
+        <div>
         {control.affected_packages.length > 0 ? (
           <div className="mb-4">
             <div className="mb-2 flex items-center gap-1.5 text-xs text-[color:var(--text-tertiary)]">
@@ -167,7 +156,16 @@ export function ComplianceControlDrawer({
           </div>
         ) : null}
 
-        <div className="mt-6 flex flex-wrap gap-2 border-t border-[color:var(--border-subtle)] pt-4">
+        {control.affected_packages.length === 0 && control.affected_agents.length === 0 ? (
+          <p className="text-sm text-[color:var(--text-secondary)]">
+            No affected package or agent identities were reported for this control.
+          </p>
+        ) : null}
+        </div>
+      ) : null}
+
+      {tab === "actions" ? (
+        <div className="flex flex-wrap gap-2">
           <Link
             href={findingsHref({ q: control.code })}
             className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-600"
@@ -190,7 +188,7 @@ export function ComplianceControlDrawer({
             Remediation
           </Link>
         </div>
-      </aside>
-    </div>
+      ) : null}
+    </Drawer>
   );
 }

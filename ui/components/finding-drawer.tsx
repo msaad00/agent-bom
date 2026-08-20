@@ -9,6 +9,7 @@ import { useAuthState } from "@/components/auth-provider";
 import { buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
 import { buildWhyItMatters } from "@/lib/finding-why-matters";
 import { Drawer } from "@/components/drawer";
+import { DetailTabs } from "@/components/detail-tabs";
 import {
   findingsDrawerEyebrow,
   findingsDrawerSubtitle,
@@ -75,32 +76,15 @@ export function FindingDrawer({
         </span>
       }
     >
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-[color:var(--border-subtle)]" role="tablist">
-        {TABS.map((entry) => {
-          const active = tab === entry.key;
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(entry.key)}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "border-emerald-500 text-[color:var(--foreground)]"
-                  : "border-transparent text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]"
-              }`}
-            >
-              {entry.label}
-              {entry.key === "triage" && triage ? (
-                <span className="ml-1.5 rounded-full bg-[color:var(--surface-muted)] px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]">
-                  {triage.queue_state}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+      <DetailTabs
+        tabs={TABS.map((entry) => ({
+          ...entry,
+          ...(entry.key === "triage" && triage ? { badge: triage.queue_state } : {}),
+        }))}
+        value={tab}
+        onChange={setTab}
+        ariaLabel="Finding detail views"
+      />
 
       {tab === "overview" ? <OverviewTab vuln={vuln} triage={triage} /> : null}
       {tab === "evidence" ? <EvidenceTab vuln={vuln} /> : null}

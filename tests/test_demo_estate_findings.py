@@ -94,6 +94,30 @@ def test_one_asset_yields_one_canonical_asset_id_across_all_its_findings(finding
     assert split == {}, f"assets with more than one canonical id: {list(split)[:3]}"
 
 
+def test_demo_findings_are_routed_to_explicit_triage_teams(estate, findings):
+    """The demo must show owner-ready work without relabeling asset ownership.
+
+    ``EstateAsset.owner`` is the accountable service owner while
+    ``Finding.owner`` is the security triage assignee.  The fictional estate
+    therefore routes by the finding's security domain and records that this is
+    synthetic workflow policy instead of copying one identity into the other.
+    """
+    expected_owners = {
+        "cloud-security@example.invalid",
+        "vulnerability-management@example.invalid",
+        "application-security@example.invalid",
+        "data-security@example.invalid",
+        "ai-security@example.invalid",
+    }
+    current_snapshot = next(snapshot for snapshot in estate.snapshots if snapshot.stage.value == "current")
+
+    assert findings
+    assert {finding.owner for finding in findings} <= expected_owners
+    assert all(finding.owner for finding in findings)
+    assert all(finding.first_seen == current_snapshot.observed_at.isoformat() for finding in findings)
+    assert all(finding.evidence.get("triage_owner_source") == "synthetic-demo-domain-routing" for finding in findings)
+
+
 # ── Link 2: the asset carries an identity edge and a configuration edge ──────
 
 

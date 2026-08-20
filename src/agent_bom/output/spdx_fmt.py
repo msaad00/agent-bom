@@ -6,6 +6,7 @@ import json
 from datetime import timezone
 from pathlib import Path
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx3_verified_using
@@ -42,16 +43,21 @@ def to_spdx(report: AIBOMReport) -> dict:
     - Dependency edges become ``dependsOn`` relationships
     """
     spdx_id_counter = [0]
+    # SPDX 3 ``spdxId`` is an IRI, not the local ``SPDXRef-*`` token used by
+    # SPDX 2.x. Keep the namespace deterministic so repeated exports of the
+    # same scan remain byte-identical.
+    namespace_seed = report.scan_id or report.generated_at.isoformat()
+    document_namespace = f"https://agent-bom.dev/spdx/{uuid5(NAMESPACE_URL, namespace_seed)}"
 
     def _next_id(prefix: str = "SPDXRef") -> str:
         spdx_id_counter[0] += 1
-        return f"{prefix}-{spdx_id_counter[0]}"
+        return f"{document_namespace}/{prefix}-{spdx_id_counter[0]}"
 
     elements: list[dict[str, Any]] = []
     relationships: list[dict[str, Any]] = []
     root_element_ids: list[str] = []
     document_id = _next_id("SPDXRef-DOCUMENT")
-    tool_id = "SPDXRef-Tool-agent-bom"
+    tool_id = f"{document_namespace}/SPDXRef-Tool-agent-bom"
 
     created = (
         report.generated_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -106,7 +112,18 @@ def to_spdx(report: AIBOMReport) -> dict:
         if agent.config_path:
             agent_element["comment"] = f"config_path: {agent.config_path}, status: {agent.status.value}"
         if agent.source:
-            agent_element["originatedBy"] = agent.source
+            # ``Agent.source`` is discovery provenance (for example
+            # ``project`` or ``snowflake``), not an SPDX Agent identity. Keep
+            # it as an annotation instead of emitting an invalid originatedBy
+            # reference to a non-existent Element.
+            agent_element["annotation"].append(
+                {
+                    "type": "Annotation",
+                    "annotationType": "other",
+                    "subject": agent_id,
+                    "statement": f"agent-bom:discovery-source={agent.source}",
+                }
+            )
         elements.append(agent_element)
 
         for server in agent.mcp_servers:

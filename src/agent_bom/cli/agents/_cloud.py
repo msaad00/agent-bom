@@ -14,20 +14,21 @@ from agent_bom.cli._terminal_sections import (
 )
 from agent_bom.cli.agents._context import ScanContext
 
-# Shared CIS status badges across every provider table. ``not_applicable`` is
-# rendered as a short ``N/A`` badge so it is never truncated to ``not_a…`` in
-# the width-constrained Status column, and unknown statuses fall back to their
-# raw value instead of a missing cell.
+# Shared CIS status badges across every provider table. ``not_applicable`` and
+# ``no_data`` are rendered as compact badges so they are never truncated in the
+# width-constrained Status column, and unknown statuses fall back to their raw
+# value instead of a missing cell.
 _CIS_STATUS_STYLE = {
     "pass": "[green]PASS[/]",
     "fail": "[red]FAIL[/]",
     "error": "[yellow]ERR[/]",
+    "no_data": "[dim]NO DATA[/]",
     "not_applicable": "[dim]N/A[/]",
 }
 
-# Width that fits the longest rendered status label (``FAIL``/``PASS``/``ERR``/
-# ``N/A``) without clipping.
-_CIS_STATUS_WIDTH = 6
+# Width that fits the longest rendered status label (``NO DATA``) without
+# clipping.
+_CIS_STATUS_WIDTH = 7
 
 
 def _cis_status_badge(status_value: str) -> str:

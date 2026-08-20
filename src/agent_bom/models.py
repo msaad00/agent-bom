@@ -1220,6 +1220,12 @@ class AIBOMReport:
     # license, pushed_at, …). Best-effort read-only API metadata — never required
     # for the security scan itself.
     repo_trust_data: Optional[dict[str, Any]] = None
+    # Ownership parsed from the repository's CODEOWNERS file, carried as
+    # provenance so graph overlays never need filesystem access. Two shapes are
+    # accepted and round-trip unchanged: ordered ``{"pattern", "owners"}`` rules
+    # (full CODEOWNERS precedence, used to assign source-finding owners) and the
+    # flattened ``{path_prefix: owner}`` map the repo-tree scan produces.
+    codeowners: Union[list[dict[str, Any]], dict[str, str]] = field(default_factory=list)
     introspection_data: Optional[dict[str, Any]] = None  # Runtime MCP introspection results (tools, resources, drift)
     health_check_data: Optional[dict[str, Any]] = None  # MCP server reachability/health results
     runtime_session_graph: Optional[dict[str, Any]] = None  # Structured runtime session graph/timeline evidence
@@ -1228,9 +1234,6 @@ class AIBOMReport:
     # Populated alongside blast_radii for backward compatibility.
     # Future phases will migrate cloud_reports and proxy alerts here too.
     findings: list["Finding"] = field(default_factory=list)
-    # Ordered CODEOWNERS rules loaded from the scanned project. They are
-    # applied to source findings and retained for graph ownership overlays.
-    codeowners: list[dict[str, Any]] = field(default_factory=list)
 
     # Scan context metadata — what input sources were actually processed.
     # Populated by the CLI/API after scan completes. Consumers use this to

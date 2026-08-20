@@ -160,6 +160,55 @@ _ToolReturn = TypeVar("_ToolReturn")
 # read metadata directly from `agent_bom.mcp_server`.
 _SERVER_CARD_PROMPTS = _METADATA_SERVER_CARD_PROMPTS
 _SERVER_CARD_TOOLS = _METADATA_SERVER_CARD_TOOLS
+
+# The guided profile is the default human/agent front door.  It contains every
+# tool referenced by the eight shipped workflow prompts plus the three asset
+# inventory drill-downs.  Programmatic callers keep the historical full
+# catalog unless they explicitly request this profile.
+_GUIDED_TOOL_NAMES = frozenset(
+    {
+        "audit_integrity",
+        "check",
+        "cis_benchmark",
+        "cloud_inventory",
+        "compliance",
+        "context_graph",
+        "exposure_paths",
+        "firewall_check",
+        "fleet_scan",
+        "gateway_status",
+        "generate_sbom",
+        "graph_export",
+        "intel_lookup",
+        "inventory_asset",
+        "inventory_list",
+        "inventory_summary",
+        "policy_check",
+        "proxy_alerts",
+        "registry_lookup",
+        "remediate",
+        "runtime_correlate",
+        "scan",
+        "should_i_deploy",
+    }
+)
+_MCP_TOOL_PROFILES = {"guided": _GUIDED_TOOL_NAMES, "full": frozenset(str(tool["name"]) for tool in _SERVER_CARD_TOOLS)}
+
+
+def _apply_mcp_tool_profile(mcp: Any, profile: str) -> None:
+    """Limit the live FastMCP registry to one documented tool profile."""
+    selected = _MCP_TOOL_PROFILES.get(profile)
+    if selected is None:
+        choices = ", ".join(sorted(_MCP_TOOL_PROFILES))
+        raise ValueError(f"Unknown MCP tool profile {profile!r}; expected one of: {choices}")
+    if profile == "full":
+        return
+    registered = mcp._tool_manager._tools
+    for name in tuple(registered):
+        if name not in selected:
+            del registered[name]
+
+
 build_server_card = _metadata_build_server_card
 
 # ---------------------------------------------------------------------------
@@ -534,7 +583,13 @@ def _persisted_finding_evidence(*, tenant_id: str, cve_id: str, scan_id: str | N
 # ---------------------------------------------------------------------------
 
 
-def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token: str | None = None):
+def create_mcp_server(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    bearer_token: str | None = None,
+    profile: str = "full",
+):
     """Create and configure the agent-bom MCP server with all tools.
 
     When the smithery SDK is installed, the server is automatically enhanced
@@ -1399,6 +1454,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     if activated:
         logger.info("Activated %d third-party MCP tool plugin(s): %s", len(activated), ", ".join(sorted(activated)))
         harden_tool_arguments(mcp)
+
+    _apply_mcp_tool_profile(mcp, profile)
 
     return mcp
 

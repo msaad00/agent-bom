@@ -50,6 +50,7 @@ class RepoTreeScanResult:
     iac_findings_data: dict[str, Any] | None = None
     ai_inventory_data: dict[str, Any] | None = None
     sast_data: dict[str, Any] | None = None
+    codeowners: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -152,6 +153,9 @@ def scan_cloned_repo_tree(
     """
     root = Path(cloned_path)
     result = RepoTreeScanResult()
+    from agent_bom.repo_auto_detect import load_codeowners
+
+    result.codeowners = load_codeowners(root)
     ai_inventory: dict[str, Any] = {}
 
     from agent_bom.parsers.skill_audit import audit_skill_result

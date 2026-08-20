@@ -3034,6 +3034,11 @@
             "title": "Findings",
             "type": "array"
           },
+          "graph_snapshot_id": {
+            "default": "showcase",
+            "title": "Graph Snapshot Id",
+            "type": "string"
+          },
           "primary_correlation": {
             "$ref": "#/components/schemas/EnterpriseCorrelation"
           },

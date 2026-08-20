@@ -64,6 +64,28 @@ def _rule_from_value(value: CodeOwnerRule | dict[str, object]) -> CodeOwnerRule 
     return CodeOwnerRule(pattern=pattern, owners=owners) if pattern and owners else None
 
 
+def normalize_codeowners(value: object) -> list[CodeOwnerRule]:
+    """Accept either ordered CODEOWNERS rules or a flattened prefix map.
+
+    The repo-tree scan carries ownership as ``{path_prefix: owner}``, which has
+    no inherent order. CODEOWNERS precedence is last-match-wins, so the prefixes
+    are emitted shortest-first and the longest (most specific) prefix ends up
+    last — the same "longest prefix wins" rule the ASPM overlay applies.
+    """
+    if isinstance(value, dict):
+        ordered: list[CodeOwnerRule] = []
+        for prefix in sorted(value, key=lambda item: len(str(item))):
+            stripped = str(prefix).strip().strip("/")
+            pattern = f"{stripped}/" if stripped else "*"
+            rule = _rule_from_value({"pattern": pattern, "owners": value[prefix]})
+            if rule is not None:
+                ordered.append(rule)
+        return ordered
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes)):
+        return []
+    return [rule for rule in (_rule_from_value(entry) for entry in value) if rule is not None]
+
+
 def _matches(pattern: str, path: str) -> bool:
     candidate = path.replace("\\", "/").lstrip("./")
     raw_pattern = pattern.replace("\\", "/")
@@ -81,19 +103,18 @@ def _matches(pattern: str, path: str) -> bool:
     return not anchored and PurePosixPath(candidate).match(f"**/{normalized}")
 
 
-def owner_for_path(path: str, rules: Iterable[CodeOwnerRule | dict[str, object]]) -> CodeOwnerRule | None:
+def owner_for_path(path: str, rules: object) -> CodeOwnerRule | None:
     """Return the last matching rule, matching CODEOWNERS precedence."""
     matched: CodeOwnerRule | None = None
-    for value in rules:
-        rule = _rule_from_value(value)
-        if rule is not None and _matches(rule.pattern, path):
+    for rule in normalize_codeowners(rules):
+        if _matches(rule.pattern, path):
             matched = rule
     return matched
 
 
-def apply_codeowners(findings: Iterable[Finding], rules: Iterable[CodeOwnerRule | dict[str, object]]) -> None:
+def apply_codeowners(findings: Iterable[Finding], rules: object) -> None:
     """Assign source owners without replacing an explicit triage assignee."""
-    materialized_rules = list(rules)
+    materialized_rules = normalize_codeowners(rules)
     for finding in findings:
         if finding.owner:
             continue
@@ -110,4 +131,4 @@ def apply_codeowners(findings: Iterable[Finding], rules: Iterable[CodeOwnerRule 
         finding.evidence = evidence
 
 
-__all__ = ["CodeOwnerRule", "apply_codeowners", "load_codeowners", "owner_for_path"]
+__all__ = ["CodeOwnerRule", "apply_codeowners", "load_codeowners", "normalize_codeowners", "owner_for_path"]

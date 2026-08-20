@@ -327,9 +327,9 @@ def test_new_findings_appear_in_sarif():
     results = sarif["runs"][0]["results"]
     rule_ids = {r["ruleId"] for r in results}
     # Non-CVE unified loop emits finding/<type> rule ids for each category.
-    assert f"finding/{FindingType.COMBINATION.value}" in rule_ids
-    assert f"finding/{FindingType.CREDENTIAL_EXPOSURE.value}" in rule_ids
-    assert f"finding/{FindingType.INJECTION.value}" in rule_ids
+    assert any(rule_id.startswith(f"finding/{FindingType.COMBINATION.value}") for rule_id in rule_ids)
+    assert any(rule_id.startswith(f"finding/{FindingType.CREDENTIAL_EXPOSURE.value}") for rule_id in rule_ids)
+    assert any(rule_id.startswith(f"finding/{FindingType.INJECTION.value}") for rule_id in rule_ids)
 
 
 # ── Tenant / scope integrity ─────────────────────────────────────────────────

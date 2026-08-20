@@ -520,6 +520,44 @@ describe("FindingsPage", () => {
     expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
   });
 
+  it("keeps unrated findings reachable from the severity controls", async () => {
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        {
+          ...canonicalFinding,
+          id: "finding-unrated-1",
+          cve_id: undefined,
+          severity: "none",
+          title: "Finding without a severity rating",
+        },
+      ],
+      total: 3,
+      facets: {
+        finding_class: { vulnerability: 0, misconfiguration: 0, secret: 0, identity: 0, unclassified: 3 },
+        severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0, unknown: 3 },
+        status: { open: 3, resolved: 0 },
+        domain: { cspm: 0, vuln: 0, aspm: 0, dspm: 0, aispm: 3 },
+        freshness: { last_24_hours: 0, last_7_days: 0, last_30_days: 0, older: 0, unavailable: 3 },
+      },
+    });
+
+    render(<FindingsPage />);
+
+    const unrated = await screen.findByRole("button", { name: "Unrated (3)" });
+    fireEvent.click(unrated);
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ severity: "unknown" }),
+      ),
+    );
+    expect(routerReplace).toHaveBeenLastCalledWith(
+      expect.stringContaining("severity=unrated"),
+      { scroll: false },
+    );
+  });
+
   it("labels a budget-bounded scope walk partial instead of showing a silent empty page", async () => {
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",

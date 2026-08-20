@@ -7,14 +7,6 @@
 
 # agent-bom
 
-!!! info "Canonical docs tree"
-    This MkDocs site is the source of truth for **getting-started and narrative
-    documentation**. The **engineering/operator reference** lives in the
-    repository's [`docs/`](https://github.com/msaad00/agent-bom/tree/main/docs)
-    tree (architecture, threat model, deployment, graph contract, repo map).
-    When a topic appears in both, this site is canonical for onboarding and
-    `docs/` is canonical for the reference detail.
-
 **Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
 Run scans in your environment, centralize findings, govern in your VPC — your team and your agents
@@ -43,6 +35,11 @@ better-sqlite3@9.0.0  (npm package)
 ```
 
 Package risk is only the start. agent-bom maps the reachable path from a vulnerable package instance to MCP servers, agents, credential names, tools, and runtime context.
+
+![Path-first investigation with a ranked finding, attack path, evidence, owner, remediation, and verification workflow](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png)
+
+Start with the highest-ranked path, confirm why it is reachable, assign an
+owner and SLA, remediate, then verify against the next scan.
 
 ## Quick start
 
@@ -122,6 +119,14 @@ SLO or openCypher endpoint.
   Kinesis/Firehose is a later adapter, not a release blocker.
 - AWS IAM identity enrichment is opt-in and read-only; it does not imply
   complete identity coverage across every provider.
+
+!!! info "Canonical docs tree"
+    This MkDocs site is the source of truth for **getting-started and narrative
+    documentation**. The **engineering/operator reference** lives in the
+    repository's [`docs/`](https://github.com/msaad00/agent-bom/tree/main/docs)
+    tree (architecture, threat model, deployment, graph contract, repo map).
+    When a topic appears in both, this site is canonical for onboarding and
+    `docs/` is canonical for the reference detail.
 
 ## Key capabilities
 

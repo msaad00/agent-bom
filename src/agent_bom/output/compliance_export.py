@@ -14,7 +14,7 @@ from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, ComplianceFrame
 from agent_bom.compliance_utils import effective_blast_radius_tags, framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
 from agent_bom.output.cyclonedx_fmt import to_cyclonedx
-from agent_bom.output.finding_views import cve_findings, package_name, package_version, severity_value
+from agent_bom.output.finding_views import cve_findings, package_name, package_version, severity_value, unified_export_findings
 
 _FRAMEWORKS_BY_SLUG: dict[str, ComplianceFrameworkMetadata] = {framework.slug: framework for framework in TAG_MAPPED_FRAMEWORKS}
 _FRAMEWORK_ALIASES: dict[str, str] = {
@@ -111,7 +111,7 @@ def _finding_evidence(report: AIBOMReport, metadata: ComplianceFrameworkMetadata
         metadata.slug.replace("-", "_"),
     }
     evidence: dict[str, list[_EvidenceRow]] = {}
-    for finding in cve_findings(report):
+    for finding in unified_export_findings(report):
         for qualified_tag in framework_qualified_finding_tags(finding):
             framework_key, _, control_value = qualified_tag.partition(":")
             if framework_key not in accepted_frameworks:
@@ -159,7 +159,7 @@ def _bundle_completeness(report: AIBOMReport, mapped_evidence_count: int) -> str
             report.total_packages,
             report.total_vulnerabilities,
             len(report.blast_radii),
-            len(cve_findings(report)),
+            len(unified_export_findings(report)),
         )
     )
     if not has_scan_input:

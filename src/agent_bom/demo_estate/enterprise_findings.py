@@ -80,6 +80,17 @@ IDENTITY_RESOURCE_TYPES: frozenset[str] = frozenset({"iam_role", "service_princi
 # unevaluable control is reported rather than dropped.
 _UNEVALUABLE_SHARE = 7
 
+# Explicit fictional triage policy.  These are security-work queues, not the
+# accountable owner on ``EstateAsset``; copying the latter into Finding.owner
+# would conflate service ownership with the person/team assigned remediation.
+_TRIAGE_OWNER_BY_DOMAIN: dict[str, str] = {
+    "cspm": "cloud-security@example.invalid",
+    "vuln": "vulnerability-management@example.invalid",
+    "aspm": "application-security@example.invalid",
+    "dspm": "data-security@example.invalid",
+    "aispm": "ai-security@example.invalid",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class EstateCheck:
@@ -851,6 +862,12 @@ def build_estate_findings(
         if finding.evidence.get("identity_asset_id") or finding.evidence.get("identity_actor_id"):
             kept_risk_findings.append(finding)
     findings.extend(kept_risk_findings)
+    current_snapshot = next(snapshot for snapshot in estate.snapshots if snapshot.stage.value == "current")
+    first_seen = current_snapshot.observed_at.isoformat()
+    for finding in findings:
+        finding.owner = _TRIAGE_OWNER_BY_DOMAIN[finding.security_domain]
+        finding.first_seen = first_seen
+        finding.evidence["triage_owner_source"] = "synthetic-demo-domain-routing"
     return tuple(findings)
 
 

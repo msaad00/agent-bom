@@ -32,98 +32,76 @@
 data platforms, MCP servers, and runtime activity, then normalizes the evidence
 into one Finding + UnifiedGraph model for prioritized investigation and action.
 
+Blast radius connects a package finding to the AI surfaces that can reach it:
+
+```text
+package
+  └─ vulnerability finding
+       └─ MCP server
+            ├─ connected agent
+            ├─ credential env names
+            └─ reachable tools
+```
+
+The terminal report shows this attack path for human review. MCP clients can
+query the same evidence through `exposure_paths` and use `should_i_deploy` for
+a bounded pre-deployment verdict.
+
 - **Run where you deploy:** the same deterministic scanner produces findings, SARIF, SBOMs, HTML reports, and graph exports on a workstation, in CI, in Docker/Kubernetes, or in your control plane.
 - **Centralize when ready:** self-host fleet, browser, compliance, and audit evidence inside your cloud and identity boundary.
 - **Act with context:** follow Path → Impact → Owner → Fix → Verify, then export, rescan, or enforce at runtime.
 - **Keep evidence honest:** raw source and credentials stay local; collected, inferred, static, and runtime relationships stay distinct, while partial and unavailable evidence remains explicit.
 
-<details>
-<summary><b>Evidence workflow</b></summary>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/workflow-light.svg" alt="Agent-bom workflow from repositories, endpoints, images, Kubernetes, cloud, data platforms, MCP, and runtime through scan, normalization, correlation, ownership, remediation, verification, exports, control plane, and runtime policy" width="1100" />
-  </picture>
-</p>
-
-See [how the evidence workflow works](docs/HOW_IT_WORKS.md) for commands,
-artifacts, and the boundary between collected, partial, and unavailable state.
-
-</details>
-
-<details>
-<summary><b>Control-plane architecture</b></summary>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="Sources flow into the agent-bom scan and correlation runtime on a workstation, in CI, Docker, Kubernetes, EKS, or a customer control plane, then into tenant-scoped evidence and verified outcomes" width="1000" />
-  </picture>
-</p>
-
-</details>
+[Evidence workflow](docs/HOW_IT_WORKS.md) ·
+[Control-plane architecture](docs/ARCHITECTURE.md)
 
 ## Who it is for
-
-<details>
-<summary><b>Persona workflow map</b></summary>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="AI engineer, security engineer, GRC, and leadership workflows on the shared evidence model" width="1000" />
-  </picture>
-</p>
-
-</details>
 
 | Role | Start here | Primary outcome |
 |---|---|---|
 | AI engineer | `agent-bom scan .` | Inventory agents, MCP servers, and models, and catch issues before they ship |
-| Security engineer | `pip install 'agent-bom[ui]' && agent-bom serve` | Investigate exposure paths, identities, and evidence provenance |
+| Security engineer | `agent-bom scan . -f sarif -o findings.sarif` | Gate CI on prioritized findings and carry reachable evidence into review |
+| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Centralize evidence, assign an owner and SLA, remediate, and verify |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Review control mappings and export evidence with explicit gaps |
 | Leadership / CISO | `pip install 'agent-bom[ui]' && agent-bom serve` | Review posture, coverage, material risk, and change over time |
 
 Security engineering and GRC remain separate workflows: findings and reachability are not
 presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
-<details open>
-<summary><b>Product gallery</b></summary>
+### From finding to attack path
 
-The gallery uses deterministic sample data, visibly labeled in the UI. It is
-product-state proof, not customer or advisory evidence.
+Select a ranked finding to see the agent, server, package, and evidence that
+make it reachable, then continue through owner, remediation, and verification.
+The sample environment is visibly labeled in the UI.
 
-| Overview | Findings |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Overview with posture, finding, coverage, and operations summaries" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="Findings queue with severity, evidence, and next actions" width="430" /> |
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with a ranked finding, attack path, evidence, owner, remediation, and verification workflow" width="900" />
+</p>
 
-| Investigation | Remediation |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with provenance-aware synthetic graph evidence" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Compact prioritized remediation workflow" width="430" /> |
-
-| Cloud and environment lineage | Agent mesh |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="Scoped environment lineage with interactive graph controls" width="430" /> | <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent and MCP server relationships with labeled edges" width="430" /> |
-
+[View the full product gallery](docs/GALLERY.md) ·
 [Capture protocol](docs/CAPTURE.md)
-
-</details>
 
 ## Quick start
 
 **Start here. This is the front door — two commands, no account, no config.**
-Every other surface below (demo, self-host, Docker, Helm, MCP, CI action, SDKs)
-is an expansion path you reach for once this works.
+The offline sample completes without downloading an advisory database and
+shows the inventory, finding, and blast-radius output shape.
 
 ```bash
 pip install agent-bom
+agent-bom scan --demo --offline
+```
+
+The sample intentionally contains a known-malicious package, so exit status `1` is expected
+and the printed report is complete. Scan a repository next:
+
+```bash
 agent-bom scan .
 ```
 
-The console shows inventory, findings, and reachable impact. `agent-bom scan .`
-and `agent-bom scan -p .` are the same command; `PATH` is an alias for
-`--project`.
+The repository scan shows inventory, findings, and reachable impact.
+`agent-bom scan .` and `agent-bom scan -p .` are the same command; `PATH` is an
+alias for `--project`.
 
 **A non-zero exit is a verdict, not a crash.** `scan` exits `0` when nothing
 matched a gate, and `1` when one did — a `--fail-on-*` threshold you set, a
@@ -139,7 +117,7 @@ the [first-run guide](docs/FIRST_RUN.md) for formats and CI use.
 
 | You want to | Go to |
 |---|---|
-| See output without scanning your own code | `agent-bom scan --demo --offline` (expands "Try without a repository" below) |
+| Scan your repository | `agent-bom scan .` |
 | A dashboard on your laptop | [Self-host](#self-host) |
 | A shared deployment (Docker, Helm, EKS, Snowflake) | [Self-host](#self-host) table |
 | Gate a pull request | [first-run guide §5](docs/FIRST_RUN.md#5-gate-ci-on-the-result) |
@@ -158,8 +136,7 @@ output shape:
 agent-bom scan --demo --offline
 ```
 
-The sample intentionally contains a known-malicious package, which fails closed,
-so exit status `1` is expected here and the printed report is complete.
+The sample intentionally contains a known-malicious package, which fails closed.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="Synthetic agent-bom console scan showing inventory, findings, and remediation" width="820" />

@@ -139,3 +139,10 @@ def test_demo_uses_canonical_visible_scan_command() -> None:
     script = _read("scripts/render_demo.sh")
     assert "agent-bom scan --demo --offline -f console" in script
     assert "agent-bom agents --demo" not in script
+
+
+def test_demo_tape_opens_on_the_public_command() -> None:
+    tape = _read("docs/demo.tape")
+    assert 'Type "agent-bom scan --demo --offline -f console"' in tape
+    assert 'Type "bash scripts/render_demo.sh"' not in tape
+    assert "Sleep 32s" not in tape

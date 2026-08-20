@@ -174,6 +174,32 @@ def test_doctor_renders_cloud_sdk_freshness_section():
     assert "Cloud SDK freshness" in result.output
 
 
+def test_doctor_missing_aws_sdk_names_installable_extra(monkeypatch):
+    from agent_bom import cloud_sdk_freshness
+    from agent_bom.cli._doctor import doctor_cmd
+
+    monkeypatch.setattr(
+        cloud_sdk_freshness,
+        "cloud_sdk_posture",
+        lambda: {
+            "sdks": [
+                {
+                    "status": "not_installed",
+                    "distribution": "boto3",
+                    "provider": "aws",
+                    "recommended_floor": "1.34",
+                }
+            ]
+        },
+    )
+
+    result = CliRunner().invoke(doctor_cmd, [])
+
+    assert result.exit_code == 0, result.output
+    assert "pip install 'agent-bom[aws]'" in result.output
+    assert "install agent-bom[aws] to scan aws" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # Provider-API deprecation / removal posture
 # ---------------------------------------------------------------------------

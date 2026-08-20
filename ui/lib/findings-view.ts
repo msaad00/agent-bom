@@ -77,7 +77,7 @@ export interface RemediationSummary {
   risk_narrative: string;
 }
 
-export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
+export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low" | "unrated";
 export type SortKey = "severity" | "cvss" | "epss" | "effective_reach" | "id";
 export type GroupKey = "none" | "package" | "agent" | "severity";
 export type ScanScope = "latest" | "all";

@@ -229,5 +229,6 @@ def test_cis_status_badge_no_truncation_for_not_applicable():
     # Known statuses keep their existing labels.
     assert "FAIL" in _cis_status_badge("fail")
     assert "PASS" in _cis_status_badge("pass")
+    assert "NO DATA" in _cis_status_badge("no_data")
     # Unknown statuses fall back to the raw value, not a missing cell.
     assert _cis_status_badge("weird") == "weird"

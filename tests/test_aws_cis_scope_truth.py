@@ -37,6 +37,17 @@ def _passing_check(_client) -> cis.CISCheckResult:
     )
 
 
+def _coverage_error_check(_client) -> cis.CISCheckResult:
+    """CIS 5.2 — No unrestricted ingress to admin ports."""
+    return cis.CISCheckResult(
+        check_id="5.2",
+        title="No unrestricted ingress to admin ports",
+        status=cis.CheckStatus.ERROR,
+        severity="high",
+        evidence="Could not query security groups (AWS error code: ThrottlingException)",
+    )
+
+
 def _session(*, account: str | None = "123456789012") -> MagicMock:
     session = MagicMock()
     session.region_name = "us-east-1"
@@ -80,10 +91,12 @@ def test_complete_region_enumeration_preserves_pass(monkeypatch) -> None:
     home = cis.CISBenchmarkReport(
         account_id="123456789012",
         checks=[_passing_check(None)],
+        completeness="complete",
     )
     other = cis.CISBenchmarkReport(
         account_id="123456789012",
         checks=[_passing_check(None)],
+        completeness="complete",
     )
     run = MagicMock(side_effect=[home, other])
     monkeypatch.setattr(cis, "run_benchmark", run)
@@ -98,6 +111,49 @@ def test_complete_region_enumeration_preserves_pass(monkeypatch) -> None:
     assert report.regions_scanned == ["us-east-1", "eu-west-1"]
     assert report.checks[0].status is cis.CheckStatus.PASS
     assert all(call.kwargs["region_scope_complete"] is True for call in run.call_args_list)
+
+
+def test_check_coverage_error_marks_complete_scope_partial(monkeypatch) -> None:
+    _install_boto_modules(monkeypatch)
+    monkeypatch.setattr(cis, "_CHECKS", [("ec2", _coverage_error_check)])
+    monkeypatch.setattr(cis, "_SPECIAL_CHECKS", [])
+
+    report = cis.run_benchmark(session=_session(), checks=["5.2"], region_scope_complete=True)
+
+    assert report.completeness == "partial"
+    assert any("coverage" in warning.lower() for warning in report.warnings)
+
+
+def test_root_usage_check_receives_logs_and_cloudwatch_clients(monkeypatch) -> None:
+    _install_boto_modules(monkeypatch)
+    monkeypatch.setattr(cis, "_CHECKS", [])
+    session = _session()
+    logs = MagicMock()
+    cloudwatch = MagicMock()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {
+            "metricFilters": [
+                {
+                    "filterPattern": '{ $.userIdentity.type = "Root" }',
+                    "metricTransformations": [{"metricName": "RootUsage", "metricNamespace": "Security"}],
+                }
+            ]
+        }
+    ]
+    logs.get_paginator.return_value = paginator
+    cloudwatch.describe_alarms_for_metric.return_value = {"MetricAlarms": [{"AlarmName": "RootUsageAlarm"}]}
+    sts = session.client("sts")
+
+    def client(service: str, **_kwargs):
+        return {"sts": sts, "logs": logs, "cloudwatch": cloudwatch}.get(service, MagicMock())
+
+    session.client.side_effect = client
+
+    report = cis.run_benchmark(session=session, checks=["4.3"], region_scope_complete=True)
+
+    assert report.checks[0].status is cis.CheckStatus.PASS
+    cloudwatch.describe_alarms_for_metric.assert_called_once_with(MetricName="RootUsage", Namespace="Security")
 
 
 def test_failed_region_enumeration_marks_regional_pass_unknown(monkeypatch) -> None:

@@ -253,6 +253,7 @@ def compute_posture_scorecard(
     sev_counts: Counter[str] = Counter()
     fixable = 0
     total_vulns = 0
+    retained_vulnerability_occurrences = report.total_vulnerabilities
     active_findings = active_blast_radii(report.blast_radii)
 
     for br in active_findings:
@@ -263,8 +264,14 @@ def compute_posture_scorecard(
             fixable += 1
 
     if total_vulns == 0:
-        vuln_score = 100.0
-        vuln_detail = "No vulnerabilities found"
+        if retained_vulnerability_occurrences:
+            vuln_score = 0.0
+            vuln_detail = (
+                f"{retained_vulnerability_occurrences} vulnerability occurrence(s) retained from inventory; analysis verdict unavailable"
+            )
+        else:
+            vuln_score = 100.0
+            vuln_detail = "No vulnerabilities found"
     else:
         # Weighted penalty: critical=15, high=8, medium=3, low=1
         penalty = (
@@ -481,6 +488,23 @@ def compute_posture_scorecard(
             score=0.0,
             dimensions=dimensions,
             summary="No artifacts scanned — posture grade unavailable. Connect a surface or run a scan to grade posture.",
+            policy_source=resolved.source,
+            no_data=True,
+        )
+
+    # Imported SBOMs and scan-report snapshots can carry vulnerability records
+    # even when a downstream scanner returns no BlastRadius rows.  Those records
+    # are still evidence, but they do not contain enough analyzed reachability
+    # context to compute this scorecard.  Never turn that projection gap into a
+    # clean posture claim.
+    if total_vulns == 0 and retained_vulnerability_occurrences:
+        return PostureScorecard(
+            grade="N/A",
+            score=0.0,
+            dimensions=dimensions,
+            summary=(
+                "Retained vulnerability evidence requires analysis — posture grade unavailable. Re-run with vulnerability analysis enabled."
+            ),
             policy_source=resolved.source,
             no_data=True,
         )

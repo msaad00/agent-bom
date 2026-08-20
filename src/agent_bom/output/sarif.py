@@ -111,21 +111,27 @@ def _unified_finding_rule_id(finding: Finding) -> str:
     description to every later SAST alert. Prefer the producer's rule/category
     identity and fall back to a title-derived token for legacy producers.
     """
+    family_rule_id = f"finding/{finding.finding_type.value}"
     raw_token = next(
         (
             finding.evidence.get(key)
             for key in ("rule_id", "check_id", "detector_id", "category")
             if isinstance(finding.evidence, dict) and finding.evidence.get(key)
         ),
-        finding.title or finding.id,
+        None,
     )
+    # Legacy producers do not expose a detector identity. Keep their stable
+    # family rule rather than turning a finding title (which can contain an
+    # asset name) into a new SARIF rule on every occurrence.
+    if raw_token is None:
+        return family_rule_id
     token = _SARIF_RULE_TOKEN_RE.sub("-", str(raw_token).strip()).strip("-._")
     if not token:
         token = hashlib.sha256(finding.id.encode()).hexdigest()[:16]
     if len(token) > 96:
         digest = hashlib.sha256(token.encode()).hexdigest()[:12]
         token = f"{token[:80]}-{digest}"
-    return f"finding/{finding.finding_type.value}/{token}"
+    return f"{family_rule_id}/{token}"
 
 
 _FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
@@ -960,14 +966,18 @@ def to_sarif(
                 }
             ]
         else:
-            finding_result["logicalLocations"] = [
+            finding_result["locations"] = [
                 {
-                    "name": sanitize_advisory_text(
-                        "title",
-                        finding.asset.name,
-                        fallback=finding.asset.asset_type,
-                    ),
-                    "kind": finding.asset.asset_type,
+                    "logicalLocations": [
+                        {
+                            "name": sanitize_advisory_text(
+                                "title",
+                                finding.asset.name,
+                                fallback=finding.asset.asset_type,
+                            ),
+                            "kind": finding.asset.asset_type,
+                        }
+                    ]
                 }
             ]
         suppressions = _suppression_entries(finding)

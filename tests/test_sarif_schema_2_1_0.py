@@ -272,8 +272,8 @@ def test_unified_sarif_findings_keep_rule_identity_and_real_locations() -> None:
     assert by_rule["finding/SAST/AB-SAST-002"]["locations"][0]["physicalLocation"]["region"]["startLine"] == 41
 
     logical = by_rule["finding/CREDENTIAL_EXPOSURE/agent_credential_exposure"]
-    assert "locations" not in logical
-    assert logical["logicalLocations"] == [{"name": "payments-agent", "kind": "agent"}]
+    assert "physicalLocation" not in logical["locations"][0]
+    assert logical["locations"][0]["logicalLocations"] == [{"name": "payments-agent", "kind": "agent"}]
     assert "agent-bom-report.json" not in json.dumps(logical)
 
 

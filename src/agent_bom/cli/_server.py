@@ -1112,7 +1112,10 @@ def mcp_server_cmd(
 
     \b
     The guided profile exposes the tools used by the workflow prompts. Use
-    --profile full when an advanced client needs the complete catalog. See:
+    --profile full when an advanced client needs the full tool catalog.
+    Exposes 81 security tools via MCP protocol in that full profile, including
+    advanced direct tools such as skill_scan, skill_verify, compliance, and
+    remediate. See:
       docs/MCP_WORKFLOWS.md
 
     \b

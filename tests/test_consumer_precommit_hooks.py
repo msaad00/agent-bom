@@ -21,4 +21,4 @@ def test_dependency_hook_scans_only_the_downstream_repository() -> None:
 
     assert hook["pass_filenames"] is False
     assert hook["args"][:2] == ["-p", "."]
-    assert hook["args"][2:] == ["--fail-on-severity", "high"]
+    assert hook["args"][2:] == ["--format", "console", "--fail-on-severity", "high"]

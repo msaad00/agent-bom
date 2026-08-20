@@ -42,6 +42,18 @@ def _looks_like_git_requirement(url: str) -> bool:
     return lowered.startswith(("git+", "git@", "git://")) or "git+" in lowered
 
 
+def _with_manifest_location(package: Package, path: Path, line: int) -> Package:
+    """Attach the declaration location used by machine-readable outputs."""
+    package.version_evidence.append(
+        {
+            "type": "manifest",
+            "source_file": str(path),
+            "line": line,
+        }
+    )
+    return package
+
+
 def _requirement_package(name: str, operator: str, version: str, *, is_direct: bool) -> Package:
     """Build a Package for a ``name<op>version`` declaration line.
 
@@ -312,34 +324,44 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     req_file = directory / "requirements.txt"
     if req_file.exists():
         try:
-            for line in read_text_limited(req_file).splitlines():
-                line = line.strip()
+            for line_number, raw_line in enumerate(read_text_limited(req_file).splitlines(), start=1):
+                line = raw_line.strip()
                 if not line or line.startswith("#") or line.startswith("-"):
                     continue
                 # Git URL/SHA reference (``flask @ git+…@<sha>``): version can't be
                 # pinned from the ref, so flag it floating rather than dropping it.
                 git_pkg = _git_reference_package(line, is_direct=True)
                 if git_pkg is not None:
-                    packages.append(git_pkg)
+                    packages.append(_with_manifest_location(git_pkg, req_file, line_number))
                     continue
                 # Parse name==version, name>=version, etc.
                 match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", line)
                 if match:
                     raw_name, operator, version = match.groups()
                     name, _ = strip_pip_extras(raw_name)
-                    packages.append(_requirement_package(name, operator, version, is_direct=True))
+                    packages.append(
+                        _with_manifest_location(
+                            _requirement_package(name, operator, version, is_direct=True),
+                            req_file,
+                            line_number,
+                        )
+                    )
                 else:
                     # Just a name, no version
                     name_match = re.match(r"^([a-zA-Z0-9_.-]+(?:\[[^\]]+\])?)", line)
                     if name_match:
                         name, _ = strip_pip_extras(name_match.group(1))
                         packages.append(
-                            Package(
-                                name=name,
-                                version="unknown",
-                                ecosystem="pypi",
-                                is_direct=True,
-                                reachability_evidence="declaration_only",
+                            _with_manifest_location(
+                                Package(
+                                    name=name,
+                                    version="unknown",
+                                    ecosystem="pypi",
+                                    is_direct=True,
+                                    reachability_evidence="declaration_only",
+                                ),
+                                req_file,
+                                line_number,
                             )
                         )
         except (OSError, UnicodeDecodeError) as exc:

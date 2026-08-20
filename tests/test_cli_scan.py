@@ -778,6 +778,48 @@ def test_scan_sbom_with_embedded_vulnerability_never_prints_clean_stage_message(
     assert "supply chain looks clean" not in result.output.lower()
 
 
+def test_scan_console_report_stdout_keeps_phase_diagnostics_on_stderr(tmp_path, monkeypatch):
+    sbom = tmp_path / "bom.cdx.json"
+    sbom.write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.5",
+                "components": [
+                    {
+                        "type": "library",
+                        "name": "flask",
+                        "version": "2.0.0",
+                        "purl": "pkg:pypi/flask@2.0.0",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
+
+    result = _run(
+        [
+            "scan",
+            "--sbom",
+            str(sbom),
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "console",
+            "--no-color",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Summary" in result.stdout
+    assert "Discovery" not in result.stdout
+    assert "Vulnerability Scan" not in result.stdout
+    assert "Discovery" in result.stderr
+    assert "Vulnerability Scan" in result.stderr
+
+
 def test_scan_inventory_only_round_trips_scan_report_snapshot_without_accretion(tmp_path):
     inventory = tmp_path / "inventory.json"
     inventory.write_text(

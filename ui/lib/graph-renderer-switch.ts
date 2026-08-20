@@ -26,6 +26,7 @@ export interface GraphRendererDecision {
   reason: string;
   interactive: boolean;
   supportsInvestigation: boolean;
+  investigationHandoff?: "react-flow-focus" | undefined;
 }
 
 /**
@@ -99,6 +100,7 @@ export function decideGraphRenderer({
       reason: "large-graph-webgl-overview",
       interactive: true,
       supportsInvestigation: false,
+      investigationHandoff: "react-flow-focus",
     };
   }
 

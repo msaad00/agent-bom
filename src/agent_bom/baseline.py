@@ -135,9 +135,16 @@ class TrendPoint:
     posture_score: float
     posture_grade: str
     tenant_id: str = "default"
+    scan_id: str | None = None
+
+    @property
+    def idempotency_key(self) -> str:
+        """Stable write key; scan-backed points cannot duplicate on retry."""
+        return f"{self.tenant_id}:{self.scan_id or self.timestamp}"
 
     def to_dict(self) -> dict:
         return {
+            "scan_id": self.scan_id,
             "timestamp": self.timestamp,
             "total_vulns": self.total_vulns,
             "critical": self.critical,

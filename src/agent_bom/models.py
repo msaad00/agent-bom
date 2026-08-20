@@ -642,6 +642,38 @@ class PermissionProfile:
         return "low"
 
 
+@dataclass(frozen=True)
+class CredentialIdentityBinding:
+    """Explicit, non-secret evidence joining a credential slot to an identity.
+
+    Environment-variable names alone are not identity evidence.  Producers may
+    populate this contract only when a configuration or provider observation
+    names both sides of the relationship.
+    """
+
+    credential_ref: str
+    identity_canonical_id: str
+    evidence_source: str
+    provider: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        for field_name in ("credential_ref", "identity_canonical_id", "evidence_source"):
+            normalized = str(getattr(self, field_name) or "").strip()
+            if not normalized:
+                raise ValueError(f"{field_name} is required")
+            object.__setattr__(self, field_name, normalized)
+        if self.provider is not None:
+            object.__setattr__(self, "provider", str(self.provider).strip().lower() or None)
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "credential_ref": self.credential_ref,
+            "identity_canonical_id": self.identity_canonical_id,
+            "evidence_source": self.evidence_source,
+            "provider": self.provider,
+        }
+
+
 @dataclass
 class MCPServer:
     """An MCP server with its tools, resources, and dependencies."""
@@ -668,6 +700,7 @@ class MCPServer:
     surface: ServerSurface = ServerSurface.MCP
     discovery_sources: list[str] = field(default_factory=list)
     discovery_provenance: Optional[dict[str, Any]] = None  # Sanitized discovery provenance contract for this server asset
+    identity_bindings: list[CredentialIdentityBinding] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Scope child tool/resource/prompt identities to this server."""

@@ -58,6 +58,7 @@ describe("graph renderer switch", () => {
       kind: "webgl",
       reason: "large-graph-webgl-overview",
       supportsInvestigation: false,
+      investigationHandoff: "react-flow-focus",
     });
 
     expect(
@@ -69,6 +70,7 @@ describe("graph renderer switch", () => {
       kind: "webgl",
       reason: "large-graph-webgl-overview",
       supportsInvestigation: false,
+      investigationHandoff: "react-flow-focus",
     });
   });
 

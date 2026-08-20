@@ -505,6 +505,34 @@ class Finding:
         return self.id
 
     @property
+    def occurrence_id(self) -> str:
+        """Workflow identity for this finding on this exact asset occurrence."""
+        return self.id
+
+    @property
+    def finding_group_key(self) -> str:
+        """Asset-independent issue identity used only for aggregate/expand views.
+
+        The occurrence id remains authoritative for triage, lifecycle, evidence,
+        and persistence.  Vulnerability groups intentionally omit the asset and
+        installed version so repeated occurrences can be presented together
+        without destroying their distinct workflow records.
+        """
+        vulnerability_id = str(self.vulnerability_id or "").strip().lower()
+        if self.finding_type is not FindingType.CVE or not vulnerability_id:
+            return f"occurrence:{self.occurrence_id}"
+        package_name = self.asset.name if self.asset.asset_type == "package" else ""
+        if not package_name and isinstance(self.evidence, dict):
+            package_name = str(self.evidence.get("package_name") or "")
+        package_name = package_name.strip().lower()
+        return f"vulnerability:{vulnerability_id}:{package_name}"
+
+    @property
+    def finding_group_id(self) -> str:
+        """Deterministic identifier for a grouped issue queue row."""
+        return stable_id("finding-group", self.finding_group_key)
+
+    @property
     def vulnerability_id(self) -> Optional[str]:
         """Canonical advisory identity, regardless of CVE/GHSA/OSV namespace.
 
@@ -627,6 +655,10 @@ class Finding:
             "schema_version": FINDING_SCHEMA_VERSION,
             "id": self.id,
             "canonical_id": self.canonical_id,
+            "finding_id": self.occurrence_id,
+            "occurrence_id": self.occurrence_id,
+            "finding_group_id": self.finding_group_id,
+            "finding_group_key": self.finding_group_key,
             "finding_type": self.finding_type.value,
             "finding_category": self.finding_category,
             "source": self.source.value,

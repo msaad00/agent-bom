@@ -103,7 +103,11 @@ const BUDGETS = {
   // governance and self-posture routes. Linux CI measures 3794.0 KiB; retain
   // 14 KiB of explicit headroom at 3808 KiB without changing either per-chunk
   // ceiling or introducing a new dependency.
-  totalClientJsBytes: 3_899_392,
+  // The server-backed Findings owner/SLA filters and paginated enterprise-demo
+  // investigation views measure 3809.7 KiB after the evidence-truth merge.
+  // They add no dependency and leave the largest/shared chunks below their
+  // existing ceilings; restore 14 KiB of bounded headroom at 3824 KiB.
+  totalClientJsBytes: 3_915_776,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

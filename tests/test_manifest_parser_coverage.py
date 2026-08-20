@@ -122,6 +122,7 @@ def _scan_dir_to_json(directory: Path, output: Path) -> dict:
             str(directory),
             "--offline",
             "--no-auto-update-db",
+            "--no-scan",
             "--format",
             "json",
             "--output",

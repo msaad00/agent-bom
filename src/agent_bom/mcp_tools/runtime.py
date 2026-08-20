@@ -727,12 +727,32 @@ def inventory_impl(
 ) -> str:
     """Implementation of the inventory tool."""
     try:
+        from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
         from agent_bom.discovery import discover_all
+        from agent_bom.models import AIBOMReport
+        from agent_bom.output.json_fmt import _build_ai_bom_entities_snapshot
         from agent_bom.parsers import extract_packages
+
+        def _inventory_payload(agents: list[Any], legacy_agents: list[dict[str, Any]], *, status: str | None = None) -> dict[str, Any]:
+            # Preserve the compact legacy projection while also exposing the
+            # exact canonical entity snapshot emitted by CLI JSON. MCP clients
+            # can join tool -> server -> agent/package without surface-specific
+            # identities, including for an empty inventory.
+            entities = _build_ai_bom_entities_snapshot(AIBOMReport(agents=agents))
+            payload = {
+                "schema_version": "1.0",
+                "canonical_id_schema_version": CANONICAL_ID_SCHEMA_VERSION,
+                "agents": legacy_agents,
+                "total_agents": len(legacy_agents),
+                "ai_bom_entities": {"schema_version": "1.0", **entities},
+            }
+            if status is not None:
+                payload["status"] = status
+            return payload
 
         agents = discover_all(project_dir=config_path)
         if not agents:
-            return json.dumps({"status": "no_agents_found", "agents": []})
+            return _truncate_response(json.dumps(_inventory_payload([], [], status="no_agents_found"), indent=2, default=str))
 
         for agent in agents:
             for server in agent.mcp_servers:
@@ -759,7 +779,7 @@ def inventory_impl(
                     "servers": servers,
                 }
             )
-        return _truncate_response(json.dumps({"agents": result, "total_agents": len(result)}, indent=2))
+        return _truncate_response(json.dumps(_inventory_payload(agents, result), indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")
         return json.dumps({"error": sanitize_error(exc)})

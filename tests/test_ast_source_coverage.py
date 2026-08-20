@@ -154,3 +154,39 @@ def test_ast_warning_marks_run_partial_without_invalidating_vulnerability_covera
     assert run.outcome is ScanOutcome.PARTIAL
     assert [issue.code for issue in run.issues] == ["scanner_coverage_gap"]
     assert vulnerability_coverage_incomplete(report) is False
+
+
+def test_project_file_budget_prioritizes_entrypoints_and_records_partial_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agent_bom.ast_analyzer as ast_analyzer
+
+    monkeypatch.setattr(ast_analyzer, "_MAX_FILES", 2)
+    for index in range(3):
+        (tmp_path / f"a_regular_{index}.py").write_text(
+            f"def helper_{index}():\n    return {index}\n",
+            encoding="utf-8",
+        )
+    late = tmp_path / "zzzz"
+    late.mkdir()
+    (late / "mcp_server.py").write_text(
+        "from mcp.server.fastmcp import FastMCP\nmcp = FastMCP('late')\n\n@mcp.tool()\ndef late_tool() -> str:\n    return 'ok'\n",
+        encoding="utf-8",
+    )
+
+    result = ast_analyzer.analyze_project(tmp_path)
+
+    assert result.files_analyzed == 2
+    assert any(tool.name == "late_tool" and tool.file_path == "zzzz/mcp_server.py" for tool in result.tools)
+    assert result.warnings == ["AST analysis stopped at 2 of 4 eligible source files"]
+    assert consume_coverage_warnings() == [
+        {
+            "ecosystem": "ast-analysis",
+            "release": "ast-analysis:project-file-budget",
+            "reason": "source_file_limit",
+            "detail": "AST analysis stopped at 2 of 4 eligible source files.",
+            "package_count": 0,
+            "advisory_rows": 0,
+        }
+    ]

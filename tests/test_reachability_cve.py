@@ -465,10 +465,23 @@ def _ast_result_with_get() -> ASTAnalysisResult:
 
 def test_wiring_stamps_function_reachable_on_python_row() -> None:
     br = _python_br(["get"])
+    original_score = br.calculate_risk_score()
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 1
     assert br.symbol_reachability == FUNCTION_REACHABLE
     assert br.reachable_affected_symbols == ["get"]
+    assert br.risk_score > original_score
+
+
+def test_wiring_can_stamp_without_rescoring() -> None:
+    br = _python_br(["get"])
+    original_score = br.calculate_risk_score()
+
+    stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get(), rescore=False)
+
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.risk_score == original_score
 
 
 def test_wiring_stamps_function_reachable_from_built_vulnerability_model() -> None:

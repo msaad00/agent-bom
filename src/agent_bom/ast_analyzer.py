@@ -95,6 +95,30 @@ _max_taint_depth = _python_max_taint_depth
 
 _ANALYZABLE_SUFFIXES = frozenset({".py", ".go", ".java", ".rb", ".php", ".swift", ".rs", ".cs", *_JS_TS_EXTS, *_KOTLIN_EXTS})
 
+# A bounded analysis must spend its budget on the files most likely to define
+# externally reachable agent/tool behavior. Lexical order alone excluded this
+# project's own ``mcp_server.py`` once the source tree exceeded ``_MAX_FILES``.
+_HIGH_SIGNAL_SOURCE_NAMES = frozenset(
+    {
+        "agent.py",
+        "app.py",
+        "cli.py",
+        "gateway.py",
+        "gateway_server.py",
+        "main.py",
+        "mcp_server.py",
+        "proxy.py",
+        "server.py",
+        "tools.py",
+    }
+)
+
+
+def _analysis_priority(project: Path, path: Path) -> tuple[int, str]:
+    """Rank public entrypoints ahead of helpers, then remain deterministic."""
+    relative = path.relative_to(project).as_posix()
+    return (0 if path.name.lower() in _HIGH_SIGNAL_SOURCE_NAMES else 1, relative)
+
 
 def project_has_analyzable_sources(project_path: str | Path) -> bool:
     """Return True when *project_path* contains AST-analyzable source files."""
@@ -222,24 +246,49 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             continue
         swift_files.append(f)
 
-    py_files = py_files[:_MAX_FILES]
-    js_ts_files = js_ts_files[: max(0, _MAX_FILES - len(py_files))]
-    go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
-    remaining = max(0, _MAX_FILES - len(py_files) - len(js_ts_files) - len(go_files))
-    rust_files = rust_files[:remaining]
-    java_files = java_files[: max(0, remaining - len(rust_files))]
-    csharp_files = csharp_files[: max(0, remaining - len(rust_files) - len(java_files))]
-    ruby_files = ruby_files[: max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files))]
-    php_files = php_files[: max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files))]
-    swift_files = swift_files[
-        : max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files) - len(php_files))
-    ]
-    kotlin_files = kotlin_files[
-        : max(
-            0,
-            remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files) - len(php_files) - len(swift_files),
+    file_groups = (
+        py_files,
+        js_ts_files,
+        go_files,
+        rust_files,
+        java_files,
+        csharp_files,
+        ruby_files,
+        php_files,
+        swift_files,
+        kotlin_files,
+    )
+    eligible_count = sum(len(group) for group in file_groups)
+    selected = set(
+        sorted((path for group in file_groups for path in group), key=lambda path: _analysis_priority(project, path))[:_MAX_FILES]
+    )
+    (
+        py_files,
+        js_ts_files,
+        go_files,
+        rust_files,
+        java_files,
+        csharp_files,
+        ruby_files,
+        php_files,
+        swift_files,
+        kotlin_files,
+    ) = tuple([path for path in group if path in selected] for group in file_groups)
+    if eligible_count > len(selected):
+        warning = f"AST analysis stopped at {len(selected)} of {eligible_count} eligible source files"
+        result.warnings.append(warning)
+        from agent_bom.scanners.state import record_coverage_warning
+
+        record_coverage_warning(
+            {
+                "ecosystem": "ast-analysis",
+                "release": "ast-analysis:project-file-budget",
+                "reason": "source_file_limit",
+                "detail": f"{warning}.",
+                "package_count": 0,
+                "advisory_rows": 0,
+            }
         )
-    ]
     result.files_analyzed = (
         len(py_files)
         + len(js_ts_files)

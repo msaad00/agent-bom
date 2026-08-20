@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
+import { PaginationBar } from "@/components/pagination-bar";
 import { api } from "@/lib/api";
 import { ApiConflictError } from "@/lib/api-errors";
 import type {
@@ -573,7 +574,7 @@ export function RiskCampaignCommandCenter() {
   const [connections, setConnections] = useState<TicketingConnection[]>([]);
   const [totalFindings, setTotalFindings] = useState<number | null>(null);
   const [totalApproximate, setTotalApproximate] = useState(false);
-  const [visibleCampaignCount, setVisibleCampaignCount] = useState(CAMPAIGN_PAGE_SIZE);
+  const [campaignPage, setCampaignPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -585,7 +586,7 @@ export function RiskCampaignCommandCenter() {
       setWindowDays(response.finding_window_days);
       setTotalFindings(response.total_findings);
       setTotalApproximate(response.total_approximate);
-      setVisibleCampaignCount(CAMPAIGN_PAGE_SIZE);
+      setCampaignPage(1);
       try {
         const ticketing = await api.listTicketingConnections();
         setConnections(ticketing.connections.filter((connection) => connection.status === "active"));
@@ -607,10 +608,11 @@ export function RiskCampaignCommandCenter() {
     withSla: campaigns.filter((campaign) => Boolean(campaign.sla_due_at)).length,
     awaitingProof: campaigns.filter((campaign) => campaign.verification_status !== "verified").length,
   }), [campaigns]);
-  const visibleCampaigns = useMemo(
-    () => campaigns.slice(0, visibleCampaignCount),
-    [campaigns, visibleCampaignCount],
-  );
+  const campaignTotalPages = Math.max(1, Math.ceil(campaigns.length / CAMPAIGN_PAGE_SIZE));
+  const visibleCampaigns = useMemo(() => {
+    const start = (campaignPage - 1) * CAMPAIGN_PAGE_SIZE;
+    return campaigns.slice(start, start + CAMPAIGN_PAGE_SIZE);
+  }, [campaignPage, campaigns]);
   const updateCampaign = useCallback((updated: RiskCampaign) => {
     setCampaigns((current) => current.map((campaign) => campaign.id === updated.id ? updated : campaign));
   }, []);
@@ -662,19 +664,16 @@ export function RiskCampaignCommandCenter() {
           <div className="grid gap-1.5">
             {visibleCampaigns.map((campaign, index) => <CampaignCard key={campaign.id} campaign={campaign} onChanged={updateCampaign} connections={connections} onReload={() => void load()} defaultOpen={index === 0} />)}
           </div>
-          {visibleCampaignCount < campaigns.length ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-xs text-[color:var(--text-tertiary)]">
-              <span>Showing {visibleCampaigns.length} of {campaigns.length} prioritized campaigns.</span>
-              <button
-                type="button"
-                onClick={() => setVisibleCampaignCount((count) => Math.min(count + CAMPAIGN_PAGE_SIZE, campaigns.length))}
-                className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
-              >
-                Show {Math.min(CAMPAIGN_PAGE_SIZE, campaigns.length - visibleCampaignCount)} more campaigns
-              </button>
-            </div>
-          ) : campaigns.length > CAMPAIGN_PAGE_SIZE ? (
-            <p className="text-xs text-[color:var(--text-tertiary)]">Showing all {campaigns.length} prioritized campaigns.</p>
+          {campaigns.length > CAMPAIGN_PAGE_SIZE ? (
+            <PaginationBar
+              page={campaignPage}
+              totalPages={campaignTotalPages}
+              totalItems={campaigns.length}
+              itemLabel="campaigns"
+              onPrevious={() => setCampaignPage((current) => Math.max(1, current - 1))}
+              onNext={() => setCampaignPage((current) => Math.min(campaignTotalPages, current + 1))}
+              className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
+            />
           ) : null}
           <div className="risk-proof-note">
             <CheckCircle2 className="h-3.5 w-3.5" /> Priority is supplied by the server; modeled reduction appears only with its server-authored basis. Ticket actions use stored connections.

@@ -20,6 +20,7 @@ import { StatStrip } from "@/components/stat-strip";
 import { PersonaStartRoutes } from "@/components/persona-start-routes";
 import { PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { api, type EnterpriseDemoStory } from "@/lib/api";
+import { securityGraphHref } from "@/lib/page-links";
 
 const FIRST_COMMAND = "agent-bom serve --demo-estate --allow-insecure-no-auth";
 const DISPLAY_LABELS: Record<string, string> = {
@@ -136,7 +137,7 @@ export default function DemoEstatePage() {
               {story.scenario}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" href="/security-graph">
+              <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" href={securityGraphHref({ scan: story.graph_snapshot_id })}>
                 Open security graph <ExternalLink className="h-3.5 w-3.5" />
               </Link>
               <Link className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]" href="/traces">

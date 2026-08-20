@@ -21,6 +21,7 @@ from agent_bom.demo_estate.enterprise_findings import (
     summarize_estate_findings,
     to_finding_view,
 )
+from agent_bom.demo_estate.showcase_graph import SHOWCASE_SCAN_ID
 from agent_bom.graph.severity import severity_worst_first_rank
 
 ENTERPRISE_STORY_SCHEMA_VERSION = "enterprise_demo_story.v1"
@@ -114,6 +115,7 @@ class EnterpriseDemoStory(BaseModel):
     scenario: str = ENTERPRISE_STORY_SCENARIO
     estate_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     story_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    graph_snapshot_id: str = SHOWCASE_SCAN_ID
     summary: EnterpriseDemoSummary
     bounds: EnterpriseDemoBounds
     count_metadata: dict[str, EnterpriseDemoCountMetadata]
@@ -204,6 +206,7 @@ def build_enterprise_demo_story(*, tenant_id: str = "demo-tenant") -> Enterprise
         tenant_id=estate.tenant_id,
         estate_content_hash=estate.content_hash,
         story_content_hash=result.content_hash,
+        graph_snapshot_id=SHOWCASE_SCAN_ID,
         summary=EnterpriseDemoSummary(
             assets=len(estate.assets),
             observations=len(estate.observations),

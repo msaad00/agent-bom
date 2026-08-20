@@ -3070,6 +3070,8 @@ export interface EnterpriseDemoStory {
   scenario: string;
   estate_content_hash: string;
   story_content_hash: string;
+  /** Persisted graph snapshot that carries this exact synthetic estate. */
+  graph_snapshot_id: string;
   summary: EnterpriseDemoSummary;
   /** Limit + true total for each bounded list below. */
   bounds: EnterpriseDemoBounds;

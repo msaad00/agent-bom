@@ -133,6 +133,17 @@ def test_demo_estate_story_api_exposes_normalized_evidence_only(
     assert payload["schema_version"] == "enterprise_demo_story.v1"
     assert payload["synthetic"] is True
     assert payload["fictional"] is True
+    assert payload["graph_snapshot_id"] == "showcase"
+    focused_graph = demo_estate_client.get(
+        "/v1/graph",
+        headers=VIEWER,
+        params={"scan": payload["graph_snapshot_id"], "limit": 1},
+    )
+    assert focused_graph.status_code == 200, focused_graph.text
+    focused_payload = focused_graph.json()
+    assert focused_payload["scan_id"] == payload["graph_snapshot_id"]
+    assert focused_payload["stats"]["total_nodes"] > 0
+    assert focused_payload["stats"]["total_edges"] > 0
     assert payload["primary_correlation"]["outcome"] == "blocked"
     assert payload["summary"]["evidence_sources"] == 9
     assert "raw_payload" not in response.text

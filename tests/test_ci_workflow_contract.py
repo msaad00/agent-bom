@@ -135,7 +135,7 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     ``cd43aadee`` while the 3.13 and 3.14 lanes completed successfully. A
     35-minute ceiling preserves a hard bound while allowing normal suite growth.
     """
-    assert _ci()["jobs"]["test"]["timeout-minutes"] == 35
+    assert _ci()["jobs"]["test-main"]["timeout-minutes"] == 35
 
 
 def test_version_alignment_fails_fast_when_uv_lock_is_stale() -> None:
@@ -167,14 +167,63 @@ def test_alpine_full_suite_uses_bounded_parallelism() -> None:
 
 def test_pull_request_pytest_reports_slowest_tests() -> None:
     """PR runs surface the slowest tests so timeout regressions have evidence."""
-    text = CI_WORKFLOW.read_text(encoding="utf-8")
-    run_tests = text.split("      - name: Run tests", 1)[1].split("      - name: Graph accuracy fixture guard", 1)[0]
+    jobs = _ci()["jobs"]
+    shard_run = next(step["run"] for step in jobs["test-pr-shard"]["steps"] if step.get("name") == "Run deterministic test shard")
+    main_run = next(step["run"] for step in jobs["test-main"]["steps"] if step.get("name") == "Run full correctness suite")
 
-    pytest_lines = [line.strip() for line in run_tests.splitlines() if "uv run pytest tests/" in line]
-    assert len(pytest_lines) == 2
-    assert all("--durations=25" in line for line in pytest_lines)
-    coverage_line = next(line for line in pytest_lines if "--cov=agent_bom" in line)
+    assert "--durations=25" in shard_run
+    assert "--durations=25" in main_run
+    coverage_line = next(line.strip() for line in main_run.splitlines() if "--cov=agent_bom" in line)
     assert "--cov-fail-under=75" in coverage_line
+
+
+def test_pull_request_correctness_is_sharded_behind_required_aggregator() -> None:
+    """PR correctness stays exhaustive without one serial 17-minute job."""
+    jobs = _ci()["jobs"]
+
+    shards = jobs["test-pr-shard"]
+    assert shards["strategy"]["matrix"]["shard"] == [0, 1, 2, 3]
+    shard_run = next(step["run"] for step in shards["steps"] if step.get("name") == "Run deterministic test shard")
+    assert "scripts/pytest_ci_plan.py shard" in shard_run
+    assert "not graph_performance" in shard_run
+
+    required = jobs["test"]
+    assert required["name"] == "Test (Python 3.13)"
+    assert "test-pr-shard" in required["needs"]
+    assert "graph-performance" in required["needs"]
+
+
+def test_python_smoke_gate_combines_changed_domain_and_cross_surface_contracts() -> None:
+    """Every Python PR gets quick relevant and product-boundary feedback."""
+    smoke = _ci()["jobs"]["test-smoke"]
+    run = next(step["run"] for step in smoke["steps"] if step.get("name") == "Run changed-domain and cross-surface smoke")
+
+    assert "scripts/pytest_ci_plan.py targeted" in run
+    assert "tests/test_cli_entry_points.py" in run
+    assert "tests/test_product_surface_contract.py" in run
+    assert "tests/api/test_api_scan_findings_wiring.py" in run
+
+
+def test_package_build_waits_for_smoke_not_long_correctness_shards() -> None:
+    """Wheel proof starts after fast correctness while shards continue in parallel."""
+    needs = _ci()["jobs"]["build"]["needs"]
+    assert "test-smoke" in needs
+    assert "test" not in needs
+
+
+def test_measured_graph_heap_assertion_has_dedicated_conditional_job() -> None:
+    """The six-minute scale assertion is required only on relevant PRs and main."""
+    workflow = _ci()
+    assert "graph_performance" in workflow["jobs"]["changes"]["outputs"]
+    graph_job = workflow["jobs"]["graph-performance"]
+    run = next(step["run"] for step in graph_job["steps"] if step.get("name") == "Run measured graph scale assertion")
+    assert "-m graph_performance" in run
+
+    graph_test = (ROOT / "tests" / "graph" / "test_store_backed_build_wiring.py").read_text(encoding="utf-8")
+    assert "@pytest.mark.graph_performance" in graph_test
+
+    nightly = (ROOT / ".github" / "workflows" / "perf-scale-evidence.yml").read_text(encoding="utf-8")
+    assert "-m graph_performance" in nightly
 
 
 def test_security_reuses_typescript_install_for_build() -> None:

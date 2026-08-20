@@ -252,10 +252,10 @@ def main() -> int:
             "merge_group:",
             "python scripts/check_release_consistency.py",
             "python scripts/check_product_surface_contract.py",
-            "Test (Python ${{ matrix.python-version }})",
+            "Test (Python 3.13)",
             # PRs run 3.13 only; pushes to main must still exercise the full
             # advertised interpreter matrix.
-            'fromJSON(\'["3.11", "3.13", "3.14"]\')',
+            'python-version: ["3.11", "3.13", "3.14"]',
         ],
         failures,
     )

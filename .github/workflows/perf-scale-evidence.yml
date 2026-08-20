@@ -70,6 +70,9 @@ jobs:
             --summary-output /tmp/postgres-graph-explain.json
           uv run pytest tests/test_graph_benchmark_scaffold.py -q
 
+      - name: Run measured graph scale assertion
+        run: uv run pytest tests/graph/test_store_backed_build_wiring.py -q -m graph_performance
+
       - name: Upload result artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

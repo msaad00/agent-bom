@@ -281,6 +281,7 @@ def _builder_peak(report: dict, *, store_backed: bool) -> tuple[int, int]:
     return peak, node_count
 
 
+@pytest.mark.graph_performance
 def test_store_backed_producer_peak_advantage_widens_with_scale() -> None:
     """The store-backed producer removes the dominant resident structures — the
     whole-node dict + adjacency / reverse-adjacency + dedup indexes — so its peak

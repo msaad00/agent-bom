@@ -55,6 +55,7 @@ jobs:
       docs: ${{ steps.classify.outputs.docs }}
       docs_only: ${{ steps.classify.outputs.docs_only }}
       endpoint: ${{ steps.classify.outputs.endpoint }}
+      graph_performance: ${{ steps.classify.outputs.graph_performance }}
       helm: ${{ steps.classify.outputs.helm }}
       postgres: ${{ steps.classify.outputs.postgres }}
       python: ${{ steps.classify.outputs.python }}
@@ -85,6 +86,7 @@ jobs:
           compose=false
           docs=false
           endpoint=false
+          graph_performance=false
           helm=false
           postgres=false
           # UI Validate boots a real Next.js standalone container and runs a
@@ -110,6 +112,12 @@ jobs:
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
             alpine_full=true
+          fi
+          # The measured graph heap/scale assertion takes about six minutes by
+          # itself. Keep it out of the general correctness suite, but require it
+          # for graph implementation/tests and for changes to its CI contract.
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/(graph/|context_graph\.py$|graph_schema\.py$|db/graph_store\.py$)|tests/(graph/|test_(context_graph|graph_api|graph_schema|graph_store).*\.py$)|\.github/workflows/(ci|perf-scale-evidence)\.yml$|scripts/pytest_ci_plan\.py$|pyproject\.toml$)'; then
+            graph_performance=true
           fi
           # Strict docs build guard: any change to the MkDocs source tree, its
           # config, or the workflows that build/deploy it must prove
@@ -158,6 +166,7 @@ jobs:
             echo "compose=${compose}"
             echo "docs=${docs}"
             echo "endpoint=${endpoint}"
+            echo "graph_performance=${graph_performance}"
             echo "helm=${helm}"
             echo "postgres=${postgres}"
             echo "python=${python}"
@@ -173,6 +182,7 @@ jobs:
             echo "- Docs strict build required: \`${docs}\`"
             echo "- Documentation-only fast path: \`${docs_only}\`"
             echo "- Endpoint packaging required: \`${endpoint}\`"
+            echo "- Measured graph performance required: \`${graph_performance}\`"
             echo "- Helm profile validation required: \`${helm}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
             echo "- Python test suite required: \`${python}\`"
@@ -894,97 +904,70 @@ jobs:
           $version = uv run python -c "from agent_bom import __version__; print(__version__)"
           ./scripts/build-msi.ps1 -BundleDir $env:BUNDLE_DIR -OutputPath (Join-Path $env:RUNNER_TEMP "agent-bom-endpoint.msi") -Version $version -DryRun
 
-  # 3. Tests
-  test:
-    name: Test (Python ${{ matrix.python-version }})
+  # 3. Python correctness
+  # Fast changed-domain/product-boundary feedback starts package proof while
+  # the exhaustive PR shards continue in parallel. The small aggregator below
+  # preserves the branch-protection context `Test (Python 3.13)` and requires
+  # every applicable shard plus measured graph evidence.
+  test-smoke:
+    name: Python changed-domain and contract smoke
     runs-on: ubuntu-latest
-    # The Python 3.11 main-push lane also collects coverage and reached the
-    # former 25-minute ceiling twice at cd43aadee while 3.13/3.14 completed.
-    # Keep a bounded 35-minute budget so normal suite growth can finish while
-    # a genuinely hung run still releases the hosted runner promptly.
-    timeout-minutes: 35
+    timeout-minutes: 15
     permissions:
       contents: read
     needs: changes
-    # The job itself runs unless the workflow is cancelled: "Test (Python
-    # 3.13)" is a REQUIRED context,
-    # and a matrix job skipped at job level never expands its matrix, so the
-    # required check would sit at "Expected" forever and block auto-merge.
-    # The heavy STEPS below skip instead when the classifier positively says
-    # the PR cannot affect Python (docs/UI/deploy-only); the job then reports
-    # success in seconds. Fail closed: a classifier failure runs the suite.
     if: ${{ !cancelled() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # PRs run the mainstream interpreter only; pushes to main run the full
-        # matrix (plus coverage on 3.11 below). Interpreter-specific drift is
-        # rare and still caught on main within one merge — this keeps PR
-        # wall-clock near the 4-5 minute mark instead of ~10.
-        python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.13"]') || fromJSON('["3.11", "3.13", "3.14"]') }}
     steps:
       - name: Documentation-only test skip
-        if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
-        run: echo "No Python test input changed; the test matrix is not required."
+        if: needs.changes.result == 'success' && needs.changes.outputs.python != 'true'
+        run: echo "No Python test input changed; smoke is not required."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: >-
-          (github.event_name != 'pull_request' && github.event_name != 'push') ||
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.python == 'true'
-
-      - uses: ./.github/actions/setup-python
-        if: >-
-          (github.event_name != 'pull_request' && github.event_name != 'push') ||
           needs.changes.result != 'success' ||
           needs.changes.outputs.python == 'true'
         with:
-          python-version: ${{ matrix.python-version }}
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-python
+        if: >-
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.python == 'true'
+        with:
+          python-version: "3.13"
 
       - name: Install dependencies
         if: >-
-          (github.event_name != 'pull_request' && github.event_name != 'push') ||
           needs.changes.result != 'success' ||
           needs.changes.outputs.python == 'true'
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
-      - name: Run tests
+      - name: Run changed-domain and cross-surface smoke
         if: >-
-          (github.event_name != 'pull_request' && github.event_name != 'push') ||
           needs.changes.result != 'success' ||
           needs.changes.outputs.python == 'true'
         run: |
-          # Keep PR matrix worker count bounded on hosted runners. `-n auto`
-          # can overcommit CPU/RAM enough for GitHub to terminate the runner
-          # before pytest prints a failure summary.
-          # 3.11 keeps 4 workers (passes, and fewer would risk the job
-          # timeout); 3.13/3.14 drop to 2 so the parallel run's peak RAM stays
-          # under the hosted-runner limit (4 heavy interpreters OOM the VM,
-          # surfacing as "runner received a shutdown signal" / exit 143).
-          # PRs run a single matrix job (3.13), so it gets 3 workers there —
-          # one below the OOM threshold observed at 4 — to cut PR wall-clock.
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-3}"
-          elif [ "${{ matrix.python-version }}" = "3.11" ]; then
-            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-4}"
+            mapfile -t CHANGED < <(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          elif [ -n "${{ github.event.before }}" ] && ! printf '%s' "${{ github.event.before }}" | grep -qE '^0+$'; then
+            mapfile -t CHANGED < <(git diff --name-only "${{ github.event.before }}" "$GITHUB_SHA")
           else
-            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
+            mapfile -t CHANGED < <(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
           fi
-          # --durations=25 names the slowest tests in the log, so a run that
-          # drifts toward the job timeout comes with its own evidence.
-          if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            uv run pytest tests/ -v --tb=short --durations=25 --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
-          else
-            uv run pytest tests/ -q --tb=short --durations=25 -m "not network and not slow" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
-          fi
+          mapfile -t TARGETED < <(uv run python scripts/pytest_ci_plan.py targeted --root . "${CHANGED[@]}")
+          SMOKE=(
+            tests/test_ci_workflow_contract.py
+            tests/test_cli_entry_points.py
+            tests/test_product_surface_contract.py
+            tests/api/test_api_scan_findings_wiring.py
+          )
+          mapfile -t TESTS < <(printf '%s\n' "${SMOKE[@]}" "${TARGETED[@]}" | sort -u)
+          uv run pytest "${TESTS[@]}" -q --tb=short --durations=15 -m "not network and not slow and not graph_performance" -n 2 --dist loadfile
 
       - name: Graph accuracy fixture guard (#2259)
-        # The graph tests are already part of the full test invocation above.
-        # Keep the cheap fixture check and re-baseline guidance without running
-        # the same 23 tests a second time.
         if: >-
           always() && (
-            (github.event_name != 'pull_request' && github.event_name != 'push') ||
             needs.changes.result != 'success' ||
             needs.changes.outputs.python == 'true'
           )
@@ -996,7 +979,6 @@ jobs:
         # Proves the scanner is alive, its rules fire on real SQL, and our own
         # migration files are clean (or surface known findings explicitly).
         if: >-
-          (github.event_name != 'pull_request' && github.event_name != 'push') ||
           needs.changes.result != 'success' ||
           needs.changes.outputs.python == 'true'
         run: |
@@ -1027,6 +1009,138 @@ jobs:
               raise SystemExit(1)
           print("OK")
           PYEOF
+
+  test-pr-shard:
+    name: Python correctness shard ${{ matrix.shard }} of 0-3
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' && !cancelled() && (
+        needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+      )
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev --extra api --extra mcp-server
+
+      - name: Run deterministic test shard
+        run: |
+          set -euo pipefail
+          mapfile -t TEST_FILES < <(uv run python scripts/pytest_ci_plan.py shard --index "${{ matrix.shard }}" --total 4 --root tests)
+          test "${#TEST_FILES[@]}" -gt 0
+          uv run pytest "${TEST_FILES[@]}" -q --tb=short --durations=25 -m "not network and not slow and not graph_performance" -n 2 --dist loadfile
+
+  test-main:
+    name: Full correctness (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    if: ${{ github.event_name != 'pull_request' && !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev --extra api --extra mcp-server
+
+      - name: Run full correctness suite
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-4}"
+            uv run pytest tests/ -v --tb=short --durations=25 --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network and not slow and not graph_performance" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
+          else
+            PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
+            uv run pytest tests/ -q --tb=short --durations=25 -m "not network and not slow and not graph_performance" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
+          fi
+
+  graph-performance:
+    name: Graph performance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    needs: changes
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Unrelated PR skip
+        if: >-
+          github.event_name == 'pull_request' &&
+          needs.changes.result == 'success' &&
+          needs.changes.outputs.graph_performance != 'true'
+        run: echo "No graph performance input changed; measured scale proof is not required."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: >-
+          github.event_name != 'pull_request' ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.graph_performance == 'true'
+
+      - uses: ./.github/actions/setup-python
+        if: >-
+          github.event_name != 'pull_request' ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.graph_performance == 'true'
+        with:
+          python-version: "3.13"
+
+      - name: Install graph test dependencies
+        if: >-
+          github.event_name != 'pull_request' ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.graph_performance == 'true'
+        run: uv sync --frozen --extra dev --extra graph
+
+      - name: Run measured graph scale assertion
+        if: >-
+          github.event_name != 'pull_request' ||
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.graph_performance == 'true'
+        run: uv run pytest tests/graph/test_store_backed_build_wiring.py -q -m graph_performance
+
+  test:
+    name: Test (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    needs: [changes, test-smoke, test-pr-shard, test-main, graph-performance]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Require every applicable correctness lane
+        env:
+          SMOKE_RESULT: ${{ needs.test-smoke.result }}
+          PR_SHARDS_RESULT: ${{ needs.test-pr-shard.result }}
+          MAIN_RESULT: ${{ needs.test-main.result }}
+          GRAPH_RESULT: ${{ needs.graph-performance.result }}
+        run: |
+          set -euo pipefail
+          for result in "$SMOKE_RESULT" "$PR_SHARDS_RESULT" "$MAIN_RESULT" "$GRAPH_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "Required correctness lane ended with: $result" >&2; exit 1 ;;
+            esac
+          done
+          echo "All applicable Python correctness lanes passed."
 
   sdk-import-smoke:
     name: Extra-gated SDK import smoke
@@ -1531,10 +1645,11 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [changes, security, lint, test]
-    # Build still runs when the classifier legitimately skipped the test
-    # suite (docs-only PRs); a failed or cancelled test still blocks it.
-    if: ${{ !cancelled() && needs.security.result == 'success' && needs.lint.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
+    needs: [changes, security, lint, test-smoke]
+    # Package proof starts after the compact changed-domain/contract gate while
+    # exhaustive correctness shards continue in parallel. Branch protection
+    # still requires their `Test (Python 3.13)` aggregator before merge.
+    if: ${{ !cancelled() && needs.security.result == 'success' && needs.lint.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.test-smoke.result) }}
     steps:
       - name: Documentation-only package skip
         if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'

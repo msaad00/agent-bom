@@ -533,6 +533,18 @@ def _ingest_osv_file(conn: sqlite3.Connection, content: bytes, filename: str) ->
         _logger.debug("Skipping invalid JSON: %s", filename)
         return 0
 
+    # OSV keeps withdrawn records in its feed so downstream databases can
+    # retract advisories they ingested before the withdrawal. Merely skipping
+    # the new payload leaves the stale vulnerability and package ranges active
+    # forever. Remove the exact advisory ID before returning; affected rows are
+    # deleted explicitly as well as by the schema's cascade so this helper stays
+    # correct for callers using an externally-created SQLite connection.
+    vuln_id = data.get("id", "")
+    if vuln_id and data.get("withdrawn"):
+        conn.execute("DELETE FROM affected WHERE vuln_id = ?", (vuln_id,))
+        conn.execute("DELETE FROM vulns WHERE id = ?", (vuln_id,))
+        return 0
+
     parsed = _parse_osv_entry(data)
     if parsed is None:
         return 0

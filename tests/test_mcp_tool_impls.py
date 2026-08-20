@@ -979,6 +979,9 @@ def test_inventory_impl_no_agents():
         result = inventory_impl(config_path=None, _truncate_response=_trunc)
     data = json.loads(result)
     assert data["status"] == "no_agents_found"
+    assert data["total_agents"] == 0
+    assert data["ai_bom_entities"]["schema_version"] == "1.0"
+    assert data["ai_bom_entities"]["summary"]["relationships"] == 0
 
 
 def test_inventory_impl_exception():
@@ -1709,17 +1712,15 @@ async def test_aisvs_benchmark_success():
 
 def test_inventory_impl_with_agents():
     from agent_bom.mcp_tools.runtime import inventory_impl
+    from agent_bom.models import Agent, AgentType, MCPServer
 
-    mock_agent = MagicMock()
-    mock_agent.name = "test-agent"
-    mock_agent.agent_type.value = "custom"
-    mock_agent.config_path = "/tmp/test.json"
-    mock_server = MagicMock()
-    mock_server.name = "filesystem"
-    mock_server.command = "npx"
-    mock_server.transport.value = "stdio"
-    mock_server.packages = []
-    mock_agent.mcp_servers = [mock_server]
+    mock_server = MCPServer(name="filesystem", command="npx")
+    mock_agent = Agent(
+        name="test-agent",
+        agent_type=AgentType.CUSTOM,
+        config_path="/tmp/test.json",
+        mcp_servers=[mock_server],
+    )
 
     with (
         patch("agent_bom.discovery.discover_all", return_value=[mock_agent]),
@@ -1728,6 +1729,29 @@ def test_inventory_impl_with_agents():
         result = inventory_impl(config_path=None, _truncate_response=_trunc)
     data = json.loads(result)
     assert data["total_agents"] == 1
+
+
+def test_inventory_impl_exposes_cli_canonical_entity_snapshot():
+    """MCP inventory identities are directly joinable to CLI JSON identities."""
+    from agent_bom.mcp_tools.runtime import inventory_impl
+    from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, MCPTool, Package
+    from agent_bom.output.json_fmt import to_json
+
+    tool = MCPTool(name="read_file", description="Read one file")
+    package = Package(name="mcp-server-filesystem", version="1.0.0", ecosystem="npm")
+    server = MCPServer(name="filesystem", command="npx", tools=[tool], packages=[package])
+    agent = Agent(name="test-agent", agent_type=AgentType.CUSTOM, config_path="/tmp/test.json", mcp_servers=[server])
+    cli_entities = to_json(AIBOMReport(agents=[agent]))["ai_bom_entities"]
+
+    with patch("agent_bom.discovery.discover_all", return_value=[agent]):
+        result = inventory_impl(config_path=None, _truncate_response=_trunc)
+
+    data = json.loads(result)
+    assert data["ai_bom_entities"] == cli_entities
+    assert data["ai_bom_entities"]["agents"][0]["canonical_id"] == agent.canonical_id
+    assert data["ai_bom_entities"]["servers"][0]["canonical_id"] == server.canonical_id
+    assert data["ai_bom_entities"]["tools"][0]["canonical_id"] == tool.canonical_id
+    assert {row["type"] for row in data["ai_bom_entities"]["relationships"]} >= {"uses", "exposes_tool", "depends_on"}
 
 
 def test_skill_trust_impl_success(tmp_path):
@@ -1886,23 +1910,16 @@ async def test_verify_impl_pypi_double_eq():
 def test_inventory_impl_with_packages():
     """inventory_impl extracts packages from servers."""
     from agent_bom.mcp_tools.runtime import inventory_impl
+    from agent_bom.models import Agent, AgentType, MCPServer, Package
 
-    mock_pkg = MagicMock()
-    mock_pkg.name = "requests"
-    mock_pkg.version = "2.31.0"
-    mock_pkg.ecosystem = "pypi"
-
-    mock_server = MagicMock()
-    mock_server.name = "filesystem"
-    mock_server.command = "npx"
-    mock_server.transport.value = "stdio"
-    mock_server.packages = []  # Empty triggers extract_packages
-
-    mock_agent = MagicMock()
-    mock_agent.name = "my-agent"
-    mock_agent.agent_type.value = "claude"
-    mock_agent.config_path = "/home/user/.claude/claude_desktop_config.json"
-    mock_agent.mcp_servers = [mock_server]
+    mock_pkg = Package(name="requests", version="2.31.0", ecosystem="pypi")
+    mock_server = MCPServer(name="filesystem", command="npx")
+    mock_agent = Agent(
+        name="my-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/home/user/.claude/claude_desktop_config.json",
+        mcp_servers=[mock_server],
+    )
 
     with (
         patch("agent_bom.discovery.discover_all", return_value=[mock_agent]),

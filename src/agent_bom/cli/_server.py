@@ -320,14 +320,14 @@ _MCP_WORKFLOW_NAMES = (
 )
 
 
-def _emit_mcp_stdio_workflow_splash() -> None:
+def _emit_mcp_stdio_workflow_splash(*, profile: str) -> None:
     """Emit a TTY-only MCP workflow hint without touching protocol stdout."""
     if not sys.stderr.isatty():
         return
     rows = [
         ("Transport", "stdio"),
         ("Workflows", f"{len(_MCP_WORKFLOW_NAMES)} prompts; see docs/MCP_WORKFLOWS.md"),
-        ("Tools", "full catalog available after workflow prompts"),
+        ("Tools", f"{profile} profile"),
     ]
     _emit_runtime_summary("agent-bom MCP server", rows, err=True)
 
@@ -1063,6 +1063,13 @@ def api_cmd(
 @click.option("--port", default=8423, show_default=True, type=LISTEN_PORT_RANGE, help="Port for HTTP/SSE transport.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
 @click.option(
+    "--profile",
+    type=click.Choice(["guided", "full"]),
+    default="guided",
+    show_default=True,
+    help="Tool catalog: guided workflow tools for concise agent context, or the full advanced catalog.",
+)
+@click.option(
     "--bearer-token",
     default=None,
     envvar="AGENT_BOM_MCP_BEARER_TOKEN",
@@ -1081,6 +1088,7 @@ def mcp_server_cmd(
     transport: str,
     port: int,
     host: str,
+    profile: str,
     bearer_token: str | None,
     allow_insecure_no_auth: bool,
     log_level: str,
@@ -1103,14 +1111,12 @@ def mcp_server_cmd(
       gateway-fleet-live-demo  gateway_status -> proxy_alerts -> fleet_scan -> firewall_check
 
     \b
-    The server still exposes the full tool catalog for advanced agents. Start
-    from prompts unless you already know the exact tool sequence. See:
+    The guided profile exposes the tools used by the workflow prompts. Use
+    --profile full when an advanced client needs the complete catalog. See:
       docs/MCP_WORKFLOWS.md
 
     \b
-    Exposes 81 security tools via MCP protocol, organized behind 8 workflow
-    prompts. Advanced direct tools include skill_scan, skill_verify,
-    compliance, and remediate.
+    The default guided profile is organized behind 8 workflow prompts.
 
     \b
     Usage:
@@ -1146,7 +1152,7 @@ def mcp_server_cmd(
         if not _is_loopback_host(host):
             os.environ["AGENT_BOM_MCP_REMOTE_BIND"] = "1"
 
-    server = create_mcp_server(host=host, port=port, bearer_token=bearer_token)
+    server = create_mcp_server(host=host, port=port, bearer_token=bearer_token, profile=profile)
 
     if transport in ("sse", "streamable-http"):
         from agent_bom import __version__ as _ver
@@ -1154,6 +1160,7 @@ def mcp_server_cmd(
         rows = [
             ("Version", _ver),
             ("Transport", transport),
+            ("Profile", profile),
             ("Bind", f"http://{host}:{port}"),
             ("Workflows", f"{len(_MCP_WORKFLOW_NAMES)} prompts; see docs/MCP_WORKFLOWS.md"),
             (
@@ -1171,5 +1178,5 @@ def mcp_server_cmd(
     else:
         if bearer_token:
             click.echo("  Warning:   --bearer-token applies only to SSE / Streamable HTTP transports", err=True)
-        _emit_mcp_stdio_workflow_splash()
+        _emit_mcp_stdio_workflow_splash(profile=profile)
         server.run(transport="stdio")

@@ -2008,6 +2008,10 @@ def scan(
         endpoint_inventory_data=_endpoint_inventory_data,
         **_report_kwargs,
     )
+    if project:
+        from agent_bom.repo_auto_detect import load_codeowners
+
+        report.codeowners = load_codeowners(Path(project).resolve())
     from agent_bom.advisory_sources import summarize_advisory_coverage
 
     # Drain here, at the single point every branch reaches. A manifest that

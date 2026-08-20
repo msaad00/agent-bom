@@ -184,6 +184,67 @@ def _dedupe_control_tags(tags: list[ControlTag]) -> list[ControlTag]:
     return out
 
 
+_CIS_BENCHMARK_FRAMEWORKS: dict[str, str] = {
+    "AWS": "cis_aws_foundations",
+    "AZURE": "cis_azure_foundations",
+    "GCP": "cis_gcp_foundations",
+    "DOCKER": "cis_docker_benchmark",
+    "K8S": "cis_kubernetes_benchmark",
+    "KUBERNETES": "cis_kubernetes_benchmark",
+}
+
+
+def _control_tag_from_compliance_tag(value: str) -> ControlTag:
+    """Type one legacy compliance identifier without inventing a crosswalk.
+
+    IaC scanners historically placed every identifier in ``compliance_tags``.
+    Treating that mixed array as one ``generic`` framework made real NIST
+    controls unjoinable and, worse, could make a cloud Foundations benchmark
+    look like CIS Controls v8.  Prefix parsing preserves the identifier's own
+    namespace only; it does not claim equivalence between frameworks.
+    """
+    source = "legacy:compliance_tags"
+    if value.startswith("NIST-CSF-"):
+        return ControlTag(
+            framework="nist_csf",
+            control=value.removeprefix("NIST-CSF-"),
+            version="2.0",
+            confidence=1.0,
+            source=source,
+            via="compliance_tags",
+        )
+    if value.startswith("NIST-"):
+        return ControlTag(
+            framework="nist_800_53",
+            control=value.removeprefix("NIST-"),
+            version="rev5",
+            confidence=1.0,
+            source=source,
+            via="compliance_tags",
+        )
+    cis_match = re.fullmatch(r"CIS-([A-Za-z0-9]+)-(.+)", value)
+    if cis_match:
+        provider, control = cis_match.groups()
+        framework = _CIS_BENCHMARK_FRAMEWORKS.get(provider.upper())
+        if framework:
+            return ControlTag(
+                framework=framework,
+                control=control,
+                version="benchmark",
+                confidence=1.0,
+                source=source,
+                via="compliance_tags",
+            )
+    return ControlTag(
+        framework="generic",
+        control=value,
+        version="legacy",
+        confidence=0.75,
+        source=source,
+        via="compliance_tags",
+    )
+
+
 @dataclass
 class Asset:
     """What is affected by this finding."""
@@ -464,6 +525,9 @@ class Finding:
             values = getattr(self, field_name)
             for value in values:
                 if value:
+                    if field_name == "compliance_tags":
+                        tags.append(_control_tag_from_compliance_tag(str(value)))
+                        continue
                     tags.append(
                         ControlTag(
                             framework=framework,
@@ -883,7 +947,7 @@ def ast_flow_dict_to_finding(raw: dict) -> "Finding":
     detail = sanitize_text(raw.get("detail", "") or title, max_len=2_000)
     call_path = [sanitize_text(item, max_len=200) for item in raw.get("call_path", []) if isinstance(item, str)][:20]
 
-    return Finding(
+    finding = Finding(
         finding_type=FindingType.SAST,
         source=FindingSource.SAST,
         asset=Asset(
@@ -912,6 +976,9 @@ def ast_flow_dict_to_finding(raw: dict) -> "Finding":
         risk_score=9.5 if severity == "critical" else 8.0 if severity == "high" else 6.0,
         exposed_tools=[entrypoint] if entrypoint else [],
     )
+    from agent_bom.compliance_hub import apply_hub_classification
+
+    return apply_hub_classification(finding)
 
 
 def enforcement_dict_to_finding(raw: dict) -> "Finding":
@@ -967,7 +1034,7 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
     category = sanitize_text(secret.get("category", "secret") or "secret", max_len=120)
     severity = sanitize_text(secret.get("severity", "medium") or "medium", max_len=40)
     loc = f"{file_path}:{line}" if line else file_path
-    return Finding(
+    finding = Finding(
         finding_type=FindingType.CREDENTIAL_EXPOSURE,
         source=FindingSource.SECRET_SCAN,
         asset=Asset(
@@ -992,6 +1059,9 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
             "redacted_preview": _safe_secret_preview(secret.get("preview")),
         },
     )
+    from agent_bom.compliance_hub import apply_hub_classification
+
+    return apply_hub_classification(finding)
 
 
 def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
@@ -1152,7 +1222,7 @@ def iac_finding_to_finding(iac: dict) -> "Finding":
     compliance = [str(t) for t in (iac.get("compliance") or []) if str(t).strip()]
     attack = [str(t) for t in (iac.get("attack_techniques") or []) if str(t).strip()]
 
-    return Finding(
+    finding = Finding(
         finding_type=FindingType.CIS_FAIL,
         source=FindingSource.CLOUD_SECURITY,
         asset=Asset(
@@ -1180,6 +1250,9 @@ def iac_finding_to_finding(iac: dict) -> "Finding":
         impact_category="iac_misconfiguration",
         id=stable_id("iac", rule_id, file_path, str(line_number)),
     )
+    from agent_bom.compliance_hub import apply_hub_classification
+
+    return apply_hub_classification(finding)
 
 
 def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Finding":

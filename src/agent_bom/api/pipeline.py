@@ -1051,6 +1051,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         repo_ai_inventory_data: dict | None = None
         repo_sast_data: dict | None = None
         repo_trust_data: dict | None = None
+        repo_codeowners: dict[str, str] = {}
         if repo_url:
             from agent_bom.repo_scan import RepoScanError, clone_repository, fetch_repo_trust
 
@@ -1079,6 +1080,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             iac_findings_data = repo_tree_result.iac_findings_data
             repo_ai_inventory_data = repo_tree_result.ai_inventory_data
             repo_sast_data = repo_tree_result.sast_data
+            repo_codeowners = repo_tree_result.codeowners
         path_fields = (
             ([req.inventory] if req.inventory else [])
             + req.tf_dirs
@@ -1452,6 +1454,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     report.sast_data = repo_sast_data
                 if repo_trust_data is not None:
                     report.repo_trust_data = repo_trust_data
+                report.codeowners = dict(repo_codeowners)
                 _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
                 report_json = to_json(report)
                 report_json["status"] = "findings_only"
@@ -1692,6 +1695,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             report.sast_data = repo_sast_data
         if repo_trust_data is not None:
             report.repo_trust_data = repo_trust_data
+        report.codeowners = dict(repo_codeowners)
         if req.vex:
             from agent_bom.vex import apply_vex, load_vex
             from agent_bom.vex import to_serializable as vex_to_serializable

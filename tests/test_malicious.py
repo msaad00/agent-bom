@@ -120,6 +120,12 @@ def test_typosquat_known_legitimate_successor_not_flagged():
     assert check_typosquat("langchainhub", "pypi") is None
 
 
+def test_typosquat_known_legitimate_preact_not_flagged():
+    # Preact is an independently maintained, public npm package. Its name is
+    # intentionally React-compatible, not a misspelling of ``react``.
+    assert check_typosquat("preact", "npm") is None
+
+
 def test_typosquat_numeric_suffix_still_flagged():
     # Guards the allowlist against being "simplified" into a rule that exempts
     # every trailing-digit name. `requests2`/`requests3` were real typosquat

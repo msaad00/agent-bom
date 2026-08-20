@@ -100,6 +100,13 @@ def test_public_cloud_and_telemetry_namespaces_not_flagged_as_confusion():
     assert check_dependency_confusion(_pkg("ts-api-utils", "npm")) is None
 
 
+def test_go_module_path_not_flagged_as_dependency_confusion():
+    # Go module paths are origin-qualified, so a legitimate ``-internal``
+    # suffix is not evidence that an unscoped public-registry name shadows a
+    # private dependency.
+    assert check_dependency_confusion(_pkg("github.com/rogpeppe/go-internal", "go", "1.14.1")) is None
+
+
 def test_weak_internal_suffix_flagged_when_version_unresolved():
     pkg = _pkg("mycompany-platform", version="unknown")
     result = check_dependency_confusion(pkg)

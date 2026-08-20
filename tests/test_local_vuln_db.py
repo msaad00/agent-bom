@@ -361,6 +361,20 @@ def test_parse_osv_entry_withdrawn_skipped():
     assert _parse_osv_entry(data) is None
 
 
+def test_ingest_osv_withdrawal_removes_previously_stored_advisory(tmp_db):
+    data = _make_osv_entry()
+    content = json.dumps(data).encode()
+    assert _ingest_osv_file(tmp_db, content, "CVE-2024-OSV-TEST.json") == 1
+    assert tmp_db.execute("SELECT 1 FROM vulns WHERE id = ?", (data["id"],)).fetchone() is not None
+    assert tmp_db.execute("SELECT 1 FROM affected WHERE vuln_id = ?", (data["id"],)).fetchone() is not None
+
+    data["withdrawn"] = "2024-06-01T00:00:00Z"
+    assert _ingest_osv_file(tmp_db, json.dumps(data).encode(), "CVE-2024-OSV-TEST.json") == 0
+
+    assert tmp_db.execute("SELECT 1 FROM vulns WHERE id = ?", (data["id"],)).fetchone() is None
+    assert tmp_db.execute("SELECT 1 FROM affected WHERE vuln_id = ?", (data["id"],)).fetchone() is None
+
+
 def test_parse_osv_entry_missing_id_skipped():
     assert _parse_osv_entry({"summary": "no id"}) is None
 

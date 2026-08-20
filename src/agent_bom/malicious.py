@@ -138,7 +138,13 @@ _POPULAR_PACKAGES: dict[str, frozenset[str]] = {
 # campaigns, so exempting that shape would trade a false positive for a false
 # negative. Names only land here once the upstream project is confirmed.
 _KNOWN_LEGITIMATE: dict[str, frozenset[str]] = {
-    "npm": frozenset(),
+    "npm": frozenset(
+        {
+            # Independent React-compatible UI framework, published by the
+            # Preact project as a first-class public npm package.
+            "preact",
+        }
+    ),
     "pypi": frozenset(
         {
             # The httpx successor, by httpx's own author (github.com/pydantic/httpx2).
@@ -288,6 +294,13 @@ def check_dependency_confusion(package: "Package") -> str | None:
     """
     name = package.name.lower()
     eco = package.ecosystem.lower()
+
+    # Go dependencies use origin-qualified module paths rather than unscoped
+    # public-registry names. Tokens such as ``go-internal`` are normal project
+    # names there and do not establish the PyPI/npm shadowing condition this
+    # heuristic is designed to detect.
+    if eco in {"go", "golang"}:
+        return None
 
     # Scoped npm packages from known orgs are safe
     if eco == "npm" and any(name.startswith(scope) for scope in _SAFE_NPM_SCOPES):

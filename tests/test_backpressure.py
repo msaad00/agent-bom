@@ -85,6 +85,25 @@ async def test_backpressure_records_normal_path_posture() -> None:
 
 
 @pytest.mark.asyncio
+async def test_findings_backpressure_budget_covers_the_measured_demo_read() -> None:
+    """A valid large-estate read must not become process-wide overload.
+
+    Main CI measured the seeded findings facet request at 17.5 seconds.  The
+    old 12-second default accumulated those honest reads across the process and
+    opened the shared findings circuit, so the next unrelated list request was
+    rejected with 429.  Keep headroom above the measured cold read while the
+    concurrency ceiling continues to shed an actual pile-up.
+    """
+    async with adaptive_backpressure("findings"):
+        await asyncio.sleep(0)
+
+    posture = describe_backpressure_posture()
+    findings = next(path for path in posture["paths"] if path["path"] == "findings")
+
+    assert findings["p99_threshold_ms"] >= 30_000
+
+
+@pytest.mark.asyncio
 async def test_backpressure_rejects_when_concurrency_is_saturated(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_GRAPH_CONCURRENCY", "1")
 

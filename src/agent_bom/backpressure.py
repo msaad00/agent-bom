@@ -133,10 +133,13 @@ _CONTROLLERS_LOCK = Lock()
 # deep ``?sort=cvss`` read at millions of rows can legitimately take several
 # seconds. Below the generic 2500ms budget a single well-behaved deep read
 # would trip the shared cooldown and 429-storm every reader — shedding under
-# normal single-user load, not overload. Give it headroom above its honest
-# latency; the concurrency limit still sheds a genuine pile-up of concurrent
-# deep reads (the event-loop-starvation case this guard exists to prevent).
-_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000, "findings": 12_000}
+# normal single-user load, not overload. Main CI measured the seeded large
+# estate facet read at 17.5 seconds; a 12-second threshold therefore accumulated
+# honest reads until the process-wide circuit opened and rejected a later
+# request. Give the findings path measured headroom while the concurrency limit
+# still sheds a genuine pile-up of deep reads (the event-loop-starvation case
+# this guard exists to prevent).
+_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000, "findings": 30_000}
 _GENERIC_P99_THRESHOLD_MS = 2500
 
 

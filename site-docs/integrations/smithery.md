@@ -11,6 +11,11 @@ catalog entry is considered live when Smithery's catalog API lists
 inventory. Smithery-hosted remotes are OAuth-gated by Smithery, so they do not
 expose agent-bom's raw `/health` route.
 
+The external Streamable HTTP release is separate from the managed stdio manifest
+below. It advertises OAuth2 through the public server card and OAuth discovery;
+the release does not ask users or Smithery to supply the deployment's bearer
+token as session configuration.
+
 ## Why two naming conventions exist
 
 agent-bom standardises on `AGENT_BOM_*` snake-case environment variables across CLI,

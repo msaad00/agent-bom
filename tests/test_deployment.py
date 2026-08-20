@@ -471,7 +471,7 @@ def test_live_server_card_exposes_exact_mcp_tool_schemas():
 
     assert response.status_code == 200
     card = response.json()
-    assert card["authentication"] == {"required": True, "schemes": ["bearer"]}
+    assert card["authentication"] == {"required": True, "schemes": ["oauth2"]}
     assert len(card["tools"]) == len(_SERVER_CARD_TOOLS)
     assert all(isinstance(tool.get("inputSchema"), dict) for tool in card["tools"])
     assert all(tool["inputSchema"].get("additionalProperties") is False for tool in card["tools"])
@@ -746,19 +746,10 @@ def test_smithery_publish_is_gated_on_server_card_and_catalog_parity():
     assert "Validate Smithery public server card" in workflow
     assert "(.tools | length) == $tool_count" in workflow
     assert '(.inputSchema | type == "object")' in workflow
+    assert '(.authentication.schemes | index("oauth2") != null)' in workflow
     assert "Wait for Smithery release" in workflow
-    # The terminal statuses are split deliberately (#4687). Our MCP endpoint
-    # authenticates every request by design and the published configSchema marks
-    # `bearerToken` required, so Smithery's scanner CANNOT enumerate our tools
-    # and settles the release as AUTH_REQUIRED. The release itself succeeded;
-    # only the optional post-publish scan did not. Treating that as fatal failed
-    # every release and auto-opened a release-blocker for a server that had in
-    # fact published.
-    assert "AUTH_REQUIRED|AUTH_TIMEOUT" in workflow, "auth statuses must be handled as their own non-fatal case"
-    assert "FAILURE|FAILURE_SCAN|CANCELLED|INTERNAL_ERROR" in workflow, "real failures must still fail the job"
-    # Guard the split itself: if AUTH_REQUIRED is ever folded back in with the
-    # fatal statuses, releases start failing again for a publish that worked.
-    assert "FAILURE_SCAN|AUTH_REQUIRED" not in workflow, "AUTH_REQUIRED must not be grouped with the fatal statuses"
+    assert "FAILURE|FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR" in workflow
+    assert "caller-supplied bearerToken by design" not in workflow
     assert "Verify Smithery catalog inventory" in workflow
     assert 'if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ]; then' in workflow
 
@@ -1008,24 +999,11 @@ def test_mcp_registry_descriptions_are_bounded():
     assert not too_long, f"registry descriptions exceed {MCP_REGISTRY_DESCRIPTION_MAX_CHARS} chars: {too_long[:5]}"
 
 
-def test_smithery_release_declares_the_upstream_credential():
-    """Smithery cannot enumerate an endpoint it has no credential for.
-
-    The agent-bom MCP endpoint authenticates every request. Smithery reads the
-    public server card (which advertises all 77 tools) but its live connection
-    401s, so the release settles as ``AUTH_REQUIRED`` and the public catalog
-    listed 36 of 77 — the tools it could reach without one.
-
-    Publishing the credential requirement in ``configSchema`` is what lets a
-    connection be established with a scoped, revocable token instead of opening
-    the endpoint anonymously.
-    """
+def test_smithery_release_uses_oauth_discovery_not_bearer_config():
+    """The external release must not replace OAuth with user token config."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
 
-    assert "bearerToken" in workflow, "the release must declare the upstream credential"
-    assert '\\"required\\": [\\"bearerToken\\"]' in workflow, (
-        "the token must be required — an optional credential leaves the catalog "
-        "enumerating anonymously, which is the state that produced 36 of 77 tools"
-    )
+    assert "bearerToken" not in workflow
+    assert '\\"configSchema\\"' not in workflow
     # The endpoint must never be published as open in place of supplying a token.
     assert "--allow-insecure-no-auth" not in workflow

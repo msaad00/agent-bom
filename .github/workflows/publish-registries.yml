@@ -5,34 +5,10 @@ name: Publish to Registries
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 #
-# NOT wired, deliberately: a `SMITHERY_UPSTREAM_TOKEN` was once documented here
-# as the way to let Smithery's scanner authenticate against our MCP endpoint.
-# No such secret exists and nothing in this file ever read one, so the note
-# described a fix that was never implemented. The consequence is real: Smithery
-# cannot enumerate our tools, the release settles as AUTH_REQUIRED, and the
-# public catalog lists fewer tools than the server serves (36 of 77 as of
-# 0.99.0 — see the supply-chain-drift tracker).
-#
-# The AS-not-mounted half of this was FIXED in #4730 (shipped in 0.100.0) and
-# the note below is kept only because the conclusion changed. Measured against
-# the live endpoint on 2026-08-12, after 0.100.0 deployed:
-#
-#   /.well-known/oauth-protected-resource   -> 200
-#   /.well-known/oauth-authorization-server -> 200   (was 404)
-#   POST /oauth/register                    -> 201   (DCR works)
-#   POST /mcp  (no token)                   -> 401
-#
-# So discovery and dynamic client registration both work now. Smithery still
-# reports AUTH_REQUIRED, and the reason is one level further in: DCR issues a
-# PUBLIC client (`token_endpoint_auth_method: none`) with an empty scope, and
-# the only machine-usable grant, `client_credentials`, needs a client secret.
-# `authorization_code` needs a human at `/authorize`. An unattended scanner can
-# therefore register but can never obtain a token.
-#
-# That makes AUTH_REQUIRED the correct terminal state for an endpoint that
-# authenticates every request by design — not a bug awaiting a CI fix. Closing
-# it means deciding to issue scanners a scoped credential (a product decision),
-# so no step here may treat the resulting stale catalog as a release blocker.
+# The protected external endpoint publishes RFC 9728/8414 OAuth discovery and
+# a static MCP server card.  Smithery reserves Authorization for that OAuth
+# flow; do not replace it with a required bearer-token config field.  The
+# release is only fresh when the catalog converges to the released tool count.
 # Optional vars:
 #   SMITHERY_MCP_URL    — Public Streamable HTTP MCP endpoint for Smithery
 # Optional secret:
@@ -206,7 +182,7 @@ jobs:
               jq -e \
                 --arg version "$VERSION" \
                 --argjson tool_count "$EXPECTED_TOOL_COUNT" \
-                '.serverInfo.version == $version and (.tools | length) == $tool_count and all(.tools[]; (.name | type == "string") and (.inputSchema | type == "object"))' \
+                '.serverInfo.version == $version and (.authentication.required == true) and (.authentication.schemes | index("oauth2") != null) and (.tools | length) == $tool_count and all(.tools[]; (.name | type == "string") and (.inputSchema | type == "object"))' \
                 /tmp/smithery-server-card.json >/dev/null; then
               echo "Smithery server card matches v${VERSION} with ${EXPECTED_TOOL_COUNT} live tool schemas"
               exit 0
@@ -238,22 +214,7 @@ jobs:
               -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" \
               -F "payload={
                 \"type\": \"external\",
-                \"upstreamUrl\": \"${MCP_URL}\",
-                \"configSchema\": {
-                  \"type\": \"object\",
-                  \"properties\": {
-                    \"bearerToken\": {
-                      \"type\": \"string\",
-                      \"title\": \"Access token\",
-                      \"description\": \"Bearer token for the agent-bom MCP endpoint. Required — the endpoint authenticates every request and will not enumerate tools without it.\"
-                    },
-                    \"NVD_API_KEY\": {
-                      \"type\": \"string\",
-                      \"description\": \"NVD API key for higher rate limits on CVSS enrichment (optional)\"
-                    }
-                  },
-                  \"required\": [\"bearerToken\"]
-                }
+                \"upstreamUrl\": \"${MCP_URL}\"
               }")
 
             echo "Smithery attempt ${ATTEMPT}/3 — HTTP ${HTTP_STATUS}"
@@ -297,24 +258,7 @@ jobs:
                 echo "scan_status=SUCCESS" >> "$GITHUB_OUTPUT"
                 exit 0
                 ;;
-              # The agent-bom MCP endpoint authenticates every request — that is
-              # the point of it, and the published configSchema marks
-              # `bearerToken` as required so a Smithery user supplies their own.
-              # Smithery's scanner therefore cannot enumerate our tools, and
-              # reports AUTH_REQUIRED / AUTH_TIMEOUT. The RELEASE ITSELF
-              # succeeded; only the optional post-publish scan did not.
-              #
-              # Failing here failed the whole Publish to Registries job on every
-              # release and opened a release-blocker issue for a server that had
-              # in fact published. The alternative — handing a third-party
-              # scanner our production bearer token so it can pass — is not a
-              # trade worth making for a green check.
-              AUTH_REQUIRED|AUTH_TIMEOUT)
-                echo "::warning::Smithery published the release but could not scan it (${STATUS}); the endpoint requires a caller-supplied bearerToken by design"
-                echo "scan_status=${STATUS}" >> "$GITHUB_OUTPUT"
-                exit 0
-                ;;
-              FAILURE|FAILURE_SCAN|CANCELLED|INTERNAL_ERROR)
+              FAILURE|FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
                 echo "::error::Smithery release did not complete successfully (${STATUS})"
                 exit 1
                 ;;
@@ -324,33 +268,13 @@ jobs:
           echo "::error::Smithery release did not finish before the verification timeout"
           exit 1
 
-      # The step above deliberately accepts AUTH_REQUIRED/AUTH_TIMEOUT as a
-      # terminal state, because our MCP endpoint authenticates every request and
-      # Smithery's scanner has no credential. This step then asserted a tool
-      # count that only a SUCCESSFUL scan can produce — so it re-created, one
-      # step later, exactly the failure the step above documents having fixed:
-      # a release-blocker issue on every release for a server that published
-      # correctly. The catalog cannot converge while the scan cannot run.
-      #
-      # So the assertion is now conditional on the scan having actually run. It
-      # stays a hard failure when Smithery reports SUCCESS — that is a real
-      # regression signal — and degrades to a warning when the scan was refused,
-      # where the stale count is already reported by the supply-chain-drift
-      # tracker. A gate that cannot pass is as dishonest as one that cannot fail.
       - name: Verify Smithery catalog inventory
         if: steps.smithery_config.outputs.enabled == 'true'
         env:
           EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
           VERSION: ${{ needs.release.outputs.version }}
-          SCAN_STATUS: ${{ steps.smithery_release.outputs.scan_status }}
         run: |
           set -euo pipefail
-          if [ "${SCAN_STATUS}" != "SUCCESS" ]; then
-            ACTUAL=$(curl -fsS --connect-timeout 10 --max-time 30 \
-              "https://api.smithery.ai/servers/agent-bom/agent-bom" | jq -er '.tools | length')
-            echo "::warning::Smithery scan was refused (${SCAN_STATUS:-unknown}); its catalog still advertises ${ACTUAL}/${EXPECTED_TOOL_COUNT} tools for v${VERSION}. Not failing the release — a scan that cannot run cannot converge. Tracked by the supply-chain-drift issue."
-            exit 0
-          fi
           for ATTEMPT in $(seq 1 12); do
             ACTUAL=$(curl -fsS --connect-timeout 10 --max-time 30 \
               "https://api.smithery.ai/servers/agent-bom/agent-bom" | jq -er '.tools | length')

@@ -23,8 +23,11 @@ publish URL or health endpoint.
 The primary SSE/streamable-http server is deployed on Railway at
 `https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
 Secure remote deployments should set `AGENT_BOM_MCP_BEARER_TOKEN` in Railway
-service variables so the MCP transport starts with built-in Bearer auth. Keep TLS
-at your ingress or platform edge.
+service variables so the MCP transport starts with built-in authentication. The
+same protected origin publishes OAuth protected-resource/authorization-server
+discovery and a static MCP server card; Smithery uses that OAuth2 contract to
+index the catalog without receiving the deployment's bearer token. Keep TLS at
+your ingress or platform edge.
 
 The daily deployment-freshness workflow probes this protected Railway `/health`
 surface with the configured bearer token, and probes Smithery through
@@ -47,6 +50,10 @@ The `publish-registries.yml` workflow auto-publishes to Smithery on each release
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
 must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
 depends on that variable; it uses the Smithery catalog API directly.
+
+Do not add the upstream bearer token to Smithery `configSchema`. Smithery
+reserves the `Authorization` header for OAuth, and the release workflow treats
+OAuth/auth-timeout status or a stale catalog count as publication failure.
 
 ### Verification
 

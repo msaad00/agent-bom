@@ -4,11 +4,11 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 const COUNTS = {
   critical: 7,
-  high: 26,
+  high: 28,
   medium: 13,
   low: 17,
   unrated: 19,
-  total: 82,
+  total: 84,
   kev: 5,
   compound_issues: 3,
   deployment_mode: "fleet",
@@ -35,29 +35,29 @@ const OVERVIEW = {
     summary: "Current estate needs prioritized remediation.",
     breakdown: [
       { driver: "critical", label: "Critical findings", count: 7, weight: 12, contribution: 84 },
-      { driver: "high", label: "High findings", count: 26, weight: 6, contribution: 156 },
+      { driver: "high", label: "High findings", count: 28, weight: 6, contribution: 168 },
     ],
   },
   headline: {
     critical: 7,
-    high: 26,
-    critical_high: 33,
+    high: 28,
+    critical_high: 35,
     kev: 5,
     credential_exposed: 4,
     scans: 14,
     latest_scan_at: "2026-07-17T16:30:00Z",
-    hub_findings: 82,
+    hub_findings: 84,
   },
   coverage: [
     { domain: "cspm", label: "CSPM", href: "/findings?scope=all&domain=cspm", count: 22, severity: { critical: 2, high: 9, medium: 7, low: 3, unrated: 1 } },
-    { domain: "vuln", label: "Vuln mgmt", href: "/findings?scope=all&domain=vuln", count: 33, severity: { critical: 5, high: 15, medium: 7, low: 4, unrated: 2 } },
+    { domain: "vuln", label: "Vuln mgmt", href: "/findings?scope=all&domain=vuln", count: 35, severity: { critical: 5, high: 17, medium: 7, low: 4, unrated: 2 } },
     { domain: "aspm", label: "ASPM", href: "/findings?scope=all&domain=aspm", count: 12, severity: { critical: 0, high: 2, medium: 5, low: 3, unrated: 2 } },
     { domain: "dspm", label: "DSPM", href: "/findings?scope=all&domain=dspm", count: 9, severity: { critical: 1, high: 2, medium: 2, low: 1, unrated: 3 } },
     { domain: "aispm", label: "AISPM", href: "/findings?scope=all&domain=aispm", count: 6, severity: { critical: 0, high: 1, medium: 2, low: 1, unrated: 2 } },
   ],
   domains: {
     cloud: domain("Cloud posture", 4, "accounts connected", "/connections"),
-    vuln: domain("Vuln / SCA", 33, "open CVEs", "/findings?scope=all&issue=vulnerability"),
+    vuln: domain("Vuln / SCA", 35, "open CVEs", "/findings?scope=all&issue=vulnerability"),
     code: domain("Code / repo", 12, "repo scans", "/scan"),
     runtime: domain("Runtime", 3, "active surfaces", "/runtime"),
     cost: domain("LLM Cost", 1824, "USD tracked", "/cost"),
@@ -94,6 +94,7 @@ function staleScan(index: number) {
 }
 
 function finding(index: number) {
+  const occurrenceCount = index === 0 ? 3 : 1;
   return {
     id: `finding-${index}`,
     cve_id: `CVE-2026-${String(8000 + index)}`,
@@ -104,6 +105,16 @@ function finding(index: number) {
     package: { name: `runtime-lib-${index}`, version: "1.0.0" },
     effective_reach_score: 8.2,
     last_seen: "2026-07-17T16:00:00Z",
+    occurrence_count: occurrenceCount,
+    occurrences: Array.from({ length: occurrenceCount }, (_, occurrenceIndex) => ({
+      finding_id: `finding-${index}-occurrence-${occurrenceIndex}`,
+      asset: {
+        name: `prod-workload-${index}-${occurrenceIndex}`,
+        stable_id: `workload:prod-workload-${index}-${occurrenceIndex}`,
+        asset_type: "workload",
+      },
+      package_version: "1.0.0",
+    })),
   };
 }
 
@@ -189,7 +200,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.goto("/");
     await expect(page.getByText("Current findings · configured window")).toBeVisible();
     const critical = page.getByRole("link", { name: /^Critical 7/i });
-    const high = page.getByRole("link", { name: /^High 26/i });
+    const high = page.getByRole("link", { name: /^High 28/i });
     await expect(critical).toHaveAttribute("href", "/findings?scope=all&severity=critical");
     await expect(high).toHaveAttribute("href", "/findings?scope=all&severity=high");
     await expect(page.getByRole("link", { name: /^Critical 10/i })).toHaveCount(0);
@@ -200,8 +211,12 @@ for (const theme of ["light", "dark"] as const) {
     await expect.poll(() => new URL(page.url()).searchParams.get("scope")).toBe("all");
     await expect.poll(() => new URL(page.url()).searchParams.get("severity")).toBe("high");
     await expect(page.getByText("Current state · Last 90 days")).toBeVisible();
-    await expect(page.getByText(/26 findings/).first()).toBeVisible();
-    await expect(page.getByText("Page 1 of 2 (26 findings)")).toBeVisible();
+    await expect(page.getByText(/26 issues/).first()).toBeVisible();
+    await expect(page.getByText("Page 1 of 2 (26 issues)")).toBeVisible();
+    const occurrences = page.getByRole("button", { name: "Show 3 affected asset occurrences" });
+    await expect(occurrences).toBeVisible();
+    await occurrences.click();
+    await expect(page.getByText("Asset-scoped occurrences")).toBeVisible();
     await page.getByRole("button", { name: /Next/i }).click();
     await expect(page.getByText("Page 2 · total unavailable")).toBeVisible();
     await expect(page.getByRole("button", { name: /Next/i })).toBeDisabled();
@@ -219,7 +234,7 @@ test("overview and current-state findings remain readable without mobile overflo
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await capture(page, testInfo, "overview-reconciled-mobile.png");
 
-  await page.getByRole("link", { name: /^High 26/i }).click();
+  await page.getByRole("link", { name: /^High 28/i }).click();
   await expect(page.getByText("Current state · Last 90 days")).toBeVisible();
   const overflow = await page.evaluate(() => {
     const viewportWidth = document.documentElement.clientWidth;

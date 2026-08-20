@@ -175,6 +175,18 @@
       "title": "Job Id",
       "type": "string"
     },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
     "presigned_download_url": {
       "anyOf": [
         {
@@ -246,6 +258,23 @@
       ],
       "default": null,
       "title": "Severity"
+    },
+    "sla": {
+      "anyOf": [
+        {
+          "enum": [
+            "overdue",
+            "due",
+            "unassigned"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sla"
     },
     "sort": {
       "default": "effective_reach",

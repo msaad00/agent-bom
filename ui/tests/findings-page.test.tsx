@@ -347,6 +347,20 @@ describe("FindingsPage", () => {
     });
   });
 
+  it("owns owner and SLA workflow filters in the URL and canonical API", async () => {
+    navigationState.query = "owner=payments-security&sla=overdue";
+    render(<FindingsPage />);
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "payments-security", sla: "overdue" }),
+      ),
+    );
+    expect(screen.getByTestId("findings-chip-owner")).toHaveTextContent("Owner: payments-security");
+    expect(screen.getByTestId("findings-chip-sla")).toHaveTextContent("SLA: overdue");
+  });
+
   it("sends the selected issue class to the paginated findings API", async () => {
     render(<FindingsPage />);
     expect(await screen.findByText("Findings queue")).toBeInTheDocument();

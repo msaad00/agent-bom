@@ -866,6 +866,7 @@ export interface FindingTriageVexResponse {
   tenant_id: string;
   count: number;
   format: "openvex" | string;
+  filters?: Record<string, string> | undefined;
   vex: Record<string, unknown>;
   signature: {
     algorithm: string;

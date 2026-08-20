@@ -1554,6 +1554,8 @@ export const api = {
     // / `nist-csf`) and, optionally, a control code that narrows within it.
     framework?: string;
     control?: string;
+    owner?: string;
+    sla?: "overdue" | "due" | "unassigned";
     findingClass?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
     status?: "open" | "resolved" | "all";
     // Known-exploited only, or explicitly everything else. Omit for no filter —
@@ -1579,6 +1581,8 @@ export const api = {
     if (filters?.domain) params.set("domain", filters.domain);
     if (filters?.framework) params.set("framework", filters.framework);
     if (filters?.control) params.set("control", filters.control);
+    if (filters?.owner) params.set("owner", filters.owner);
+    if (filters?.sla) params.set("sla", filters.sla);
     if (filters?.findingClass) params.set("finding_class", filters.findingClass);
     if (filters?.kev != null) params.set("kev", String(filters.kev));
     if (filters?.status) params.set("status", filters.status);
@@ -1705,7 +1709,20 @@ export const api = {
   },
   updateFindingTriageDecision: (triageId: string, body: FindingTriageDecisionRequest) =>
     put<FindingTriageResponse["triage"][number]>(`/v1/findings/triage/${encodeURIComponent(triageId)}/decision`, body),
-  exportFindingTriageVex: () => get<FindingTriageVexResponse>("/v1/findings/triage/vex"),
+  exportFindingTriageVex: (filters?: {
+    assignee?: string;
+    package?: string;
+    vulnerabilityId?: string;
+    serverName?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.assignee) params.set("assignee", filters.assignee);
+    if (filters?.package) params.set("package", filters.package);
+    if (filters?.vulnerabilityId) params.set("vulnerability_id", filters.vulnerabilityId);
+    if (filters?.serverName) params.set("server_name", filters.serverName);
+    const qs = params.toString();
+    return get<FindingTriageVexResponse>(`/v1/findings/triage/vex${qs ? `?${qs}` : ""}`);
+  },
 
   // ── Remediation ──
   /** Remediation plan for a completed scan.

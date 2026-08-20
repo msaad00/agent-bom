@@ -348,6 +348,8 @@ class ReportJobRequest(BaseModel):
     account: str | None = Field(default=None, max_length=256)
     environment: str | None = Field(default=None, max_length=64)
     domain: str | None = Field(default=None, max_length=32)
+    owner: str | None = Field(default=None, max_length=256)
+    sla: Literal["overdue", "due", "unassigned"] | None = None
     finding_class: FindingClass | None = None
     status: Literal["open", "resolved", "all"] = "open"
     window_days: int | None = Field(default=None, ge=0, le=3650)
@@ -373,6 +375,8 @@ class ReportJob(BaseModel):
     account: str | None = None
     environment: str | None = None
     domain: str | None = None
+    owner: str | None = None
+    sla: Literal["overdue", "due", "unassigned"] | None = None
     finding_class: FindingClass | None = None
     finding_status: Literal["open", "resolved", "all"] = "open"
     window_days: int | None = None

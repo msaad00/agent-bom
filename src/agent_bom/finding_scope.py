@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -924,6 +924,27 @@ def row_matches_scope(row: dict, filters: Mapping[str, str]) -> bool:
         wanted = filters.get(key)
         if wanted is not None and str(row.get(key) or "").strip().lower() != wanted:
             return False
+    wanted_owner = filters.get("owner")
+    if wanted_owner is not None and str(row.get("owner") or "").strip().lower() != wanted_owner:
+        return False
+    wanted_sla = filters.get("sla")
+    if wanted_sla is not None:
+        raw_due_at = str(row.get("sla_due_at") or "").strip()
+        if wanted_sla == "unassigned":
+            if raw_due_at:
+                return False
+        else:
+            if not raw_due_at:
+                return False
+            try:
+                due_at = datetime.fromisoformat(raw_due_at.replace("Z", "+00:00"))
+            except ValueError:
+                return False
+            if due_at.tzinfo is None:
+                due_at = due_at.replace(tzinfo=timezone.utc)
+            overdue = due_at <= datetime.now(timezone.utc)
+            if (wanted_sla == "overdue") is not overdue:
+                return False
     wanted_domain = filters.get("domain")
     if wanted_domain is not None:
         lenses = lenses_for_row(row) or ({domain_for_row(row) or ""} if domain_for_row(row) else set())

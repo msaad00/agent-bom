@@ -84,6 +84,8 @@ async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
         account=body.account,
         environment=body.environment,
         domain=body.domain,
+        owner=body.owner,
+        sla=body.sla,
         finding_class=body.finding_class,
         finding_status=body.status,
         window_days=body.window_days,

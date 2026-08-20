@@ -2656,18 +2656,45 @@ async def update_finding_triage_decision(request: Request, triage_id: str, req: 
 
 
 @router.get("/findings/triage/vex", tags=["enterprise"])
-async def export_finding_triage_vex(request: Request) -> dict:
+async def export_finding_triage_vex(
+    request: Request,
+    assignee: Annotated[str | None, Query(max_length=256)] = None,
+    package: Annotated[str | None, Query(max_length=256)] = None,
+    vulnerability_id: Annotated[str | None, Query(max_length=128)] = None,
+    server_name: Annotated[str | None, Query(max_length=256)] = None,
+) -> dict:
     """Export signed OpenVEX for eligible tenant-scoped not_affected triage decisions."""
     from agent_bom.api.compliance_signing import describe_signer_disclosure, sign_compliance_bundle
     from agent_bom.vex import VexDocument, VexJustification, VexStatement, VexStatus, export_openvex
 
     tenant_id = require_request_tenant_id(request)
+    active_filters = {
+        key: value.strip()
+        for key, value in {
+            "assignee": assignee,
+            "package": package,
+            "vulnerability_id": vulnerability_id,
+            "server_name": server_name,
+        }.items()
+        if value is not None and value.strip()
+    }
     statements = []
     for exc in _get_exception_store().list_all(tenant_id=tenant_id):
         data = _parse_triage_reason(exc.reason)
         if data is None:
             continue
         if data.get("decision") != "not_affected" or not data.get("justification"):
+            continue
+        if (
+            "assignee" in active_filters
+            and str(data.get("assignee") or exc.approved_by or "").strip().lower() != active_filters["assignee"].lower()
+        ):
+            continue
+        if "package" in active_filters and str(exc.package_name).strip().lower() != active_filters["package"].lower():
+            continue
+        if "vulnerability_id" in active_filters and str(exc.vuln_id).strip().lower() != active_filters["vulnerability_id"].lower():
+            continue
+        if "server_name" in active_filters and str(exc.server_name).strip().lower() != active_filters["server_name"].lower():
             continue
         statements.append(
             VexStatement(
@@ -2697,6 +2724,7 @@ async def export_finding_triage_vex(request: Request) -> dict:
         "tenant_id": tenant_id,
         "count": len(statements),
         "format": "openvex",
+        "filters": active_filters,
         "vex": payload,
         "signature": {
             "algorithm": signature.algorithm,

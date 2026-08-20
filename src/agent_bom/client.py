@@ -344,6 +344,8 @@ class AgentBomClient:
         provider: str | None = None,
         account: str | None = None,
         environment: str | None = None,
+        owner: str | None = None,
+        sla: str | None = None,
         finding_class: str | None = None,
         status: str | None = None,
         kev: bool | None = None,
@@ -374,6 +376,8 @@ class AgentBomClient:
                     "provider": provider,
                     "account": account,
                     "environment": environment,
+                    "owner": owner,
+                    "sla": sla,
                     "finding_class": finding_class,
                     "status": status,
                     "kev": kev,
@@ -465,10 +469,28 @@ class AgentBomClient:
             ),
         )
 
-    def export_finding_triage_vex(self) -> JsonObject:
+    def export_finding_triage_vex(
+        self,
+        *,
+        assignee: str | None = None,
+        package: str | None = None,
+        vulnerability_id: str | None = None,
+        server_name: str | None = None,
+    ) -> JsonObject:
         """Export OpenVEX for eligible finding triage decisions."""
 
-        return self._request("GET", "/v1/findings/triage/vex")
+        return self._request(
+            "GET",
+            "/v1/findings/triage/vex",
+            params=_strip_query_none(
+                {
+                    "assignee": assignee,
+                    "package": package,
+                    "vulnerability_id": vulnerability_id,
+                    "server_name": server_name,
+                }
+            ),
+        )
 
     def ingest_finding_triage_vex(self, vex: Mapping[str, JsonValue]) -> JsonObject:
         """Ingest an OpenVEX document, applying not_affected/fixed statements as triage."""

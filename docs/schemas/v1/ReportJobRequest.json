@@ -74,6 +74,19 @@
       "$ref": "#/$defs/ReportFormat",
       "default": "ndjson"
     },
+    "owner": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
     "provider": {
       "anyOf": [
         {
@@ -134,6 +147,23 @@
       ],
       "default": null,
       "title": "Severity"
+    },
+    "sla": {
+      "anyOf": [
+        {
+          "enum": [
+            "overdue",
+            "due",
+            "unassigned"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sla"
     },
     "sort": {
       "default": "effective_reach",

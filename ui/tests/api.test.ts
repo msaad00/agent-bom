@@ -266,6 +266,18 @@ describe('api.listFindings', () => {
       expect.objectContaining({ credentials: 'include' }),
     )
   })
+
+  it('serializes owner and SLA workflow filters', async () => {
+    const fetchMock = mockFetch({ findings: [], total: null, total_approximate: true })
+    global.fetch = fetchMock
+
+    await api.listFindings({ owner: 'payments-security', sla: 'overdue', limit: 25 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/findings?limit=25&owner=payments-security&sla=overdue',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
 })
 
 describe('api.getCompliance', () => {
@@ -1115,6 +1127,23 @@ describe('api finding triage helpers', () => {
     expect(url).toContain('/v1/findings/triage/vex')
     expect(result.count).toBe(1)
     expect(result.signature.signature_hex).toBe('abc123')
+  })
+
+  it('serializes supported OpenVEX export scope', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'findings.triage.vex.v1',
+      tenant_id: 'tenant-alpha',
+      count: 0,
+      format: 'openvex',
+      filters: { assignee: 'payments-security', package: 'payments-lib' },
+      vex: { statements: [] },
+      signature: { algorithm: 'HMAC-SHA256', signature_hex: 'abc123', key_id: 'audit-hmac' },
+    })
+
+    await api.exportFindingTriageVex({ assignee: 'payments-security', package: 'payments-lib' })
+
+    const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toBe('/v1/findings/triage/vex?assignee=payments-security&package=payments-lib')
   })
 })
 

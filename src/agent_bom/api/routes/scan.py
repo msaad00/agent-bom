@@ -39,7 +39,7 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, NamedTuple, cast
+from typing import Annotated, Any, Literal, NamedTuple, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -2273,6 +2273,8 @@ def _canonical_scope_filters(
     kev: bool | None = None,
     framework: str | None = None,
     control: str | None = None,
+    owner: str | None = None,
+    sla: str | None = None,
 ) -> dict[str, str]:
     """Normalize the optional scope/domain filters into an active-filter map.
 
@@ -2319,6 +2321,10 @@ def _canonical_scope_filters(
         filters["kev"] = "true" if kev else "false"
     if q and q.strip():
         filters["q"] = q.strip()
+    if owner and owner.strip():
+        filters["owner"] = owner.strip().lower()
+    if sla and sla.strip():
+        filters["sla"] = sla.strip().lower()
     return filters
 
 
@@ -2586,6 +2592,8 @@ async def list_findings(
         str | None,
         Query(max_length=64, description="Framework control code, narrows within framework (e.g. CC6.1)"),
     ] = None,
+    owner: Annotated[str | None, Query(max_length=256)] = None,
+    sla: Literal["overdue", "due", "unassigned"] | None = None,
     include_facets: bool = False,
 ) -> dict:
     """List unified findings aggregated from completed scan results.
@@ -2634,6 +2642,8 @@ async def list_findings(
                 include_facets,
                 framework,
                 control,
+                owner,
+                sla,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -2664,6 +2674,8 @@ def _list_findings_impl(
     include_facets: bool = False,
     framework: str | None = None,
     control: str | None = None,
+    owner: str | None = None,
+    sla: str | None = None,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -2790,7 +2802,17 @@ def _list_findings_impl(
     from agent_bom.api.findings_current import current_scan_findings
 
     scope_filters = _canonical_scope_filters(
-        provider, account, environment, domain, finding_class, q, kev=kev, framework=framework, control=control
+        provider,
+        account,
+        environment,
+        domain,
+        finding_class,
+        q,
+        kev=kev,
+        framework=framework,
+        control=control,
+        owner=owner,
+        sla=sla,
     )
 
     store = get_compliance_hub_store()
@@ -3091,6 +3113,8 @@ def _list_findings_impl(
                 "q": q.strip() if q and q.strip() else None,
                 "framework": framework.strip() if framework and framework.strip() else None,
                 "control": control.strip() if control and control.strip() else None,
+                "owner": owner.strip().lower() if owner and owner.strip() else None,
+                "sla": sla,
             }.items()
             if value is not None
         },

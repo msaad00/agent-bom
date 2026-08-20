@@ -141,6 +141,26 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
     ]
 
 
+def test_client_serializes_finding_workflow_and_vex_scope() -> None:
+    seen: list[tuple[str, dict[str, str]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, dict(request.url.params)))
+        return httpx.Response(200, json={"ok": True})
+
+    client = _client(handler)
+    client.list_findings(owner="payments-security", sla="overdue")
+    client.export_finding_triage_vex(assignee="payments-security", package="payments-lib")
+
+    assert seen == [
+        (
+            "/v1/findings",
+            {"sort": "effective_reach", "limit": "500", "offset": "0", "owner": "payments-security", "sla": "overdue"},
+        ),
+        ("/v1/findings/triage/vex", {"assignee": "payments-security", "package": "payments-lib"}),
+    ]
+
+
 def test_client_exposes_complete_campaign_workflow() -> None:
     seen: list[tuple[str, str, dict[str, object], dict[str, str]]] = []
 

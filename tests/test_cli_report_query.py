@@ -154,3 +154,55 @@ def test_report_prune_requires_apply_for_compaction(tmp_path):
 
     assert result.exit_code != 0
     assert "--compact requires --apply" in result.output
+
+
+def test_report_prune_compact_reports_settled_storage_bytes(tmp_path, monkeypatch):
+    db_path = tmp_path / "local.sqlite"
+    monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_EVENTS", "100")
+    monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_PACKAGES", "10000")
+    monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_FINDINGS", "10000")
+    store = LocalAnalyticsStore(db_path)
+    padding = "x" * 2048
+    for run_index in range(4):
+        report = _scan_report()
+        report["scan_id"] = f"scan-{run_index}"
+        report["generated_at"] = f"2026-05-1{run_index}T16:00:00+00:00"
+        report["findings"] = [
+            {
+                "id": f"finding-{run_index}-{finding_index}",
+                "vulnerability_id": f"CVE-2026-{run_index:02d}{finding_index:04d}",
+                "package_name": "fastapi",
+                "package_version": "0.115.0",
+                "ecosystem": "pypi",
+                "severity": "high",
+                "description": padding,
+            }
+            for finding_index in range(400)
+        ]
+        store.record_scan_report(report, source="cli")
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "report",
+            "prune",
+            "--db",
+            str(db_path),
+            "--max-runs",
+            "1",
+            "--apply",
+            "--compact",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    settled_bytes = sum(
+        path.stat().st_size
+        for path in (db_path, db_path.with_name(f"{db_path.name}-wal"), db_path.with_name(f"{db_path.name}-shm"))
+        if path.exists()
+    )
+    assert payload["bytes_after"] == settled_bytes
+    assert payload["bytes_after"] < payload["bytes_before"]

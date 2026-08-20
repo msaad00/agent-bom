@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -263,7 +264,7 @@ class LocalAnalyticsStore:
         findings = list(_iter_findings(report_json))
         package_rows = list(_iter_packages(report_json))
 
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 """
                 INSERT INTO scan_runs(
@@ -334,7 +335,7 @@ class LocalAnalyticsStore:
 
     def list_scan_runs(self, *, limit: int = 20, tenant_id: str | None = None) -> list[dict[str, Any]]:
         """Return recent scan runs newest first."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             tenant_filter = (tenant_id or "").strip()
             bounded_limit = max(1, int(limit))
             if tenant_filter:
@@ -366,7 +367,7 @@ class LocalAnalyticsStore:
 
     def storage_stats(self) -> dict[str, Any]:
         """Return bounded local-mirror usage without including deployment state."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 """
                 SELECT
@@ -405,7 +406,7 @@ class LocalAnalyticsStore:
     ) -> dict[str, Any]:
         """Plan or apply whole-run retention, optionally compacting SQLite."""
         bytes_before = self._storage_bytes()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             stale = plan_local_scan_prune(
                 conn,
                 max_events=max_runs,
@@ -435,7 +436,7 @@ class LocalAnalyticsStore:
         """Run a read query against the local analytics store."""
         if not sql.lstrip().lower().startswith("select"):
             raise ValueError("local analytics queries are read-only")
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [dict(row) for row in rows]
 

@@ -19,7 +19,7 @@ import yaml  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.markup import escape
 
-from agent_bom.models import MCPServer, TransportType
+from agent_bom.models import MCPServer, MCPTool, TransportType
 from agent_bom.security import (
     SecurityError,
     sanitize_env_vars,
@@ -45,6 +45,14 @@ def _args_field(value: object) -> list[str]:
     if isinstance(value, list):
         return [item for item in value if isinstance(item, str)]
     return []
+
+
+def _auto_approved_tool_names(value: object) -> list[str]:
+    """Return a bounded, deterministic list of explicitly auto-approved tools."""
+    if not isinstance(value, list):
+        return []
+    names = {item.strip() for item in value[:256] if isinstance(item, str) and item.strip() and len(item.strip()) <= 200}
+    return sorted(names)
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +145,25 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         # Only env var NAMES appear in reports — values are replaced with ***REDACTED***
         env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
 
+        auto_approved = _auto_approved_tool_names(server_def.get("autoApprove", server_def.get("auto_approve")))
+        security_warnings: list[str] = []
+        if auto_approved:
+            security_warnings.append(f"{len(auto_approved)} MCP tool(s) are auto-approved without per-call review.")
+        if (
+            config_data.get("auto_approve_all") is True
+            or config_data.get("autoApproveAll") is True
+            or server_def.get("auto_approve_all") is True
+            or server_def.get("autoApproveAll") is True
+        ):
+            security_warnings.append("All MCP tools are configured for auto-approval.")
+        if (
+            config_data.get("human_in_the_loop") is False
+            or config_data.get("humanInTheLoop") is False
+            or server_def.get("human_in_the_loop") is False
+            or server_def.get("humanInTheLoop") is False
+        ):
+            security_warnings.append("MCP tool execution is configured without human review.")
+
         server = MCPServer(
             name=name,
             command=command,
@@ -144,7 +171,9 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
             env=env,
             transport=transport,
             url=url,
+            tools=[MCPTool(name=tool_name, description="Tool configured for automatic approval") for tool_name in auto_approved],
             config_path=config_path,
+            security_warnings=security_warnings,
         )
 
         # Detect privilege indicators from command/args

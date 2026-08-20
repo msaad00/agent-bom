@@ -157,6 +157,14 @@ def _import_matches_module(module: str, target: str) -> bool:
 
 
 _DYNAMIC_CODE_CALLS = {"eval", "exec", "compile", "__import__"}
+_SENSITIVE_CREDENTIAL_PATH_FRAGMENTS = (
+    "/.aws/credentials",
+    "/.aws/config",
+    "/.config/gcloud/application_default_credentials.json",
+    "/.docker/config.json",
+    "/.kube/config",
+    "/.ssh/id_",
+)
 _SUBPROCESS_CALLS = {
     "os.system",
     "os.popen",
@@ -367,6 +375,27 @@ def _call_name(node: ast.AST) -> str:
     if isinstance(node, ast.Call):
         return _call_name(node.func)
     return ""
+
+
+def _call_references_sensitive_credential_path(call: ast.Call) -> bool:
+    """Return whether a call contains a known credential-file path literal.
+
+    Only literals are inspected and no path value is copied into a finding, so
+    dynamic paths are not guessed and credential-bearing locations stay out of
+    machine output.
+    """
+    for node in ast.walk(call):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        normalized = node.value.strip().lower().replace("\\", "/")
+        if any(fragment in normalized for fragment in _SENSITIVE_CREDENTIAL_PATH_FRAGMENTS):
+            return True
+    return False
+
+
+def _is_privilege_escalation_call_name(call_name: str) -> bool:
+    normalized = call_name.strip().lower()
+    return normalized == "assume_role" or normalized.endswith(".assume_role")
 
 
 def _module_name_for_rel_path(rel_path: str) -> str:
@@ -974,6 +1003,32 @@ def _analyze_file(
                                 call_path=[node.name, call_name],
                             )
                         )
+                if is_tool and call_name and _is_path_access_call_name(call_name) and _call_references_sensitive_credential_path(inner):
+                    flow_findings.append(
+                        FlowFinding(
+                            category="credential_file_access",
+                            title="Tool entrypoint reads a credential file",
+                            detail=(f"Tool `{node.name}` in {rel_path} reads a known credential-file location."),
+                            file_path=rel_path,
+                            line_number=getattr(inner, "lineno", node.lineno),
+                            entrypoint=node.name,
+                            sink=call_name,
+                            call_path=[node.name, call_name],
+                        )
+                    )
+                if is_tool and call_name and _is_privilege_escalation_call_name(call_name):
+                    flow_findings.append(
+                        FlowFinding(
+                            category="privilege_escalation",
+                            title="Tool entrypoint can assume another identity",
+                            detail=f"Tool `{node.name}` in {rel_path} calls an identity-assumption API.",
+                            file_path=rel_path,
+                            line_number=getattr(inner, "lineno", node.lineno),
+                            entrypoint=node.name,
+                            sink=call_name,
+                            call_path=[node.name, call_name],
+                        )
+                    )
                 if _is_unsafe_deserialization_call_name(call_name) and not _uses_safe_yaml_loader(inner):
                     flow_findings.append(
                         FlowFinding(
@@ -1608,6 +1663,20 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
                                 source=source_label,
                             )
                         )
+                elif call_name in _DYNAMIC_CODE_CALLS:
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_dynamic_code_execution",
+                            title="Untrusted data reaches dynamic code execution",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
                 elif call_name in _DANGEROUS_CALLS:
                     nested_findings.append(
                         _build_flow_finding(

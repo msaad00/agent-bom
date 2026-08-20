@@ -831,14 +831,16 @@ def _safe_secret_preview(value: object) -> str:
     return "***REDACTED***"
 
 
-_AST_FLOW_CRITICAL_MARKERS = ("command_execution", "unsafe_deserialization")
+_AST_FLOW_CRITICAL_MARKERS = ("command_execution", "unsafe_deserialization", "dynamic_code_execution")
 _AST_FLOW_HIGH_MARKERS = (
+    "credential_file_access",
     "dangerous",
     "unguarded_tool_sink",
     "command_string",
     "dynamic_require",
     "path_access",
     "path_traversal",
+    "privilege_escalation",
     "sql",
     "ssrf",
     "xss",

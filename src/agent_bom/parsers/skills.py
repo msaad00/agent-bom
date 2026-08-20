@@ -506,6 +506,7 @@ _INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
     {
         "CLAUDE.md",
         "AGENTS.md",
+        "AGENT.md",
         "GEMINI.md",
         "SKILL.md",
         "skill.md",
@@ -566,7 +567,8 @@ def looks_like_instruction_surface(
     """Return True when a file path looks like a real skill/instruction surface.
 
     The heuristic is intentionally bounded: it recognises well-known instruction
-    filenames anywhere, plus ``*.md`` / ``*.mdc`` files nested under recognised
+    filenames anywhere, plus the Claude Code ``.claude/skills.md`` manifest and
+    ``*.md`` / ``*.mdc`` files nested under recognised
     instruction directories (``skills/``, ``prompts/``, ``.cursor/{rules,agents,skills}``,
     ``.claude/{skills,agents,commands,rules}``, ``.codex/skills``,
     ``.github/instructions``). Generic repository markdown (READMEs, PR
@@ -595,6 +597,9 @@ def looks_like_instruction_surface(
     name = path.name
 
     if name in _INSTRUCTION_FILE_NAMES:
+        return True
+
+    if name.lower() == "skills.md" and path.parent.name == ".claude":
         return True
 
     if name == "copilot-instructions.md" and any(parent.name == ".github" for parent in path.parents):
@@ -628,7 +633,7 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
 
     Performs a single bounded walk (skipping vendored/generated directories) and
     keeps only paths that :func:`looks_like_instruction_surface` recognises:
-    named instruction files (``CLAUDE.md``, ``AGENTS.md``, ``.cursorrules`` …)
+    named instruction files (``CLAUDE.md``, ``AGENTS.md``, ``AGENT.md``, ``.cursorrules`` …)
     plus ``*.md`` / ``*.mdc`` files nested under ``skills/``, ``prompts/``,
     IDE agent/skill/rules trees, and ``.github/instructions`` at any depth.
     """

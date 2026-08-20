@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import FindingsPage from "@/app/findings/page";
 
-const { apiMock, navigationState, authState } = vi.hoisted(() => ({
+const { apiMock, navigationState, authState, routerReplace } = vi.hoisted(() => ({
   apiMock: {
     listFindings: vi.fn(),
     listFindingTriage: vi.fn(),
@@ -12,13 +12,14 @@ const { apiMock, navigationState, authState } = vi.hoisted(() => ({
     exportFindingTriageVex: vi.fn(),
     getPostureCounts: vi.fn(),
   },
-  navigationState: { query: "", replace: vi.fn() },
+  navigationState: { query: "" },
   authState: { canManageExceptions: true },
+  routerReplace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(navigationState.query),
-  useRouter: () => ({ replace: navigationState.replace }),
+  useRouter: () => ({ replace: routerReplace }),
   usePathname: () => "/findings",
 }));
 
@@ -67,12 +68,12 @@ describe("FindingsPage", () => {
   beforeEach(() => {
     authState.canManageExceptions = true;
     navigationState.query = "";
-    navigationState.replace.mockReset();
     apiMock.listFindings.mockReset();
     apiMock.listFindingTriage.mockReset();
     apiMock.createException.mockReset();
     apiMock.exportFindingTriageVex.mockReset();
     apiMock.getPostureCounts.mockReset();
+    routerReplace.mockReset();
 
     apiMock.listFindings.mockResolvedValue({
       schema_version: "v1",
@@ -153,6 +154,59 @@ describe("FindingsPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Finding details for CVE-2026-1234" })).not.toBeInTheDocument();
     });
+  });
+
+  it("deep-links the exact finding row when a CVE affects more than one asset", async () => {
+    navigationState.query = "finding=finding-2";
+    apiMock.listFindings.mockResolvedValue({
+      schema_version: "v1",
+      findings: [
+        canonicalFinding,
+        {
+          ...canonicalFinding,
+          id: "finding-2",
+          asset: { name: "second-package", asset_type: "package" },
+          scan_id: "scan-2",
+        },
+      ],
+      total: 2,
+      has_more: false,
+      next_cursor: "",
+    });
+
+    render(<FindingsPage />);
+
+    const drawer = await screen.findByRole("dialog", {
+      name: "Finding details for CVE-2026-1234",
+    });
+    expect(within(drawer).getByText("second-package")).toBeInTheDocument();
+
+    const closeButtons = within(drawer).getAllByRole("button", { name: "Close" });
+    fireEvent.click(closeButtons.at(-1)!);
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenLastCalledWith("/findings", { scroll: false });
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open details for CVE-2026-1234" })[0]!);
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenLastCalledWith(
+        "/findings?finding=finding-1",
+        { scroll: false },
+      );
+    });
+  });
+
+  it("links package and agent identities back into the findings investigation", async () => {
+    render(<FindingsPage />);
+
+    expect(await screen.findByRole("link", { name: "better-sqlite3" })).toHaveAttribute(
+      "href",
+      "/findings?q=better-sqlite3",
+    );
+    expect(screen.getByRole("link", { name: "developer-copilot" })).toHaveAttribute(
+      "href",
+      "/findings?q=developer-copilot",
+    );
   });
 
   it("renders exception and triage writes disabled for a viewer", async () => {
@@ -484,7 +538,7 @@ describe("FindingsPage", () => {
         expect.objectContaining({ severity: "unknown" }),
       ),
     );
-    expect(navigationState.replace).toHaveBeenLastCalledWith(
+    expect(routerReplace).toHaveBeenLastCalledWith(
       expect.stringContaining("severity=unrated"),
       { scroll: false },
     );

@@ -11,7 +11,7 @@ These tests assert the strict GRC contract across AWS, GCP, and Azure:
   * any per-resource read denied    -> ERROR (partial coverage cannot PASS);
   * resources exist and all clean   -> PASS;
   * a real violation                -> FAIL;
-  * genuinely zero resources        -> PASS (not ERROR — nothing was denied).
+  * genuinely zero resources        -> NO_DATA (not PASS or ERROR).
 """
 
 from __future__ import annotations
@@ -66,11 +66,11 @@ class TestAwsCheck212DeniedReads:
         assert result.status == CheckStatus.FAIL, result.evidence
         assert "open-bucket" in result.evidence
 
-    def test_zero_buckets_is_pass_not_error(self):
+    def test_zero_buckets_is_no_data_not_pass(self):
         client = MagicMock()
         client.list_buckets.return_value = {"Buckets": []}
         result = _check_2_1_2(client)
-        assert result.status == CheckStatus.PASS, result.evidence
+        assert result.status == CheckStatus.NO_DATA, result.evidence
 
     def test_mixed_some_denied_some_clean_is_error_not_pass(self):
         client = MagicMock()

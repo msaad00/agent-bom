@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "retrieved_at": "2026-08-16",
+  "retrieved_at": "2026-08-21",
   "purpose": "Official vendor icons used only to identify supported sources in agent-bom architecture and workflow documentation.",
   "assets": [
     {
@@ -106,6 +106,57 @@
       "sha256": "9fa7c12613763111ca26bbc1fe10994960028bc3da9faf47247de231a0b27589",
       "license": "CC0-1.0",
       "terms": "Unmodified Simple Icons vector used for nominative technical documentation; ClickHouse trademarks remain ClickHouse property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/claude.svg",
+      "vendor": "Anthropic Claude",
+      "source_repo": "https://github.com/msaad00/agent-bom",
+      "source_commit": "a06bedd517cb205822c26be32e4365c98b37a4a0",
+      "source_path": "ui/public/logos/claude.svg",
+      "sha256": "e1ba80de7ba898388979bd3b8aba033d665408b5d86cb4ed6b44dc87625395be",
+      "terms": "Repository-local integration mark reused for nominative technical documentation; Anthropic trademarks remain Anthropic property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/cursor.svg",
+      "vendor": "Cursor",
+      "source_repo": "https://github.com/msaad00/agent-bom",
+      "source_commit": "a06bedd517cb205822c26be32e4365c98b37a4a0",
+      "source_path": "ui/public/logos/cursor.svg",
+      "sha256": "ffcd3f8510eba0305541fdbaac25d0721308508c2e3d37977177aac6c1486b2f",
+      "terms": "Repository-local integration mark reused for nominative technical documentation; Cursor trademarks remain with their owner."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/githubcopilot.svg",
+      "vendor": "GitHub Copilot",
+      "source_page": "https://simpleicons.org/?q=githubcopilot",
+      "source_repo": "https://github.com/simple-icons/simple-icons",
+      "source_commit": "34c22501f9ac9f22b12f825677ccbab1fb22e14b",
+      "source_path": "icons/githubcopilot.svg",
+      "sha256": "1d8a4a13c08d5fa0eba2a830ba531dfadbad26dc093000fd6da734de16a011d8",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; GitHub trademarks remain GitHub property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/windsurf.svg",
+      "vendor": "Windsurf",
+      "source_page": "https://simpleicons.org/?q=windsurf",
+      "source_repo": "https://github.com/simple-icons/simple-icons",
+      "source_commit": "34c22501f9ac9f22b12f825677ccbab1fb22e14b",
+      "source_path": "icons/windsurf.svg",
+      "sha256": "310a4f7fd2a2591ec45cba3313790f42ad8b805896e825c8fcbfada06f8dda7a",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Windsurf trademarks remain with their owner."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/okta.svg",
+      "vendor": "Okta",
+      "source_page": "https://simpleicons.org/?q=okta",
+      "source_repo": "https://github.com/msaad00/cloud-ai-security-skills",
+      "source_commit": "63dac785a94b7a9ce56ff2204e5f289ac75236c9",
+      "source_path": "docs/images/vendor-icons/okta.svg",
+      "sha256": "b45143544a125fbd03af4628dc16f9dad27ae01deee5a254b5e4a0bb90909dbf",
+      "license": "CC0-1.0",
+      "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Okta trademarks remain Okta property."
     }
   ],
   "neutral_icon_policy": "Use agent-bom neutral category icons when a vendor does not publish redistributable diagram assets or when trademark terms are unclear."

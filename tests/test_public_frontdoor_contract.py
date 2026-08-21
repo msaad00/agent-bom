@@ -33,26 +33,37 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         "Codex",
         "VS Code",
         "Windsurf",
+        "Cortex Code",
         "AWS",
         "Azure",
         "GCP",
         "Kubernetes",
+        "Okta",
         "Snowflake",
         "Databricks",
+        "ClickHouse",
     ):
         assert integration in svg
+
+    assert ">CVE</text>" not in svg
+    assert ">package</text>" not in svg
 
     assert "file:///" not in svg
     assert "/Users/" not in svg
     for relative_asset in (
         "brand/mark-dark.svg",
-        "vendor/social-preview-clients.svg",
+        "vendor/simple-icons/claude.svg",
+        "vendor/simple-icons/cursor.svg",
+        "vendor/simple-icons/githubcopilot.svg",
+        "vendor/simple-icons/windsurf.svg",
         "vendor/simple-icons/amazonwebservices.svg",
         "vendor/simple-icons/microsoftazure.svg",
         "vendor/simple-icons/googlecloud.svg",
         "vendor/simple-icons/kubernetes.svg",
+        "vendor/simple-icons/okta.svg",
         "vendor/simple-icons/snowflake.svg",
         "vendor/simple-icons/databricks.svg",
+        "vendor/simple-icons/clickhouse.svg",
     ):
         assert (source.parent / relative_asset).is_file()
 

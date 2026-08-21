@@ -12560,6 +12560,158 @@ paths:
             type: string
           - type: 'null'
           title: Server Name
+      - in: query
+        name: scope
+        required: false
+        schema:
+          default: all
+          enum:
+          - all
+          - current
+          title: Scope
+          type: string
+      - in: query
+        name: q
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Q
+      - in: query
+        name: severity
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Severity
+      - in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Scan Id
+      - in: query
+        name: provider
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Provider
+      - in: query
+        name: account
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Account
+      - in: query
+        name: environment
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Environment
+      - in: query
+        name: domain
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 32
+            type: string
+          - type: 'null'
+          title: Domain
+      - in: query
+        name: window_days
+        required: false
+        schema:
+          anyOf:
+          - maximum: 3650
+            minimum: 0
+            type: integer
+          - type: 'null'
+          title: Window Days
+      - in: query
+        name: status
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 16
+            type: string
+          - type: 'null'
+          title: Status
+      - in: query
+        name: finding_class
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - vulnerability
+            - misconfiguration
+            - secret
+            - identity
+            - unclassified
+            type: string
+          - type: 'null'
+          title: Finding Class
+      - in: query
+        name: kev
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Kev
+      - in: query
+        name: framework
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Framework
+      - in: query
+        name: control
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Control
+      - in: query
+        name: owner
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Owner
+      - in: query
+        name: sla
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - overdue
+            - due
+            - unassigned
+            type: string
+          - type: 'null'
+          title: Sla
       responses:
         '200':
           content:

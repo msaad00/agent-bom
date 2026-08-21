@@ -587,6 +587,115 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
     assert verify_export_payload(canonical, exported["signature"]["signature_hex"])
 
 
+@pytest.mark.asyncio
+async def test_finding_triage_openvex_current_scope_matches_canonical_finding_filters(
+    isolated_exception_store,
+    monkeypatch,
+):
+    """A filtered Findings export must not include tenant-wide VEX decisions."""
+    from agent_bom.api.routes import scan as scan_routes
+
+    for vulnerability_id, package in (
+        ("CVE-2026-0101", "pkg:pypi/requests@2.31.0"),
+        ("CVE-2026-0102", "pkg:pypi/flask@3.0.0"),
+    ):
+        await enterprise.create_finding_triage(
+            _request("tenant-alpha", "alice-admin"),
+            FindingTriageRequest(
+                vulnerability_id=vulnerability_id,
+                package=package,
+                decision="not_affected",
+                justification="vulnerable_code_not_in_execute_path",
+            ),
+        )
+
+    captured: dict[str, object] = {}
+
+    def _current_snapshot(_request_obj, **kwargs):
+        captured.update(kwargs)
+        return {
+            "findings": [
+                {
+                    "cve_id": "CVE-2026-0101",
+                    "package": "pkg:pypi/requests@2.31.0",
+                    "server_name": "",
+                }
+            ],
+            "count": 1,
+            "total": 1,
+            "warnings": [],
+            "completeness": {"status": "complete", "reason": ""},
+        }
+
+    monkeypatch.setattr(scan_routes, "current_findings_snapshot", _current_snapshot)
+
+    exported = await enterprise.export_finding_triage_vex(
+        _request("tenant-alpha"),
+        view_scope="current",
+        severity="critical",
+        environment="production",
+        window_days=30,
+    )
+
+    assert captured == {
+        "severity": "critical",
+        "environment": "production",
+        "window_days": 30,
+    }
+    assert exported["filters"] == {
+        "scope": "current",
+        "severity": "critical",
+        "environment": "production",
+        "window_days": "30",
+    }
+    assert exported["finding_scope"] == {
+        "count": 1,
+        "total": 1,
+        "warnings": [],
+        "completeness": {"status": "complete", "reason": ""},
+    }
+    assert exported["count"] == 1
+    assert exported["vex"]["statements"][0]["vulnerability"]["name"] == "CVE-2026-0101"
+
+
+def test_current_findings_snapshot_forwards_the_canonical_scope(monkeypatch):
+    """Internal exports must not silently broaden a canonical finding scope."""
+    from agent_bom.api.routes import scan as scan_routes
+
+    captured: dict[str, object] = {}
+
+    def _list_findings(_request_obj, **kwargs):
+        captured.update(kwargs)
+        return {
+            "findings": [],
+            "total": 0,
+            "warnings": [],
+            "count_metadata": {},
+            "next_cursor": None,
+        }
+
+    monkeypatch.setattr(scan_routes, "_list_findings_impl", _list_findings)
+    monkeypatch.setattr(scan_routes, "_completed_jobs_for_tenant", lambda _tenant_id: [])
+
+    snapshot = scan_routes.current_findings_snapshot(
+        _request("tenant-alpha"),
+        q="requests",
+        severity="critical",
+        environment="production",
+        owner="secops",
+        sla="overdue",
+        window_days=30,
+    )
+
+    assert snapshot["count"] == 0
+    assert captured["q"] == "requests"
+    assert captured["severity"] == "critical"
+    assert captured["environment"] == "production"
+    assert captured["owner"] == "secops"
+    assert captured["sla"] == "overdue"
+    assert captured["window_days"] == 30
+
+
 def _openvex_doc(statements: list[dict]) -> dict:
     return {
         "@context": "https://openvex.dev/ns/v0.2.0",

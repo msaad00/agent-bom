@@ -22,8 +22,12 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     for claim in (
         "Discover. Scan.",
         "Correlate. Graph.",
-        "Repositories · code · dependencies · SBOMs · images · containers",
-        "Cloud · AI infrastructure · agents · MCP",
+        "Security evidence across code, software supply chains, AI agents, MCP, cloud, and containers.",
+        "repos + SBOMs",
+        "images + containers",
+        "agents + MCP",
+        "cloud + control plane",
+        "Discover configured agents, tools, servers, packages, and relationships.",
     ):
         assert claim in svg
     for integration in (
@@ -47,6 +51,8 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
 
     assert ">CVE</text>" not in svg
     assert ">package</text>" not in svg
+    assert 'width="244" height="64"' not in svg
+    assert svg.count('width="64" height="64" rx="16"') == 12
 
     assert "file:///" not in svg
     assert "/Users/" not in svg

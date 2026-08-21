@@ -12224,6 +12224,31 @@ paths:
           - type: 'null'
           title: Sla
       - in: query
+        name: reachability
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - reachable
+            - unreachable
+            - unassessed
+            type: string
+          - type: 'null'
+          title: Reachability
+      - in: query
+        name: triage
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - not_affected
+            - affected
+            - under_investigation
+            - untriaged
+            type: string
+          - type: 'null'
+          title: Triage
+      - in: query
         name: include_facets
         required: false
         schema:
@@ -12712,6 +12737,31 @@ paths:
             type: string
           - type: 'null'
           title: Sla
+      - in: query
+        name: reachability
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - reachable
+            - unreachable
+            - unassessed
+            type: string
+          - type: 'null'
+          title: Reachability
+      - in: query
+        name: triage
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - not_affected
+            - affected
+            - under_investigation
+            - untriaged
+            type: string
+          - type: 'null'
+          title: Triage
       responses:
         '200':
           content:

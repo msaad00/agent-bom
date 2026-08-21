@@ -47,6 +47,12 @@ import {
   findingTriageKey,
 } from "@/lib/findings-workspace";
 
+type ReachabilityFilter = "" | "reachable" | "unreachable" | "unassessed";
+type TriageFilter = "" | FindingTriageDecision | "untriaged";
+
+const REACHABILITY_FILTERS: ReachabilityFilter[] = ["", "reachable", "unreachable", "unassessed"];
+const TRIAGE_FILTERS: TriageFilter[] = ["", "not_affected", "affected", "under_investigation", "untriaged"];
+
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
   if (err instanceof ApiForbiddenError) return "forbidden";
@@ -272,6 +278,8 @@ function FindingsPage() {
   const paramEnvironment = searchParams.get("environment");
   const paramOwner = searchParams.get("owner");
   const paramSla = searchParams.get("sla");
+  const paramReachability = searchParams.get("reachability");
+  const paramTriage = searchParams.get("triage");
   // Compliance drill-through (epic #4790): a framework section id + optional
   // control code linked from the Compliance view's per-control finding count.
   const paramFramework = searchParams.get("framework");
@@ -305,6 +313,14 @@ function FindingsPage() {
   const [ownerFilter, setOwnerFilter] = useState<string>(paramOwner ?? "");
   const [slaFilter, setSlaFilter] = useState<"" | "overdue" | "due" | "unassigned">(
     paramSla === "overdue" || paramSla === "due" || paramSla === "unassigned" ? paramSla : "",
+  );
+  const [reachabilityFilter, setReachabilityFilter] = useState<ReachabilityFilter>(
+    REACHABILITY_FILTERS.includes(paramReachability as ReachabilityFilter)
+      ? (paramReachability as ReachabilityFilter)
+      : "",
+  );
+  const [triageFilter, setTriageFilter] = useState<TriageFilter>(
+    TRIAGE_FILTERS.includes(paramTriage as TriageFilter) ? (paramTriage as TriageFilter) : "",
   );
   const [frameworkFilter, setFrameworkFilter] = useState<string>(paramFramework ?? "");
   // A control code is only meaningful alongside a framework; it is cleared with it.
@@ -419,6 +435,17 @@ function FindingsPage() {
   }, [paramOwner, paramSla]);
 
   useEffect(() => {
+    setReachabilityFilter(
+      REACHABILITY_FILTERS.includes(paramReachability as ReachabilityFilter)
+        ? (paramReachability as ReachabilityFilter)
+        : "",
+    );
+    setTriageFilter(
+      TRIAGE_FILTERS.includes(paramTriage as TriageFilter) ? (paramTriage as TriageFilter) : "",
+    );
+  }, [paramReachability, paramTriage]);
+
+  useEffect(() => {
     setFrameworkFilter(paramFramework ?? "");
     setControlFilter(paramFramework ? (paramControl ?? "") : "");
   }, [paramFramework, paramControl]);
@@ -449,6 +476,8 @@ function FindingsPage() {
     if (environmentFilter.trim()) params.set("environment", environmentFilter.trim());
     if (ownerFilter.trim()) params.set("owner", ownerFilter.trim());
     if (slaFilter) params.set("sla", slaFilter);
+    if (reachabilityFilter) params.set("reachability", reachabilityFilter);
+    if (triageFilter) params.set("triage", triageFilter);
     if (frameworkFilter.trim()) params.set("framework", frameworkFilter.trim());
     // A control code without a framework is meaningless — only sync it alongside.
     if (frameworkFilter.trim() && controlFilter.trim()) params.set("control", controlFilter.trim());
@@ -468,6 +497,8 @@ function FindingsPage() {
     environmentFilter,
     ownerFilter,
     slaFilter,
+    reachabilityFilter,
+    triageFilter,
     frameworkFilter,
     controlFilter,
     windowDays,
@@ -568,6 +599,8 @@ function FindingsPage() {
         ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
         ...(ownerFilter.trim() ? { owner: ownerFilter.trim() } : {}),
         ...(slaFilter ? { sla: slaFilter } : {}),
+        ...(reachabilityFilter ? { reachability: reachabilityFilter } : {}),
+        ...(triageFilter ? { triage: triageFilter } : {}),
         ...(frameworkFilter.trim() ? { framework: frameworkFilter.trim() } : {}),
         ...(frameworkFilter.trim() && controlFilter.trim() ? { control: controlFilter.trim() } : {}),
         ...(issueTypeFilter !== "all" ? { findingClass: issueTypeFilter } : {}),
@@ -596,6 +629,8 @@ function FindingsPage() {
     providerFilter,
     search,
     slaFilter,
+    reachabilityFilter,
+    triageFilter,
     windowDays,
   ]);
 
@@ -620,6 +655,8 @@ function FindingsPage() {
           ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
           ...(ownerFilter.trim() ? { owner: ownerFilter.trim() } : {}),
           ...(slaFilter ? { sla: slaFilter } : {}),
+          ...(reachabilityFilter ? { reachability: reachabilityFilter } : {}),
+          ...(triageFilter ? { triage: triageFilter } : {}),
           ...(frameworkFilter.trim() ? { framework: frameworkFilter.trim() } : {}),
           ...(frameworkFilter.trim() && controlFilter.trim() ? { control: controlFilter.trim() } : {}),
           ...(issueTypeFilter !== "all" ? { findingClass: issueTypeFilter } : {}),
@@ -663,6 +700,8 @@ function FindingsPage() {
     environmentFilter,
     ownerFilter,
     slaFilter,
+    reachabilityFilter,
+    triageFilter,
     frameworkFilter,
     controlFilter,
     issueTypeFilter,
@@ -704,6 +743,12 @@ function FindingsPage() {
     providerFilter,
     accountFilter,
     environmentFilter,
+    ownerFilter,
+    slaFilter,
+    reachabilityFilter,
+    triageFilter,
+    frameworkFilter,
+    controlFilter,
     windowDays,
   ]);
 
@@ -759,6 +804,12 @@ function FindingsPage() {
     slaFilter
       ? { key: "sla", label: `SLA: ${slaFilter}`, onClear: () => setSlaFilter("") }
       : null,
+    reachabilityFilter
+      ? { key: "reachability", label: `Reach: ${reachabilityFilter}`, onClear: () => setReachabilityFilter("") }
+      : null,
+    triageFilter
+      ? { key: "triage", label: `Triage: ${triageFilter.replaceAll("_", " ")}`, onClear: () => setTriageFilter("") }
+      : null,
     // Compliance drill-through chips. Clearing the framework also clears the
     // control, since a control code without its framework is meaningless.
     frameworkFilter.trim()
@@ -783,6 +834,8 @@ function FindingsPage() {
     setEnvironmentFilter("");
     setOwnerFilter("");
     setSlaFilter("");
+    setReachabilityFilter("");
+    setTriageFilter("");
     setFrameworkFilter("");
     setControlFilter("");
   };
@@ -1121,6 +1174,33 @@ function FindingsPage() {
                           <option value="overdue">Overdue</option>
                           <option value="due">Due later</option>
                           <option value="unassigned">No SLA</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Reachability</span>
+                        <select
+                          value={reachabilityFilter}
+                          onChange={(e) => setReachabilityFilter(e.target.value as ReachabilityFilter)}
+                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                        >
+                          <option value="">Any reachability</option>
+                          <option value="reachable">Reachable</option>
+                          <option value="unreachable">Unreachable</option>
+                          <option value="unassessed">Unassessed</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Triage</span>
+                        <select
+                          value={triageFilter}
+                          onChange={(e) => setTriageFilter(e.target.value as TriageFilter)}
+                          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] focus:border-[color:var(--border-strong)] focus:outline-none"
+                        >
+                          <option value="">Any triage state</option>
+                          <option value="not_affected">Not affected</option>
+                          <option value="affected">Affected</option>
+                          <option value="under_investigation">Under investigation</option>
+                          <option value="untriaged">Untriaged</option>
                         </select>
                       </div>
                       <div className="flex items-center justify-between gap-2 border-t border-[color:var(--border-subtle)] pt-2">

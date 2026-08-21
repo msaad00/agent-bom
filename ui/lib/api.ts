@@ -1562,6 +1562,8 @@ export const api = {
     control?: string;
     owner?: string;
     sla?: "overdue" | "due" | "unassigned";
+    reachability?: "reachable" | "unreachable" | "unassessed";
+    triage?: "not_affected" | "affected" | "under_investigation" | "untriaged";
     findingClass?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
     status?: "open" | "resolved" | "all";
     // Known-exploited only, or explicitly everything else. Omit for no filter —
@@ -1590,6 +1592,8 @@ export const api = {
     if (filters?.control) params.set("control", filters.control);
     if (filters?.owner) params.set("owner", filters.owner);
     if (filters?.sla) params.set("sla", filters.sla);
+    if (filters?.reachability) params.set("reachability", filters.reachability);
+    if (filters?.triage) params.set("triage", filters.triage);
     if (filters?.findingClass) params.set("finding_class", filters.findingClass);
     if (filters?.kev != null) params.set("kev", String(filters.kev));
     if (filters?.status) params.set("status", filters.status);
@@ -1737,6 +1741,8 @@ export const api = {
     control?: string;
     owner?: string;
     sla?: string;
+    reachability?: "reachable" | "unreachable" | "unassessed";
+    triage?: "not_affected" | "affected" | "under_investigation" | "untriaged";
   }) => {
     const params = new URLSearchParams();
     if (filters?.assignee) params.set("assignee", filters.assignee);
@@ -1759,6 +1765,8 @@ export const api = {
     if (filters?.control) params.set("control", filters.control);
     if (filters?.owner) params.set("owner", filters.owner);
     if (filters?.sla) params.set("sla", filters.sla);
+    if (filters?.reachability) params.set("reachability", filters.reachability);
+    if (filters?.triage) params.set("triage", filters.triage);
     const qs = params.toString();
     return get<FindingTriageVexResponse>(`/v1/findings/triage/vex${qs ? `?${qs}` : ""}`);
   },

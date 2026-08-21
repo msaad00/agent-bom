@@ -2609,6 +2609,8 @@ async def list_findings(
     ] = None,
     owner: Annotated[str | None, Query(max_length=256)] = None,
     sla: Literal["overdue", "due", "unassigned"] | None = None,
+    reachability: Literal["reachable", "unreachable", "unassessed"] | None = None,
+    triage: Literal["not_affected", "affected", "under_investigation", "untriaged"] | None = None,
     include_facets: bool = False,
 ) -> dict:
     """List unified findings aggregated from completed scan results.
@@ -2635,7 +2637,7 @@ async def list_findings(
     """
     try:
         async with adaptive_backpressure("findings"):
-            implementation = _list_finding_groups_impl if group_occurrences else _list_findings_impl
+            implementation = _list_finding_groups_impl if group_occurrences else _list_findings_view_impl
             return await anyio.to_thread.run_sync(
                 implementation,
                 request,
@@ -2660,6 +2662,8 @@ async def list_findings(
                 control,
                 owner,
                 sla,
+                reachability,
+                triage,
             )
     except BackpressureRejectedError as exc:
         raise HTTPException(
@@ -3154,6 +3158,199 @@ def _list_findings_impl(
     return envelope
 
 
+_FINDINGS_VIEW_FILTER_MAX_ROWS = 50_000
+
+
+def _finding_triage_state(
+    row: dict[str, Any],
+    triage_index: Any,
+) -> dict[str, Any] | None:
+    """Project the newest active triage state onto one occurrence row."""
+    from agent_bom.api.routes.enterprise import triage_state_for
+
+    raw_servers = row.get("affected_servers")
+    servers = [str(row.get("server_name") or "")]
+    if isinstance(raw_servers, list):
+        servers.extend(str(value) for value in raw_servers if str(value).strip())
+    for server_name in dict.fromkeys(servers):
+        state = triage_state_for(
+            triage_index,
+            vuln_id=_row_vuln_id(row),
+            package=_package_base_name(row),
+            server_name=server_name,
+        )
+        if state is not None:
+            return state
+    return None
+
+
+def _list_findings_view_impl(
+    request: Request,
+    q: str | None,
+    severity: str | None,
+    scan_id: str | None,
+    sort: str,
+    limit: int,
+    offset: int,
+    cursor: str | None,
+    approximate_total: bool,
+    provider: str | None = None,
+    account: str | None = None,
+    environment: str | None = None,
+    domain: str | None = None,
+    window_days: int | None = None,
+    status: str = _DEFAULT_FINDING_STATUS,
+    finding_class: str | None = None,
+    kev: bool | None = None,
+    include_facets: bool = False,
+    framework: str | None = None,
+    control: str | None = None,
+    owner: str | None = None,
+    sla: str | None = None,
+    reachability: str | None = None,
+    triage: str | None = None,
+) -> dict[str, Any]:
+    """Apply evidence-backed view filters before pagination.
+
+    Reachability is graph-derived and triage lives in the exception store, so
+    neither can be pushed into the canonical finding store query. Walk the
+    canonical keyset stream instead; this preserves occurrence IDs and avoids
+    the dishonest client-side filtering of an already-selected page.
+    """
+    if reachability is None and triage is None:
+        return _list_findings_impl(
+            request,
+            q=q,
+            severity=severity,
+            scan_id=scan_id,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+            cursor=cursor,
+            approximate_total=approximate_total,
+            provider=provider,
+            account=account,
+            environment=environment,
+            domain=domain,
+            window_days=window_days,
+            status=status,
+            finding_class=finding_class,
+            kev=kev,
+            include_facets=include_facets,
+            framework=framework,
+            control=control,
+            owner=owner,
+            sla=sla,
+        )
+
+    from agent_bom.api.routes.enterprise import build_tenant_triage_state_index
+
+    target = limit if cursor else offset + limit
+    source_cursor = cursor
+    rows_seen = 0
+    matches: list[dict[str, Any]] = []
+    first_page: dict[str, Any] | None = None
+    warnings: list[str] = []
+    triage_index = build_tenant_triage_state_index(_tenant_id(request)) if triage is not None else None
+    exhausted = False
+
+    while rows_seen < _FINDINGS_VIEW_FILTER_MAX_ROWS and len(matches) < target:
+        page_limit = min(
+            1000,
+            _FINDINGS_VIEW_FILTER_MAX_ROWS - rows_seen,
+            max(1, target - len(matches)),
+        )
+        page = _list_findings_impl(
+            request,
+            q=q,
+            severity=severity,
+            scan_id=scan_id,
+            sort=sort,
+            limit=page_limit,
+            offset=0,
+            cursor=source_cursor,
+            approximate_total=True,
+            provider=provider,
+            account=account,
+            environment=environment,
+            domain=domain,
+            window_days=window_days,
+            status=status,
+            finding_class=finding_class,
+            kev=kev,
+            include_facets=False,
+            framework=framework,
+            control=control,
+            owner=owner,
+            sla=sla,
+        )
+        if first_page is None:
+            first_page = page
+        warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
+        raw_rows = page.get("findings")
+        page_rows = [row for row in raw_rows if isinstance(row, dict)] if isinstance(raw_rows, list) else []
+        rows_seen += len(page_rows)
+
+        for source_row in page_rows:
+            row = dict(source_row)
+            triage_state = _finding_triage_state(row, triage_index) if triage_index is not None else None
+            if triage_index is not None:
+                row["triage_id"] = triage_state.get("id") if triage_state else None
+                row["triage_decision"] = triage_state.get("decision") if triage_state else None
+                row["triage_queue_state"] = triage_state.get("queue_state") if triage_state else None
+
+            reachable = row.get("graph_reachable")
+            reachability_matches = (
+                reachability is None
+                or (reachability == "reachable" and reachable is True)
+                or (reachability == "unreachable" and reachable is False)
+                or (reachability == "unassessed" and reachable is None)
+            )
+            decision = triage_state.get("decision") if triage_state else None
+            triage_matches = triage is None or decision == triage or (triage == "untriaged" and decision is None)
+            if reachability_matches and triage_matches:
+                matches.append(row)
+
+        source_cursor = str(page.get("next_cursor") or "") or None
+        if not source_cursor:
+            exhausted = True
+            break
+
+    truncated = not exhausted and rows_seen >= _FINDINGS_VIEW_FILTER_MAX_ROWS
+    if truncated:
+        warnings.append(f"Finding view filters inspected {_FINDINGS_VIEW_FILTER_MAX_ROWS} rows; additional occurrences remain.")
+    selected = matches[:limit] if cursor else matches[offset : offset + limit]
+    total = len(matches) if exhausted and cursor is None else None
+    total_approximate = total is None
+    filters = dict(first_page.get("filters") or {}) if first_page else {}
+    if reachability is not None:
+        filters["reachability"] = reachability
+    if triage is not None:
+        filters["triage"] = triage
+    envelope = finding_list_envelope(
+        findings=selected,
+        total=total,
+        limit=limit,
+        offset=0 if cursor else offset,
+        sort=sort,
+        scan_id=scan_id,
+        cursor=cursor or "",
+        next_cursor=source_cursor or "",
+        filters=filters,
+        warnings=list(dict.fromkeys(warnings)),
+        total_approximate=total_approximate,
+        source="scan_and_current_ingest_findings",
+        scope="tenant current-state findings with graph and triage view filters",
+    )
+    if first_page:
+        if "window" in first_page:
+            envelope["window"] = first_page["window"]
+            envelope["count_metadata"]["window"] = first_page["window"]
+        if "scope_completeness" in first_page:
+            envelope["scope_completeness"] = first_page["scope_completeness"]
+    return envelope
+
+
 _FINDING_GROUP_MAX_OCCURRENCES = 50_000
 _FINDING_GROUP_OCCURRENCE_SAMPLE = 25
 
@@ -3220,6 +3417,8 @@ def _list_finding_groups_impl(
     control: str | None = None,
     owner: str | None = None,
     sla: str | None = None,
+    reachability: str | None = None,
+    triage: str | None = None,
 ) -> dict[str, Any]:
     """Build a bounded server-side issue queue over canonical occurrence rows.
 
@@ -3247,7 +3446,7 @@ def _list_finding_groups_impl(
     first_page: dict[str, Any] | None = None
     warnings: list[str] = []
     while len(rows) < _FINDING_GROUP_MAX_OCCURRENCES:
-        page = _list_findings_impl(
+        page = _list_findings_view_impl(
             request,
             q,
             # Severity is applied after grouping so the issue histogram remains
@@ -3273,6 +3472,8 @@ def _list_finding_groups_impl(
             control,
             owner,
             sla,
+            reachability,
+            triage,
         )
         if first_page is None:
             first_page = page
@@ -3381,6 +3582,8 @@ def current_findings_snapshot(
     control: str | None = None,
     owner: str | None = None,
     sla: str | None = None,
+    reachability: str | None = None,
+    triage: str | None = None,
 ) -> dict[str, Any]:
     """Collect the canonical current finding queue for an internal consumer.
 
@@ -3395,7 +3598,7 @@ def current_findings_snapshot(
     first_metadata: dict[str, Any] | None = None
     warnings: list[str] = []
     while len(rows) < max_findings:
-        page = _list_findings_impl(
+        page = _list_findings_view_impl(
             request,
             q=q,
             severity=severity,
@@ -3417,6 +3620,8 @@ def current_findings_snapshot(
             control=control,
             owner=owner,
             sla=sla,
+            reachability=reachability,
+            triage=triage,
         )
         if first_metadata is None:
             first_metadata = page.get("count_metadata") if isinstance(page.get("count_metadata"), dict) else {}

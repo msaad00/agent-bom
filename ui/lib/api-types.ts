@@ -1157,6 +1157,9 @@ export interface UnifiedFinding {
   provenance?: Record<string, unknown> | string | null | undefined;
   owner?: string | null | undefined;
   sla_due_at?: string | null | undefined;
+  triage_id?: string | null | undefined;
+  triage_decision?: "not_affected" | "affected" | "under_investigation" | null | undefined;
+  triage_queue_state?: string | null | undefined;
   /** CWPP runtime/EDR workload evidence (additive; never a clean-workload claim). */
   workload_runtime_evidence?: WorkloadRuntimeEvidence | undefined;
 }

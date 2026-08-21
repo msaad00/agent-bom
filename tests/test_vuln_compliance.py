@@ -262,7 +262,9 @@ class TestCweMappingTags:
             _pkg(name="app", ecosystem="sast"),
         )
         assert "LLM02" in tags.get("owasp_llm", [])
-        assert "A.8.28" in tags["iso_27001"]
+        # NIST's OLIR crosswalk does not map SI-10 to an ISO control. Do not
+        # resurrect the conflicting vendor CWE -> ISO catch-all.
+        assert "A.8.28" not in tags["iso_27001"]
         assert "PR.DS-01" in tags["nist_csf"]
 
     def test_cwe_798_hardcoded_creds(self):
@@ -271,7 +273,8 @@ class TestCweMappingTags:
             _pkg(name="app", ecosystem="sast"),
         )
         assert "LLM06" in tags.get("owasp_llm", [])
-        assert "A.8.9" in tags["iso_27001"]
+        assert {"A.5.10", "A.5.16", "A.5.17", "A.5.33"} <= set(tags["iso_27001"])
+        assert "A.8.9" not in tags["iso_27001"]
         assert "PR.AA-01" in tags["nist_csf"]
         assert "CIS-16.1" in tags["cis"]
 

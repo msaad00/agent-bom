@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from agent_bom.constants import AI_PACKAGES, TRAINING_DATA_PACKAGES
 from agent_bom.evidence.control_modes import finding_taggable_controls
-from agent_bom.framework_mapping import controls_for_cwes
+from agent_bom.framework_mapping import controls_for_cwes, iso_controls_for_cwes_via_nist
 from agent_bom.models import Package, Severity, Vulnerability
 
 _HIGH_RISK = frozenset({Severity.CRITICAL, Severity.HIGH})
@@ -141,7 +141,7 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if has_fix:
         iso.append("A.8.28")
     if cwe_ids:
-        for t in controls_for_cwes(cwe_ids, "iso_27001", normalize=False):
+        for t in iso_controls_for_cwes_via_nist(cwe_ids):
             if t not in iso:
                 iso.append(t)
     tags["iso_27001"] = sorted(set(iso))

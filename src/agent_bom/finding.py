@@ -1570,6 +1570,35 @@ def blast_radius_to_finding(br: object) -> "Finding":
     package_node_id = f"pkg:{canonical_package_key(pkg.name, pkg.version or '', pkg.ecosystem or '', getattr(pkg, 'purl', None))}"
     finding_node_id = f"vuln:{vuln.id}" if vuln.id else None
 
+    from agent_bom.framework_mapping import iso_control_provenance_for_cwes
+
+    iso_provenance = iso_control_provenance_for_cwes(getattr(vuln, "cwe_ids", []) or [])
+    iso_controls = []
+    for control in br.iso_27001_tags:
+        nist_controls = iso_provenance.get(control)
+        if nist_controls:
+            iso_controls.append(
+                ControlTag(
+                    framework="iso_27001",
+                    control=control,
+                    version="2022",
+                    confidence=1.0,
+                    source="authority:NIST-OLIR",
+                    via=f"vendor-asserted:CWE-to-NIST:{','.join(nist_controls)}",
+                )
+            )
+        else:
+            iso_controls.append(
+                ControlTag(
+                    framework="iso_27001",
+                    control=control,
+                    version="2022",
+                    confidence=0.75,
+                    source="vendor-asserted:agent-bom",
+                    via="blast-radius-signal",
+                )
+            )
+
     finding = Finding(
         finding_type=FindingType.CVE,
         source=_source_for_blast_radius(br),
@@ -1604,6 +1633,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         owasp_agentic_tags=list(br.owasp_agentic_tags),
         eu_ai_act_tags=list(br.eu_ai_act_tags),
         nist_csf_tags=list(br.nist_csf_tags),
+        controls=iso_controls,
         iso_27001_tags=list(br.iso_27001_tags),
         soc2_tags=list(br.soc2_tags),
         cis_tags=list(br.cis_tags),

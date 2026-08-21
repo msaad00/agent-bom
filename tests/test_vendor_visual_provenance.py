@@ -39,10 +39,17 @@ ICON_SET_VENDORS = {
     "Amazon Web Services",
     "ClickHouse",
     "Databricks",
+    "GitHub Copilot",
     "Google Cloud",
     "Kubernetes",
     "Microsoft Azure",
+    "Okta",
     "Snowflake",
+    "Windsurf",
+}
+REPOSITORY_PINNED_VENDORS = {
+    "Anthropic Claude",
+    "Cursor",
 }
 ICON_SET_SOURCE_HOST = "simpleicons.org"
 ICON_SET_ALLOWED_LICENSES = {"CC0-1.0"}
@@ -54,7 +61,11 @@ def _first_party(assets: list[dict]) -> list[dict]:
 
 
 def _icon_set(assets: list[dict]) -> list[dict]:
-    return [asset for asset in assets if "source_repo" in asset]
+    return [asset for asset in assets if "source_repo" in asset and "source_page" in asset]
+
+
+def _repository_pinned(assets: list[dict]) -> list[dict]:
+    return [asset for asset in assets if "source_repo" in asset and "source_page" not in asset]
 
 
 def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
@@ -65,14 +76,16 @@ def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
     assets = data["assets"]
     first_party = _first_party(assets)
     icon_set = _icon_set(assets)
+    repository_pinned = _repository_pinned(assets)
 
     # Every asset must declare exactly one pin. An entry with neither is
     # unpinned; an entry with both hides which guarantee actually applies.
-    assert len(first_party) + len(icon_set) == len(assets)
+    assert len(first_party) + len(icon_set) + len(repository_pinned) == len(assets)
     assert not [a for a in assets if "source_archive" in a and "source_repo" in a]
 
     assert {asset["vendor"] for asset in first_party} == FIRST_PARTY_VENDORS
     assert {asset["vendor"] for asset in icon_set} == ICON_SET_VENDORS
+    assert {asset["vendor"] for asset in repository_pinned} == (REPOSITORY_PINNED_VENDORS)
 
     # Shared contract: the bytes on disk are the bytes that were reviewed.
     for asset in assets:
@@ -93,10 +106,11 @@ def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
         assert page.scheme == "https"
         assert page.hostname == ICON_SET_SOURCE_HOST
 
+        # Redistribution rests on the license, so it has to be stated, not implied.
+        assert asset["license"] in ICON_SET_ALLOWED_LICENSES
+
+    for asset in icon_set + repository_pinned:
         repo = urlparse(asset["source_repo"])
         assert repo.scheme == "https"
         # A branch or tag can move; only a full commit sha pins the bytes.
         assert _FULL_COMMIT_SHA.match(asset["source_commit"]), asset["path"]
-
-        # Redistribution rests on the license, so it has to be stated, not implied.
-        assert asset["license"] in ICON_SET_ALLOWED_LICENSES

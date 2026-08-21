@@ -1545,11 +1545,13 @@ async def scan_packages(
 
     force_osv_keys = osv_fallback_db_keys(scannable, gaps=coverage_gaps) if not scan_offline else set()
     covered_ecos = _scanners_patchable("_db_covered_ecosystems")()
+    # Either an exact package hit or a declared complete ecosystem archive is
+    # sufficient local evidence. Sparse-release fallbacks deliberately override
+    # both so EOL coverage cannot be mistaken for a clean result.
     osv_targets = [
         p
         for p in scannable
-        if _db_key(p) not in db_covered
-        or not any(eco in covered_ecos for eco in _db_ecosystems_for_package(p))
+        if (_db_key(p) not in db_covered and not any(eco in covered_ecos for eco in _db_ecosystems_for_package(p)))
         or _db_key(p) in force_osv_keys
     ]
     if force_osv_keys:

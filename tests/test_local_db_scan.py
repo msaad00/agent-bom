@@ -316,6 +316,7 @@ def test_scan_packages_skips_osv_for_db_covered_packages():
 
     with (
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(1, {db_key})),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch") as mock_osv,
     ):
         asyncio.run(scan_packages([pkg]))
@@ -335,6 +336,7 @@ def test_scan_packages_calls_osv_for_uncovered_packages():
 
     with (
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch", return_value={}) as mock_osv,
     ):
         asyncio.run(scan_packages([pkg]))
@@ -351,6 +353,7 @@ def test_scan_packages_only_skips_exact_db_covered_version():
 
     with (
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(1, {"pypi:requests@2.28.0"})),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch", return_value={}) as mock_osv,
     ):
         asyncio.run(scan_packages([covered, newer]))
@@ -419,6 +422,7 @@ def test_scan_packages_demo_transitive_outside_curated_inventory_reaches_advisor
             return_value=[discovered_transitive],
         ),
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())) as mock_local_db,
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch", return_value={}) as mock_osv,
     ):
         asyncio.run(

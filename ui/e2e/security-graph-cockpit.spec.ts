@@ -465,11 +465,11 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore clusters" })).toHaveAttribute(
     "href",
-    "/graph?scan=scan-cockpit-fixture&rollup=1",
+    "/security-graph?scan=scan-cockpit-fixture&lens=lineage&rollup=1",
   );
   await expect(page.getByRole("link", { name: "Open raw topology" })).toHaveAttribute(
     "href",
-    "/graph?scan=scan-cockpit-fixture&rollup=0",
+    "/security-graph?scan=scan-cockpit-fixture&lens=lineage&rollup=0",
   );
   await page.screenshot({ path: testInfo.outputPath(`investigation-large-estate-${theme}.png`), fullPage: true });
 

@@ -4,8 +4,8 @@ import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-// The Agent Mesh lens now lives on the unified `/graph` surface, selected with
-// `?lens=mesh` (graph-unification epic, workstream 4). This route stays only as
+// The Agent Mesh lens lives on the canonical `/security-graph` investigation
+// surface, selected with `?lens=mesh`. This route stays only as
 // a client-side redirect so old `/mesh` deep links keep resolving instead of
 // 404-ing — required because static export (`output: export`) has no server to
 // run next.config `redirects()`. Any incoming query params (scan, agent, cve,
@@ -16,7 +16,7 @@ function MeshRedirect() {
   useEffect(() => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("lens", "mesh");
-    router.replace(`/graph?${params.toString()}`);
+    router.replace(`/security-graph?${params.toString()}`);
   }, [router, searchParams]);
   return (
     <div className="flex min-h-[40vh] items-center justify-center">

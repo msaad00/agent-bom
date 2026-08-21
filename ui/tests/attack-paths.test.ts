@@ -317,7 +317,7 @@ describe("attack path helpers", () => {
         rootId: "pkg-1",
         rootLabel: "flask",
       }),
-    ).toBe("/graph?scan=scan-123&agent=Claude+Desktop&investigate=1&root=pkg-1&q=flask");
+    ).toBe("/security-graph?scan=scan-123&agent=Claude+Desktop&investigate=1&root=pkg-1&q=flask&lens=lineage");
   });
 
   it("decodes graph investigation roots from URL params", () => {
@@ -739,7 +739,7 @@ describe("attack path helpers", () => {
       {
         title: "Contain credential exposure",
         detail: "Rotate or scope exposed secrets before you widen blast radius by exploring deeper topology.",
-        href: "/mesh",
+        href: "/security-graph?lens=mesh",
       },
     ]);
   });
@@ -764,6 +764,26 @@ describe("attack path helpers", () => {
       total: 2,
       uniqueAgents: 2,
       highestRisk: 8.8,
+    });
+  });
+
+  it("keeps the full-topology follow-up inside the investigation workspace", () => {
+    const path: AttackPath = {
+      source: "source-1",
+      target: "target-1",
+      hops: ["source-1", "target-1"],
+      edges: [],
+      composite_risk: 5,
+      summary: "unclassified path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: [],
+    };
+
+    expect(recommendedAttackPathActions(path, new Map())).toContainEqual({
+      title: "Open full graph for neighbor context",
+      detail: "Use the full graph when you need broader topology, additional paths, or related assets outside this shortlist.",
+      href: "/security-graph?lens=lineage",
     });
   });
 

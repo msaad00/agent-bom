@@ -72,6 +72,7 @@ import {
   toExposurePathFromAttackPath,
 } from "@/lib/attack-paths";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
+import { GraphSurface } from "@/app/graph/graph-surface";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import { tonedChipClass } from "@/lib/toned-chip";
 import { investigationEstateMode } from "@/lib/investigation-estate-mode";
@@ -94,7 +95,7 @@ const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
 const FIX_FIRST_CARD_LIMIT = 12;
 const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 
-function SecurityGraphPageContent() {
+function AttackPathInvestigationContent() {
   const captureMode = useCaptureMode();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -478,7 +479,8 @@ function SecurityGraphPageContent() {
     if (selectedScanId) params.set("scan", selectedScanId);
     if (focus.agentName) params.set("agent", focus.agentName);
     const query = params.toString();
-    return query ? `/graph?${query}` : "/graph";
+    if (query) params.set("lens", "lineage");
+    return params.size > 0 ? `/security-graph?${params.toString()}` : "/security-graph?lens=lineage";
   }, [focus.agentName, investigationRoot, selectedScanId]);
   const resetFocusHref = useMemo(
     () => buildSecurityGraphHref({ scanId: selectedScanId || undefined }),
@@ -1044,6 +1046,12 @@ function SecurityGraphPageContent() {
       </Collapsible>
     </div>
   );
+}
+
+function SecurityGraphPageContent() {
+  const lens = useSearchParams()?.get("lens");
+  if (lens && lens !== "attack-path") return <GraphSurface />;
+  return <AttackPathInvestigationContent />;
 }
 
 export default function SecurityGraphPage() {

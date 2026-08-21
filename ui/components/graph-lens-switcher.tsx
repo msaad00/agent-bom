@@ -6,11 +6,9 @@ import { GraphLegendDock } from "@/components/graph-chrome";
 import { ASSET_DRIFT_GRAPH_SCOPE_PARAM } from "@/components/lineage-filter";
 import type { LegendItem } from "@/lib/graph-utils";
 
-// One security-graph surface, several lenses. Attack Paths keeps its own
-// `/security-graph` route; Lineage, Asset Drift, Agent Mesh, and Context are all
-// hosted on the single `/graph` surface and switched via URL params (`?scope=`
-// for drift, `?lens=` for mesh/context) — no separate route per lens. The nav
-// exposes one "Security Graph" entry and users switch lenses from this bar.
+// One security-graph route, several lenses. URL params switch the composed
+// surface without tearing down shared investigation context. `/graph` remains
+// a compatible direct entry point for existing links.
 interface GraphLens {
   id: string;
   label: string;
@@ -19,7 +17,8 @@ interface GraphLens {
   match: (path: string, scope: string | null, lens: string | null) => boolean;
 }
 
-const isGraphPath = (p: string) => p === "/graph" || p.startsWith("/graph/");
+const isLegacyGraphPath = (p: string) => p === "/graph" || p.startsWith("/graph/");
+const isSecurityGraphPath = (p: string) => p.startsWith("/security-graph");
 
 const GRAPH_LENSES: GraphLens[] = [
   {
@@ -27,37 +26,42 @@ const GRAPH_LENSES: GraphLens[] = [
     label: "Attack Paths",
     icon: "🎯",
     href: "/security-graph",
-    match: (p) => p.startsWith("/security-graph"),
+    match: (p, _scope, lens) => isSecurityGraphPath(p) && (!lens || lens === "attack-path"),
   },
   {
     id: "lineage",
     label: "Lineage",
     icon: "🌿",
-    href: "/graph",
+    href: "/security-graph?lens=lineage",
     match: (p, scope, lens) =>
-      isGraphPath(p) && scope !== ASSET_DRIFT_GRAPH_SCOPE_PARAM && !lens,
+      scope !== ASSET_DRIFT_GRAPH_SCOPE_PARAM &&
+      ((isSecurityGraphPath(p) && lens === "lineage") || (isLegacyGraphPath(p) && !lens)),
   },
   {
     id: "asset-drift",
     label: "Asset Drift",
     icon: "📐",
-    href: `/graph?scope=${ASSET_DRIFT_GRAPH_SCOPE_PARAM}`,
-    match: (p, scope) =>
-      isGraphPath(p) && scope === ASSET_DRIFT_GRAPH_SCOPE_PARAM,
+    href: `/security-graph?lens=asset-drift&scope=${ASSET_DRIFT_GRAPH_SCOPE_PARAM}`,
+    match: (p, scope, lens) =>
+      (isSecurityGraphPath(p) || isLegacyGraphPath(p)) &&
+      scope === ASSET_DRIFT_GRAPH_SCOPE_PARAM &&
+      (lens === "asset-drift" || !lens),
   },
   {
     id: "mesh",
     label: "Agent Mesh",
     icon: "🕸️",
-    href: "/graph?lens=mesh",
-    match: (p, _scope, lens) => isGraphPath(p) && lens === "mesh",
+    href: "/security-graph?lens=mesh",
+    match: (p, _scope, lens) =>
+      (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "mesh",
   },
   {
     id: "context",
     label: "Context",
     icon: "🗺️",
-    href: "/graph?lens=context",
-    match: (p, _scope, lens) => isGraphPath(p) && lens === "context",
+    href: "/security-graph?lens=context",
+    match: (p, _scope, lens) =>
+      (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "context",
   },
 ];
 

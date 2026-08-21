@@ -7,8 +7,8 @@ describe("investigationEstateMode", () => {
     expect(investigationEstateMode(1_241, "scan-large")).toEqual({
       large: true,
       summary: "1,241 nodes",
-      clusteredHref: "/graph?scan=scan-large&rollup=1",
-      rawHref: "/graph?scan=scan-large&rollup=0",
+      clusteredHref: "/security-graph?scan=scan-large&lens=lineage&rollup=1",
+      rawHref: "/security-graph?scan=scan-large&lens=lineage&rollup=0",
     });
   });
 

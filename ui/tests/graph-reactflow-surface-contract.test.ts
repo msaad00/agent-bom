@@ -38,6 +38,19 @@ describe("interactive React Flow surface contract", () => {
     );
   });
 
+  it("uses the shared renderer decision for broad full-snapshot investigations", () => {
+    const content = source("components/security-graph-investigation.tsx");
+    expect(content).toContain("decideGraphRenderer");
+    expect(content).toContain("<SigmaGraphOverview");
+    expect(content).toContain("selectedAttackPath: focusMode");
+  });
+
+  it("hosts every graph lens on the canonical investigation route", () => {
+    const content = source("app/security-graph/page.tsx");
+    expect(content).toContain("<GraphSurface />");
+    expect(content).toContain('lens !== "attack-path"');
+  });
+
   it.each([
     "components/agent-topology.tsx",
     "components/scan-pipeline.tsx",

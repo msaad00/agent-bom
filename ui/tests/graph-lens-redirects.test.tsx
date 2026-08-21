@@ -12,27 +12,27 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => params,
 }));
 
-describe("retired lens routes redirect to the unified /graph surface", () => {
+describe("retired lens routes redirect to the canonical investigation surface", () => {
   beforeEach(() => {
     replace.mockClear();
     params = new URLSearchParams();
   });
 
-  it("redirects /mesh to /graph?lens=mesh (no 404)", () => {
+  it("redirects /mesh to /security-graph?lens=mesh (no 404)", () => {
     render(<MeshRedirectPage />);
-    expect(replace).toHaveBeenCalledWith("/graph?lens=mesh");
+    expect(replace).toHaveBeenCalledWith("/security-graph?lens=mesh");
   });
 
-  it("redirects /context to /graph?lens=context (no 404)", () => {
+  it("redirects /context to /security-graph?lens=context (no 404)", () => {
     render(<ContextRedirectPage />);
-    expect(replace).toHaveBeenCalledWith("/graph?lens=context");
+    expect(replace).toHaveBeenCalledWith("/security-graph?lens=context");
   });
 
   it("preserves deep-link query params through the /mesh redirect", () => {
     params = new URLSearchParams({ scan: "scan-9", agent: "payments" });
     render(<MeshRedirectPage />);
     expect(replace).toHaveBeenCalledWith(
-      "/graph?scan=scan-9&agent=payments&lens=mesh",
+      "/security-graph?scan=scan-9&agent=payments&lens=mesh",
     );
   });
 
@@ -40,13 +40,13 @@ describe("retired lens routes redirect to the unified /graph surface", () => {
     params = new URLSearchParams({ scan: "scan-9", agent: "payments" });
     render(<ContextRedirectPage />);
     expect(replace).toHaveBeenCalledWith(
-      "/graph?scan=scan-9&agent=payments&lens=context",
+      "/security-graph?scan=scan-9&agent=payments&lens=context",
     );
   });
 
   it("overrides a stale lens param on the retired route", () => {
     params = new URLSearchParams({ lens: "context" });
     render(<MeshRedirectPage />);
-    expect(replace).toHaveBeenCalledWith("/graph?lens=mesh");
+    expect(replace).toHaveBeenCalledWith("/security-graph?lens=mesh");
   });
 });

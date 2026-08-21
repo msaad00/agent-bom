@@ -99,8 +99,7 @@ export function decideGraphRenderer({
       kind: "webgl",
       reason: "large-graph-webgl-overview",
       interactive: true,
-      supportsInvestigation: false,
-      investigationHandoff: "react-flow-focus",
+      supportsInvestigation: true,
     };
   }
 

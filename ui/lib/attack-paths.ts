@@ -380,7 +380,8 @@ export function buildGraphInvestigationHref(
   if (request.rootLabel && request.rootLabel !== request.rootId) {
     params.set("q", request.rootLabel);
   }
-  return `/graph?${params.toString()}`;
+  params.set("lens", "lineage");
+  return `/security-graph?${params.toString()}`;
 }
 
 export function decodeGraphInvestigationParams(
@@ -509,13 +510,13 @@ export function recommendedAttackPathActions(
     actions.push({
       title: "Contain credential exposure",
       detail: "Rotate or scope exposed secrets before you widen blast radius by exploring deeper topology.",
-      href: "/mesh",
+      href: "/security-graph?lens=mesh",
     });
   } else if (path.tool_exposure.length > 0) {
     actions.push({
       title: "Review reachable tools",
       detail: "Check whether the reachable tools increase impact before choosing a fix sequence.",
-      href: "/mesh",
+      href: "/security-graph?lens=mesh",
     });
   }
 
@@ -523,7 +524,7 @@ export function recommendedAttackPathActions(
     actions.push({
       title: "Open full graph for neighbor context",
       detail: "Use the full graph when you need broader topology, additional paths, or related assets outside this shortlist.",
-      href: "/graph",
+      href: "/security-graph?lens=lineage",
     });
   }
 

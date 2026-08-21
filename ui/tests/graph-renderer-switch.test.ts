@@ -57,8 +57,7 @@ describe("graph renderer switch", () => {
     ).toMatchObject({
       kind: "webgl",
       reason: "large-graph-webgl-overview",
-      supportsInvestigation: false,
-      investigationHandoff: "react-flow-focus",
+      supportsInvestigation: true,
     });
 
     expect(
@@ -69,8 +68,7 @@ describe("graph renderer switch", () => {
     ).toMatchObject({
       kind: "webgl",
       reason: "large-graph-webgl-overview",
-      supportsInvestigation: false,
-      investigationHandoff: "react-flow-focus",
+      supportsInvestigation: true,
     });
   });
 
@@ -83,7 +81,7 @@ describe("graph renderer switch", () => {
     expect(decideGraphRenderer(broad)).toMatchObject({
       kind: "webgl",
       reason: "large-graph-webgl-overview",
-      supportsInvestigation: false,
+      supportsInvestigation: true,
     });
 
     // The legacy ?webgl / renderer=webgl opt-in is gone; passing it changes

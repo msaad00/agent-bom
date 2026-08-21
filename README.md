@@ -106,13 +106,16 @@ alias for `--project`.
 Need a disconnected scan? Seed the smallest package-advisory database first:
 
 ```bash
-agent-bom db update --source osv
+agent-bom db update --osv-ecosystem PyPI
 agent-bom scan . --offline
 ```
 
-The OSV all-ecosystems archive can exceed 1 GB, may take several minutes, and
-shows live progress with the exact total when the server supplies it. Repeat
-syncs download the archive again before updating advisory IDs. Run the broader
+On a fresh database, that command covers only the selected ecosystem; packages
+from other ecosystems remain explicit offline coverage gaps. Repeat
+`--osv-ecosystem` for a polyglot repository, or use
+`agent-bom db update --source osv` for OSV's all-ecosystems archive. The full
+archive can exceed 1 GB, may take several minutes, and shows live progress with
+the exact total when the server supplies it. Run the broader
 `agent-bom db update` when you also need distro, exploit-probability, and
 known-exploited-vulnerability feeds.
 

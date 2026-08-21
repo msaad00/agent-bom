@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import tempfile
@@ -502,9 +503,33 @@ def _db_covered_ecosystems() -> set[str]:
         conn = open_existing_db_readonly(DB_PATH)
         try:
             rows = conn.execute("SELECT DISTINCT ecosystem FROM affected").fetchall()
+            declared: set[str] = set()
+            coverage_mode = "legacy"
+            columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(sync_meta)").fetchall()}
+            if "metadata_json" in columns:
+                meta_row = conn.execute("SELECT metadata_json FROM sync_meta WHERE source = 'osv'").fetchone()
+                if meta_row and meta_row[0]:
+                    try:
+                        metadata = json.loads(meta_row[0])
+                    except (json.JSONDecodeError, TypeError):
+                        metadata = {}
+                    if isinstance(metadata, dict):
+                        coverage_mode = str(metadata.get("coverage", "legacy"))
+                        ecosystems = metadata.get("ecosystems")
+                        if isinstance(ecosystems, list):
+                            declared = {str(item).lower() for item in ecosystems if isinstance(item, str) and item}
         finally:
             conn.close()
-        return {str(r[0]).lower() for r in rows if r[0]}
+        # Ecosystem-specific OSV archives can contain cross-ecosystem aliases.
+        # Those rows are useful evidence, but they do not prove that the other
+        # ecosystem's complete archive was synchronized. Scoped metadata is
+        # therefore authoritative; row inference remains only for legacy/full
+        # databases that predate the explicit coverage contract.
+        if coverage_mode == "selected_ecosystems":
+            return declared
+        if coverage_mode == "partial":
+            return set()
+        return {str(r[0]).lower() for r in rows if r[0]} | declared
     except Exception as exc:  # noqa: BLE001
         _logger.debug("Could not read local DB ecosystem coverage: %s", exc)
         return set()
@@ -1519,14 +1544,20 @@ async def scan_packages(
     from agent_bom.coverage import osv_fallback_db_keys
 
     force_osv_keys = osv_fallback_db_keys(scannable, gaps=coverage_gaps) if not scan_offline else set()
-    osv_targets = [p for p in scannable if _db_key(p) not in db_covered or _db_key(p) in force_osv_keys]
+    covered_ecos = _scanners_patchable("_db_covered_ecosystems")()
+    osv_targets = [
+        p
+        for p in scannable
+        if _db_key(p) not in db_covered
+        or not any(eco in covered_ecos for eco in _db_ecosystems_for_package(p))
+        or _db_key(p) in force_osv_keys
+    ]
     if force_osv_keys:
         _logger.info("Forcing OSV lookup for %d package(s) on sparse distro release(s)", len(force_osv_keys))
         _emit_scan_warning(f"sparse release OSV fallback for {len(force_osv_keys)} package(s)")
 
     if scan_offline or (scan_prefer_local_db and not osv_targets):
         if scan_offline:
-            covered_ecos = _scanners_patchable("_db_covered_ecosystems")()
             if not covered_ecos and osv_targets and not scan_options.demo_advisories:
                 # Genuinely empty/missing DB — nothing can be scanned offline.
                 raise IncompleteScanError(
@@ -1541,7 +1572,8 @@ async def scan_packages(
             # vulnerabilities already found for covered packages (the previous
             # behaviour raised and dropped the whole report when a single
             # package — even a clean one — was "uncovered").
-            uncovered = [p for p in osv_targets if not any(eco in covered_ecos for eco in _db_ecosystems_for_package(p))]
+            coverage_candidates = [] if scan_options.demo_advisories else scannable
+            uncovered = [p for p in coverage_candidates if not any(eco in covered_ecos for eco in _db_ecosystems_for_package(p))]
             if uncovered:
                 gap_ecos = sorted({eco for p in uncovered for eco in _db_ecosystems_for_package(p)})
                 skipped_names = ", ".join(f"{pkg.name}@{pkg.version}" for pkg in uncovered[:5])

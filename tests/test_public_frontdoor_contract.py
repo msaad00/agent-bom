@@ -109,6 +109,16 @@ def test_persona_routes_start_with_their_actual_work() -> None:
     assert "owner and sla" in personas.lower()
 
 
+def test_readme_offline_bootstrap_leads_with_truthful_ecosystem_scope() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    offline = readme.split("Need a disconnected scan?", 1)[1].split("**A non-zero exit", 1)[0]
+
+    assert "agent-bom db update --osv-ecosystem PyPI" in offline
+    assert "covers only" in offline.lower()
+    assert "selected ecosystem" in offline.lower()
+    assert offline.index("--osv-ecosystem PyPI") < offline.index("--source osv")
+
+
 def test_docs_home_leads_with_product_value_and_attack_path_proof() -> None:
     home = (ROOT / "site-docs" / "index.md").read_text(encoding="utf-8")
 

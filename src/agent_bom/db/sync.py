@@ -33,7 +33,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
 from agent_bom.scanners.risk import parse_cvss_vector
@@ -58,6 +58,16 @@ def _validate_sync_url(url: str, param_name: str = "url") -> None:
 
 # Source URLs — all public, no auth required
 _OSV_ALL_ZIP_URL = "https://osv-vulnerabilities.storage.googleapis.com/all.zip"
+OSV_APPLICATION_ECOSYSTEMS = (
+    "PyPI",
+    "npm",
+    "Go",
+    "Maven",
+    "crates.io",
+    "NuGet",
+    "RubyGems",
+    "Packagist",
+)
 _EPSS_CSV_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 _EPSS_REDIRECT_HOSTS = {"epss.cyentia.com", "epss.empiricalsecurity.com"}
 _KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
@@ -65,6 +75,22 @@ _GHSA_REST_URL = "https://api.github.com/advisories"
 _NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _ALPINE_SECDB_BASE_URL = "https://secdb.alpinelinux.org"
 _ALPINE_SECDB_REPOS = ("main", "community")
+
+
+def _canonical_osv_ecosystem(ecosystem: str) -> str:
+    by_lower = {item.lower(): item for item in OSV_APPLICATION_ECOSYSTEMS}
+    canonical = by_lower.get(ecosystem.strip().lower())
+    if canonical is None:
+        supported = ", ".join(OSV_APPLICATION_ECOSYSTEMS)
+        raise ValueError(f"unsupported OSV ecosystem {ecosystem!r}; supported OSV ecosystems: {supported}")
+    return canonical
+
+
+def _osv_bulk_url(ecosystem: str) -> str:
+    """Return the official bulk archive URL for one allowlisted ecosystem."""
+    canonical = _canonical_osv_ecosystem(ecosystem)
+    return f"https://osv-vulnerabilities.storage.googleapis.com/{quote(canonical, safe='.')}/all.zip"
+
 
 # Debian Security Tracker — authoritative per-release vulnerability status with
 # backported fix versions. OSV drops releases once they go end-of-life, so its
@@ -578,13 +604,15 @@ def sync_osv(
     url: Optional[str] = None,
     max_entries: int = 0,
     progress: Callable[[int, int | None], None] | None = None,
+    ecosystem: str | None = None,
 ) -> int:
-    """Download and ingest the OSV all-ecosystems bulk export.
+    """Download and ingest an OSV bulk export.
 
     Args:
         conn: open DB connection.
         url: override URL (for testing).
         max_entries: stop after ingesting this many entries (0 = unlimited; for tests).
+        ecosystem: optional allowlisted ecosystem for a smaller official archive.
 
     Returns the number of advisories ingested.
     """
@@ -593,7 +621,8 @@ def sync_osv(
 
     from agent_bom.http_client import download_to_file
 
-    src = url or _OSV_ALL_ZIP_URL
+    canonical_ecosystem = _canonical_osv_ecosystem(ecosystem) if ecosystem is not None else None
+    src = url or (_osv_bulk_url(canonical_ecosystem) if canonical_ecosystem else _OSV_ALL_ZIP_URL)
     _validate_sync_url(src, "osv url")
     _logger.info("Downloading OSV bulk export from %s …", src)
 
@@ -631,7 +660,26 @@ def sync_osv(
             pass
 
     conn.commit()
-    _update_sync_meta(conn, "osv", count)
+    if max_entries > 0:
+        metadata = {"coverage": "partial", "ecosystems": []}
+    elif canonical_ecosystem is None:
+        metadata = {"coverage": "all_ecosystems"}
+    else:
+        previous = _read_sync_metadata(conn, "osv")
+        if previous.get("coverage") == "all_ecosystems":
+            metadata = previous
+        else:
+            selected = {
+                _canonical_osv_ecosystem(str(item))
+                for item in previous.get("ecosystems", [])
+                if isinstance(item, str) and item.strip().lower() in {e.lower() for e in OSV_APPLICATION_ECOSYSTEMS}
+            }
+            selected.add(canonical_ecosystem)
+            metadata = {
+                "coverage": "selected_ecosystems",
+                "ecosystems": sorted(selected, key=str.lower),
+            }
+    _update_sync_meta(conn, "osv", count, metadata)
     _logger.info("OSV sync complete: %d advisories ingested", count)
     return count
 
@@ -1988,6 +2036,7 @@ def sync_db(
     github_token: Optional[str] = None,
     nvd_api_key: Optional[str] = None,
     ghsa_ecosystems: Optional[list[str]] = None,
+    osv_ecosystems: Optional[list[str]] = None,
     progress: Callable[[str, str, int, int | None], None] | None = None,
 ) -> dict:
     """Sync the local vuln DB from all (or selected) upstream sources.
@@ -2003,6 +2052,7 @@ def sync_db(
         github_token: override GITHUB_TOKEN env var for GHSA fetches.
         nvd_api_key: override NVD_API_KEY env var for NVD fetches.
         ghsa_ecosystems: list of GHSA ecosystem names to sync (default: all supported).
+        osv_ecosystems: selected OSV application ecosystems (default: all ecosystems).
         progress: optional callback receiving ``(source, phase, current, total)``.
             Phases are ``start``, ``download`` (OSV bytes), and ``complete``.
 
@@ -2031,15 +2081,41 @@ def sync_db(
 
     try:
         if "osv" in enabled:
-            run_source(
-                "osv",
-                lambda: sync_osv(
-                    conn,
-                    url=osv_url,
-                    max_entries=max_osv_entries,
-                    progress=lambda current, total: notify("osv", "download", current, total),
-                ),
-            )
+            if osv_ecosystems:
+                canonical_scopes = list(dict.fromkeys(_canonical_osv_ecosystem(item) for item in osv_ecosystems))
+                total_osv = 0
+                for ecosystem in canonical_scopes:
+                    label = f"osv:{ecosystem}"
+
+                    def scoped_progress(current: int, total: int | None, source: str = label) -> None:
+                        notify(source, "download", current, total)
+
+                    notify(label, "start")
+                    count = sync_osv(
+                        conn,
+                        url=osv_url,
+                        max_entries=max_osv_entries,
+                        progress=scoped_progress,
+                        ecosystem=ecosystem,
+                    )
+                    total_osv += count
+                    notify(label, "complete", count)
+                results["osv"] = total_osv
+                # ``sync_meta`` is source-level, so a multi-ecosystem update
+                # must report the aggregate operation rather than whichever
+                # scoped archive happened to run last. Preserve the coverage
+                # metadata accumulated by ``sync_osv``.
+                _update_sync_meta(conn, "osv", total_osv, _read_sync_metadata(conn, "osv"))
+            else:
+                run_source(
+                    "osv",
+                    lambda: sync_osv(
+                        conn,
+                        url=osv_url,
+                        max_entries=max_osv_entries,
+                        progress=lambda current, total: notify("osv", "download", current, total),
+                    ),
+                )
         if "alpine" in enabled:
             run_source("alpine", lambda: sync_alpine_secdb(conn))
         # Debian tracker runs after OSV so its authoritative per-release backports

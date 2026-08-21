@@ -12,7 +12,7 @@ from __future__ import annotations
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
-from agent_bom.db.sync import GHSA_ECOSYSTEMS
+from agent_bom.db.sync import GHSA_ECOSYSTEMS, OSV_APPLICATION_ECOSYSTEMS
 
 
 @click.group("db", cls=SuggestingGroup)
@@ -56,6 +56,13 @@ def db_cmd() -> None:
     hidden=True,
 )
 @click.option(
+    "--osv-ecosystem",
+    "osv_ecosystems",
+    multiple=True,
+    type=click.Choice(OSV_APPLICATION_ECOSYSTEMS, case_sensitive=False),
+    help="Sync only selected OSV application ecosystems instead of the all-ecosystems archive. Repeatable.",
+)
+@click.option(
     "--ghsa-ecosystems",
     "ghsa_ecosystems",
     multiple=True,
@@ -68,6 +75,7 @@ def db_update(
     max_osv_entries: int,
     max_ghsa_entries: int,
     max_nvd_entries: int,
+    osv_ecosystems: tuple,
     ghsa_ecosystems: tuple,
 ) -> None:
     """Download and sync the local vulnerability database.
@@ -82,9 +90,11 @@ def db_update(
     Pass --source nvd to enrich CVEs missing CVSS data from the NVD API (requires NVD_API_KEY
     for reasonable speed; without a key the rate limit is 5 req/30s).
 
-    Requires internet access. The OSV all-ecosystems archive can exceed 1 GB;
-    exact download progress is shown when the server reports its size. Repeat
-    syncs download the archive again, then update records by advisory ID.
+    Requires internet access. Use --osv-ecosystem for a smaller, explicitly
+    scoped application-ecosystem archive. The OSV all-ecosystems archive can
+    exceed 1 GB; exact download progress is shown when the server reports its
+    size. Repeat syncs download the selected archive again, then update records
+    by advisory ID.
     """
     from pathlib import Path
 
@@ -94,9 +104,17 @@ def db_update(
     from agent_bom.db.sync import sync_db
 
     con = Console()
-    selected = list(sources) or ["osv", "alpine", "debian", "epss", "kev"]
+    if sources and osv_ecosystems and "osv" not in {str(source).lower() for source in sources}:
+        raise click.UsageError("--osv-ecosystem requires --source osv when --source is specified")
+    selected = list(sources) or (["osv"] if osv_ecosystems else ["osv", "alpine", "debian", "epss", "kev"])
     con.print(f"[bold]Syncing local vuln DB[/bold] — sources: {', '.join(selected)}")
-    if "osv" in selected:
+    selected_sources = {str(source).lower() for source in selected}
+    if "osv" in selected_sources and osv_ecosystems:
+        con.print(
+            "Coverage is limited to the selected OSV ecosystem(s): "
+            f"{', '.join(osv_ecosystems)}. Other ecosystems remain uncovered for offline scans."
+        )
+    elif "osv" in selected_sources:
         con.print("The OSV all-ecosystems archive can exceed 1 GB and take several minutes; live progress follows.")
 
     tasks: dict[str, TaskID] = {}
@@ -144,6 +162,7 @@ def db_update(
                 max_osv_entries=max_osv_entries,
                 max_ghsa_entries=max_ghsa_entries,
                 max_nvd_entries=max_nvd_entries,
+                osv_ecosystems=list(osv_ecosystems) if osv_ecosystems else None,
                 ghsa_ecosystems=list(ghsa_ecosystems) if ghsa_ecosystems else None,
                 progress=_progress,
             )

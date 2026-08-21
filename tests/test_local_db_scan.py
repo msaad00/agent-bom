@@ -7,6 +7,7 @@ that scan_packages() uses it as the primary source before calling OSV.
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -455,6 +456,59 @@ def test_scan_packages_offline_clean_pkg_in_covered_ecosystem_does_not_raise(mon
         asyncio.run(scan_packages([pkg]))
 
 
+def test_db_covered_ecosystems_includes_declared_scoped_sync_with_zero_advisories(tmp_path, monkeypatch):
+    from agent_bom.db.schema import init_db
+    from agent_bom.scanners import _db_covered_ecosystems
+
+    db_file = tmp_path / "scoped.db"
+    conn = init_db(db_file)
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source,last_synced,record_count,metadata_json) VALUES (?,?,?,?)",
+        (
+            "osv",
+            "2026-08-21T12:00:00+00:00",
+            0,
+            json.dumps({"coverage": "selected_ecosystems", "ecosystems": ["PyPI"]}),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr("agent_bom.db.schema.DB_PATH", db_file)
+    assert _db_covered_ecosystems() == {"pypi"}
+
+
+def test_db_covered_ecosystems_does_not_infer_scope_from_cross_ecosystem_rows(tmp_path, monkeypatch):
+    """Rows bundled as aliases are evidence, not proof that their ecosystem was synced."""
+    from agent_bom.db.schema import init_db
+    from agent_bom.scanners import _db_covered_ecosystems
+
+    db_file = tmp_path / "scoped-with-aliases.db"
+    conn = init_db(db_file)
+    conn.execute(
+        "INSERT INTO vulns(id,summary,severity,source) VALUES (?,?,?,?)",
+        ("OSV-TEST-1", "cross-ecosystem alias", "high", "osv"),
+    )
+    conn.execute(
+        "INSERT INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,?)",
+        ("OSV-TEST-1", "npm", "alias-package", "0", "1.0.0", ""),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source,last_synced,record_count,metadata_json) VALUES (?,?,?,?)",
+        (
+            "osv",
+            "2026-08-21T12:00:00+00:00",
+            1,
+            json.dumps({"coverage": "selected_ecosystems", "ecosystems": ["PyPI"]}),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr("agent_bom.db.schema.DB_PATH", db_file)
+    assert _db_covered_ecosystems() == {"pypi"}
+
+
 def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monkeypatch):
     """A package in an ecosystem the DB has zero advisories for warns, not raises."""
     from agent_bom.scanners import scan_packages
@@ -471,6 +525,24 @@ def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monk
         # Must complete without raising; emits a coverage-gap warning instead.
         asyncio.run(scan_packages([pkg]))
     assert any("offline coverage gap" in w for w in warnings), warnings
+
+
+def test_scan_packages_offline_matched_alias_row_still_warns_for_unsynced_ecosystem(monkeypatch):
+    """An incidental match must not turn a scoped archive into ecosystem coverage."""
+    from agent_bom.scanners import scan_packages
+
+    pkg = _make_pkg("alias-package", "0.5.0", eco="npm")
+    monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
+
+    warnings: list[str] = []
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(1, {"npm:alias-package@0.5.0"})),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value={"pypi"}),
+        patch("agent_bom.scanners.record_scan_warning", side_effect=warnings.append),
+    ):
+        asyncio.run(scan_packages([pkg]))
+
+    assert any("offline coverage gap" in warning for warning in warnings), warnings
 
 
 def test_scan_packages_offline_gap_warning_omits_empty_ecosystem_parens(monkeypatch):

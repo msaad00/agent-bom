@@ -1867,6 +1867,26 @@ def test_db_update_reports_source_progress_and_first_sync_budget(tmp_path):
     assert "downloaded 5.0 MB" in result.output
 
 
+def test_db_update_osv_ecosystem_selects_only_osv_and_discloses_scope(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    with patch("agent_bom.db.sync.sync_db", return_value={"osv": 42}) as mock_sync:
+        result = _run(["db", "update", "--osv-ecosystem", "PyPI", "--path", db_path])
+
+    assert result.exit_code == 0
+    assert mock_sync.call_args.kwargs["sources"] == ["osv"]
+    assert mock_sync.call_args.kwargs["osv_ecosystems"] == ["PyPI"]
+    assert "selected OSV ecosystem" in result.output
+    assert "PyPI" in result.output
+    assert "all-ecosystems archive" not in result.output
+
+
+def test_db_update_osv_ecosystem_requires_osv_when_sources_are_explicit(tmp_path):
+    result = _run(["db", "update", "--source", "kev", "--osv-ecosystem", "PyPI", "--path", str(tmp_path / "test.db")])
+
+    assert result.exit_code == 2
+    assert "requires --source osv" in result.output
+
+
 def test_db_update_single_source(tmp_path):
     """db update --source epss only syncs epss."""
     db_path = str(tmp_path / "test.db")

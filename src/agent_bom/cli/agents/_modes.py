@@ -14,6 +14,16 @@ import click
 from agent_bom.cli.agents._self_scan import _build_self_scan_inventory
 
 
+def validate_primary_input_modes(*, self_scan: bool, demo: bool, inventory: Optional[str]) -> None:
+    """Reject synthetic modes that would silently replace explicit input."""
+    if self_scan and demo:
+        raise click.UsageError("--self-scan and --demo are mutually exclusive.")
+    if self_scan and inventory:
+        raise click.UsageError("--self-scan and --inventory are mutually exclusive.")
+    if demo and inventory:
+        raise click.UsageError("--demo and --inventory are mutually exclusive.")
+
+
 def apply_self_scan_mode(*, self_scan: bool, inventory: Optional[str], enrich: bool) -> tuple[Optional[str], bool]:
     """Materialize a self-scan inventory file when requested."""
     if not self_scan:

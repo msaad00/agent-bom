@@ -18,7 +18,12 @@ agent-bom scan -p .
 and fix-first findings inline — with nothing to open. This is the recommended
 first command (`agents` is a supported alias of `scan`). When you need a file,
 add `-f html -o agent-bom-report.html` (or `-f json`, `-f sarif`); run
-`agent-bom db update` first for offline package/image scans.
+`agent-bom db update --source osv` first for offline package scans. The OSV
+all-ecosystems archive can exceed 1 GB, may take several minutes, and shows
+live progress with the exact total when the server supplies it. Repeat syncs
+download the archive again before updating advisory IDs. Use the broader
+`agent-bom db update` for distro/image, exploit-probability, and
+known-exploited-vulnerability feeds.
 
 ## 1. Run the Release-Pinned Demo
 

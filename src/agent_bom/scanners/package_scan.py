@@ -1530,7 +1530,9 @@ async def scan_packages(
             if not covered_ecos and osv_targets and not scan_options.demo_advisories:
                 # Genuinely empty/missing DB — nothing can be scanned offline.
                 raise IncompleteScanError(
-                    "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
+                    "Offline mode requires a populated local vulnerability DB. Run "
+                    "`agent-bom db update --source osv` before using `--offline` "
+                    "(the all-ecosystems archive can exceed 1 GB), or drop `--offline`."
                 )
             # A package with no DB rows whose ECOSYSTEM the DB covers is clean,
             # not a gap — the advisory DB simply has no advisory for it. Only

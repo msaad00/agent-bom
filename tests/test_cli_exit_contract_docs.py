@@ -84,3 +84,14 @@ def test_first_run_guide_covers_the_exit_codes_and_ci_use_readme_promises() -> N
     for action_input in ("severity-threshold", "warn-on-severity", "format"):
         assert f"\n  {action_input}:\n" in action, action_input
         assert f"{action_input}:" in guide, action_input
+
+
+def test_first_run_offline_bootstrap_discloses_command_cost_and_progress() -> None:
+    """Offline onboarding must explain the smallest bootstrap before the wait."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
+
+    for text in (readme, guide):
+        assert "agent-bom db update --source osv" in text
+        assert "can exceed 1 GB" in text
+        assert "live progress" in text

@@ -194,7 +194,7 @@ OSV/GHSA calls. The preload path is:
 
 | Step | Command / artifact | Next step |
 |---|---|---|
-| 1. Sync on a connected bastion | `agent-bom db update` | Produces `~/.agent-bom/db/vulns.db` (~50 MB first run) |
+| 1. Sync on a connected bastion | `agent-bom db update` | Produces `~/.agent-bom/db/vulns.db`; the OSV all-ecosystems download can exceed 1 GB and the settled database can grow to multiple GB as feeds expand. |
 | 2. Verify freshness | `agent-bom db status` | Confirm OSV/Alpine/Debian/EPSS/KEV rows and sync timestamps |
 | 3. Bundle for transfer | `scripts/release/bundle-vuln-db.sh dist/airgap` | Writes `vulns.db`, `known_exploited_vulnerabilities.json`, `epss_scores-current.csv.gz`, and `sha256sums.txt` |
 | 4. Import on disconnected host | `cd dist/airgap && sha256sum -c sha256sums.txt` then copy the bundle directory | Mount or copy to the runtime DB path (same directory for sidecar KEV/EPSS feeds) |

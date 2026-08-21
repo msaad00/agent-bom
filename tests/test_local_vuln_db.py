@@ -595,10 +595,12 @@ def test_sync_osv_streams_to_disk(tmp_db, monkeypatch):
 
     captured: dict = {}
 
-    def fake_download(url, dest, *, timeout=60, headers=None, chunk_size=1 << 20):
+    def fake_download(url, dest, *, timeout=60, headers=None, chunk_size=1 << 20, progress=None):
         captured["dest"] = dest
         with open(dest, "wb") as fh:
             fh.write(payload)
+        if progress is not None:
+            progress(len(payload), len(payload))
         return len(payload)
 
     monkeypatch.setattr("agent_bom.http_client.download_to_file", fake_download)
@@ -965,6 +967,22 @@ def test_sync_db_single_kev_source(tmp_path):
         result = sync_db(path=tmp_path / "test.db", sources=["kev"])
     assert result == {"kev": 10}
     mock_kev.assert_called_once()
+
+
+@pytest.mark.real_vuln_db_sync
+def test_sync_db_reports_source_lifecycle(tmp_path):
+    """Reusable sync callers receive deterministic source start/finish events."""
+    events: list[tuple[str, str, int, int | None]] = []
+
+    with patch("agent_bom.db.sync.sync_kev", return_value=10):
+        result = sync_db(
+            path=tmp_path / "test.db",
+            sources=["kev"],
+            progress=lambda source, phase, current, total: events.append((source, phase, current, total)),
+        )
+
+    assert result == {"kev": 10}
+    assert events == [("kev", "start", 0, None), ("kev", "complete", 10, None)]
 
 
 @pytest.mark.real_vuln_db_sync

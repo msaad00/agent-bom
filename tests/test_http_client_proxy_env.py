@@ -11,15 +11,60 @@ from __future__ import annotations
 
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import httpcore
 import httpx
 import pytest
 
-from agent_bom.http_client import create_client, create_sync_client
+from agent_bom.http_client import create_client, create_sync_client, download_to_file
 
 PROXY_PORT = 8874
 PROXY_ENV_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy")
+
+
+def test_stream_download_reports_content_length_and_written_bytes(tmp_path: Path, monkeypatch) -> None:
+    """Bulk consumers receive byte progress without buffering the response."""
+
+    class _Response:
+        headers = {"content-length": "6"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_bytes(self, _chunk_size: int):
+            yield b"abc"
+            yield b"def"
+
+    class _Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def stream(self, *_args, **_kwargs):
+            return _Response()
+
+    monkeypatch.setattr("agent_bom.http_client.create_sync_client", lambda **_kwargs: _Client())
+    events: list[tuple[int, int | None]] = []
+    destination = tmp_path / "bulk.zip"
+
+    written = download_to_file(
+        "https://example.test/bulk.zip",
+        str(destination),
+        progress=lambda current, total: events.append((current, total)),
+    )
+
+    assert written == 6
+    assert destination.read_bytes() == b"abcdef"
+    assert events == [(0, 6), (3, 6), (6, 6)]
 
 
 class _ProxyHandler(BaseHTTPRequestHandler):

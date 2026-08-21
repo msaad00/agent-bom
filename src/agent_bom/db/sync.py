@@ -32,7 +32,7 @@ import sqlite3
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urljoin, urlparse
 
 from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
@@ -573,7 +573,12 @@ def _ingest_osv_file(conn: sqlite3.Connection, content: bytes, filename: str) ->
     return 1
 
 
-def sync_osv(conn: sqlite3.Connection, url: Optional[str] = None, max_entries: int = 0) -> int:
+def sync_osv(
+    conn: sqlite3.Connection,
+    url: Optional[str] = None,
+    max_entries: int = 0,
+    progress: Callable[[int, int | None], None] | None = None,
+) -> int:
     """Download and ingest the OSV all-ecosystems bulk export.
 
     Args:
@@ -600,7 +605,7 @@ def sync_osv(conn: sqlite3.Connection, url: Optional[str] = None, max_entries: i
     count = 0
     try:
         try:
-            download_to_file(src, tmp_path, timeout=300)
+            download_to_file(src, tmp_path, timeout=300, progress=progress)
         except Exception as exc:
             _logger.error("Failed to download OSV export: %s", exc)
             raise
@@ -1983,6 +1988,7 @@ def sync_db(
     github_token: Optional[str] = None,
     nvd_api_key: Optional[str] = None,
     ghsa_ecosystems: Optional[list[str]] = None,
+    progress: Callable[[str, str, int, int | None], None] | None = None,
 ) -> dict:
     """Sync the local vuln DB from all (or selected) upstream sources.
 
@@ -1997,6 +2003,8 @@ def sync_db(
         github_token: override GITHUB_TOKEN env var for GHSA fetches.
         nvd_api_key: override NVD_API_KEY env var for NVD fetches.
         ghsa_ecosystems: list of GHSA ecosystem names to sync (default: all supported).
+        progress: optional callback receiving ``(source, phase, current, total)``.
+            Phases are ``start``, ``download`` (OSV bytes), and ``complete``.
 
     Returns a dict of {source: record_count}.
     """
@@ -2011,44 +2019,71 @@ def sync_db(
     enabled = set(sources or ["osv", "alpine", "debian", "epss", "kev"])
     results: dict[str, int] = {}
 
+    def notify(source: str, phase: str, current: int = 0, total: int | None = None) -> None:
+        if progress is not None:
+            progress(source, phase, current, total)
+
+    def run_source(source: str, sync: Callable[[], int]) -> None:
+        notify(source, "start")
+        count = sync()
+        results[source] = count
+        notify(source, "complete", count)
+
     try:
         if "osv" in enabled:
-            results["osv"] = sync_osv(conn, url=osv_url, max_entries=max_osv_entries)
+            run_source(
+                "osv",
+                lambda: sync_osv(
+                    conn,
+                    url=osv_url,
+                    max_entries=max_osv_entries,
+                    progress=lambda current, total: notify("osv", "download", current, total),
+                ),
+            )
         if "alpine" in enabled:
-            results["alpine"] = sync_alpine_secdb(conn)
+            run_source("alpine", lambda: sync_alpine_secdb(conn))
         # Debian tracker runs after OSV so its authoritative per-release backports
         # override OSV's sparser/absent distro rows (and preserve OSV severity via
         # INSERT OR IGNORE on the shared DEBIAN-CVE-* id).
         if "debian" in enabled:
-            results["debian"] = sync_debian_tracker(conn, url=debian_url, elts_url=debian_elts_url)
+            run_source("debian", lambda: sync_debian_tracker(conn, url=debian_url, elts_url=debian_elts_url))
         if "epss" in enabled:
-            results["epss"] = sync_epss(conn, url=epss_url)
+            run_source("epss", lambda: sync_epss(conn, url=epss_url))
         if "kev" in enabled:
-            results["kev"] = sync_kev(conn, url=kev_url)
+            run_source("kev", lambda: sync_kev(conn, url=kev_url))
         if "ghsa" in enabled:
             token = github_token or os.environ.get("GITHUB_TOKEN")
-            results["ghsa"] = sync_ghsa(
-                conn,
-                url=ghsa_url,
-                github_token=token,
-                max_entries=max_ghsa_entries,
-                ecosystems=ghsa_ecosystems,
+            run_source(
+                "ghsa",
+                lambda: sync_ghsa(
+                    conn,
+                    url=ghsa_url,
+                    github_token=token,
+                    max_entries=max_ghsa_entries,
+                    ecosystems=ghsa_ecosystems,
+                ),
             )
         if "nvd" in enabled:
             key = nvd_api_key or os.environ.get("NVD_API_KEY")
             if key:
-                results["nvd"] = sync_nvd_incremental(
-                    conn,
-                    nvd_api_key=key,
-                    url=nvd_url,
-                    max_results=max_nvd_entries,
+                run_source(
+                    "nvd",
+                    lambda: sync_nvd_incremental(
+                        conn,
+                        nvd_api_key=key,
+                        url=nvd_url,
+                        max_results=max_nvd_entries,
+                    ),
                 )
             else:
-                results["nvd"] = sync_nvd(
-                    conn,
-                    nvd_api_key=key,
-                    url=nvd_url,
-                    max_entries=max_nvd_entries,
+                run_source(
+                    "nvd",
+                    lambda: sync_nvd(
+                        conn,
+                        nvd_api_key=key,
+                        url=nvd_url,
+                        max_entries=max_nvd_entries,
+                    ),
                 )
     finally:
         # Fold the (potentially large) -wal back into the main DB so concurrent

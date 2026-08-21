@@ -103,6 +103,19 @@ The repository scan shows inventory, findings, and reachable impact.
 `agent-bom scan .` and `agent-bom scan -p .` are the same command; `PATH` is an
 alias for `--project`.
 
+Need a disconnected scan? Seed the smallest package-advisory database first:
+
+```bash
+agent-bom db update --source osv
+agent-bom scan . --offline
+```
+
+The OSV all-ecosystems archive can exceed 1 GB, may take several minutes, and
+shows live progress with the exact total when the server supplies it. Repeat
+syncs download the archive again before updating advisory IDs. Run the broader
+`agent-bom db update` when you also need distro, exploit-probability, and
+known-exploited-vulnerability feeds.
+
 **A non-zero exit is a verdict, not a crash.** `scan` exits `0` when nothing
 matched a gate, and `1` when one did — a `--fail-on-*` threshold you set, a
 known-malicious package, or a scan that did not complete. The report is printed

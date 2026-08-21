@@ -2,11 +2,59 @@
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 from scripts.render_release_highlights import render_highlights
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_social_preview_is_portable_and_evidence_focused() -> None:
+    preview = ROOT / "docs" / "images" / "social-preview.png"
+    source = ROOT / "docs" / "images" / "social-preview.svg"
+
+    png_header = preview.read_bytes()[:24]
+    assert png_header[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", png_header[16:24]) == (1280, 640)
+
+    svg = source.read_text(encoding="utf-8")
+    for claim in (
+        "Discover. Scan.",
+        "Correlate. Graph.",
+        "Repositories · code · dependencies · SBOMs · images · containers",
+        "Cloud · AI infrastructure · agents · MCP",
+    ):
+        assert claim in svg
+    for integration in (
+        "Claude",
+        "Cursor",
+        "GitHub Copilot",
+        "Codex",
+        "VS Code",
+        "Windsurf",
+        "AWS",
+        "Azure",
+        "GCP",
+        "Kubernetes",
+        "Snowflake",
+        "Databricks",
+    ):
+        assert integration in svg
+
+    assert "file:///" not in svg
+    assert "/Users/" not in svg
+    for relative_asset in (
+        "brand/mark-dark.svg",
+        "vendor/social-preview-clients.svg",
+        "vendor/simple-icons/amazonwebservices.svg",
+        "vendor/simple-icons/microsoftazure.svg",
+        "vendor/simple-icons/googlecloud.svg",
+        "vendor/simple-icons/kubernetes.svg",
+        "vendor/simple-icons/snowflake.svg",
+        "vendor/simple-icons/databricks.svg",
+    ):
+        assert (source.parent / relative_asset).is_file()
 
 
 def test_readme_keeps_one_readable_product_proof_and_links_the_gallery() -> None:

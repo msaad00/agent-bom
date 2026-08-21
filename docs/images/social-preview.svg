@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="agent-bom: discover, scan, correlate, and graph security evidence">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#07110f"/>
+      <stop offset="0.56" stop-color="#0b1513"/>
+      <stop offset="1" stop-color="#071019"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="path" x1="176" y1="0" x2="1104" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fb7185"/>
+      <stop offset="0.34" stop-color="#a78bfa"/>
+      <stop offset="0.68" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1154" cy="62" r="210" fill="#06b6d4" fill-opacity="0.08" filter="url(#glow)"/>
+  <circle cx="64" cy="584" r="190" fill="#34d399" fill-opacity="0.07" filter="url(#glow)"/>
+  <path d="M0 1h1280M0 639h1280" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <g transform="translate(76 40)">
+    <image href="brand/mark-dark.svg" width="54" height="54"/>
+    <text x="70" y="39" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="34" font-weight="800" letter-spacing="-1" fill="#e6edf3">agent<tspan fill="url(#brand)">·bom</tspan></text>
+  </g>
+
+  <text x="76" y="162" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="58" font-weight="820" letter-spacing="-2.4" fill="#f3f7f5">Discover. Scan.</text>
+  <text x="76" y="226" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="58" font-weight="820" letter-spacing="-2.4" fill="url(#brand)">Correlate. Graph.</text>
+  <text x="78" y="271" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="500" fill="#a9b8b3">Repositories · code · dependencies · SBOMs · images · containers</text>
+  <text x="78" y="299" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="500" fill="#a9b8b3">Cloud · AI infrastructure · agents · MCP</text>
+
+  <g transform="translate(76 322)">
+    <rect width="1128" height="112" rx="24" fill="#101b19" stroke="#ffffff" stroke-opacity="0.11"/>
+    <path d="M112 56H1016" stroke="url(#path)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+
+    <g transform="translate(24 29)">
+      <rect width="170" height="56" rx="16" fill="#29171c" stroke="#fb7185" stroke-opacity="0.72"/>
+      <circle cx="27" cy="28" r="6" fill="#fb7185"/>
+      <text x="46" y="35" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="700" fill="#fecdd3">CVE</text>
+    </g>
+    <g transform="translate(251 29)">
+      <rect width="170" height="56" rx="16" fill="#20192c" stroke="#a78bfa" stroke-opacity="0.72"/>
+      <circle cx="27" cy="28" r="6" fill="#a78bfa"/>
+      <text x="46" y="35" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="700" fill="#ddd6fe">package</text>
+    </g>
+    <g transform="translate(477 29)">
+      <rect width="196" height="56" rx="16" fill="#10252a" stroke="#22d3ee" stroke-opacity="0.72"/>
+      <circle cx="27" cy="28" r="6" fill="#22d3ee"/>
+      <text x="46" y="35" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="700" fill="#cffafe">MCP server</text>
+    </g>
+    <g transform="translate(729 29)">
+      <rect width="150" height="56" rx="16" fill="#10251f" stroke="#34d399" stroke-opacity="0.68"/>
+      <circle cx="27" cy="28" r="6" fill="#34d399"/>
+      <text x="46" y="35" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="700" fill="#d1fae5">agent</text>
+    </g>
+    <g transform="translate(935 29)">
+      <rect width="168" height="56" rx="16" fill="#12231d" stroke="#34d399" stroke-opacity="0.68"/>
+      <circle cx="27" cy="28" r="6" fill="#34d399"/>
+      <text x="46" y="35" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="700" fill="#d1fae5">credential</text>
+    </g>
+  </g>
+
+  <g transform="translate(76 454)">
+    <rect width="1128" height="112" rx="22" fill="#0d1715" stroke="#ffffff" stroke-opacity="0.09"/>
+    <path d="M430 15v82M720 15v82" stroke="#ffffff" stroke-opacity="0.09"/>
+
+    <text x="22" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="700" letter-spacing="1.1" fill="#7f948d">AI &amp; MCP CLIENTS</text>
+    <g transform="translate(22 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="650" fill="#d9e2df">Claude</text>
+    </g>
+    <g transform="translate(128 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="650" fill="#d9e2df">Cursor</text>
+    </g>
+    <g transform="translate(234 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <text x="50" y="20" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" font-weight="650" fill="#d9e2df">GitHub Copilot</text>
+      <text x="50" y="38" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="12" font-weight="500" fill="#7f948d">Codex · VS Code · Windsurf</text>
+    </g>
+    <image href="vendor/social-preview-clients.svg" x="22" y="43" width="254" height="42"/>
+
+    <text x="452" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="700" letter-spacing="1.1" fill="#7f948d">CLOUD</text>
+    <g transform="translate(452 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <image href="vendor/simple-icons/amazonwebservices.svg" x="8" y="8" width="26" height="26"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="650" fill="#d9e2df">AWS</text>
+    </g>
+    <g transform="translate(538 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <image href="vendor/simple-icons/microsoftazure.svg" x="8" y="8" width="26" height="26"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="650" fill="#d9e2df">Azure</text>
+    </g>
+    <g transform="translate(634 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <image href="vendor/simple-icons/googlecloud.svg" x="8" y="8" width="26" height="26"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="650" fill="#d9e2df">GCP</text>
+    </g>
+
+    <text x="742" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="700" letter-spacing="1.1" fill="#7f948d">INFRASTRUCTURE &amp; DATA</text>
+    <g transform="translate(742 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <image href="vendor/simple-icons/kubernetes.svg" x="8" y="8" width="26" height="26"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" font-weight="650" fill="#d9e2df">Kubernetes</text>
+    </g>
+    <g transform="translate(880 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <image href="vendor/simple-icons/snowflake.svg" x="8" y="8" width="26" height="26"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" font-weight="650" fill="#d9e2df">Snowflake</text>
+    </g>
+    <g transform="translate(1014 43)">
+      <rect width="42" height="42" rx="10" fill="#f4f5f5"/>
+      <image href="vendor/simple-icons/databricks.svg" x="8" y="8" width="26" height="26"/>
+      <text x="50" y="27" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="650" fill="#d9e2df">Databricks</text>
+    </g>
+  </g>
+
+  <text x="76" y="610" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" font-weight="600" fill="#7f948d">discover → evaluate → relate → investigate → verify</text>
+  <text x="1204" y="610" text-anchor="end" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="600" fill="#7f948d">CLI · API · MCP · self-hosted</text>
+</svg>

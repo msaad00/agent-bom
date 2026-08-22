@@ -75,7 +75,10 @@ def _aws_client_config() -> Any | None:
         from botocore.config import Config
     except ImportError:
         return None
-    return Config(retries=_AWS_RETRY_CONFIG)
+    # Botocore may normalize the retry mapping in place when it prepares a
+    # client. Give every client an independent mapping so one normalization
+    # cannot contaminate the module template or later clients.
+    return Config(retries=dict(_AWS_RETRY_CONFIG))
 
 
 def _safe_error_evidence(prefix: str, error_code: str) -> str:

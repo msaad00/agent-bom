@@ -140,6 +140,19 @@ def test_benchmark_clients_use_adaptive_retry_budget(monkeypatch) -> None:
     assert ec2_call.kwargs["config"].retries == {"max_attempts": 5, "mode": "adaptive"}
 
 
+def test_benchmark_clients_do_not_share_mutable_retry_state(monkeypatch) -> None:
+    _install_boto_modules(monkeypatch)
+
+    first = cis._aws_client_config()
+    first.retries.clear()
+    first.retries.update({"total_max_attempts": 6, "mode": "adaptive"})
+
+    second = cis._aws_client_config()
+
+    assert second.retries == {"max_attempts": 5, "mode": "adaptive"}
+    assert cis._AWS_RETRY_CONFIG == {"max_attempts": 5, "mode": "adaptive"}
+
+
 def test_root_usage_check_receives_logs_and_cloudwatch_clients(monkeypatch) -> None:
     _install_boto_modules(monkeypatch)
     monkeypatch.setattr(cis, "_CHECKS", [])

@@ -61,6 +61,12 @@ describe("product proof capture contract", () => {
     expect(source).toContain("/6\\/6 stages complete/i");
   });
 
+  it("mocks the overview trend request instead of reaching an absent backend", () => {
+    expect(source).toContain('page.route("**/v1/trends?**"');
+    expect(source).toContain('scan_id: "scan-proof-baseline"');
+    expect(source).toContain("data_points:");
+  });
+
   it("tracks the current scan workspace proof copy", () => {
     expect(source).toContain('expectedText: ["New Scan", "What this scan collects and produces"');
     expect(source).toContain('"Read-only boundary", /Scope now/i, /Scan jobs/i');

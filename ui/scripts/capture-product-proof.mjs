@@ -1450,6 +1450,33 @@ async function installRoutes(page) {
       runtime: { score: 61, label: "Runtime", details: "Gateway blocks high-risk tool classes." },
     },
   }));
+  await page.route("**/v1/trends?**", (route) => fulfill(route, {
+    data_points: [
+      {
+        scan_id: SCAN_ID,
+        timestamp: CREATED_AT,
+        total_vulns: 15,
+        critical: 3,
+        high: 9,
+        medium: 3,
+        low: 0,
+        posture_score: 43,
+        posture_grade: "D",
+      },
+      {
+        scan_id: "scan-proof-baseline",
+        timestamp: "2026-07-16T19:45:00Z",
+        total_vulns: 18,
+        critical: 4,
+        high: 10,
+        medium: 4,
+        low: 0,
+        posture_score: 37,
+        posture_grade: "F",
+      },
+    ],
+    count: 2,
+  }));
   await page.route("**/v1/overview", (route) => fulfill(route, overviewResponse()));
   await page.route("**/v1/agents", (route) => fulfill(route, {
     agents: scanJob().result.agents,

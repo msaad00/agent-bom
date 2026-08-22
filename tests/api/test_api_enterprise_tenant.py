@@ -635,18 +635,24 @@ async def test_finding_triage_openvex_current_scope_matches_canonical_finding_fi
         severity="critical",
         environment="production",
         window_days=30,
+        reachability="reachable",
+        triage="not_affected",
     )
 
     assert captured == {
         "severity": "critical",
         "environment": "production",
         "window_days": 30,
+        "reachability": "reachable",
+        "triage": "not_affected",
     }
     assert exported["filters"] == {
         "scope": "current",
         "severity": "critical",
         "environment": "production",
         "window_days": "30",
+        "reachability": "reachable",
+        "triage": "not_affected",
     }
     assert exported["finding_scope"] == {
         "count": 1,
@@ -674,7 +680,7 @@ def test_current_findings_snapshot_forwards_the_canonical_scope(monkeypatch):
             "next_cursor": None,
         }
 
-    monkeypatch.setattr(scan_routes, "_list_findings_impl", _list_findings)
+    monkeypatch.setattr(scan_routes, "_list_findings_view_impl", _list_findings)
     monkeypatch.setattr(scan_routes, "_completed_jobs_for_tenant", lambda _tenant_id: [])
 
     snapshot = scan_routes.current_findings_snapshot(
@@ -684,6 +690,8 @@ def test_current_findings_snapshot_forwards_the_canonical_scope(monkeypatch):
         environment="production",
         owner="secops",
         sla="overdue",
+        reachability="reachable",
+        triage="under_investigation",
         window_days=30,
     )
 
@@ -694,6 +702,8 @@ def test_current_findings_snapshot_forwards_the_canonical_scope(monkeypatch):
     assert captured["owner"] == "secops"
     assert captured["sla"] == "overdue"
     assert captured["window_days"] == 30
+    assert captured["reachability"] == "reachable"
+    assert captured["triage"] == "under_investigation"
 
 
 def _openvex_doc(statements: list[dict]) -> dict:

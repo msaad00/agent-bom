@@ -313,6 +313,41 @@ def _triage_response(exc: Any) -> dict[str, Any]:
 
 TriageOwnerKey = tuple[str, str, str]
 TriageOwnerIndex = dict[TriageOwnerKey, tuple[int, str]]
+TriageStateIndex = dict[TriageOwnerKey, tuple[int, dict[str, Any]]]
+
+
+def build_tenant_triage_state_index(tenant_id: str) -> TriageStateIndex:
+    """Return the tenant's newest active triage state per match key."""
+    index: TriageStateIndex = {}
+    for sequence, exc in enumerate(_get_exception_store().list_all(tenant_id=tenant_id)):
+        if _parse_triage_reason(str(exc.reason)) is None:
+            continue
+        if exc.status.value not in {"approved", "active"} or exc.is_expired():
+            continue
+        key = (str(exc.vuln_id), str(exc.package_name), str(exc.server_name))
+        index.setdefault(key, (sequence, _triage_response(exc)))
+    return index
+
+
+def triage_state_for(
+    index: TriageStateIndex,
+    *,
+    vuln_id: str,
+    package: str,
+    server_name: str = "",
+) -> dict[str, Any] | None:
+    """Return the newest active triage state matching one finding."""
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    server_keys = tuple(dict.fromkeys((server_name, "*", "")))
+    for candidate_vuln in (vuln_id, "*"):
+        for candidate_package in (package, "*"):
+            for candidate_server in server_keys:
+                candidate = index.get((candidate_vuln, candidate_package, candidate_server))
+                if candidate is not None:
+                    candidates.append(candidate)
+    if not candidates:
+        return None
+    return dict(min(candidates, key=lambda item: item[0])[1])
 
 
 def build_tenant_triage_owner_index(tenant_id: str) -> TriageOwnerIndex:
@@ -2679,6 +2714,8 @@ async def export_finding_triage_vex(
     control: Annotated[str | None, Query(max_length=64)] = None,
     owner: Annotated[str | None, Query(max_length=256)] = None,
     sla: Literal["overdue", "due", "unassigned"] | None = None,
+    reachability: Literal["reachable", "unreachable", "unassessed"] | None = None,
+    triage: Literal["not_affected", "affected", "under_investigation", "untriaged"] | None = None,
 ) -> dict:
     """Export signed OpenVEX for eligible tenant-scoped not_affected triage decisions."""
     from agent_bom.api.compliance_signing import describe_signer_disclosure, sign_compliance_bundle
@@ -2712,6 +2749,8 @@ async def export_finding_triage_vex(
         "control": control,
         "owner": owner,
         "sla": sla,
+        "reachability": reachability,
+        "triage": triage,
     }
     finding_filters: dict[str, Any] = {}
     for key, value in finding_filter_values.items():

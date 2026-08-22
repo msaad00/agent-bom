@@ -501,6 +501,20 @@ describe("FindingsPage", () => {
     expect(screen.getByTestId("findings-chip-sla")).toHaveTextContent("SLA: overdue");
   });
 
+  it("owns reachability and triage filters in the URL and canonical API", async () => {
+    navigationState.query = "reachability=reachable&triage=under_investigation";
+    render(<FindingsPage />);
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(apiMock.listFindings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ reachability: "reachable", triage: "under_investigation" }),
+      ),
+    );
+    expect(screen.getByTestId("findings-chip-reachability")).toHaveTextContent("Reach: reachable");
+    expect(screen.getByTestId("findings-chip-triage")).toHaveTextContent("Triage: under investigation");
+  });
+
   it("sends the selected issue class to the paginated findings API", async () => {
     render(<FindingsPage />);
     expect(await screen.findByText("Findings queue")).toBeInTheDocument();
@@ -747,7 +761,7 @@ describe("FindingsPage", () => {
 
   it("exports OpenVEX from the same server-backed scope as the visible queue", async () => {
     navigationState.query =
-      "severity=critical&issue=vulnerability&domain=vuln&provider=aws&account=prod-1&environment=production&owner=secops&sla=overdue&framework=soc2&control=CC6.1&window=30&q=requests";
+      "severity=critical&issue=vulnerability&domain=vuln&provider=aws&account=prod-1&environment=production&owner=secops&sla=overdue&reachability=reachable&triage=not_affected&framework=soc2&control=CC6.1&window=30&q=requests";
     apiMock.listFindingTriage.mockResolvedValue({
       triage: [
         {
@@ -786,6 +800,8 @@ describe("FindingsPage", () => {
         environment: "production",
         owner: "secops",
         sla: "overdue",
+        reachability: "reachable",
+        triage: "not_affected",
         framework: "soc2",
         control: "CC6.1",
         windowDays: 30,

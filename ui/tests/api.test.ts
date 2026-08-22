@@ -278,6 +278,18 @@ describe('api.listFindings', () => {
       expect.objectContaining({ credentials: 'include' }),
     )
   })
+
+  it('serializes reachability and triage workflow filters', async () => {
+    const fetchMock = mockFetch({ findings: [], total: null, total_approximate: true })
+    global.fetch = fetchMock
+
+    await api.listFindings({ reachability: 'reachable', triage: 'under_investigation', limit: 25 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/findings?limit=25&reachability=reachable&triage=under_investigation',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
 })
 
 describe('api.getCompliance', () => {
@@ -1147,11 +1159,13 @@ describe('api finding triage helpers', () => {
       severity: 'critical',
       environment: 'production',
       windowDays: 30,
+      reachability: 'reachable',
+      triage: 'not_affected',
     })
 
     const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(url).toBe(
-      '/v1/findings/triage/vex?assignee=payments-security&package=payments-lib&scope=current&severity=critical&environment=production&window_days=30',
+      '/v1/findings/triage/vex?assignee=payments-security&package=payments-lib&scope=current&severity=critical&environment=production&window_days=30&reachability=reachable&triage=not_affected',
     )
   })
 })

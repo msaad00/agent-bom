@@ -128,6 +128,18 @@ def test_platform_tracking_sdks_are_owned_by_the_release_bump() -> None:
     assert missing == [], f"SDK(s) checked by check_release_consistency but never written by bump-version.py: {missing}"
 
 
+def test_screenshot_manifest_release_version_is_owned_by_the_release_bump() -> None:
+    bump = _load_script("bump-version.py")
+    entries = [(pattern, template) for rel, pattern, template in bump.DOC_TEST_LOCATIONS if rel == "docs/images/product-screenshots.json"]
+    assert len(entries) == 1
+    pattern, template = entries[0]
+    payload = '{"release_version":"0.101.0","screenshots":[{"visible_version":"0.101.0"}]}'
+    rewritten, count = pattern.subn(template.format(v="0.102.0"), payload)
+    assert count == 2
+    assert '"release_version":"0.102.0"' in rewritten
+    assert '"visible_version":"0.102.0"' in rewritten
+
+
 def test_each_sdk_manifest_is_registered_exactly_once_for_the_bump() -> None:
     """One registration per artifact — two that happen to agree still disagree later."""
     bump = _load_script("bump-version.py")

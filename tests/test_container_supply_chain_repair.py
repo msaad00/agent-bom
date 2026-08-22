@@ -2,12 +2,36 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import tomllib
 from pathlib import Path
 
 from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_runtime_pip_overlay_excludes_cve_2026_13346() -> None:
+    requirements = (ROOT / "deploy/docker/pip-requirements.txt").read_text(encoding="utf-8")
+    match = re.search(r"^pip==([^ \\\n]+)", requirements, re.MULTILINE)
+    assert match
+    assert tuple(int(part) for part in match.group(1).split(".")) >= (26, 2)
+    assert requirements.count("--hash=sha256:") == 2
+
+
+def test_every_published_python_image_installs_the_reviewed_pip_overlay() -> None:
+    dockerfiles = [
+        ROOT / "Dockerfile",
+        ROOT / "deploy/docker/Dockerfile.collector",
+        ROOT / "deploy/docker/Dockerfile.mcp",
+        ROOT / "deploy/docker/Dockerfile.runtime",
+        ROOT / "deploy/docker/Dockerfile.snowpark",
+        ROOT / "deploy/docker/Dockerfile.sse",
+    ]
+    for dockerfile in dockerfiles:
+        text = dockerfile.read_text(encoding="utf-8")
+        assert "deploy/docker/pip-requirements.txt" in text, dockerfile
+        assert "--require-hashes" in text, dockerfile
 
 
 def test_all_direct_cryptography_constraints_exclude_cve_2026_69247() -> None:
@@ -52,6 +76,13 @@ def test_container_sarif_normalization_preserves_image_reference(tmp_path: Path)
                     {
                         "ruleId": "CVE-2026-69247",
                         "locations": [{"physicalLocation": {"artifactLocation": {"uri": "docker://agentbom/agent-bom:latest"}}}],
+                        "relatedLocations": [
+                            {
+                                "id": 0,
+                                "logicalLocations": [{"fullyQualifiedName": "package:pip@26.1.2", "kind": "package"}],
+                                "message": {"text": "pip@26.1.2"},
+                            }
+                        ],
                     }
                 ],
             }
@@ -68,6 +99,8 @@ def test_container_sarif_normalization_preserves_image_reference(tmp_path: Path)
     assert "automationDetails" not in run
     assert artifact == {"uri": "Dockerfile", "uriBaseId": "%SRCROOT%"}
     assert result["properties"]["agent-bom:container_uri"] == "docker://agentbom/agent-bom:latest"
+    related_physical = result["relatedLocations"][0]["physicalLocation"]
+    assert related_physical == {"artifactLocation": {"uri": "Dockerfile", "uriBaseId": "%SRCROOT%"}}
 
 
 def test_container_rescan_normalizes_sarif_without_making_upload_gating() -> None:
@@ -76,3 +109,17 @@ def test_container_rescan_normalizes_sarif_without_making_upload_gating() -> Non
     assert "scripts/normalize_container_sarif_for_github.py" in workflow
     upload = workflow.split("- name: Upload SARIF to GitHub Security tab", 1)[1]
     assert "continue-on-error: true" in upload.split("- name:", 1)[0]
+
+
+def test_container_rescan_runs_after_release_and_records_immutable_image_evidence() -> None:
+    workflow = (ROOT / ".github/workflows/container-rescan.yml").read_text(encoding="utf-8")
+    assert 'workflows: ["Release"]' in workflow
+    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "Resolve pulled image identity" in workflow
+    assert "IMAGE_ID:" in workflow
+    assert "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" in workflow
+    assert (
+        'elif [ "${{ steps.image_scan_table.outcome }}" = "success" ] && [ -n "$EXISTING" ]; then'
+        in workflow
+    )
+    assert "latest rescan was inconclusive, so this finding remains open" in workflow

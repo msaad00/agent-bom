@@ -17,12 +17,16 @@ on:
   schedule:
     - cron: "30 8 * * *"  # daily at 08:30 UTC (after deployment-freshness at 08:00)
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Publish to Registries"]
+    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
   freshness:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

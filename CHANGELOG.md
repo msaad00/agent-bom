@@ -9,12 +9,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-08-22
+
+A release-integrity and evidence-truth release. Published Python images replace
+the vulnerable pip overlay on both supported architectures, container evidence
+is accepted by GitHub code scanning, and release completion now carries image
+and registry fixes through independent live verification instead of leaving
+automated findings open until the next daily schedule.
+
 ### Fixed
 
 - Graph label budgets survive accessibility normalization, persisted attack
   paths derive from the final projected estate, and forced demo seeding never
   displaces newer operator evidence. The demo now exposes and renders an
   authenticated graph-ownership status before constructing graph deep links.
+- Published amd64 and arm64 Python images install pip 26.2 with reviewed hashes,
+  clearing CVE-2026-13346 from the shared runtime overlay.
+- Container SARIF normalization supplies GitHub-compatible physical context for
+  logical exposure-path hops while preserving the original image reference.
+- Successful releases immediately rescan both published architectures and record
+  immutable image identities in automated issue evidence.
+- Automatic forward releases fail when Smithery publication is skipped, and a
+  successful registry run immediately rechecks every public distribution surface
+  so stale-inventory findings close only after live convergence.
 - The consumer pre-commit dependency hook now scopes scans to the downstream
   repository instead of including unrelated workstation MCP configuration.
 - Baseline and history diffs keep a CVE attached to the same normalized package
@@ -3307,7 +3324,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.101.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.102.0...HEAD
+[0.102.0]: https://github.com/msaad00/agent-bom/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/msaad00/agent-bom/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/msaad00/agent-bom/compare/v0.99.0...v0.100.0
 [0.99.0]: https://github.com/msaad00/agent-bom/compare/v0.98.3...v0.99.0

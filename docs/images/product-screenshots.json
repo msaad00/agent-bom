@@ -1,5 +1,5 @@
 {
-  "release_version": "0.101.0",
+  "release_version": "0.102.0",
   "captured_at": "2026-08-16T20:57:12.161Z",
   "source_commit": "58686fad63d18b7d4e25ca9373a8929e78b1dc56",
   "source_tree": "clean",
@@ -10,7 +10,7 @@
       "path": "dashboard-live.png",
       "page": "/?capture=1",
       "scope": "Overview command center — posture grade, unique findings breakdown, scan coverage, and operational lanes",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:c3f80729d35c7e8d652b6aa2c5cc8e133515900a1672d897a11f768d85b2e92b"
     },
     {
@@ -18,7 +18,7 @@
       "path": "dashboard-light-live.png",
       "page": "/?capture=1",
       "scope": "Overview command center in the light theme",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:afb7919240d8092ef90b61148785b675fd2b46855598233776f2c6d6036179c6"
     },
     {
@@ -26,7 +26,7 @@
       "path": "dashboard-mobile-live.png",
       "page": "/?capture=1",
       "scope": "Overview command center at a 390 by 844 viewport",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:3046496a6a50cbdab74d11bad309620bf78d4c76722bd715552ef5e1b93e1c14"
     },
     {
@@ -34,7 +34,7 @@
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
       "scope": "Overview lower frame with unique exposure paths, recent scans, and activity",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:0e4f9704a7e01af2ee3b65805b3282670ef2db7ce44f46627fe6947801eee0a7"
     },
     {
@@ -42,7 +42,7 @@
       "path": "cloud-accounts-live.png",
       "page": "/connections?capture=1",
       "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:a34195c724d8ea15a0ea0104525dbb32f3f30f12952fbbab4b3144f7b888de85"
     },
     {
@@ -50,7 +50,7 @@
       "path": "new-scan-live.png",
       "page": "/scan?capture=1",
       "scope": "New Scan workspace with scope summary, read-only boundary, expected evidence, connected sources, and job navigation",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:a8c2478ebdf2f44921197db56935c789a9819f3ad7ead4cca74f6db23c5732b3"
     },
     {
@@ -58,7 +58,7 @@
       "path": "jobs-pipeline-live.png",
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:0ee95f612c4242e2b9b45b0ac4d51555a93a623b1609d0df0bf13169ea1c8e4f"
     },
     {
@@ -66,7 +66,7 @@
       "path": "agent-lifecycle-live.png",
       "page": "/agents?name=developer-copilot&view=lifecycle&capture=1",
       "scope": "Developer agent lifecycle across MCP servers, package, tool, credential name, and synthetic finding",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:d9235bf1f6e38b339a9c657aaf75321ac310495a5adcfb2343829560c921d13e"
     },
     {
@@ -74,7 +74,7 @@
       "path": "mesh-live.png",
       "page": "/graph?lens=mesh&capture=1",
       "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:60d4cb411193c956b0088ebc345bd32de4b9abb1ccc3a975a2d03302ff0c957f"
     },
     {
@@ -82,7 +82,7 @@
       "path": "gateway-policies-live.png",
       "page": "/runtime?tab=gateway&capture=1",
       "scope": "Runtime gateway KPI rollup, enforcement posture, and recent tool-call evidence",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:73fa2199e12118e6e32480f8b3b5cf6033a4fa587f566edce0c8277cbf2d5b5b"
     },
     {
@@ -90,7 +90,7 @@
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:3ec126270885213b4fdf473743a268c94e494bd43b5b8141e47c28efaa3dcd36"
     },
     {
@@ -98,7 +98,7 @@
       "path": "security-graph-light-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Prioritized attack path in the light theme",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:47ca0ea5a3b165b26d543dabdc7480d997889b5074de31b1b47170728ccacbfa"
     },
     {
@@ -106,7 +106,7 @@
       "path": "security-graph-mobile-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:9b10b3bbc16a941bbd97fe09fd6570cd520ba116baed77fd75f0b2917fbf1347"
     },
     {
@@ -114,7 +114,7 @@
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&scan=scan-proof-ai-platform",
       "scope": "Focused filtered attack-path lineage across agent, MCP, package, and finding nodes",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:4a2391d1d2c7df31c9f523226cb87c6d04fc6dd1cf03164e7a5728caa38e84dc"
     },
     {
@@ -122,7 +122,7 @@
       "path": "context-map-live.png",
       "page": "/graph?lens=context&capture=1",
       "scope": "Context map with path focus off — tools, credentials, servers, and lateral agent links (not CVE-only)",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:774f5680fa72c9a8edc4f64cd5854f8025071497b09bc3525a6c303137af0b4d"
     },
     {
@@ -130,7 +130,7 @@
       "path": "fleet-state-live.png",
       "page": "/fleet?capture=1",
       "scope": "Expanded quarantined fleet row showing lifecycle distribution, owner metadata, environment label, and enforcement state",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:687028ab455e24210ec6a2940d2581f71d70f70358a3e0dc93d1ddfed2499f99"
     },
     {
@@ -138,7 +138,7 @@
       "path": "identity-audit-live.png",
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:3f44a781c5d1a027fdf94ee704fad3618af2642e9205ac56441e3c7171c0901a"
     },
     {
@@ -146,7 +146,7 @@
       "path": "dependency-map-live.png",
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:676aa080066c3ddb32a7d6cadc9b6f6d6a989d2dd871db35225db0fdfe2ecfc5"
     },
     {
@@ -154,7 +154,7 @@
       "path": "remediation-live.png",
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:6edbcf5bc6aaabe726ff666fd5fc93846e1178af47640f24b518e8322125dffc"
     },
     {
@@ -162,7 +162,7 @@
       "path": "remediation-light-live.png",
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow in the light theme",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:626a82302b57075cf1711dbaf1276cbb31740d632356f3c5b46785da50a228bc"
     },
     {
@@ -170,7 +170,7 @@
       "path": "remediation-mobile-live.png",
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow at a 390 by 844 viewport",
-      "visible_version": "0.101.0",
+      "visible_version": "0.102.0",
       "sha256": "sha256:ff21adee4c72c521f9fc60b494c583519d434f293188f6cee74943c8d69d915d"
     }
   ]

@@ -157,28 +157,31 @@ jobs:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           SMITHERY_OAUTH_READY: ${{ needs.release.outputs.smithery_oauth_ready }}
+          REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}
         run: |
-          if [ "$SMITHERY_OAUTH_READY" != "true" ]; then
-            echo "::notice::Latest published release predates the OAuth-capable MCP server contract — skipping Smithery until the next forward release"
+          require_or_skip() {
+            reason="$1"
+            if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ]; then
+              echo "::error::Smithery publication is required for an automatic forward release: ${reason}"
+              exit 1
+            fi
+            echo "::notice::${reason} — skipping Smithery for this manual repair run"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
+          }
+          if [ "$SMITHERY_OAUTH_READY" != "true" ]; then
+            require_or_skip "Latest published release predates the OAuth-capable MCP server contract; publish the next forward release"
           fi
           if [ -z "${SMITHERY_MCP_URL:-}" ]; then
-            echo "::notice::SMITHERY_MCP_URL not configured — skipping Smithery publish"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            require_or_skip "SMITHERY_MCP_URL is not configured"
           fi
           case "$SMITHERY_MCP_URL" in
             https://server.smithery.ai/*|http://server.smithery.ai/*)
-              echo "::warning::SMITHERY_MCP_URL points at Smithery's hosted proxy, not agent-bom's upstream MCP origin. Skipping Smithery publish to avoid publishing the proxy back to itself."
-              echo "enabled=false" >> "$GITHUB_OUTPUT"
-              exit 0
+              require_or_skip "SMITHERY_MCP_URL points at Smithery's hosted proxy instead of agent-bom's upstream MCP origin; avoid publishing the proxy back to itself"
               ;;
           esac
           if [ -z "${SMITHERY_API_TOKEN:-}" ]; then
-            echo "::notice::SMITHERY_API_TOKEN not configured — skipping Smithery publish"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            require_or_skip "SMITHERY_API_TOKEN is not configured"
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 

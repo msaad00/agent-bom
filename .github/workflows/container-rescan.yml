@@ -8,12 +8,16 @@ on:
   schedule:
     - cron: "0 8 * * *"   # daily at 08:00 UTC
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 permissions: {}  # deny all by default; jobs declare only what they need
 
 jobs:
   rescan:
     name: Rescan — ${{ matrix.platform }}
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
     env:
@@ -45,6 +49,18 @@ jobs:
 
       - name: Pull ${{ matrix.platform }} image
         run: docker pull --platform ${{ matrix.platform }} agentbom/agent-bom:latest
+
+      - name: Resolve pulled image identity
+        id: image
+        run: |
+          set -euo pipefail
+          IMAGE_ID=$(docker image inspect agentbom/agent-bom:latest --format '{{.Id}}')
+          case "$IMAGE_ID" in
+            sha256:*) ;;
+            *) echo "::error::Pulled image has no immutable sha256 identity"; exit 1 ;;
+          esac
+          echo "id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "Scanning agentbom/agent-bom:latest at $IMAGE_ID for ${{ matrix.platform }}"
 
       - name: Container image scan table (fixable MEDIUM+)
         id: image_scan_table
@@ -106,9 +122,10 @@ jobs:
           echo "::warning::Container scan found fixable MEDIUM+ CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
 
       - name: Open or close base image vulnerability issue
-        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_ID: ${{ steps.image.outputs.id }}
         run: |
           set -euo pipefail
           TITLE="base-image-vulnerability: agentbom/agent-bom:latest has actionable findings on ${{ matrix.platform }}"
@@ -124,11 +141,13 @@ jobs:
           Daily image rescan found fixable \`MEDIUM+\` findings in \`agentbom/agent-bom:latest\`.
 
           - Platform: \`${{ matrix.platform }}\`
+          - Image ID: \`${IMAGE_ID}\`
           - SARIF category: \`${{ matrix.sarif_category }}\`
           - Source workflow: \`.github/workflows/container-rescan.yml\`
           - Policy: container scans run with \`agent-bom image --fail-on-severity medium --exclude-unfixable\`
+          - Evidence: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
 
-          Review the GitHub Security tab and the workflow logs for the current image findings.
+          Review the GitHub Security tab and the immutable workflow evidence for the current image findings.
           EOF
           )
             if [ -n "$EXISTING" ]; then
@@ -136,6 +155,8 @@ jobs:
             else
               gh issue create --title "$TITLE" --label "base-image-vulnerability,security-preventive,automated" --body "$BODY"
             fi
+          elif [ "${{ steps.image_scan_table.outcome }}" = "success" ] && [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Published image ${IMAGE_ID} is clean for ${{ matrix.platform }} under the fixable MEDIUM+ policy. Evidence: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           elif [ -n "$EXISTING" ]; then
-            gh issue close "$EXISTING" --comment "Daily image rescan is clean again; closing the automated base image vulnerability alert."
+            gh issue comment "$EXISTING" --body "The latest rescan was inconclusive, so this finding remains open. Evidence: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           fi

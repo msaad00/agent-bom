@@ -128,6 +128,11 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ),
     ("docs/PRODUCT_METRICS.md", re.compile(r"(- Version: `)\d+\.\d+\.\d+(`)"), r"\g<1>{v}\g<2>"),
     ("docs/PRODUCT_METRICS.json", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
+    (
+        "docs/images/product-screenshots.json",
+        re.compile(r'("(?:release_version|visible_version)":\s*")\d+\.\d+\.\d+(")'),
+        r"\g<1>{v}\g<2>",
+    ),
     ("docs/RELEASE_VERIFICATION.md", re.compile(r"^(TAG=v)\d+\.\d+\.\d+$", re.M), r"\g<1>{v}"),
     # The storefront row carries one of TWO phrasings depending on where the
     # release is: lifecycle-neutral before the image is published, "Current

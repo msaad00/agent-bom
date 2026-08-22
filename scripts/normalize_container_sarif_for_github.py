@@ -19,6 +19,20 @@ def _github_artifact_path(uri: str) -> str:
     return "Dockerfile" if uri.startswith("docker://") else uri
 
 
+def _normalize_artifact_location(physical: dict[str, Any], result: dict[str, Any]) -> None:
+    artifact = physical.get("artifactLocation")
+    if not isinstance(artifact, dict):
+        return
+    uri = artifact.get("uri")
+    if not isinstance(uri, str) or not uri.startswith("docker://"):
+        return
+    properties = result.setdefault("properties", {})
+    if isinstance(properties, dict):
+        properties.setdefault("agent-bom:container_uri", uri)
+    artifact["uri"] = _github_artifact_path(uri)
+    artifact["uriBaseId"] = "%SRCROOT%"
+
+
 def normalize_document(document: dict[str, Any]) -> dict[str, Any]:
     for run in document.get("runs", []):
         if not isinstance(run, dict):
@@ -33,17 +47,18 @@ def normalize_document(document: dict[str, Any]) -> dict[str, Any]:
                 physical = location.get("physicalLocation")
                 if not isinstance(physical, dict):
                     continue
-                artifact = physical.get("artifactLocation")
-                if not isinstance(artifact, dict):
+                _normalize_artifact_location(physical, result)
+            # SARIF 2.1 permits logical-only related locations, but GitHub's
+            # ingestion rejects them while building its related-location index.
+            # Add checked-in source context without discarding the graph hop.
+            for related in result.get("relatedLocations", []):
+                if not isinstance(related, dict):
                     continue
-                uri = artifact.get("uri")
-                if not isinstance(uri, str) or not uri.startswith("docker://"):
+                physical = related.get("physicalLocation")
+                if not isinstance(physical, dict):
+                    related["physicalLocation"] = {"artifactLocation": {"uri": "Dockerfile", "uriBaseId": "%SRCROOT%"}}
                     continue
-                properties = result.setdefault("properties", {})
-                if isinstance(properties, dict):
-                    properties.setdefault("agent-bom:container_uri", uri)
-                artifact["uri"] = _github_artifact_path(uri)
-                artifact["uriBaseId"] = "%SRCROOT%"
+                _normalize_artifact_location(physical, result)
     return document
 
 

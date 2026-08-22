@@ -1065,9 +1065,9 @@ def api_cmd(
 @click.option(
     "--profile",
     type=click.Choice(["guided", "full"]),
-    default="guided",
+    default="full",
     show_default=True,
-    help="Tool catalog: guided workflow tools for concise agent context, or the full advanced catalog.",
+    help="Tool catalog: full 81-tool catalog, or guided workflow tools for concise agent context.",
 )
 @click.option(
     "--bearer-token",
@@ -1111,15 +1111,13 @@ def mcp_server_cmd(
       gateway-fleet-live-demo  gateway_status -> proxy_alerts -> fleet_scan -> firewall_check
 
     \b
-    The guided profile exposes the tools used by the workflow prompts. Use
-    --profile full when an advanced client needs the full tool catalog.
-    Exposes 81 security tools via MCP protocol in that full profile, including
+    The default full profile exposes 81 security tools via MCP protocol, including
     advanced direct tools such as skill_scan, skill_verify, compliance, and
     remediate. See:
       docs/MCP_WORKFLOWS.md
 
     \b
-    The default guided profile is organized behind 8 workflow prompts.
+    Use --profile guided for a concise catalog organized behind 8 workflow prompts.
 
     \b
     Usage:

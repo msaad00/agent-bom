@@ -17,6 +17,7 @@ from agent_bom.db.sync import (
     _EPSS_CSV_URL,
     _ingest_alpine_secdb_payload,
     _ingest_osv_file,
+    _osv_bulk_url,
     _parse_alpine_secfix_tokens,
     _parse_osv_entry,
     _resolve_epss_redirect,
@@ -477,6 +478,13 @@ def test_sync_osv_rejects_http_url(tmp_db):
         sync_osv(tmp_db, url="http://evil.example.com/osv.zip")
 
 
+def test_osv_bulk_url_accepts_only_supported_exact_ecosystems():
+    assert _osv_bulk_url("PyPI") == "https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip"
+    assert _osv_bulk_url("crates.io") == "https://osv-vulnerabilities.storage.googleapis.com/crates.io/all.zip"
+    with pytest.raises(ValueError, match="supported OSV ecosystem"):
+        _osv_bulk_url("../all")
+
+
 def test_sync_epss_rejects_http_url(tmp_db):
     with pytest.raises(ValueError, match="https://"):
         sync_epss(tmp_db, url="http://evil.example.com/epss.csv.gz")
@@ -595,10 +603,12 @@ def test_sync_osv_streams_to_disk(tmp_db, monkeypatch):
 
     captured: dict = {}
 
-    def fake_download(url, dest, *, timeout=60, headers=None, chunk_size=1 << 20):
+    def fake_download(url, dest, *, timeout=60, headers=None, chunk_size=1 << 20, progress=None):
         captured["dest"] = dest
         with open(dest, "wb") as fh:
             fh.write(payload)
+        if progress is not None:
+            progress(len(payload), len(payload))
         return len(payload)
 
     monkeypatch.setattr("agent_bom.http_client.download_to_file", fake_download)
@@ -611,6 +621,39 @@ def test_sync_osv_streams_to_disk(tmp_db, monkeypatch):
     assert not Path(captured["dest"]).exists()
     row = tmp_db.execute("SELECT id FROM vulns WHERE id = 'OSV-2024-STREAM'").fetchone()
     assert row is not None
+
+
+def test_sync_osv_records_exact_scoped_coverage_even_when_archive_is_empty(tmp_db, monkeypatch):
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w"):
+        pass
+
+    def fake_download(url, dest, **kwargs):
+        Path(dest).write_bytes(payload.getvalue())
+        return len(payload.getvalue())
+
+    monkeypatch.setattr("agent_bom.http_client.download_to_file", fake_download)
+    assert sync_osv(tmp_db, ecosystem="PyPI") == 0
+
+    row = tmp_db.execute("SELECT metadata_json FROM sync_meta WHERE source = 'osv'").fetchone()
+    assert json.loads(row[0]) == {"coverage": "selected_ecosystems", "ecosystems": ["PyPI"]}
+
+
+def test_sync_osv_capped_fixture_never_claims_ecosystem_coverage(tmp_db, monkeypatch):
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as zf:
+        zf.writestr("one.json", json.dumps(_make_osv_entry(vuln_id="OSV-ONE")))
+        zf.writestr("two.json", json.dumps(_make_osv_entry(vuln_id="OSV-TWO")))
+
+    def fake_download(url, dest, **kwargs):
+        Path(dest).write_bytes(payload.getvalue())
+        return len(payload.getvalue())
+
+    monkeypatch.setattr("agent_bom.http_client.download_to_file", fake_download)
+    assert sync_osv(tmp_db, ecosystem="npm", max_entries=1) == 1
+
+    row = tmp_db.execute("SELECT metadata_json FROM sync_meta WHERE source = 'osv'").fetchone()
+    assert json.loads(row[0]) == {"coverage": "partial", "ecosystems": []}
 
 
 def test_sync_kev_guards_wrong_shape_payload(tmp_db):
@@ -965,6 +1008,49 @@ def test_sync_db_single_kev_source(tmp_path):
         result = sync_db(path=tmp_path / "test.db", sources=["kev"])
     assert result == {"kev": 10}
     mock_kev.assert_called_once()
+
+
+@pytest.mark.real_vuln_db_sync
+def test_sync_db_reports_source_lifecycle(tmp_path):
+    """Reusable sync callers receive deterministic source start/finish events."""
+    events: list[tuple[str, str, int, int | None]] = []
+
+    with patch("agent_bom.db.sync.sync_kev", return_value=10):
+        result = sync_db(
+            path=tmp_path / "test.db",
+            sources=["kev"],
+            progress=lambda source, phase, current, total: events.append((source, phase, current, total)),
+        )
+
+    assert result == {"kev": 10}
+    assert events == [("kev", "start", 0, None), ("kev", "complete", 10, None)]
+
+
+@pytest.mark.real_vuln_db_sync
+def test_sync_db_runs_requested_osv_ecosystems_and_aggregates_result(tmp_path):
+    events: list[tuple[str, str, int, int | None]] = []
+    db_file = tmp_path / "test.db"
+
+    with patch("agent_bom.db.sync.sync_osv", side_effect=[3, 5]) as mock_osv:
+        result = sync_db(
+            path=db_file,
+            sources=["osv"],
+            osv_ecosystems=["PyPI", "npm"],
+            progress=lambda source, phase, current, total: events.append((source, phase, current, total)),
+        )
+
+    assert result == {"osv": 8}
+    assert [call.kwargs["ecosystem"] for call in mock_osv.call_args_list] == ["PyPI", "npm"]
+    assert events == [
+        ("osv:PyPI", "start", 0, None),
+        ("osv:PyPI", "complete", 3, None),
+        ("osv:npm", "start", 0, None),
+        ("osv:npm", "complete", 5, None),
+    ]
+    conn = sqlite3.connect(db_file)
+    row = conn.execute("SELECT record_count FROM sync_meta WHERE source = 'osv'").fetchone()
+    conn.close()
+    assert row == (8,)
 
 
 @pytest.mark.real_vuln_db_sync

@@ -122,15 +122,19 @@ def test_nist_800_53_tags_unchanged():
     ]
 
 
-def test_iso_27001_tags_unchanged():
+def test_iso_27001_tags_use_the_nist_olir_spine():
     assert iso_27001.tag_blast_radius(_representative_br()) == [
+        "A.5.10",
+        "A.5.16",
+        "A.5.17",
         "A.5.19",
         "A.5.20",
         "A.5.21",
         "A.5.23",
         "A.5.28",
-        "A.8.24",
+        "A.5.33",
         "A.8.28",
+        "A.8.7",
         "A.8.8",
         "A.8.9",
     ]
@@ -247,7 +251,20 @@ def test_vuln_compliance_tags_unchanged():
             "FedRAMP-SR-3",
         ],
         "cis": ["CIS-02.3", "CIS-02.7", "CIS-07.4", "CIS-16.1", "CIS-16.12"],
-        "iso_27001": ["A.5.19", "A.5.20", "A.5.21", "A.5.23", "A.5.28", "A.8.28", "A.8.8"],
+        "iso_27001": [
+            "A.5.10",
+            "A.5.16",
+            "A.5.17",
+            "A.5.19",
+            "A.5.20",
+            "A.5.21",
+            "A.5.23",
+            "A.5.28",
+            "A.5.33",
+            "A.8.28",
+            "A.8.7",
+            "A.8.8",
+        ],
         "soc2": ["CC6.8", "CC7.1", "CC7.2", "CC7.4", "CC8.1", "CC9.1", "CC9.2"],
         "eu_ai_act": ["ART-15", "ART-17", "ART-6", "ART-9"],
         "owasp_mcp": ["MCP04"],
@@ -389,6 +406,38 @@ def test_nist_to_iso_crosswalk_resolves_ids_only():
     # Only identifiers are present; no ISO control title text leaks through.
     assert all(i.startswith("A.") for i in iso_ids)
     assert fm.nist_to_iso("ZZ-999") == []
+
+
+def test_cwe_iso_controls_are_derived_through_the_nist_spine():
+    """CWE -> ISO must have one construction path, not a conflicting table.
+
+    CWE -> NIST remains an agent-bom assertion.  NIST -> ISO is the vendored
+    NIST OLIR crosswalk.  The composed mapping must therefore equal the OLIR
+    projection for every CWE that has both legacy ISO and NIST mappings.
+    """
+    from agent_bom import framework_mapping as fm
+
+    compared = 0
+    for cwe, frameworks in fm.CWE_COMPLIANCE_MAP.items():
+        if not frameworks.get("iso_27001") or not frameworks.get("nist_800_53"):
+            continue
+        expected = {iso_control for nist_control in frameworks["nist_800_53"] for iso_control in fm.nist_to_iso(nist_control)}
+        assert set(fm.iso_controls_for_cwes_via_nist([cwe])) == expected
+        compared += 1
+
+    assert compared >= 40
+
+
+def test_blast_and_vulnerability_paths_share_the_nist_derived_iso_answer():
+    """Both production taggers must agree on the same CWE-derived ISO IDs."""
+    br = _br(["CWE-89"], severity=Severity.LOW, fixed_version=None)
+
+    blast_tags = iso_27001.tag_blast_radius(br)
+    intrinsic_tags = vuln_compliance.tag_vulnerability(br.vulnerability, br.package)["iso_27001"]
+
+    assert "A.8.7" in blast_tags
+    assert "A.8.7" in intrinsic_tags
+    assert blast_tags == intrinsic_tags
 
 
 def test_crosswalk_provenance_is_nist_public_domain():

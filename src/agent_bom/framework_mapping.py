@@ -79,6 +79,8 @@ __all__ = [
     "ControlSpec",
     "control_spec",
     "nist_to_iso",
+    "iso_control_provenance_for_cwes",
+    "iso_controls_for_cwes_via_nist",
     "select_frameworks",
     "is_framework_relevant",
     "ALL_FRAMEWORKS",
@@ -171,6 +173,28 @@ def nist_to_iso(control_id: str) -> list[str]:
     ISO mapping for the control.
     """
     return framework_catalog.iso_controls_for_nist(control_id)
+
+
+def iso_control_provenance_for_cwes(cwe_ids: Iterable[str], *, normalize: bool = True) -> dict[str, tuple[str, ...]]:
+    """Compose CWE -> NIST assertions with NIST's official ISO crosswalk.
+
+    The first edge is an agent-bom, vendor-asserted signal mapping.  The second
+    edge is NIST's published OLIR mapping.  Returning the contributing NIST
+    controls lets downstream findings preserve both facts instead of flattening
+    the result into an unqualified CWE -> ISO assertion.
+    """
+    provenance: dict[str, list[str]] = {}
+    for nist_control in controls_for_cwes(cwe_ids, "nist_800_53", normalize=normalize):
+        for iso_control in nist_to_iso(nist_control):
+            contributors = provenance.setdefault(iso_control, [])
+            if nist_control not in contributors:
+                contributors.append(nist_control)
+    return {control: tuple(contributors) for control, contributors in provenance.items()}
+
+
+def iso_controls_for_cwes_via_nist(cwe_ids: Iterable[str], *, normalize: bool = True) -> list[str]:
+    """Return CWE-derived ISO IDs through the single NIST/OLIR spine."""
+    return list(iso_control_provenance_for_cwes(cwe_ids, normalize=normalize))
 
 
 # ─── Framework slug vocabulary ───────────────────────────────────────────────

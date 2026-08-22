@@ -143,4 +143,5 @@ import copy as _copy  # noqa: E402
 
 _chargeback_cmd = _copy.copy(allocation_cmd)
 _chargeback_cmd.name = "chargeback"
+_chargeback_cmd.hidden = True
 cost_group.add_command(_chargeback_cmd, "chargeback")

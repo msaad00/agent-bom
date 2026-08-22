@@ -1846,6 +1846,47 @@ def test_db_update_mocked_success(tmp_path):
     assert "100" in result.output
 
 
+def test_db_update_reports_source_progress_and_first_sync_budget(tmp_path):
+    """A long first sync must not look hung and must disclose its download budget."""
+    db_path = str(tmp_path / "test.db")
+
+    def _sync_with_progress(**kwargs):
+        progress = kwargs["progress"]
+        progress("osv", "start", 0, None)
+        progress("osv", "download", 5 * 1024 * 1024, 50 * 1024 * 1024)
+        progress("osv", "complete", 100, None)
+        return {"osv": 100}
+
+    with patch("agent_bom.db.sync.sync_db", side_effect=_sync_with_progress):
+        result = _run(["db", "update", "--source", "osv", "--path", db_path])
+
+    assert result.exit_code == 0
+    assert "can exceed 1 GB" in result.output
+    assert "osv: starting" in result.output
+    assert "osv: complete" in result.output
+    assert "downloaded 5.0 MB" in result.output
+
+
+def test_db_update_osv_ecosystem_selects_only_osv_and_discloses_scope(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    with patch("agent_bom.db.sync.sync_db", return_value={"osv": 42}) as mock_sync:
+        result = _run(["db", "update", "--osv-ecosystem", "PyPI", "--path", db_path])
+
+    assert result.exit_code == 0
+    assert mock_sync.call_args.kwargs["sources"] == ["osv"]
+    assert mock_sync.call_args.kwargs["osv_ecosystems"] == ["PyPI"]
+    assert "selected OSV ecosystem" in result.output
+    assert "PyPI" in result.output
+    assert "all-ecosystems archive" not in result.output
+
+
+def test_db_update_osv_ecosystem_requires_osv_when_sources_are_explicit(tmp_path):
+    result = _run(["db", "update", "--source", "kev", "--osv-ecosystem", "PyPI", "--path", str(tmp_path / "test.db")])
+
+    assert result.exit_code == 2
+    assert "requires --source osv" in result.output
+
+
 def test_db_update_single_source(tmp_path):
     """db update --source epss only syncs epss."""
     db_path = str(tmp_path / "test.db")

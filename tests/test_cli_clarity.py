@@ -153,3 +153,40 @@ class TestInventoryFlagAlias:
 
     def test_no_scan_still_distinct(self):
         assert "--no-scan" in _run(["scan", "--help"]).output
+
+
+class TestCompatibilityAliases:
+    """Compatibility spellings stay callable without crowding group help."""
+
+    def test_duplicate_aliases_are_hidden_from_group_help(self):
+        assert "\n  chargeback " not in _run(["cost", "--help"]).output
+        assert "\n  templates " not in _run(["policy", "--help"]).output
+        assert "\n  where " not in _run(["mcp", "--help"]).output
+
+    def test_hidden_duplicate_aliases_remain_reachable(self):
+        assert _run(["cost", "chargeback", "--help"]).exit_code == 0
+        assert _run(["policy", "templates", "--help"]).exit_code == 0
+        assert _run(["mcp", "where", "--help"]).exit_code == 0
+
+
+class TestPrimaryInputModes:
+    """Synthetic modes must not silently replace explicit input."""
+
+    def test_self_scan_and_demo_are_mutually_exclusive(self):
+        result = _run(["scan", "--self-scan", "--demo", "--no-scan", "--offline"])
+        assert result.exit_code == 2
+        assert "--self-scan and --demo are mutually exclusive" in result.output
+
+    def test_self_scan_rejects_explicit_inventory(self, tmp_path):
+        inventory = tmp_path / "inventory.json"
+        inventory.write_text('{"agents": []}')
+        result = _run(["scan", "--self-scan", "--inventory", str(inventory), "--no-scan", "--offline"])
+        assert result.exit_code == 2
+        assert "--self-scan and --inventory are mutually exclusive" in result.output
+
+    def test_demo_rejects_explicit_inventory(self, tmp_path):
+        inventory = tmp_path / "inventory.json"
+        inventory.write_text('{"agents": []}')
+        result = _run(["scan", "--demo", "--inventory", str(inventory), "--no-scan", "--offline"])
+        assert result.exit_code == 2
+        assert "--demo and --inventory are mutually exclusive" in result.output

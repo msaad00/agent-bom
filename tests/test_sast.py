@@ -606,7 +606,7 @@ def test_sast_packages_skip_osv():
 
 
 def test_iso_27001_sast_cwe_tagging():
-    """ISO 27001 tagger adds A.8.28 for SAST findings with CWE-89."""
+    """SAST CWE tags follow the canonical NIST-to-ISO crosswalk."""
     from agent_bom.iso_27001 import tag_blast_radius
     from agent_bom.models import BlastRadius, Package, Vulnerability
 
@@ -625,7 +625,7 @@ def test_iso_27001_sast_cwe_tagging():
     )
 
     tags = tag_blast_radius(br)
-    assert "A.8.28" in tags  # CWE-89 → A.8.28 (secure coding)
+    assert "A.8.7" in tags  # CWE-89 → NIST SI-3 → ISO A.8.7
 
 
 def test_owasp_llm_sast_cwe_tagging():

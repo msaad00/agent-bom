@@ -12,7 +12,7 @@ from __future__ import annotations
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
-from agent_bom.db.sync import GHSA_ECOSYSTEMS
+from agent_bom.db.sync import GHSA_ECOSYSTEMS, OSV_APPLICATION_ECOSYSTEMS
 
 
 @click.group("db", cls=SuggestingGroup)
@@ -56,6 +56,13 @@ def db_cmd() -> None:
     hidden=True,
 )
 @click.option(
+    "--osv-ecosystem",
+    "osv_ecosystems",
+    multiple=True,
+    type=click.Choice(OSV_APPLICATION_ECOSYSTEMS, case_sensitive=False),
+    help="Sync only selected OSV application ecosystems instead of the all-ecosystems archive. Repeatable.",
+)
+@click.option(
     "--ghsa-ecosystems",
     "ghsa_ecosystems",
     multiple=True,
@@ -68,6 +75,7 @@ def db_update(
     max_osv_entries: int,
     max_ghsa_entries: int,
     max_nvd_entries: int,
+    osv_ecosystems: tuple,
     ghsa_ecosystems: tuple,
 ) -> None:
     """Download and sync the local vulnerability database.
@@ -82,28 +90,82 @@ def db_update(
     Pass --source nvd to enrich CVEs missing CVSS data from the NVD API (requires NVD_API_KEY
     for reasonable speed; without a key the rate limit is 5 req/30s).
 
-    Requires internet access. First sync is ~50 MB and takes several minutes.
-    Subsequent syncs are incremental (upsert by ID).
+    Requires internet access. Use --osv-ecosystem for a smaller, explicitly
+    scoped application-ecosystem archive. The OSV all-ecosystems archive can
+    exceed 1 GB; exact download progress is shown when the server reports its
+    size. Repeat syncs download the selected archive again, then update records
+    by advisory ID.
     """
     from pathlib import Path
 
     from rich.console import Console
+    from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 
     from agent_bom.db.sync import sync_db
 
     con = Console()
-    selected = list(sources) or ["osv", "alpine", "debian", "epss", "kev"]
+    if sources and osv_ecosystems and "osv" not in {str(source).lower() for source in sources}:
+        raise click.UsageError("--osv-ecosystem requires --source osv when --source is specified")
+    selected = list(sources) or (["osv"] if osv_ecosystems else ["osv", "alpine", "debian", "epss", "kev"])
     con.print(f"[bold]Syncing local vuln DB[/bold] — sources: {', '.join(selected)}")
+    selected_sources = {str(source).lower() for source in selected}
+    if "osv" in selected_sources and osv_ecosystems:
+        con.print(
+            "Coverage is limited to the selected OSV ecosystem(s): "
+            f"{', '.join(osv_ecosystems)}. Other ecosystems remain uncovered for offline scans."
+        )
+    elif "osv" in selected_sources:
+        con.print("The OSV all-ecosystems archive can exceed 1 GB and take several minutes; live progress follows.")
+
+    tasks: dict[str, TaskID] = {}
+    downloaded: dict[str, int] = {}
+    renderer = Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TimeElapsedColumn(),
+        console=con,
+        transient=False,
+    )
+
+    def _format_mb(value: int) -> str:
+        return f"{value / (1024 * 1024):.1f} MB"
+
+    def _progress(source: str, phase: str, current: int, total: int | None) -> None:
+        if phase == "download":
+            downloaded[source] = current
+        if not con.is_terminal:
+            if phase == "start":
+                con.print(f"  [cyan]→[/cyan] {source}: starting")
+            elif phase == "complete":
+                size = f"; downloaded {_format_mb(downloaded[source])}" if source in downloaded else ""
+                con.print(f"  [green]✓[/green] {source}: complete{size}")
+            return
+
+        task_id = tasks.get(source)
+        if task_id is None:
+            task_id = renderer.add_task(f"{source}: starting", total=None)
+            tasks[source] = task_id
+        if phase == "download":
+            renderer.update(task_id, description=f"{source}: downloading", completed=current, total=total)
+        elif phase == "complete":
+            byte_count = downloaded.get(source, 1)
+            renderer.update(task_id, description=f"{source}: complete", completed=byte_count, total=byte_count)
+            renderer.stop_task(task_id)
 
     try:
-        results = sync_db(
-            path=Path(db_path) if db_path else None,
-            sources=selected,
-            max_osv_entries=max_osv_entries,
-            max_ghsa_entries=max_ghsa_entries,
-            max_nvd_entries=max_nvd_entries,
-            ghsa_ecosystems=list(ghsa_ecosystems) if ghsa_ecosystems else None,
-        )
+        with renderer:
+            results = sync_db(
+                path=Path(db_path) if db_path else None,
+                sources=selected,
+                max_osv_entries=max_osv_entries,
+                max_ghsa_entries=max_ghsa_entries,
+                max_nvd_entries=max_nvd_entries,
+                osv_ecosystems=list(osv_ecosystems) if osv_ecosystems else None,
+                ghsa_ecosystems=list(ghsa_ecosystems) if ghsa_ecosystems else None,
+                progress=_progress,
+            )
     except Exception as exc:
         con.print(f"[red]Sync failed: {exc}[/red]")
         raise SystemExit(1) from exc

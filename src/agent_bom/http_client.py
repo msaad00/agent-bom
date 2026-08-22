@@ -8,7 +8,7 @@ import os
 import random
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -516,6 +516,7 @@ def download_to_file(
     timeout: float = 60,
     headers: dict | None = None,
     chunk_size: int = 1 << 20,
+    progress: Callable[[int, int | None], None] | None = None,
 ) -> int:
     """Stream a URL to *dest* on disk in chunks, with retries. Returns bytes written.
 
@@ -531,10 +532,16 @@ def download_to_file(
             with create_sync_client(timeout=timeout, max_redirects=5) as client:
                 with client.stream("GET", url, headers=headers or {}, follow_redirects=True) as resp:
                     resp.raise_for_status()
+                    raw_total = resp.headers.get("content-length")
+                    total = int(raw_total) if raw_total and raw_total.isdigit() else None
+                    if progress is not None:
+                        progress(0, total)
                     with open(dest, "wb") as fh:
                         for chunk in resp.iter_bytes(chunk_size):
                             fh.write(chunk)
                             written += len(chunk)
+                            if progress is not None:
+                                progress(written, total)
             return written
         except (httpx.HTTPError, OSError) as exc:
             last_exc = exc

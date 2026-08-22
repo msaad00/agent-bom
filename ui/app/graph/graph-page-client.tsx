@@ -687,6 +687,8 @@ type RollupBreadcrumb = {
   label: string;
 };
 
+const GRAPH_EDGE_LABEL_BUDGET = 60;
+
 export default function GraphPageClient() {
   return (
     <ReactFlowProvider>
@@ -1949,6 +1951,9 @@ function GraphPageInner() {
       captureMode,
       zoom: graphViewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
+      // Past this many edges the captions overlap into noise, so they follow
+      // the selection instead of blanketing the canvas. A capture keeps them.
+      maxLabeledEdges: captureMode ? Number.POSITIVE_INFINITY : GRAPH_EDGE_LABEL_BUDGET,
     });
   }, [
     layoutEdges,
@@ -2760,9 +2765,6 @@ function GraphPageInner() {
                   <span>{activeSnapshot.edge_count} edges</span>
                 </>
               )}
-              <span>
-                captured {new Date(activeSnapshot.created_at).toLocaleString()}
-              </span>
             </>
           )}
           {graphData &&

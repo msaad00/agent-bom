@@ -279,7 +279,11 @@ def test_facet_deadline_starts_after_the_first_row_is_available(monkeypatch: pyt
     assert metadata["status"] == "complete"
 
 
-def test_partial_zero_row_facet_walk_preserves_the_list_total(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("scanned_rows", [0, 3])
+def test_partial_facet_walk_preserves_the_exact_list_total(
+    monkeypatch: pytest.MonkeyPatch,
+    scanned_rows: int,
+) -> None:
     tenant = "default"
     _seed_scan(tenant)
     empty_facets = {
@@ -292,12 +296,15 @@ def test_partial_zero_row_facet_walk_preserves_the_list_total(monkeypatch: pytes
     monkeypatch.setattr(
         "agent_bom.api.routes.scan._finding_facets_bounded",
         lambda *_args, **_kwargs: (
-            empty_facets,
-            0,
+            {
+                **empty_facets,
+                "severity": {"high": scanned_rows} if scanned_rows else {},
+            },
+            scanned_rows,
             {
                 "status": "partial",
                 "reason": "deadline",
-                "scanned_rows": 0,
+                "scanned_rows": scanned_rows,
                 "scan_budget": 50_000,
                 "deadline_ms": 1_500,
                 "total_exact": False,
@@ -321,7 +328,11 @@ def test_partial_zero_row_facet_walk_preserves_the_list_total(monkeypatch: pytes
     body = response.json()
     assert len(body["findings"]) == 6
     assert body["total"] == 6
-    assert body["total_approximate"] is True
+    assert body.get("total_approximate", False) is False
+    assert body["facets_approximate"] is True
+    assert body["facet_metadata"]["completeness"]["total_exact"] is False
+    assert sum(body["facets"]["severity"].values()) <= body["total"]
+    assert any("lower bounds, not totals" in warning for warning in body["warnings"])
 
 
 def test_findings_envelope_total_never_contradicts_the_severity_facet(

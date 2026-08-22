@@ -3057,22 +3057,16 @@ def _list_findings_impl(
             scope=scope_filters,
             status=status_key,
         )
-        # A partial walk that could not process even one row is not evidence
-        # that the result set is empty. Preserve the list path's total instead
-        # of replacing it with a misleading zero.
-        if (
-            facet_completeness["status"] == "complete"
-            or facet_completeness["scanned_rows"] > 0
-            # An aggregate-derived total is authoritative even if the walk that
-            # ran alongside it processed no rows at all.
-            or facet_completeness["total_exact"]
-        ):
+        # A bounded facet walk is a lower bound regardless of whether it
+        # processed zero rows or thousands. Never replace the list path's
+        # exact total with that partial count; only a complete walk or an
+        # aggregate-derived exact total is authoritative.
+        if facet_completeness["status"] == "complete" or facet_completeness["total_exact"]:
             total = facet_total
-        # A truncated walk does not always mean an approximate total: when the
-        # store aggregate answered the filtered band, that count *is* the total
-        # and matches the severity facet exactly. Labelling it approximate would
-        # understate a number that is exact.
-        total_approximate = not facet_completeness["total_exact"]
+            # A truncated walk does not always mean an approximate total: when
+            # the store aggregate answered the filtered band, that count *is*
+            # the total. Facet approximation is reported independently below.
+            total_approximate = not facet_completeness["total_exact"]
         if facet_completeness["status"] != "complete":
             bounded = sorted(name for name, state in facet_completeness["dimensions"].items() if state == "bounded")
             warnings.append(

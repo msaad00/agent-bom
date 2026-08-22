@@ -430,9 +430,14 @@ def test_demo_estate_finding_counts_reconcile_across_tile_list_and_facet(
 
     severity_facet = (listing.get("facets") or {}).get("severity") or {}
     assert severity_facet, f"the findings list returned no severity facet: {list(listing.get('facets') or {})}"
-    assert sum(int(v) for v in severity_facet.values()) == total, (
-        f"severity facet sums to {sum(int(v) for v in severity_facet.values())} but the list reports {total}"
-    )
+    severity_total = sum(int(v) for v in severity_facet.values())
+    facet_completeness = (listing.get("facet_metadata") or {}).get("completeness") or {}
+    if facet_completeness.get("status") == "complete":
+        assert severity_total == total, f"severity facet sums to {severity_total} but the list reports {total}"
+    else:
+        assert listing.get("facets_approximate") is True, listing
+        assert severity_total <= total, (severity_total, total)
+        assert any("lower bounds, not totals" in warning for warning in listing.get("warnings") or []), listing
 
     counts = demo_estate_client.get("/v1/posture/counts", headers=VIEWER).json()
     assert "unrated" in counts, counts

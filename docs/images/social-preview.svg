@@ -1,129 +1,182 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
   <title id="title">agent-bom: Discover. Scan. Correlate. Graph.</title>
   <desc id="desc">Security evidence across repositories, software supply chains, AI agents, MCP, cloud, containers, identity, infrastructure, and data platforms.</desc>
-
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#060b17"/>
-      <stop offset="100%" stop-color="#0a1325"/>
+      <stop offset="0%" stop-color="#060b17" />
+      <stop offset="100%" stop-color="#0a1325" />
     </linearGradient>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#22d3ee"/>
+      <stop offset="0" stop-color="#34d399" />
+      <stop offset="1" stop-color="#22d3ee" />
     </linearGradient>
-    <filter id="tint-white" color-interpolation-filters="sRGB"><feFlood flood-color="#f8fafc" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-aws" color-interpolation-filters="sRGB"><feFlood flood-color="#ff9900" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-azure" color-interpolation-filters="sRGB"><feFlood flood-color="#0078d4" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-gcp" color-interpolation-filters="sRGB"><feFlood flood-color="#4285f4" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-kubernetes" color-interpolation-filters="sRGB"><feFlood flood-color="#326ce5" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-okta" color-interpolation-filters="sRGB"><feFlood flood-color="#007dc1" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-snowflake" color-interpolation-filters="sRGB"><feFlood flood-color="#29b5e8" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-databricks" color-interpolation-filters="sRGB"><feFlood flood-color="#ff3621" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
-    <filter id="tint-clickhouse" color-interpolation-filters="sRGB"><feFlood flood-color="#ffcc00" result="color"/><feComposite in="color" in2="SourceAlpha" operator="in"/></filter>
+    <symbol id="embedded-mark-dark" viewBox="0 0 64 64">
+      <defs>
+        <linearGradient id="abm" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#34d399" />
+          <stop offset="100%" stop-color="#06b6d4" />
+        </linearGradient>
+      </defs>
+      <rect x="3.5" y="3.5" width="57" height="57" rx="15" fill="#0c1210" stroke="url(#abm)" stroke-width="2" />
+      <path fill="url(#abm)" d="M7.5 16.5h7.4c3.7 0 5.9 1.9 5.9 4.7 0 1.9-1.05 3.25-2.75 3.95 2 .8 3.3 2.35 3.3 4.7 0 3.05-2.45 4.95-6.45 4.95H7.5V16.5zm3.65 3.1v4.7h2.8c1.7 0 2.7-.85 2.7-2.35s-1.1-2.35-2.95-2.35H11.15zm0 7.55v5h3.15c1.85 0 3-.95 3-2.55s-1.1-2.45-3.05-2.45H11.15z" />
+      <circle cx="32" cy="30.2" r="12" fill="#0f1a17" stroke="url(#abm)" stroke-width="2.4" />
+      <path d="M32 18.4V13.5" stroke="url(#abm)" stroke-width="2.2" stroke-linecap="round" />
+      <circle cx="32" cy="11.9" r="2.1" fill="url(#abm)" />
+      <circle cx="28" cy="28.9" r="2.7" fill="#34d399" />
+      <circle cx="36" cy="28.9" r="2.7" fill="#22d3ee" />
+      <path d="M28.3 35.4h7.4" stroke="url(#abm)" stroke-width="1.9" stroke-linecap="round" />
+      <path fill="url(#abm)" d="M44.5 16.5h3.7l3.75 11.7 3.75-11.7H59.5v19.6h-3.3V27.8l-3.65 8.5h-2.95l-3.5-8.5v8.5h-3.3V16.5h1.7z" />
+      <rect x="10" y="48.5" width="12" height="2.4" rx="1.2" fill="#34d399" fill-opacity="0.45" />
+      <rect x="26" y="48.5" width="12" height="2.4" rx="1.2" fill="url(#abm)" />
+      <rect x="42" y="48.5" width="12" height="2.4" rx="1.2" fill="#06b6d4" fill-opacity="0.45" />
+    </symbol>
+    <symbol id="embedded-claude" viewBox="0 0 24 24" fill="#d97757">
+      <path d="M6.9 15.36 9.94 13.7l.05-.15-.05-.08h-.15l-.5-.03-1.74-.05-1.5-.06-1.46-.08-.37-.08L4 12.71l.04-.22.31-.21.44.04.98.06 1.47.1 1.06.07 1.58.16h.25l.04-.1-.09-.06-.07-.06-1.55-1.05-1.68-1.11-.88-.64-.47-.32-.24-.3-.1-.66.43-.47.58.04.15.04 1.16.31 1.51.39 1.95.5L9 11.74l.21.18.13-.18-.13-.21-1.08-1.46-1.16-1.49-.51-.66-.14-.4c-.05-.16-.08-.3-.08-.46l.5-.67L7 6.3l.66.09.27.24.41.94.66 1.46 1.02 2 .3.59.16.54.06.17h.1V12l.09-1.1.16-1.34.15-1.74.06-.49.24-.58.48-.31.37.18.31.44-.04.28-.18 1.19-.36 1.85-.23 1.24h.13l.16-.16.63-.83 1.06-1.32.46-.53.55-.58.35-.27h.66l.49.72-.22.75-.68.86-.57.73-.81 1.1-.51.88.05.07.12-.01 1.85-.4 1-.18 1.2-.2.53.24.06.26-.21.52-1.27.31-1.49.3-2.22.52-.03.02.03.04 1 .1.43.02h1.05l1.95.14.51.34.3.41-.05.31-.78.4-1.06-.25-2.45-.59-.84-.2h-.12v.06l.7.69 1.29 1.16 1.6 1.5.09.36-.21.3-.21-.03-1.39-1.04-.53-.47-1.21-1.02h-.08v.1l.28.4 1.47 2.22.08.68-.11.22-.38.13-.42-.07-.86-1.2-.88-1.36-.71-1.21-.09.05-.42 4.49-.2.23-.45.17-.38-.28-.2-.46.2-.91.24-1.19.2-.94.17-1.17.1-.39v-.03h-.05l-.55.76-.84 1.13-.66.71-.16.06-.27-.14.03-.25.15-.22.88-1.12.53-.7.35-.4-.01-.06h-.02l-2.4 1.56-.43.06-.18-.17.02-.27.1-.11 1.83-1.26Z" />
+    </symbol>
+    <symbol id="embedded-cursor" viewBox="0 0 24 24" fill="#f8fafc">
+      <path d="M12 2 3.34 7v10L12 22V12Z" fill="#f8fafc" fill-opacity=".55" />
+      <path d="M12 2v10l8.66-5L12 2Z" fill="#f8fafc" fill-opacity=".35" />
+      <path d="M20.66 7 12 12v10l8.66-5V7Z" fill="#f8fafc" fill-opacity=".8" />
+      <path d="M20.66 7 12 12 3.34 7 12 12Z" fill="#f8fafc" fill-opacity=".25" />
+      <path d="M12 12 3.34 7l8.66 5 8.66-5L12 12Z" fill="#f8fafc" fill-opacity=".9" />
+    </symbol>
+    <symbol id="embedded-githubcopilot" viewBox="0 0 24 24" fill="#f8fafc">
+      <title>GitHub Copilot</title>
+      <path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z" />
+    </symbol>
+    <symbol id="embedded-windsurf" viewBox="0 0 24 24" fill="#f8fafc">
+      <title>Windsurf</title>
+      <path d="M23.55 5.067c-1.2038-.002-2.1806.973-2.1806 2.1765v4.8676c0 .972-.8035 1.7594-1.7597 1.7594-.568 0-1.1352-.286-1.4718-.7659l-4.9713-7.1003c-.4125-.5896-1.0837-.941-1.8103-.941-1.1334 0-2.1533.9635-2.1533 2.153v4.8957c0 .972-.7969 1.7594-1.7596 1.7594-.57 0-1.1363-.286-1.4728-.7658L.4076 5.1598C.2822 4.9798 0 5.0688 0 5.2882v4.2452c0 .2147.0656.4228.1884.599l5.4748 7.8183c.3234.462.8006.8052 1.3509.9298 1.3771.313 2.6446-.747 2.6446-2.0977v-4.893c0-.972.7875-1.7593 1.7596-1.7593h.003a1.798 1.798 0 0 1 1.4718.7658l4.9723 7.0994c.4135.5905 1.05.941 1.8093.941 1.1587 0 2.1515-.9645 2.1515-2.153v-4.8948c0-.972.7875-1.7594 1.7596-1.7594h.194a.22.22 0 0 0 .2204-.2202v-4.622a.22.22 0 0 0-.2203-.2203Z" />
+    </symbol>
+    <symbol id="embedded-amazonwebservices" viewBox="0 0 24 24" fill="#ff9900">
+      <title>Amazon Web Services</title>
+      <path d="M6.763 10.036c0 .296.032.535.088.71.064.176.144.368.256.576.04.063.056.127.056.183 0 .08-.048.16-.152.24l-.503.335a.383.383 0 0 1-.208.072c-.08 0-.16-.04-.239-.112a2.47 2.47 0 0 1-.287-.375 6.18 6.18 0 0 1-.248-.471c-.622.734-1.405 1.101-2.347 1.101-.67 0-1.205-.191-1.596-.574-.391-.384-.59-.894-.59-1.533 0-.678.239-1.23.726-1.644.487-.415 1.133-.623 1.955-.623.272 0 .551.024.846.064.296.04.6.104.918.176v-.583c0-.607-.127-1.03-.375-1.277-.255-.248-.686-.367-1.3-.367-.28 0-.568.031-.863.103-.295.072-.583.16-.862.272a2.287 2.287 0 0 1-.28.104.488.488 0 0 1-.127.023c-.112 0-.168-.08-.168-.247v-.391c0-.128.016-.224.056-.28a.597.597 0 0 1 .224-.167c.279-.144.614-.264 1.005-.36a4.84 4.84 0 0 1 1.246-.151c.95 0 1.644.216 2.091.647.439.43.662 1.085.662 1.963v2.586zm-3.24 1.214c.263 0 .534-.048.822-.144.287-.096.543-.271.758-.51.128-.152.224-.32.272-.512.047-.191.08-.423.08-.694v-.335a6.66 6.66 0 0 0-.735-.136 6.02 6.02 0 0 0-.75-.048c-.535 0-.926.104-1.19.32-.263.215-.39.518-.39.917 0 .375.095.655.295.846.191.2.47.296.838.296zm6.41.862c-.144 0-.24-.024-.304-.08-.064-.048-.12-.16-.168-.311L7.586 5.55a1.398 1.398 0 0 1-.072-.32c0-.128.064-.2.191-.2h.783c.151 0 .255.025.31.08.065.048.113.16.16.312l1.342 5.284 1.245-5.284c.04-.16.088-.264.151-.312a.549.549 0 0 1 .32-.08h.638c.152 0 .256.025.32.08.063.048.12.16.151.312l1.261 5.348 1.381-5.348c.048-.16.104-.264.16-.312a.52.52 0 0 1 .311-.08h.743c.127 0 .2.065.2.2 0 .04-.009.08-.017.128a1.137 1.137 0 0 1-.056.2l-1.923 6.17c-.048.16-.104.263-.168.311a.51.51 0 0 1-.303.08h-.687c-.151 0-.255-.024-.32-.08-.063-.056-.119-.16-.15-.32l-1.238-5.148-1.23 5.14c-.04.16-.087.264-.15.32-.065.056-.177.08-.32.08zm10.256.215c-.415 0-.83-.048-1.229-.143-.399-.096-.71-.2-.918-.32-.128-.071-.215-.151-.247-.223a.563.563 0 0 1-.048-.224v-.407c0-.167.064-.247.183-.247.048 0 .096.008.144.024.048.016.12.048.2.08.271.12.566.215.878.279.319.064.63.096.95.096.502 0 .894-.088 1.165-.264a.86.86 0 0 0 .415-.758.777.777 0 0 0-.215-.559c-.144-.151-.416-.287-.807-.415l-1.157-.36c-.583-.183-1.014-.454-1.277-.813a1.902 1.902 0 0 1-.4-1.158c0-.335.073-.63.216-.886.144-.255.335-.479.575-.654.24-.184.51-.32.83-.415.32-.096.655-.136 1.006-.136.175 0 .359.008.535.032.183.024.35.056.518.088.16.04.312.08.455.127.144.048.256.096.336.144a.69.69 0 0 1 .24.2.43.43 0 0 1 .071.263v.375c0 .168-.064.256-.184.256a.83.83 0 0 1-.303-.096 3.652 3.652 0 0 0-1.532-.311c-.455 0-.815.071-1.062.223-.248.152-.375.383-.375.71 0 .224.08.416.24.567.159.152.454.304.877.44l1.134.358c.574.184.99.44 1.237.767.247.327.367.702.367 1.117 0 .343-.072.655-.207.926-.144.272-.336.511-.583.703-.248.2-.543.343-.886.447-.36.111-.734.167-1.142.167zM21.698 16.207c-2.626 1.94-6.442 2.969-9.722 2.969-4.598 0-8.74-1.7-11.87-4.526-.247-.223-.024-.527.272-.351 3.384 1.963 7.559 3.153 11.877 3.153 2.914 0 6.114-.607 9.06-1.852.439-.2.814.287.383.607zM22.792 14.961c-.336-.43-2.22-.207-3.074-.103-.255.032-.295-.192-.063-.36 1.5-1.053 3.967-.75 4.254-.399.287.36-.08 2.826-1.485 4.007-.215.184-.423.088-.327-.151.32-.79 1.03-2.57.695-2.994z" />
+    </symbol>
+    <symbol id="embedded-microsoftazure" viewBox="0 0 24 24" fill="#0078d4">
+      <title>Microsoft Azure</title>
+      <path d="M22.379 23.343a1.62 1.62 0 0 0 1.536-2.14v.002L17.35 1.76A1.62 1.62 0 0 0 15.816.657H8.184A1.62 1.62 0 0 0 6.65 1.76L.086 21.204a1.62 1.62 0 0 0 1.536 2.139h4.741a1.62 1.62 0 0 0 1.535-1.103l.977-2.892 4.947 3.675c.28.208.618.32.966.32m-3.084-12.531 3.624 10.739a.54.54 0 0 1-.51.713v-.001h-.03a.54.54 0 0 1-.322-.106l-9.287-6.9h4.853m6.313 7.006c.116-.326.13-.694.007-1.058L9.79 1.76a1.722 1.722 0 0 0-.007-.02h6.034a.54.54 0 0 1 .512.366l6.562 19.445a.54.54 0 0 1-.338.684" />
+    </symbol>
+    <symbol id="embedded-googlecloud" viewBox="0 0 24 24" fill="#4285f4">
+      <title>Google Cloud</title>
+      <path d="M12.19 2.38a9.344 9.344 0 0 0-9.234 6.893c.053-.02-.055.013 0 0-3.875 2.551-3.922 8.11-.247 10.941l.006-.007-.007.03a6.717 6.717 0 0 0 4.077 1.356h5.173l.03.03h5.192c6.687.053 9.376-8.605 3.835-12.35a9.365 9.365 0 0 0-2.821-4.552l-.043.043.006-.05A9.344 9.344 0 0 0 12.19 2.38zm-.358 4.146c1.244-.04 2.518.368 3.486 1.15a5.186 5.186 0 0 1 1.862 4.078v.518c3.53-.07 3.53 5.262 0 5.193h-5.193l-.008.009v-.04H6.785a2.59 2.59 0 0 1-1.067-.23h.001a2.597 2.597 0 1 1 3.437-3.437l3.013-3.012A6.747 6.747 0 0 0 8.11 8.24c.018-.01.04-.026.054-.023a5.186 5.186 0 0 1 3.67-1.69z" />
+    </symbol>
+    <symbol id="embedded-kubernetes" viewBox="0 0 24 24" fill="#326ce5">
+      <title>Kubernetes</title>
+      <path d="M10.204 14.35l.007.01-.999 2.413a5.171 5.171 0 0 1-2.075-2.597l2.578-.437.004.005a.44.44 0 0 1 .484.606zm-.833-2.129a.44.44 0 0 0 .173-.756l.002-.011L7.585 9.7a5.143 5.143 0 0 0-.73 3.255l2.514-.725.002-.009zm1.145-1.98a.44.44 0 0 0 .699-.337l.01-.005.15-2.62a5.144 5.144 0 0 0-3.01 1.442l2.147 1.523.004-.002zm.76 2.75l.723.349.722-.347.18-.78-.5-.623h-.804l-.5.623.179.779zm1.5-3.095a.44.44 0 0 0 .7.336l.008.003 2.134-1.513a5.188 5.188 0 0 0-2.992-1.442l.148 2.615.002.001zm10.876 5.97l-5.773 7.181a1.6 1.6 0 0 1-1.248.594l-9.261.003a1.6 1.6 0 0 1-1.247-.596l-5.776-7.18a1.583 1.583 0 0 1-.307-1.34L2.1 5.573c.108-.47.425-.864.863-1.073L11.305.513a1.606 1.606 0 0 1 1.385 0l8.345 3.985c.438.209.755.604.863 1.073l2.062 8.955c.108.47-.005.963-.308 1.34zm-3.289-2.057c-.042-.01-.103-.026-.145-.034-.174-.033-.315-.025-.479-.038-.35-.037-.638-.067-.895-.148-.105-.04-.18-.165-.216-.216l-.201-.059a6.45 6.45 0 0 0-.105-2.332 6.465 6.465 0 0 0-.936-2.163c.052-.047.15-.133.177-.159.008-.09.001-.183.094-.282.197-.185.444-.338.743-.522.142-.084.273-.137.415-.242.032-.024.076-.062.11-.089.24-.191.295-.52.123-.736-.172-.216-.506-.236-.745-.045-.034.027-.08.062-.111.088-.134.116-.217.23-.33.35-.246.25-.45.458-.673.609-.097.056-.239.037-.303.033l-.19.135a6.545 6.545 0 0 0-4.146-2.003l-.012-.223c-.065-.062-.143-.115-.163-.25-.022-.268.015-.557.057-.905.023-.163.061-.298.068-.475.001-.04-.001-.099-.001-.142 0-.306-.224-.555-.5-.555-.275 0-.499.249-.499.555l.001.014c0 .041-.002.092 0 .128.006.177.044.312.067.475.042.348.078.637.056.906a.545.545 0 0 1-.162.258l-.012.211a6.424 6.424 0 0 0-4.166 2.003 8.373 8.373 0 0 1-.18-.128c-.09.012-.18.04-.297-.029-.223-.15-.427-.358-.673-.608-.113-.12-.195-.234-.329-.349-.03-.026-.077-.062-.111-.088a.594.594 0 0 0-.348-.132.481.481 0 0 0-.398.176c-.172.216-.117.546.123.737l.007.005.104.083c.142.105.272.159.414.242.299.185.546.338.743.522.076.082.09.226.1.288l.16.143a6.462 6.462 0 0 0-1.02 4.506l-.208.06c-.055.072-.133.184-.215.217-.257.081-.546.11-.895.147-.164.014-.305.006-.48.039-.037.007-.09.02-.133.03l-.004.002-.007.002c-.295.071-.484.342-.423.608.061.267.349.429.645.365l.007-.001.01-.003.129-.029c.17-.046.294-.113.448-.172.33-.118.604-.217.87-.256.112-.009.23.069.288.101l.217-.037a6.5 6.5 0 0 0 2.88 3.596l-.09.218c.033.084.069.199.044.282-.097.252-.263.517-.452.813-.091.136-.185.242-.268.399-.02.037-.045.095-.064.134-.128.275-.034.591.213.71.248.12.556-.007.69-.282v-.002c.02-.039.046-.09.062-.127.07-.162.094-.301.144-.458.132-.332.205-.68.387-.897.05-.06.13-.082.215-.105l.113-.205a6.453 6.453 0 0 0 4.609.012l.106.192c.086.028.18.042.256.155.136.232.229.507.342.84.05.156.074.295.145.457.016.037.043.09.062.129.133.276.442.402.69.282.247-.118.341-.435.213-.71-.02-.039-.045-.096-.065-.134-.083-.156-.177-.261-.268-.398-.19-.296-.346-.541-.443-.793-.04-.13.007-.21.038-.294-.018-.022-.059-.144-.083-.202a6.499 6.499 0 0 0 2.88-3.622c.064.01.176.03.213.038.075-.05.144-.114.28-.104.266.039.54.138.87.256.154.06.277.128.448.173.036.01.088.019.13.028l.009.003.007.001c.297.064.584-.098.645-.365.06-.266-.128-.537-.423-.608zM16.4 9.701l-1.95 1.746v.005a.44.44 0 0 0 .173.757l.003.01 2.526.728a5.199 5.199 0 0 0-.108-1.674A5.208 5.208 0 0 0 16.4 9.7zm-4.013 5.325a.437.437 0 0 0-.404-.232.44.44 0 0 0-.372.233h-.002l-1.268 2.292a5.164 5.164 0 0 0 3.326.003l-1.27-2.296h-.01zm1.888-1.293a.44.44 0 0 0-.27.036.44.44 0 0 0-.214.572l-.003.004 1.01 2.438a5.15 5.15 0 0 0 2.081-2.615l-2.6-.44-.004.005z" />
+    </symbol>
+    <symbol id="embedded-okta" viewBox="0 0 24 24" fill="#007dc1">
+      <title>Okta</title>
+      <path d="M12 0C5.389 0 0 5.35 0 12s5.35 12 12 12 12-5.35 12-12S18.611 0 12 0zm0 18c-3.325 0-6-2.675-6-6s2.675-6 6-6 6 2.675 6 6-2.675 6-6 6z" />
+    </symbol>
+    <symbol id="embedded-snowflake" viewBox="0 0 24 24" fill="#29b5e8">
+      <title>Snowflake</title>
+      <path d="M24 3.459c0 .646-.418 1.18-1.141 1.18-.723 0-1.142-.534-1.142-1.18 0-.647.419-1.18 1.142-1.18.723 0 1.141.533 1.141 1.18zm-.228 0c0-.533-.38-.951-.913-.951s-.913.38-.913.95c0 .533.38.952.913.952.57 0 .913-.419.913-.951zm-1.37-.533h.495c.266 0 .456.152.456.38 0 .153-.076.229-.19.305l.19.266v.038h-.266l-.19-.266h-.229v.266h-.266zm.495.228h-.229v.267h.229c.114 0 .152-.038.152-.114.038-.077-.038-.153-.152-.153zM7.602 12.4c.038-.151.076-.304.076-.456 0-.114-.038-.228-.038-.342-.114-.343-.304-.647-.646-.838l-4.87-2.777c-.685-.38-1.56-.152-1.94.533-.381.685-.153 1.56.532 1.94l2.701 1.56-2.701 1.56c-.685.38-.913 1.256-.533 1.94.38.685 1.256.914 1.94.533l4.832-2.777c.343-.267.571-.533.647-.876zm1.332 2.626c-.266-.038-.57.038-.837.19l-4.832 2.777c-.685.38-.913 1.256-.532 1.94.38.686 1.255.914 1.94.533l2.701-1.56v3.12c0 .8.647 1.408 1.446 1.408.799 0 1.407-.647 1.407-1.408v-5.592c0-.761-.57-1.37-1.293-1.408zm4.946-6.088c.266.038.57-.038.837-.19l4.832-2.777c.685-.38.913-1.256.532-1.94-.38-.686-1.255-.914-1.94-.533l-2.701 1.56V1.975c0-.799-.647-1.408-1.446-1.408-.799 0-1.446.609-1.446 1.408V7.53c0 .76.609 1.37 1.332 1.407zM3.265 5.97l4.832 2.777c.266.152.533.19.837.19.723-.038 1.331-.684 1.331-1.407V1.975c0-.799-.646-1.408-1.407-1.408-.799 0-1.446.647-1.446 1.408v3.12l-2.701-1.56c-.685-.38-1.56-.152-1.94.533-.419.646-.19 1.521.494 1.902zm9.093 6.011a.412.412 0 00-.114-.266l-.57-.571a.346.346 0 00-.267-.114.412.412 0 00-.266.114l-.571.57a.411.411 0 00-.114.267c0 .076.038.19.114.267l.57.57a.345.345 0 00.267.114c.076 0 .19-.038.266-.114l.571-.57a.412.412 0 00.114-.267zm1.598.533L11.94 14.53c-.039.038-.153.114-.229.114h-.608a.411.411 0 01-.267-.114L8.82 12.514a.408.408 0 01-.076-.229v-.608c0-.076.038-.19.114-.267l2.016-2.016a.41.41 0 01.267-.114h.608a.41.41 0 01.267.114l2.016 2.016a.347.347 0 01.114.267v.608c-.076.077-.114.19-.19.229zm5.593 5.44l-4.832-2.777c-.266-.152-.57-.19-.837-.152-.723.038-1.332.684-1.332 1.408v5.554c0 .8.647 1.408 1.408 1.408.799 0 1.446-.647 1.446-1.408v-3.12l2.7 1.56c.686.38 1.561.152 1.941-.533.419-.646.19-1.521-.494-1.94zm2.549-7.533l-2.701 1.56 2.7 1.56c.686.38.914 1.256.533 1.94-.38.685-1.255.913-1.94.533l-4.832-2.778a1.644 1.644 0 01-.647-.798c-.037-.153-.076-.305-.076-.457 0-.114.039-.228.039-.342.114-.343.342-.647.646-.837l4.832-2.778c.685-.38 1.56-.152 1.94.533.457.609.19 1.484-.494 1.864" />
+    </symbol>
+    <symbol id="embedded-databricks" viewBox="0 0 24 24" fill="#ff3621">
+      <title>Databricks</title>
+      <path d="M.95 14.184L12 20.403l9.919-5.55v2.21L12 22.662l-10.484-5.96-.565.308v.77L12 24l11.05-6.218v-4.317l-.515-.309L12 19.118l-9.867-5.653v-2.21L12 16.805l11.05-6.218V6.32l-.515-.308L12 11.974 2.647 6.681 12 1.388l7.76 4.368.668-.411v-.566L12 0 .95 6.27v.72L12 13.207l9.919-5.55v2.26L12 15.52 1.516 9.56l-.565.308Z" />
+    </symbol>
+    <symbol id="embedded-clickhouse" viewBox="0 0 24 24" fill="#ffcc00">
+      <title>ClickHouse</title>
+      <path d="M21.333 10H24v4h-2.667ZM16 1.335h2.667v21.33H16Zm-5.333 0h2.666v21.33h-2.666ZM0 22.665V1.335h2.667v21.33zm5.333-21.33H8v21.33H5.333Z" />
+    </symbol>
   </defs>
-
-  <rect width="1280" height="640" fill="url(#bg)"/>
-
+  <rect width="1280" height="640" fill="url(#bg)" />
   <g font-family="Inter,'Segoe UI',ui-sans-serif,Arial,sans-serif">
     <g transform="translate(60 34)">
-      <image href="brand/mark-dark.svg" width="44" height="44"/>
-      <text x="58" y="32" font-size="28" font-weight="800" letter-spacing="-0.8" fill="#f8fafc">agent<tspan fill="url(#brand)">·bom</tspan></text>
+      <use width="44" height="44" href="#embedded-mark-dark" />
+      <text x="58" y="32" font-size="28" font-weight="800" letter-spacing="-0.8" fill="#f8fafc">agent<tspan fill="url(#brand)">·bom</tspan>
+      </text>
     </g>
-
     <text x="60" y="128" font-size="49" font-weight="820" letter-spacing="-2.2" fill="#f8fafc">Discover. Scan.</text>
     <text x="60" y="181" font-size="49" font-weight="820" letter-spacing="-2.2" fill="url(#brand)">Correlate. Graph.</text>
     <text x="60" y="218" fill="#94a3b8" font-size="17" font-weight="500">Security evidence across code, software supply chains, AI agents, MCP, cloud, and containers.</text>
-
     <g transform="translate(60 240)">
       <g>
-        <rect width="172" height="38" rx="19" fill="#0f172a" stroke="#3b82f6"/>
+        <rect width="172" height="38" rx="19" fill="#0f172a" stroke="#3b82f6" />
         <text x="86" y="25" text-anchor="middle" fill="#93c5fd" font-size="14" font-weight="700">repos + SBOMs</text>
       </g>
       <g transform="translate(184)">
-        <rect width="188" height="38" rx="19" fill="#0f172a" stroke="#22d3ee"/>
+        <rect width="188" height="38" rx="19" fill="#0f172a" stroke="#22d3ee" />
         <text x="94" y="25" text-anchor="middle" fill="#67e8f9" font-size="14" font-weight="700">images + containers</text>
       </g>
       <g transform="translate(384)">
-        <rect width="168" height="38" rx="19" fill="#0f172a" stroke="#86efac"/>
+        <rect width="168" height="38" rx="19" fill="#0f172a" stroke="#86efac" />
         <text x="84" y="25" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">agents + MCP</text>
       </g>
       <g transform="translate(564)">
-        <rect width="206" height="38" rx="19" fill="#0f172a" stroke="#c4b5fd"/>
+        <rect width="206" height="38" rx="19" fill="#0f172a" stroke="#c4b5fd" />
         <text x="103" y="25" text-anchor="middle" fill="#c4b5fd" font-size="14" font-weight="700">cloud + control plane</text>
       </g>
     </g>
-
     <text x="60" y="322" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">AI &amp; MCP CLIENTS</text>
     <text x="60" y="342" fill="#475569" font-size="13">Discover configured agents, tools, servers, packages, and relationships.</text>
     <text x="750" y="342" fill="#475569" font-size="12">Also discovers Codex CLI · VS Code · Cortex Code</text>
-
     <g transform="translate(60 356)">
       <g>
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/claude.svg" x="10" y="10" width="44" height="44"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-claude" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Claude</text>
       </g>
       <g transform="translate(132)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/cursor.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-cursor" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Cursor</text>
       </g>
       <g transform="translate(264)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/githubcopilot.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-githubcopilot" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">GitHub Copilot</text>
       </g>
       <g transform="translate(396)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/windsurf.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-windsurf" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Windsurf</text>
       </g>
     </g>
-
     <text x="60" y="478" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">CLOUD · IDENTITY · INFRASTRUCTURE · DATA</text>
     <g transform="translate(60 492)">
       <g>
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/amazonwebservices.svg" x="10" y="10" width="44" height="44" filter="url(#tint-aws)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-amazonwebservices" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">AWS</text>
       </g>
       <g transform="translate(136)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/microsoftazure.svg" x="10" y="10" width="44" height="44" filter="url(#tint-azure)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-microsoftazure" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Azure</text>
       </g>
       <g transform="translate(272)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/googlecloud.svg" x="10" y="10" width="44" height="44" filter="url(#tint-gcp)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-googlecloud" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">GCP</text>
       </g>
       <g transform="translate(408)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/kubernetes.svg" x="10" y="10" width="44" height="44" filter="url(#tint-kubernetes)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-kubernetes" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Kubernetes</text>
       </g>
       <g transform="translate(544)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/okta.svg" x="10" y="10" width="44" height="44" filter="url(#tint-okta)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-okta" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Okta</text>
       </g>
       <g transform="translate(680)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/snowflake.svg" x="10" y="10" width="44" height="44" filter="url(#tint-snowflake)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-snowflake" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Snowflake</text>
       </g>
       <g transform="translate(816)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/databricks.svg" x="10" y="10" width="44" height="44" filter="url(#tint-databricks)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-databricks" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Databricks</text>
       </g>
       <g transform="translate(952)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/clickhouse.svg" x="10" y="10" width="44" height="44" filter="url(#tint-clickhouse)"/>
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155" />
+        <use x="10" y="10" width="44" height="44" href="#embedded-clickhouse" />
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">ClickHouse</text>
       </g>
     </g>
-
     <text x="60" y="622" fill="#475569" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" font-weight="600">discover → evaluate → relate → investigate → verify</text>
     <text x="1220" y="622" text-anchor="end" fill="#475569" font-size="13" font-weight="600">CLI · API · MCP · self-hosted</text>
   </g>

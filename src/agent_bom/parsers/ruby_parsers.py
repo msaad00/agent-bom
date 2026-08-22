@@ -16,6 +16,9 @@ from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
 
+_LOCKED_GEM_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_LOCKED_GEM_VERSION = re.compile(r"^\d(?:[0-9A-Za-z._-]*[0-9A-Za-z])?$")
+
 
 def parse_gemfile_lock(directory: str | Path) -> list[Package]:
     """Parse gems from Gemfile.lock in *directory*.
@@ -115,6 +118,9 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
 
         name = gm.group(1)
         version = gm.group(2)
+        if not _LOCKED_GEM_NAME.fullmatch(name) or not _LOCKED_GEM_VERSION.fullmatch(version):
+            malformed_specs = True
+            continue
         key = (name.lower(), version)
         if key in seen:
             continue

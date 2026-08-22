@@ -6,6 +6,7 @@ import struct
 from pathlib import Path
 
 from scripts.render_release_highlights import render_highlights
+from scripts.render_social_preview_svg import render as render_social_preview
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -13,12 +14,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_social_preview_is_portable_and_evidence_focused() -> None:
     preview = ROOT / "docs" / "images" / "social-preview.png"
     source = ROOT / "docs" / "images" / "social-preview.svg"
+    template = ROOT / "docs" / "images" / "social-preview.source.svg"
 
     png_header = preview.read_bytes()[:24]
     assert png_header[:8] == b"\x89PNG\r\n\x1a\n"
     assert struct.unpack(">II", png_header[16:24]) == (1280, 640)
 
     svg = source.read_text(encoding="utf-8")
+    template_svg = template.read_text(encoding="utf-8")
     for claim in (
         "Discover. Scan.",
         "Correlate. Graph.",
@@ -56,6 +59,11 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
 
     assert "file:///" not in svg
     assert "/Users/" not in svg
+    assert "<image" not in svg
+    assert "tint-" not in svg
+    assert svg.count("<symbol ") == 13
+    assert svg.count('href="#embedded-') == 13
+    assert render_social_preview(template) == svg
     for relative_asset in (
         "brand/mark-dark.svg",
         "vendor/simple-icons/claude.svg",
@@ -71,6 +79,7 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         "vendor/simple-icons/databricks.svg",
         "vendor/simple-icons/clickhouse.svg",
     ):
+        assert relative_asset in template_svg
         assert (source.parent / relative_asset).is_file()
 
 

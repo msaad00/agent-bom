@@ -165,6 +165,7 @@ def test_empty_project_does_not_invent_manifest_coverage_gaps(tmp_path: Path) ->
   remote: https://rubygems.org/
   specs:
     rails (7.1.3)
+    pyyaml (5.)
     truncated (
 
 PLATFORMS

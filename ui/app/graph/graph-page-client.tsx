@@ -1973,6 +1973,7 @@ function GraphPageInner() {
       zoom: graphViewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
       preserveVisualStyle: true,
+      preserveLabelState: true,
     }),
     [baseDisplayEdges, captureMode, displayNodes, graphViewport.zoom],
   );

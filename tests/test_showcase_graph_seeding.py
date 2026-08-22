@@ -51,6 +51,7 @@ def test_seeds_when_empty(store: SQLiteGraphStore) -> None:
 
 def test_seed_records_completed_attack_path_analysis(store: SQLiteGraphStore) -> None:
     """A seeded path queue must carry the analysis claim it actually earned."""
+    from agent_bom.api.routes.graph import _derived_attack_paths
     from agent_bom.graph.analysis import GraphAnalysisState
 
     assert seed_showcase_graph_if_empty(store) is True
@@ -60,6 +61,9 @@ def test_seed_records_completed_attack_path_analysis(store: SQLiteGraphStore) ->
     assert status.status is GraphAnalysisState.COMPLETE
     assert status.observed == {"paths": len(graph.attack_paths)}
     assert graph.attack_paths
+    persisted = {(path.source, path.target) for path in graph.attack_paths}
+    derived_from_final_graph = {(path.source, path.target) for path in _derived_attack_paths(graph)}
+    assert persisted == derived_from_final_graph
 
 
 def test_showcase_snapshot_stamps_are_never_future_dated() -> None:
@@ -188,6 +192,18 @@ def test_explicit_demo_force_never_replaces_a_non_showcase_snapshot(store: SQLit
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "fresh-local-scan"
     # The estate is addressable by name, but only by name.
     assert {SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID}.issubset(scan_ids)
+
+
+def test_explicit_demo_force_does_not_demote_an_older_real_snapshot(
+    store: SQLiteGraphStore,
+) -> None:
+    """Imported or clock-skewed real evidence must remain the default owner."""
+    older = (datetime.fromisoformat(SHOWCASE_CURRENT_CREATED_AT) - timedelta(days=1)).isoformat()
+    store.save_graph(_minimal_graph(scan_id="operator-import", created_at=older))
+
+    seed_showcase_graph_if_empty(store, force=True)
+
+    assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "operator-import"
 
 
 def test_seeded_estate_is_isolated_per_tenant(store: SQLiteGraphStore) -> None:

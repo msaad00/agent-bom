@@ -751,6 +751,20 @@ def _showcase_seed_is_current(snapshots: list[dict[str, Any]]) -> bool:
     )
 
 
+def _showcase_would_displace_real_snapshot(
+    foreign_snapshots: list[dict[str, Any]],
+) -> bool:
+    """Fail closed when fixed showcase time would become the default owner."""
+    try:
+        showcase_created_at = datetime.fromisoformat(SHOWCASE_CURRENT_CREATED_AT)
+        foreign_created_at = [datetime.fromisoformat(str(row["created_at"])) for row in foreign_snapshots if row.get("created_at")]
+    except (KeyError, TypeError, ValueError):
+        return True
+    if len(foreign_created_at) != len(foreign_snapshots):
+        return True
+    return max(foreign_created_at) <= showcase_created_at
+
+
 def seed_showcase_graph_if_empty(
     graph_store: GraphStoreProtocol,
     *,
@@ -779,6 +793,12 @@ def seed_showcase_graph_if_empty(
     foreign = [row for row in snapshots if str(row.get("scan_id")) not in showcase_ids]
     if foreign and not force:
         # An ordinary boot never shadows a real scan.
+        return False
+    if foreign and _showcase_would_displace_real_snapshot(foreign):
+        # Force authorizes refreshing demo evidence, not changing the tenant's
+        # default read owner. An imported or clock-skewed real snapshot can be
+        # older than the deterministic showcase stamp, so adding the showcase
+        # would silently make it the newest graph. Keep the real owner instead.
         return False
     if not force and snapshots and _showcase_seed_is_current(snapshots):
         return False
@@ -813,11 +833,8 @@ def seed_showcase_graph_if_empty(
     )
     finalize_showcase_snapshot(baseline_graph, profile="baseline")
     _annotate_demo_identity_risk(baseline_graph)
-    baseline_analysis_complete = _materialize_showcase_attack_paths(baseline_graph)
-    # After the showcase's own attack paths are derived, so the hand-built hero
-    # chains stay first in the exposure-path queue and the estate's correlated
-    # chains extend it rather than displacing it.
     project_estate_onto_showcase(baseline_graph, tenant_id=tenant_id, profile="baseline")
+    baseline_analysis_complete = _materialize_showcase_attack_paths(baseline_graph)
     if baseline_analysis_complete:
         _record_showcase_attack_path_analysis(baseline_graph)
     graph_store.save_graph(baseline_graph)
@@ -837,8 +854,8 @@ def seed_showcase_graph_if_empty(
     )
     finalize_showcase_snapshot(current_graph, profile="current")
     _annotate_demo_identity_risk(current_graph)
-    current_analysis_complete = _materialize_showcase_attack_paths(current_graph)
     project_estate_onto_showcase(current_graph, tenant_id=tenant_id, profile="current")
+    current_analysis_complete = _materialize_showcase_attack_paths(current_graph)
     if current_analysis_complete:
         _record_showcase_attack_path_analysis(current_graph)
     graph_store.save_graph(current_graph)
@@ -905,15 +922,21 @@ def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> bool:
     attack-path endpoint uses (pure seed-shaping — no algorithm change) and pin
     the hero chains onto the snapshot before it is saved.
     """
-    if graph.attack_paths:
-        return True
     try:
         from agent_bom.api.routes.graph import _derived_attack_paths
 
-        graph.attack_paths = _derived_attack_paths(graph)
+        derived = _derived_attack_paths(graph)
     except Exception:  # noqa: BLE001 — never block the snapshot save on path shaping
         _logger.warning("demo estate attack-path materialization failed", exc_info=True)
         return False
+
+    # The route deriver merges materialized and governance paths. Persistence
+    # keys by source/target, so mirror the served cardinality before writing and
+    # keep the first (highest-ranked) representation of each endpoint pair.
+    unique_paths: dict[tuple[str, str], Any] = {}
+    for path in derived:
+        unique_paths.setdefault((path.source, path.target), path)
+    graph.attack_paths = list(unique_paths.values())
 
     return True
 

@@ -214,4 +214,18 @@ describe("readableGraphEdges label density", () => {
     const offPath = labelled.filter((edge) => edge.id !== "e0");
     expect(offPath.every((edge) => edge.label === undefined)).toBe(true);
   });
+
+  it("does not recreate budgeted labels during the accessibility pass", () => {
+    const budgeted = readableGraphEdges(denseEdges, undefined, {
+      maxLabeledEdges: 60,
+    });
+    expect(budgeted.every((edge) => edge.label === undefined)).toBe(true);
+
+    const accessible = readableGraphEdges(budgeted, undefined, {
+      preserveVisualStyle: true,
+      preserveLabelState: true,
+    });
+    expect(accessible.every((edge) => edge.label === undefined)).toBe(true);
+    expect(accessible.every((edge) => Boolean(edge.ariaLabel))).toBe(true);
+  });
 });

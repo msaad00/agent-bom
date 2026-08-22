@@ -590,6 +590,8 @@ export function readableGraphEdges(
     zoom?: number;
     nodeLabels?: ReadonlyMap<string, string>;
     preserveVisualStyle?: boolean;
+    /** Preserve the caller's prior label decision while enriching ARIA text. */
+    preserveLabelState?: boolean;
     /** Above this many edges, only the focused path stays labelled. */
     maxLabeledEdges?: number;
   } = {},
@@ -604,6 +606,7 @@ export function readableGraphEdges(
     zoom = 1,
     nodeLabels,
     preserveVisualStyle = false,
+    preserveLabelState = false,
     maxLabeledEdges = Number.POSITIVE_INFINITY,
   } = options;
 
@@ -642,12 +645,14 @@ export function readableGraphEdges(
     const width = numericStrokeWidth(edge);
     const safeSharedLabel = relationship.startsWith("shares_") || relationship === "shares_cred";
     const mayLabel = !labelsAreDense || active;
-    const label = mayLabel
-      ? ((safeSharedLabel ? undefined : edge.label) ??
-        (relationship && (active || highSignal)
-          ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
-          : undefined))
-      : undefined;
+    const label = preserveLabelState
+      ? edge.label
+      : mayLabel
+        ? ((safeSharedLabel ? undefined : edge.label) ??
+          (relationship && (active || highSignal)
+            ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
+            : undefined))
+        : undefined;
     const labelPresentation = label
       ? relationshipEdgeLabelPresentation({ captureMode, zoom })
       : {};

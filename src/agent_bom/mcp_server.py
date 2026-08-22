@@ -821,6 +821,15 @@ def create_mcp_server(
                 ),
             ),
         ] = None,
+        offline: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Use only the local advisory database. An explicit version is required; "
+                    "registry resolution and publication checks are disabled."
+                )
+            ),
+        ] = False,
     ) -> str:
         """Check a specific package for known CVEs before installing.
 
@@ -846,6 +855,7 @@ def create_mcp_server(
             package=package,
             ecosystem=ecosystem,
             version=version,
+            offline=offline,
             _validate_ecosystem=_validate_ecosystem,
             _truncate_response=_truncate_response,
         )

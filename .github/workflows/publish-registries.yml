@@ -46,6 +46,7 @@ jobs:
       release_ref: ${{ steps.release.outputs.release_ref }}
       release_sha: ${{ steps.release.outputs.release_sha }}
       tool_count: ${{ steps.release.outputs.tool_count }}
+      smithery_oauth_ready: ${{ steps.release.outputs.smithery_oauth_ready }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -122,11 +123,18 @@ jobs:
             echo "::error::Published release metrics do not declare a positive MCP tool count"
             exit 1
           fi
+          if git show "${RELEASE_SHA}:src/agent_bom/mcp_server_metadata.py" \
+            | grep -Fq '"schemes": ["oauth2"] if auth_required else []'; then
+            SMITHERY_OAUTH_READY=true
+          else
+            SMITHERY_OAUTH_READY=false
+          fi
           {
             echo "version=$VERSION"
             echo "release_ref=refs/tags/${RELEASE_TAG}"
             echo "release_sha=$RELEASE_SHA"
             echo "tool_count=$TOOL_COUNT"
+            echo "smithery_oauth_ready=$SMITHERY_OAUTH_READY"
           } >> "$GITHUB_OUTPUT"
 
   smithery:
@@ -148,7 +156,13 @@ jobs:
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+          SMITHERY_OAUTH_READY: ${{ needs.release.outputs.smithery_oauth_ready }}
         run: |
+          if [ "$SMITHERY_OAUTH_READY" != "true" ]; then
+            echo "::notice::Latest published release predates the OAuth-capable MCP server contract — skipping Smithery until the next forward release"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -z "${SMITHERY_MCP_URL:-}" ]; then
             echo "::notice::SMITHERY_MCP_URL not configured — skipping Smithery publish"
             echo "enabled=false" >> "$GITHUB_OUTPUT"

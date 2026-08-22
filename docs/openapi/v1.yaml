@@ -3987,6 +3987,10 @@ components:
           minLength: 1
           title: Ecosystem
           type: string
+        offline:
+          default: false
+          title: Offline
+          type: boolean
         package:
           maxLength: 512
           minLength: 1

@@ -223,3 +223,18 @@ def test_malformed_line_oriented_warning_reaches_partial_scan_artifact(tmp_path:
     parse_errors = [warning for warning in payload["coverage_warnings"] if warning["reason"] == "manifest_parse_error"]
     assert any(warning["ecosystem"] == "pypi" for warning in parse_errors), parse_errors
     assert payload["scan_run"]["outcome"] == "partial"
+
+
+def test_gemfile_lock_truncated_before_specs_is_partial_without_gemfile_fallback(tmp_path: Path) -> None:
+    (tmp_path / "Gemfile.lock").write_text(
+        "GEM\n  remote: https://rubygems.org/\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "Gemfile").write_text('gem "rails", "7.1.3"\n', encoding="utf-8")
+
+    assert parse_ruby_packages(tmp_path) == []
+    warnings = scanner_state.consume_coverage_warnings()
+    assert len(warnings) == 1, warnings
+    assert warnings[0]["ecosystem"] == "rubygems"
+    assert warnings[0]["reason"] == "manifest_parse_error"
+    assert "partial" in warnings[0]["detail"].lower()

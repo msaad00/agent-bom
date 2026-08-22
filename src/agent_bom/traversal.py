@@ -21,7 +21,7 @@ never entered) and enforces a file-count budget as a safety valve.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
 
 # Directory names never worth descending for source/manifest discovery: VCS
@@ -98,6 +98,7 @@ def iter_discovery_files(
     *,
     extra_skip_dirs: frozenset[str] = frozenset(),
     max_files: int | None = DEFAULT_MAX_FILES,
+    on_error: Callable[[OSError], None] | None = None,
 ) -> Iterator[Path]:
     """Yield files under *root*, pruning vendored/worktree subtrees while walking.
 
@@ -114,7 +115,7 @@ def iter_discovery_files(
         return
     skip = VENDOR_SKIP_DIRS | extra_skip_dirs
     yielded = 0
-    for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False):
+    for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False, onerror=on_error):
         dirpath = Path(dirpath_str)
         _prune_dirnames(dirpath, dirnames, skip)
         for name in filenames:

@@ -496,10 +496,15 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
     result = SecretScanResult()
     file_count = 0
 
-    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS)):
+    def traversal_error(_exc: OSError) -> None:
+        warning = "Directory traversal incomplete; one or more paths could not be read"
+        if warning not in result.warnings:
+            result.warnings.append(warning)
+
+    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, on_error=traversal_error)):
         if not f.is_file():
             continue
-        if not _should_scan(f):
+        if not _should_scan(f.relative_to(project)):
             continue
         if file_count >= _MAX_FILES:
             result.warnings.append(f"Stopped at {_MAX_FILES} files")

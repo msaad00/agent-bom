@@ -78,6 +78,8 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
     # Parse the GEM specs section
     in_gem_section = False
     in_specs = False
+    saw_gem_section = False
+    saw_specs = False
     # Pattern: 4 spaces + gem_name (version)
     gem_pattern = re.compile(r"^    (\S+)\s+\(([^)]+)\)$")
     malformed_specs = False
@@ -89,9 +91,11 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
         if stripped == "GEM":
             in_gem_section = True
             in_specs = False
+            saw_gem_section = True
             continue
         if in_gem_section and stripped.strip() == "specs:":
             in_specs = True
+            saw_specs = True
             continue
         # End of GEM section (new section starts at column 0)
         if in_gem_section and stripped and not stripped.startswith(" "):
@@ -130,7 +134,7 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
 
     if packages:
         logger.info("Parsed %d gems from %s", len(packages), lockfile)
-    if malformed_specs:
+    if malformed_specs or (saw_gem_section and not saw_specs):
         record_manifest_parse_warning(
             ecosystem="rubygems",
             path=str(lockfile),
@@ -155,9 +159,9 @@ def parse_ruby_packages(directory: str | Path) -> list[Package]:
     list[Package]
         All discovered Ruby gems.
     """
-    packages = parse_gemfile_lock(directory)
-    if packages:
-        return packages
+    lockfile = Path(directory) / "Gemfile.lock"
+    if lockfile.is_file():
+        return parse_gemfile_lock(directory)
 
     # Fallback: parse Gemfile for declared (not resolved) dependencies
     gemfile = Path(directory) / "Gemfile"

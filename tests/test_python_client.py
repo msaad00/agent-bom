@@ -150,14 +150,31 @@ def test_client_serializes_finding_workflow_and_vex_scope() -> None:
 
     client = _client(handler)
     client.list_findings(owner="payments-security", sla="overdue")
-    client.export_finding_triage_vex(assignee="payments-security", package="payments-lib")
+    client.export_finding_triage_vex(
+        assignee="payments-security",
+        package="payments-lib",
+        scope="current",
+        severity="critical",
+        environment="production",
+        window_days=30,
+    )
 
     assert seen == [
         (
             "/v1/findings",
             {"sort": "effective_reach", "limit": "500", "offset": "0", "owner": "payments-security", "sla": "overdue"},
         ),
-        ("/v1/findings/triage/vex", {"assignee": "payments-security", "package": "payments-lib"}),
+        (
+            "/v1/findings/triage/vex",
+            {
+                "assignee": "payments-security",
+                "package": "payments-lib",
+                "scope": "current",
+                "severity": "critical",
+                "environment": "production",
+                "window_days": "30",
+            },
+        ),
     ]
 
 

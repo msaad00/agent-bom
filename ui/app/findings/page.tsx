@@ -556,7 +556,23 @@ function FindingsPage() {
     setVexExporting(true);
     setTriageError("");
     try {
-      const exported = await api.exportFindingTriageVex();
+      const findingQuery = search.trim();
+      const exported = await api.exportFindingTriageVex({
+        scope: "current",
+        ...(findingQuery ? { query: findingQuery } : {}),
+        ...(filter !== "all" ? { severity: filter === "unrated" ? "unknown" : filter } : {}),
+        ...(paramScan ? { scanId: paramScan } : {}),
+        ...(domainFilter !== "all" ? { domain: domainFilter } : {}),
+        ...(providerFilter.trim() ? { provider: providerFilter.trim() } : {}),
+        ...(accountFilter.trim() ? { account: accountFilter.trim() } : {}),
+        ...(environmentFilter.trim() ? { environment: environmentFilter.trim() } : {}),
+        ...(ownerFilter.trim() ? { owner: ownerFilter.trim() } : {}),
+        ...(slaFilter ? { sla: slaFilter } : {}),
+        ...(frameworkFilter.trim() ? { framework: frameworkFilter.trim() } : {}),
+        ...(frameworkFilter.trim() && controlFilter.trim() ? { control: controlFilter.trim() } : {}),
+        ...(issueTypeFilter !== "all" ? { findingClass: issueTypeFilter } : {}),
+        windowDays,
+      });
       downloadJson(exported, `finding-triage-openvex-${new Date().toISOString().slice(0, 10)}.json`);
     } catch (e: unknown) {
       if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
@@ -567,7 +583,21 @@ function FindingsPage() {
     } finally {
       setVexExporting(false);
     }
-  }, []);
+  }, [
+    accountFilter,
+    controlFilter,
+    domainFilter,
+    environmentFilter,
+    filter,
+    frameworkFilter,
+    issueTypeFilter,
+    ownerFilter,
+    paramScan,
+    providerFilter,
+    search,
+    slaFilter,
+    windowDays,
+  ]);
 
   useEffect(() => {
     void refreshTriage();
@@ -821,7 +851,7 @@ function FindingsPage() {
                   className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 dark:border-emerald-900 bg-emerald-500/10 dark:bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/10 dark:hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
                   title={
                     vexEligibleCount > 0
-                      ? "Export signed OpenVEX JSON for findings triaged as not_affected"
+                      ? "Export signed OpenVEX JSON for the current filtered Findings view"
                       : "Mark a finding not_affected with justification to enable OpenVEX export"
                   }
                 >

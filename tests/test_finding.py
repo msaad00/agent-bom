@@ -416,6 +416,30 @@ def test_blast_radius_to_finding_compliance_tags_carried():
     assert finding.soc2_tags == ["CC7.1"]
 
 
+def test_blast_radius_to_finding_preserves_iso_mapping_provenance():
+    """Serialized controls distinguish authoritative and vendor mapping edges."""
+    from agent_bom.scanners.package_scan import apply_framework_tags
+
+    br = _make_blast_radius(severity=Severity.LOW, credentials=[])
+    br.vulnerability.fixed_version = None
+    br.vulnerability.cwe_ids = ["CWE-89"]
+    apply_framework_tags(br)
+
+    finding = blast_radius_to_finding(br)
+    controls = {(tag.framework, tag.control): tag for tag in finding.normalized_controls()}
+
+    derived = controls[("iso_27001", "A.8.7")]
+    assert derived.source == "authority:NIST-OLIR"
+    assert derived.via == "vendor-asserted:CWE-to-NIST:SI-3"
+
+    direct = controls[("iso_27001", "A.5.19")]
+    assert direct.source == "vendor-asserted:agent-bom"
+    assert direct.via == "blast-radius-signal"
+
+    serialized = finding.to_dict()["controls"]
+    assert any(row["control"] == "A.8.7" and row["source"] == "authority:NIST-OLIR" for row in serialized)
+
+
 def test_cloud_cis_check_without_a_severity_is_unrated_not_medium():
     """A control that reports no severity must not be handed one.
 

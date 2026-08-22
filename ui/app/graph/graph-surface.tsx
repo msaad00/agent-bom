@@ -6,8 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { GraphPanelSkeleton } from "@/components/graph-state-panels";
 import GraphPageClient from "./graph-page-client";
 
-// One graph surface, three lenses selected by the `?lens=` param (graph
-// unification epic, workstream 4). Lineage (default) and Asset Drift
+// One graph surface, several lenses selected by URL params. Lineage (default)
+// and Asset Drift
 // (`?scope=asset-drift`) render the full unified-graph client; the Agent Mesh
 // and Context lenses render their own bespoke pipelines — each a distinct data
 // source (raw scan mesh / context-graph API) with distinct panels — so they are
@@ -15,9 +15,9 @@ import GraphPageClient from "./graph-page-client";
 //
 // The lens views are lazily loaded (ssr:false) so the default lineage bundle
 // never pays for the mesh/context pipelines and they never run during static
-// prerender. Switching lenses on `/graph` swaps which component mounts, giving
-// each lens a fresh mount (its URL-seeded state re-initialises) exactly as a
-// route change used to.
+// prerender. The canonical `/security-graph` investigation route composes this
+// surface for non-attack-path lenses; `/graph` remains a compatible direct
+// entry point for existing deep links.
 const MeshLensView = dynamic(
   () => import("@/components/mesh-lens-view").then((mod) => mod.MeshLensView),
   {

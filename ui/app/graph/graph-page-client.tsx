@@ -859,6 +859,11 @@ function GraphPageInner() {
     const preference = parseGraphRollupUrlPreference(searchParams);
     rollupPreferenceRef.current = preference;
     setRollupDismissed(rollupDismissedForPreference(preference));
+    const requestedScanId =
+      searchParams.get("scan") || searchParams.get("scan_id") || "";
+    if (requestedScanId) {
+      requestedScanIdRef.current = requestedScanId;
+    }
   }, [searchParams]);
   const firstScanSelectionRef = useRef(true);
   // Last URL the filter→URL sync effect wrote, used to break an infinite
@@ -1353,7 +1358,24 @@ function GraphPageInner() {
     // no-op guard below so we never re-sync an unchanged URL.
     const currentSearch = new URLSearchParams(window.location.search);
     const nextParams = encodeFiltersToParams(filters);
-    if (selectedScanId) nextParams.set("scan", selectedScanId);
+    // Client-side lens navigation can mount this surface before the snapshot
+    // request resolves. Preserve the destination scan until the canonical
+    // selection is available, otherwise the first URL sync silently widens a
+    // pinned investigation to the newest snapshot.
+    const requestedScanId =
+      currentSearch.get("scan") ||
+      currentSearch.get("scan_id") ||
+      searchParams.get("scan") ||
+      searchParams.get("scan_id") ||
+      requestedScanIdRef.current;
+    const shareableScanId =
+      selectedScanId || (loadingSnapshots ? requestedScanId : "");
+    if (shareableScanId) nextParams.set("scan", shareableScanId);
+    // `lens` is composition state rather than a graph filter, so the filter
+    // encoder intentionally does not own it. Keep it while syncing the rest
+    // of the shareable view state.
+    const lens = currentSearch.get("lens") || searchParams.get("lens");
+    if (lens) nextParams.set("lens", lens);
     if (captureMode) {
       nextParams.set("capture", "1");
     }
@@ -1414,11 +1436,13 @@ function GraphPageInner() {
     captureMode,
     filters,
     investigationMode,
+    loadingSnapshots,
     pathname,
     rollupDismissed,
     rollupNavigationActive,
     rollupStack,
     router,
+    searchParams,
     selectedScanId,
   ]);
 

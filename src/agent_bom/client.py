@@ -476,8 +476,24 @@ class AgentBomClient:
         package: str | None = None,
         vulnerability_id: str | None = None,
         server_name: str | None = None,
+        scope: str | None = None,
+        query: str | None = None,
+        severity: str | None = None,
+        scan_id: str | None = None,
+        provider: str | None = None,
+        account: str | None = None,
+        environment: str | None = None,
+        domain: str | None = None,
+        window_days: int | None = None,
+        status: str | None = None,
+        finding_class: str | None = None,
+        kev: bool | None = None,
+        framework: str | None = None,
+        control: str | None = None,
+        owner: str | None = None,
+        sla: str | None = None,
     ) -> JsonObject:
-        """Export OpenVEX for eligible finding triage decisions."""
+        """Export OpenVEX for eligible triage decisions, optionally scoped to a finding view."""
 
         return self._request(
             "GET",
@@ -488,6 +504,22 @@ class AgentBomClient:
                     "package": package,
                     "vulnerability_id": vulnerability_id,
                     "server_name": server_name,
+                    "scope": scope,
+                    "q": query,
+                    "severity": severity,
+                    "scan_id": scan_id,
+                    "provider": provider,
+                    "account": account,
+                    "environment": environment,
+                    "domain": domain,
+                    "window_days": window_days,
+                    "status": status,
+                    "finding_class": finding_class,
+                    "kev": kev,
+                    "framework": framework,
+                    "control": control,
+                    "owner": owner,
+                    "sla": sla,
                 }
             ),
         )

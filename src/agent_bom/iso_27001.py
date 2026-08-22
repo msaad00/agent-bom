@@ -100,9 +100,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     # CWE-based compliance tagging (applies to all vulns with CWE data)
     if br.vulnerability.cwe_ids:
-        from agent_bom.framework_mapping import controls_for_cwes
+        from agent_bom.framework_mapping import iso_controls_for_cwes_via_nist
 
-        tags.update(controls_for_cwes(br.vulnerability.cwe_ids, "iso_27001"))
+        tags.update(iso_controls_for_cwes_via_nist(br.vulnerability.cwe_ids))
 
     return sorted(tags)
 

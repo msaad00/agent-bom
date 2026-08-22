@@ -437,11 +437,15 @@ body {
 .graph-flow-minimap { @apply !rounded-lg !border-[var(--border-subtle)] !bg-[var(--surface)]/90 !backdrop-blur-sm; }
 .graph-export-select { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none; }
 .graph-export-button { @apply inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/45 bg-cyan-50 px-2.5 py-1.5 text-xs font-medium text-cyan-800 transition-colors hover:border-cyan-700 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:border-cyan-800 dark:hover:bg-cyan-950/50; }
-.graph-evidence-summary { @apply grid gap-2 md:grid-cols-3; }
-.graph-evidence-item { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2; }
-.graph-evidence-label { @apply flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]; }
-.graph-evidence-value { @apply mt-1 truncate text-xs font-medium text-[var(--foreground)]; }
-.graph-evidence-detail { @apply mt-0.5 text-[10px] capitalize text-[var(--text-tertiary)]; }
+/* Freshness / completeness / provenance are never hidden — they are the honesty
+   contract of the graph. They are, however, one line rather than a band of
+   stacked cards: on the graph route every pixel above the canvas is taken from
+   the content the page exists to show. */
+.graph-evidence-summary { @apply flex flex-wrap items-center gap-x-3 gap-y-1.5; }
+.graph-evidence-item { @apply flex min-w-0 items-baseline gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-2.5 py-1; }
+.graph-evidence-label { @apply flex shrink-0 items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]; }
+.graph-evidence-value { @apply truncate text-xs font-medium text-[var(--foreground)]; }
+.graph-evidence-detail { @apply shrink-0 text-[10px] capitalize text-[var(--text-tertiary)]; }
 .attack-flow-node { @apply min-w-[140px] max-w-[220px] rounded-lg border-2 px-3 py-2 shadow-lg backdrop-blur; }
 .attack-flow-handle { @apply !h-2 !w-2 !border-[var(--border-strong)] !bg-[var(--text-tertiary)]; }
 .attack-flow-node-label { @apply truncate text-xs font-semibold text-[var(--foreground)]; }

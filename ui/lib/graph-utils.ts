@@ -590,6 +590,8 @@ export function readableGraphEdges(
     zoom?: number;
     nodeLabels?: ReadonlyMap<string, string>;
     preserveVisualStyle?: boolean;
+    /** Above this many edges, only the focused path stays labelled. */
+    maxLabeledEdges?: number;
   } = {},
 ): Edge[] {
   const {
@@ -602,7 +604,15 @@ export function readableGraphEdges(
     zoom = 1,
     nodeLabels,
     preserveVisualStyle = false,
+    maxLabeledEdges = Number.POSITIVE_INFINITY,
   } = options;
+
+  // At estate scale most relationships are high-signal, so labelling each one
+  // renders thousands of overlapping captions across the canvas and the graph
+  // stops being readable at exactly the size where it matters most. Past the
+  // budget the labels ride the selection instead: hover or focus a path and its
+  // relationships name themselves, the rest stay quiet.
+  const labelsAreDense = edges.length > maxLabeledEdges;
 
   return edges.map((edge): Edge => {
     const relationship = edgeRelationship(edge);
@@ -631,11 +641,13 @@ export function readableGraphEdges(
       : computedOpacity;
     const width = numericStrokeWidth(edge);
     const safeSharedLabel = relationship.startsWith("shares_") || relationship === "shares_cred";
-    const label =
-      (safeSharedLabel ? undefined : edge.label) ??
-      (relationship && (active || highSignal)
-        ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
-        : undefined);
+    const mayLabel = !labelsAreDense || active;
+    const label = mayLabel
+      ? ((safeSharedLabel ? undefined : edge.label) ??
+        (relationship && (active || highSignal)
+          ? relationshipEdgeLabelText(relationship, edge.data as Record<string, unknown>)
+          : undefined))
+      : undefined;
     const labelPresentation = label
       ? relationshipEdgeLabelPresentation({ captureMode, zoom })
       : {};

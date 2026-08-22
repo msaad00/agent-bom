@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import time
 from collections import Counter
@@ -14,6 +15,15 @@ from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_SCAN_ID
 # The hosted-demo contract is anonymous viewer access.  Supplying an unattested
 # role header is credential spoofing and must be rejected by the auth resolver.
 VIEWER: dict[str, str] = {}
+
+
+def test_demo_bootstrap_log_does_not_emit_raw_graph_owner_scan_id() -> None:
+    """Keep the exact owner in the summary without copying it into logs."""
+    from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+
+    source = inspect.getsource(maybe_bootstrap_demo_estate)
+    assert "graph_owner_scan_id=%s" not in source
+    assert "graph_owner_scan_id_present=%s" in source
 
 
 @pytest.fixture()

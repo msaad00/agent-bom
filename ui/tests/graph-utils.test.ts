@@ -184,3 +184,34 @@ describe("graph utility metadata", () => {
     expect(captured[1]!.style?.strokeWidth).toBeGreaterThanOrEqual(1.25);
   });
 });
+
+describe("readableGraphEdges label density", () => {
+  const denseEdges = Array.from({ length: 200 }, (_, index) => ({
+    id: `e${index}`,
+    source: `n${index}`,
+    target: `n${index + 1}`,
+    data: { relationship: "exposes_cred" },
+  }));
+
+  it("labels high-signal edges when the graph is small enough to read", () => {
+    const labelled = readableGraphEdges(denseEdges.slice(0, 3), null, {
+      maxLabeledEdges: 60,
+    });
+    expect(labelled.every((edge) => Boolean(edge.label))).toBe(true);
+  });
+
+  it("drops labels past the density budget but keeps them on the focused path", () => {
+    // At estate scale every high-signal edge carrying a label turns the canvas
+    // into overlapping text. Past the budget only the selection stays labelled.
+    const focus = new Set(["n0", "n1"]);
+    const labelled = readableGraphEdges(denseEdges, focus, {
+      maxLabeledEdges: 60,
+    });
+
+    const focused = labelled.find((edge) => edge.id === "e0");
+    expect(focused?.label).toBeTruthy();
+
+    const offPath = labelled.filter((edge) => edge.id !== "e0");
+    expect(offPath.every((edge) => edge.label === undefined)).toBe(true);
+  });
+});

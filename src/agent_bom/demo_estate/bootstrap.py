@@ -266,6 +266,17 @@ def _store_demo_scan_job(report: dict[str, Any], *, tenant_id: str) -> str:
     return job.job_id
 
 
+def _graph_owner_scan_id(graph_store: Any, tenant_id: str) -> str:
+    """Return the scan id whose snapshot the graph read path will serve."""
+    try:
+        latest = getattr(graph_store, "latest_snapshot_id", None)
+        if callable(latest):
+            return str(latest(tenant_id=tenant_id) or "")
+    except Exception:  # noqa: BLE001 - never block the demo boot on a read
+        _logger.debug("could not resolve graph owner scan id", exc_info=True)
+    return ""
+
+
 def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
     """Seed showcase graph + curated findings when demo estate mode is enabled."""
     if not demo_estate_enabled():
@@ -313,6 +324,14 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate graph seeding failed", exc_info=True)
         summary["graph_error"] = True
     summary["graph_seeded"] = graph_seeded
+    if not graph_seeded:
+        # Seeding declines when a real scan owns the tenant -- correct, because
+        # operator evidence is never shadowed. But the findings above ARE the
+        # estate's, so the graph and the finding counts now describe different
+        # worlds. Silence here is what makes the investigation surface open on
+        # an unrelated scan with no explanation; name the owning snapshot so the
+        # API and UI can say which estate the graph belongs to.
+        summary["graph_owner_scan_id"] = _graph_owner_scan_id(graph_store, tenant_id)
 
     # Seed the live agent-identity store (NHI estate) independently of the graph
     # snapshot so the NHI/Identity overview tile and the nhi-governance posture
@@ -409,9 +428,10 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
             }
         )
         _logger.info(
-            "demo estate bootstrap complete tenant=%s graph_seeded=%s job_id=%s findings=%s",
+            "demo estate bootstrap complete tenant=%s graph_seeded=%s graph_owner_scan_id_present=%s job_id=%s findings=%s",
             tenant_id,
             graph_seeded,
+            bool(summary.get("graph_owner_scan_id")),
             job_id,
             summary.get("findings"),
         )

@@ -776,17 +776,23 @@ def seed_showcase_graph_if_empty(
     """
     showcase_ids = {SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID}
     snapshots = _existing_snapshots(graph_store, tenant_id)
-    if any(str(row.get("scan_id")) not in showcase_ids for row in snapshots):
+    foreign = [row for row in snapshots if str(row.get("scan_id")) not in showcase_ids]
+    if foreign and not force:
+        # An ordinary boot never shadows a real scan.
         return False
     if not force and snapshots and _showcase_seed_is_current(snapshots):
         return False
-    if snapshots:
+    if snapshots and not foreign:
         # Only showcase snapshots remain. Wipe them so the refreshed seed does
-        # not leave orphaned nodes/edges behind. A non-showcase snapshot always
-        # returned above, including on explicit force.
+        # not leave orphaned nodes/edges behind.
         delete_tenant = getattr(graph_store, "delete_tenant", None)
         if callable(delete_tenant):
             delete_tenant(tenant_id=tenant_id)
+    # With a preserved operator scan present, the showcase snapshots are still
+    # written -- an explicit demo request needs a graph to address -- but they
+    # keep their fixed, older timestamps. The newest-wins read path therefore
+    # still defaults to the operator's scan; only a caller that asks for the
+    # showcase scan id by name is served the estate.
 
     # One shared, enriched identity estate feeds both snapshots so the persisted
     # MANAGED_IDENTITY node ids match the live identity store the API re-projects.
@@ -807,11 +813,13 @@ def seed_showcase_graph_if_empty(
     )
     finalize_showcase_snapshot(baseline_graph, profile="baseline")
     _annotate_demo_identity_risk(baseline_graph)
-    _materialize_showcase_attack_paths(baseline_graph)
+    baseline_analysis_complete = _materialize_showcase_attack_paths(baseline_graph)
     # After the showcase's own attack paths are derived, so the hand-built hero
     # chains stay first in the exposure-path queue and the estate's correlated
     # chains extend it rather than displacing it.
     project_estate_onto_showcase(baseline_graph, tenant_id=tenant_id, profile="baseline")
+    if baseline_analysis_complete:
+        _record_showcase_attack_path_analysis(baseline_graph)
     graph_store.save_graph(baseline_graph)
 
     current_graph, identity_store, drift_store = build_showcase_graph(
@@ -829,8 +837,10 @@ def seed_showcase_graph_if_empty(
     )
     finalize_showcase_snapshot(current_graph, profile="current")
     _annotate_demo_identity_risk(current_graph)
-    _materialize_showcase_attack_paths(current_graph)
+    current_analysis_complete = _materialize_showcase_attack_paths(current_graph)
     project_estate_onto_showcase(current_graph, tenant_id=tenant_id, profile="current")
+    if current_analysis_complete:
+        _record_showcase_attack_path_analysis(current_graph)
     graph_store.save_graph(current_graph)
     return True
 
@@ -884,7 +894,7 @@ def project_estate_onto_showcase(
     return summary
 
 
-def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> None:
+def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> bool:
     """Persist derived attack paths so the materialized exposure-path queue is
     non-empty for the demo.
 
@@ -896,10 +906,34 @@ def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> None:
     the hero chains onto the snapshot before it is saved.
     """
     if graph.attack_paths:
-        return
+        return True
     try:
         from agent_bom.api.routes.graph import _derived_attack_paths
 
         graph.attack_paths = _derived_attack_paths(graph)
     except Exception:  # noqa: BLE001 — never block the snapshot save on path shaping
         _logger.warning("demo estate attack-path materialization failed", exc_info=True)
+        return False
+
+    return True
+
+
+def _record_showcase_attack_path_analysis(graph: UnifiedGraph) -> None:
+    """Record completion after estate projection has finalized the path queue."""
+
+    # Persistence keys paths by source/target within a scan, so duplicate
+    # in-memory variants collapse to one served path. Report the persisted
+    # cardinality instead of the pre-upsert list length.
+    persisted_path_count = len({(path.source, path.target) for path in graph.attack_paths})
+
+    # Record that the run completed. Without this the snapshot reads
+    # ``not_recorded`` and the graph header says "Analysis status unavailable"
+    # while sitting on top of the paths this function just derived — the header
+    # is right to distrust a snapshot that never claims one, so the seed has to
+    # make the claim it has actually earned.
+    from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
+
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.COMPLETE,
+        observed={"paths": persisted_path_count},
+    )

@@ -687,6 +687,8 @@ type RollupBreadcrumb = {
   label: string;
 };
 
+const GRAPH_EDGE_LABEL_BUDGET = 60;
+
 export default function GraphPageClient() {
   return (
     <ReactFlowProvider>
@@ -1949,6 +1951,9 @@ function GraphPageInner() {
       captureMode,
       zoom: graphViewport.zoom,
       nodeLabels: graphNodeDisplayLabels(displayNodes),
+      // Past this many edges the captions overlap into noise, so they follow
+      // the selection instead of blanketing the canvas. A capture keeps them.
+      maxLabeledEdges: captureMode ? Number.POSITIVE_INFINITY : GRAPH_EDGE_LABEL_BUDGET,
     });
   }, [
     layoutEdges,
@@ -2760,9 +2765,6 @@ function GraphPageInner() {
                   <span>{activeSnapshot.edge_count} edges</span>
                 </>
               )}
-              <span>
-                captured {new Date(activeSnapshot.created_at).toLocaleString()}
-              </span>
             </>
           )}
           {graphData &&
@@ -3766,18 +3768,13 @@ function RollupNavigationPanel({
             </p>
             <p className="mt-1 text-sm font-medium text-emerald-950 dark:text-emerald-50">
               {active
-                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot`
+                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot · collapsed by containment · real relationships, aggregated`
                 : unavailable
                   ? `Roll-up unavailable · ${estateNodeCount} nodes in snapshot`
                 : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}
             </p>
-            {active && (
-              <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-200/80">
-                Containers are collapsed by containment; the links between them
-                are real relationships, aggregated. Open node view for
-                individual nodes.
-              </p>
-            )}
+            {/* The rule is stated once, inline. It was a third line of prose on
+                every render, above a canvas that had no room to spare. */}
             {error && (
               <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">{error}</p>
             )}

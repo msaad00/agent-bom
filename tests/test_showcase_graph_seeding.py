@@ -7,7 +7,7 @@ seed must be refreshed on ``--demo-estate`` boot instead of early-returning.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -47,6 +47,19 @@ def test_seeds_when_empty(store: SQLiteGraphStore) -> None:
     assert created.get(SHOWCASE_SCAN_ID) == SHOWCASE_CURRENT_CREATED_AT
     assert SHOWCASE_BASELINE_SCAN_ID in created
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == SHOWCASE_SCAN_ID
+
+
+def test_seed_records_completed_attack_path_analysis(store: SQLiteGraphStore) -> None:
+    """A seeded path queue must carry the analysis claim it actually earned."""
+    from agent_bom.graph.analysis import GraphAnalysisState
+
+    assert seed_showcase_graph_if_empty(store) is True
+
+    graph = store.load_graph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    status = graph.analysis_status["attack_path_fusion"]
+    assert status.status is GraphAnalysisState.COMPLETE
+    assert status.observed == {"paths": len(graph.attack_paths)}
+    assert graph.attack_paths
 
 
 def test_showcase_snapshot_stamps_are_never_future_dated() -> None:
@@ -148,19 +161,33 @@ def test_does_not_shadow_a_real_scan(store: SQLiteGraphStore) -> None:
 
 
 def test_explicit_demo_force_never_replaces_a_non_showcase_snapshot(store: SQLiteGraphStore) -> None:
-    """The operator's demo reset must never delete real scan evidence.
+    """The operator's demo reset must never delete or displace real scan evidence.
 
     An environment flag is not sufficient authorization to erase tenant graph
-    history. Force can refresh a showcase-only tenant, but a non-showcase
-    snapshot remains an absolute preservation boundary.
-    """
-    store.save_graph(_minimal_graph(scan_id="stale-local-scan", created_at="2026-07-14T09:00:00+00:00"))
+    history, nor to change which graph the tenant is served by default. Force
+    may *add* the showcase snapshots so an explicit demo request has an estate
+    to address, but the operator's scan is neither deleted nor demoted: it stays
+    the snapshot the newest-wins read path returns.
 
-    assert seed_showcase_graph_if_empty(store, force=True) is False
+    Previously this asserted that no showcase snapshot was written at all. That
+    made ``--demo-estate`` seed 3,469 findings with no graph to match them, so
+    the investigation surface opened on an unrelated scan. The preservation
+    boundary this test exists to protect is "never erase, never displace" — both
+    are still asserted below.
+    """
+    # Newer than the fixed showcase stamp -- i.e. a scan the operator actually
+    # just ran, which is the evidence that must keep owning the default view.
+    fresh = (datetime.fromisoformat(SHOWCASE_CURRENT_CREATED_AT) + timedelta(days=1)).isoformat()
+    store.save_graph(_minimal_graph(scan_id="fresh-local-scan", created_at=fresh))
+
+    assert seed_showcase_graph_if_empty(store, force=True) is True
 
     scan_ids = {row["scan_id"] for row in store.list_snapshots(tenant_id=SHOWCASE_TENANT)}
-    assert scan_ids == {"stale-local-scan"}
-    assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "stale-local-scan"
+    # Real evidence preserved, and still the default the read path serves.
+    assert "fresh-local-scan" in scan_ids
+    assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == "fresh-local-scan"
+    # The estate is addressable by name, but only by name.
+    assert {SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID}.issubset(scan_ids)
 
 
 def test_seeded_estate_is_isolated_per_tenant(store: SQLiteGraphStore) -> None:

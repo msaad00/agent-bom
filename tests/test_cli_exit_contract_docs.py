@@ -79,6 +79,10 @@ def test_first_run_guide_covers_the_exit_codes_and_ci_use_readme_promises() -> N
     assert "--fail-on-severity" in guide
     assert "--fail-on-kev" in guide
 
+    exit_contract = EXIT_CODES_DOC.read_text(encoding="utf-8")
+    assert "defaults to a `critical` vulnerability gate" in exit_contract
+    assert "--exit-zero" in exit_contract
+
     # Every GitHub Action input the guide shows must really exist in action.yml.
     action = ACTION_YML.read_text(encoding="utf-8")
     for action_input in ("severity-threshold", "warn-on-severity", "format"):

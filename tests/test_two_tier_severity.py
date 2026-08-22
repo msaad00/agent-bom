@@ -92,6 +92,28 @@ def test_warn_on_help_option_present():
     result = runner.invoke(main, ["scan", "--help"])
     assert result.exit_code == 0
     assert "--warn-on" in result.output
+    assert "--exit-zero" in result.output
+
+
+def test_default_scan_fails_on_critical_findings() -> None:
+    """A plain scan must not present critical findings as process success."""
+    runner = CliRunner()
+    br = _make_blast_radius("critical", "CVE-2026-DEFAULT-GATE")
+
+    result = _run_scan_with_findings(runner, [br])
+
+    assert result.exit_code == 1
+    assert "found critical vulnerability" in result.output.lower()
+
+
+def test_exit_zero_is_an_explicit_reporting_only_escape_hatch() -> None:
+    """Exploratory scans can opt out of the default vulnerability threshold."""
+    runner = CliRunner()
+    br = _make_blast_radius("critical", "CVE-2026-REPORT-ONLY")
+
+    result = _run_scan_with_findings(runner, [br], extra_args=["--exit-zero"])
+
+    assert result.exit_code == 0
 
 
 def test_warn_on_no_findings_exits_zero():

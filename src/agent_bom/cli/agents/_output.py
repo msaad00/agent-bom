@@ -36,6 +36,7 @@ from agent_bom.output import (
     print_compact_agents,
     print_compact_blast_radius,
     print_compact_cis_posture,
+    print_compact_compliance_status,
     print_compact_export_hint,
     print_compact_graph_findings,
     print_compact_remediation,
@@ -453,6 +454,8 @@ def render_output(
                 print_compact_remediation(report, page=compact_page)
                 print_section_divider(con, "CIS Posture")
                 print_compact_cis_posture(report)
+                print_section_divider(con, "Compliance Evidence")
+                print_compact_compliance_status(report)
                 print_compact_export_hint(report)
             print_scan_next_steps(con, report, quiet=quiet)
         elif output_format in ("text", "plain") and not output:

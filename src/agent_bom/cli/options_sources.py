@@ -506,7 +506,15 @@ def policy_options(fn):
             click.option(
                 "--fail-on-severity",
                 type=click.Choice(["critical", "high", "medium", "low"], case_sensitive=False),
-                help="Exit 1 if vulnerabilities of this severity or higher are found",
+                help="Exit 1 if vulnerabilities of this severity or higher are found (default: critical)",
+            ),
+            click.option(
+                "--exit-zero",
+                is_flag=True,
+                help=(
+                    "Report vulnerability findings without a severity-gate failure. "
+                    "Malicious packages, policy failures, and incomplete scans still exit non-zero."
+                ),
             ),
             click.option(
                 "--warn-on",
@@ -514,8 +522,8 @@ def policy_options(fn):
                 type=click.Choice(["low", "medium", "high", "critical"], case_sensitive=False),
                 default=None,
                 help=(
-                    "Warn (exit 0) when findings at or above this severity exist. "
-                    "Use with --fail-on-severity for two-tier CI gates (e.g. --warn-on medium --fail-on-severity critical)."
+                    "Warn when findings at or above this severity exist below the active failure gate. "
+                    "Use with --exit-zero for reporting-only scans or --fail-on-severity for a custom two-tier gate."
                 ),
             ),
             click.option(

@@ -187,24 +187,25 @@ fleet collector, SIEM export, or manually curated source of truth.
 
 ## 5. Gate CI on the result
 
-Severity gating is opt-in: a scan reports findings without blocking until you
-say which severities matter. Two gates are the exception and fail closed with no
-flag set — a known-malicious package (typosquat / dependency confusion) and a
-scan that did not complete. That is why section 1's demo exits `1` while
-`agent-bom scan -p .` against a repository with ordinary CVEs exits `0`.
+Severity gating defaults to `critical`: a plain scan with a critical
+vulnerability exits `1` after writing its report. Known-malicious packages
+(typosquat / dependency confusion) and incomplete scans also fail closed with
+no flag set.
 
-Opt into severity gating with one of the fail flags:
+Adjust the severity threshold or choose an explicit reporting-only scan:
 
 ```bash
 agent-bom scan -p . --fail-on-severity high -f sarif -o findings.sarif
 agent-bom scan -p . --fail-on-kev            # any CISA KEV finding fails the build
 agent-bom scan -p . --fail-on-malicious      # any known-malicious package fails the build
 agent-bom scan -p . --warn-on medium --fail-on-severity critical   # two-tier gate
+agent-bom scan -p . --exit-zero --warn-on medium  # vulnerability report only; incomplete/malicious still fail
 ```
 
-`--warn-on` still exits `0`, so a pipeline can report medium findings without
-blocking while `--fail-on-severity critical` blocks. `--preset ci` bundles
-quiet output, JSON, and fail-on-critical.
+`--warn-on` reports findings below the active failure threshold. Pair it with
+`--exit-zero` when all vulnerability severities should be reporting-only;
+malicious packages, policy failures, and incomplete scans still return
+non-zero. `--preset ci` bundles quiet output, JSON, and fail-on-critical.
 
 In GitHub Actions the composite action propagates the same code plus parsed
 counts:

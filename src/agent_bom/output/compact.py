@@ -839,6 +839,30 @@ def print_compact_export_hint(report: AIBOMReport) -> None:
     )
 
 
+def print_compact_compliance_status(report: AIBOMReport) -> None:
+    """Disclose framework evaluation state without implying compliance."""
+    from collections import Counter
+
+    from agent_bom.output import console
+    from agent_bom.output.compliance_narrative import generate_compliance_narrative
+
+    narratives = generate_compliance_narrative(report).framework_narratives
+    counts = Counter(item.status for item in narratives)
+    not_evaluated = [item.framework for item in narratives if item.status == "not_evaluated"]
+
+    console.print(f"  {lane_title('govern', 'Compliance evidence')}")
+    console.print(
+        "  "
+        f"[red]{counts['action_required']} action required[/red] · "
+        f"[yellow]{counts['review']} review[/yellow] · "
+        f"[green]{counts['evidence_current']} evidence current[/green] · "
+        f"[dim]{counts['not_evaluated']} not evaluated[/dim]"
+    )
+    if not_evaluated:
+        console.print(f"  [dim]Not evaluated ({len(not_evaluated)}): {', '.join(not_evaluated)}[/dim]")
+    console.print("  [dim]No framework is reported as compliant; mappings are review evidence only.[/dim]\n")
+
+
 __all__ = [
     "print_compact_summary",
     "print_compact_agents",
@@ -846,6 +870,7 @@ __all__ = [
     "print_compact_remediation",
     "print_compact_graph_findings",
     "print_compact_cis_posture",
+    "print_compact_compliance_status",
     "print_compact_export_hint",
     # Helpers kept public for callers that already import them.
     "_coverage_bar",

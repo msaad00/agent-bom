@@ -46,6 +46,7 @@ CORE_FLAGS: frozenset[str] = frozenset(
         "--enforce",
         "--preset",
         "--fail-on-severity",
+        "--exit-zero",
         "--warn-on",
         "--fail-on-kev",
         "--fail-on-malicious",

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import StringIO
+
+from rich.console import Console
 
 from agent_bom.models import (
     Agent,
@@ -26,6 +29,7 @@ from agent_bom.output import (
     print_agent_tree,
     print_attack_flow_tree,
     print_blast_radius,
+    print_compact_compliance_status,
     print_export_hint,
     print_policy_results,
     print_posture_summary,
@@ -1051,6 +1055,21 @@ def test_print_threat_frameworks_with_tags():
     br.cis_tags = ["CIS-1.1"]
     report = _make_report_cov2(blast_radii=[br])
     print_threat_frameworks(report)
+
+
+def test_compact_console_names_frameworks_that_were_not_evaluated(monkeypatch):
+    report = _make_report_cov2()
+    stream = StringIO()
+    monkeypatch.setattr("agent_bom.output.console", Console(file=stream, force_terminal=False, color_system=None))
+
+    print_compact_compliance_status(report)
+
+    rendered = stream.getvalue()
+    assert "Compliance evidence" in rendered
+    assert "Not evaluated" in rendered
+    assert "OWASP Top 10 for LLM" in rendered
+    assert "NIST 800-53" in rendered
+    assert "No framework is reported as compliant" in rendered
 
 
 # ── print_export_hint (from cov2) ────────────────────────────────────────────

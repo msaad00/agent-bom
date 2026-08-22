@@ -299,6 +299,7 @@ def scan(
     scorecard_flag: bool,
     quiet: bool,
     fail_on_severity: Optional[str],
+    exit_zero: bool,
     warn_on_severity: Optional[str],
     fail_on_kev: bool,
     fail_on_malicious: bool,
@@ -639,6 +640,15 @@ def scan(
     elif preset == "quick":
         transitive = False
         enrich = False
+
+    # A critical vulnerability is a failed security verdict by default. The
+    # explicit escape hatch is deliberately limited to vulnerability severity:
+    # malicious packages, policy failures, and incomplete evidence remain
+    # fail-closed in ``compute_exit_code``.
+    if exit_zero:
+        fail_on_severity = None
+    elif fail_on_severity is None:
+        fail_on_severity = "critical"
     elif preset == "workstation":
         browser_extensions = True
         os_packages = True

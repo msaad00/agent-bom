@@ -118,8 +118,5 @@ def test_container_rescan_runs_after_release_and_records_immutable_image_evidenc
     assert "Resolve pulled image identity" in workflow
     assert "IMAGE_ID:" in workflow
     assert "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" in workflow
-    assert (
-        'elif [ "${{ steps.image_scan_table.outcome }}" = "success" ] && [ -n "$EXISTING" ]; then'
-        in workflow
-    )
+    assert 'elif [ "${{ steps.image_scan_table.outcome }}" = "success" ] && [ -n "$EXISTING" ]; then' in workflow
     assert "latest rescan was inconclusive, so this finding remains open" in workflow

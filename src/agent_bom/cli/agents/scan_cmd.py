@@ -649,7 +649,8 @@ def scan(
         fail_on_severity = None
     elif fail_on_severity is None:
         fail_on_severity = "critical"
-    elif preset == "workstation":
+
+    if preset == "workstation":
         browser_extensions = True
         os_packages = True
         include_processes = True

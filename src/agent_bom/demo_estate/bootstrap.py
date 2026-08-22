@@ -428,10 +428,10 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
             }
         )
         _logger.info(
-            "demo estate bootstrap complete tenant=%s graph_seeded=%s graph_owner_scan_id=%s job_id=%s findings=%s",
+            "demo estate bootstrap complete tenant=%s graph_seeded=%s graph_owner_scan_id_present=%s job_id=%s findings=%s",
             tenant_id,
             graph_seeded,
-            summary.get("graph_owner_scan_id") or "-",
+            bool(summary.get("graph_owner_scan_id")),
             job_id,
             summary.get("findings"),
         )

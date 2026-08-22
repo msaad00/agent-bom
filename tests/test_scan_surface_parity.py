@@ -180,7 +180,9 @@ def test_default_cli_scan_surfaces_combination():
             ["scan", "--no-auto-update-db", "--format", "json"],
             catch_exceptions=False,
         )
-    assert result.exit_code == 0, result.output
+    # The default CLI still emits the complete JSON surface, but a seeded
+    # critical finding is a failed security verdict.
+    assert result.exit_code == 1, result.output
     # The console prints a status banner before the JSON document.
     payload = json.loads(result.output[result.output.index("{") :])
     cats = _categories_from_json(payload)
@@ -352,7 +354,8 @@ def test_default_cli_toxic_count_is_single_honest_number():
             ["scan", "--no-auto-update-db", "--enrich", "--offline"],
             catch_exceptions=False,
         )
-    assert result.exit_code == 0, result.output
+    # Rendering remains available even though the default critical gate fails.
+    assert result.exit_code == 1, result.output
     # The legacy "N detected (…critical, …high)" wording must not appear; the
     # single reconciled toxic line uses "finding(s)".
     assert "detected (" not in result.output

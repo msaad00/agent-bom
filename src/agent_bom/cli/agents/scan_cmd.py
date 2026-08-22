@@ -3217,7 +3217,10 @@ def scan(
         fail_if_ai_risk=fail_if_ai_risk,
         push_url=push_url,
         push_api_key=push_api_key,
-        quiet=quiet,
+        # Structured renderers own stdout. Their non-zero verdict is carried
+        # by the process status and report fields; human gate explanations
+        # after the document would make the JSON/SARIF stream invalid.
+        quiet=quiet or output_format != "console",
     )
 
     if agent_mode:

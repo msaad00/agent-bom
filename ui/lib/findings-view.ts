@@ -81,7 +81,22 @@ export interface RemediationSummary {
   risk_narrative: string;
 }
 
-export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low" | "unrated";
+export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low" | "info" | "unrated";
+
+/** Every severity bucket the findings facets report, in display order.
+ *
+ * Derived here rather than spelled out at the chip site so a new bucket in the
+ * API contract cannot leave findings counted in the total but reachable by no
+ * filter. */
+export const SEVERITY_FILTER_KEYS: readonly SeverityFilter[] = [
+  "all",
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+  "unrated",
+] as const;
 export type SortKey = "severity" | "cvss" | "epss" | "effective_reach" | "id";
 export type GroupKey = "none" | "package" | "agent" | "severity";
 export type ScanScope = "latest" | "all";

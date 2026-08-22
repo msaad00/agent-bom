@@ -294,7 +294,7 @@ function FindingsPage() {
   // matches the actual cause instead of always reading as a connect failure.
   const [errorKind, setErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [filter, setFilter] = useState<SeverityFilter>(
-    paramSeverity && ["critical", "high", "medium", "low", "unrated"].includes(paramSeverity)
+    paramSeverity && ["critical", "high", "medium", "low", "info", "unrated"].includes(paramSeverity)
       ? (paramSeverity as SeverityFilter)
       : "all"
   );
@@ -386,7 +386,7 @@ function FindingsPage() {
   // changes don't write to the URL, so these effects only fire on navigation.
   useEffect(() => {
     setFilter(
-      paramSeverity && ["critical", "high", "medium", "low", "unrated"].includes(paramSeverity)
+      paramSeverity && ["critical", "high", "medium", "low", "info", "unrated"].includes(paramSeverity)
         ? (paramSeverity as SeverityFilter)
         : "all",
     );
@@ -850,6 +850,7 @@ function FindingsPage() {
     { key: "high", label: `High${findingFacets ? ` (${findingFacets.severity.high})` : ""}`, color: "text-orange-400" },
     { key: "medium", label: `Medium${findingFacets ? ` (${findingFacets.severity.medium})` : ""}`, color: "text-yellow-400" },
     { key: "low", label: `Low${findingFacets ? ` (${findingFacets.severity.low})` : ""}`, color: "text-blue-400" },
+    { key: "info", label: `Info${findingFacets ? ` (${findingFacets.severity.info})` : ""}`, color: "text-[var(--text-tertiary)]" },
     {
       key: "unrated",
       label: `Unrated${findingFacets ? ` (${findingFacets.severity.unknown})` : ""}`,

@@ -24,6 +24,7 @@ import {
   type SeverityFilter,
   type SortKey,
   uniqueStrings,
+  severityFilterDefinitions,
   serverFindingsSort,
   formatFindingsTotal,
   vulnRowKey,
@@ -840,23 +841,7 @@ function FindingsPage() {
     setControlFilter("");
   };
 
-  const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
-    {
-      key: "all",
-      label: `All (${findingsFilterTotalLabel})`,
-      color: "text-[var(--text-secondary)]",
-    },
-    { key: "critical", label: `Critical${findingFacets ? ` (${findingFacets.severity.critical})` : ""}`, color: "text-red-400" },
-    { key: "high", label: `High${findingFacets ? ` (${findingFacets.severity.high})` : ""}`, color: "text-orange-400" },
-    { key: "medium", label: `Medium${findingFacets ? ` (${findingFacets.severity.medium})` : ""}`, color: "text-yellow-400" },
-    { key: "low", label: `Low${findingFacets ? ` (${findingFacets.severity.low})` : ""}`, color: "text-blue-400" },
-    { key: "info", label: `Info${findingFacets ? ` (${findingFacets.severity.info})` : ""}`, color: "text-[var(--text-tertiary)]" },
-    {
-      key: "unrated",
-      label: `Unrated${findingFacets ? ` (${findingFacets.severity.unknown})` : ""}`,
-      color: "text-[var(--text-muted)]",
-    },
-  ];
+  const FILTERS = severityFilterDefinitions(findingFacets, findingsFilterTotalLabel);
 
   return (
     <div className="space-y-6">

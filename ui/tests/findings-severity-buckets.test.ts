@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { FindingFacets } from "@/lib/api-types";
-import { SEVERITY_FILTER_KEYS } from "@/lib/findings-view";
+import { SEVERITY_FILTER_KEYS, severityFilterDefinitions } from "@/lib/findings-view";
 
 describe("findings severity filters", () => {
   it("offers a filter for every severity bucket the API reports", () => {
@@ -20,5 +20,11 @@ describe("findings severity filters", () => {
     for (const bucket of buckets) {
       expect(SEVERITY_FILTER_KEYS).toContain(bucket === "unknown" ? "unrated" : bucket);
     }
+  });
+
+  it("renders the canonical severity keys instead of a second chip list", () => {
+    expect(severityFilterDefinitions(undefined, "0").map(({ key }) => key)).toEqual(
+      SEVERITY_FILTER_KEYS,
+    );
   });
 });

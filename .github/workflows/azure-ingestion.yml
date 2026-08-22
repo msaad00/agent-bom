@@ -140,7 +140,7 @@ jobs:
           RUN_CIS: ${{ inputs.run_cis }}
         run: |
           set -euo pipefail
-          args=(agent-bom scan --azure --azure-subscription "$AZURE_SUBSCRIPTION_ID" --format json --quiet)
+          args=(agent-bom scan --azure --azure-subscription "$AZURE_SUBSCRIPTION_ID" --preset ci --format json --quiet)
           if [ "${RUN_CIS:-true}" = "true" ]; then
             args+=(--azure-cis-benchmark)
           fi

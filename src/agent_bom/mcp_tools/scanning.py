@@ -420,6 +420,7 @@ async def check_impl(
     package: str,
     ecosystem: str = "npm",
     version: str | None = None,
+    offline: bool = False,
     _validate_ecosystem,
     _truncate_response,
 ) -> str:
@@ -427,7 +428,15 @@ async def check_impl(
     try:
         from agent_bom.models import Package as Pkg
         from agent_bom.parsers.os_parsers import enrich_os_package_context
-        from agent_bom.scanners import ScanOptions, scan_packages
+        from agent_bom.scanners import (
+            IncompleteScanError,
+            ScanOptions,
+            consume_coverage_warnings,
+            consume_scan_warnings,
+            reset_scan_warnings,
+            scan_packages,
+        )
+        from agent_bom.scanners.package_check_result import PackageCheckResult, serialize_vulnerability
 
         try:
             name, parsed_version = normalize_check_package_spec(package, version)
@@ -440,6 +449,32 @@ async def check_impl(
         except ValueError as exc:
             raise ToolError(sanitize_error(exc)) from exc
         pkg = Pkg(name=name, version=version, ecosystem=eco)
+        result_warnings: list[str] = []
+
+        def service_result(
+            verdict: str,
+            message: str,
+            *,
+            source_context: dict | None = None,
+        ) -> str:
+            details = tuple(serialize_vulnerability(vulnerability) for vulnerability in pkg.vulnerabilities)
+            result = PackageCheckResult(
+                package=name,
+                version=version or pkg.version,
+                ecosystems=(eco,),
+                verdict=verdict,
+                message=message,
+                lookup_mode="offline" if offline else "online",
+                vulnerabilities=details,
+                warnings=tuple(result_warnings),
+                purl=pkg.purl,
+                is_malicious=bool(pkg.is_malicious),
+                malicious_reason=pkg.malicious_reason,
+                exit_code=0 if verdict == "clean" else 1 if verdict in {"vulnerable", "malicious"} else 2,
+                source_context=source_context or {},
+            )
+            return _truncate_response(json.dumps(result.service_payload(), indent=2, default=str))
+
         os_context_complete = True
         if eco in {"deb", "apk", "rpm"}:
             os_context_complete = enrich_os_package_context(pkg)
@@ -456,6 +491,11 @@ async def check_impl(
 
         # Resolve "latest" via registry
         if version in ("latest", ""):
+            if offline:
+                return service_result(
+                    "incomplete",
+                    f"Offline package checks require an explicit version for {name}",
+                )
             from agent_bom.http_client import create_client
             from agent_bom.resolver import resolve_package_version
 
@@ -477,85 +517,64 @@ async def check_impl(
                     }
                 )
 
-        await scan_packages([pkg], options=ScanOptions(offline=False))
+        reset_scan_warnings()
+        try:
+            await scan_packages([pkg], options=ScanOptions(offline=offline))
+        except IncompleteScanError as exc:
+            return service_result("incomplete", sanitize_error(exc))
+        result_warnings.extend(consume_scan_warnings())
+        coverage_warnings = consume_coverage_warnings()
+        result_warnings.extend(str(warning.get("detail") or "Package advisory coverage is incomplete") for warning in coverage_warnings)
+
+        if pkg.is_malicious:
+            reason = pkg.malicious_reason or "flagged as malicious by package intelligence"
+            return service_result(
+                "malicious",
+                f"MALICIOUS package {name}@{version} — {reason}. Do not install.",
+            )
+
+        coverage_gap = any(warning.get("kind") in {"offline_ecosystem_gap", "remote_lookup_gap"} for warning in coverage_warnings)
+        if not pkg.vulnerabilities and coverage_gap:
+            return service_result(
+                "incomplete",
+                f"Advisory coverage was incomplete for {name}@{version}; a clean verdict cannot be trusted",
+            )
 
         if not pkg.vulnerabilities and eco in {"deb", "apk", "rpm"} and not os_context_complete:
-            return json.dumps(
-                {
-                    "package": name,
-                    "version": version,
-                    "ecosystem": eco,
-                    "vulnerabilities": 0,
-                    "status": "incomplete",
-                    "message": "OS package context was insufficient for a trustworthy clean verdict",
+            return service_result(
+                "incomplete",
+                "OS package context was insufficient for a trustworthy clean verdict",
+                source_context={
                     "source_package": pkg.source_package,
                     "distro_name": pkg.distro_name,
                     "distro_version": pkg.distro_version,
-                }
+                },
             )
 
         # An explicit pinned version that found no vulns might simply not exist
         # (a typo'd or hallucinated pin). Confirm it is published before calling
         # it clean, so a fake pin can't read as safe.
-        if not pkg.vulnerabilities and version not in ("latest", "") and eco in ("npm", "pypi"):
+        if not offline and not pkg.vulnerabilities and version not in ("latest", "") and eco in ("npm", "pypi"):
             from agent_bom.http_client import create_client
 
             async with create_client(timeout=15.0) as client:
                 published = await _version_published(name, version, eco, client)
             if not published:
-                return json.dumps(
-                    {
-                        "package": name,
-                        "version": version,
-                        "ecosystem": eco,
-                        "status": "unknown",
-                        "message": (
-                            f"Version {version} of {name} was not found in the {eco} registry — "
-                            f"cannot confirm it is free of vulnerabilities (typo or unpublished "
-                            f"version?). agent-bom only verifies published versions."
-                        ),
-                    }
+                return service_result(
+                    "unknown",
+                    (
+                        f"Version {version} of {name} was not found in the {eco} registry — "
+                        f"cannot confirm it is free of vulnerabilities (typo or unpublished "
+                        f"version?). agent-bom only verifies published versions."
+                    ),
                 )
 
         if not pkg.vulnerabilities:
-            return json.dumps(
-                {
-                    "package": name,
-                    "version": version,
-                    "ecosystem": eco,
-                    "vulnerabilities": 0,
-                    "status": "clean",
-                    "message": f"No known vulnerabilities in {name}@{version}",
-                }
-            )
+            return service_result("clean", f"No known vulnerabilities in {name}@{version}")
 
-        vulns = pkg.vulnerabilities
-        return _truncate_response(
-            json.dumps(
-                {
-                    "package": name,
-                    "version": version,
-                    "ecosystem": eco,
-                    "vulnerabilities": len(vulns),
-                    "status": "vulnerable",
-                    "details": [
-                        {
-                            "id": v.id,
-                            "severity": v.severity.value,
-                            "cvss_score": v.cvss_score,
-                            "cvss_vector": v.cvss_vector,
-                            "epss_score": v.epss_score,
-                            "is_kev": v.is_kev,
-                            "fixed_version": v.fixed_version,
-                            "summary": (v.summary or "")[:200],
-                            "compliance_tags": v.compliance_tags,
-                        }
-                        for v in vulns
-                    ],
-                },
-                indent=2,
-                default=str,
-            )
+        return service_result(
+            "vulnerable",
+            f"{len(pkg.vulnerabilities)} known vulnerabilities in {name}@{version}",
         )
     except ToolError:
         raise

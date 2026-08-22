@@ -460,6 +460,7 @@ class PackageCheckRequest(BaseModel):
     package: str = Field(min_length=1, max_length=512)
     ecosystem: str = Field(default="npm", min_length=1, max_length=32)
     version: str | None = Field(default=None, max_length=256)
+    offline: bool = False
 
     @field_validator("package")
     @classmethod
@@ -1504,6 +1505,7 @@ async def check_package(body: PackageCheckRequest) -> dict[str, Any]:
             package=body.package,
             ecosystem=body.ecosystem,
             version=body.version,
+            offline=body.offline,
             _validate_ecosystem=lambda value: validate_ecosystem(value, SUPPORTED_PACKAGE_ECOSYSTEM_SET),
             _truncate_response=lambda value: value,
         )

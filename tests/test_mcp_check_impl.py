@@ -73,3 +73,78 @@ async def test_check_impl_marks_os_packages_incomplete_when_context_missing():
     payload = json.loads(result)
     assert payload["status"] == "incomplete"
     assert payload["vulnerabilities"] == 0
+
+
+@pytest.mark.asyncio
+async def test_check_impl_blocks_malicious_package_without_cve_rows():
+    async def fake_scan(packages: list[Package], **_kwargs):
+        packages[0].is_malicious = True
+        packages[0].malicious_reason = "Possible typosquat of requests"
+
+    with patch("agent_bom.scanners.scan_packages", side_effect=fake_scan):
+        result = await check_impl(
+            package="reqeusts@1.0.0",
+            ecosystem="pypi",
+            offline=True,
+            _validate_ecosystem=lambda eco: eco,
+            _truncate_response=lambda response: response,
+        )
+
+    payload = json.loads(result)
+    assert payload["canonical_verdict"] == "malicious"
+    assert payload["status"] == "malicious"
+    assert payload["is_malicious"] is True
+    assert payload["malicious_reason"] == "Possible typosquat of requests"
+    assert payload["vulnerability_count"] == 0
+    assert payload["lookup_mode"] == "offline"
+    assert payload["package_canonical_id"]
+
+
+@pytest.mark.asyncio
+async def test_check_impl_offline_explicit_version_never_queries_registry():
+    scan = AsyncMock()
+    with (
+        patch("agent_bom.scanners.scan_packages", new=scan),
+        patch("agent_bom.mcp_tools.scanning._version_published", new=AsyncMock()) as published,
+    ):
+        result = await check_impl(
+            package="six==1.16.0",
+            ecosystem="pypi",
+            offline=True,
+            _validate_ecosystem=lambda eco: eco,
+            _truncate_response=lambda response: response,
+        )
+
+    payload = json.loads(result)
+    assert payload["canonical_verdict"] == "clean"
+    assert payload["lookup_mode"] == "offline"
+    assert scan.await_args.kwargs["options"].offline is True
+    published.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_check_impl_offline_coverage_gap_is_incomplete_not_clean():
+    async def fake_scan(_packages: list[Package], **_kwargs):
+        from agent_bom.scanners import record_coverage_warning
+
+        record_coverage_warning(
+            {
+                "kind": "offline_ecosystem_gap",
+                "release": "offline:pypi",
+                "detail": "Local advisory coverage is unavailable for pypi",
+            }
+        )
+
+    with patch("agent_bom.scanners.scan_packages", side_effect=fake_scan):
+        result = await check_impl(
+            package="six==1.16.0",
+            ecosystem="pypi",
+            offline=True,
+            _validate_ecosystem=lambda eco: eco,
+            _truncate_response=lambda response: response,
+        )
+
+    payload = json.loads(result)
+    assert payload["canonical_verdict"] == "incomplete"
+    assert payload["status"] == "incomplete"
+    assert payload["scan_warnings"] == ["Local advisory coverage is unavailable for pypi"]

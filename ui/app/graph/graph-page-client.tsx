@@ -3768,7 +3768,7 @@ function RollupNavigationPanel({
             </p>
             <p className="mt-1 text-sm font-medium text-emerald-950 dark:text-emerald-50">
               {active
-                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot · collapsed by containment, links are real relationships, aggregated`
+                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot · collapsed by containment · real relationships, aggregated`
                 : unavailable
                   ? `Roll-up unavailable · ${estateNodeCount} nodes in snapshot`
                 : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}

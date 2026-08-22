@@ -49,6 +49,19 @@ def test_seeds_when_empty(store: SQLiteGraphStore) -> None:
     assert store.latest_snapshot_id(tenant_id=SHOWCASE_TENANT) == SHOWCASE_SCAN_ID
 
 
+def test_seed_records_completed_attack_path_analysis(store: SQLiteGraphStore) -> None:
+    """A seeded path queue must carry the analysis claim it actually earned."""
+    from agent_bom.graph.analysis import GraphAnalysisState
+
+    assert seed_showcase_graph_if_empty(store) is True
+
+    graph = store.load_graph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    status = graph.analysis_status["attack_path_fusion"]
+    assert status.status is GraphAnalysisState.COMPLETE
+    assert status.observed == {"paths": len(graph.attack_paths)}
+    assert graph.attack_paths
+
+
 def test_showcase_snapshot_stamps_are_never_future_dated() -> None:
     """A seeded demo must not present tomorrow's snapshot as observed evidence."""
     from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_CREATED_AT

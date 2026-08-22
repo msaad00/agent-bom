@@ -1,5 +1,5 @@
 import type { Vulnerability } from "@/lib/api";
-import type { FindingOccurrenceSummary, WorkloadRuntimeEvidence } from "@/lib/api-types";
+import type { FindingFacets, FindingOccurrenceSummary, WorkloadRuntimeEvidence } from "@/lib/api-types";
 
 export interface EnrichedVuln extends Vulnerability {
   /**
@@ -97,6 +97,47 @@ export const SEVERITY_FILTER_KEYS: readonly SeverityFilter[] = [
   "info",
   "unrated",
 ] as const;
+
+export interface SeverityFilterDefinition {
+  key: SeverityFilter;
+  label: string;
+  color: string;
+}
+
+const SEVERITY_FILTER_METADATA: Record<
+  Exclude<SeverityFilter, "all">,
+  { label: string; color: string; facetKey: keyof FindingFacets["severity"] }
+> = {
+  critical: { label: "Critical", color: "text-red-400", facetKey: "critical" },
+  high: { label: "High", color: "text-orange-400", facetKey: "high" },
+  medium: { label: "Medium", color: "text-yellow-400", facetKey: "medium" },
+  low: { label: "Low", color: "text-blue-400", facetKey: "low" },
+  info: { label: "Info", color: "text-[var(--text-tertiary)]", facetKey: "info" },
+  unrated: { label: "Unrated", color: "text-[var(--text-muted)]", facetKey: "unknown" },
+};
+
+/** Build the visible chips from the same canonical list the contract test checks. */
+export function severityFilterDefinitions(
+  facets: FindingFacets | null | undefined,
+  totalLabel: string,
+): SeverityFilterDefinition[] {
+  return SEVERITY_FILTER_KEYS.map((key) => {
+    if (key === "all") {
+      return {
+        key,
+        label: `All (${totalLabel})`,
+        color: "text-[var(--text-secondary)]",
+      };
+    }
+    const metadata = SEVERITY_FILTER_METADATA[key];
+    const count = facets ? ` (${facets.severity[metadata.facetKey]})` : "";
+    return {
+      key,
+      label: `${metadata.label}${count}`,
+      color: metadata.color,
+    };
+  });
+}
 export type SortKey = "severity" | "cvss" | "epss" | "effective_reach" | "id";
 export type GroupKey = "none" | "package" | "agent" | "severity";
 export type ScanScope = "latest" | "all";

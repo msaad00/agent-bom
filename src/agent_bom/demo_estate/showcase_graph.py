@@ -909,3 +909,16 @@ def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> None:
         graph.attack_paths = _derived_attack_paths(graph)
     except Exception:  # noqa: BLE001 — never block the snapshot save on path shaping
         _logger.warning("demo estate attack-path materialization failed", exc_info=True)
+        return
+
+    # Record that the run completed. Without this the snapshot reads
+    # ``not_recorded`` and the graph header says "Analysis status unavailable"
+    # while sitting on top of the paths this function just derived — the header
+    # is right to distrust a snapshot that never claims one, so the seed has to
+    # make the claim it has actually earned.
+    from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
+
+    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
+        status=GraphAnalysisState.COMPLETE,
+        observed={"paths": len(graph.attack_paths)},
+    )

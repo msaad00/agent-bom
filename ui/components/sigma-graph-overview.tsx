@@ -28,6 +28,7 @@ import {
 
 type SigmaGraphOverviewProps = {
   legendItems: LegendItem[];
+  embedded?: boolean;
   onNodeSelect?: (nodeId: string) => void;
 } & (
   {
@@ -96,6 +97,7 @@ export function SigmaGraphOverview({
   nodes,
   edges,
   legendItems,
+  embedded = false,
   onNodeSelect,
 }: SigmaGraphOverviewProps) {
   const captureMode = useCaptureMode();
@@ -218,7 +220,11 @@ export function SigmaGraphOverview({
 
   return (
     <div
-      className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] shadow-2xl shadow-black/30"
+      className={`flex h-full flex-col overflow-hidden bg-[var(--background)] ${
+        embedded
+          ? "min-h-0"
+          : "min-h-[72vh] rounded-xl border border-[var(--border-subtle)] shadow-2xl shadow-black/30"
+      }`}
       data-testid="sigma-graph-overview"
     >
       <div className="border-b border-[var(--border-subtle)] bg-[var(--background)]/95 p-3">
@@ -261,7 +267,7 @@ export function SigmaGraphOverview({
       <div className="relative min-h-0 flex-1 bg-[var(--background)]">
         <div
           ref={containerRef}
-          className="h-full min-h-[58vh] w-full"
+          className={`h-full w-full ${embedded ? "min-h-[28rem]" : "min-h-[58vh]"}`}
           role="img"
           aria-label="WebGL security graph overview"
           aria-describedby="sigma-graph-overview-text"

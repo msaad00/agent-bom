@@ -1140,10 +1140,19 @@ describe('api finding triage helpers', () => {
       signature: { algorithm: 'HMAC-SHA256', signature_hex: 'abc123', key_id: 'audit-hmac' },
     })
 
-    await api.exportFindingTriageVex({ assignee: 'payments-security', package: 'payments-lib' })
+    await api.exportFindingTriageVex({
+      assignee: 'payments-security',
+      package: 'payments-lib',
+      scope: 'current',
+      severity: 'critical',
+      environment: 'production',
+      windowDays: 30,
+    })
 
     const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
-    expect(url).toBe('/v1/findings/triage/vex?assignee=payments-security&package=payments-lib')
+    expect(url).toBe(
+      '/v1/findings/triage/vex?assignee=payments-security&package=payments-lib&scope=current&severity=critical&environment=production&window_days=30',
+    )
   })
 })
 

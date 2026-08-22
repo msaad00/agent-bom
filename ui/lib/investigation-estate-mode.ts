@@ -10,14 +10,15 @@ export interface InvestigationEstateMode {
 export function investigationEstateMode(nodeCount: number, scanId?: string): InvestigationEstateMode {
   const params = new URLSearchParams();
   if (scanId) params.set("scan", scanId);
+  params.set("lens", "lineage");
   params.set("rollup", "1");
-  const clusteredHref = `/graph?${params.toString()}`;
+  const clusteredHref = `/security-graph?${params.toString()}`;
   params.set("rollup", "0");
 
   return {
     large: nodeCount >= LARGE_ESTATE_NODE_THRESHOLD,
     summary: `${nodeCount.toLocaleString("en-US")} nodes`,
     clusteredHref,
-    rawHref: `/graph?${params.toString()}`,
+    rawHref: `/security-graph?${params.toString()}`,
   };
 }

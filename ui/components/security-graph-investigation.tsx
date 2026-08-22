@@ -19,6 +19,7 @@ import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import { FullscreenButton, GraphInteractionToolbar, GraphLegend } from "@/components/graph-chrome";
 import { useAuthState } from "@/components/auth-provider";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
+import { SigmaGraphOverview } from "@/components/sigma-graph-overview";
 import { api } from "@/lib/api";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 import {
@@ -34,12 +35,14 @@ import {
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
+import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
 import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
 import { buildFocusedGraphData } from "@/lib/security-graph-focus";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { useGraphLayout } from "@/lib/use-graph-layout";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey, type GraphPresentationScope } from "@/lib/graph-presentation";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const INVESTIGATION_LAYERS = {
   provider: false,
@@ -241,6 +244,7 @@ export function SecurityGraphInvestigation({
   /** Notify parent when expand/impact actions advance the investigation step. */
   onStepHint?: ((step: "expand" | "impact" | "fix") => void) | undefined;
 }) {
+  const captureMode = useCaptureMode();
   const { session, loading: authLoading } = useAuthState();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [drawerData, setDrawerData] = useState<LineageNodeData | null>(null);
@@ -290,6 +294,16 @@ export function SecurityGraphInvestigation({
       mode: (focusMode ? "context" : "lineage") as "context" | "lineage",
     }),
     [displayEdges.length, focusMode, layout.nodes.length, selectedNodeId],
+  );
+  const rendererDecision = useMemo(
+    () =>
+      decideGraphRenderer({
+        nodeCount: layout.nodes.length,
+        edgeCount: displayEdges.length,
+        captureMode,
+        selectedAttackPath: focusMode,
+      }),
+    [captureMode, displayEdges.length, focusMode, layout.nodes.length],
   );
   const presentationScope = useMemo(
     () => ({
@@ -444,6 +458,14 @@ export function SecurityGraphInvestigation({
           <div className="flex h-full min-h-[40rem] items-center justify-center px-6 text-center text-sm text-[color:var(--text-secondary)]">
             No graph nodes matched this path. Run a fresh scan or clear focus to inspect the full snapshot.
           </div>
+        ) : rendererDecision.kind === "webgl" ? (
+          <SigmaGraphOverview
+            nodes={layout.nodes as Node<LineageNodeData>[]}
+            edges={displayEdges}
+            legendItems={legendItems}
+            embedded
+            onNodeSelect={setSelectedNodeId}
+          />
         ) : (
           <ReactFlowProvider>
             <InvestigationFlow
@@ -460,9 +482,11 @@ export function SecurityGraphInvestigation({
           </ReactFlowProvider>
         )}
 
-        <div className="pointer-events-auto absolute left-3 top-3 max-w-[min(24rem,calc(100vw-2rem))]">
-          <GraphLegend items={legendItems} />
-        </div>
+        {rendererDecision.kind === "react-flow" ? (
+          <div className="pointer-events-auto absolute left-3 top-3 max-w-[min(24rem,calc(100vw-2rem))]">
+            <GraphLegend items={legendItems} />
+          </div>
+        ) : null}
       </div>
 
       {drawerData && (

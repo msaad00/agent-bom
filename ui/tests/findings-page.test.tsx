@@ -83,6 +83,14 @@ describe("FindingsPage", () => {
       next_cursor: "",
     });
     apiMock.listFindingTriage.mockResolvedValue({ triage: [] });
+    apiMock.exportFindingTriageVex.mockResolvedValue({
+      schema_version: "findings.triage.vex.v1",
+      tenant_id: "tenant-test",
+      count: 0,
+      format: "openvex",
+      vex: { statements: [] },
+      signature: { algorithm: "HMAC-SHA256", signature_hex: "abc123", key_id: "audit-hmac" },
+    });
     apiMock.getPostureCounts.mockResolvedValue({
       critical: 0,
       high: 0,
@@ -735,6 +743,54 @@ describe("FindingsPage", () => {
     expect(within(drawer).getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
     expect(within(drawer).getByText("Compliance controls")).toBeInTheDocument();
     expect(within(drawer).getByText("SOC2-CC6.6")).toBeInTheDocument();
+  });
+
+  it("exports OpenVEX from the same server-backed scope as the visible queue", async () => {
+    navigationState.query =
+      "severity=critical&issue=vulnerability&domain=vuln&provider=aws&account=prod-1&environment=production&owner=secops&sla=overdue&framework=soc2&control=CC6.1&window=30&q=requests";
+    apiMock.listFindingTriage.mockResolvedValue({
+      triage: [
+        {
+          id: "triage-current-view",
+          vulnerability_id: "CVE-2026-1234",
+          package: "better-sqlite3",
+          server_name: "",
+          queue_state: "decided",
+          decision: "not_affected",
+          justification: "vulnerable_code_not_in_execute_path",
+          decision_reason: "Not in the executable path.",
+          assignee: "secops",
+          created_by: "operator",
+          created_at: "2026-07-25T12:00:00Z",
+          reviewed_at: "2026-07-25T13:00:00Z",
+          expires_at: "",
+          tenant_id: "tenant-test",
+          vex_eligible: true,
+        },
+      ],
+    });
+
+    render(<FindingsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Export OpenVEX" }));
+
+    await waitFor(() =>
+      expect(apiMock.exportFindingTriageVex).toHaveBeenCalledWith({
+        scope: "current",
+        query: "requests",
+        severity: "critical",
+        findingClass: "vulnerability",
+        domain: "vuln",
+        provider: "aws",
+        account: "prod-1",
+        environment: "production",
+        owner: "secops",
+        sla: "overdue",
+        framework: "soc2",
+        control: "CC6.1",
+        windowDays: 30,
+      }),
+    );
   });
 
   it("does not replace an authoritative empty server query with unfiltered legacy findings", async () => {

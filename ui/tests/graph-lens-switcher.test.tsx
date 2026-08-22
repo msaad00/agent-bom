@@ -44,20 +44,20 @@ describe("GraphLensSwitcher", () => {
     expect(screen.getByText("Context")).toBeInTheDocument();
   });
 
-  it("switches to the mesh lens on the unified graph surface via a param", () => {
+  it("switches to the mesh lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
-    expect(push).toHaveBeenCalledWith("/graph?lens=mesh");
+    expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");
   });
 
-  it("switches to the context lens on the unified graph surface via a param", () => {
+  it("switches to the context lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
     fireEvent.click(screen.getByRole("button", { name: /context/i }));
 
-    expect(push).toHaveBeenCalledWith("/graph?lens=context");
+    expect(push).toHaveBeenCalledWith("/security-graph?lens=context");
   });
 
   it("preserves investigation focus when switching to a param-backed lens", () => {
@@ -79,7 +79,7 @@ describe("GraphLensSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith(
-      "/graph?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&rollup=1&lens=mesh",
+      "/security-graph?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&rollup=1&lens=mesh",
     );
   });
 
@@ -89,7 +89,7 @@ describe("GraphLensSwitcher", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /asset drift/i }));
 
-    expect(push).toHaveBeenCalledWith("/graph?scan=scan-123&scope=asset-drift");
+    expect(push).toHaveBeenCalledWith("/security-graph?scan=scan-123&lens=asset-drift&scope=asset-drift");
   });
 
   it("routes to the asset drift lens on the lineage graph", () => {
@@ -97,7 +97,7 @@ describe("GraphLensSwitcher", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /asset drift/i }));
 
-    expect(push).toHaveBeenCalledWith("/graph?scope=asset-drift");
+    expect(push).toHaveBeenCalledWith("/security-graph?lens=asset-drift&scope=asset-drift");
   });
 
   it("does not reroute when the active param lens is selected", () => {

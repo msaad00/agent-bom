@@ -3362,7 +3362,26 @@ def _list_finding_groups_impl(
     return envelope
 
 
-def current_findings_snapshot(request: Request, *, max_findings: int = 50_000) -> dict[str, Any]:
+def current_findings_snapshot(
+    request: Request,
+    *,
+    max_findings: int = 50_000,
+    q: str | None = None,
+    severity: str | None = None,
+    scan_id: str | None = None,
+    provider: str | None = None,
+    account: str | None = None,
+    environment: str | None = None,
+    domain: str | None = None,
+    window_days: int | None = None,
+    status: str = _DEFAULT_FINDING_STATUS,
+    finding_class: str | None = None,
+    kev: bool | None = None,
+    framework: str | None = None,
+    control: str | None = None,
+    owner: str | None = None,
+    sla: str | None = None,
+) -> dict[str, Any]:
     """Collect the canonical current finding queue for an internal consumer.
 
     Compliance narratives and other in-process surfaces need the same merged
@@ -3378,16 +3397,26 @@ def current_findings_snapshot(request: Request, *, max_findings: int = 50_000) -
     while len(rows) < max_findings:
         page = _list_findings_impl(
             request,
-            q=None,
-            severity=None,
-            scan_id=None,
+            q=q,
+            severity=severity,
+            scan_id=scan_id,
             sort="effective_reach",
             limit=min(1000, max_findings - len(rows)),
             offset=0,
             cursor=cursor,
             approximate_total=cursor is not None,
-            window_days=None,
-            status=_DEFAULT_FINDING_STATUS,
+            provider=provider,
+            account=account,
+            environment=environment,
+            domain=domain,
+            window_days=window_days,
+            status=status,
+            finding_class=finding_class,
+            kev=kev,
+            framework=framework,
+            control=control,
+            owner=owner,
+            sla=sla,
         )
         if first_metadata is None:
             first_metadata = page.get("count_metadata") if isinstance(page.get("count_metadata"), dict) else {}

@@ -867,6 +867,12 @@ export interface FindingTriageVexResponse {
   count: number;
   format: "openvex" | string;
   filters?: Record<string, string> | undefined;
+  finding_scope?: {
+    count: number;
+    total: number | null;
+    warnings: string[];
+    completeness: { status: string; reason: string };
+  } | undefined;
   vex: Record<string, unknown>;
   signature: {
     algorithm: string;

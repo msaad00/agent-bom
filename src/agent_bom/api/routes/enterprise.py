@@ -38,7 +38,7 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 from urllib.parse import urlsplit
 
 import anyio.to_thread
@@ -50,6 +50,7 @@ from agent_bom.api.models import (
     CreateKeyRequest,
     ExceptionRequest,
     FalsePositiveRequest,
+    FindingClass,
     FindingFeedbackRequest,
     FindingTriageDecisionRequest,
     FindingTriageRequest,
@@ -2662,13 +2663,30 @@ async def export_finding_triage_vex(
     package: Annotated[str | None, Query(max_length=256)] = None,
     vulnerability_id: Annotated[str | None, Query(max_length=128)] = None,
     server_name: Annotated[str | None, Query(max_length=256)] = None,
+    view_scope: Annotated[Literal["all", "current"], Query(alias="scope")] = "all",
+    q: Annotated[str | None, Query(max_length=256)] = None,
+    severity: str | None = None,
+    scan_id: Annotated[str | None, Query(max_length=128)] = None,
+    provider: Annotated[str | None, Query(max_length=64)] = None,
+    account: Annotated[str | None, Query(max_length=256)] = None,
+    environment: Annotated[str | None, Query(max_length=64)] = None,
+    domain: Annotated[str | None, Query(max_length=32)] = None,
+    window_days: Annotated[int | None, Query(ge=0, le=3650)] = None,
+    status: Annotated[str | None, Query(max_length=16)] = None,
+    finding_class: FindingClass | None = None,
+    kev: bool | None = None,
+    framework: Annotated[str | None, Query(max_length=64)] = None,
+    control: Annotated[str | None, Query(max_length=64)] = None,
+    owner: Annotated[str | None, Query(max_length=256)] = None,
+    sla: Literal["overdue", "due", "unassigned"] | None = None,
 ) -> dict:
     """Export signed OpenVEX for eligible tenant-scoped not_affected triage decisions."""
     from agent_bom.api.compliance_signing import describe_signer_disclosure, sign_compliance_bundle
+    from agent_bom.api.routes.scan import current_findings_snapshot
     from agent_bom.vex import VexDocument, VexJustification, VexStatement, VexStatus, export_openvex
 
     tenant_id = require_request_tenant_id(request)
-    active_filters = {
+    triage_filters = {
         key: value.strip()
         for key, value in {
             "assignee": assignee,
@@ -2678,6 +2696,96 @@ async def export_finding_triage_vex(
         }.items()
         if value is not None and value.strip()
     }
+    finding_filter_values: dict[str, Any] = {
+        "q": q,
+        "severity": severity,
+        "scan_id": scan_id,
+        "provider": provider,
+        "account": account,
+        "environment": environment,
+        "domain": domain,
+        "window_days": window_days,
+        "status": status,
+        "finding_class": getattr(finding_class, "value", finding_class),
+        "kev": kev,
+        "framework": framework,
+        "control": control,
+        "owner": owner,
+        "sla": sla,
+    }
+    finding_filters: dict[str, Any] = {}
+    for key, value in finding_filter_values.items():
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        finding_filters[key] = value.strip() if isinstance(value, str) else value
+    active_filters = dict(triage_filters)
+    if view_scope == "current":
+        active_filters["scope"] = view_scope
+    active_filters.update({key: str(value).lower() if isinstance(value, bool) else str(value) for key, value in finding_filters.items()})
+    scoped_findings: list[dict[str, Any]] | None = None
+    finding_scope: dict[str, Any] | None = None
+    if view_scope == "current":
+        snapshot = current_findings_snapshot(request, **finding_filters)
+        scoped_findings = [row for row in snapshot.get("findings", []) if isinstance(row, dict)]
+        raw_completeness = snapshot.get("completeness")
+        finding_scope = {
+            "count": len(scoped_findings),
+            "total": snapshot.get("total"),
+            "warnings": list(snapshot.get("warnings", [])),
+            "completeness": dict(raw_completeness) if isinstance(raw_completeness, dict) else {},
+        }
+
+    def _scope_matches(exc: Any) -> bool:
+        if scoped_findings is None:
+            return True
+
+        def _matches(pattern: str, values: set[str], *, empty_matches_empty: bool = False) -> bool:
+            normalized = pattern.strip().lower()
+            if normalized == "*":
+                return True
+            if not normalized and empty_matches_empty:
+                return "" in values
+            return normalized in values
+
+        for finding in scoped_findings:
+            raw_asset = finding.get("asset")
+            asset = raw_asset if isinstance(raw_asset, dict) else {}
+            raw_evidence = finding.get("evidence")
+            evidence = raw_evidence if isinstance(raw_evidence, dict) else {}
+            vuln_values = {
+                str(value).strip().lower()
+                for value in (
+                    finding.get("vulnerability_id"),
+                    finding.get("cve_id"),
+                    finding.get("advisory_id"),
+                )
+                if str(value or "").strip()
+            }
+            package_values = {
+                str(value).strip().lower()
+                for value in (
+                    finding.get("package"),
+                    finding.get("package_name"),
+                    evidence.get("package_name"),
+                    asset.get("purl"),
+                    asset.get("name"),
+                    asset.get("identifier"),
+                )
+                if str(value or "").strip()
+            }
+            raw_servers = finding.get("affected_servers")
+            server_values = {
+                str(value).strip().lower() for value in (raw_servers if isinstance(raw_servers, list) else []) if str(value or "").strip()
+            }
+            server_values.add(str(finding.get("server_name") or "").strip().lower())
+            if (
+                _matches(str(exc.vuln_id), vuln_values)
+                and _matches(str(exc.package_name), package_values)
+                and _matches(str(exc.server_name), server_values, empty_matches_empty=True)
+            ):
+                return True
+        return False
+
     statements = []
     for exc in _get_exception_store().list_all(tenant_id=tenant_id):
         data = _parse_triage_reason(exc.reason)
@@ -2686,15 +2794,17 @@ async def export_finding_triage_vex(
         if data.get("decision") != "not_affected" or not data.get("justification"):
             continue
         if (
-            "assignee" in active_filters
-            and str(data.get("assignee") or exc.approved_by or "").strip().lower() != active_filters["assignee"].lower()
+            "assignee" in triage_filters
+            and str(data.get("assignee") or exc.approved_by or "").strip().lower() != triage_filters["assignee"].lower()
         ):
             continue
-        if "package" in active_filters and str(exc.package_name).strip().lower() != active_filters["package"].lower():
+        if "package" in triage_filters and str(exc.package_name).strip().lower() != triage_filters["package"].lower():
             continue
-        if "vulnerability_id" in active_filters and str(exc.vuln_id).strip().lower() != active_filters["vulnerability_id"].lower():
+        if "vulnerability_id" in triage_filters and str(exc.vuln_id).strip().lower() != triage_filters["vulnerability_id"].lower():
             continue
-        if "server_name" in active_filters and str(exc.server_name).strip().lower() != active_filters["server_name"].lower():
+        if "server_name" in triage_filters and str(exc.server_name).strip().lower() != triage_filters["server_name"].lower():
+            continue
+        if not _scope_matches(exc):
             continue
         statements.append(
             VexStatement(
@@ -2725,6 +2835,7 @@ async def export_finding_triage_vex(
         "count": len(statements),
         "format": "openvex",
         "filters": active_filters,
+        **({"finding_scope": finding_scope} if finding_scope is not None else {}),
         "vex": payload,
         "signature": {
             "algorithm": signature.algorithm,

@@ -193,6 +193,7 @@ policy_group.add_command(policy_template, "template")
 _policy_templates_group_hidden = _copy.copy(policy_template)
 setattr(_policy_templates_group_hidden, "deprecated", "Use `agent-bom policy template`.")
 _policy_templates_group_hidden.name = "templates"
+_policy_templates_group_hidden.hidden = True
 policy_group.add_command(_policy_templates_group_hidden, "templates")
 policy_group.add_command(apply_command, "apply")
 policy_group.add_command(guard_cmd, "check")  # guard → policy check
@@ -382,7 +383,10 @@ mcp_group.add_command(mcp_scan_cmd, "scan")
 mcp_group.add_command(introspect_cmd, "introspect")
 mcp_group.add_command(registry, "registry")
 mcp_group.add_command(mcp_server_cmd, "server")
-mcp_group.add_command(where, "where")
+_mcp_where_hidden = _copy.copy(where)
+_mcp_where_hidden.hidden = True
+_mcp_where_hidden.name = "where"
+mcp_group.add_command(_mcp_where_hidden, "where")
 mcp_group.add_command(validate, "validate")
 main.add_command(mcp_group)
 

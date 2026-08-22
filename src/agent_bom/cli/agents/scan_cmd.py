@@ -25,7 +25,12 @@ from agent_bom.cli._scan_help import TieredCommand
 from agent_bom.cli.agents._cloud import run_benchmarks, run_cloud_discovery
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._discovery import run_local_discovery
-from agent_bom.cli.agents._modes import apply_demo_mode, apply_self_scan_mode, validate_skill_mode
+from agent_bom.cli.agents._modes import (
+    apply_demo_mode,
+    apply_self_scan_mode,
+    validate_primary_input_modes,
+    validate_skill_mode,
+)
 from agent_bom.cli.agents._output import render_output
 from agent_bom.cli.agents._post import compute_exit_code, run_integrations
 from agent_bom.cli.agents._posture import render_posture_summary
@@ -647,6 +652,7 @@ def scan(
     # The ci_detect module is available for programmatic use.
 
     # ── Self-scan/demo modes materialize synthetic inventories before discovery ──
+    validate_primary_input_modes(self_scan=self_scan, demo=demo, inventory=inventory)
     inventory, enrich = apply_self_scan_mode(self_scan=self_scan, inventory=inventory, enrich=enrich)
     project, inventory, enrich, compliance, iac_paths = apply_demo_mode(
         demo=demo,

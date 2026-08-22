@@ -524,10 +524,7 @@ async def check_impl(
             return service_result("incomplete", sanitize_error(exc))
         result_warnings.extend(consume_scan_warnings())
         coverage_warnings = consume_coverage_warnings()
-        result_warnings.extend(
-            str(warning.get("detail") or "Package advisory coverage is incomplete")
-            for warning in coverage_warnings
-        )
+        result_warnings.extend(str(warning.get("detail") or "Package advisory coverage is incomplete") for warning in coverage_warnings)
 
         if pkg.is_malicious:
             reason = pkg.malicious_reason or "flagged as malicious by package intelligence"
@@ -536,10 +533,7 @@ async def check_impl(
                 f"MALICIOUS package {name}@{version} — {reason}. Do not install.",
             )
 
-        coverage_gap = any(
-            warning.get("kind") in {"offline_ecosystem_gap", "remote_lookup_gap"}
-            for warning in coverage_warnings
-        )
+        coverage_gap = any(warning.get("kind") in {"offline_ecosystem_gap", "remote_lookup_gap"} for warning in coverage_warnings)
         if not pkg.vulnerabilities and coverage_gap:
             return service_result(
                 "incomplete",

@@ -74,9 +74,7 @@ async def test_rest_threads_offline_mode_into_shared_check(monkeypatch: pytest.M
     implementation = AsyncMock(return_value=json.dumps(expected))
     monkeypatch.setattr(scanning, "check_impl", implementation)
 
-    payload = await check_package(
-        PackageCheckRequest(package="six", version="1.16.0", ecosystem="pypi", offline=True)
-    )
+    payload = await check_package(PackageCheckRequest(package="six", version="1.16.0", ecosystem="pypi", offline=True))
 
     assert payload == expected
     assert implementation.await_args.kwargs["offline"] is True

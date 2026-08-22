@@ -109,9 +109,7 @@ def test_sarif_keeps_advisory_asset_and_occurrence_identities_distinct():
         )
 
     results = [
-        result
-        for result in to_sarif(AIBOMReport(), blast_radii=radii)["runs"][0]["results"]
-        if result["ruleId"] == "CVE-2026-SHARED"
+        result for result in to_sarif(AIBOMReport(), blast_radii=radii)["runs"][0]["results"] if result["ruleId"] == "CVE-2026-SHARED"
     ]
     assert len(results) == 2
     properties = [result["properties"] for result in results]

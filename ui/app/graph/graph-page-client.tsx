@@ -3768,18 +3768,13 @@ function RollupNavigationPanel({
             </p>
             <p className="mt-1 text-sm font-medium text-emerald-950 dark:text-emerald-50">
               {active
-                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot`
+                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot · collapsed by containment, links aggregated`
                 : unavailable
                   ? `Roll-up unavailable · ${estateNodeCount} nodes in snapshot`
                 : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}
             </p>
-            {active && (
-              <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-200/80">
-                Containers are collapsed by containment; the links between them
-                are real relationships, aggregated. Open node view for
-                individual nodes.
-              </p>
-            )}
+            {/* The rule is stated once, inline. It was a third line of prose on
+                every render, above a canvas that had no room to spare. */}
             {error && (
               <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">{error}</p>
             )}

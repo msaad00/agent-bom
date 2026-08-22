@@ -1111,13 +1111,15 @@ def mcp_server_cmd(
       gateway-fleet-live-demo  gateway_status -> proxy_alerts -> fleet_scan -> firewall_check
 
     \b
-    The default full profile exposes 81 security tools via MCP protocol, including
+    The default is the full tool catalog.
+    Exposes 81 security tools via MCP protocol, including
     advanced direct tools such as skill_scan, skill_verify, compliance, and
     remediate. See:
       docs/MCP_WORKFLOWS.md
 
     \b
-    Use --profile guided for a concise catalog organized behind 8 workflow prompts.
+    The guided profile is organized behind 8 workflow prompts. Use
+    --profile guided when a client needs that concise workflow-oriented catalog.
 
     \b
     Usage:

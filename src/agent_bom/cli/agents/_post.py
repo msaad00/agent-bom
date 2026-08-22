@@ -337,7 +337,12 @@ def compute_exit_code(
             sev = str(finding.severity or "low").lower()
             if _fail_gate_meets(sev, threshold):
                 if not quiet:
-                    con.print(f"\n  [red]Exiting with code 1: found {sev} finding ({finding.finding_type.value})[/red]")
+                    if getattr(finding, "is_malicious", False):
+                        asset_kind = "package" if finding.asset.asset_type == "package" else finding.asset.asset_type.replace("_", " ")
+                        reason = finding.malicious_reason or f"known malicious {asset_kind}"
+                        con.print(f"\n  [red]Exiting with code 1: malicious {asset_kind} {finding.asset.name} ({reason})[/red]")
+                    else:
+                        con.print(f"\n  [red]Exiting with code 1: found {sev} finding ({finding.finding_type.value})[/red]")
                 exit_code = 1
                 break
 

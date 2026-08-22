@@ -345,7 +345,7 @@ def test_scan_cli_gates_on_malicious_model_finding(tmp_path: Path):
         )
 
     assert result.exit_code == 1
-    assert "found critical finding (MALICIOUS_MODEL)" in result.output
+    assert "malicious model file model.pkl" in result.output
     payload = json.loads(output.read_text(encoding="utf-8"))
     finding = next(item for item in payload["findings"] if item["finding_type"] == "MALICIOUS_MODEL")
     assert finding["severity"] == "critical"

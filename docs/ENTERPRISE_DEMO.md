@@ -34,6 +34,22 @@ returned count and the true total for each list, and `summary` /
 The same bounds are served by `GET /v1/demo-estate/story` and rendered by the
 dashboard, so no surface reports a page size as a total.
 
+Graph ownership is a separate runtime artifact. Read it before constructing a
+deep link:
+
+```bash
+curl -fsS http://127.0.0.1:8422/v1/demo-estate/status | jq
+```
+
+`graph_alignment=aligned` means the default graph and the explicit
+`showcase_snapshot_id` both serve the fictional estate. `operator_default`
+means a real or imported operator scan remains the default; the response names
+that snapshot and separately says whether the synthetic showcase is still
+addressable. `reason=operator_snapshot_preserved` confirms the bootstrap saw
+and retained that owner; `operator_snapshot_became_default` means ownership
+changed after the last bootstrap. The demo never replaces newer operator
+evidence to make its own link work.
+
 The primary story follows one trace through:
 
 ```text
@@ -93,7 +109,9 @@ maintain a second UI-only copy of the scenario.
 
 Next steps from the story page:
 
-- open **Security graph** to inspect identity and resource relationships;
+- open **Security graph** to inspect the synthetic relationships when the
+  showcase snapshot is available, or **Operator graph** when the status
+  contract says operator evidence owns the only persisted graph;
 - open **Runtime traces** to inspect tool-call enforcement;
 - open **Findings** to move from evidence to remediation.
 

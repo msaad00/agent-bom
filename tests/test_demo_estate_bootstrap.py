@@ -57,6 +57,9 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     api_stores._graph_store = None
     set_compliance_hub_store(None)
     reset_findings_count_cache()
+    from agent_bom.demo_estate.bootstrap import reset_demo_estate_bootstrap_status
+
+    reset_demo_estate_bootstrap_status()
     # Each TestClient instance represents a fresh API process.  The adaptive
     # controllers are process-global, so reset them at that lifecycle boundary
     # instead of carrying latency/cooldown state across randomized test apps.
@@ -75,7 +78,10 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
         # process-global; the demo bootstrap seeds them, so clear them here to
         # keep the seeded gateway feed from leaking into later tests.
         from agent_bom.api.routes.proxy import _reset_proxy_runtime_for_tests
-        from agent_bom.demo_estate.bootstrap import reset_daily_evidence_day
+        from agent_bom.demo_estate.bootstrap import (
+            reset_daily_evidence_day,
+            reset_demo_estate_bootstrap_status,
+        )
 
         _reset_proxy_runtime_for_tests()
         api_stores._get_firewall_decision_store().reset()
@@ -97,6 +103,7 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
         set_skills_scan_store(None)
         reset_side_scan_state_store()
         reset_daily_evidence_day()
+        reset_demo_estate_bootstrap_status()
 
 
 def _demo_report(client: TestClient) -> dict:
@@ -173,6 +180,62 @@ def test_demo_estate_story_api_exposes_normalized_evidence_only(
     assert payload["primary_correlation"]["outcome"] == "blocked"
     assert payload["summary"]["evidence_sources"] == 9
     assert "raw_payload" not in response.text
+
+
+def test_demo_estate_status_exposes_the_default_graph_owner(
+    demo_estate_client: TestClient,
+) -> None:
+    response = demo_estate_client.get("/v1/demo-estate/status", headers=VIEWER)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload == {
+        "schema_version": "demo_estate_status.v1",
+        "showcase_snapshot_id": "showcase",
+        "showcase_available": True,
+        "graph_owner_scan_id": "showcase",
+        "graph_alignment": "aligned",
+        "reason": None,
+    }
+
+
+def test_demo_estate_status_names_an_operator_owned_default_graph(
+    demo_estate_client: TestClient,
+) -> None:
+    from agent_bom.api import stores as api_stores
+    from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+    from agent_bom.demo_estate.showcase_graph import (
+        SHOWCASE_CURRENT_CREATED_AT,
+        SHOWCASE_TENANT,
+    )
+    from agent_bom.graph.container import UnifiedGraph
+    from agent_bom.graph.node import UnifiedNode
+    from agent_bom.graph.types import EntityType
+
+    operator_graph = UnifiedGraph(
+        scan_id="operator-scan",
+        tenant_id=SHOWCASE_TENANT,
+        created_at=(datetime.fromisoformat(SHOWCASE_CURRENT_CREATED_AT) + timedelta(days=1)).isoformat(),
+    )
+    operator_graph.add_node(
+        UnifiedNode(
+            id="agent:operator",
+            entity_type=EntityType.AGENT,
+            label="Operator scan",
+        )
+    )
+    api_stores._get_graph_store().save_graph(operator_graph)
+    summary = maybe_bootstrap_demo_estate()
+    assert summary["graph_owner_scan_id"] == "operator-scan"
+
+    response = demo_estate_client.get("/v1/demo-estate/status", headers=VIEWER)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["showcase_available"] is True
+    assert payload["graph_owner_scan_id"] == "operator-scan"
+    assert payload["graph_alignment"] == "operator_default"
+    assert payload["reason"] == "operator_snapshot_preserved"
 
 
 def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: TestClient) -> None:

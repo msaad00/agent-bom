@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Graph label budgets survive accessibility normalization, persisted attack
+  paths derive from the final projected estate, and forced demo seeding never
+  displaces newer operator evidence. The demo now exposes and renders an
+  authenticated graph-ownership status before constructing graph deep links.
 - The consumer pre-commit dependency hook now scopes scans to the downstream
   repository instead of including unrelated workstation MCP configuration.
 - Baseline and history diffs keep a CVE attached to the same normalized package

@@ -2686,6 +2686,65 @@
         "title": "DecisionBody",
         "type": "object"
       },
+      "DemoEstateStatus": {
+        "additionalProperties": false,
+        "description": "Operator-facing truth about which persisted graph the demo can open.",
+        "properties": {
+          "graph_alignment": {
+            "enum": [
+              "aligned",
+              "operator_default",
+              "unavailable"
+            ],
+            "title": "Graph Alignment",
+            "type": "string"
+          },
+          "graph_owner_scan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph Owner Scan Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "schema_version": {
+            "const": "demo_estate_status.v1",
+            "default": "demo_estate_status.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "showcase_available": {
+            "title": "Showcase Available",
+            "type": "boolean"
+          },
+          "showcase_snapshot_id": {
+            "title": "Showcase Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "showcase_snapshot_id",
+          "showcase_available",
+          "graph_owner_scan_id",
+          "graph_alignment"
+        ],
+        "title": "DemoEstateStatus",
+        "type": "object"
+      },
       "DraftVersionBody": {
         "additionalProperties": false,
         "properties": {
@@ -16092,6 +16151,88 @@
         "summary": "Verify Agent Delegation",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/v1/demo-estate/status": {
+      "get": {
+        "description": "Name the graph snapshot the demo and default graph links will serve.",
+        "operationId": "get_demo_estate_status_v1_demo_estate_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoEstateStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Demo Estate Status",
+        "tags": [
+          "demo-estate"
         ]
       }
     },

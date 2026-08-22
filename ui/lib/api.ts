@@ -169,6 +169,7 @@ import type {
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult,
   EnterpriseDemoStory,
+  DemoEstateStatus,
 } from "./api-types";
 export type {
   AccountSummaryResponse,
@@ -453,6 +454,7 @@ export type {
   RiskCampaignTicketCreateResult,
   RiskCampaignTicketSyncResult,
   EnterpriseDemoStory,
+  DemoEstateStatus,
   EstateFindingSummary,
   EstateFindingView,
 } from "./api-types";
@@ -1299,6 +1301,9 @@ export const api = {
 
   /** Correlated fictional estate, available only when demo-estate mode is enabled. */
   getEnterpriseDemoStory: () => get<EnterpriseDemoStory>("/v1/demo-estate/story"),
+
+  /** Persisted graph ownership for honest demo-to-graph routing. */
+  getDemoEstateStatus: () => get<DemoEstateStatus>("/v1/demo-estate/status"),
 
   /** Per-account, end-to-end posture drill for one cloud account (#3931) */
   getCloudAccountSummary: (accountRef: string) =>

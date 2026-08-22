@@ -149,7 +149,12 @@ Optional curated demo estate (showcase graph + offline scan on API start):
 ```bash
 AGENT_BOM_DEMO_ESTATE=1 scripts/deploy/install.sh pilot
 # or: agent-bom api --demo-estate
+curl -fsS http://127.0.0.1:8422/v1/demo-estate/status | jq
 ```
+
+The status response is the routing artifact for the demo graph: it distinguishes
+an aligned `showcase` snapshot from a newer operator-owned default and reports
+whether the showcase remains explicitly addressable.
 
 ### Docker on a VM (team pilot)
 

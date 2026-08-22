@@ -5,7 +5,10 @@ import DemoEstatePage from "@/app/demo-estate/page";
 import type { EnterpriseDemoStory } from "@/lib/api";
 
 const { apiMock } = vi.hoisted(() => ({
-  apiMock: { getEnterpriseDemoStory: vi.fn() },
+  apiMock: {
+    getEnterpriseDemoStory: vi.fn(),
+    getDemoEstateStatus: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/api", () => ({ api: apiMock }));
@@ -164,8 +167,19 @@ const story: EnterpriseDemoStory = {
   ],
 };
 
+const alignedStatus = {
+  schema_version: "demo_estate_status.v1" as const,
+  showcase_snapshot_id: "showcase",
+  showcase_available: true,
+  graph_owner_scan_id: "showcase",
+  graph_alignment: "aligned" as const,
+  reason: null,
+};
+
 beforeEach(() => {
   apiMock.getEnterpriseDemoStory.mockReset();
+  apiMock.getDemoEstateStatus.mockReset();
+  apiMock.getDemoEstateStatus.mockResolvedValue(alignedStatus);
 });
 
 describe("DemoEstatePage", () => {
@@ -200,6 +214,28 @@ describe("DemoEstatePage", () => {
     ]) {
       expect(within(starts).getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it("names an operator-owned graph instead of linking to a missing showcase", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    apiMock.getDemoEstateStatus.mockResolvedValue({
+      ...alignedStatus,
+      showcase_available: false,
+      graph_owner_scan_id: "operator-import",
+      graph_alignment: "operator_default",
+      reason: "operator_snapshot_preserved",
+    });
+
+    render(<DemoEstatePage />);
+
+    expect(await screen.findByTestId("demo-estate-graph-scope")).toHaveTextContent(
+      /operator scan owns the default graph/i,
+    );
+    expect(screen.getByRole("link", { name: /Open operator graph/i })).toHaveAttribute(
+      "href",
+      "/security-graph?scan=operator-import",
+    );
+    expect(screen.queryByRole("link", { name: /Open security graph/i })).not.toBeInTheDocument();
   });
 
   it("renders each finding as a chain, with counts that reconcile", async () => {

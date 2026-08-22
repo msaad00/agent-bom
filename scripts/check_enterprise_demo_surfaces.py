@@ -176,10 +176,16 @@ def main_check() -> None:
         operation.get("responses", {}).get("200", {}).get("content", {}).get("application/json", {}).get("schema", {}).get("$ref")
     )
     _require(response_ref == "#/components/schemas/EnterpriseDemoStory", "OpenAPI story contract is missing")
+    status_operation = openapi.get("paths", {}).get("/v1/demo-estate/status", {}).get("get", {})
+    status_ref = (
+        status_operation.get("responses", {}).get("200", {}).get("content", {}).get("application/json", {}).get("schema", {}).get("$ref")
+    )
+    _require(status_ref == "#/components/schemas/DemoEstateStatus", "OpenAPI graph-owner status contract is missing")
 
     api_client = _read("ui/lib/api.ts")
     dashboard = _read("ui/app/demo-estate/page.tsx")
     _require('get<EnterpriseDemoStory>("/v1/demo-estate/story")' in api_client, "UI API client drifted")
+    _require('get<DemoEstateStatus>("/v1/demo-estate/status")' in api_client, "UI status client drifted")
     for marker in (
         "Synthetic enterprise evidence",
         "Fictional data boundary",
@@ -189,6 +195,7 @@ def main_check() -> None:
         "Correlated posture",
         "configuration_expected",
         "on a correlated attack path",
+        "Operator scan owns the default graph",
         # The bounded lists must keep saying what they are bounded against.
         # All three: the timeline renders `events`, which the API bounds to 200
         # while the strip above it reports every observation in the estate.
@@ -214,6 +221,7 @@ def main_check() -> None:
         "agent-bom demo story --output enterprise-demo-story.json",
         "agent-bom serve --demo-estate --allow-insecure-no-auth",
         "rate_limited_after_page_2",
+        "/v1/demo-estate/status",
         "contains no customer telemetry",
         "python scripts/install_helm_profile.py synthetic-enterprise-story",
     ):

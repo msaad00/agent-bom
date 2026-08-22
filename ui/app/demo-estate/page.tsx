@@ -20,7 +20,7 @@ import { StatStrip } from "@/components/stat-strip";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PersonaStartRoutes } from "@/components/persona-start-routes";
 import { PageErrorState, PageLoadingState } from "@/components/states/page-state";
-import { api, type EnterpriseDemoStory } from "@/lib/api";
+import { api, type DemoEstateStatus, type EnterpriseDemoStory } from "@/lib/api";
 import { securityGraphHref } from "@/lib/page-links";
 
 const FIRST_COMMAND = "agent-bom serve --demo-estate --allow-insecure-no-auth";
@@ -72,16 +72,19 @@ function displayTime(value: string): string {
 
 export default function DemoEstatePage() {
   const [story, setStory] = useState<EnterpriseDemoStory | null>(null);
+  const [demoStatus, setDemoStatus] = useState<DemoEstateStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [storyView, setStoryView] = useState<StoryView>("posture");
   const [correlationPage, setCorrelationPage] = useState(1);
 
   useEffect(() => {
     let active = true;
-    api
-      .getEnterpriseDemoStory()
-      .then((result) => {
-        if (active) setStory(result);
+    Promise.all([api.getEnterpriseDemoStory(), api.getDemoEstateStatus()])
+      .then(([storyResult, statusResult]) => {
+        if (active) {
+          setStory(storyResult);
+          setDemoStatus(statusResult);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setError(reason instanceof Error ? reason.message : "Demo estate is unavailable");
@@ -109,7 +112,7 @@ export default function DemoEstatePage() {
     );
   }
 
-  if (!story) {
+  if (!story || !demoStatus) {
     return (
       <PageLoadingState
         title="Verifying enterprise evidence"
@@ -129,6 +132,12 @@ export default function DemoEstatePage() {
     (correlationPage - 1) * CORRELATIONS_PER_PAGE,
     correlationPage * CORRELATIONS_PER_PAGE,
   );
+  const graphScanId = demoStatus.showcase_available
+    ? demoStatus.showcase_snapshot_id
+    : demoStatus.graph_owner_scan_id;
+  const graphLinkLabel = demoStatus.showcase_available
+    ? "Open security graph"
+    : "Open operator graph";
 
   return (
     <div className="space-y-6" data-testid="demo-estate-page">
@@ -150,9 +159,11 @@ export default function DemoEstatePage() {
               {story.scenario}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" href={securityGraphHref({ scan: story.graph_snapshot_id })}>
-                Open security graph <ExternalLink className="h-3.5 w-3.5" />
-              </Link>
+              {graphScanId ? (
+                <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" href={securityGraphHref({ scan: graphScanId })}>
+                  {graphLinkLabel} <ExternalLink className="h-3.5 w-3.5" />
+                </Link>
+              ) : null}
               <Link className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]" href="/traces">
                 Inspect runtime traces
               </Link>
@@ -160,6 +171,16 @@ export default function DemoEstatePage() {
                 Review findings
               </Link>
             </div>
+            {demoStatus.graph_alignment === "operator_default" ? (
+              <p
+                className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs leading-5 text-sky-800 dark:text-sky-200"
+                data-testid="demo-estate-graph-scope"
+              >
+                Operator scan owns the default graph. {demoStatus.showcase_available
+                  ? "The synthetic showcase remains available through the explicit graph link."
+                  : "The graph link opens the operator-owned snapshot; synthetic evidence was not substituted."}
+              </p>
+            ) : null}
           </div>
           <aside className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-200">

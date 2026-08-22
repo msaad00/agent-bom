@@ -922,19 +922,37 @@ def _materialize_showcase_attack_paths(graph: UnifiedGraph) -> bool:
     attack-path endpoint uses (pure seed-shaping — no algorithm change) and pin
     the hero chains onto the snapshot before it is saved.
     """
+    # Estate projection contributes correlation-backed paths before this call.
+    # ``_derived_attack_paths`` treats any materialized row as authoritative and
+    # otherwise skips topology-derived vulnerability paths, which would erase
+    # the hand-built CVE hero chains from the persisted queue. Derive once with
+    # that list temporarily detached, then merge both evidence families.
+    materialized = list(graph.attack_paths)
+    graph.attack_paths = []
     try:
         from agent_bom.api.routes.graph import _derived_attack_paths
 
         derived = _derived_attack_paths(graph)
     except Exception:  # noqa: BLE001 — never block the snapshot save on path shaping
         _logger.warning("demo estate attack-path materialization failed", exc_info=True)
+        graph.attack_paths = materialized
         return False
 
     # The route deriver merges materialized and governance paths. Persistence
     # keys by source/target, so mirror the served cardinality before writing and
-    # keep the first (highest-ranked) representation of each endpoint pair.
+    # keep the highest-ranked representation of each endpoint pair.
     unique_paths: dict[tuple[str, str], Any] = {}
-    for path in derived:
+    ranked = sorted(
+        [*materialized, *derived],
+        key=lambda path: (
+            path.composite_risk,
+            len(path.hops),
+            len(path.credential_exposure),
+            len(path.tool_exposure),
+        ),
+        reverse=True,
+    )
+    for path in ranked:
         unique_paths.setdefault((path.source, path.target), path)
     graph.attack_paths = list(unique_paths.values())
 

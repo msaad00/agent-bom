@@ -3148,6 +3148,16 @@ export interface EnterpriseDemoStory {
   findings: EstateFindingView[];
 }
 
+/** GET /v1/demo-estate/status — persisted graph ownership for demo routing. */
+export interface DemoEstateStatus {
+  schema_version: "demo_estate_status.v1";
+  showcase_snapshot_id: string;
+  showcase_available: boolean;
+  graph_owner_scan_id: string | null;
+  graph_alignment: "aligned" | "operator_default" | "unavailable";
+  reason: string | null;
+}
+
 /** One security-domain lane on the per-account drill summary (#3931). Its
  * severity strip sums to ``count`` (same honest invariant as the overview). */
 export interface AccountSummaryDomain {

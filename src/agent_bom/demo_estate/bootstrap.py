@@ -30,6 +30,13 @@ _TRUTHY = {"1", "true", "yes", "on"}
 _daily_evidence_lock = threading.Lock()
 _daily_evidence_day: str | None = None
 
+# The bootstrap runs at API start and from the maintenance loop, while the
+# read-only status route can be served concurrently. Keep the last outcome per
+# tenant so the product can explain *why* the showcase graph was not made the
+# default instead of discarding the only code path that knows that decision.
+_bootstrap_status_lock = threading.Lock()
+_bootstrap_status_by_tenant: dict[str, dict[str, Any]] = {}
+
 
 def demo_estate_enabled() -> bool:
     return os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in _TRUTHY
@@ -40,6 +47,26 @@ def reset_daily_evidence_day() -> None:
     global _daily_evidence_day
     with _daily_evidence_lock:
         _daily_evidence_day = None
+
+
+def _remember_bootstrap_status(tenant_id: str, summary: dict[str, Any]) -> dict[str, Any]:
+    """Publish one immutable-by-convention copy of the latest bootstrap result."""
+    published = dict(summary)
+    with _bootstrap_status_lock:
+        _bootstrap_status_by_tenant[tenant_id] = published
+    return summary
+
+
+def get_demo_estate_bootstrap_status(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
+    """Return the latest bootstrap decision for one tenant, if one has run."""
+    with _bootstrap_status_lock:
+        return dict(_bootstrap_status_by_tenant.get(tenant_id, {}))
+
+
+def reset_demo_estate_bootstrap_status() -> None:
+    """Forget published bootstrap decisions. For process-lifecycle tests."""
+    with _bootstrap_status_lock:
+        _bootstrap_status_by_tenant.clear()
 
 
 def refresh_demo_daily_evidence(*, tenant_id: str = SHOWCASE_TENANT, now: datetime | None = None) -> dict[str, Any]:
@@ -280,7 +307,10 @@ def _graph_owner_scan_id(graph_store: Any, tenant_id: str) -> str:
 def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
     """Seed showcase graph + curated findings when demo estate mode is enabled."""
     if not demo_estate_enabled():
-        return {"enabled": False, "seeded": False}
+        return _remember_bootstrap_status(
+            tenant_id,
+            {"enabled": False, "tenant_id": tenant_id, "seeded": False},
+        )
 
     from agent_bom.api.stores import _get_graph_store, _get_store
 
@@ -324,14 +354,10 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         _logger.warning("demo estate graph seeding failed", exc_info=True)
         summary["graph_error"] = True
     summary["graph_seeded"] = graph_seeded
-    if not graph_seeded:
-        # Seeding declines when a real scan owns the tenant -- correct, because
-        # operator evidence is never shadowed. But the findings above ARE the
-        # estate's, so the graph and the finding counts now describe different
-        # worlds. Silence here is what makes the investigation surface open on
-        # an unrelated scan with no explanation; name the owning snapshot so the
-        # API and UI can say which estate the graph belongs to.
-        summary["graph_owner_scan_id"] = _graph_owner_scan_id(graph_store, tenant_id)
+    # Populate one invariant for both outcomes. On a successful seed this is
+    # ``showcase``; when seeding declines it names the operator snapshot that
+    # remains the default graph.
+    summary["graph_owner_scan_id"] = _graph_owner_scan_id(graph_store, tenant_id)
 
     # Seed the live agent-identity store (NHI estate) independently of the graph
     # snapshot so the NHI/Identity overview tile and the nhi-governance posture
@@ -411,7 +437,7 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
 
     if not force and _tenant_has_demo_jobs(store, tenant_id):
         summary["reason"] = "demo_jobs_present"
-        return summary
+        return _remember_bootstrap_status(tenant_id, summary)
 
     try:
         report = _run_demo_scan_report(tenant_id=tenant_id)
@@ -440,4 +466,4 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         summary["seeded"] = graph_seeded
         summary["scan_error"] = True
 
-    return summary
+    return _remember_bootstrap_status(tenant_id, summary)

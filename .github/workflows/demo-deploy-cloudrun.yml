@@ -268,6 +268,24 @@ jobs:
           PY
           )"
           echo "enterprise demo story=${STORY_SUMMARY}"
+
+          STATUS_PATH="${RUNNER_TEMP}/enterprise-demo-status.json"
+          curl -fsS --max-time 30 "${URL}/v1/demo-estate/status" -o "${STATUS_PATH}"
+          GRAPH_STATUS="$(STATUS_PATH="${STATUS_PATH}" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path(os.environ["STATUS_PATH"]).read_text())
+          assert payload["schema_version"] == "demo_estate_status.v1"
+          assert payload["showcase_snapshot_id"] == "showcase"
+          assert payload["showcase_available"] is True
+          assert payload["graph_owner_scan_id"] == "showcase"
+          assert payload["graph_alignment"] == "aligned"
+          print(f'{payload["graph_alignment"]} · owner={payload["graph_owner_scan_id"]}')
+          PY
+          )"
+          echo "enterprise demo graph=${GRAPH_STATUS}"
           {
             echo "### Demo deployed"
             echo ""
@@ -275,5 +293,6 @@ jobs:
             echo "- Version: ${SERVED}"
             echo "- Seeded findings: ${TOTAL}"
             echo "- Enterprise story: ${STORY_SUMMARY}"
+            echo "- Graph ownership: ${GRAPH_STATUS}"
             echo "- Min instances: ${{ vars.DEMO_MIN_INSTANCES || '0' }} (0 = scales to zero, no idle cost)"
           } >> "$GITHUB_STEP_SUMMARY"

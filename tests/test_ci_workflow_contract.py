@@ -60,6 +60,8 @@ def test_enterprise_demo_contract_is_gated_and_packaged() -> None:
     assert "scripts/check_enterprise_demo_surfaces.py" in makefile
     assert "agent_bom/demo_estate/data/enterprise_observations.jsonl" in workflow_text
     assert "/v1/demo-estate/story" in deploy_workflow
+    assert "/v1/demo-estate/status" in deploy_workflow
+    assert 'payload["graph_alignment"] == "aligned"' in deploy_workflow
     assert "rate_limited_after_page_2" in deploy_workflow
 
 

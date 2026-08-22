@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 import threading
 from collections import OrderedDict
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.demo_estate.presentation import EnterpriseDemoStory, build_enterprise_demo_story
@@ -56,6 +57,19 @@ _STORY_BUILD_LOCK = threading.Lock()
 # total wall time is unchanged between 1 and 2 tokens (the lock, not the
 # limiter, sets it), so the extra token is pure cost.
 _STORY_THREAD_LIMITER = anyio.CapacityLimiter(1)
+
+
+class DemoEstateStatus(BaseModel):
+    """Operator-facing truth about which persisted graph the demo can open."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["demo_estate_status.v1"] = "demo_estate_status.v1"
+    showcase_snapshot_id: str
+    showcase_available: bool
+    graph_owner_scan_id: str | None
+    graph_alignment: Literal["aligned", "operator_default", "unavailable"]
+    reason: str | None = None
 
 
 def _demo_estate_enabled() -> bool:
@@ -160,9 +174,61 @@ async def get_enterprise_demo_story(request: Request) -> EnterpriseDemoStory:
     return await anyio.to_thread.run_sync(_cached_demo_story, tenant_id, limiter=_STORY_THREAD_LIMITER)
 
 
+def _build_demo_estate_status(tenant_id: str) -> DemoEstateStatus:
+    """Reconcile the last seed decision with persisted graph state."""
+    from agent_bom.api.stores import _get_graph_store
+    from agent_bom.demo_estate.bootstrap import get_demo_estate_bootstrap_status
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_SCAN_ID
+
+    graph_store = _get_graph_store()
+    bootstrap = get_demo_estate_bootstrap_status(tenant_id=tenant_id)
+    owner = str(graph_store.latest_snapshot_id(tenant_id=tenant_id) or "")
+    bootstrap_owner = str(bootstrap.get("graph_owner_scan_id") or "")
+    showcase_stats = graph_store.snapshot_stats(tenant_id=tenant_id, scan_id=SHOWCASE_SCAN_ID)
+    showcase_available = int(showcase_stats.get("total_nodes") or 0) > 0
+
+    if not owner:
+        alignment: Literal["aligned", "operator_default", "unavailable"] = "unavailable"
+    elif owner == SHOWCASE_SCAN_ID:
+        alignment = "aligned"
+    else:
+        alignment = "operator_default"
+
+    reason: str | None = None
+    if alignment == "unavailable":
+        reason = "no_graph_snapshot"
+    elif alignment == "operator_default":
+        reason = "operator_snapshot_preserved" if bootstrap_owner == owner else "operator_snapshot_became_default"
+
+    # The live store is authoritative for routing. The bootstrap copy provides
+    # the reason the seeder chose not to replace an operator-owned snapshot.
+    return DemoEstateStatus(
+        showcase_snapshot_id=SHOWCASE_SCAN_ID,
+        showcase_available=showcase_available,
+        graph_owner_scan_id=owner or None,
+        graph_alignment=alignment,
+        reason=reason,
+    )
+
+
+@router.get(
+    "/demo-estate/status",
+    response_model=DemoEstateStatus,
+    tags=["demo-estate"],
+)
+async def get_demo_estate_status(request: Request) -> DemoEstateStatus:
+    """Name the graph snapshot the demo and default graph links will serve."""
+    if not _demo_estate_enabled():
+        raise HTTPException(status_code=404, detail="Demo estate is not enabled")
+    tenant_id = require_request_tenant_id(request)
+    return await anyio.to_thread.run_sync(_build_demo_estate_status, tenant_id)
+
+
 __all__ = [
     "DEMO_STORY_CACHE_MAXSIZE",
+    "DemoEstateStatus",
     "demo_story_cache_size",
+    "get_demo_estate_status",
     "get_enterprise_demo_story",
     "reset_demo_story_cache",
     "router",

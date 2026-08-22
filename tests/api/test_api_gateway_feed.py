@@ -540,3 +540,54 @@ def test_feed_http_is_tenant_scoped() -> None:
 
         proxy_routes._proxy_alerts.clear()
         configure_api(api_key=None)
+
+
+def _profile_block(reason_code: str, *, ts: float = 500.0) -> dict:
+    """A blocked call carrying only the redaction-safe canonical profile code.
+
+    Mirrors what survives tier-A redaction: free text is gone, and the gateway's
+    canonical ``reason_code`` from runtime profile resolution is the only signal.
+    """
+    return {
+        "ts": ts,
+        "agent_name": "caller",
+        "event_type": "gateway.policy_blocked",
+        "decision": "deny",
+        "reason_code": reason_code,
+        "details": {},
+    }
+
+
+def test_unsanctioned_client_profile_codes_count_as_shadow() -> None:
+    """A revoked/unknown client profile IS the canonical shadow-AI signal.
+
+    These codes carry none of the legacy free-text markers, so before canonical
+    profile enforcement was wired in they were silently absent from the KPI —
+    the gateway blocked an unsanctioned client and the dashboard reported zero.
+    """
+    alerts = [
+        _profile_block("profile_revoked", ts=501.0),
+        _profile_block("profile_not_found", ts=502.0),
+        _profile_block("profile_disabled", ts=503.0),
+        _profile_block("profile_expired", ts=504.0),
+        _profile_block("profile_incomplete", ts=505.0),
+        _profile_block("managed_identity_required", ts=506.0),
+    ]
+    kpis = build_gateway_feed_kpis(tenant_id="t1", alerts=alerts, llm_records=[], uptime_seconds=None)
+    assert kpis["blocked_today"] == 6
+    assert kpis["shadow_ai_blocked"] == 6
+
+
+def test_profile_infrastructure_failures_are_not_shadow() -> None:
+    """A store outage is degraded evidence, not a sanctioned-client violation.
+
+    Counting it as shadow AI would attribute an operator-side outage to an
+    attacker, which is exactly the over-claim the feed must not make.
+    """
+    alerts = [
+        _profile_block("profile_store_unavailable", ts=601.0),
+        _profile_block("identity_store_unavailable", ts=602.0),
+    ]
+    kpis = build_gateway_feed_kpis(tenant_id="t1", alerts=alerts, llm_records=[], uptime_seconds=None)
+    assert kpis["blocked_today"] == 2
+    assert kpis["shadow_ai_blocked"] == 0

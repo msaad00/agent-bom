@@ -67,6 +67,11 @@ describe("product proof capture contract", () => {
     expect(source).toContain("data_points:");
   });
 
+  it("asserts the current canonical Findings vocabulary", () => {
+    expect(source).toContain('expectedText: ["Findings queue", "15 issues"');
+    expect(source).not.toContain('expectedText: ["Findings queue", "15 findings"');
+  });
+
   it("tracks the current scan workspace proof copy", () => {
     expect(source).toContain('expectedText: ["New Scan", "What this scan collects and produces"');
     expect(source).toContain('"Read-only boundary", /Scope now/i, /Scan jobs/i');

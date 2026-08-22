@@ -2394,7 +2394,7 @@ async function main() {
       });
       await scrollTo(findingsPage, 0);
     }, {
-      expectedText: ["Findings queue", "15 findings", "DEMO-VULN-21441", "DEMO-VULN-77881"],
+      expectedText: ["Findings queue", "15 issues", "DEMO-VULN-21441", "DEMO-VULN-77881"],
       expectedApiPaths: ["/v1/findings", "/v1/findings/triage"],
       rejectedText: ["17 findings"],
     });

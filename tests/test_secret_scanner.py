@@ -36,6 +36,40 @@ def test_scan_secrets_detects_real_findings_and_skips_test_fixtures(tmp_path: Pa
     }
 
 
+def test_scan_secrets_uses_paths_relative_to_requested_root(tmp_path: Path):
+    project = tmp_path / "env" / "customer-project"
+    project.mkdir(parents=True)
+    (project / ".env").write_text("DB_PASSWORD=correct-horse-battery-staple\n", encoding="utf-8")
+    internal_env = project / "env"
+    internal_env.mkdir()
+    (internal_env / ".env").write_text("DB_PASSWORD=must-remain-skipped\n", encoding="utf-8")
+
+    result = scan_secrets(project)
+
+    assert result.files_scanned == 1
+    assert any(finding.file_path == ".env" for finding in result.findings)
+    assert all(not finding.file_path.startswith("env/") for finding in result.findings)
+
+
+def test_scan_secrets_marks_directory_traversal_errors_incomplete(tmp_path: Path, monkeypatch):
+    target = tmp_path / ".env"
+    target.write_text("DB_PASSWORD=correct-horse-battery-staple\n", encoding="utf-8")
+
+    def fake_walk(root, *, followlinks, onerror):
+        assert followlinks is False
+        onerror(PermissionError("private path must not leak"))
+        yield str(root), [], [target.name]
+
+    monkeypatch.setattr("agent_bom.traversal.os.walk", fake_walk)
+
+    result = scan_secrets(tmp_path)
+
+    assert result.files_scanned == 1
+    assert result.to_dict()["complete"] is False
+    assert result.warnings == ["Directory traversal incomplete; one or more paths could not be read"]
+    assert "private path" not in " ".join(result.warnings)
+
+
 def test_scan_secrets_suppresses_doc_pii_but_keeps_doc_credentials(tmp_path: Path):
     doc_key = "sk-" + "proj-" + "abc123def456" + "ghi789jkl012" + "mno345pqr678stu"
     (tmp_path / "README.md").write_text(

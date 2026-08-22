@@ -87,3 +87,34 @@ def test_sarif_cve_path_carries_is_malicious():
     assert props.get("malicious_reason"), props
     # And it survives serialization (what GitHub Security ingests).
     assert "is_malicious" in json.dumps(doc)
+
+
+def test_sarif_keeps_advisory_asset_and_occurrence_identities_distinct():
+    from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulnerability
+    from agent_bom.output.sarif import to_sarif
+
+    radii = []
+    for name in ("alpha", "beta"):
+        vuln = Vulnerability(id="CVE-2026-SHARED", summary="shared advisory", severity=Severity.HIGH)
+        package = Package(name=name, version="1.0.0", ecosystem="pypi", vulnerabilities=[vuln])
+        radii.append(
+            BlastRadius(
+                vulnerability=vuln,
+                package=package,
+                affected_servers=[],
+                affected_agents=[],
+                exposed_credentials=[],
+                exposed_tools=[],
+            )
+        )
+
+    results = [
+        result
+        for result in to_sarif(AIBOMReport(), blast_radii=radii)["runs"][0]["results"]
+        if result["ruleId"] == "CVE-2026-SHARED"
+    ]
+    assert len(results) == 2
+    properties = [result["properties"] for result in results]
+    assert {item["advisory_id"] for item in properties} == {"CVE-2026-SHARED"}
+    assert len({item["asset_canonical_id"] for item in properties}) == 2
+    assert len({item["occurrence_id"] for item in properties}) == 2

@@ -85,6 +85,16 @@ def test_readme_keeps_one_readable_product_proof_and_links_the_gallery() -> None
         assert diagram not in readme
 
 
+def test_readme_leads_with_discover_scan_correlate_graph_brand_header() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    header = readme.split("<!-- mcp-name:", 1)[0]
+
+    assert "docs/images/social-preview.svg" in header
+    assert "Discover. Scan. Correlate. Graph." in header
+    assert "logo-dark.svg" not in header
+    assert header.index("social-preview.svg") < header.index("img.shields.io")
+
+
 def test_gallery_retains_full_size_product_screens() -> None:
     gallery = (ROOT / "docs" / "GALLERY.md").read_text(encoding="utf-8")
 

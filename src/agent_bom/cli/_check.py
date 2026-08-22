@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import nullcontext
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
@@ -352,55 +353,31 @@ def _check_result_payload(
     exit_zero: bool = False,
     fail_on_severity: str | None = None,
     fail_on_severity_count: int | None = None,
+    lookup_mode: str = "online",
+    malicious_reason: str | None = None,
 ) -> dict:
     """Build machine-readable check output."""
-    serialized_vulns = []
-    for vuln in vulnerabilities or []:
-        serialized_vulns.append(
-            {
-                "id": vuln.id,
-                "summary": vuln.summary,
-                "severity": vuln.severity.value,
-                "fixed_version": vuln.fixed_version,
-                "is_kev": vuln.is_kev,
-                "kev_date_added": vuln.kev_date_added,
-                "kev_due_date": vuln.kev_due_date,
-                "cvss_score": vuln.cvss_score,
-                "cvss_vector": vuln.cvss_vector,
-                "attack_vector": vuln.attack_vector,
-                "attack_complexity": vuln.attack_complexity,
-                "privileges_required": vuln.privileges_required,
-                "user_interaction": vuln.user_interaction,
-                "network_exploitable": vuln.network_exploitable,
-                "epss_score": vuln.epss_score,
-                "epss_percentile": vuln.epss_percentile,
-                "nvd_status": vuln.nvd_status,
-                "published_at": vuln.published_at,
-                "modified_at": vuln.modified_at,
-                "cwe_ids": list(vuln.cwe_ids),
-                "aliases": list(vuln.aliases),
-                "references": list(vuln.references),
-                "advisory_sources": list(vuln.advisory_sources),
-            }
-        )
+    from agent_bom.scanners.package_check_result import PackageCheckResult, serialize_vulnerability
 
-    return {
-        "schema_version": "1.0",
-        "document_type": "PACKAGE-CHECK",
-        "spec_version": "1.0",
-        "package": name,
-        "version": version,
-        "ecosystems": ecosystems,
-        "verdict": verdict,
-        "message": message,
-        "exit_code": exit_code,
-        "exit_zero": exit_zero,
-        "fail_on_severity": fail_on_severity,
-        "fail_on_severity_count": fail_on_severity_count,
-        "vulnerability_count": len(serialized_vulns),
-        "scan_warnings": warnings or [],
-        "vulnerabilities": serialized_vulns,
-    }
+    result = PackageCheckResult(
+        package=name,
+        version=version,
+        ecosystems=tuple(ecosystems),
+        verdict=verdict,
+        message=message,
+        lookup_mode=lookup_mode,
+        vulnerabilities=tuple(serialize_vulnerability(vuln) for vuln in vulnerabilities or []),
+        warnings=tuple(warnings or []),
+        is_malicious=verdict == "malicious",
+        malicious_reason=malicious_reason,
+        exit_code=exit_code,
+    )
+    return result.cli_payload(
+        legacy_verdict=verdict,
+        exit_zero=exit_zero,
+        fail_on_severity=fail_on_severity,
+        fail_on_severity_count=fail_on_severity_count,
+    )
 
 
 def _format_vulnerability_count(count: int) -> str:
@@ -654,6 +631,7 @@ def check(
     console = Console(no_color=no_color, stderr=structured_output or output_path is not None)
     runtime_console = Console(stderr=True, quiet=quiet or structured_output or output_path is not None, no_color=no_color)
     _sync_runtime_consoles(runtime_console)
+    result_payload = partial(_check_result_payload, lookup_mode="offline" if offline else "online")
 
     name, version, detected_eco = _parse_package_spec(package_spec, ecosystem)
 
@@ -661,7 +639,7 @@ def check(
     if package_error:
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=[detected_eco],
@@ -689,7 +667,7 @@ def check(
         message = f"No version specified for {name}; skipping OSV lookup."
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=[detected_eco],
@@ -749,7 +727,7 @@ def check(
             message = f"Could not resolve latest version for {name} ({eco_str})."
             if structured_output:
                 _write_check_output(
-                    _check_result_payload(
+                    result_payload(
                         name=name,
                         version=version,
                         ecosystems=ecosystems,
@@ -801,7 +779,7 @@ def check(
         except IncompleteScanError as exc:
             if structured_output:
                 _write_check_output(
-                    _check_result_payload(
+                    result_payload(
                         name=name,
                         version=version,
                         ecosystems=ecosystems,
@@ -846,7 +824,7 @@ def check(
         message = f"MALICIOUS package {malicious_pkg.name}@{malicious_pkg.version} — {reason}. Do not install."
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=ecosystems,
@@ -855,6 +833,7 @@ def check(
                     exit_code=1,
                     vulnerabilities=vulns,
                     warnings=scan_warnings,
+                    malicious_reason=reason,
                 ),
                 output_path,
                 agent_mode=agent_mode,
@@ -909,7 +888,7 @@ def check(
             )
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=ecosystems,
@@ -938,7 +917,7 @@ def check(
         )
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=ecosystems,
@@ -966,7 +945,7 @@ def check(
     if not vulns:
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=ecosystems,
@@ -1046,7 +1025,7 @@ def check(
     if exit_zero:
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=ecosystems,
@@ -1078,7 +1057,7 @@ def check(
         message = f"{_format_vulnerability_count(len(vulns))} in {name}@{version}; none at or above {fail_threshold}."
         if structured_output:
             _write_check_output(
-                _check_result_payload(
+                result_payload(
                     name=name,
                     version=version,
                     ecosystems=ecosystems,
@@ -1104,7 +1083,7 @@ def check(
 
     if structured_output:
         _write_check_output(
-            _check_result_payload(
+            result_payload(
                 name=name,
                 version=version,
                 ecosystems=ecosystems,

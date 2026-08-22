@@ -690,6 +690,10 @@ def _cve_sarif_result(
         kev_due_date=evidence(finding, "kev_due_date"),
     )
     result_properties: dict[str, Any] = {
+        "advisory_id": rule_id,
+        "asset_canonical_id": finding.asset.stable_id,
+        "occurrence_id": finding.id,
+        "canonical_id": finding.id,
         "owner": finding_owner(finding.owner),
         "sla_due_at": finding_sla_due_at,
         "blast_score": finding.risk_score,
@@ -929,6 +933,10 @@ def to_sarif(
             },
             **fingerprint_fields,
             "properties": {
+                "advisory_id": rule_id,
+                "asset_canonical_id": finding.asset.stable_id,
+                "occurrence_id": finding.id,
+                "canonical_id": finding.id,
                 "risk_score": finding.risk_score,
                 "asset_type": finding.asset.asset_type,
                 "asset_name": sanitize_advisory_text("title", finding.asset.name, fallback=finding.asset.asset_type),

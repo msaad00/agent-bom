@@ -168,9 +168,9 @@ function NodeCard({
         position={Position.Right}
         className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
       />
-      <div className="mb-1 flex min-w-0 items-center gap-2">
+      <div className="mb-1 flex min-w-0 items-start gap-2">
         <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-5 text-[var(--foreground)]">
+        <span className="min-w-0 flex-1 break-words line-clamp-2 text-[15px] font-semibold leading-5 text-[var(--foreground)]">
           {data.label}
         </span>
         <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
@@ -778,7 +778,9 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
         className="!w-1.5 !h-1.5"
       />
       <div className="flex items-center gap-1">
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">{data.label}</span>
+        <span className="min-w-0 flex-1 break-words line-clamp-2 text-[11px] font-semibold leading-tight">
+          {data.label}
+        </span>
         {vulnCount > 0 && (
           <span className="ml-auto rounded bg-white/70 px-1 text-[9px] font-mono dark:bg-black/40">
             {vulnCount}

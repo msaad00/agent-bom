@@ -776,17 +776,23 @@ def seed_showcase_graph_if_empty(
     """
     showcase_ids = {SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID}
     snapshots = _existing_snapshots(graph_store, tenant_id)
-    if any(str(row.get("scan_id")) not in showcase_ids for row in snapshots):
+    foreign = [row for row in snapshots if str(row.get("scan_id")) not in showcase_ids]
+    if foreign and not force:
+        # An ordinary boot never shadows a real scan.
         return False
     if not force and snapshots and _showcase_seed_is_current(snapshots):
         return False
-    if snapshots:
+    if snapshots and not foreign:
         # Only showcase snapshots remain. Wipe them so the refreshed seed does
-        # not leave orphaned nodes/edges behind. A non-showcase snapshot always
-        # returned above, including on explicit force.
+        # not leave orphaned nodes/edges behind.
         delete_tenant = getattr(graph_store, "delete_tenant", None)
         if callable(delete_tenant):
             delete_tenant(tenant_id=tenant_id)
+    # With a preserved operator scan present, the showcase snapshots are still
+    # written -- an explicit demo request needs a graph to address -- but they
+    # keep their fixed, older timestamps. The newest-wins read path therefore
+    # still defaults to the operator's scan; only a caller that asks for the
+    # showcase scan id by name is served the estate.
 
     # One shared, enriched identity estate feeds both snapshots so the persisted
     # MANAGED_IDENTITY node ids match the live identity store the API re-projects.

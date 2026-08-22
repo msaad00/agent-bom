@@ -217,9 +217,12 @@ for (const theme of ["light", "dark"] as const) {
     await expect(occurrences).toBeVisible();
     await occurrences.click();
     await expect(page.getByText("Asset-scoped occurrences")).toBeVisible();
-    await page.getByRole("button", { name: /Next/i }).click();
+    // Exact name: the dev server also renders an "Open Next.js Dev Tools"
+    // button, which a loose /Next/i match resolves to as well.
+    const nextPage = page.getByRole("button", { name: "Next", exact: true });
+    await nextPage.click();
     await expect(page.getByText("Page 2 · total unavailable")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Next/i })).toBeDisabled();
+    await expect(nextPage).toBeDisabled();
     await capture(page, testInfo, `findings-continuation-${theme}.png`);
   });
 }

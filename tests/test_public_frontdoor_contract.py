@@ -120,7 +120,7 @@ def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     assert "incomplete evidence stays explicit" in normalized
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
 
-    header_note = readme.split("<p align=\"center\">", 2)[2].split("</p>", 1)[0]
+    header_note = readme.split('<p align="center">', 2)[2].split("</p>", 1)[0]
     assert "not identical connector depth" in header_note
 
     matrix = (ROOT / "docs" / "INTEGRATIONS.md").read_text(encoding="utf-8")

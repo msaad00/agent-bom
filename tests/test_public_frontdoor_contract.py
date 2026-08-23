@@ -18,19 +18,19 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
 
     png_header = preview.read_bytes()[:24]
     assert png_header[:8] == b"\x89PNG\r\n\x1a\n"
-    assert struct.unpack(">II", png_header[16:24]) == (1280, 640)
+    assert struct.unpack(">II", png_header[16:24]) == (1280, 420)
 
     svg = source.read_text(encoding="utf-8")
     template_svg = template.read_text(encoding="utf-8")
     for claim in (
         "Discover. Scan.",
-        "Correlate. Graph.",
-        "Security evidence across code, software supply chains, AI agents, MCP, cloud, and containers.",
+        "Correlate. Act.",
+        "Security evidence across code, AI agents, MCP, cloud, containers, identity, and data.",
         "repos + SBOMs",
         "images + containers",
         "agents + MCP",
         "cloud + control plane",
-        "Discover configured agents, tools, servers, packages, and relationships.",
+        "discover → scan → correlate → act",
     ):
         assert claim in svg
     for integration in (
@@ -94,12 +94,12 @@ def test_readme_keeps_one_readable_product_proof_and_links_the_gallery() -> None
         assert diagram not in readme
 
 
-def test_readme_leads_with_discover_scan_correlate_graph_brand_header() -> None:
+def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     header = readme.split("<!-- mcp-name:", 1)[0]
 
     assert "docs/images/social-preview.svg" in header
-    assert "Discover. Scan. Correlate. Graph." in header
+    assert "Discover. Scan. Correlate. Act." in header
     assert "logo-dark.svg" not in header
     assert header.index("social-preview.svg") < header.index("img.shields.io")
 

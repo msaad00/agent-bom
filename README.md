@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Graph. Security evidence across code, AI agents, MCP, cloud, and containers." width="960" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Act. Security evidence across code, AI agents, MCP, cloud, containers, identity, and data." width="960" />
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-## Scan, correlate, and act
+## Discover, scan, correlate, and act
 
 `agent-bom` scans repositories, developer endpoints, images, clusters, cloud and
 data platforms, MCP servers, and runtime activity, then normalizes the evidence
@@ -65,14 +65,16 @@ a bounded pre-deployment verdict.
 Security engineering and GRC remain separate workflows: findings and reachability are not
 presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
-### From finding to attack path
+### From blast radius to runtime control
 
-Select a ranked finding to see the agent, server, package, and evidence that
-make it reachable, then continue through owner, remediation, and verification.
-The sample environment is visibly labeled in the UI.
+Discover agents, MCP servers, tools, packages, identities, and cloud assets;
+scan them for evidence; correlate reachable blast radius in UnifiedGraph; then
+assign, fix, verify, export, or enforce a runtime policy. The screenshot uses a
+visibly labeled sample estate, while the same gateway endpoints handle live
+allow, warn, and block decisions with audit evidence.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Path-first investigation with a ranked finding, attack path, evidence, owner, remediation, and verification workflow" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway posture with policy rollout, blocked calls, inter-agent firewall decisions, and audit evidence" width="900" />
 </p>
 
 [View the full product gallery](docs/GALLERY.md) ·

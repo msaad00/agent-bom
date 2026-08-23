@@ -50,7 +50,7 @@ def test_readme_promotes_offline_demo_before_repository_scan() -> None:
 
 def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    first_run = readme.split("## Scan, correlate, and act", 1)[1].split("## Self-host", 1)[0]
+    first_run = readme.split("## Discover, scan, correlate, and act", 1)[1].split("## Self-host", 1)[0]
 
     for marker in (
         "Blast radius",
@@ -160,7 +160,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     markers = [
-        "## Scan, correlate, and act",
+        "## Discover, scan, correlate, and act",
         "[Control-plane architecture](docs/ARCHITECTURE.md)",
         "## Who it is for",
         "## Quick start",
@@ -216,7 +216,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     # The opening is one Agent-Bom product paragraph plus four scannable
     # outcome/trust bullets. Workflow and architecture detail belongs in the
     # diagrams, not in a second prose manifesto.
-    intro = readme.split("## Scan, correlate, and act", 1)[1].split("## Who it is for", 1)[0]
+    intro = readme.split("## Discover, scan, correlate, and act", 1)[1].split("## Who it is for", 1)[0]
     assert "one Finding + UnifiedGraph model" in intro
     for label in ("Run where you deploy", "Centralize when ready", "Act with context", "Keep evidence honest"):
         assert f"**{label}:**" in intro
@@ -232,7 +232,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
     assert "[View the full product gallery](docs/GALLERY.md)" in readme
-    assert "security-graph-live.png" in readme
+    assert "gateway-policies-live.png" in readme
 
     # Persona surfaces keep security engineering and GRC as separate lanes
     # (never one card) — findings and reachability are not audit certification.

@@ -199,7 +199,7 @@ def test_readme_persona_table_covers_each_operating_lane() -> None:
 
 def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    workflow_heading = readme.index("## Scan, correlate, and act")
+    workflow_heading = readme.index("## Discover, scan, correlate, and act")
     workflow_link = readme.index("[Evidence workflow](docs/HOW_IT_WORKS.md)", workflow_heading)
     persona_heading = readme.index("## Who it is for")
     assert workflow_heading < workflow_link < persona_heading

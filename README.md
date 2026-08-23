@@ -35,8 +35,8 @@ verification, or runtime policy.
 `agent or tool entrypoint → MCP server → package → finding → impact → owner → fix → verify`
 
 Run locally or in CI, centralize in your own control plane, and enforce MCP
-traffic at runtime. Raw source and credentials stay local, while incomplete
-evidence stays explicit instead of looking clean.
+traffic at runtime. Raw source and credentials stay local; collected, inferred,
+static, and runtime relationships stay distinct; incomplete evidence stays explicit.
 
 [Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 

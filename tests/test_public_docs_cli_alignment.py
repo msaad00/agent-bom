@@ -50,17 +50,20 @@ def test_readme_promotes_offline_demo_before_repository_scan() -> None:
 
 def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    first_run = readme.split("## Discover, scan, correlate, and act", 1)[1].split("## Self-host", 1)[0]
+    first_run = readme.split("## Discover → Scan → Correlate → Act", 1)[1].split("## Self-host", 1)[0]
 
     for marker in (
-        "Blast radius",
-        "package",
-        "vulnerability finding",
+        "Reachable graph",
+        "Ranked path",
+        "Act and verify",
+        "agent or tool entrypoint",
         "MCP server",
-        "credential env names",
-        "reachable tools",
-        "exposure_paths",
-        "should_i_deploy",
+        "package",
+        "finding",
+        "impact",
+        "owner",
+        "fix",
+        "verify",
     ):
         assert marker in first_run
 
@@ -137,9 +140,10 @@ def test_release_prep_does_not_call_unpublished_version_current() -> None:
 
 def test_readme_distinguishes_graph_relationship_provenance() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(readme.split())
 
     assert "Graph views use observed nodes and relationships" not in readme
-    assert "collected, inferred, static, and runtime" in readme
+    assert "collected, inferred, static, and runtime" in normalized
     assert "observed graph evidence" not in readme
 
 
@@ -160,7 +164,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     markers = [
-        "## Discover, scan, correlate, and act",
+        "## Discover → Scan → Correlate → Act",
         "[Control-plane architecture](docs/ARCHITECTURE.md)",
         "## Who it is for",
         "## Quick start",
@@ -213,15 +217,12 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "demo.agent-bom.com" not in readme
     assert "## How it works" not in readme
 
-    # The opening is one Agent-Bom product paragraph plus four scannable
-    # outcome/trust bullets. Workflow and architecture detail belongs in the
-    # diagrams, not in a second prose manifesto.
-    intro = readme.split("## Discover, scan, correlate, and act", 1)[1].split("## Who it is for", 1)[0]
-    assert "one Finding + UnifiedGraph model" in intro
-    for label in ("Run where you deploy", "Centralize when ready", "Act with context", "Keep evidence honest"):
-        assert f"**{label}:**" in intro
-    for execution_target in ("workstation", "CI", "Docker/Kubernetes", "control plane"):
-        assert execution_target in intro
+    # Keep the opening short and move workflow detail into the product journey.
+    intro = readme.split("## Discover → Scan → Correlate → Act", 1)[1].split("## Who it is for", 1)[0]
+    normalized_intro = " ".join(intro.split())
+    assert "one Finding + UnifiedGraph model" in normalized_intro
+    assert "agent or tool entrypoint → MCP server → package → finding → impact → owner → fix → verify" in normalized_intro
+    assert len([line for line in intro.splitlines() if line.strip()]) <= 12
     assert "### From source to verified action" not in intro
 
     quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
@@ -231,8 +232,18 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert commands == ["pip install agent-bom", "agent-bom scan --demo --offline"]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
-    assert "[View the full product gallery](docs/GALLERY.md)" in readme
-    assert "gateway-policies-live.png" in readme
+    for stage in ("1 · Discover", "2 · Scan", "3 · Reachable graph", "4 · Ranked path", "5 · Act and verify"):
+        assert stage in readme
+    for image in (
+        "mesh-live.png",
+        "jobs-pipeline-live.png",
+        "lineage-graph-live.png",
+        "security-graph-live.png",
+        "remediation-live.png",
+    ):
+        assert readme.count(image) == 2  # linked thumbnail: href plus src
+    assert "[Continue to runtime enforcement in the full product gallery](docs/GALLERY.md)" in readme
+    assert "gateway-policies-live.png" not in readme
 
     # Persona surfaces keep security engineering and GRC as separate lanes
     # (never one card) — findings and reachability are not audit certification.
@@ -241,11 +252,11 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert "| Security engineer |" in readme
     assert "| GRC / audit |" in readme
 
-    # Dense diagrams and the six-up gallery live in full-size docs; the README
-    # keeps one readable investigation proof.
+    # Dense diagrams and the full gallery live in full-size docs; the README
+    # keeps only the five-stage investigation journey.
     assert "architecture-dark.svg" not in readme
     assert "persona-value-dark.svg" not in readme
-    assert readme.count("-live.png") == 1
+    assert readme.count("-live.png") == 10
     assert 'width="900"' in readme
     assert "blast-radius-dark.svg" not in readme
 

@@ -763,8 +763,9 @@ def test_refresh_latest_container_keeps_release_code_but_applies_runtime_securit
     assert "Apply current runtime security overlay" in workflow
     assert 'git checkout "${{ steps.release.outputs.main_sha }}" -- \\' in workflow
     assert "Dockerfile \\" in workflow
-    assert "deploy/docker/pip-requirements.txt \\" in workflow
+    assert "deploy/docker/pip-requirements.txt" not in workflow
     assert "deploy/docker/runtime-security-requirements.txt \\" in workflow
+    assert "deploy/docker/Dockerfile.collector \\" in workflow
     assert ".image-scan-ignore \\" in workflow
     assert "security/image-exceptions.yaml" in workflow
     assert "The application code and version stay pinned to the latest release tag" in workflow

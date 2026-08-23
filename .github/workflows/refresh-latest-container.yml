@@ -62,12 +62,11 @@ jobs:
           set -euo pipefail
           # The application code and version stay pinned to the latest release tag,
           # but the floating `latest` image is rebuilt daily to absorb base/runtime
-          # security-only refreshes such as patched pip hashes. Without this overlay,
-          # an old release tag can keep rebuilding a known-vulnerable container even
-          # after the default branch has the safe runtime pin.
+          # security-only refreshes such as removing runtime packaging tools.
+          # Without this overlay, an old release tag can keep rebuilding a known-
+          # vulnerable container after the default branch has the safe runtime.
           git checkout "${{ steps.release.outputs.main_sha }}" -- \
             Dockerfile \
-            deploy/docker/pip-requirements.txt \
             deploy/docker/runtime-security-requirements.txt \
             .image-scan-ignore \
             security/image-exceptions.yaml
@@ -383,11 +382,11 @@ jobs:
       - name: Apply current runtime security overlay
         run: |
           set -euo pipefail
-          # App code stays pinned to the release tag, but the runtime security
-          # pins (pip hashes, CVE allowlist) float to the default branch so an
+          # App code stays pinned to the release tag, but runtime image
+          # hardening and the CVE allowlist float to the default branch so an
           # old tag never keeps rebuilding a known-vulnerable collector.
           git checkout "${{ steps.release.outputs.main_sha }}" -- \
-            deploy/docker/pip-requirements.txt \
+            deploy/docker/Dockerfile.collector \
             .image-scan-ignore \
             security/image-exceptions.yaml
 

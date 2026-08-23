@@ -9,11 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.102.0] - 2026-08-22
+## [0.102.0] - 2026-08-23
 
-A release-integrity and evidence-truth release. Published Python images replace
-the vulnerable pip overlay on both supported architectures, container evidence
-is accepted by GitHub code scanning, and release completion now carries image
+A release-integrity and evidence-truth release. Published Python images remove
+runtime packaging tools and their vendored dependency trees on both supported
+architectures. Container evidence is accepted by GitHub code scanning, and
+release completion now carries image
 and registry fixes through independent live verification instead of leaving
 automated findings open until the next daily schedule.
 

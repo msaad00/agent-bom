@@ -83,13 +83,18 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         assert (source.parent / relative_asset).is_file()
 
 
-def test_readme_keeps_one_readable_product_proof_and_links_the_gallery() -> None:
+def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert readme.count("-live.png") == 1
-    assert 'width="430"' not in readme
+    journey = readme.split("### Product journey", 1)[1].split("## Quick start", 1)[0]
+    stages = ["Discover", "Scan", "Reachable graph", "Ranked path", "Act and verify"]
+    images = ["mesh-live.png", "jobs-pipeline-live.png", "lineage-graph-live.png", "security-graph-live.png", "remediation-live.png"]
+    assert all(stage in journey for stage in stages)
+    assert all(image in journey for image in images)
+    assert [journey.index(stage) for stage in stages] == sorted(journey.index(stage) for stage in stages)
+    assert [journey.index(image) for image in images] == sorted(journey.index(image) for image in images)
     assert 'width="900"' in readme
-    assert "[View the full product gallery](docs/GALLERY.md)" in readme
+    assert "[Continue to runtime enforcement in the full product gallery](docs/GALLERY.md)" in readme
     for diagram in ("workflow-dark.svg", "architecture-dark.svg", "persona-value-dark.svg"):
         assert diagram not in readme
 
@@ -102,6 +107,27 @@ def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
     assert "Discover. Scan. Correlate. Act." in header
     assert "logo-dark.svg" not in header
     assert header.index("social-preview.svg") < header.index("img.shields.io")
+
+
+def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    frontdoor = readme.split("## Discover → Scan → Correlate → Act", 1)[1].split("## Who it is for", 1)[0]
+    content_lines = [line for line in frontdoor.splitlines() if line.strip()]
+    normalized = " ".join(frontdoor.split())
+
+    assert len(content_lines) <= 12
+    assert "agent or tool entrypoint → MCP server → package → finding" in frontdoor
+    assert "incomplete evidence stays explicit" in normalized
+    assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
+
+    header_note = readme.split("<p align=\"center\">", 2)[2].split("</p>", 1)[0]
+    assert "not identical connector depth" in header_note
+
+    matrix = (ROOT / "docs" / "INTEGRATIONS.md").read_text(encoding="utf-8")
+    for role in ("Client discovery", "Read-only cloud connection", "Scan and deploy", "Identity", "Data platform", "Analytics backend"):
+        assert role in matrix
+    assert "agent-bom scan --databricks --databricks-security" in matrix
+    assert "agent-bom cloud databricks" not in matrix
 
 
 def test_gallery_retains_full_size_product_screens() -> None:

@@ -49,8 +49,9 @@ COPY --from=builder /app/LICENSE /app/LICENSE
 
 # Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
-COPY deploy/docker/pip-requirements.txt /tmp/pip-req.txt
-RUN pip install --no-cache-dir --require-hashes -r /tmp/pip-req.txt && rm /tmp/pip-req.txt
+# The final Snowpark image is immutable; package installers belong in the builder.
+RUN python -m pip uninstall --yes setuptools wheel pip \
+    && rm -rf /root/.cache/pip
 
 # Create non-root user for least-privilege execution
 RUN addgroup --system abom && adduser --system --ingroup abom abom

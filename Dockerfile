@@ -70,8 +70,10 @@ COPY --from=builder /app/deploy/supabase/postgres /opt/agent-bom/deploy/supabase
 RUN apk add --no-cache ca-certificates libffi libgcc libstdc++ \
     && apk upgrade --no-cache --available \
     && update-ca-certificates
-COPY deploy/docker/pip-requirements.txt /tmp/pip-req.txt
-RUN pip install --no-cache-dir --require-hashes -r /tmp/pip-req.txt && rm /tmp/pip-req.txt
+# The runtime never installs packages. Remove packaging tools and pip's vendored
+# dependency tree so scanner-visible build utilities cannot become runtime CVEs.
+RUN python -m pip uninstall --yes setuptools wheel pip \
+    && rm -rf /root/.cache/pip
 
 # Create non-root user for least-privilege execution
 RUN addgroup -S abom && adduser -S -G abom abom

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import re
 import tomllib
 from pathlib import Path
 
@@ -11,15 +10,14 @@ from packaging.requirements import Requirement
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_runtime_pip_overlay_excludes_cve_2026_13346() -> None:
-    requirements = (ROOT / "deploy/docker/pip-requirements.txt").read_text(encoding="utf-8")
-    match = re.search(r"^pip==([^ \\\n]+)", requirements, re.MULTILINE)
-    assert match
-    assert tuple(int(part) for part in match.group(1).split(".")) >= (26, 2)
-    assert requirements.count("--hash=sha256:") == 2
+def test_every_published_python_image_removes_runtime_packaging_tools() -> None:
+    """Build tooling and pip's vendored libraries must not ship at runtime.
 
-
-def test_every_published_python_image_installs_the_reviewed_pip_overlay() -> None:
+    Pip 26.2's bundled SBOM includes vulnerable msgpack 1.1.2 and setuptools
+    70.3.0 even though agent-bom does not import either package.  Removing pip,
+    setuptools, and wheel from the final stage both shrinks the attack surface
+    and keeps image scanners aligned with the executable runtime filesystem.
+    """
     dockerfiles = [
         ROOT / "Dockerfile",
         ROOT / "deploy/docker/Dockerfile.collector",
@@ -27,11 +25,14 @@ def test_every_published_python_image_installs_the_reviewed_pip_overlay() -> Non
         ROOT / "deploy/docker/Dockerfile.runtime",
         ROOT / "deploy/docker/Dockerfile.snowpark",
         ROOT / "deploy/docker/Dockerfile.sse",
+        ROOT / "integrations/glama/Dockerfile",
     ]
     for dockerfile in dockerfiles:
         text = dockerfile.read_text(encoding="utf-8")
-        assert "deploy/docker/pip-requirements.txt" in text, dockerfile
-        assert "--require-hashes" in text, dockerfile
+        assert "python -m pip uninstall --yes setuptools wheel pip" in text, dockerfile
+        assert "deploy/docker/pip-requirements.txt" not in text, dockerfile
+
+    assert not (ROOT / "deploy/docker/pip-requirements.txt").exists()
 
 
 def test_all_direct_cryptography_constraints_exclude_cve_2026_69247() -> None:

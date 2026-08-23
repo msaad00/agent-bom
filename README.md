@@ -2,6 +2,8 @@
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Act. Security evidence across code, AI agents, MCP, cloud, containers, identity, and data." width="960" />
 </p>
 
+<p align="center"><sub>The marks above represent supported discovery, scanning, connection, deployment, or evidence backends—not identical connector depth. <a href="docs/INTEGRATIONS.md">See the capability matrix.</a></sub></p>
+
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
   <a href="https://pypi.org/project/agent-bom/"><img src="https://img.shields.io/pypi/v/agent-bom?style=flat&label=PyPI&cacheSeconds=60" alt="PyPI"></a>
@@ -23,41 +25,20 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-## Discover, scan, correlate, and act
+## Discover → Scan → Correlate → Act
 
-`agent-bom` scans repositories, developer endpoints, images, clusters, cloud and
-data platforms, MCP servers, and runtime activity, then normalizes the evidence
-into one Finding + UnifiedGraph model for prioritized investigation and action.
+`agent-bom` discovers code, AI agents, MCP, images, clusters, cloud, identity,
+and data. It scans for security evidence, correlates reachable risk in one
+Finding + UnifiedGraph model, then carries prioritized work through owner, fix,
+verification, or runtime policy.
 
-Blast radius starts at an agent or MCP tool entrypoint and connects a package
-finding to the AI surfaces that can reach it:
+`agent or tool entrypoint → MCP server → package → finding → impact → owner → fix → verify`
 
-```text
-package
-  └─ vulnerability finding
-       └─ MCP server
-            ├─ connected agent
-            ├─ credential env names
-            └─ reachable tools
-```
+Run locally or in CI, centralize in your own control plane, and enforce MCP
+traffic at runtime. Raw source and credentials stay local, while incomplete
+evidence stays explicit instead of looking clean.
 
-The terminal report shows this attack path for human review. MCP clients can
-query the same evidence through `exposure_paths` and use `should_i_deploy` for
-a bounded pre-deployment verdict.
-
-**Measured matcher proof:** the committed, mutation-tested range benchmark
-currently covers 207 comparable OSV advisories, 19,161 affected-version checks,
-and 576 fixed-version checks with zero false negatives and zero false positives.
-[Method and machine-readable result](docs/CVE_MATCHING_ACCURACY.json). This is a
-reproducible range-matcher baseline, not a universal scanner-accuracy claim.
-
-- **Run where you deploy:** the same deterministic scanner produces findings, SARIF, SBOMs, HTML reports, and graph exports on a workstation, in CI, in Docker/Kubernetes, or in your control plane.
-- **Centralize when ready:** self-host fleet, browser, compliance, and audit evidence inside your cloud and identity boundary.
-- **Act with context:** follow Path → Impact → Owner → Fix → Verify, then export, rescan, or enforce at runtime.
-- **Keep evidence honest:** raw source and credentials stay local; collected, inferred, static, and runtime relationships stay distinct, while partial and unavailable evidence remains explicit.
-
-[Evidence workflow](docs/HOW_IT_WORKS.md) ·
-[Control-plane architecture](docs/ARCHITECTURE.md)
+[Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
 ## Who it is for
 
@@ -72,19 +53,37 @@ reproducible range-matcher baseline, not a universal scanner-accuracy claim.
 Security engineering and GRC remain separate workflows: findings and reachability are not
 presented as audit certification. See [product boundaries](docs/PRODUCT_BOUNDARIES.md).
 
-### From blast radius to runtime control
+### Product journey
 
-Discover agents, MCP servers, tools, packages, identities, and cloud assets;
-scan them for evidence; correlate reachable blast radius in UnifiedGraph; then
-assign, fix, verify, export, or enforce a runtime policy. The screenshot uses a
-visibly labeled sample estate, while the same gateway endpoints handle live
-allow, warn, and block decisions with audit evidence.
+The captures below use a visibly labeled sample estate; live scans use the same
+Finding + UnifiedGraph contracts. Select any image for the full-size proof.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway posture with policy rollout, blocked calls, inter-agent firewall decisions, and audit evidence" width="900" />
-</p>
+<table>
+  <tr>
+    <th>1 · Discover</th>
+    <th>2 · Scan</th>
+  </tr>
+  <tr>
+    <td><a href="docs/images/mesh-live.png"><img src="docs/images/mesh-live.png" alt="Discovered agents, MCP servers, tools, packages, findings, and labeled relationships" width="440" /></a></td>
+    <td><a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from discovery through persisted findings, graph, and report evidence" width="440" /></a></td>
+  </tr>
+  <tr>
+    <th>3 · Reachable graph</th>
+    <th>4 · Ranked path</th>
+  </tr>
+  <tr>
+    <td><a href="docs/images/lineage-graph-live.png"><img src="docs/images/lineage-graph-live.png" alt="Reachable graph focused from an AI agent through MCP and package hops to a vulnerability" width="440" /></a></td>
+    <td><a href="docs/images/security-graph-live.png"><img src="docs/images/security-graph-live.png" alt="Ranked attack path with risk, hop count, agents, evidence, and bounded traversal" width="440" /></a></td>
+  </tr>
+  <tr>
+    <th colspan="2">5 · Act and verify</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Prioritized remediation campaign with owner, SLA, modeled reduction, fix, and re-verification" width="900" /></a></td>
+  </tr>
+</table>
 
-[View the full product gallery](docs/GALLERY.md) ·
+[Continue to runtime enforcement in the full product gallery](docs/GALLERY.md) ·
 [Capture protocol](docs/CAPTURE.md)
 
 ## Quick start

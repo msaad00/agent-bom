@@ -886,7 +886,19 @@ def _blast_radius_json_entry(
     exposure_path: dict[str, Any],
 ) -> dict[str, Any]:
     """Build one blast_radius JSON row from a unified Finding plus legacy BlastRadius fields."""
+    from agent_bom.graph.reachability_truth import assess_reachability
+
     asset = finding.asset
+    reach = assess_reachability(
+        graph_reachable=getattr(br, "graph_reachable", None),
+        symbol_reachability=getattr(br, "symbol_reachability", None),
+        dependency_reachable=getattr(br, "dependency_reachable", None),
+        direct_dependency=br.package.is_direct,
+        affected_agents=bool(br.affected_agents),
+        exposed_credentials=bool(br.exposed_credentials),
+        exposed_tools=bool(br.exposed_tools),
+        declaration_only=br.package.reachability_evidence == "declaration_only",
+    )
     return {
         "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
         # The blast-radius block is a compatibility projection of this exact
@@ -911,7 +923,8 @@ def _blast_radius_json_entry(
         "package_canonical_id": br.package.canonical_id,
         **effective_blast_radius_tags(br),
         "risk_score": br.risk_score,
-        "reachability": br.reachability,
+        "reachability": reach.verdict,
+        "reachability_basis": list(reach.basis),
         "actionable": br.is_actionable,
         "vulnerability_id": finding.cve_id or br.vulnerability.id,
         "severity": br.vulnerability.severity.value,

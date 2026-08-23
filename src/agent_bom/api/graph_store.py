@@ -1236,7 +1236,8 @@ class SQLiteGraphStore:
             rows = conn.execute(
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
+                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       reachability, reachability_basis, technique_mappings
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ? AND source_node IN ({placeholders})
                 """,  # nosec B608 - placeholders are generated internally
@@ -1253,6 +1254,8 @@ class SQLiteGraphStore:
                     credential_exposure=json.loads(row["credential_exposure"]),
                     tool_exposure=json.loads(row["tool_exposure"]),
                     vuln_ids=json.loads(row["vuln_ids"]),
+                    reachability=row["reachability"] or "unknown",
+                    reachability_basis=json.loads(row["reachability_basis"] or "[]"),
                     technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                 )
                 for row in rows
@@ -1283,7 +1286,8 @@ class SQLiteGraphStore:
             rows = conn.execute(
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
+                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       reachability, reachability_basis, technique_mappings
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ?
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -1305,6 +1309,8 @@ class SQLiteGraphStore:
                         credential_exposure=json.loads(row["credential_exposure"]),
                         tool_exposure=json.loads(row["tool_exposure"]),
                         vuln_ids=json.loads(row["vuln_ids"]),
+                        reachability=row["reachability"] or "unknown",
+                        reachability_basis=json.loads(row["reachability_basis"] or "[]"),
                         technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                     )
                     for row in rows

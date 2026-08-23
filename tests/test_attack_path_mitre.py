@@ -107,11 +107,31 @@ def test_multihop_evidence_maps_to_catalog_techniques_ordered():
 def test_vulnerable_edge_from_internet_entry_maps_to_exploit_public_facing():
     g = _kill_chain_graph()
     # Direct exploit hop off the internet-exposed entry.
-    path = AttackPath(source="res:web", target="vuln:CVE-1", hops=["res:web", "vuln:CVE-1"], edges=["vulnerable_to"])
+    path = AttackPath(
+        source="res:web",
+        target="vuln:CVE-1",
+        hops=["res:web", "vuln:CVE-1"],
+        edges=["vulnerable_to"],
+        reachability="confirmed",
+        reachability_basis=["graph_path"],
+    )
     mappings = derive_attack_path_techniques(path, g)
     assert len(mappings) == 1
     assert mappings[0].technique_id == "T1190"  # Exploit Public-Facing Application
     assert "initial-access" in mappings[0].tactics
+
+
+def test_unverified_candidate_path_never_gets_exploit_technique_mapping():
+    g = _kill_chain_graph()
+    path = AttackPath(
+        source="res:web",
+        target="vuln:CVE-1",
+        hops=["res:web", "vuln:CVE-1"],
+        edges=["vulnerable_to"],
+        reachability="unknown",
+    )
+
+    assert derive_attack_path_techniques(path, g) == []
 
 
 def test_tool_reach_maps_to_atlas_and_resolves():
@@ -170,6 +190,19 @@ def test_to_dict_from_dict_roundtrip_preserves_typed_fields():
     assert restored.technique_mappings == path.technique_mappings
 
 
+def test_to_dict_from_dict_roundtrip_preserves_reachability_evidence():
+    path = AttackPath(
+        source="agent:a",
+        target="vuln:CVE-1",
+        reachability="confirmed",
+        reachability_basis=["graph_path"],
+    )
+
+    restored = AttackPath.from_dict(path.to_dict())
+    assert restored.reachability == "confirmed"
+    assert restored.reachability_basis == ["graph_path"]
+
+
 def test_sqlite_roundtrip_preserves_technique_mappings(tmp_path):
     g = _kill_chain_graph(tenant_id="acme", scan_id="s1")
     apply_attack_path_fusion(g)
@@ -185,6 +218,29 @@ def test_sqlite_roundtrip_preserves_technique_mappings(tmp_path):
 
     assert len(loaded.attack_paths) == 1
     assert loaded.attack_paths[0].technique_mappings == expected
+
+
+def test_sqlite_roundtrip_preserves_path_reachability(tmp_path):
+    g = _kill_chain_graph(tenant_id="acme", scan_id="reachability")
+    g.attack_paths.append(
+        AttackPath(
+            source="res:web",
+            target="vuln:CVE-1",
+            hops=["res:web", "vuln:CVE-1"],
+            edges=["vulnerable_to"],
+            reachability="confirmed",
+            reachability_basis=["graph_path", "function_reachable"],
+        )
+    )
+
+    db = tmp_path / "graph.db"
+    with gs.open_graph_db(db) as conn:
+        gs.save_graph(conn, g)
+    with gs.open_graph_db(db) as conn:
+        loaded = gs.load_graph(conn, tenant_id="acme", scan_id="reachability")
+
+    assert loaded.attack_paths[0].reachability == "confirmed"
+    assert loaded.attack_paths[0].reachability_basis == ["graph_path", "function_reachable"]
 
 
 def test_tenant_isolation_technique_mappings_do_not_leak(tmp_path):

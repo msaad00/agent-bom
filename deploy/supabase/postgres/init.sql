@@ -540,6 +540,8 @@ CREATE TABLE IF NOT EXISTS attack_paths (
     credential_exposure JSONB DEFAULT '[]'::jsonb,
     tool_exposure       TEXT DEFAULT '[]',
     vuln_ids            JSONB DEFAULT '[]'::jsonb,
+    reachability        TEXT DEFAULT 'unknown',
+    reachability_basis  TEXT DEFAULT '[]',
     technique_mappings  TEXT DEFAULT '[]',
     scan_id             TEXT NOT NULL,
     tenant_id           TEXT NOT NULL DEFAULT 'default',

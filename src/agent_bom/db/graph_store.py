@@ -220,6 +220,8 @@ CREATE TABLE IF NOT EXISTS attack_paths (
     credential_exposure TEXT DEFAULT '[]',
     tool_exposure   TEXT DEFAULT '[]',
     vuln_ids        TEXT DEFAULT '[]',
+    reachability    TEXT DEFAULT 'unknown',
+    reachability_basis TEXT DEFAULT '[]',
     technique_mappings TEXT DEFAULT '[]',
     scan_id         TEXT NOT NULL,
     tenant_id       TEXT NOT NULL DEFAULT 'default',
@@ -358,6 +360,10 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE attack_paths ADD COLUMN tool_exposure TEXT DEFAULT '[]'")
     if "technique_mappings" not in existing_columns:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN technique_mappings TEXT DEFAULT '[]'")
+    if "reachability" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN reachability TEXT DEFAULT 'unknown'")
+    if "reachability_basis" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN reachability_basis TEXT DEFAULT '[]'")
     edge_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_edges)").fetchall()}
     # v3 adds replay metadata. Empty valid_from is interpreted as first_seen for
     # stores created before this migration, so old snapshots remain queryable.
@@ -987,9 +993,9 @@ def save_graph_streaming(
             INSERT OR REPLACE INTO attack_paths (
                 source_node, target_node, hop_count, composite_risk,
                 summary, path_nodes, path_edges, credential_exposure,
-                tool_exposure, vuln_ids, technique_mappings, scan_id,
-                tenant_id, computed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tool_exposure, vuln_ids, reachability, reachability_basis,
+                technique_mappings, scan_id, tenant_id, computed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ap.source,
@@ -1002,6 +1008,8 @@ def save_graph_streaming(
                 json.dumps(ap.credential_exposure),
                 json.dumps(ap.tool_exposure),
                 json.dumps(ap.vuln_ids),
+                ap.reachability,
+                json.dumps(ap.reachability_basis),
                 json.dumps([m.to_dict() for m in ap.technique_mappings]),
                 scan,
                 tenant,
@@ -1214,6 +1222,8 @@ def load_graph(
                     credential_exposure=json.loads(row["credential_exposure"]),
                     tool_exposure=json.loads(row["tool_exposure"]),
                     vuln_ids=json.loads(row["vuln_ids"]),
+                    reachability=row["reachability"] or "unknown",
+                    reachability_basis=json.loads(row["reachability_basis"] or "[]"),
                     technique_mappings=technique_mappings_from_json(row["technique_mappings"]),
                 )
             )

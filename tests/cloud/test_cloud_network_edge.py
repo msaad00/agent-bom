@@ -427,7 +427,15 @@ def _exposed_vuln_graph(*, protected: bool) -> UnifiedGraph:
             attributes={"internet_exposed": True, "resource_type": "instance"},
         )
     )
-    g.add_node(UnifiedNode(id="vuln", entity_type=EntityType.VULNERABILITY, label="CVE-x", severity="high"))
+    g.add_node(
+        UnifiedNode(
+            id="vuln",
+            entity_type=EntityType.VULNERABILITY,
+            label="CVE-x",
+            severity="high",
+            attributes={"reachability": "likely", "reachability_basis": ["dependency_path"]},
+        )
+    )
     g.add_edge(UnifiedEdge(source="res", target="vuln", relationship=RelationshipType.VULNERABLE_TO))
     if protected:
         g.add_node(UnifiedNode(id="gw", entity_type=EntityType.API_GATEWAY, label="gateway"))

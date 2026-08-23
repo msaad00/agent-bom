@@ -21,6 +21,7 @@ from dataclasses import replace
 from agent_bom.graph.container import InteractionRisk, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
+from agent_bom.graph.reachability_truth import node_reachability
 from agent_bom.graph.types import EntityType, NodeStatus, RelationshipType
 
 _OVERLAY_SOURCE = "cnapp-overlay"
@@ -260,7 +261,9 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
     vulnerable_resources: set[str] = set()
     for edge in graph.edges:
         if edge.relationship == RelationshipType.VULNERABLE_TO:
-            vulnerable_resources.add(edge.source)
+            vulnerability = graph.nodes.get(edge.target)
+            if vulnerability is not None and node_reachability(vulnerability.attributes).permits_exploit_chain:
+                vulnerable_resources.add(edge.source)
 
     # Resources fronted by a WAF / API gateway (a PROTECTS edge). A protected
     # resource's internet exposure is mitigated — its exposure verdict is

@@ -99,6 +99,10 @@ class AttackPath:
     # in vuln_ids). Additive — empty on legacy rows; API may recompute from
     # vulnerability node attributes.finding_id.
     finding_ids: list[str] = field(default_factory=list)
+    # Whether the path is executable evidence (confirmed/likely), explicitly
+    # disproven (unlikely), or structural investigation context (unknown).
+    reachability: str = "unknown"
+    reachability_basis: list[str] = field(default_factory=list)
     # Typed MITRE ATT&CK / ATLAS techniques mapped from this path's observed
     # evidence, ordered by hop. Potential/mapped techniques for the kill-chain
     # sequence — never a claim of observed attacker activity.
@@ -120,6 +124,8 @@ class AttackPath:
             "tool_exposure": self.tool_exposure,
             "vuln_ids": self.vuln_ids,
             "finding_ids": self.finding_ids,
+            "reachability": self.reachability,
+            "reachability_basis": self.reachability_basis,
             "technique_mappings": [m.to_dict() for m in self.technique_mappings],
             "mitre_technique_ids": self.mitre_technique_ids(),
         }
@@ -137,6 +143,8 @@ class AttackPath:
             tool_exposure=data.get("tool_exposure", []),
             vuln_ids=data.get("vuln_ids", []),
             finding_ids=list(data.get("finding_ids") or []),
+            reachability=str(data.get("reachability") or "unknown"),
+            reachability_basis=[str(item) for item in data.get("reachability_basis") or []],
             technique_mappings=[TechniqueMapping.from_dict(m) for m in data.get("technique_mappings", [])],
         )
 

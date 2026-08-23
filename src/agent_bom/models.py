@@ -1023,6 +1023,12 @@ class BlastRadius:
             Severity.LOW: RISK_BASE_LOW,
         }
         base = severity_scores.get(self.vulnerability.severity, 0.0)
+        if self.vulnerability.severity in (Severity.NONE, Severity.UNKNOWN) and (
+            self.vulnerability.is_kev or (self.vulnerability.epss_score or 0) >= EPSS_CRITICAL_THRESHOLD
+        ):
+            # An unrated advisory with active-exploitation evidence must not
+            # rank below an otherwise-equivalent LOW advisory.
+            base = RISK_BASE_LOW
 
         # Reach factors — each dimension is weight × count, capped
         agent_factor = min(len(self.affected_agents) * RISK_AGENT_WEIGHT, RISK_AGENT_CAP)
@@ -1056,18 +1062,23 @@ class BlastRadius:
             RISK_REACHABLE_BOOST,
             RISK_UNREACHABLE_PENALTY,
         )
+        from agent_bom.graph.reachability_truth import assess_reachability
 
+        reach = assess_reachability(
+            graph_reachable=self.graph_reachable,
+            symbol_reachability=self.symbol_reachability,
+            dependency_reachable=self.dependency_reachable,
+            direct_dependency=self.package.is_direct,
+            affected_agents=bool(self.affected_agents),
+            exposed_credentials=bool(self.exposed_credentials),
+            exposed_tools=bool(self.exposed_tools),
+            declaration_only=self.package.reachability_evidence == "declaration_only",
+        )
         reach_adjustment = 0.0
-        if self.graph_reachable is True:
+        if reach.verdict == "confirmed":
             reach_adjustment = RISK_REACHABLE_BOOST
-        elif self.graph_reachable is False:
+        elif reach.verdict == "unlikely":
             reach_adjustment = -RISK_UNREACHABLE_PENALTY
-
-        sym = getattr(self, "symbol_reachability", None)
-        if sym == "function_reachable":
-            reach_adjustment = max(reach_adjustment, RISK_REACHABLE_BOOST)
-        elif sym == "unreachable":
-            reach_adjustment = min(reach_adjustment, -RISK_UNREACHABLE_PENALTY)
 
         self.risk_score = max(
             0.0,
@@ -1083,27 +1094,23 @@ class BlastRadius:
         """Classify how reachable this vulnerability is through the blast radius.
 
         Returns:
-            "confirmed"  — credentials OR tools exposed + direct dependency
-            "likely"     — credentials OR tools exposed OR direct dep with agents
-            "unlikely"   — transitive dep, no creds, no tools, LOW severity
-            "unknown"    — insufficient data to determine
+            "confirmed"  — graph-path or function-level evidence proves reach
+            "likely"     — package/dependency evidence supports reach
+            "unlikely"   — graph/symbol/dependency evidence disproves reach
+            "unknown"    — structural or exposure context without path proof
         """
-        has_creds = bool(self.exposed_credentials)
-        has_tools = bool(self.exposed_tools)
-        is_direct = self.package.is_direct
-        is_high = self.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)
-        has_agents = bool(self.affected_agents)
-        declaration_only = self.package.reachability_evidence == "declaration_only"
+        from agent_bom.graph.reachability_truth import assess_reachability
 
-        if (has_creds or has_tools) and is_direct:
-            return "confirmed"
-        if declaration_only and not has_creds and not has_tools:
-            return "unknown"
-        if has_creds or has_tools or (is_direct and has_agents) or is_high:
-            return "likely"
-        if not is_direct and not has_creds and not has_tools:
-            return "unlikely"
-        return "unknown"
+        return assess_reachability(
+            graph_reachable=self.graph_reachable,
+            symbol_reachability=self.symbol_reachability,
+            dependency_reachable=self.dependency_reachable,
+            direct_dependency=self.package.is_direct,
+            affected_agents=bool(self.affected_agents),
+            exposed_credentials=bool(self.exposed_credentials),
+            exposed_tools=bool(self.exposed_tools),
+            declaration_only=self.package.reachability_evidence == "declaration_only",
+        ).verdict
 
     @property
     def is_actionable(self) -> bool:

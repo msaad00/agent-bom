@@ -324,6 +324,8 @@ def _walk_from_entry(
                 credential_exposure=sorted(set(cred_exposure)),
                 vuln_ids=sorted(set(vuln_ids)),
                 finding_ids=sorted(set(finding_ids)),
+                reachability="likely",
+                reachability_basis=["observed_graph_edges"],
             )
             key = (hops[0], node_id)
             existing = best_by_pair.get(key)

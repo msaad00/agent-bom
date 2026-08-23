@@ -478,6 +478,10 @@ def build_unified_graph_from_report(
                     "fixed_version": br_dict.get("fixed_version"),
                     "impact_category": br_dict.get("impact_category", ""),
                     "reachability": br_dict.get("reachability", ""),
+                    "reachability_basis": list(br_dict.get("reachability_basis") or []),
+                    "graph_reachable": br_dict.get("graph_reachable"),
+                    "symbol_reachability": br_dict.get("symbol_reachability"),
+                    "dependency_reachable": br_dict.get("dependency_reachable"),
                 },
                 compliance_tags=_collect_compliance_tags(br_dict),
                 data_sources=[data_source_tag],
@@ -1018,6 +1022,10 @@ def build_unified_graph_from_report(
             vuln_node.attributes["exposed_credential_count"] = len(br_dict.get("exposed_credentials", []))
             vuln_node.attributes["exposed_tool_count"] = len(br_dict.get("exposed_tools", []))
             vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
+            vuln_node.attributes["reachability_basis"] = list(br_dict.get("reachability_basis") or [])
+            vuln_node.attributes["graph_reachable"] = br_dict.get("graph_reachable")
+            vuln_node.attributes["symbol_reachability"] = br_dict.get("symbol_reachability")
+            vuln_node.attributes["dependency_reachable"] = br_dict.get("dependency_reachable")
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 
     # ── General cloud-asset inventory (estate-wide, opt-in) ──────────

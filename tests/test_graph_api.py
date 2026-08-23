@@ -1103,6 +1103,8 @@ def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
                 credential_exposure=["AWS_SECRET_ACCESS_KEY"],
                 tool_exposure=["run_shell"],
                 vuln_ids=["CVE-2026-1"],
+                reachability="confirmed",
+                reachability_basis=["graph_path"],
             )
         )
 
@@ -1784,6 +1786,8 @@ class TestGraphStoreBackendSelection:
                 credential_exposure=["AWS_SECRET_ACCESS_KEY"],
                 tool_exposure=["run_shell"],
                 vuln_ids=["CVE-2026-1"],
+                reachability="confirmed",
+                reachability_basis=["graph_path"],
             )
         )
         client = TestClient(app)
@@ -1811,6 +1815,8 @@ class TestGraphStoreBackendSelection:
         assert body["cards"][0]["exposure_path"]["findings"] == ["CVE-2026-1"]
         assert body["cards"][0]["exposure_path"]["exposedCredentials"] == ["AWS_SECRET_ACCESS_KEY"]
         assert body["cards"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
+        assert body["cards"][0]["exposure_path"]["reachability"] == "confirmed"
+        assert body["cards"][0]["exposure_path"]["reachabilityBasis"] == ["graph_path"]
         assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
             "critical_reach",
             "credential_exposure",

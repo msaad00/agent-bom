@@ -22890,6 +22890,21 @@
                                 "minimum": 1,
                                 "type": "integer"
                               },
+                              "reachability": {
+                                "enum": [
+                                  "confirmed",
+                                  "likely",
+                                  "unlikely",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "reachabilityBasis": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
                               "reachableTools": {
                                 "items": {
                                   "type": "string"
@@ -22936,6 +22951,23 @@
                           },
                           "mitre_technique_ids": {
                             "description": "Deduped technique IDs mapped across the path's hops (convenience projection).",
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "reachability": {
+                            "description": "Evidence strength for whether the path is executable; structural topology alone is unknown.",
+                            "enum": [
+                              "confirmed",
+                              "likely",
+                              "unlikely",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          },
+                          "reachability_basis": {
+                            "description": "Machine-readable evidence that produced the reachability verdict.",
                             "items": {
                               "type": "string"
                             },
@@ -25065,6 +25097,21 @@
                               "rank": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "reachability": {
+                                "enum": [
+                                  "confirmed",
+                                  "likely",
+                                  "unlikely",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "reachabilityBasis": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
                               },
                               "reachableTools": {
                                 "items": {

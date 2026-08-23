@@ -294,10 +294,10 @@ class MockConnection:
                     scan_id = params[1] if len(params) > 1 else ""
                     requested_sources = set(params[2:])
                     rows = [
-                        r for r in rows if r[12] == tenant_id and r[11] == scan_id and (not requested_sources or r[0] in requested_sources)
+                        r for r in rows if r[14] == tenant_id and r[13] == scan_id and (not requested_sources or r[0] in requested_sources)
                     ]
                 rows.sort(key=lambda r: (-float(r[3]), str(r[0]), str(r[1])))
-                cursor.rows = [(r[0], r[1], r[5], r[6], r[3], r[4], r[7], r[8], r[9], r[10]) for r in rows]
+                cursor.rows = [(r[0], r[1], r[5], r[6], r[3], r[4], r[7], r[8], r[9], r[10], r[11], r[12]) for r in rows]
             elif params:
                 for table_data in self._store.values():
                     for pk, row in table_data.items():
@@ -1900,6 +1900,8 @@ def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool,
             edges=["edge:1"],
             composite_risk=9.4,
             summary="agent-a reaches CVE-2026-0001",
+            reachability="confirmed",
+            reachability_basis=["graph_path", "function_reachable"],
             credential_exposure=["API_KEY"],
             tool_exposure=["run_shell"],
             vuln_ids=["CVE-2026-0001"],
@@ -1939,6 +1941,8 @@ def test_graph_store_attack_paths_preserve_technique_mappings(mock_pool, mock_ma
             edges=["vulnerable_to"],
             composite_risk=9.4,
             summary="agent-a reaches CVE-2026-0001",
+            reachability="confirmed",
+            reachability_basis=["graph_path", "function_reachable"],
             technique_mappings=[
                 TechniqueMapping(
                     hop_index=0,
@@ -1962,10 +1966,14 @@ def test_graph_store_attack_paths_preserve_technique_mappings(mock_pool, mock_ma
     assert mappings[0].hop_index == 0
     assert mappings[0].tactics == ["initial-access"]
     assert mappings[0].catalog == "attack"
+    assert paths[0].reachability == "confirmed"
+    assert paths[0].reachability_basis == ["graph_path", "function_reachable"]
 
-    # The INSERT must include the technique_mappings column (generated SQL check).
+    # The INSERT must include all path-truth columns (generated SQL check).
     insert_sql = "\n".join(sql for sql, _p in mock_pool._conn.executed if "INSERT INTO attack_paths" in sql)
     assert "technique_mappings" in insert_sql
+    assert "reachability" in insert_sql
+    assert "reachability_basis" in insert_sql
 
 
 def test_scan_cache_put_get(mock_pool):

@@ -57,6 +57,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
+from agent_bom.graph.reachability_truth import node_reachability
 from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS, ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
@@ -163,6 +164,16 @@ _ATTACK_PATH_ITEM_OPENAPI_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "exposure_path": None,  # filled after _EXPOSURE_PATH_OPENAPI_SCHEMA is defined
+        "reachability": {
+            "type": "string",
+            "enum": ["confirmed", "likely", "unlikely", "unknown"],
+            "description": "Evidence strength for whether the path is executable; structural topology alone is unknown.",
+        },
+        "reachability_basis": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Machine-readable evidence that produced the reachability verdict.",
+        },
         "technique_mappings": {"type": "array", "items": _TECHNIQUE_MAPPING_OPENAPI_SCHEMA},
         "mitre_technique_ids": {
             "type": "array",
@@ -198,6 +209,8 @@ _EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
         "dependencyContext": {"type": "object", "additionalProperties": True},
         "evidence": {"type": "object", "additionalProperties": True},
         "provenance": {"type": "object", "additionalProperties": True},
+        "reachability": {"type": "string", "enum": ["confirmed", "likely", "unlikely", "unknown"]},
+        "reachabilityBasis": {"type": "array", "items": {"type": "string"}},
     },
 }
 
@@ -1008,6 +1021,8 @@ def _exposure_path_for_attack_path(
         "affectedServers": [hop["label"] for hop in servers],
         "reachableTools": list(path.tool_exposure),
         "exposedCredentials": list(path.credential_exposure),
+        "reachability": path.reachability,
+        "reachabilityBasis": list(path.reachability_basis),
         "provenance": {"source": "graph_attack_path", "scanId": scan_id} if scan_id else {"source": "graph_attack_path"},
     }
     if rank is not None:
@@ -1279,7 +1294,11 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
     for edge in graph.edges:
         rel = _rel_value(edge)
         if rel == RelationshipType.VULNERABLE_TO.value:
-            vulnerable.add(edge.source)
+            vulnerability_node = graph.nodes.get(edge.target)
+            if vulnerability_node is not None and node_reachability(
+                getattr(vulnerability_node, "attributes", None)
+            ).permits_exploit_chain:
+                vulnerable.add(edge.source)
         elif rel == RelationshipType.HAS_PERMISSION.value:
             principal = graph.nodes.get(edge.source)
             # A resource is admin-privilege-reachable when a principal that can
@@ -1378,10 +1397,37 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     both branches so they surface even when materialised vuln paths exist.
     """
     governance_paths = _derived_governance_attack_paths(graph) + _derived_toxic_combination_paths(graph)
+    for path in governance_paths:
+        if path.reachability == "unknown":
+            path.reachability = "likely"
+            path.reachability_basis = ["observed_graph_edges"]
     if graph.attack_paths:
+        materialized: list[AttackPath] = []
+        for path in graph.attack_paths:
+            vulnerability_nodes = [
+                graph.nodes[hop]
+                for hop in path.hops
+                if hop in graph.nodes and _node_type_value(graph.nodes[hop]) == EntityType.VULNERABILITY.value
+            ]
+            assessments = [node_reachability(getattr(node, "attributes", None)) for node in vulnerability_nodes]
+            if any(item.verdict == "unlikely" for item in assessments):
+                continue
+            if path.reachability == "unknown":
+                strongest = next((item for item in assessments if item.verdict == "confirmed"), None)
+                if strongest is None:
+                    strongest = next((item for item in assessments if item.verdict == "likely"), None)
+                if strongest is not None:
+                    path.reachability = strongest.verdict
+                    path.reachability_basis = list(strongest.basis)
+                elif vulnerability_nodes:
+                    path.composite_risk = min(path.composite_risk, 39.0)
+                    path.reachability_basis = ["structural_topology_only"]
+                    if "unverified" not in path.summary.lower():
+                        path.summary = f"Unverified structural candidate. {path.summary}".strip()
+            materialized.append(path)
         return _with_technique_mappings(
             sorted(
-                list(graph.attack_paths) + governance_paths,
+                materialized + governance_paths,
                 key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
                 reverse=True,
             ),
@@ -1400,6 +1446,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
 
     for finding in graph.nodes.values():
         if _node_type_value(finding) not in finding_types:
+            continue
+        reach = node_reachability(getattr(finding, "attributes", None))
+        if reach.verdict == "unlikely":
             continue
         for finding_edge in incoming.get(finding.id, []):
             if _rel_value(finding_edge) != RelationshipType.VULNERABLE_TO.value:
@@ -1461,6 +1510,19 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     from agent_bom.graph.asset_entity import finding_id_from_node_attributes
 
                     stamped_finding_id = finding_id_from_node_attributes(getattr(finding, "attributes", None))
+                    if reach.verdict == "unknown":
+                        # Preserve relative investigation priority while keeping
+                        # unverified topology below evidence-backed paths.
+                        risk = min(39.0, risk * 0.35)
+                        summary = (
+                            "Unverified structural candidate: graph topology connects the agent and vulnerable "
+                            "package/server, but no executable graph or symbol path has been proven."
+                        )
+                    else:
+                        summary = (
+                            "Evidence-backed graph path: vulnerable package/server is reachable from an agent "
+                            "and inherits the server's credential/tool exposure."
+                        )
                     paths.append(
                         AttackPath(
                             source=agent_id,
@@ -1468,14 +1530,13 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             hops=hop_ids,
                             edges=path_edges,
                             composite_risk=round(min(100.0, risk), 2),
-                            summary=(
-                                "Derived from graph topology: vulnerable package/server is reachable from an agent "
-                                "and inherits the server's credential/tool exposure."
-                            ),
+                            summary=summary,
                             credential_exposure=sorted(set(credentials)),
                             tool_exposure=sorted(set(tools)),
                             vuln_ids=[finding.label or finding.id],
                             finding_ids=[stamped_finding_id] if stamped_finding_id else [],
+                            reachability=reach.verdict,
+                            reachability_basis=list(reach.basis),
                         )
                     )
 

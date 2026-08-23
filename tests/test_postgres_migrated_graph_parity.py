@@ -4,7 +4,7 @@ Opt-in live tier: proves the graph store works on a database whose schema was
 created ONLY by Alembic (``alembic upgrade head``) — the store's dev-mode
 bootstrap DDL never runs because ``AGENT_BOM_POSTGRES_URL`` is set. Regression
 for the P1 where ``attack_paths.summary`` / ``tool_exposure`` /
-``technique_mappings`` existed only in the bootstrap DDL, so every
+``technique_mappings`` / reachability evidence existed only in the bootstrap DDL, so every
 migration-owned deployment 500'd on the first ``/v1/graph`` read.
 
 Requires two opt-in env vars (skipped otherwise):
@@ -95,6 +95,8 @@ def test_attack_paths_round_trip_on_migration_owned_schema(migrated_fresh_databa
         credential_exposure=["prod-db-password"],
         tool_exposure=["shell-tool"],
         vuln_ids=["CVE-2026-0001"],
+        reachability="confirmed",
+        reachability_basis=["graph_path", "runtime_observed"],
         technique_mappings=[TechniqueMapping(hop_index=0, technique_id="T1078", technique_name="Valid Accounts", confidence=0.6)],
     )
     token = set_current_tenant("default")
@@ -116,6 +118,8 @@ def test_attack_paths_round_trip_on_migration_owned_schema(migrated_fresh_databa
     assert got.tool_exposure == ["shell-tool"]
     assert got.credential_exposure == ["prod-db-password"]
     assert got.vuln_ids == ["CVE-2026-0001"]
+    assert got.reachability == "confirmed"
+    assert got.reachability_basis == ["graph_path", "runtime_observed"]
     assert [m.technique_id for m in got.technique_mappings] == ["T1078"]
 
 

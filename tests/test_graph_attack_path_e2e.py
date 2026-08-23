@@ -34,7 +34,15 @@ def _scenario() -> UnifiedGraph:
     add("agent:a", EntityType.AGENT, "billing-agent")
     add("server:fs", EntityType.SERVER, "mcp-fs")
     add("pkg:express", EntityType.PACKAGE, "express")
-    add("vuln:CVE-1", EntityType.VULNERABILITY, "CVE-2024-1", severity="critical", risk_score=9.0)
+    add(
+        "vuln:CVE-1",
+        EntityType.VULNERABILITY,
+        "CVE-2024-1",
+        severity="critical",
+        risk_score=9.0,
+        reachability="likely",
+        reachability_basis=["dependency_path"],
+    )
     add("tool:run_shell", EntityType.TOOL, "run_shell")
     add("cred:aws", EntityType.CREDENTIAL, "AWS_SECRET_ACCESS_KEY")
     g.add_edge(UnifiedEdge(source="agent:a", target="server:fs", relationship=RelationshipType.USES))
@@ -49,7 +57,14 @@ def _scenario() -> UnifiedGraph:
     # public PII bucket that is also vulnerable, reached by a misconfiguration
     add("cloud:bucket", EntityType.CLOUD_RESOURCE, "customer-pii prod S3 bucket", resource_type="s3")
     add("mc:public", EntityType.MISCONFIGURATION, "S3 bucket is publicly accessible")
-    add("vuln:CVE-2", EntityType.VULNERABILITY, "CVE-2024-2", severity="high")
+    add(
+        "vuln:CVE-2",
+        EntityType.VULNERABILITY,
+        "CVE-2024-2",
+        severity="high",
+        reachability="likely",
+        reachability_basis=["dependency_path"],
+    )
     g.add_edge(UnifiedEdge(source="mc:public", target="cloud:bucket", relationship=RelationshipType.AFFECTS))
     g.add_edge(UnifiedEdge(source="cloud:bucket", target="vuln:CVE-2", relationship=RelationshipType.VULNERABLE_TO))
 

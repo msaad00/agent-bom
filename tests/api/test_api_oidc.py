@@ -324,7 +324,8 @@ def test_verify_raises_oidc_error_on_discovery_failure():
                 verify_oidc_token("tok", "https://down.example.com")
 
 
-def test_verify_oidc_token_requires_pinned_or_allowlisted_jwks_uri():
+@patch("agent_bom.security.validate_url")
+def test_verify_oidc_token_requires_pinned_or_allowlisted_jwks_uri(_mock_validate_url):
     from agent_bom.api.oidc import verify_oidc_token
 
     with patch("agent_bom.api.oidc.discover_oidc", return_value={"jwks_uri": "https://example.com/jwks.json"}):
@@ -332,7 +333,8 @@ def test_verify_oidc_token_requires_pinned_or_allowlisted_jwks_uri():
             verify_oidc_token("tok", "https://example.com", audience="agent-bom")
 
 
-def test_verify_oidc_token_accepts_allowlisted_discovered_jwks_uri():
+@patch("agent_bom.security.validate_url")
+def test_verify_oidc_token_accepts_allowlisted_discovered_jwks_uri(_mock_validate_url):
     from agent_bom.api.oidc import verify_oidc_token
 
     mock_jwks_client = MagicMock()
@@ -350,7 +352,8 @@ def test_verify_oidc_token_accepts_allowlisted_discovered_jwks_uri():
                 )
 
 
-def test_verify_raises_oidc_error_on_bad_jwt():
+@patch("agent_bom.security.validate_url")
+def test_verify_raises_oidc_error_on_bad_jwt(_mock_validate_url):
     """Invalid JWT signature raises OIDCError."""
     from agent_bom.api.oidc import verify_oidc_token
 
@@ -368,7 +371,8 @@ def test_verify_raises_oidc_error_on_bad_jwt():
                     verify_oidc_token("not.a.real.jwt", "https://example.com", jwks_uri="https://example.com/.well-known/jwks.json")
 
 
-def test_verify_oidc_token_allows_modern_asymmetric_algorithms():
+@patch("agent_bom.security.validate_url")
+def test_verify_oidc_token_allows_modern_asymmetric_algorithms(_mock_validate_url):
     from agent_bom.api.oidc import OIDC_ALLOWED_ALGORITHMS, verify_oidc_token
 
     mock_jwks_client = MagicMock()

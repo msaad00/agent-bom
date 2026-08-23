@@ -47,6 +47,24 @@ def test_no_signals_yields_no_boost():
     assert _fusion_signals_for_path(g, path.hops) == []
 
 
+def test_proven_unreachable_vulnerability_does_not_become_attack_path():
+    g = _chain_graph(expose=True, drift=True)
+    g.nodes["vuln:CVE-1"].attributes["reachability"] = "unlikely"
+
+    assert _derived_attack_paths(g) == []
+
+
+def test_unknown_structural_chain_is_bounded_and_clearly_unverified():
+    paths = _derived_attack_paths(_chain_graph(expose=True, drift=True))
+
+    assert paths
+    path = paths[0]
+    assert path.reachability == "unknown"
+    assert path.composite_risk < 40
+    assert "unverified" in path.summary.lower()
+    assert path.technique_mappings == []
+
+
 def test_runtime_observed_activity_boosts_path():
     from agent_bom.api.routes.graph import _fusion_signals_for_path
     from agent_bom.graph.types import EntityType, RelationshipType

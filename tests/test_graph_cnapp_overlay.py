@@ -30,7 +30,15 @@ def test_overlay_marks_exposure_classifies_data_store_and_flags_toxic():
             label="S3 bucket is publicly accessible",
         )
     )
-    graph.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
+    graph.add_node(
+        UnifiedNode(
+            id="vuln:CVE-1",
+            entity_type=EntityType.VULNERABILITY,
+            label="CVE-1",
+            severity="critical",
+            attributes={"reachability": "likely", "reachability_basis": ["dependency_path"]},
+        )
+    )
     # misconfig AFFECTS the bucket; bucket VULNERABLE_TO a CVE.
     graph.add_edge(UnifiedEdge(source="mc:public", target="cloud:s3-prod", relationship=RelationshipType.AFFECTS))
     graph.add_edge(UnifiedEdge(source="cloud:s3-prod", target="vuln:CVE-1", relationship=RelationshipType.VULNERABLE_TO))
@@ -54,6 +62,25 @@ def test_overlay_marks_exposure_classifies_data_store_and_flags_toxic():
     assert stats["data_stores_added"] == 1
     assert stats["toxic_combinations"] == 1
     assert any(r.pattern == "internet_exposed_vulnerable" for r in graph.interaction_risks)
+
+
+def test_overlay_does_not_call_structural_only_vulnerability_exploitable():
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:vm",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="public VM",
+            attributes={"internet_exposed": True},
+        )
+    )
+    graph.add_node(UnifiedNode(id="vuln:unknown", entity_type=EntityType.VULNERABILITY, label="CVE-UNKNOWN"))
+    graph.add_edge(UnifiedEdge(source="cloud:vm", target="vuln:unknown", relationship=RelationshipType.VULNERABLE_TO))
+
+    stats = apply_cnapp_overlay(graph)
+
+    assert stats["toxic_combinations"] == 0
+    assert graph.nodes["cloud:vm"].attributes.get("toxic_exposed_vulnerable") is None
 
 
 def test_overlay_no_exposure_is_noop_for_private_resources():

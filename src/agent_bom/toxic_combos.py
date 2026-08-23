@@ -65,15 +65,18 @@ def detect_toxic_combinations(
     combos: list[ToxicCombination] = []
 
     if report.blast_radii:
-        combos.extend(_detect_cred_blast(report.blast_radii))
-        combos.extend(_detect_kev_with_creds(report.blast_radii))
-        combos.extend(_detect_execute_exploit(report.blast_radii))
-        combos.extend(_detect_multi_agent_cve(report.blast_radii))
-        combos.extend(_detect_transitive_critical(report.blast_radii))
+        # Exposure describes impact, not exploitability.  Definitively
+        # unreachable findings cannot form executable toxic chains.
+        chainable = [br for br in report.blast_radii if br.reachability != "unlikely"]
+        combos.extend(_detect_cred_blast(chainable))
+        combos.extend(_detect_kev_with_creds(chainable))
+        combos.extend(_detect_execute_exploit(chainable))
+        combos.extend(_detect_multi_agent_cve(chainable))
+        combos.extend(_detect_transitive_critical(chainable))
         # Cache poison can be detected from tool names alone — no context required
-        combos.extend(_detect_cache_poison(report.blast_radii, context_graph_data or {}))
+        combos.extend(_detect_cache_poison(chainable, context_graph_data or {}))
         if context_graph_data:
-            combos.extend(_detect_lateral_chain(report.blast_radii, context_graph_data))
+            combos.extend(_detect_lateral_chain(chainable, context_graph_data))
 
     # Context-graph-based detectors run even without blast_radii (structural risk)
     if context_graph_data:

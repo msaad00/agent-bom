@@ -362,8 +362,13 @@ def test_check_vulnerable_package(mock_osv, mock_ghsa):
 
     mock_osv.side_effect = _fake_osv
     mock_ghsa.return_value = 0
-    server = create_mcp_server()
-    result = _call_tool(server, "check", {"package": "bad-pkg@1.0.0", "ecosystem": "npm"})
+    # The test owns its advisory universe. An ambient user DB may already
+    # advertise complete npm coverage and correctly suppress the OSV fallback;
+    # isolate both local-DB signals so this contract always exercises the mock.
+    with patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())):
+        with patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()):
+            server = create_mcp_server()
+            result = _call_tool(server, "check", {"package": "bad-pkg@1.0.0", "ecosystem": "npm"})
     assert result["status"] == "vulnerable"
     assert result["vulnerabilities"] >= 1
     assert result["details"][0]["id"] == "CVE-2025-9999"

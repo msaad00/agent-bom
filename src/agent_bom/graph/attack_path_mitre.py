@@ -151,6 +151,10 @@ def derive_attack_path_techniques(path: AttackPath, graph: UnifiedGraph) -> list
             rel = RelationshipType(rel_value)
         except ValueError:
             continue
+        if path.reachability in {"unknown", "unlikely"} and rel in _VULN_RELS:
+            # ATT&CK/ATLAS annotate evidence-backed paths.  They must never
+            # manufacture exploitability from structural topology.
+            continue
         source = graph.nodes.get(hops[i])
         target = graph.nodes.get(hops[i + 1])
         edge = _resolve_hop(graph, hops[i], hops[i + 1], rel)

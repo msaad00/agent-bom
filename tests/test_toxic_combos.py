@@ -81,6 +81,21 @@ def _report(blast_radii: list[BlastRadius]) -> AIBOMReport:
     return AIBOMReport(blast_radii=blast_radii)
 
 
+def test_proven_unreachable_findings_never_form_exploit_chains():
+    br = _br(
+        vuln=_vuln("CVE-2026-9002", Severity.CRITICAL, is_kev=True),
+        creds=["PROD_TOKEN"],
+        tools=[_tool("run_shell", "execute shell commands")],
+        agents=[_agent("prod-agent")],
+        servers=[_server("prod-server")],
+        risk_score=9.8,
+    )
+    br.graph_reachable = False
+    br.symbol_reachability = "unreachable"
+
+    assert detect_toxic_combinations(_report([br])) == []
+
+
 # ---------------------------------------------------------------------------
 # TestCredentialBlast
 # ---------------------------------------------------------------------------

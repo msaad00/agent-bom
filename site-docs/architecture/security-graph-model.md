@@ -11,13 +11,28 @@ snapshot gets large?"
   misconfigurations
 - **edges** are typed relationships such as `uses`, `depends_on`,
   `exposes_cred`, `affects`, `invoked`, and `lateral_path`
-- **attack paths** are precomputed fix-first exploit chains derived from the
-  persisted graph
+- **attack paths** are precomputed fix-first paths derived from the persisted
+  graph, with an explicit reachability verdict and evidence basis
 - **interaction risks** are runtime-oriented overlays that highlight where
   agent behavior or shared control surfaces can expand blast radius
 
 This is not a best-effort browser-only canvas. It is a persisted graph snapshot
 loaded from the control plane.
+
+## Reachability truth
+
+Every path distinguishes executable evidence from investigation context:
+
+- `confirmed` — a persisted graph path or function-level symbol proof exists
+- `likely` — package/dependency or observed graph evidence supports the path
+- `unknown` — structural topology connects the entities, but executable reach
+  has not been proven; these candidates stay below evidence-backed paths
+- `unlikely` — graph or symbol evidence disproves reachability; the finding is
+  retained as evidence but is not emitted as an exploit chain
+
+Credential and tool exposure increase impact, not reachability. MITRE ATT&CK
+and ATLAS enrich evidence-backed hops; their technique mappings never create a
+hop or promote a structural candidate into an executable path.
 
 ## What a snapshot means
 

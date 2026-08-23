@@ -370,6 +370,8 @@ class PostgresGraphStore:
                     credential_exposure TEXT DEFAULT '[]',
                     tool_exposure TEXT DEFAULT '[]',
                     vuln_ids TEXT DEFAULT '[]',
+                    reachability TEXT DEFAULT 'unknown',
+                    reachability_basis TEXT DEFAULT '[]',
                     technique_mappings TEXT DEFAULT '[]',
                     scan_id TEXT NOT NULL,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
@@ -391,6 +393,8 @@ class PostgresGraphStore:
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS technique_mappings TEXT DEFAULT '[]'")
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS reachability TEXT DEFAULT 'unknown'")
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS reachability_basis TEXT DEFAULT '[]'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT '{}'")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
             conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
@@ -816,6 +820,8 @@ class PostgresGraphStore:
                         json.dumps(ap.credential_exposure),
                         json.dumps(ap.tool_exposure),
                         json.dumps(ap.vuln_ids),
+                        ap.reachability,
+                        json.dumps(ap.reachability_basis),
                         json.dumps([m.to_dict() for m in ap.technique_mappings]),
                         scan,
                         tenant,
@@ -936,9 +942,9 @@ class PostgresGraphStore:
                 INSERT INTO attack_paths (
                     source_node, target_node, hop_count, composite_risk,
                     summary, path_nodes, path_edges, credential_exposure,
-                    tool_exposure, vuln_ids, technique_mappings, scan_id,
-                    tenant_id, computed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    tool_exposure, vuln_ids, reachability, reachability_basis,
+                    technique_mappings, scan_id, tenant_id, computed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
                     hop_count = EXCLUDED.hop_count,
                     composite_risk = EXCLUDED.composite_risk,
@@ -948,6 +954,8 @@ class PostgresGraphStore:
                     credential_exposure = EXCLUDED.credential_exposure,
                     tool_exposure = EXCLUDED.tool_exposure,
                     vuln_ids = EXCLUDED.vuln_ids,
+                    reachability = EXCLUDED.reachability,
+                    reachability_basis = EXCLUDED.reachability_basis,
                     technique_mappings = EXCLUDED.technique_mappings,
                     computed_at = EXCLUDED.computed_at
                 """,
@@ -1221,7 +1229,8 @@ class PostgresGraphStore:
                 for row in conn.execute(
                     """
                     SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                           summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
+                           summary, credential_exposure, tool_exposure, vuln_ids,
+                           reachability, reachability_basis, technique_mappings
                     FROM attack_paths
                     WHERE tenant_id = %s AND scan_id = %s
                     ORDER BY source_node, target_node, composite_risk DESC, path_nodes
@@ -1239,7 +1248,9 @@ class PostgresGraphStore:
                             credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
                             tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
                             vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
-                            technique_mappings=technique_mappings_from_json(row[9]),
+                            reachability=row[9] or "unknown",
+                            reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                            technique_mappings=technique_mappings_from_json(row[11]),
                         )
                     )
 
@@ -1753,7 +1764,8 @@ class PostgresGraphStore:
             rows = conn.execute(
                 f"""
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
+                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       reachability, reachability_basis, technique_mappings
                 FROM attack_paths
                 WHERE tenant_id = %s AND scan_id = %s AND source_node IN ({placeholders})
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -1774,7 +1786,9 @@ class PostgresGraphStore:
                 credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
                 tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
                 vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
-                technique_mappings=technique_mappings_from_json(row[9]),
+                reachability=row[9] or "unknown",
+                reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                technique_mappings=technique_mappings_from_json(row[11]),
             )
             for row in rows
         ]
@@ -1804,7 +1818,8 @@ class PostgresGraphStore:
             rows = conn.execute(
                 """
                 SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
-                       summary, credential_exposure, tool_exposure, vuln_ids, technique_mappings
+                       summary, credential_exposure, tool_exposure, vuln_ids,
+                       reachability, reachability_basis, technique_mappings
                 FROM attack_paths
                 WHERE tenant_id = %s AND scan_id = %s
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -1829,7 +1844,9 @@ class PostgresGraphStore:
                     credential_exposure=_decode_json_array(row[6], field="attack path credential exposure"),
                     tool_exposure=_decode_json_array(row[7], field="attack path tool exposure"),
                     vuln_ids=_decode_json_array(row[8], field="attack path vulnerability IDs"),
-                    technique_mappings=technique_mappings_from_json(row[9]),
+                    reachability=row[9] or "unknown",
+                    reachability_basis=_decode_json_array(row[10], field="attack path reachability basis"),
+                    technique_mappings=technique_mappings_from_json(row[11]),
                 )
                 for row in rows
             ],

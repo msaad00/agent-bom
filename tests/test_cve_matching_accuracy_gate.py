@@ -76,13 +76,16 @@ def test_public_accuracy_claim_matches_the_reproducible_baseline() -> None:
     evaluated = baseline["evaluated"]
     positives = baseline["true_positive"]
     negatives = baseline["true_negative"]
-    for path in (README, SCANNING_DOC):
-        text = " ".join(path.read_text(encoding="utf-8").split())
-        assert f"{evaluated:,} comparable OSV advisories" in text
-        assert f"{positives:,} affected-version checks" in text
-        assert f"{negatives:,} fixed-version checks" in text
-        assert "zero false negatives and zero false positives" in text
-        assert "not a universal scanner-accuracy claim" in text
+
+    readme = README.read_text(encoding="utf-8")
+    assert "[Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json)" in readme
+
+    scanning_doc = " ".join(SCANNING_DOC.read_text(encoding="utf-8").split())
+    assert f"{evaluated:,} comparable OSV advisories" in scanning_doc
+    assert f"{positives:,} affected-version checks" in scanning_doc
+    assert f"{negatives:,} fixed-version checks" in scanning_doc
+    assert "zero false negatives and zero false positives" in scanning_doc
+    assert "not a universal scanner-accuracy claim" in scanning_doc
 
 
 def test_the_gate_detects_a_window_collapse_regression(entries: list[dict]) -> None:

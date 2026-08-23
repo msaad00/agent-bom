@@ -127,6 +127,7 @@ async def test_generated_first_run_manifests_resolve_vulnerability_findings(
         return 0
 
     monkeypatch.setattr("agent_bom.scanners._scan_packages_local_db", lambda _packages: (0, set()))
+    monkeypatch.setattr("agent_bom.scanners._db_covered_ecosystems", lambda: set())
     monkeypatch.setattr("agent_bom.scanners.query_osv_batch", fake_osv_batch)
     monkeypatch.setattr("agent_bom.scanners.ghsa_advisory.check_github_advisories", fake_github_advisories)
 

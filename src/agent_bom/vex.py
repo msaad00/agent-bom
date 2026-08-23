@@ -481,7 +481,27 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
             impact_parts.append(attack_summary)
         impact_text = ". ".join(impact_parts)
 
-        if auto_triage and vuln.is_kev:
+        if br.suppressed:
+            state = str(br.suppression_state or "exception")
+            reason = str(br.suppression_reason or "Approved suppression")
+            if state == "fixed_verified":
+                status = VexStatus.FIXED
+            elif state in {"false_positive", "not_affected", "not_applicable"}:
+                status = VexStatus.NOT_AFFECTED
+            elif state == "accepted_risk":
+                status = VexStatus.AFFECTED
+            else:
+                status = VexStatus.UNDER_INVESTIGATION
+            statements.append(
+                VexStatement(
+                    vulnerability_id=vuln.id,
+                    status=status,
+                    action_statement=f"Suppression {br.suppression_id or ''}: {reason}".strip(),
+                    impact_statement=impact_text,
+                    products=products,
+                )
+            )
+        elif auto_triage and vuln.is_kev:
             statements.append(
                 VexStatement(
                     vulnerability_id=vuln.id,
@@ -540,9 +560,9 @@ def is_vex_suppressed(vuln) -> bool:
 
 
 def active_blast_radii(blast_radii):
-    """Return blast-radius findings that are still active after VEX suppression."""
+    """Return findings active after VEX and approved-exception overlays."""
 
-    return [br for br in blast_radii if not is_vex_suppressed(br.vulnerability)]
+    return [br for br in blast_radii if not br.suppressed and not is_vex_suppressed(br.vulnerability)]
 
 
 def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:

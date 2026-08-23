@@ -79,17 +79,17 @@ export function TopologyDetailDrawer({
       ariaLabel={`Topology details for ${title}`}
       closeLabel="Close topology details"
       backdropLabel="Dismiss topology details"
-      bodyClassName="!overflow-hidden !p-0"
+      bodyClassName="topology-detail-body"
       eyebrow={selection.kind === "agent" ? "Agent runtime" : "Shared MCP service"}
       title={title}
       subtitle={subtitle}
     >
       <div className="flex h-full min-h-0 flex-col">
-        <div className="border-b border-[var(--border-subtle)] px-5 pt-4">
+        <div className="topology-detail-header">
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Metric label="Servers" value={serverMatches.length} icon={Server} />
-            <Metric label="Packages" value={totalPackages} icon={Package} />
-            <Metric label="Tools" value={totalTools} icon={Wrench} />
+            <Metric label="Servers" value={serverMatches.length} icon={Server} tone="blue" />
+            <Metric label="Packages" value={totalPackages} icon={Package} tone="violet" />
+            <Metric label="Tools" value={totalTools} icon={Wrench} tone="cyan" />
             <Metric label="CVEs" value={totalVulns} icon={ShieldAlert} tone={totalVulns > 0 ? "danger" : "neutral"} />
           </div>
           <div className="flex gap-1" role="tablist" aria-label="Topology detail sections">
@@ -102,15 +102,15 @@ export function TopologyDetailDrawer({
                 aria-controls={`topology-${tab.id}-panel`}
                 id={`topology-${tab.id}-tab`}
                 onClick={() => setActiveTab(tab.id)}
-                className={`border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                className={`topology-detail-tab ${
                   activeTab === tab.id
-                    ? "border-emerald-500 text-[var(--foreground)]"
-                    : "border-transparent text-[var(--text-tertiary)] hover:text-[var(--foreground)]"
+                    ? "topology-detail-tab-active"
+                    : "topology-detail-tab-idle"
                 }`}
               >
                 {tab.label}
                 {tab.id === "services" ? (
-                  <span className="ml-1.5 rounded-full bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[10px]">
+                    <span className="topology-detail-count">
                     {serverMatches.length}
                   </span>
                 ) : null}
@@ -119,7 +119,7 @@ export function TopologyDetailDrawer({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="topology-detail-scroll">
           {activeTab === "overview" ? (
             <section role="tabpanel" id="topology-overview-panel" aria-labelledby="topology-overview-tab" className="space-y-4">
               {hasCredentials ? (
@@ -133,7 +133,7 @@ export function TopologyDetailDrawer({
                 </div>
               )}
               {selection.kind === "server" && connectedAgents.length > 1 ? (
-                <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">
+                <div className="topology-detail-shared">
                   <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
                     <Users className="h-3.5 w-3.5" /> Shared blast radius
                   </p>
@@ -188,7 +188,7 @@ function SummaryCard({
   tone?: "neutral" | "danger";
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">
+    <div className="topology-detail-summary">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">{label}</p>
       <p
         className={`mt-2 text-sm font-medium ${
@@ -205,7 +205,7 @@ function ActionLink({ href, title, description }: { href: string; title: string;
   return (
     <Link
       href={href}
-      className="group rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 transition-colors hover:border-emerald-500/45 hover:bg-emerald-500/5"
+      className="topology-detail-action group"
     >
       <p className="text-sm font-semibold text-[var(--foreground)] group-hover:text-emerald-700 dark:group-hover:text-emerald-200">
         {title}
@@ -224,15 +224,25 @@ function Metric({
   label: string;
   value: number;
   icon: typeof Server;
-  tone?: "neutral" | "danger";
+  tone?: "neutral" | "blue" | "violet" | "cyan" | "danger";
 }) {
+  const accent =
+    tone === "danger"
+      ? "topology-detail-metric-danger"
+      : tone === "blue"
+        ? "topology-detail-metric-blue"
+        : tone === "violet"
+          ? "topology-detail-metric-violet"
+          : tone === "cyan"
+            ? "topology-detail-metric-cyan"
+            : "topology-detail-metric-neutral";
   return (
-    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2">
-      <div className={`flex items-center gap-1.5 text-[10px] ${tone === "danger" ? "text-red-700 dark:text-red-300" : "text-[var(--text-tertiary)]"}`}>
-        <Icon className="h-3.5 w-3.5" />
-        {label}
+    <div className={`topology-detail-metric ${accent}`}>
+      <div className="topology-detail-metric-heading">
+        <span className="topology-detail-metric-icon"><Icon className="h-3.5 w-3.5" /></span>
+        <span className={tone === "danger" ? "topology-detail-metric-label-danger" : "topology-detail-metric-label"}>{label}</span>
       </div>
-      <div className={`mt-1 font-mono text-sm ${tone === "danger" ? "text-red-700 dark:text-red-100" : "text-[var(--foreground)]"}`}>{value}</div>
+      <div className={tone === "danger" ? "topology-detail-metric-value-danger" : "topology-detail-metric-value"}>{value}</div>
     </div>
   );
 }
@@ -240,7 +250,7 @@ function Metric({
 function ServerCard({ agentName, server }: { agentName: string; server: MCPServer }) {
   const vulns = serverVulnerabilityCount(server);
   return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 px-3 py-2.5">
+    <div className={`topology-detail-service ${serverHasCredentials(server) ? "topology-detail-service-credential" : "topology-detail-service-normal"}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium text-[var(--foreground)]">{server.name}</span>
         {serverHasCredentials(server) ? <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" /> : null}

@@ -124,6 +124,7 @@ class TestScanPipeline:
         pipeline.skip_step("enrichment", "Not requested")
 
         assert pipeline._steps["enrichment"]["status"] == StepStatus.SKIPPED
+        assert pipeline._steps["enrichment"]["completed_at"] is not None
 
     def test_emitted_events_are_valid_json(self):
         job = _make_job()

@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 81 MCP tools as an MCP server. Any MCP-compatible client can
+agent-bom exposes 84 MCP tools as an MCP server. Any MCP-compatible client can
 connect and get vulnerability scanning, blast radius analysis, compliance
 checks, runtime posture, and supply-chain verification through natural
 conversation.
@@ -57,7 +57,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
 }
 ```
 
-CoCo can then call the same 54 `agent-bom` tools over MCP.
+CoCo can then call the same 84 `agent-bom` tools over MCP.
 
 agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
 
@@ -165,7 +165,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (81 tools)
+## Tool Categories (84 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
@@ -178,11 +178,11 @@ agent-bom proxy-bootstrap \
 | **Inventory** | `inventory` | List agents/servers without CVE scanning |
 | **Trust** | `marketplace_check`, `runtime_correlate`, `tool_risk_assessment` | Score package trust, correlate runtime usage, and assess live tool capability risk |
 | **Skills** | `skill_scan`, `skill_verify`, `skill_trust` | Instruction-file trust, provenance, and tool-poisoning detection |
-| **Graph / Runtime** | `exposure_paths`, `should_i_deploy`, `context_graph`, `graph_export`, `runtime_correlate`, `runtime_production_index`, `runtime_blueprints`, `runtime_blueprint_drift`, `proxy_status`, `proxy_alerts`, `gateway_status`, `shield_status`, `shield_start`, `shield_unblock`, `shield_break_glass`, `firewall_check`, `audit_query`, `audit_integrity`, `tool_risk_assessment` | Return ranked investigation paths, deploy decisions, graph exports, runtime posture, blueprints, drift checks, proxy alerts, audit-chain evidence, read-only firewall decisions, and audited Shield actions |
+| **Graph / Runtime** | `exposure_paths`, `should_i_deploy`, `context_graph`, `graph_export`, `runtime_correlate`, `runtime_production_index`, `runtime_blueprints`, `runtime_blueprint_drift`, `proxy_status`, `proxy_alerts`, `gateway_status`, `shield_status`, `shield_start`, `shield_unblock`, `shield_break_glass`, `firewall_check`, `audit_query`, `audit_integrity`, `tool_risk_assessment` | Return ranked investigation paths, deploy decisions, graph exports, runtime posture, blueprints, drift checks, cursor-paged gateway activity, operator self-posture, audit-chain evidence, read-only firewall decisions, and audited Shield actions |
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan`, `runtime_evidence_ingest` | Scan AI artifacts, prompts, model files, and browser extensions; import tool-agnostic SARIF/SBOM/scanner evidence without executing its producer; merge CWPP runtime signals |
 
 <details>
-<summary>Complete current catalog (81 tools)</summary>
+<summary>Complete current catalog (84 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
@@ -203,7 +203,8 @@ agent-bom proxy-bootstrap \
 `license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
 `cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
-`findings_triage`, `risk_campaign_workflow`, `cloud_side_scan`.
+`findings_triage`, `list_exceptions`, `request_exception`,
+`approve_exception`, `risk_campaign_workflow`, `cloud_side_scan`.
 
 </details>
 
@@ -241,9 +242,9 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  The 17 write-annotated tools cover scan-history diff, Shield, identity,
+  The 19 write-annotated tools cover scan-history diff, Shield, identity,
   external ingest, CWPP runtime-evidence ingest, access review, finding
-  triage, remediation campaigns, and ticket workflows. They require an
+  triage and exception approval, remediation campaigns, and ticket workflows. They require an
   authenticated MCP operator token plus admin role, their specific write
   scope (`cloud:write`, `findings:write`, `identity:write`, `shield:write`,
   or `ticketing:write`), and an audit reason; stdio cannot invoke them.

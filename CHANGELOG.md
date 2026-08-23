@@ -18,7 +18,44 @@ release completion now carries image
 and registry fixes through independent live verification instead of leaving
 automated findings open until the next daily schedule.
 
+### Added
+
+- The MCP control-plane surface now exposes 84 tools, including tenant-bound
+  exception listing, request, and approval workflows over the same lifecycle
+  store used by REST and the dashboard. Writes require the operator token,
+  `findings:write`, an administrator role, and an audit reason.
+- Runtime self-governance ships as a policy template and blueprint with
+  durable-versus-fallback activity labels, cursor pagination, self-posture
+  evidence, and an operator runbook.
+
+### Changed
+
+- Large graph snapshots open on bounded, risk-ranked decision rollups; operators
+  can switch to the expert relationship map, traverse the proving path, and use
+  resizable, tabbed detail drawers without loading a dense estate as the first
+  view. Entity and relationship colors now derive from one schema.
+- Scan jobs expose trigger, schedule, source, vulnerability-data freshness,
+  terminal timestamps, per-stage statistics, and the collector issues attached
+  to a degraded stage.
+- Grouped findings with facets reduce and project the requested page before
+  sanitizing and serializing occurrences, avoiding repeated whole-window work
+  while preserving group identity and graph provenance.
+
 ### Fixed
+
+- Canonical finding identity now distinguishes non-package asset evidence, and
+  vulnerability exceptions and local ignore rules converge on one auditable
+  suppression overlay across console/MCP active views, JSON, SARIF, VEX, and
+  severity exit gates. Suppressed evidence remains queryable rather than being
+  deleted.
+- The dashboard uses readable light-theme surfaces for agent inventory,
+  consistent bounded drawers, and an evidence-first overview instead of a
+  promotional workflow panel. The public preview separates AI/MCP clients from
+  cloud, identity, and data integrations and states that integration depth
+  varies by surface.
+- Documentation SVG generation resolves the current checkout before importing
+  product counts, preventing an older installed package from silently producing
+  stale architecture diagrams.
 
 - Offline repository scans with a missing or unreadable vulnerability database
   now return the documented incomplete-scan verdict (`1`) while preserving a

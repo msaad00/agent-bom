@@ -418,13 +418,30 @@ async def shield_break_glass_impl(
 async def gateway_status_impl(
     *,
     tenant_id: str = "default",
+    include_activity: bool = False,
+    activity_limit: int = 100,
+    activity_cursor: str = "",
+    include_self_posture: bool = False,
     _truncate_response,
 ) -> str:
-    """Implementation of the gateway_status tool."""
+    """Implementation of the gateway_status tool and optional evidence views."""
     try:
         from agent_bom.api.routes.gateway import gateway_stats
 
-        payload = await gateway_stats(cast(Any, _request_for_tenant(tenant_id)))
+        request = _request_for_tenant(tenant_id)
+        payload = await gateway_stats(cast(Any, request))
+        if include_activity:
+            from agent_bom.api.routes.gateway_feed import gateway_feed
+
+            payload["activity"] = await gateway_feed(
+                cast(Any, request),
+                limit=max(1, min(int(activity_limit), 500)),
+                cursor=activity_cursor.strip() or None,
+            )
+        if include_self_posture:
+            from agent_bom.api.routes.self_posture import get_self_posture
+
+            payload["self_posture"] = await get_self_posture(cast(Any, request))
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP gateway status error")

@@ -11,12 +11,17 @@ import argparse
 import json
 import math
 import re
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
-from agent_bom.mcp_server_metadata import _SERVER_CARD_TOOLS
-
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from agent_bom.mcp_server_metadata import _SERVER_CARD_TOOLS  # noqa: E402
+
 OUT = ROOT / "docs" / "images"
 VENDOR_LOGO_DIR = ROOT / "ui" / "public" / "logos"
 VENDOR_WORDMARK_DIR = VENDOR_LOGO_DIR / "wordmarks"

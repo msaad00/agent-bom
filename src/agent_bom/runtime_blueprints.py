@@ -28,6 +28,26 @@ class RuntimeRoleBlueprint:
 
 _BLUEPRINTS: tuple[RuntimeRoleBlueprint, ...] = (
     RuntimeRoleBlueprint(
+        blueprint_id="agent_bom_operator",
+        label="Agent BOM Operator",
+        description="Operate and audit agent-bom itself through read-first scanner, graph, runtime, and evidence surfaces.",
+        intended_users=("security_engineer", "platform_engineer", "grc_operator"),
+        allowed_tool_categories=(
+            "package_scan",
+            "finding_read",
+            "graph_query",
+            "audit_read",
+            "evidence_export",
+            "mcp_discovery",
+            "repo_read",
+        ),
+        restricted_tool_categories=("production_write", "credential_export", "privileged_identity"),
+        approval_required_for=("repo_write", "policy_write", "tenant_admin", "database_write"),
+        default_decision="block",
+        retention_mode="redacted",
+        evidence_required=("actor", "tool_name", "decision", "policy_id", "trace_id", "audit_chain_ref"),
+    ),
+    RuntimeRoleBlueprint(
         blueprint_id="developer",
         label="Developer",
         description="Build and debug code with bounded repository, package, and local development access.",

@@ -337,6 +337,7 @@ def iter_tenant_scan_spine_findings(
     scan_id: str | None = None,
     scope: Mapping[str, str] | None = None,
     status: str = "all",
+    sanitize: bool = True,
 ) -> list[dict[str, Any]]:
     """Current scan-spine findings for a tenant — the same source ``/v1/findings`` shows.
 
@@ -347,8 +348,6 @@ def iter_tenant_scan_spine_findings(
     """
     from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
-    from agent_bom.finding_scope import safe_finding_response_payload
-
     rows = current_scan_findings(
         _completed_jobs_for_tenant(tenant_id),
         since=since,
@@ -361,6 +360,10 @@ def iter_tenant_scan_spine_findings(
     rows = [item for item in rows if status_matches(item, status)]
     if scope:
         rows = [item for item in rows if _row_matches_scope(item, dict(scope))]
+    if not sanitize:
+        return rows
+    from agent_bom.finding_scope import safe_finding_response_payload
+
     return [safe_finding_response_payload(row) for row in rows]
 
 
@@ -2200,6 +2203,7 @@ def _finding_facets_bounded(
         scan_id=scan_id,
         scope=base_scope,
         status="all",
+        sanitize=False,
     ):
         if scanned_rows >= scan_budget:
             truncated = True
@@ -2683,6 +2687,39 @@ async def list_findings(
         ) from exc
 
 
+def _project_findings_reachability(
+    rows: list[dict[str, Any]],
+    *,
+    tenant_id: str,
+    scan_id: str | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Project persisted paths once for the rows the caller will return.
+
+    Grouped findings walk the occurrence stream in bounded pages. Projecting
+    the same persisted graph against every internal 1,000-row page made an
+    otherwise linear grouping request pay the graph-join cost dozens of times.
+    Callers may now defer this helper until after grouping/pagination, so only
+    the visible issue rows receive reachability enrichment.
+    """
+    warnings: list[str] = []
+    try:
+        projection = project_persisted_graph_reachability(
+            rows,
+            graph_store=_get_graph_store(),
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+        )
+        if projection.truncated:
+            warnings.append(
+                "Graph reachability projection is bounded to the highest-risk 1000 persisted paths; unmatched findings remain unassessed."
+            )
+        return projection.rows, warnings
+    except Exception as exc:  # noqa: BLE001 — optional evidence must not fail the findings list
+        _logger.warning("Finding graph reachability projection skipped: %s", sanitize_error(exc))
+        warnings.append("Graph reachability evidence is unavailable for this page; unmatched findings remain unassessed.")
+        return rows, warnings
+
+
 def _list_findings_impl(
     request: Request,
     q: str | None,
@@ -2706,6 +2743,8 @@ def _list_findings_impl(
     control: str | None = None,
     owner: str | None = None,
     sla: str | None = None,
+    project_graph_reachability: bool = True,
+    redact_page: bool = True,
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
@@ -3083,21 +3122,13 @@ def _list_findings_impl(
                 f"these facet counts are lower bounds, not totals: {', '.join(bounded)}."
             )
 
-    try:
-        reachability = project_persisted_graph_reachability(
+    if project_graph_reachability:
+        page_rows, reachability_warnings = _project_findings_reachability(
             page_rows,
-            graph_store=_get_graph_store(),
             tenant_id=tenant_id,
             scan_id=scan_id,
         )
-        page_rows = reachability.rows
-        if reachability.truncated:
-            warnings.append(
-                "Graph reachability projection is bounded to the highest-risk 1000 persisted paths; unmatched findings remain unassessed."
-            )
-    except Exception as exc:  # noqa: BLE001 — optional evidence must not fail the findings list
-        _logger.warning("Finding graph reachability projection skipped: %s", sanitize_error(exc))
-        warnings.append("Graph reachability evidence is unavailable for this page; unmatched findings remain unassessed.")
+        warnings.extend(reachability_warnings)
 
     scope_completeness: dict[str, Any] | None = None
     if scope_filters and scope_metadata:
@@ -3115,7 +3146,10 @@ def _list_findings_impl(
                 "this page is partial — continue with next_cursor for the rest."
             )
 
-    page = _redact_finding_page(page_rows)
+    # Internal aggregate callers may defer the expensive default-deny
+    # projection until after they reduce thousands of rows to one response
+    # page. Public callers always retain the safe default.
+    page = _redact_finding_page(page_rows) if redact_page else page_rows
     envelope = finding_list_envelope(
         findings=page,
         total=total,
@@ -3213,6 +3247,8 @@ def _list_findings_view_impl(
     sla: str | None = None,
     reachability: str | None = None,
     triage: str | None = None,
+    project_graph_reachability: bool = True,
+    redact_page: bool = True,
 ) -> dict[str, Any]:
     """Apply evidence-backed view filters before pagination.
 
@@ -3245,6 +3281,8 @@ def _list_findings_view_impl(
             control=control,
             owner=owner,
             sla=sla,
+            project_graph_reachability=project_graph_reachability,
+            redact_page=redact_page,
         )
 
     from agent_bom.api.routes.enterprise import build_tenant_triage_state_index
@@ -3287,6 +3325,8 @@ def _list_findings_view_impl(
             control=control,
             owner=owner,
             sla=sla,
+            project_graph_reachability=project_graph_reachability,
+            redact_page=redact_page,
         )
         if first_page is None:
             first_page = page
@@ -3363,15 +3403,17 @@ def _finding_group_identity(row: dict[str, Any]) -> tuple[str, str]:
     """Return the canonical aggregate identity without changing occurrence IDs."""
     supplied_id = str(row.get("finding_group_id") or "").strip()
     supplied_key = str(row.get("finding_group_key") or "").strip()
-    if supplied_id and supplied_key:
-        return supplied_id, supplied_key
-
     vulnerability_id = _row_vuln_id(row).lower()
     if vulnerability_id:
         group_key = f"vulnerability:{vulnerability_id}:{_package_base_name(row).lower()}"
     else:
         group_key = f"occurrence:{_finding_identity(row)}"
-    return supplied_id or canonical_id("finding-group", group_key), supplied_key or group_key
+    # Persisted metadata is an optimization, not authority. A row can be
+    # reclassified/enriched after ingest; stale group metadata must not collapse
+    # two distinct advisories. Reuse it only when its semantic key still agrees.
+    if supplied_id and supplied_key == group_key:
+        return supplied_id, group_key
+    return canonical_id("finding-group", group_key), group_key
 
 
 def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
@@ -3396,6 +3438,29 @@ def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
         )
         if row.get(key) is not None
     }
+
+
+def _serialize_finding_group(group: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize one selected group and its bounded occurrence sample.
+
+    Grouping may inspect tens of thousands of canonical rows, but only the
+    selected page crosses the API boundary. Raw rows stay private until this
+    point so response redaction runs once for data the caller can receive.
+    """
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    public = safe_finding_response_payload(group)
+    public["finding_group_id"] = str(group.get("finding_group_id") or "")
+    public["finding_group_key"] = str(group.get("finding_group_key") or "")
+    public["occurrence_count"] = int(group.get("occurrence_count") or 0)
+    public["occurrences_truncated"] = bool(group.get("occurrences_truncated"))
+    samples = group.get("_occurrence_rows")
+    public["occurrences"] = [
+        _finding_occurrence_summary(safe_finding_response_payload(row))
+        for row in (samples if isinstance(samples, list) else [])
+        if isinstance(row, dict)
+    ]
+    return public
 
 
 def _list_finding_groups_impl(
@@ -3450,6 +3515,11 @@ def _list_finding_groups_impl(
     first_page: dict[str, Any] | None = None
     warnings: list[str] = []
     while len(rows) < _FINDING_GROUP_MAX_OCCURRENCES:
+        # Grouping already materializes a hard-bounded 50k occurrence window.
+        # Read that window in one keyset-backed batch: 1k internal pages caused
+        # the scan spine to be deserialized and enriched from scratch for every
+        # page, adding seconds without reducing this function's memory bound.
+        remaining_budget = _FINDING_GROUP_MAX_OCCURRENCES - len(rows)
         page = _list_findings_view_impl(
             request,
             q,
@@ -3459,7 +3529,7 @@ def _list_finding_groups_impl(
             None,
             scan_id,
             sort_key,
-            min(1000, _FINDING_GROUP_MAX_OCCURRENCES - len(rows)),
+            remaining_budget,
             0,
             source_cursor,
             True,
@@ -3478,6 +3548,8 @@ def _list_finding_groups_impl(
             sla,
             reachability,
             triage,
+            False,
+            False,
         )
         if first_page is None:
             first_page = page
@@ -3498,14 +3570,14 @@ def _list_finding_groups_impl(
             representative["finding_group_id"] = group_id
             representative["finding_group_key"] = group_key
             representative["occurrence_count"] = 0
-            representative["occurrences"] = []
+            representative["_occurrence_rows"] = []
             representative["occurrences_truncated"] = False
             grouped[group_id] = representative
             group = representative
         group["occurrence_count"] = int(group["occurrence_count"]) + 1
-        occurrences = group["occurrences"]
+        occurrences = group["_occurrence_rows"]
         if isinstance(occurrences, list) and len(occurrences) < _FINDING_GROUP_OCCURRENCE_SAMPLE:
-            occurrences.append(_finding_occurrence_summary(row))
+            occurrences.append(row)
         else:
             group["occurrences_truncated"] = True
 
@@ -3523,6 +3595,13 @@ def _list_finding_groups_impl(
     if truncated:
         warnings.append("Issue grouping stopped after 50,000 occurrence rows; group and occurrence counts are lower bounds.")
     page_groups = groups[group_offset : group_offset + limit]
+    page_groups, reachability_warnings = _project_findings_reachability(
+        page_groups,
+        tenant_id=_tenant_id(request),
+        scan_id=scan_id,
+    )
+    page_groups = [_serialize_finding_group(group) for group in page_groups]
+    warnings.extend(reachability_warnings)
     next_offset = group_offset + len(page_groups)
     next_cursor = ""
     if next_offset < len(groups):

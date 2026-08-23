@@ -1753,19 +1753,10 @@ async def scan_packages(
             f"(no-dsa/won't-fix) — set AGENT_BOM_INCLUDE_UNFIXED=1 to include[/dim]"
         )
 
-    # Apply .agent-bom-ignore suppression rules
-    try:
-        from agent_bom.ignore import apply_ignore_rules, load_ignore_file
-
-        rules = load_ignore_file()
-        if not rules.is_empty:
-            suppressed = apply_ignore_rules(scannable, rules)
-            if suppressed:
-                total_vulns -= suppressed
-                console.print(f"  [yellow]⚠[/yellow] Suppressed {suppressed} finding(s) via .agent-bom-ignore")
-    except Exception as exc:
-        _logger.warning("Ignore file processing skipped: %s", exc)
-        _emit_scan_warning("ignore-file processing failed")
+    # Suppression is applied once after BlastRadius construction by
+    # ``agent_bom.ignores``. Applying the legacy package-only filter here used
+    # to delete evidence before JSON/SARIF/VEX/MCP could record why it was
+    # accepted, and caused the CLI and control-plane exception store to disagree.
 
     return total_vulns
 

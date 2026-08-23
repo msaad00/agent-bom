@@ -202,7 +202,7 @@ def test_seed_from_archetypes_creates_preapproved_blueprints():
     store = InMemoryBlueprintStore()
     created = seed_blueprints_from_archetypes(store, tenant_id="t1")
     seeded_ids = {b.seeded_from for b in created}
-    assert seeded_ids == {"developer", "security_analyst", "mlops", "finance", "admin"}
+    assert seeded_ids == {"agent_bom_operator", "developer", "security_analyst", "mlops", "finance", "admin"}
     for blueprint in created:
         assert blueprint.approval_status == STATUS_APPROVED
         assert blueprint.current_version == 1
@@ -217,9 +217,9 @@ def test_seed_is_idempotent():
     store = InMemoryBlueprintStore()
     first = seed_blueprints_from_archetypes(store, tenant_id="t1")
     second = seed_blueprints_from_archetypes(store, tenant_id="t1")
-    assert len(first) == 5
+    assert len(first) == 6
     assert second == []  # nothing new created on re-seed
-    assert len(store.list_blueprints("t1", limit=100).blueprints) == 5
+    assert len(store.list_blueprints("t1", limit=100).blueprints) == 6
 
 
 def test_seed_is_tenant_scoped():

@@ -1104,6 +1104,107 @@ async def test_proxy_gateway_and_shield_status_impls_empty_state():
 
 
 @pytest.mark.asyncio
+async def test_gateway_status_can_include_cursor_activity_and_self_posture(monkeypatch):
+    from agent_bom.mcp_tools.runtime import gateway_status_impl
+
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-runtime")
+
+    async def fake_gateway_stats(request):
+        return {"tenant_id": request.state.tenant_id, "policy_runtime": {}, "firewall_runtime": {}}
+
+    async def fake_gateway_feed(request, *, limit, cursor):
+        return {
+            "tenant_id": request.state.tenant_id,
+            "events": [{"ordinal": 7}],
+            "next_cursor": "cursor-older",
+            "has_more": True,
+            "limit": limit,
+            "cursor": cursor,
+        }
+
+    async def fake_self_posture(request):
+        return {"tenant_id": request.state.tenant_id, "status": "warn"}
+
+    monkeypatch.setattr("agent_bom.api.routes.gateway.gateway_stats", fake_gateway_stats)
+    monkeypatch.setattr("agent_bom.api.routes.gateway_feed.gateway_feed", fake_gateway_feed)
+    monkeypatch.setattr("agent_bom.api.routes.self_posture.get_self_posture", fake_self_posture)
+
+    result = await gateway_status_impl(
+        tenant_id="tenant-runtime",
+        include_activity=True,
+        activity_limit=25,
+        activity_cursor="cursor-newer",
+        include_self_posture=True,
+        _truncate_response=_trunc,
+    )
+    data = json.loads(result)
+
+    assert data["tenant_id"] == "tenant-runtime"
+    assert data["activity"] == {
+        "tenant_id": "tenant-runtime",
+        "events": [{"ordinal": 7}],
+        "next_cursor": "cursor-older",
+        "has_more": True,
+        "limit": 25,
+        "cursor": "cursor-newer",
+    }
+    assert data["self_posture"] == {"tenant_id": "tenant-runtime", "status": "warn"}
+
+
+@pytest.mark.asyncio
+async def test_exception_tools_share_tenant_bound_lifecycle(monkeypatch):
+    from agent_bom.api import stores
+    from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
+    from agent_bom.mcp_tools.exceptions import (
+        approve_exception_impl,
+        list_exceptions_impl,
+        request_exception_impl,
+    )
+
+    store = InMemoryExceptionStore()
+    monkeypatch.setattr(stores, "_exception_store", store)
+    monkeypatch.setattr("agent_bom.api.audit_log.log_action", lambda *args, **kwargs: None)
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-exceptions")
+    store.put(VulnException(vuln_id="CVE-OTHER", package_name="other", tenant_id="other-tenant"))
+
+    requested = json.loads(
+        await request_exception_impl(
+            vulnerability_id="CVE-2026-4242",
+            package_name="example",
+            exception_reason="Approved maintenance window",
+            tenant_id="other-tenant",
+            _authenticated_actor="security-operator",
+            _truncate_response=_trunc,
+        )
+    )
+    assert requested["status"] == "pending"
+    assert requested["tenant_id"] == "tenant-exceptions"
+    assert requested["requested_by"] == "security-operator"
+
+    approved = json.loads(
+        await approve_exception_impl(
+            exception_id=requested["exception_id"],
+            tenant_id="other-tenant",
+            _authenticated_actor="security-admin",
+            _truncate_response=_trunc,
+        )
+    )
+    assert approved["status"] == "active"
+    assert approved["approved_by"] == "security-admin"
+
+    listed = json.loads(
+        await list_exceptions_impl(
+            tenant_id="other-tenant",
+            limit=100,
+            _truncate_response=_trunc,
+        )
+    )
+    assert listed["tenant_id"] == "tenant-exceptions"
+    assert listed["total"] == 1
+    assert [item["exception_id"] for item in listed["exceptions"]] == [requested["exception_id"]]
+
+
+@pytest.mark.asyncio
 async def test_mcp_runtime_tools_use_server_bound_tenant(monkeypatch):
     from agent_bom.mcp_tools.runtime import proxy_status_impl
 

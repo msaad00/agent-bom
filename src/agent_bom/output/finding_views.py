@@ -102,7 +102,8 @@ def active_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | No
 
     source = blast_radii if blast_radii is not None else report.blast_radii
     if source:
-        return cve_findings(report, active_blast_radii(source))
+        active = active_blast_radii(source)
+        return cve_findings(report, active) if active else []
     return [finding for finding in cve_findings(report) if not finding.suppressed]
 
 

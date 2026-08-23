@@ -804,7 +804,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
         <Link href="/agents" className="agents-back-link">
           <ArrowLeft className="w-4 h-4" /> Back to agents
         </Link>
-        <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
+        <div className="agents-error-panel">
           {error || "Agent not found"}
         </div>
       </div>
@@ -871,7 +871,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {fleet && (
-          <div className="rounded-xl border border-sky-900/60 bg-sky-950/20 p-4">
+          <div className="agents-observed-panel">
             <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-sky-400">Observed state</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div className="agents-stat-card">
@@ -897,7 +897,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
             </div>
           </div>
         )}
-        <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
+        <div className="agents-inventory-panel">
           <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first view</p>
           <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">
             This detail page is valuable before runtime proxy rollout. It shows the granted MCP surface area for
@@ -936,13 +936,13 @@ function AgentDetail({ agentName }: { agentName: string }) {
 
         {/* Exposed Credentials */}
         {credentials.length > 0 && (
-          <div className="bg-yellow-950/30 border border-yellow-800/50 rounded-xl p-4">
+          <div className="agents-credential-panel">
             <h3 className="text-sm font-semibold text-yellow-400 flex items-center gap-2 mb-2">
               <KeyRound className="w-4 h-4" /> Exposed Credentials ({credentials.length})
             </h3>
             <div className="flex flex-wrap gap-2">
               {credentials?.map((c) => (
-                <span key={c} className="bg-yellow-950 border border-yellow-800 text-yellow-300 px-2 py-0.5 rounded text-xs font-mono">
+                <span key={c} className="agents-warning-chip">
                   {c}
                 </span>
               ))}
@@ -977,17 +977,17 @@ function AgentDetail({ agentName }: { agentName: string }) {
                         {srv.transport || "stdio"}
                       </span>
                       {srv.security_blocked && (
-                        <span className="rounded border border-rose-800 bg-rose-950 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
+                        <span className="agents-danger-chip">
                           blocked
                         </span>
                       )}
                       {(srv.credential_env_vars?.length ?? 0) > 0 && (
-                        <span className="rounded border border-yellow-800 bg-yellow-950 px-1.5 py-0.5 text-[10px] font-mono text-yellow-300">
+                        <span className="agents-warning-chip !px-1.5 !text-[10px]">
                           {srv.credential_env_vars?.length ?? 0} credential env
                         </span>
                       )}
                       {srv.auth_mode && (
-                        <span className="rounded border border-sky-800 bg-sky-950 px-1.5 py-0.5 text-[10px] font-mono text-sky-300">
+                        <span className="agents-auth-chip">
                           {srv.auth_mode}
                         </span>
                       )}
@@ -1085,7 +1085,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           <h4 className="text-xs font-semibold text-purple-400 mb-1">Tools</h4>
                           <div className="flex flex-wrap gap-1.5">
                             {srvTools?.map((t) => (
-                              <span key={t.name} className="bg-purple-950 border border-purple-800 text-purple-300 px-2 py-0.5 rounded text-xs">
+                              <span key={t.name} className="agents-tool-chip">
                                 {t.name}
                               </span>
                             ))}
@@ -1097,7 +1097,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           <h4 className="text-xs font-semibold text-rose-400 mb-1">Security warnings</h4>
                           <div className="space-y-1">
                             {srv.security_warnings?.map((warning) => (
-                              <div key={warning} className="rounded border border-rose-900/60 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+                              <div key={warning} className="agents-danger-callout">
                                 {safeDisplayText(warning)}
                               </div>
                             ))}
@@ -1112,12 +1112,12 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           </h4>
                           <div className="space-y-2">
                             {srv.security_intelligence?.map((entry) => (
-                              <div key={entry.entry_id} className="rounded border border-cyan-900/60 bg-cyan-950/15 px-3 py-2">
+                              <div key={entry.entry_id} className="agents-intel-card">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div className="min-w-0">
                                     <div className="text-xs font-semibold text-cyan-100">{entry.title}</div>
                                     <div className="mt-1 flex flex-wrap gap-1.5">
-                                      <span className="rounded border border-cyan-800 bg-cyan-950 px-1.5 py-0.5 text-[10px] uppercase text-cyan-300">
+                                      <span className="agents-intel-chip">
                                         {entry.confidence}
                                       </span>
                                       {entry.source_type && (
@@ -1137,7 +1137,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                                 {(entry.remediation_actions?.length ?? 0) > 0 && (
                                   <div className="mt-2 flex flex-wrap gap-1.5">
                                     {entry.remediation_actions?.map((action) => (
-                                      <span key={action} className="rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 text-[11px] text-emerald-300">
+                                      <span key={action} className="agents-action-chip">
                                         {action}
                                       </span>
                                     ))}
@@ -1180,7 +1180,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                         </div>
                       )}
                       {srv.security_blocked && (
-                        <div className="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+                        <div className="agents-danger-callout !rounded-lg">
                           This server is marked as blocked or risky by the discovery/security pipeline. Inventory visibility works without
                           runtime proxy; proxy and gateway are the later enforcement layer.
                         </div>
@@ -1553,7 +1553,7 @@ function AgentLifecycle({ agentName }: { agentName: string }) {
         <Link href="/agents" className="agents-back-link">
           <ArrowLeft className="w-4 h-4" /> Back to agents
         </Link>
-        <div className="text-red-400 bg-red-950 border border-red-800 rounded-lg p-4">
+        <div className="agents-error-panel">
           {error || "Agent not found"}
         </div>
       </div>
@@ -1622,7 +1622,7 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
   const mode = SCAN_MODE_LABEL[envelope.scan_mode] ?? envelope.scan_mode;
   const redaction = REDACTION_LABEL[envelope.redaction_status] ?? envelope.redaction_status;
   return (
-    <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3">
+    <div className="agents-trust-card">
       <div className="agents-section-label-emerald">
         <Shield className="h-3.5 w-3.5" />
         Scan trust contract

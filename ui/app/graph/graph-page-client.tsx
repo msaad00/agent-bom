@@ -34,6 +34,10 @@ import {
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import {
+  GraphRollupDecisionSurface,
+  ROLLUP_DECISION_THRESHOLD,
+} from "@/components/graph-rollup-decision-surface";
+import {
   GraphEmptyState,
   GraphFindingsFallback,
   GraphPanelSkeleton,
@@ -121,7 +125,11 @@ import {
   type GraphSnapshot,
   type UnifiedGraphResponse,
 } from "@/lib/api";
-import type { GraphDiffNode, GraphRollupResponse } from "@/lib/api-types";
+import type {
+  GraphDiffNode,
+  GraphRollupContainer,
+  GraphRollupResponse,
+} from "@/lib/api-types";
 import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
@@ -805,6 +813,7 @@ function GraphPageInner() {
   const [loadingRollup, setLoadingRollup] = useState(false);
   const [rollupError, setRollupError] = useState<string | null>(null);
   const [rollupUnavailable, setRollupUnavailable] = useState(false);
+  const [rollupMapExpanded, setRollupMapExpanded] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
@@ -1237,6 +1246,20 @@ function GraphPageInner() {
   const rollupCanvasPending = rollupCanvasMode === "loading";
   const rollupCanvasOwnsPresentation =
     rollupNavigationActive || rollupCanvasPending;
+  const rollupItems = useMemo(
+    () =>
+      rollupView?.mode === "drilldown"
+        ? (rollupView.children ?? [])
+        : (rollupView?.top_level ?? []),
+    [rollupView],
+  );
+  const rollupDecisionAvailable =
+    rollupNavigationActive && rollupItems.length > ROLLUP_DECISION_THRESHOLD;
+  const rollupDecisionActive = rollupDecisionAvailable && !rollupMapExpanded;
+
+  useEffect(() => {
+    setRollupMapExpanded(false);
+  }, [rollupView?.mode, rollupView?.node?.id]);
 
   useEffect(() => {
     if (!selectedScanId || !rollupEligible || rollupDismissed) {
@@ -2385,6 +2408,21 @@ function GraphPageInner() {
     setRollupStack([]);
   }, []);
 
+  const drillIntoRollup = useCallback((item: GraphRollupContainer) => {
+    if (!item.has_children) return;
+    setRollupStack((current) => {
+      if (current.at(-1)?.id === item.id) return current;
+      return [...current, { id: item.id, label: item.label }];
+    });
+  }, []);
+
+  const investigateRollup = useCallback(
+    (item: GraphRollupContainer) => {
+      void loadRootInvestigation({ rootId: item.id, rootLabel: item.label });
+    },
+    [loadRootInvestigation],
+  );
+
   const loadBlastRadius = useCallback(
     async (nodeId: string, nodeLabel: string) => {
       if (!nodeId) return;
@@ -2713,9 +2751,12 @@ function GraphPageInner() {
                 error={rollupError}
                 unavailable={rollupUnavailable}
                 active={rollupNavigationActive}
+                decisionAvailable={rollupDecisionAvailable}
+                decisionActive={rollupDecisionActive}
                 onDismiss={dismissRollup}
                 onReset={resetRollupToRoot}
                 onBreadcrumb={navigateRollupBreadcrumb}
+                onDecisionMode={() => setRollupMapExpanded(false)}
               />
             )}
 
@@ -3320,6 +3361,14 @@ function GraphPageInner() {
               title="Loading scope navigation"
               detail="Collapsing the containment hierarchy before rendering aggregate navigation cards."
             />
+          ) : rollupDecisionActive ? (
+            <GraphRollupDecisionSurface
+              items={rollupItems}
+              edges={rollupView?.edges ?? []}
+              onDrill={drillIntoRollup}
+              onInvestigate={investigateRollup}
+              onShowMap={() => setRollupMapExpanded(true)}
+            />
           ) : displayNodes.length === 0 ? (
             <GraphEmptyState
               title="No nodes match the current graph scope"
@@ -3738,9 +3787,12 @@ function RollupNavigationPanel({
   error,
   unavailable,
   active,
+  decisionAvailable,
+  decisionActive,
   onDismiss,
   onReset,
   onBreadcrumb,
+  onDecisionMode,
 }: {
   summary: GraphRollupResponse | null;
   estateNodeCount: number;
@@ -3749,9 +3801,12 @@ function RollupNavigationPanel({
   error: string | null;
   unavailable: boolean;
   active: boolean;
+  decisionAvailable: boolean;
+  decisionActive: boolean;
   onDismiss: () => void;
   onReset: () => void;
   onBreadcrumb: (index: number) => void;
+  onDecisionMode: () => void;
 }) {
   const visibleCount =
     summary?.mode === "drilldown"
@@ -3792,13 +3847,20 @@ function RollupNavigationPanel({
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="graph-chip-emerald"
-        >
-          Open node view
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {decisionAvailable && !decisionActive ? (
+            <button type="button" onClick={onDecisionMode} className="graph-chip-emerald">
+              Risk rollup
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="graph-chip-emerald"
+          >
+            Open node view
+          </button>
+        </div>
       </div>
 
       {breadcrumbs.length > 0 && (

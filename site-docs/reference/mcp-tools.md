@@ -3,19 +3,19 @@
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. 17 write-annotated tools cover scan-history
+resources, or runtime targets. 19 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
-review, finding triage, remediation campaigns, and ticket workflows.
+review, finding triage and exception approval, remediation campaigns, and ticket workflows.
 They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
 `agent-bom mcp server` and the programmatic server both expose the complete
-81-tool catalog by default. Use `--profile guided` only when a client needs the
+84-tool catalog by default. Use `--profile guided` only when a client needs the
 smaller workflow-oriented context envelope.
 
 <details>
-<summary>Complete current catalog (81 tools)</summary>
+<summary>Complete current catalog (84 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `should_i_deploy`,
@@ -36,7 +36,8 @@ smaller workflow-oriented context envelope.
 `license_compliance_scan`, `ingest_external_scan`, `runtime_evidence_ingest`,
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
 `cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
-`findings_triage`, `risk_campaign_workflow`, `cloud_side_scan`.
+`findings_triage`, `list_exceptions`, `request_exception`,
+`approve_exception`, `risk_campaign_workflow`, `cloud_side_scan`.
 
 </details>
 

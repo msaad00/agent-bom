@@ -490,8 +490,14 @@ class Finding:
                 # Asset is a server/container/etc — the affected package lives in
                 # evidence. Fold it into the discriminator so two CVEs on distinct
                 # packages under one asset don't collide on the same id.
-                pkg_name = str(self.evidence.get("package_name") or "")
+                pkg_name = str(self.evidence.get("package_name") or self.evidence.get("package") or "")
                 pkg_version = str(self.evidence.get("package_version") or "")
+                # Several scanners expose the affected component as the compact
+                # ``package=name@version`` form. Normalise that public evidence
+                # shape before deriving the occurrence identity; otherwise two
+                # packages attached to one container/server silently collapse.
+                if pkg_name and not pkg_version and "@" in pkg_name:
+                    pkg_name, pkg_version = pkg_name.rsplit("@", 1)
             self.id = canonical_finding_id(
                 self.asset.stable_id,
                 cve_part,

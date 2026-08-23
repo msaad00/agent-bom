@@ -490,7 +490,7 @@ export const EDGE_KIND_TO_RELATIONSHIP: Record<string, RelationshipType> = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Canonical node colors by entity type */
-export const ENTITY_COLOR_MAP: Record<string, string> = {
+export const ENTITY_COLOR_MAP: Record<string, string> & Record<EntityType, string> = {
   [EntityType.AGENT]: "#10b981", // emerald
   [EntityType.SERVER]: "#3b82f6", // blue
   [EntityType.PACKAGE]: "#52525b", // zinc
@@ -531,10 +531,12 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.APPLICATION]: "#7c3aed", // violet
   [EntityType.PROVIDER]: "#6b7280", // gray
   [EntityType.ENVIRONMENT]: "#6b7280", // gray
+  [EntityType.FLEET]: "#475569", // slate
+  [EntityType.CLUSTER]: "#4f46e5", // indigo
 };
 
 /** Canonical edge colors by relationship type */
-export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
+export const RELATIONSHIP_COLOR_MAP: Record<string, string> & Record<RelationshipType, string> = {
   [RelationshipType.HOSTS]: "#6b7280",
   [RelationshipType.USES]: "#10b981",
   [RelationshipType.USES_FRAMEWORK]: "#06b6d4",
@@ -728,144 +730,144 @@ export interface LegendEntry {
 }
 
 export const ENTITY_LEGEND: LegendEntry[] = [
-  { key: "agent", label: "AI Agent", color: "#10b981", shape: "circle" },
-  { key: "server", label: "MCP Server", color: "#3b82f6", shape: "circle" },
-  { key: "package", label: "Package", color: "#52525b", shape: "square" },
-  { key: "tool", label: "Tool", color: "#a855f7", shape: "diamond" },
-  { key: "tool_call", label: "Tool Call", color: "#9333ea", shape: "diamond" },
+  { key: "agent", label: "AI Agent", color: ENTITY_COLOR_MAP[EntityType.AGENT], shape: "circle" },
+  { key: "server", label: "MCP Server", color: ENTITY_COLOR_MAP[EntityType.SERVER], shape: "circle" },
+  { key: "package", label: "Package", color: ENTITY_COLOR_MAP[EntityType.PACKAGE], shape: "square" },
+  { key: "tool", label: "Tool", color: ENTITY_COLOR_MAP[EntityType.TOOL], shape: "diamond" },
+  { key: "tool_call", label: "Tool Call", color: ENTITY_COLOR_MAP[EntityType.TOOL_CALL], shape: "diamond" },
   {
     key: "vulnerability",
     label: "Vulnerability",
-    color: "#ef4444",
+    color: ENTITY_COLOR_MAP[EntityType.VULNERABILITY],
     shape: "triangle",
   },
   {
     key: "credential",
     label: "Credential",
-    color: "#f59e0b",
+    color: ENTITY_COLOR_MAP[EntityType.CREDENTIAL],
     shape: "diamond",
   },
   {
     key: "credential_ref",
     label: "Credential Ref",
-    color: "#facc15",
+    color: ENTITY_COLOR_MAP[EntityType.CREDENTIAL_REF],
     shape: "diamond",
   },
   {
     key: "misconfiguration",
     label: "Misconfiguration",
-    color: "#f97316",
+    color: ENTITY_COLOR_MAP[EntityType.MISCONFIGURATION],
     shape: "triangle",
   },
-  { key: "resource", label: "Resource", color: "#3b82f6", shape: "square" },
-  { key: "model", label: "Model", color: "#8b5cf6", shape: "square" },
-  { key: "container", label: "Container", color: "#6366f1", shape: "square" },
+  { key: "resource", label: "Resource", color: ENTITY_COLOR_MAP[EntityType.RESOURCE], shape: "square" },
+  { key: "model", label: "Model", color: ENTITY_COLOR_MAP[EntityType.MODEL], shape: "square" },
+  { key: "container", label: "Container", color: ENTITY_COLOR_MAP[EntityType.CONTAINER], shape: "square" },
   {
     key: "cloud_resource",
     label: "Cloud Resource",
-    color: "#0ea5e9",
+    color: ENTITY_COLOR_MAP[EntityType.CLOUD_RESOURCE],
     shape: "square",
   },
-  { key: "org", label: "Organization", color: "#115e59", shape: "square" },
-  { key: "account", label: "Account", color: "#0f766e", shape: "square" },
-  { key: "user", label: "User", color: "#14b8a6", shape: "circle" },
-  { key: "group", label: "Group", color: "#0d9488", shape: "circle" },
-  { key: "role", label: "Role", color: "#ea580c", shape: "circle" },
-  { key: "policy", label: "Policy", color: "#d97706", shape: "diamond" },
+  { key: "org", label: "Organization", color: ENTITY_COLOR_MAP[EntityType.ORG], shape: "square" },
+  { key: "account", label: "Account", color: ENTITY_COLOR_MAP[EntityType.ACCOUNT], shape: "square" },
+  { key: "user", label: "User", color: ENTITY_COLOR_MAP[EntityType.USER], shape: "circle" },
+  { key: "group", label: "Group", color: ENTITY_COLOR_MAP[EntityType.GROUP], shape: "circle" },
+  { key: "role", label: "Role", color: ENTITY_COLOR_MAP[EntityType.ROLE], shape: "circle" },
+  { key: "policy", label: "Policy", color: ENTITY_COLOR_MAP[EntityType.POLICY], shape: "diamond" },
   {
     key: "service_account",
     label: "Service Account",
-    color: "#0f766e",
+    color: ENTITY_COLOR_MAP[EntityType.SERVICE_ACCOUNT],
     shape: "circle",
   },
   {
     key: "service_principal",
     label: "Service Principal",
-    color: "#0f766e",
+    color: ENTITY_COLOR_MAP[EntityType.SERVICE_PRINCIPAL],
     shape: "circle",
   },
   {
     key: "federated_identity",
     label: "Federated Identity",
-    color: "#0e7490",
+    color: ENTITY_COLOR_MAP[EntityType.FEDERATED_IDENTITY],
     shape: "circle",
   },
 ];
 
 export const RELATIONSHIP_LEGEND: LegendEntry[] = [
-  { key: "uses", label: "Uses", color: "#10b981", shape: "circle" },
-  { key: "depends_on", label: "Depends On", color: "#52525b", shape: "circle" },
+  { key: "uses", label: "Uses", color: RELATIONSHIP_COLOR_MAP[RelationshipType.USES], shape: "circle" },
+  { key: "depends_on", label: "Depends On", color: RELATIONSHIP_COLOR_MAP[RelationshipType.DEPENDS_ON], shape: "circle" },
   {
     key: "provides_tool",
     label: "Provides Tool",
-    color: "#a855f7",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.PROVIDES_TOOL],
     shape: "circle",
   },
   {
     key: "exposes_cred",
     label: "Exposes Credential",
-    color: "#f59e0b",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.EXPOSES_CRED],
     shape: "circle",
   },
   {
     key: "reaches_tool",
     label: "Credential Reaches Tool",
-    color: "#fbbf24",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.REACHES_TOOL],
     shape: "circle",
   },
   {
     key: "vulnerable_to",
     label: "Vulnerable To",
-    color: "#ef4444",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.VULNERABLE_TO],
     shape: "circle",
   },
   {
     key: "shares_server",
     label: "Shares Server",
-    color: "#22d3ee",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.SHARES_SERVER],
     shape: "circle",
   },
   {
     key: "shares_cred",
     label: "Shares Credential",
-    color: "#f97316",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.SHARES_CRED],
     shape: "circle",
   },
   {
     key: "lateral_path",
     label: "Lateral Path",
-    color: "#ea580c",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.LATERAL_PATH],
     shape: "circle",
   },
-  { key: "acted_as", label: "Acted As", color: "#14b8a6", shape: "circle" },
+  { key: "acted_as", label: "Acted As", color: RELATIONSHIP_COLOR_MAP[RelationshipType.ACTED_AS], shape: "circle" },
   {
     key: "invoked",
     label: "Invoked (runtime)",
-    color: "#10b981",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.INVOKED],
     shape: "circle",
   },
-  { key: "called", label: "Called", color: "#a855f7", shape: "circle" },
+  { key: "called", label: "Called", color: RELATIONSHIP_COLOR_MAP[RelationshipType.CALLED], shape: "circle" },
   {
     key: "accessed",
     label: "Accessed (runtime)",
-    color: "#3b82f6",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.ACCESSED],
     shape: "circle",
   },
   {
     key: "used_credential",
     label: "Used Credential",
-    color: "#facc15",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.USED_CREDENTIAL],
     shape: "circle",
   },
-  { key: "assumes", label: "Assumes", color: "#ea580c", shape: "circle" },
-  { key: "trusts", label: "Trusts", color: "#0891b2", shape: "circle" },
-  { key: "attached", label: "Attached", color: "#d97706", shape: "circle" },
-  { key: "inherits", label: "Inherits", color: "#a16207", shape: "circle" },
-  { key: "can_access", label: "Can Access", color: "#dc2626", shape: "circle" },
+  { key: "assumes", label: "Assumes", color: RELATIONSHIP_COLOR_MAP[RelationshipType.ASSUMES], shape: "circle" },
+  { key: "trusts", label: "Trusts", color: RELATIONSHIP_COLOR_MAP[RelationshipType.TRUSTS], shape: "circle" },
+  { key: "attached", label: "Attached", color: RELATIONSHIP_COLOR_MAP[RelationshipType.ATTACHED], shape: "circle" },
+  { key: "inherits", label: "Inherits", color: RELATIONSHIP_COLOR_MAP[RelationshipType.INHERITS], shape: "circle" },
+  { key: "can_access", label: "Can Access", color: RELATIONSHIP_COLOR_MAP[RelationshipType.CAN_ACCESS], shape: "circle" },
   {
     key: "cross_account_trust",
     label: "Cross-Account Trust",
-    color: "#be123c",
+    color: RELATIONSHIP_COLOR_MAP[RelationshipType.CROSS_ACCOUNT_TRUST],
     shape: "circle",
   },
 ];

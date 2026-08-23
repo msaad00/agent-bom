@@ -298,6 +298,8 @@ def test_server_card_tools_expose_capability_classes():
         # Records a triage decision to the exception store (can suppress a
         # finding); admin-gated findings:write.
         "findings_triage",
+        "request_exception",
+        "approve_exception",
         # Assigns, tickets, and verifies persisted remediation campaigns.
         "risk_campaign_workflow",
     }
@@ -317,6 +319,8 @@ def test_server_card_tools_expose_capability_classes():
         "create_ticket",
         "sync_ticket_status",
         "findings_triage",
+        "request_exception",
+        "approve_exception",
         "risk_campaign_workflow",
         "cloud_side_scan",
     }
@@ -377,6 +381,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
     assert sorted(write_tools) == [
         "access_review",
+        "approve_exception",
         "cloud_side_scan",
         "create_ticket",
         "diff",
@@ -387,6 +392,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "identity_revoke_jit",
         "identity_rotate",
         "ingest_external_scan",
+        "request_exception",
         "risk_campaign_workflow",
         "runtime_evidence_ingest",
         "shield_break_glass",

@@ -1455,6 +1455,41 @@
     ]
   },
   {
+    "name": "list_exceptions",
+    "description": "List tenant-scoped vulnerability exceptions from the canonical lifecycle store.",
+    "arguments": [
+      {"name": "status", "type": "string", "desc": "Optional pending, active, expired, or revoked status filter"},
+      {"name": "limit", "type": "integer", "desc": "Maximum exception records to return"},
+      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
+    ]
+  },
+  {
+    "name": "request_exception",
+    "description": "Request a pending tenant-scoped vulnerability exception through the canonical lifecycle store.",
+    "arguments": [
+      {"name": "vulnerability_id", "type": "string", "desc": "Vulnerability or advisory id"},
+      {"name": "package_name", "type": "string", "desc": "Affected package name, or '*' for any package"},
+      {"name": "server_name", "type": "string", "desc": "Optional server or asset scope"},
+      {"name": "exception_reason", "type": "string", "desc": "Human rationale for the exception request"},
+      {"name": "expires_at", "type": "string", "desc": "Optional timezone-aware ISO-8601 expiry"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "reason", "type": "string", "desc": "Human audit reason"},
+      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
+    ]
+  },
+  {
+    "name": "approve_exception",
+    "description": "Approve a pending tenant-scoped vulnerability exception through the canonical lifecycle store.",
+    "arguments": [
+      {"name": "exception_id", "type": "string", "desc": "Pending exception id to activate"},
+      {"name": "operator_role", "type": "string", "desc": "Authenticated operator role"},
+      {"name": "operator_scopes", "type": "string", "desc": "Comma-separated operator scopes"},
+      {"name": "reason", "type": "string", "desc": "Human audit reason"},
+      {"name": "tenant_id", "type": "string", "desc": "Requested tenant; server binding is authoritative"}
+    ]
+  },
+  {
     "name": "risk_campaign_workflow",
     "description": "List, assign, ticket, and verify tenant-scoped remediation campaigns through the shared persisted workflow.",
     "arguments": [

@@ -759,6 +759,7 @@ class ScanPipeline:
         event = self._steps[step_id]
         event["status"] = StepStatus.SKIPPED
         event["message"] = message
+        event["completed_at"] = _now()
         self._emit(event)
 
     def _emit(self, event: dict[str, Any]) -> None:
@@ -1485,7 +1486,11 @@ def _run_scan_sync(job: ScanJob) -> None:
                     ):
                         with lock:
                             job.progress.append("Posture trend recorded")
-                pipeline.complete_step("output", "Report ready")
+                pipeline.complete_step(
+                    "output",
+                    "Report ready",
+                    {"findings": len(report_json.get("findings") or report_json.get("blast_radius") or [])},
+                )
                 return
 
             pipeline.skip_step("extraction", "No agents to extract")
@@ -1839,7 +1844,11 @@ def _run_scan_sync(job: ScanJob) -> None:
             with lock:
                 job.progress.append("Result side-effect persistence skipped by request")
 
-        pipeline.complete_step("output", "Report ready")
+        pipeline.complete_step(
+            "output",
+            "Report ready",
+            {"findings": len(report_json.get("findings") or report_json.get("blast_radius") or [])},
+        )
 
         # Auto-sync discovered agents to fleet registry
         if side_effects_enabled:

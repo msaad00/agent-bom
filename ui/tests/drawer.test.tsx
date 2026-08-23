@@ -43,4 +43,16 @@ describe("Drawer", () => {
     renderDrawer({ open: false });
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("lets keyboard users resize the panel within the shared drawer contract", () => {
+    renderDrawer();
+    const handle = screen.getByRole("button", { name: "Resize drawer" });
+    const panel = screen.getByRole("dialog").querySelector("aside");
+    expect(panel).not.toBeNull();
+
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(panel).toHaveStyle({ width: "688px" });
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(panel).toHaveStyle({ width: "360px" });
+  });
 });

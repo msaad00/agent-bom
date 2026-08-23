@@ -30,6 +30,8 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         "images + containers",
         "agents + MCP",
         "cloud + control plane",
+        "AI + MCP CLIENTS",
+        "CLOUD + IDENTITY + DATA",
         "discover → scan → correlate → act",
     ):
         assert claim in svg

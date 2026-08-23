@@ -66,6 +66,10 @@ def _make_blast_radius(
     br.exposed_tools = exposed_tools or []
     br.owasp_tags = owasp_tags or []
     br.owasp_mcp_tags = owasp_mcp_tags or []
+    # BlastRadius suppression is an explicit overlay. Keep the mock faithful to
+    # the dataclass default so policy tests exercise active findings unless a
+    # test opts into suppression.
+    br.suppressed = False
 
     return br
 

@@ -14,6 +14,8 @@ from agent_bom.gateway_policy_templates import (
     BASELINE_GATEWAY_SCHEMA_VERSION,
     baseline_gateway_policy,
     render_gateway_baseline_policy,
+    render_self_governance_policy,
+    self_governance_gateway_policy,
 )
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
@@ -102,6 +104,31 @@ def test_gateway_init_policy_cli_writes_default_advisory_policy(tmp_path: Path) 
     rendered = json.loads(output.read_text())
     assert rendered["mode"] == "audit"
     assert {rule["action"] for rule in rendered["rules"]} == {"warn"}
+
+
+def test_self_governance_template_proves_allow_warn_and_block() -> None:
+    safe = self_governance_gateway_policy(mode="enforce")
+    assert evaluate_gateway_policies_detail([safe], "scan_repository", {})[0] is True
+
+    audit = self_governance_gateway_policy(mode="audit")
+    warned = evaluate_gateway_policies_detail([audit], "run_shell", {"command": "whoami"})
+    assert warned[0] is True and "[audit]" in warned[1]
+
+    blocked = evaluate_gateway_policies_detail([safe], "run_shell", {"command": "whoami"})
+    assert blocked[0] is False
+
+
+def test_gateway_init_policy_cli_renders_self_governance_template(tmp_path: Path) -> None:
+    output = tmp_path / "self-governance.json"
+    result = CliRunner().invoke(
+        main,
+        ["gateway", "init-policy", "--template", "self-governance", "--mode", "enforce", "--output", str(output)],
+    )
+    assert result.exit_code == 0
+    rendered = json.loads(output.read_text())
+    assert rendered["policy_id"] == "agent-bom-self-governance"
+    assert rendered["mode"] == "enforce"
+    assert render_self_governance_policy(mode="enforce")["policy_id"] == rendered["policy_id"]
 
 
 def test_gateway_server_with_baseline_warns_and_allows_dangerous_tool() -> None:

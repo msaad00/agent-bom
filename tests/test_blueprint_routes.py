@@ -84,11 +84,19 @@ def test_create_list_and_get_blueprint(client):
 
 def test_seed_endpoint_is_idempotent(client):
     first = client.post("/v1/governance/blueprints/seed").json()
-    assert first["seeded_count"] == 5
+    assert first["seeded_count"] == 6
     second = client.post("/v1/governance/blueprints/seed").json()
     assert second["seeded_count"] == 0
     listing = client.get("/v1/governance/blueprints").json()
-    assert listing["count"] == 5
+    assert listing["count"] == 6
+    assert {item["seeded_from"] for item in listing["blueprints"]} == {
+        "agent_bom_operator",
+        "developer",
+        "security_analyst",
+        "mlops",
+        "finance",
+        "admin",
+    }
     assert all(b["approval_status"] == "approved" for b in listing["blueprints"])
 
 

@@ -14,6 +14,8 @@ GatewayBaselineFormat = Literal["proxy", "control-plane"]
 BASELINE_GATEWAY_POLICY_ID = "agent-bom-gateway-baseline"
 BASELINE_GATEWAY_POLICY_NAME = "agent-bom gateway baseline"
 BASELINE_GATEWAY_SCHEMA_VERSION = "gateway.policy_pack.v1"
+SELF_GOVERNANCE_POLICY_ID = "agent-bom-self-governance"
+SELF_GOVERNANCE_POLICY_NAME = "agent-bom operator self-governance"
 
 
 def baseline_gateway_rules() -> list[GatewayRule]:
@@ -116,6 +118,31 @@ def baseline_gateway_policy(
     )
 
 
+def self_governance_gateway_policy(
+    *,
+    mode: GatewayBaselineMode = "audit",
+    tenant_id: str = "default",
+) -> GatewayPolicy:
+    """Policy for agents that operate on agent-bom itself.
+
+    Safe read/scan/graph calls fall through to allow. Risky execution, secret
+    paths, and unknown egress warn during observation and block in enforcement.
+    Every match is emitted through the gateway's canonical decision/audit path.
+    """
+    policy = baseline_gateway_policy(mode=mode, tenant_id=tenant_id)
+    return policy.model_copy(
+        update={
+            "policy_id": SELF_GOVERNANCE_POLICY_ID,
+            "name": SELF_GOVERNANCE_POLICY_NAME,
+            "description": (
+                "Reference policy for agent-bom's own operator agents: read-first scanner and evidence access, "
+                "audited warnings before fail-closed enforcement for mutation, secret paths, and unknown egress."
+            ),
+            "bound_agents": ["agent-bom-operator"],
+        }
+    )
+
+
 def render_gateway_baseline_policy(
     *,
     mode: GatewayBaselineMode = "audit",
@@ -144,12 +171,42 @@ def render_gateway_baseline_policy(
     return bundle
 
 
+def render_self_governance_policy(
+    *,
+    mode: GatewayBaselineMode = "audit",
+    output_format: GatewayBaselineFormat = "proxy",
+    tenant_id: str = "default",
+) -> dict:
+    policy = self_governance_gateway_policy(mode=mode, tenant_id=tenant_id)
+    if output_format == "control-plane":
+        payload = policy.model_dump(mode="json")
+        payload["schema_version"] = BASELINE_GATEWAY_SCHEMA_VERSION
+        return payload
+    if output_format != "proxy":
+        raise ValueError(f"unsupported gateway baseline format: {output_format}")
+    bundle = gateway_policies_to_proxy_bundle([policy])
+    bundle.update(
+        {
+            "schema_version": BASELINE_GATEWAY_SCHEMA_VERSION,
+            "name": SELF_GOVERNANCE_POLICY_NAME,
+            "policy_id": SELF_GOVERNANCE_POLICY_ID,
+            "mode": mode,
+            "description": policy.description,
+        }
+    )
+    return bundle
+
+
 __all__ = [
     "BASELINE_GATEWAY_POLICY_ID",
     "BASELINE_GATEWAY_POLICY_NAME",
     "BASELINE_GATEWAY_SCHEMA_VERSION",
+    "SELF_GOVERNANCE_POLICY_ID",
+    "SELF_GOVERNANCE_POLICY_NAME",
     "baseline_gateway_policy",
     "baseline_gateway_rules",
     "conditional_access_rules",
     "render_gateway_baseline_policy",
+    "render_self_governance_policy",
+    "self_governance_gateway_policy",
 ]

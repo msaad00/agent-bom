@@ -38,6 +38,7 @@ def iter_scan_spine_findings(
     scan_id: str | None = None,
     scope: Mapping[str, str] | None = None,
     status: str = "all",
+    sanitize: bool = True,
 ) -> Iterator[dict[str, Any]]:
     """Yield the in-memory scan-spine findings ``/v1/findings`` shows.
 
@@ -57,6 +58,7 @@ def iter_scan_spine_findings(
         scan_id=scan_id,
         scope=scope,
         status=status,
+        sanitize=sanitize,
     )
 
 
@@ -72,6 +74,7 @@ def iter_current_findings(
     page_size: int = _PAGE_SIZE,
     hub: Any | None = None,
     include_scan_spine: bool = True,
+    sanitize: bool = True,
 ) -> Iterator[dict[str, Any]]:
     """Yield current findings for ``tenant_id`` one row at a time (bounded).
 
@@ -90,6 +93,7 @@ def iter_current_findings(
             scan_id=scan_id,
             scope=scope,
             status=status,
+            sanitize=sanitize,
         )
 
     if hub is None:
@@ -121,9 +125,12 @@ def iter_current_findings(
         if status != "all":
             page_kwargs["status"] = status
         page, _total, next_cursor = list_page(tenant_id, **page_kwargs)
-        from agent_bom.finding_scope import safe_finding_response_payload
+        if sanitize:
+            from agent_bom.finding_scope import safe_finding_response_payload
 
-        yield from (safe_finding_response_payload(row) for row in page)
+            yield from (safe_finding_response_payload(row) for row in page)
+        else:
+            yield from page
         if not next_cursor:
             break
         cursor = next_cursor

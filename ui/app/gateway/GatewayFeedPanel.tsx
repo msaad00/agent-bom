@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   type GatewayFeedActionType,
@@ -10,6 +10,8 @@ import {
 } from "@/lib/api";
 import { getSessionWebSocketToken } from "@/lib/auth";
 import { getConfiguredApiUrl } from "@/lib/runtime-config";
+import { ApiError } from "@/lib/api-errors";
+import { mergeGatewayEvents } from "@/lib/gateway-feed";
 import {
   Activity,
   Ban,
@@ -87,29 +89,75 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
   const [actionFilter, setActionFilter] = useState<GatewayFeedActionType | "">("");
   const [wsConnected, setWsConnected] = useState(false);
   const [health, setHealth] = useState<GatewayFeedHealth>(UNAVAILABLE_HEALTH);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const [feedSource, setFeedSource] = useState<string>("not loaded");
+  const [feedCompleteness, setFeedCompleteness] = useState<"complete" | "partial">("partial");
   const wsRef = useRef<WebSocket | null>(null);
+  const eventsRef = useRef<GatewayFeedEvent[]>([]);
 
-  const load = () => {
+  const applyLatest = useCallback((feed: Awaited<ReturnType<typeof api.getGatewayFeed>>, preserveHistory: boolean) => {
+    const incoming = Array.isArray(feed.events) ? feed.events : [];
+    const merged = preserveHistory ? mergeGatewayEvents(eventsRef.current, incoming) : incoming;
+    eventsRef.current = merged;
+    setEvents(merged);
+    setHealth(feed.health ?? UNAVAILABLE_HEALTH);
+    setFeedSource(feed.source ?? "degraded_single_process");
+    setFeedCompleteness(feed.completeness?.status ?? "partial");
+    if (!preserveHistory || eventsRef.current.length === incoming.length) {
+      setNextCursor(feed.next_cursor ?? null);
+      setHasMore(Boolean(feed.has_more));
+    }
+  }, []);
+
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
     void Promise.allSettled([api.getGatewayFeed(200)])
       .then(([feedResult]) => {
         const failures: string[] = [];
         if (feedResult.status === "fulfilled") {
-          setEvents(Array.isArray(feedResult.value.events) ? feedResult.value.events : []);
-          setHealth(feedResult.value.health ?? UNAVAILABLE_HEALTH);
+          applyLatest(feedResult.value, false);
         } else {
           failures.push(`feed: ${feedResult.reason?.message ?? "request failed"}`);
         }
         setError(failures.length === 0 ? null : failures.join("; "));
       })
       .finally(() => setLoading(false));
+  }, [applyLatest]);
+
+  const loadOlder = async () => {
+    if (!nextCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    setHistoryNotice(null);
+    try {
+      const page = await api.getGatewayFeed(200, nextCursor);
+      const merged = mergeGatewayEvents(eventsRef.current, Array.isArray(page.events) ? page.events : []);
+      eventsRef.current = merged;
+      setEvents(merged);
+      setNextCursor(page.next_cursor ?? null);
+      setHasMore(Boolean(page.has_more));
+      setFeedSource(page.source ?? feedSource);
+      setFeedCompleteness(page.completeness?.status ?? "partial");
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 410) {
+        const latest = await api.getGatewayFeed(200);
+        applyLatest(latest, false);
+        setHistoryNotice("Retained history moved forward; restarted from the newest durable event.");
+      } else {
+        setError(caught instanceof Error ? caught.message : "Could not load older gateway activity");
+      }
+    } finally {
+      setLoadingOlder(false);
+    }
   };
 
   useEffect(() => {
     const timer = window.setTimeout(() => load(), 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [load]);
 
   // Reuse the existing proxy metrics WebSocket for a live indicator + a light
   // periodic refresh. When new total_tool_calls/total_blocked counters tick we
@@ -149,8 +197,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
             lastSeen = total;
             lastRefresh = now;
             void api.getGatewayFeed(200).then((feedResult) => {
-              setEvents(Array.isArray(feedResult.events) ? feedResult.events : []);
-              setHealth(feedResult.health ?? UNAVAILABLE_HEALTH);
+              applyLatest(feedResult, true);
               onActivity?.();
             });
           }
@@ -165,7 +212,7 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
       clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, [onActivity]);
+  }, [applyLatest, onActivity]);
 
   const filtered = actionFilter ? events.filter((e) => e.action_type === actionFilter) : events;
   const isLive = health.state === "live" && health.live && wsConnected;
@@ -185,6 +232,10 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
             </h3>
             <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
               Tool-call authorization, data filters, and blocks — per agent and target
+            </p>
+            <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+              {feedSource === "gateway_activity_ledger" ? "Durable ledger" : "Single-process fallback"}
+              {" · "}{feedCompleteness === "complete" ? "Complete retained window" : "Partial retained window"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -246,6 +297,12 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
           <div className="text-center py-8 text-xs text-red-400">{error}</div>
         )}
 
+        {historyNotice && !loading && (
+          <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+            {historyNotice}
+          </div>
+        )}
+
         {!loading && !error && filtered.length === 0 && (
           <div className="text-center py-10">
             <ShieldCheck className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
@@ -256,11 +313,21 @@ export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
         )}
 
         {!loading && !error && filtered.length > 0 && (
-          <div className="space-y-1 max-h-[32rem] overflow-y-auto">
-            {filtered.map((event, i) => (
-              <FeedRow key={`${event.ts}-${event.agent}-${i}`} event={event} />
-            ))}
-          </div>
+          <>
+            <div className="space-y-1 max-h-[32rem] overflow-y-auto">
+              {filtered.map((event, i) => (
+                <FeedRow key={event.event_id || `${event.ts}-${event.agent}-${i}`} event={event} />
+              ))}
+            </div>
+            {hasMore && nextCursor ? (
+              <div className="mt-3 flex justify-center border-t border-[var(--border-subtle)] pt-3">
+                <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="graph-page-action disabled:opacity-50">
+                  {loadingOlder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+                  Load older retained activity
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </div>

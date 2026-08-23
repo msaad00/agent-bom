@@ -67,6 +67,14 @@ def gateway_group() -> None:
 
 @gateway_group.command("init-policy")
 @click.option(
+    "--template",
+    "template_name",
+    type=click.Choice(["baseline", "self-governance"], case_sensitive=False),
+    default="baseline",
+    show_default=True,
+    help="Render the general baseline or the agent-bom operator self-governance policy.",
+)
+@click.option(
     "--output",
     "-o",
     "output_path",
@@ -96,14 +104,20 @@ def gateway_group() -> None:
     show_default=True,
     help="Tenant id embedded in control-plane policy output.",
 )
-def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id: str) -> None:
+def init_policy_cmd(template_name: str, output_path: Path, mode: str, output_format: str, tenant_id: str) -> None:
     """Render the bundled secure-by-default gateway baseline policy."""
-    from agent_bom.gateway_policy_templates import GatewayBaselineFormat, GatewayBaselineMode, render_gateway_baseline_policy
+    from agent_bom.gateway_policy_templates import (
+        GatewayBaselineFormat,
+        GatewayBaselineMode,
+        render_gateway_baseline_policy,
+        render_self_governance_policy,
+    )
     from agent_bom.proxy_policy import summarize_policy_bundle
 
     mode_value = cast(GatewayBaselineMode, mode.lower())
     format_value = cast(GatewayBaselineFormat, output_format.lower())
-    rendered = render_gateway_baseline_policy(
+    renderer = render_self_governance_policy if template_name.lower() == "self-governance" else render_gateway_baseline_policy
+    rendered = renderer(
         mode=mode_value,
         output_format=format_value,
         tenant_id=tenant_id,
@@ -112,13 +126,13 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
 
     if output_format.lower() == "proxy":
         summary = summarize_policy_bundle(rendered)
-        click.echo(f"Gateway baseline policy written to {output_path}")
+        click.echo(f"Gateway {template_name.lower()} policy written to {output_path}")
         click.echo(f"Use it with: agent-bom gateway serve --policy {output_path} --upstreams <upstreams.yaml>")
         click.echo(
             f"Mode={mode.lower()} rules={summary['total_rules']} blocks={summary['blocking_rules']} warnings={summary['advisory_rules']}"
         )
     else:
-        click.echo(f"Gateway baseline control-plane policy written to {output_path}")
+        click.echo(f"Gateway {template_name.lower()} control-plane policy written to {output_path}")
 
 
 @gateway_group.command("serve")

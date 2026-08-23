@@ -61,6 +61,7 @@ export interface ScanJob {
   tenant_id?: string | undefined;
   source_id?: string | undefined;
   triggered_by?: string | undefined;
+  schedule_id?: string | undefined;
   started_at?: string | undefined;
   completed_at?: string | undefined;
   request: ScanRequest;
@@ -82,7 +83,8 @@ export interface ScanResult {
   warnings?: string[] | undefined;
   scan_timestamp?: string | undefined;
   generated_at?: string | undefined;
-  scan_run?: Record<string, unknown> | undefined;
+  scan_run?: ScanRunEvidence | undefined;
+  vuln_data_freshness?: VulnDataFreshness | undefined;
   tool_version?: string | undefined;
   /** Context metadata — auto-detected from scan sources */
   has_mcp_context?: boolean | undefined;
@@ -101,6 +103,34 @@ export interface ScanResult {
   skill_audit?: Record<string, unknown> | undefined;
   iac_findings?: unknown | undefined;
   sast?: Record<string, unknown> | undefined;
+}
+
+export interface ScanRunIssue {
+  code: string;
+  stage: string;
+  source: string;
+  message: string;
+  severity: "warning" | "error";
+  affects_coverage: boolean;
+}
+
+export interface ScanRunEvidence extends Record<string, unknown> {
+  outcome?: "complete" | "partial" | "failed" | undefined;
+  issues?: ScanRunIssue[] | undefined;
+  warning_count?: number | undefined;
+  requested_scope_count?: number | undefined;
+  complete_scope_count?: number | undefined;
+  incomplete_scope_count?: number | undefined;
+  scopes?: Record<string, unknown>[] | undefined;
+}
+
+export interface VulnDataFreshness {
+  status?: string | undefined;
+  source?: string | undefined;
+  last_updated?: string | null | undefined;
+  age_hours?: number | null | undefined;
+  age_days?: number | null | undefined;
+  stale?: boolean | undefined;
 }
 
 export interface GraphPagination {
@@ -2714,9 +2744,17 @@ export type GatewayFeedActionType =
 
 export interface GatewayFeedEvent {
   event_id?: string;
+  decision_id?: string;
   ts: string;
   agent: string;
+  identity_id?: string;
   profile_id?: string;
+  profile_revision?: number;
+  blueprint_id?: string;
+  blueprint_revision?: number;
+  policy_ids?: string[];
+  reason_code?: string;
+  development_mode?: boolean;
   action_type: GatewayFeedActionType;
   target: string;
   upstream?: string;
@@ -2728,9 +2766,20 @@ export interface GatewayFeedEvent {
   tenant: string;
   shadow: boolean;
   source: string;
+  ingest_ordinal?: number | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
   cost_usd?: number | null;
+}
+
+export interface GatewayFeedCompleteness {
+  status: "complete" | "partial";
+  reasons: string[];
+  server_ordered: boolean;
+  retention_floor_ordinal: number;
+  latest_ordinal: number;
+  max_events_per_tenant: number;
+  dedupe_window_events: number;
 }
 
 export type GatewayFeedHealthState = "live" | "stale" | "unavailable" | "sample";
@@ -2750,6 +2799,10 @@ export interface GatewayFeedResponse {
   generated_at: string;
   count: number;
   events: GatewayFeedEvent[];
+  next_cursor: string | null;
+  has_more: boolean;
+  source: "gateway_activity_ledger" | "degraded_single_process";
+  completeness: GatewayFeedCompleteness;
   health: GatewayFeedHealth;
 }
 

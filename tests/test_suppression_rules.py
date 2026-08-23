@@ -116,3 +116,61 @@ def test_needs_review_feedback_does_not_suppress_actionability():
     assert summary == {"evaluated": 1, "suppressed": 0}
     assert blast_radii[0].suppressed is False
     assert blast_radii[0].risk_score == 8.4
+
+
+def test_approved_exception_has_one_suppression_contract_across_six_surfaces():
+    from agent_bom.cli.agents._context import ScanContext
+    from agent_bom.cli.agents._post import compute_exit_code
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.finding_views import active_cve_findings
+    from agent_bom.output.sarif import to_sarif
+    from agent_bom.vex import VexStatus, active_blast_radii, generate_vex
+
+    store = InMemoryExceptionStore()
+    store.put(
+        VulnException(
+            vuln_id="CVE-2026-12345",
+            package_name="requests",
+            server_name="github",
+            reason="[finding_feedback:accepted_risk] approved until upgrade window",
+            status=ExceptionStatus.APPROVED,
+            tenant_id="tenant-a",
+        )
+    )
+    br = _blast_radius()
+    apply_tenant_suppression_rules([br], store, tenant_id="tenant-a")
+    report = AIBOMReport(blast_radii=[br])
+
+    # Console and MCP both consume the canonical active-finding views.
+    assert active_cve_findings(report) == []
+    assert active_blast_radii([br]) == []
+
+    # JSON preserves the evidence overlay rather than deleting the finding.
+    json_finding = to_json(report)["blast_radius"][0]
+    assert json_finding["suppressed"] is True
+    assert json_finding["suppression_state"] == "accepted_risk"
+
+    # SARIF emits the standard suppressions[] contract.
+    sarif_result = to_sarif(report)["runs"][0]["results"][0]
+    assert sarif_result["suppressions"][0]["properties"]["suppression_state"] == "accepted_risk"
+
+    # VEX retains the affected status and records the approved acceptance.
+    statement = generate_vex(report).statements[0]
+    assert statement.status == VexStatus.AFFECTED
+    assert "approved until upgrade window" in (statement.action_statement or "")
+
+    # The CLI severity gate sees the same inactive finding and exits cleanly.
+    ctx = ScanContext(con=None, quiet=True, blast_radii=[br], report=report)
+    assert (
+        compute_exit_code(
+            ctx,
+            fail_on_severity="high",
+            warn_on_severity=None,
+            fail_on_kev=False,
+            fail_if_ai_risk=False,
+            push_url=None,
+            push_api_key=None,
+            quiet=True,
+        )
+        == 0
+    )

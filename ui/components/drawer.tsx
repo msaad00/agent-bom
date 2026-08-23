@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -50,6 +51,8 @@ export interface DrawerProps {
   bodyClassName?: string;
   /** Optional keyboard-accessible resize handle or other panel-edge control. */
   panelLeading?: ReactNode;
+  /** Allow operators to widen or narrow the panel. Enabled by default. */
+  resizable?: boolean;
   children: ReactNode;
 }
 
@@ -74,10 +77,56 @@ export function Drawer({
   panelClassName,
   bodyClassName,
   panelLeading,
+  resizable = true,
   children,
 }: DrawerProps) {
   const [entered, setEntered] = useState(false);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+  const clampPanelWidth = useCallback((width: number): number => {
+    const viewport = typeof window === "undefined" ? 1440 : window.innerWidth;
+    return Math.round(Math.min(Math.max(width, 360), viewport * 0.92));
+  }, []);
+
+  const setWidthByDelta = useCallback(
+    (delta: number) => {
+      const current =
+        panelWidth ?? panelRef.current?.getBoundingClientRect().width ?? 640;
+      setPanelWidth(clampPanelWidth((current > 0 ? current : 640) + delta));
+    },
+    [clampPanelWidth, panelWidth],
+  );
+
+  const beginResize = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const measured = panelRef.current?.getBoundingClientRect().width ?? 640;
+      const startWidth = measured > 0 ? measured : 640;
+      document.body.style.cursor = "ew-resize";
+      document.body.style.userSelect = "none";
+
+      const onMove = (moveEvent: PointerEvent) => {
+        setPanelWidth(clampPanelWidth(startWidth + startX - moveEvent.clientX));
+      };
+      const cleanup = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", cleanup);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        resizeCleanupRef.current = null;
+      };
+      resizeCleanupRef.current?.();
+      resizeCleanupRef.current = cleanup;
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", cleanup, { once: true });
+    },
+    [clampPanelWidth],
+  );
+
+  useEffect(() => () => resizeCleanupRef.current?.(), []);
 
   useEffect(() => {
     if (!open) {
@@ -148,11 +197,42 @@ export function Drawer({
       <aside
         ref={panelRef}
         tabIndex={-1}
-        style={panelStyle}
+        style={
+          panelWidth == null
+            ? panelStyle
+            : { ...panelStyle, width: `${panelWidth}px`, maxWidth: "92vw" }
+        }
         className={`relative flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-3 outline-none transition-transform duration-200 ease-out motion-reduce:transition-none ${
           SIZE_CLASS[size]
         } ${entered ? "translate-x-0" : "translate-x-full"} ${panelClassName ?? ""}`}
       >
+        {resizable && !panelLeading ? (
+          <button
+            type="button"
+            aria-label="Resize drawer"
+            aria-orientation="vertical"
+            title="Drag or use arrow keys to resize"
+            onPointerDown={beginResize}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                setWidthByDelta(48);
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setWidthByDelta(-48);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                setPanelWidth(360);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                setPanelWidth(clampPanelWidth(window.innerWidth * 0.92));
+              }
+            }}
+            className="absolute inset-y-0 -left-2 z-10 hidden w-4 cursor-ew-resize touch-none items-center justify-center sm:flex"
+          >
+            <span className="h-14 w-1 rounded-full bg-[color:var(--border-strong)] transition group-hover:bg-[color:var(--accent-mint)]" />
+          </button>
+        ) : null}
         {panelLeading}
         <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border-subtle)] p-5">
           <div className="flex min-w-0 items-start gap-2">

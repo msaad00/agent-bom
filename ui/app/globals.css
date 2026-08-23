@@ -527,13 +527,57 @@ body {
 .agents-search-icon { @apply pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]; }
 .agents-inline-link { @apply flex items-center gap-1 text-sm text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]; }
 .agents-panel { @apply overflow-hidden rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]; }
-.agents-emerald-chip { @apply rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300; }
-.agents-section-label-emerald { @apply mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300; }
+.agents-emerald-chip { @apply rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300; }
+.agents-section-label-emerald { @apply mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300; }
 .agents-back-link { @apply mb-6 flex items-center gap-1 text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]; }
 .agents-mini-badge { @apply rounded bg-[color:var(--surface-elevated)] px-2 py-0.5 text-xs text-[color:var(--text-secondary)]; }
-.agents-warning-chip { @apply rounded border border-yellow-800 bg-yellow-950 px-2 py-0.5 font-mono text-[11px] text-yellow-300; }
+.agents-warning-chip { @apply rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[11px] text-amber-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-300; }
 .agents-elevated-card { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3; }
 .agents-stat-card { @apply rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]/80 px-3 py-2; }
+.agents-error-panel { @apply rounded-lg border border-red-300 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300; }
+.agents-observed-panel { @apply rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/60 dark:bg-sky-950/20; }
+.agents-inventory-panel { @apply rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20; }
+.agents-credential-panel { @apply rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-yellow-800/50 dark:bg-yellow-950/30; }
+.agents-danger-chip { @apply rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300; }
+.agents-auth-chip { @apply rounded border border-sky-300 bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300; }
+.agents-tool-chip { @apply rounded border border-purple-300 bg-purple-50 px-2 py-0.5 text-xs text-purple-800 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300; }
+.agents-danger-callout { @apply rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300; }
+.agents-intel-card { @apply rounded border border-cyan-300 bg-cyan-50 px-3 py-2 dark:border-cyan-900/60 dark:bg-cyan-950/15; }
+.agents-intel-chip { @apply rounded border border-cyan-300 bg-cyan-50 px-1.5 py-0.5 text-[10px] uppercase text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-300; }
+.agents-action-chip { @apply rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300; }
+.agents-trust-card { @apply rounded-lg border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20; }
+
+/* Compact, high-contrast topology drill-down. Presentation stays in CSS so
+ * the client route does not pay JS bundle weight for long utility strings. */
+.topology-detail-body { @apply !overflow-hidden !bg-[var(--surface-panel)] !p-0; }
+.topology-detail-header { @apply border-b border-[var(--border-strong)] bg-[var(--surface)] px-5 pt-4; }
+.topology-detail-tab { @apply border-b-2 px-3 py-2 text-xs font-semibold transition-colors; }
+.topology-detail-tab-active { @apply border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]; }
+.topology-detail-tab-idle { @apply border-transparent text-[var(--text-tertiary)] hover:text-[var(--foreground)]; }
+.topology-detail-count { @apply ml-1.5 rounded-full border border-[var(--accent-border)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px]; }
+.topology-detail-scroll { @apply min-h-0 flex-1 overflow-y-auto bg-[var(--surface-panel)] p-5; }
+.topology-detail-shared { @apply rounded-xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-4; }
+.topology-detail-summary { @apply rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] p-4 shadow-sm; }
+.topology-detail-action { @apply rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 transition-colors hover:border-emerald-500/45 hover:bg-emerald-500/5; }
+.topology-detail-metric { @apply rounded-lg border border-[var(--border-strong)] border-l-[3px] px-3 py-2 shadow-sm; }
+.topology-detail-metric-heading { @apply flex items-center gap-1.5; }
+.topology-detail-metric-icon { @apply inline-flex rounded-md bg-[var(--surface)] p-1 text-[var(--accent-strong)] shadow-sm ring-1 ring-[var(--border-subtle)]; }
+.topology-detail-metric-label { @apply text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]; }
+.topology-detail-metric-label-danger { @apply text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700 dark:text-red-300; }
+.topology-detail-metric-value { @apply mt-1 font-mono text-base font-semibold text-[var(--foreground)]; }
+.topology-detail-metric-value-danger { @apply mt-1 font-mono text-base font-semibold text-red-700 dark:text-red-100; }
+.topology-detail-metric-danger { @apply border-l-red-500 bg-red-500/5; }
+.topology-detail-metric-blue { @apply border-l-blue-500 bg-blue-500/5; }
+.topology-detail-metric-violet { @apply border-l-violet-500 bg-violet-500/5; }
+.topology-detail-metric-cyan { @apply border-l-cyan-500 bg-cyan-500/5; }
+.topology-detail-metric-neutral { @apply border-l-emerald-500 bg-emerald-500/5; }
+.topology-detail-metric-danger .topology-detail-metric-icon { @apply text-red-600 dark:text-red-300; }
+.topology-detail-metric-blue .topology-detail-metric-icon { @apply text-blue-600 dark:text-blue-300; }
+.topology-detail-metric-violet .topology-detail-metric-icon { @apply text-violet-600 dark:text-violet-300; }
+.topology-detail-metric-cyan .topology-detail-metric-icon { @apply text-cyan-700 dark:text-cyan-300; }
+.topology-detail-service { @apply rounded-xl border border-[var(--border-strong)] border-l-[3px] bg-[var(--surface)] px-3 py-2.5 shadow-sm; }
+.topology-detail-service-credential { @apply border-l-amber-500; }
+.topology-detail-service-normal { @apply border-l-[var(--accent)]; }
 
 /* Stat card gradient backgrounds — driven by severity/status tokens */
 .stat-critical {

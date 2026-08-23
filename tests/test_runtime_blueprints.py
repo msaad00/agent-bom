@@ -14,7 +14,7 @@ from agent_bom.runtime_blueprints import (
 def test_runtime_role_blueprints_are_canonical_profiles() -> None:
     blueprints = runtime_role_blueprints()
     ids = {blueprint["blueprint_id"] for blueprint in blueprints}
-    assert ids == {"developer", "security_analyst", "mlops", "finance", "admin"}
+    assert ids == {"agent_bom_operator", "developer", "security_analyst", "mlops", "finance", "admin"}
     for blueprint in blueprints:
         assert blueprint["allowed_tool_categories"]
         assert blueprint["restricted_tool_categories"]
@@ -36,6 +36,7 @@ def test_runtime_blueprints_api_lists_and_gets_profiles() -> None:
     assert listing["schema_version"] == "runtime.blueprints.v1"
     assert listing["tenant_id"] == "default"
     assert [blueprint["blueprint_id"] for blueprint in listing["blueprints"]] == [
+        "agent_bom_operator",
         "developer",
         "security_analyst",
         "mlops",
@@ -46,6 +47,10 @@ def test_runtime_blueprints_api_lists_and_gets_profiles() -> None:
     finance = client.get("/v1/runtime/blueprints/finance").json()
     assert finance["blueprint"]["default_decision"] == "block"
     assert "payment_write" in finance["blueprint"]["approval_required_for"]
+
+    operator = client.get("/v1/runtime/blueprints/agent-bom-operator").json()["blueprint"]
+    assert operator["default_decision"] == "block"
+    assert "graph_query" in operator["allowed_tool_categories"]
 
     missing = client.get("/v1/runtime/blueprints/not-real")
     assert missing.status_code == 404

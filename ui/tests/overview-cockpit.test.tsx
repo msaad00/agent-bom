@@ -331,22 +331,14 @@ describe("OverviewCockpit", () => {
     expect(screen.queryByText(/799 open CVEs · 440 critical · 1337 high/i)).not.toBeInTheDocument();
   });
 
-  it("opens with a complete team journey from reachable risk to verified remediation", () => {
+  it("keeps the command center evidence-first instead of repeating an onboarding journey", () => {
     render(<OverviewCockpit {...baseProps} exposurePaths={[baseProps.topPath]} />);
 
-    const journey = screen.getByTestId("overview-team-journey");
-    expect(within(journey).getByText("Turn exposure into a verified fix")).toBeInTheDocument();
-    expect(within(journey).getByText("Prioritize reachable risk")).toBeInTheDocument();
-    expect(within(journey).getByText("Assign owner and SLA")).toBeInTheDocument();
-    expect(within(journey).getByText("Verify with new evidence")).toBeInTheDocument();
-    expect(within(journey).getByRole("link", { name: /Investigate 1 ranked path/i })).toHaveAttribute(
-      "href",
-      "/security-graph",
-    );
-    expect(within(journey).getByRole("link", { name: /Open remediation/i })).toHaveAttribute(
-      "href",
-      "/remediation",
-    );
+    expect(screen.queryByTestId("overview-team-journey")).not.toBeInTheDocument();
+    expect(screen.queryByText("Turn exposure into a verified fix")).not.toBeInTheDocument();
+    expect(screen.getByText("Risk posture")).toBeInTheDocument();
+    expect(screen.getByText("Open issues")).toBeInTheDocument();
+    expect(screen.getByText("Top risks")).toBeInTheDocument();
   });
 
   it("shows the posture score as a percentage alongside the letter grade", () => {

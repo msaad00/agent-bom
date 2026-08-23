@@ -156,16 +156,16 @@ const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
 // ─── Edge colors ─────────────────────────────────────────────────────────────
 
 const EDGE_COLORS: Record<string, string> = {
-  uses: "#10b981", // emerald  agent→server
-  exposes: "#f59e0b", // amber    server→credential
-  exposes_cred: "#f59e0b", // amber    server→credential
-  provides: "#a855f7", // purple   server→tool
-  provides_tool: "#a855f7", // purple   server→tool
-  vulnerable_to: "#ef4444", // red      server→vulnerability
-  shares_server: "#22d3ee", // cyan     agent↔agent/shared-server hub
-  shares_credential: "#f97316", // orange agent↔agent/shared-credential node
-  shares_cred: "#f97316", // orange   agent↔agent/shared-credential node
-  member_of: "#60a5fa", // blue     identity→agent
+  uses: RELATIONSHIP_COLOR_MAP.uses,
+  exposes: RELATIONSHIP_COLOR_MAP.exposes_cred,
+  exposes_cred: RELATIONSHIP_COLOR_MAP.exposes_cred,
+  provides: RELATIONSHIP_COLOR_MAP.provides_tool,
+  provides_tool: RELATIONSHIP_COLOR_MAP.provides_tool,
+  vulnerable_to: RELATIONSHIP_COLOR_MAP.vulnerable_to,
+  shares_server: RELATIONSHIP_COLOR_MAP.shares_server,
+  shares_credential: RELATIONSHIP_COLOR_MAP.shares_cred,
+  shares_cred: RELATIONSHIP_COLOR_MAP.shares_cred,
+  member_of: RELATIONSHIP_COLOR_MAP.member_of,
 };
 
 // ─── Builder ─────────────────────────────────────────────────────────────────

@@ -1,11 +1,11 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 81 MCP tools to any MCP client.
+agent-bom runs as an MCP server, exposing 84 MCP tools to any MCP client.
 The server card also advertises 6 resources and 8 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
-Most tools are read-only. 17 write-annotated tools cover scan-history
+Most tools are read-only. 19 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
-review, finding triage, remediation campaigns, and ticket workflows.
+review, finding triage and exception approval, remediation campaigns, and ticket workflows.
 Each requires `operator_role=admin`, its tool-specific write scope, and an audit
 reason. The registered scope families are `cloud:write`, `findings:write`,
 `identity:write`, `shield:write`, and `ticketing:write`.

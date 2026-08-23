@@ -43,6 +43,26 @@ import {
   domainFindingsForScan,
 } from "@/lib/scan-domain-findings";
 
+function triggerLabel(job: ScanJob | null): string | null {
+  if (!job?.triggered_by) return null;
+  const normalized = job.triggered_by.replaceAll("_", " ");
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function freshnessLabel(job: ScanJob | null): string | null {
+  const freshness = job?.result?.vuln_data_freshness;
+  if (!freshness) return null;
+  if (freshness.age_hours != null && freshness.age_hours < 48) {
+    return `Vuln data ${Math.max(0, Math.round(freshness.age_hours))}h old`;
+  }
+  if (freshness.age_days != null) {
+    return `Vuln data ${Math.max(0, Math.round(freshness.age_days))}d old`;
+  }
+  if (freshness.status) return `Vuln data ${freshness.status}`;
+  if (freshness.last_updated) return `Vuln data updated ${freshness.last_updated}`;
+  return "Vuln data freshness unknown";
+}
+
 // ── Result-stat extraction ───────────────────────────────────────────────────
 
 interface ResultStat {
@@ -275,6 +295,15 @@ export function JobPipelinePanel({
   const selectedMeta = selectedStepId
     ? PIPELINE_GRAPH.find((node) => node.id === selectedStepId)
     : undefined;
+  const selectedIssues = useMemo(
+    () =>
+      (job?.result?.scan_run?.issues ?? []).filter(
+        (issue) => issue.stage === selectedBackendStep || issue.stage === selectedStepId,
+      ),
+    [job?.result?.scan_run?.issues, selectedBackendStep, selectedStepId],
+  );
+  const provenance = triggerLabel(job);
+  const freshness = freshnessLabel(job);
 
   return (
     <div
@@ -313,6 +342,36 @@ export function JobPipelinePanel({
                   <span className="text-[var(--foreground)]">{stat.value}</span> {stat.label}
                 </span>
               ))}
+            </div>
+          ) : null}
+          {provenance || job?.schedule_id || job?.source_id || freshness ? (
+            <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Scan provenance and freshness">
+              {provenance ? (
+                <span className="rounded-md border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+                  Trigger: {provenance}
+                </span>
+              ) : null}
+              {job?.schedule_id ? (
+                <span className="rounded-md border border-[var(--border-subtle)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                  Schedule {job.schedule_id}
+                </span>
+              ) : null}
+              {job?.source_id ? (
+                <span className="rounded-md border border-[var(--border-subtle)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                  Source {job.source_id}
+                </span>
+              ) : null}
+              {freshness ? (
+                <span
+                  className={`rounded-md border px-2 py-0.5 text-[11px] ${
+                    job?.result?.vuln_data_freshness?.stale
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {freshness}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -412,6 +471,30 @@ export function JobPipelinePanel({
                   >
                     {v} {k}
                   </span>
+                ))}
+              </div>
+            ) : null}
+            {selectedIssues.length > 0 ? (
+              <div className="mt-3 space-y-2" aria-label="Stage execution issues">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-300">
+                  Collector issues
+                </p>
+                {selectedIssues.map((issue) => (
+                  <div
+                    key={`${issue.code}-${issue.source}-${issue.message}`}
+                    className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-medium text-amber-700 dark:text-amber-200">
+                      <span>{issue.source}</span>
+                      <span>{issue.code}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-4 text-[var(--text-secondary)]">
+                      {issue.message}
+                    </p>
+                    <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+                      {issue.affects_coverage ? "Coverage affected" : "Coverage retained"}
+                    </p>
+                  </div>
                 ))}
               </div>
             ) : null}

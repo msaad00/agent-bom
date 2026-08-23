@@ -1,7 +1,9 @@
 """Structured ignore/allowlist support for agent-bom.
 
 Reads ``.agent-bom-ignore.yaml`` (or a path specified via ``--ignore-file``)
-and filters blast-radius findings before output.
+and marks matching blast-radius findings with the canonical suppression
+overlay before output. Evidence remains available to JSON, SARIF, and VEX
+consumers while active views and severity gates exclude approved suppressions.
 
 Ignore file format::
 
@@ -119,7 +121,13 @@ def _looks_like_flat_id_list(text: str) -> bool:
 
 
 def _parse_flat_id_list(text: str) -> list[dict[str, Any]]:
-    """Parse a newline-delimited CVE/GHSA/OSV id list into ignore entries."""
+    """Parse legacy flat rules into the canonical structured entry format.
+
+    The pre-structured ``.agent-bom-ignore`` syntax also allowed
+    ``ecosystem:package`` and ``CVE:ecosystem:package``. Keep accepting those
+    rules, but normalize them here so every consumer evaluates one format and
+    one expiry gate.
+    """
     entries: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw in text.splitlines():
@@ -130,7 +138,26 @@ def _parse_flat_id_list(text: str) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
-        entries.append({"id": line, "reason": "Suppressed via flat ignore list"})
+        parts = line.split(":")
+        if len(parts) == 2 and not parts[0].upper().startswith(("CVE-", "GHSA-")):
+            entries.append(
+                {
+                    "ecosystem": parts[0],
+                    "package": parts[1],
+                    "reason": "Suppressed via legacy flat ignore rule",
+                }
+            )
+        elif len(parts) == 3 and parts[0].upper().startswith(("CVE-", "GHSA-")):
+            entries.append(
+                {
+                    "id": parts[0],
+                    "ecosystem": parts[1],
+                    "package": parts[2],
+                    "reason": "Suppressed via legacy flat ignore rule",
+                }
+            )
+        else:
+            entries.append({"id": line, "reason": "Suppressed via flat ignore list"})
     return entries
 
 
@@ -179,6 +206,10 @@ def _matches_blast_radius(entry: dict[str, Any], br: "BlastRadius") -> bool:
         return wanted in candidate_ids
 
     # Package name / version match
+    ecosystem = str(entry.get("ecosystem") or "").strip().lower()
+    if ecosystem and ecosystem != str(pkg.ecosystem or "").strip().lower():
+        return False
+
     pkg_spec = entry.get("package")
     if pkg_spec:
         pkg_spec = str(pkg_spec)
@@ -267,9 +298,11 @@ def apply_ignores(
     blast_radii: list["BlastRadius"],
     ignore_entries: list[dict[str, Any]],
 ) -> tuple[list["BlastRadius"], int]:
-    """Filter blast radii against ignore entries.
+    """Apply ignore entries as auditable suppression overlays.
 
-    Returns ``(filtered_list, suppressed_count)``.
+    Returns ``(original_list, suppressed_count)``. Evidence is never deleted:
+    matching rows remain available to JSON/SARIF/VEX consumers with canonical
+    suppression metadata, while actionability and risk gates see score zero.
     Expired entries are skipped with a warning.
     """
     if not ignore_entries:
@@ -283,11 +316,12 @@ def apply_ignores(
         else:
             active_entries.append(entry)
 
-    filtered: list["BlastRadius"] = []
     suppressed = 0
     for br in blast_radii:
         suppressed_by = next((e for e in active_entries if _matches_blast_radius(e, br)), None)
         if suppressed_by:
+            from agent_bom.canonical_ids import canonical_id
+
             reason = suppressed_by.get("reason", "(no reason given)")
             logger.info(
                 "agent-bom-ignore: suppressed %s in %s@%s — %s",
@@ -296,8 +330,13 @@ def apply_ignores(
                 br.package.version,
                 reason,
             )
+            br.suppressed = True
+            br.suppression_id = canonical_id("ignore", suppressed_by)
+            br.suppression_state = "accepted_risk"
+            br.suppression_reason = str(reason)
+            br.unsuppressed_risk_score = br.risk_score
+            br.risk_score = 0.0
+            br.transitive_risk_score = 0.0
             suppressed += 1
-        else:
-            filtered.append(br)
 
-    return filtered, suppressed
+    return blast_radii, suppressed

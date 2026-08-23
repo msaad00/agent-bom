@@ -114,7 +114,9 @@ def test_cve_id_match_suppresses():
     entries = [{"id": "CVE-2024-1234", "reason": "accepted"}]
     filtered, suppressed = apply_ignores([br], entries)
     assert suppressed == 1
-    assert filtered == []
+    assert filtered == [br]
+    assert br.suppressed is True
+    assert br.suppression_state == "accepted_risk"
 
 
 def test_cve_id_case_insensitive():
@@ -222,8 +224,8 @@ def test_multiple_findings_partial_suppress():
     entries = [{"id": "CVE-2024-1111", "reason": "suppress only one"}]
     filtered, suppressed = apply_ignores([br1, br2], entries)
     assert suppressed == 1
-    assert len(filtered) == 1
-    assert filtered[0].vulnerability.id == "CVE-2024-2222"
+    assert filtered == [br1, br2]
+    assert br1.suppressed is True
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +264,23 @@ def test_load_flat_id_list(tmp_path):
     assert all(e["reason"] for e in entries)
 
 
+def test_load_legacy_package_rules_into_structured_format(tmp_path):
+    target = tmp_path / ".agent-bom-ignore"
+    target.write_text("npm:lodash\nCVE-2026-12345:pypi:requests\n")
+
+    assert load_ignore_file(target) == [
+        {
+            "ecosystem": "npm",
+            "package": "lodash",
+            "reason": "Suppressed via legacy flat ignore rule",
+        },
+        {
+            "id": "CVE-2026-12345",
+            "ecosystem": "pypi",
+            "package": "requests",
+            "reason": "Suppressed via legacy flat ignore rule",
+        },
+    ]
 def test_load_flat_id_list_dedupes(tmp_path):
     f = tmp_path / ".image-scan-ignore"
     f.write_text("CVE-2025-6141\ncve-2025-6141\nCVE-2025-6141\n")
@@ -298,7 +317,7 @@ def test_flat_list_suppresses_blast_radius(tmp_path):
     br = _make_blast_radius(cve_id="CVE-2024-1234")
     filtered, suppressed = apply_ignores([br], entries)
     assert suppressed == 1
-    assert filtered == []
+    assert filtered == [br]
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +331,7 @@ def test_alias_id_suppresses():
     entries = [{"id": "CVE-2024-5678", "reason": "matched via alias"}]
     filtered, suppressed = apply_ignores([br], entries)
     assert suppressed == 1
-    assert filtered == []
+    assert filtered == [br]
 
 
 def test_non_sequence_aliases_do_not_crash():

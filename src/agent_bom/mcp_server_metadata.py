@@ -213,7 +213,7 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "gateway_status",
-        "description": "Return gateway policy and inter-agent firewall runtime statistics",
+        "description": "Return gateway policy, firewall statistics, cursor-paged activity, and optional self-posture evidence",
         "annotations": {"readOnlyHint": True},
     },
     {
@@ -409,6 +409,21 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
+        "name": "list_exceptions",
+        "description": "List tenant-scoped vulnerability exceptions from the canonical lifecycle store",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "request_exception",
+        "description": "Request a pending tenant-scoped exception; requires findings:write and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
+        "name": "approve_exception",
+        "description": "Approve a pending tenant-scoped exception; requires findings:write and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
         "name": "risk_campaign_workflow",
         "description": "List, assign, ticket, and verify tenant-scoped remediation campaigns through the shared persisted workflow",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
@@ -501,6 +516,9 @@ _TOOL_CAPABILITY_CLASSES = {
     "create_ticket": ["WRITE", "NETWORK", "INTEGRATION"],
     "sync_ticket_status": ["WRITE", "NETWORK", "INTEGRATION"],
     "findings_triage": ["WRITE", "GOVERNANCE", "AUDIT"],
+    "list_exceptions": ["READ", "GOVERNANCE", "AUDIT"],
+    "request_exception": ["WRITE", "GOVERNANCE", "AUDIT"],
+    "approve_exception": ["WRITE", "GOVERNANCE", "AUDIT"],
     "risk_campaign_workflow": ["WRITE", "GOVERNANCE", "AUDIT"],
     "cloud_side_scan": ["WRITE", "NETWORK", "CLOUD", "CWPP", "AUDIT"],
 }

@@ -1470,7 +1470,11 @@ export const api = {
     post<EvaluateResult>("/v1/gateway/evaluate", body),
   listGatewayAudit: () => get<GatewayAuditResponse>("/v1/gateway/audit"),
   getGatewayStats: () => get<GatewayStatsResponse>("/v1/gateway/stats"),
-  getGatewayFeed: (limit = 100) => get<GatewayFeedResponse>(`/v1/gateway/feed?limit=${limit}`),
+  getGatewayFeed: (limit = 100, cursor?: string) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set("cursor", cursor);
+    return get<GatewayFeedResponse>(`/v1/gateway/feed?${params}`, { ttlMs: 0 });
+  },
   getGatewayFeedKpis: () => get<GatewayFeedKpis>("/v1/gateway/feed/kpis"),
   getFirewallStats: () => get<FirewallRuntimeStats>("/v1/firewall/stats"),
 

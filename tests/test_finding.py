@@ -204,6 +204,29 @@ def test_finding_distinct_packages_under_one_server_get_distinct_ids():
     assert f_torch.id != f_numpy.id
 
 
+def test_non_package_finding_identity_accepts_compact_package_evidence():
+    """Scanner-native ``package`` evidence must not collapse distinct occurrences."""
+    container_asset = Asset(name="runtime-image", asset_type="container")
+    first = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.CONTAINER,
+        asset=container_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-4242",
+        evidence={"package": "msgpack@1.1.2"},
+    )
+    second = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.CONTAINER,
+        asset=container_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-4242",
+        evidence={"package": "setuptools@70.3.0"},
+    )
+
+    assert first.id != second.id
+
+
 def test_distinct_cves_on_one_non_package_asset_never_share_an_id():
     """The vulnerability identity remains part of a non-package occurrence ID."""
     server_asset = Asset(name="filesystem", asset_type="mcp_server")

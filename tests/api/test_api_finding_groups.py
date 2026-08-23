@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from starlette.testclient import TestClient
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
@@ -155,3 +157,61 @@ def test_findings_group_view_facets_count_issue_groups_not_occurrences() -> None
     # make the other issue counts disappear.
     assert critical["total"] == 1
     assert critical["facets"]["severity"] == grouped["facets"]["severity"]
+
+
+def test_grouping_projects_graph_reachability_once_after_the_occurrence_walk(monkeypatch) -> None:
+    """Internal grouping pages must not re-join the same persisted graph.
+
+    The landing query walks occurrences in 1,000-row chunks. Reachability is a
+    property of the returned issue rows, so projecting each internal chunk made
+    graph latency multiply with occurrence count and turned Findings into the
+    slowest primary screen.
+    """
+    tenant = "finding-group-reachability-once"
+    set_job_store(InMemoryJobStore())
+    job = ScanJob(
+        job_id="scan-group-reachability-once",
+        tenant_id=tenant,
+        created_at="2026-08-20T12:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-08-20T12:01:00Z"
+    job.result = {
+        "findings": [
+            _finding(f"pkg:pypi/requests@2.0.0?image=worker-{index}")
+            for index in range(1_005)
+        ]
+    }
+    _get_store().put(job)
+    calls: list[int] = []
+    sanitizations: list[str] = []
+
+    def project_once(rows, **_kwargs):
+        calls.append(len(rows))
+        return SimpleNamespace(rows=rows, truncated=False)
+
+    monkeypatch.setattr(
+        "agent_bom.api.routes.scan.project_persisted_graph_reachability",
+        project_once,
+    )
+    from agent_bom import finding_scope
+
+    real_sanitizer = finding_scope.safe_finding_response_payload
+
+    def count_sanitization(row):
+        sanitizations.append(str(row.get("id") or row.get("finding_id") or ""))
+        return real_sanitizer(row)
+
+    monkeypatch.setattr(finding_scope, "safe_finding_response_payload", count_sanitization)
+    response = TestClient(app).get(
+        "/v1/findings?group_occurrences=true&include_facets=true&limit=25&window_days=0",
+        headers=proxy_headers(role="analyst", tenant=tenant),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["count"] == 1
+    assert calls == [1]
+    # One representative plus the bounded occurrence sample crosses the public
+    # boundary. The other 979 rows are grouped/faceted without public projection.
+    assert len(sanitizations) == 26

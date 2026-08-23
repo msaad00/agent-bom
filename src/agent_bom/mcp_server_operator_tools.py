@@ -32,6 +32,11 @@ def register_operator_tools(
     """Register graph, analytics, fleet, benchmark, and runtime MCP tools."""
     from agent_bom.mcp_tools.analysis import analytics_query_impl, context_graph_impl
     from agent_bom.mcp_tools.compliance import cis_benchmark_impl
+    from agent_bom.mcp_tools.exceptions import (
+        approve_exception_impl,
+        list_exceptions_impl,
+        request_exception_impl,
+    )
     from agent_bom.mcp_tools.identity import (
         identity_grant_jit_impl,
         identity_issue_impl,
@@ -148,6 +153,89 @@ def register_operator_tools(
             justification=justification,
             decision_reason=decision_reason,
             expires_at=expires_at,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="List Vulnerability Exceptions")
+    async def list_exceptions(
+        status: Annotated[
+            str,
+            Field(description="Optional lifecycle status filter: pending, active, expired, or revoked."),
+        ] = "",
+        limit: Annotated[
+            int,
+            Field(ge=1, le=500, description="Maximum tenant-scoped exception records to return."),
+        ] = 100,
+        tenant_id: Annotated[
+            str,
+            Field(description="Requested tenant; the MCP server binding remains authoritative."),
+        ] = "default",
+    ) -> str:
+        """List tenant-scoped exception evidence from the canonical store."""
+        return await execute_tool_async(
+            "list_exceptions",
+            list_exceptions_impl,
+            status=status,
+            limit=limit,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Request Vulnerability Exception")
+    async def request_exception(
+        vulnerability_id: Annotated[str, Field(description="Vulnerability or advisory id to except.")] = "",
+        package_name: Annotated[str, Field(description="Affected package name, or '*' for any package.")] = "*",
+        server_name: Annotated[str, Field(description="Optional server or asset scope.")] = "",
+        exception_reason: Annotated[str, Field(description="Human rationale for the exception request.")] = "",
+        expires_at: Annotated[str, Field(description="Optional timezone-aware ISO-8601 expiry.")] = "",
+        operator_role: Annotated[str, Field(description="Operator role for this audited write.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes for this audited write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for requesting the exception.")] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Requested tenant; the MCP server binding remains authoritative."),
+        ] = "default",
+    ) -> str:
+        """Create a pending exception through the shared REST/UI/MCP lifecycle."""
+        return await execute_tool_async(
+            "request_exception",
+            request_exception_impl,
+            destructive=True,
+            required_scope="findings:write",
+            vulnerability_id=vulnerability_id,
+            package_name=package_name,
+            server_name=server_name,
+            exception_reason=exception_reason,
+            expires_at=expires_at,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Approve Vulnerability Exception")
+    async def approve_exception(
+        exception_id: Annotated[str, Field(description="Pending exception id to activate.")] = "",
+        operator_role: Annotated[str, Field(description="Operator role for this audited write.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes for this audited write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for approving the exception.")] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Requested tenant; the MCP server binding remains authoritative."),
+        ] = "default",
+    ) -> str:
+        """Activate a pending exception through the canonical lifecycle store."""
+        return await execute_tool_async(
+            "approve_exception",
+            approve_exception_impl,
+            destructive=True,
+            required_scope="findings:write",
+            exception_id=exception_id,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
             reason=reason,
@@ -831,12 +919,32 @@ def register_operator_tools(
             str,
             Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
         ] = "default",
+        include_activity: Annotated[
+            bool,
+            Field(description="Include the durable, cursor-paged gateway activity feed."),
+        ] = False,
+        activity_limit: Annotated[
+            int,
+            Field(ge=1, le=500, description="Maximum activity events to return when include_activity is true."),
+        ] = 100,
+        activity_cursor: Annotated[
+            str,
+            Field(description="Opaque cursor from a prior gateway_status activity response."),
+        ] = "",
+        include_self_posture: Annotated[
+            bool,
+            Field(description="Include this deployment's tenant-scoped operator self-posture evidence."),
+        ] = False,
     ) -> str:
-        """Return gateway policy and inter-agent firewall runtime statistics."""
+        """Return gateway policy, firewall, durable activity, and optional self-posture evidence."""
         return await execute_tool_async(
             "gateway_status",
             gateway_status_impl,
             tenant_id=tenant_id,
+            include_activity=include_activity,
+            activity_limit=activity_limit,
+            activity_cursor=activity_cursor,
+            include_self_posture=include_self_posture,
             _truncate_response=truncate_response,
         )
 

@@ -19,7 +19,7 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>81</b> MCP tools · no account required<br />
+  <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>84</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://agent-bom-demo-82102570041.us-central1.run.app">Live demo</a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
@@ -231,10 +231,10 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | GitHub CI | `uses: msaad00/agent-bom@v0.102.0` | SARIF, PR summary, and a policy exit code |
 | Cloud evidence | `agent-bom connect aws` | Stored connection reference; run scans from the control plane |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
-| Agent interface | `agent-bom mcp server` | 81 MCP tools, 6 resources, and 8 workflow prompts |
+| Agent interface | `agent-bom mcp server` | 84 MCP tools, 6 resources, and 8 workflow prompts |
 | Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |
 
-MCP server mode exposes 81 MCP tools, 6 resources, and 8 workflow prompts, all
+MCP server mode exposes 84 MCP tools, 6 resources, and 8 workflow prompts, all
 read-first: discovery and analysis never mutate a scanned target.
 
 Set `YDC_API_KEY` to enable the optional `youcom_search` MCP tool for live web

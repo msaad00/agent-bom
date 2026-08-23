@@ -143,6 +143,7 @@ def _make_cnapp_estate(g: UnifiedGraph, *, resources: int, fillers: int) -> None
                 entity_type=EntityType.VULNERABILITY,
                 label=vid,
                 severity="critical",
+                attributes={"reachability": "likely", "reachability_basis": ["dependency_path"]},
                 first_seen=_FIXED_CREATED_AT,
                 last_seen=_FIXED_CREATED_AT,
             )

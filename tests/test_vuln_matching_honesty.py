@@ -108,10 +108,11 @@ def test_declaration_only_downgrades_reachability_to_unknown():
     assert _blast_radius(pkg).reachability == "unknown"
 
 
-def test_runtime_dependency_high_still_reads_likely():
-    # Control: without declaration-only evidence a HIGH direct dep stays "likely".
+def test_runtime_dependency_without_path_evidence_reads_unknown():
+    # Severity and direct-dependency status are priority context, not proof that
+    # the vulnerable code executes.
     pkg = Package(name="requests", version="2.28.0", ecosystem="pypi", is_direct=True)
-    assert _blast_radius(pkg).reachability == "likely"
+    assert _blast_radius(pkg).reachability == "unknown"
 
 
 # --- Defect 2: bare deps resolved against target, never the scanner host ----

@@ -456,7 +456,17 @@ def build_showcase_graph(
         node(pid, EntityType.PACKAGE, purl)
         edge(f"server:{sid}", pid, RelationshipType.DEPENDS_ON)
         vid = f"vuln:{cve}"
-        node(vid, EntityType.VULNERABILITY, cve, severity=sev, risk_score=score, is_kev=cve in kev_cves)
+        node(
+            vid,
+            EntityType.VULNERABILITY,
+            cve,
+            severity=sev,
+            risk_score=score,
+            is_kev=cve in kev_cves,
+            reachability="confirmed",
+            reachability_basis=["graph_path"],
+            graph_reachable=True,
+        )
         edge(pid, vid, RelationshipType.VULNERABLE_TO)
 
     # Malicious/typosquat package — appears only in the current snapshot for drift.

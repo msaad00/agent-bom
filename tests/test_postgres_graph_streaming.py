@@ -509,6 +509,8 @@ def test_edge_and_attack_path_reads_accept_native_jsonb_and_preserve_tenant(monk
         ["API_KEY"],
         ["run_shell"],
         ["CVE-2026-0001"],
+        "confirmed",
+        ["graph_path"],
         [],
     )
 
@@ -546,6 +548,8 @@ def test_edge_and_attack_path_reads_accept_native_jsonb_and_preserve_tenant(monk
     assert paths[0].hops == ["agent:native", "tool:native"]
     assert paths[0].credential_exposure == ["API_KEY"]
     assert paths[0].tool_exposure == ["run_shell"]
+    assert paths[0].reachability == "confirmed"
+    assert paths[0].reachability_basis == ["graph_path"]
     assert ("paths", ("tenant-alpha", "scan-jsonb", "agent:native")) in conn.read_params
     edge_params = next(params for kind, params in conn.read_params if kind == "edges")
     assert edge_params[:2] == ("tenant-alpha", "scan-jsonb")

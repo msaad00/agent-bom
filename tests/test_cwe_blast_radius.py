@@ -227,8 +227,14 @@ def test_dos_summary_says_no_credentials():
 # ── Reachability and actionability ───────────────────────────────────────────
 
 
-def test_rce_is_confirmed_reachability():
+def test_rce_exposure_alone_is_not_confirmed_reachability():
     br = _make_blast_radius(["CWE-94"])
+    assert br.reachability == "likely"
+
+
+def test_rce_with_graph_path_is_confirmed_reachability():
+    br = _make_blast_radius(["CWE-94"])
+    br.graph_reachable = True
     assert br.reachability == "confirmed"
 
 

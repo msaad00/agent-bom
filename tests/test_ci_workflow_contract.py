@@ -133,11 +133,12 @@ def test_postgres_integration_uses_a_persistent_audit_signing_key() -> None:
 def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     """Keep bounded headroom over the Python 3.11 coverage lane on main.
 
-    The coverage lane reached the former 25-minute ceiling twice at
-    ``cd43aadee`` while the 3.13 and 3.14 lanes completed successfully. A
-    35-minute ceiling preserves a hard bound while allowing normal suite growth.
+    The coverage lane exhausted the former 35-minute ceiling twice on exact
+    main while the Python 3.13 and 3.14 lanes completed successfully. A
+    45-minute ceiling preserves a hard bound and ten minutes of measured
+    headroom for the coverage-only lane.
     """
-    assert _ci()["jobs"]["test-main"]["timeout-minutes"] == 35
+    assert _ci()["jobs"]["test-main"]["timeout-minutes"] == 45
 
 
 def test_version_alignment_fails_fast_when_uv_lock_is_stale() -> None:

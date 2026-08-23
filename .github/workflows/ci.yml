@@ -1045,7 +1045,7 @@ jobs:
   test-main:
     name: Full correctness (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     permissions:
       contents: read
     if: ${{ github.event_name != 'pull_request' && !cancelled() }}

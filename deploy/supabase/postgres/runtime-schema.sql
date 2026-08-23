@@ -44,6 +44,8 @@ CREATE INDEX IF NOT EXISTS idx_fleet_tenant_name_lower ON fleet_agents(tenant_id
 CREATE TABLE IF NOT EXISTS fleet_endpoints (tenant_id TEXT NOT NULL,endpoint_id TEXT NOT NULL,completeness TEXT NOT NULL,updated_at TEXT NOT NULL,data JSONB NOT NULL,PRIMARY KEY(tenant_id,endpoint_id));
 CREATE INDEX IF NOT EXISTS idx_fleet_endpoints_tenant_updated ON fleet_endpoints(tenant_id,updated_at DESC,endpoint_id);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON scan_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_team_status ON scan_jobs(team_id,status);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_batch ON scan_jobs(team_id,batch_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_parent ON scan_jobs(team_id,parent_job_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pg_jobs_schedule ON scan_jobs(team_id,schedule_id,created_at DESC);

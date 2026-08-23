@@ -20,6 +20,7 @@ import pytest
 from agent_bom.api import metrics
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.scan_job_reconciliation import (
+    active_scan_job_count,
     fail_orphaned_active_scan_jobs,
     fail_stale_active_scan_jobs,
     reconcile_scan_jobs_active,
@@ -97,6 +98,21 @@ def test_reconcile_sets_gauge_from_durable_active_jobs() -> None:
 
     assert reconcile_scan_jobs_active(store) == 2
     assert metrics.scan_jobs_active() == 2
+
+
+def test_active_count_never_deserializes_historical_job_payloads() -> None:
+    """Gauge reconciliation must use a bounded aggregate, not ``list_all``."""
+
+    class AggregateOnlyStore:
+        def count_active(self, tenant_id=None, *, all_tenants=False):
+            assert tenant_id is None
+            assert all_tenants is True
+            return 2
+
+        def list_all(self, *args, **kwargs):
+            raise AssertionError("active reconciliation must not load historical job blobs")
+
+    assert active_scan_job_count(AggregateOnlyStore()) == 2
 
 
 def test_fail_stale_active_jobs_then_reconcile_clears_leaked_gauge() -> None:

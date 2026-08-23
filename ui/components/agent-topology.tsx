@@ -131,6 +131,8 @@ function TopologyFlow({
     nodeHeight: 72,
     rankSep: 120,
     nodeSep: 28,
+    fitAspect: 2.6,
+    minSeparation: { width: 168, height: 72, gap: 24 },
   });
   const displayEdges = useMemo(
     () =>
@@ -144,7 +146,10 @@ function TopologyFlow({
 
   useEffect(() => {
     if (pending) return;
-    const timer = window.setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 80);
+    const timer = window.setTimeout(
+      () => fitView({ padding: 0.14, duration: 300, minZoom: 0.48, maxZoom: 1.05 }),
+      80,
+    );
     return () => window.clearTimeout(timer);
   }, [fitView, nodes, pending]);
 
@@ -172,7 +177,8 @@ function TopologyFlow({
       nodeTypes={nodeTypes}
       onNodeClick={handleNodeClick}
       fitView
-      minZoom={0.15}
+      fitViewOptions={{ padding: 0.14, minZoom: 0.48, maxZoom: 1.05 }}
+      minZoom={0.35}
       maxZoom={1.5}
       panOnDrag
       zoomOnScroll

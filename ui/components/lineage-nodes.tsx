@@ -6,6 +6,7 @@ import { Bug, KeyRound, Package, Wrench } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
 import type { ReachBreakdown } from "@/lib/effective-reach";
+import { NODE_COLOR_MAP } from "@/lib/graph-utils";
 import {
   ENTITY_ICONS,
   entityIcon,
@@ -826,47 +827,7 @@ function ClusterBubbleNode({ data }: { data: LineageNodeData }) {
   );
 }
 
-const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
-  provider: "#71717a",
-  agent: "#10b981",
-  user: "#34d399",
-  group: "#d946ef",
-  serviceAccount: "#fbbf24",
-  environment: "#14b8a6",
-  fleet: "#22d3ee",
-  cluster: "#38bdf8",
-  server: "#3b82f6",
-  sharedServer: "#22d3ee",
-  package: "#52525b",
-  vulnerability: "#ef4444",
-  credential: "#f59e0b",
-  tool: "#a855f7",
-  model: "#8b5cf6",
-  framework: "#06b6d4",
-  dataset: "#06b6d4",
-  container: "#6366f1",
-  cloudResource: "#0ea5e9",
-  org: "#115e59",
-  account: "#0f766e",
-  misconfiguration: "#f97316",
-  role: "#ea580c",
-  policy: "#d97706",
-  servicePrincipal: "#0f766e",
-  federatedIdentity: "#0e7490",
-  managedIdentity: "#0891b2",
-  accessGrant: "#ca8a04",
-  accessPolicy: "#a16207",
-  driftIncident: "#fb923c",
-  dataStore: "#0284c7",
-  directory: "#0d9488",
-  sourceFile: "#22d3ee",
-  configFile: "#f97316",
-  codeModule: "#06b6d4",
-  ciJob: "#a855f7",
-  apiGateway: "#2563eb",
-  toolCall: "#c084fc",
-  blueprint: "#818cf8",
-};
+const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = NODE_COLOR_MAP;
 
 const DETAIL_RENDERERS: Record<
   LineageNodeType,

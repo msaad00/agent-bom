@@ -87,6 +87,18 @@ def test_in_memory_list_summary_pages_beyond_two_hundred_after_filtering():
     assert store.count_summary(query="bulk-source") == 225
 
 
+def test_in_memory_count_active_is_tenant_scoped_and_excludes_terminal_jobs():
+    store = InMemoryJobStore()
+    store.put(_make_job("a-pending", tenant_id="tenant-a", status=JobStatus.PENDING))
+    store.put(_make_job("a-running", tenant_id="tenant-a", status=JobStatus.RUNNING))
+    store.put(_make_job("a-done", tenant_id="tenant-a", status=JobStatus.DONE))
+    store.put(_make_job("b-running", tenant_id="tenant-b", status=JobStatus.RUNNING))
+
+    assert store.count_active(tenant_id="tenant-a") == 2
+    assert store.count_active(tenant_id="tenant-b") == 1
+    assert store.count_active(all_tenants=True) == 3
+
+
 def test_in_memory_cleanup():
     store = InMemoryJobStore()
     store.put(_make_job("j1", status=JobStatus.DONE, completed_at="2020-01-01T00:00:00+00:00"))
@@ -371,6 +383,23 @@ def test_sqlite_list_summary_filters_before_pagination_and_counts():
         assert store.count_summary(query="alpha", status=JobStatus.DONE) == 1
         assert store.count_summary_by_status(query="alpha") == {"done": 1, "running": 1}
         assert store.count_summary(query="%") == 0
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
+def test_sqlite_count_active_is_tenant_scoped_and_excludes_terminal_jobs():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        store = SQLiteJobStore(db_path=db_path)
+        store.put(_make_job("a-pending", tenant_id="tenant-a", status=JobStatus.PENDING))
+        store.put(_make_job("a-running", tenant_id="tenant-a", status=JobStatus.RUNNING))
+        store.put(_make_job("a-done", tenant_id="tenant-a", status=JobStatus.DONE))
+        store.put(_make_job("b-running", tenant_id="tenant-b", status=JobStatus.RUNNING))
+
+        assert store.count_active(tenant_id="tenant-a") == 2
+        assert store.count_active(tenant_id="tenant-b") == 1
+        assert store.count_active(all_tenants=True) == 3
     finally:
         Path(db_path).unlink(missing_ok=True)
 

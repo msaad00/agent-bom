@@ -20,7 +20,17 @@ import {
 import type { AttackFlowNodeData, AttackFlowResponse } from "@/lib/api";
 import { FrameworkTagChips } from "@/components/framework-tag-chips";
 import { SeverityBadge } from "@/components/severity-badge";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, ATTACK_FLOW_MINIMAP_COLORS, graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
+import {
+  ATTACK_FLOW_MINIMAP_COLORS,
+  ATTACK_FLOW_NODE_CLASS_MAP,
+  ATTACK_FLOW_SEVERITY_NODE_CLASS_MAP,
+  BACKGROUND_COLOR,
+  BACKGROUND_GAP,
+  CONTROLS_CLASS,
+  MINIMAP_CLASS,
+  graphNodeDisplayLabels,
+  readableGraphEdges,
+} from "@/lib/graph-utils";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import { FullscreenButton, GraphInteractionToolbar } from "@/components/graph-chrome";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
@@ -34,28 +44,16 @@ const NODE_ICONS: Record<string, React.ElementType> = {
   agent: ShieldAlert, credential: KeyRound, tool: Wrench,
 };
 
-const NODE_COLORS: Record<string, string> = {
-  cve: "border-red-600 bg-red-950/80",
-  package: "border-[var(--border-strong)] bg-[var(--surface)]/80",
-  server: "border-blue-600 bg-blue-950/80",
-  agent: "border-emerald-600 bg-emerald-950/80",
-  credential: "border-yellow-600 bg-yellow-950/80",
-  tool: "border-purple-600 bg-purple-950/80",
-};
-
 // ─── Custom Node ────────────────────────────────────────────────────────────
 
 function AttackFlowNode({ data }: { data: AttackFlowNodeData }) {
   const nodeType = data.nodeType;
   const Icon = NODE_ICONS[nodeType] ?? Bug;
 
-  let colorClass = NODE_COLORS[nodeType] ?? NODE_COLORS.cve;
+  let colorClass = ATTACK_FLOW_NODE_CLASS_MAP[nodeType] ?? ATTACK_FLOW_NODE_CLASS_MAP.cve;
   if (nodeType === "cve" && data.severity) {
     const sev = data.severity.toLowerCase();
-    if (sev === "critical") colorClass = "border-red-600 bg-red-950/80";
-    else if (sev === "high") colorClass = "border-orange-600 bg-orange-950/80";
-    else if (sev === "medium") colorClass = "border-yellow-600 bg-yellow-950/80";
-    else colorClass = "border-blue-600 bg-blue-950/80";
+    colorClass = ATTACK_FLOW_SEVERITY_NODE_CLASS_MAP[sev] ?? ATTACK_FLOW_SEVERITY_NODE_CLASS_MAP.low;
   }
 
   const showTarget = nodeType !== "cve";

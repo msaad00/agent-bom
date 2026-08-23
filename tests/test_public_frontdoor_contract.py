@@ -87,8 +87,8 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     journey = readme.split("### Product journey", 1)[1].split("## Quick start", 1)[0]
-    stages = ["Discover", "Scan", "Reachable graph", "Ranked path", "Act and verify"]
-    images = ["mesh-live.png", "jobs-pipeline-live.png", "lineage-graph-live.png", "security-graph-live.png", "remediation-live.png"]
+    stages = ["Discover inventory", "Scan", "Reachable graph", "Ranked path", "Act and verify"]
+    images = ["fleet-state-live.png", "jobs-pipeline-live.png", "lineage-graph-live.png", "security-graph-live.png", "remediation-live.png"]
     assert all(stage in journey for stage in stages)
     assert all(image in journey for image in images)
     assert [journey.index(stage) for stage in stages] == sorted(journey.index(stage) for stage in stages)

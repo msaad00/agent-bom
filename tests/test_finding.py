@@ -204,6 +204,27 @@ def test_finding_distinct_packages_under_one_server_get_distinct_ids():
     assert f_torch.id != f_numpy.id
 
 
+def test_distinct_cves_on_one_non_package_asset_never_share_an_id():
+    """The vulnerability identity remains part of a non-package occurrence ID."""
+    server_asset = Asset(name="filesystem", asset_type="mcp_server")
+    first = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=server_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-1001",
+    )
+    second = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=server_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-1002",
+    )
+
+    assert first.id != second.id
+
+
 def test_finding_effective_severity_vendor_wins():
     finding = Finding(
         finding_type=FindingType.CVE,

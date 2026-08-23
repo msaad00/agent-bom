@@ -16,6 +16,7 @@ import {
   reachStrokeColor,
 } from "@/lib/effective-reach";
 import {
+  NODE_COLOR_MAP,
   NODE_TYPE_LEGEND_ORDER,
   relationshipLegendItem,
   type LegendItem,
@@ -171,48 +172,6 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
   apiGateway: "API Gateway",
   toolCall: "Tool Call",
   blueprint: "Blueprint",
-};
-
-const NODE_COLORS: Record<LineageNodeType, string> = {
-  provider: "#71717a",
-  agent: "#10b981",
-  org: "#115e59",
-  account: "#0f766e",
-  user: "#34d399",
-  group: "#d946ef",
-  role: "#ea580c",
-  policy: "#d97706",
-  serviceAccount: "#fbbf24",
-  servicePrincipal: "#0f766e",
-  federatedIdentity: "#0e7490",
-  environment: "#14b8a6",
-  fleet: "#22d3ee",
-  cluster: "#38bdf8",
-  server: "#3b82f6",
-  sharedServer: "#22d3ee",
-  package: "#52525b",
-  vulnerability: "#ef4444",
-  credential: "#f59e0b",
-  tool: "#a855f7",
-  model: "#8b5cf6",
-  framework: "#06b6d4",
-  dataset: "#06b6d4",
-  container: "#6366f1",
-  cloudResource: "#0ea5e9",
-  misconfiguration: "#f97316",
-  managedIdentity: "#0891b2",
-  accessGrant: "#ca8a04",
-  accessPolicy: "#a16207",
-  driftIncident: "#fb923c",
-  dataStore: "#0284c7",
-  directory: "#0d9488",
-  sourceFile: "#22d3ee",
-  configFile: "#f97316",
-  codeModule: "#06b6d4",
-  ciJob: "#a855f7",
-  apiGateway: "#2563eb",
-  toolCall: "#c084fc",
-  blueprint: "#818cf8",
 };
 
 const NODE_LAYERS: Record<LineageNodeType, string> = {
@@ -798,7 +757,7 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
   return NODE_TYPE_LEGEND_ORDER.filter((nodeType) => nodeTypes.has(nodeType))
     .map((nodeType) => ({
       label: NODE_LABELS[nodeType],
-      color: NODE_COLORS[nodeType],
+      color: NODE_COLOR_MAP[nodeType],
       layer: NODE_LAYERS[nodeType],
       shape: legendShapeForNodeType(nodeType),
     }));

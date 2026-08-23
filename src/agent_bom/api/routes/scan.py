@@ -1248,6 +1248,14 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
     return cast(ScanJob, job)
 
 
+async def _load_job_for_request(request: Request, job_id: str) -> ScanJob:
+    """Hydrate one job off-loop because durable stores use synchronous I/O."""
+    return cast(
+        ScanJob,
+        await anyio.to_thread.run_sync(partial(_job_for_request, request, job_id)),
+    )
+
+
 def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
     """Drop replay-only fields from top-level scan findings before API return."""
     if not isinstance(result, dict):
@@ -1543,13 +1551,13 @@ async def get_scan(request: Request, job_id: str) -> ScanJob:
     non-json ``format``, ``result_document`` carries that rendering and
     ``result_format`` names it.
     """
-    return _job_response_payload(_job_for_request(request, job_id))
+    return _job_response_payload(await _load_job_for_request(request, job_id))
 
 
 @router.get("/scan/{job_id}/status", tags=["scan"])
 async def get_scan_status(request: Request, job_id: str) -> dict[str, Any]:
     """Poll lightweight scan status without serializing large result payloads."""
-    return _job_summary_payload(_job_for_request(request, job_id))
+    return _job_summary_payload(await _load_job_for_request(request, job_id))
 
 
 @router.get("/scan/{job_id}/attack-flow", tags=["scan"])
@@ -1572,7 +1580,7 @@ async def get_attack_flow(
       ?framework=LLM05       - filter by OWASP/ATLAS/NIST tag
       ?agent=claude-desktop  - filter to a specific agent
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -1601,7 +1609,7 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
     Query params:
       ?agent=claude-desktop  - only compute lateral paths from this agent
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -1636,7 +1644,7 @@ async def get_graph_export(
       ?format=cypher    Neo4j Cypher import script
       ?mermaid_limit=80 Maximum nodes rendered for Mermaid; 0 renders all
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -1662,7 +1670,7 @@ async def get_remediation_plan(request: Request, job_id: str) -> dict:
     asset — so it is returned whole, with ``total`` stated rather than left for
     the client to infer.
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
     plan = job.result.get("remediation_plan") or [] if isinstance(job.result, dict) else []
@@ -1676,7 +1684,7 @@ async def get_licenses(request: Request, job_id: str) -> dict:
     Returns license findings, summary, compliance status, and per-package
     license categorization (permissive, copyleft, commercial risk, unknown).
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -1723,7 +1731,7 @@ async def get_vex(request: Request, job_id: str) -> dict:
     Returns VEX statements with vulnerability status (affected, not_affected,
     fixed, under_investigation), justifications, and statistics.
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
@@ -1743,7 +1751,7 @@ async def get_skill_audit(request: Request, job_id: str) -> dict:
     typosquat detection, unverified servers, shell access, and more.
     Empty results if no skill files were scanned.
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
 
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
@@ -1771,9 +1779,9 @@ async def cancel_scan(request: Request, job_id: str) -> ScanJob:
     checkpoint. Terminal jobs are returned unchanged. Use ``DELETE`` to discard
     the job record after cancellation (or for already-finished jobs).
     """
-    job = _job_for_request(request, job_id)
-    request_scan_cancellation(job)
-    return _job_response_payload(_job_for_request(request, job_id))
+    job = await _load_job_for_request(request, job_id)
+    await anyio.to_thread.run_sync(partial(request_scan_cancellation, job))
+    return _job_response_payload(await _load_job_for_request(request, job_id))
 
 
 @router.delete("/scan/{job_id}", status_code=204, tags=["scan"])
@@ -1783,11 +1791,11 @@ async def delete_scan(request: Request, job_id: str) -> None:
     For pending/running jobs, requests cooperative cancellation first so the
     worker does not finish into a resurrected DONE state after discard.
     """
-    job = _job_for_request(request, job_id)
+    job = await _load_job_for_request(request, job_id)
     if job.status in {JobStatus.PENDING, JobStatus.RUNNING}:
-        request_scan_cancellation(job)
+        await anyio.to_thread.run_sync(partial(request_scan_cancellation, job))
     in_memory = _jobs_pop(job_id) if _visible_to_tenant(job, _tenant_id(request)) else None
-    in_store = _get_store().delete(job_id, tenant_id=_tenant_id(request))
+    in_store = await anyio.to_thread.run_sync(partial(_get_store().delete, job_id, tenant_id=_tenant_id(request)))
     if not in_memory and not in_store:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
@@ -1808,7 +1816,7 @@ async def stream_scan(request: Request, job_id: str) -> Response:
             detail="SSE requires sse-starlette. Install: pip install 'agent-bom[api]'",
         ) from exc
 
-    _job_for_request(request, job_id)
+    await _load_job_for_request(request, job_id)
     tenant_id = _tenant_id(request)
 
     import json as _json

@@ -9,6 +9,8 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -386,6 +388,23 @@ class TestSnowflakeJobStore:
         assert len(result) == 1
         assert result[0]["job_id"] == "j1"
         assert result[0]["tenant_id"] == "tenant-alpha"
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_count_active_is_tenant_scoped_and_avoids_variant_payload(self, mock_connect):
+        cur = _mock_cursor(fetchone_val=(2,))
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+
+        assert store.count_active(tenant_id="tenant-alpha") == 2
+        sql, params = cur.execute.call_args_list[-1].args
+        assert "status IN (%s, %s)" in sql
+        assert "tenant_id = %s" in sql
+        assert "data" not in sql.lower()
+        assert params == ("pending", "running", "tenant-alpha")
+
+        with pytest.raises(ValueError, match="requires a tenant_id"):
+            store.count_active()
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_cleanup_expired(self, mock_connect):

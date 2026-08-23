@@ -15,13 +15,21 @@ def is_active_scan_job(job: ScanJob) -> bool:
 
 
 def active_scan_job_count(store: Any, tenant_id: str | None = None) -> int:
-    # A missing tenant means "count active jobs across every tenant" for the
-    # global gauge — an explicit cross-tenant reconciliation, not a leak.
-    if tenant_id is None:
-        jobs = store.list_all(all_tenants=True)
-    else:
-        jobs = store.list_all(tenant_id=tenant_id)
-    return sum(1 for job in jobs if is_active_scan_job(job))
+    """Count active jobs through an indexed aggregate, never report blobs."""
+    counter = getattr(store, "count_active", None)
+    if callable(counter):
+        value = counter(tenant_id=tenant_id, all_tenants=tenant_id is None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+
+    # Compatibility boundary for third-party stores implementing the older
+    # summary protocol. This still avoids selecting/deserializing full reports.
+    status_counter = getattr(store, "count_summary_by_status", None)
+    if callable(status_counter):
+        counts = status_counter(tenant_id=tenant_id)
+        if isinstance(counts, dict):
+            return sum(int(counts.get(status.value, 0) or 0) for status in ACTIVE_SCAN_JOB_STATUSES)
+    raise TypeError("Job store must provide count_active or count_summary_by_status")
 
 
 def reconcile_scan_jobs_active(store: Any, tenant_id: str | None = None) -> int:

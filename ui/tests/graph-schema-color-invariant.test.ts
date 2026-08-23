@@ -10,8 +10,19 @@
 
 import { describe, expect, it } from "vitest";
 
-import { GRAPH_NODE_KIND_META, RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
-import { LINEAGE_NODE_GRAPH_KIND, NODE_COLOR_MAP } from "@/lib/graph-utils";
+import {
+  ENTITY_COLOR_MAP,
+  EntityType,
+  GRAPH_NODE_KIND_META,
+  RELATIONSHIP_COLOR_MAP,
+  RelationshipType,
+} from "@/lib/graph-schema";
+import {
+  ATTACK_FLOW_MINIMAP_COLORS,
+  ATTACK_FLOW_NODE_CLASS_MAP,
+  LINEAGE_NODE_GRAPH_KIND,
+  NODE_COLOR_MAP,
+} from "@/lib/graph-utils";
 
 describe("RELATIONSHIP_COLOR_MAP", () => {
   it("has a color for every RelationshipType", () => {
@@ -68,5 +79,18 @@ describe("LINEAGE_NODE_GRAPH_KIND", () => {
     });
 
     expect(mismatches).toEqual([]);
+  });
+
+  it("uses one credential color across lineage and attack-flow views", () => {
+    expect(NODE_COLOR_MAP.credential).toBe(ENTITY_COLOR_MAP[EntityType.CREDENTIAL]);
+    expect(ATTACK_FLOW_MINIMAP_COLORS.credential).toBe(ENTITY_COLOR_MAP[EntityType.CREDENTIAL]);
+  });
+
+  it("keeps attack-flow node backgrounds readable in light and dark themes", () => {
+    for (const [nodeType, classes] of Object.entries(ATTACK_FLOW_NODE_CLASS_MAP)) {
+      const hasPalettePair = /\bbg-[a-z]+-50/.test(classes) && /\bdark:bg-[a-z]+-950/.test(classes);
+      const hasThemeSurface = classes.includes("bg-[color:var(--surface-elevated)]");
+      expect(hasPalettePair || hasThemeSurface, nodeType).toBe(true);
+    }
   });
 });

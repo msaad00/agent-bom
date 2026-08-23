@@ -232,10 +232,10 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert commands == ["pip install agent-bom", "agent-bom scan --demo --offline"]
 
     assert "<summary><b>Try without a repository</b></summary>" in readme
-    for stage in ("1 · Discover", "2 · Scan", "3 · Reachable graph", "4 · Ranked path", "5 · Act and verify"):
+    for stage in ("1 · Discover inventory", "2 · Scan", "3 · Reachable graph", "4 · Ranked path", "5 · Act and verify"):
         assert stage in readme
     for image in (
-        "mesh-live.png",
+        "fleet-state-live.png",
         "jobs-pipeline-live.png",
         "lineage-graph-live.png",
         "security-graph-live.png",

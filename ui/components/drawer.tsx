@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { ChevronLeft, X } from "lucide-react";
 
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export type DrawerSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
+export type DrawerSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "none";
 
 const SIZE_CLASS: Record<DrawerSize, string> = {
   sm: "max-w-sm",
@@ -17,6 +23,7 @@ const SIZE_CLASS: Record<DrawerSize, string> = {
   "3xl": "max-w-3xl",
   "4xl": "max-w-4xl",
   "5xl": "max-w-5xl",
+  none: "max-w-none",
 };
 
 export interface DrawerProps {
@@ -34,6 +41,15 @@ export interface DrawerProps {
   footer?: ReactNode;
   size?: DrawerSize;
   ariaLabel?: string;
+  /** Accessible label shared by the backdrop and header close controls. */
+  closeLabel?: string;
+  /** Optional distinct label for the full-screen backdrop dismissal control. */
+  backdropLabel?: string;
+  panelStyle?: CSSProperties;
+  panelClassName?: string;
+  bodyClassName?: string;
+  /** Optional keyboard-accessible resize handle or other panel-edge control. */
+  panelLeading?: ReactNode;
   children: ReactNode;
 }
 
@@ -52,6 +68,12 @@ export function Drawer({
   footer,
   size = "xl",
   ariaLabel,
+  closeLabel = "Close",
+  backdropLabel,
+  panelStyle,
+  panelClassName,
+  bodyClassName,
+  panelLeading,
   children,
 }: DrawerProps) {
   const [entered, setEntered] = useState(false);
@@ -120,16 +142,18 @@ export function Drawer({
       <button
         type="button"
         className="absolute inset-0 cursor-default"
-        aria-label="Close"
+        aria-label={backdropLabel ?? closeLabel}
         onClick={onClose}
       />
       <aside
         ref={panelRef}
         tabIndex={-1}
+        style={panelStyle}
         className={`relative flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--surface)] elev-3 outline-none transition-transform duration-200 ease-out motion-reduce:transition-none ${
           SIZE_CLASS[size]
-        } ${entered ? "translate-x-0" : "translate-x-full"}`}
+        } ${entered ? "translate-x-0" : "translate-x-full"} ${panelClassName ?? ""}`}
       >
+        {panelLeading}
         <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border-subtle)] p-5">
           <div className="flex min-w-0 items-start gap-2">
             {onBack ? (
@@ -162,14 +186,14 @@ export function Drawer({
               type="button"
               onClick={onClose}
               className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2 text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-              aria-label="Close"
+              aria-label={closeLabel}
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+        <div className={`min-h-0 flex-1 overflow-y-auto p-5 ${bodyClassName ?? ""}`}>{children}</div>
 
         {footer ? (
           <div className="border-t border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">

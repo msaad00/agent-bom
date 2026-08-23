@@ -29,7 +29,7 @@ from .exception_store import ExceptionStatus, VulnException
 from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
 from .server import ScanJob
-from .store import _literal_like_pattern
+from .store import _literal_like_pattern, _require_tenant_scope
 
 if TYPE_CHECKING:
     from .schedule_store import ScanSchedule
@@ -359,6 +359,23 @@ class SnowflakeJobStore:
             )
             rows = cur.fetchall()
         return {str(status): int(count) for status, count in rows}
+
+    def count_active(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> int:
+        """Count active jobs without fetching VARIANT report payloads."""
+        _require_tenant_scope(tenant_id, all_tenants, "SnowflakeJobStore.count_active()")
+        clauses = ["status IN (%s, %s)"]
+        params: list[object] = ["pending", "running"]
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT COUNT(*) FROM scan_jobs WHERE {' AND '.join(clauses)}",  # nosec B608
+                tuple(params),
+            )
+            row = cur.fetchone()
+        return int(row[0]) if row else 0
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY

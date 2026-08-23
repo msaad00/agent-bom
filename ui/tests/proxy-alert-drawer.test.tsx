@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 import { ProxyAlertDrawer } from "@/components/proxy-alert-drawer";
 import type { ProxyAlert } from "@/lib/api";
@@ -43,6 +43,21 @@ beforeEach(() => {
 });
 
 describe("ProxyAlertDrawer", () => {
+  it("moves focus into the modal and restores the trigger on close", async () => {
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(<ProxyAlertDrawer alert={alert} onClose={() => {}} />);
+    const panel = screen.getByRole("dialog").querySelector("aside");
+    expect(panel).not.toBeNull();
+    await waitFor(() => expect(panel).toHaveFocus());
+
+    unmount();
+    expect(trigger).toHaveFocus();
+    trigger.remove();
+  });
+
   it("lays fields out in a grid rather than one card per value", () => {
     render(<ProxyAlertDrawer alert={alert} onClose={() => {}} />);
 

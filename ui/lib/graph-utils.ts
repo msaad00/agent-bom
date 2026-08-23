@@ -126,12 +126,30 @@ export function minimapNodeColor(n: { data: Record<string, unknown> }): string {
 // ─── Attack Flow Node Colors ─────────────────────────────────────────────────
 
 export const ATTACK_FLOW_MINIMAP_COLORS: Record<string, string> = {
-  cve: "#ef4444",
-  package: "#52525b",
-  server: "#3b82f6",
-  agent: "#10b981",
-  credential: "#eab308",
-  tool: "#a855f7",
+  cve: NODE_COLOR_MAP.vulnerability,
+  package: NODE_COLOR_MAP.package,
+  server: NODE_COLOR_MAP.server,
+  agent: NODE_COLOR_MAP.agent,
+  credential: NODE_COLOR_MAP.credential,
+  tool: NODE_COLOR_MAP.tool,
+};
+
+/** Theme-safe node cards shared by both attack-flow renderers. */
+export const ATTACK_FLOW_NODE_CLASS_MAP: Record<string, string> = {
+  cve: "border-red-600 bg-red-50/90 dark:bg-red-950/80",
+  package:
+    "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)]",
+  server: "border-blue-600 bg-blue-50/90 dark:bg-blue-950/80",
+  agent: "border-emerald-600 bg-emerald-50/90 dark:bg-emerald-950/80",
+  credential: "border-amber-600 bg-amber-50/90 dark:bg-amber-950/80",
+  tool: "border-purple-600 bg-purple-50/90 dark:bg-purple-950/80",
+};
+
+export const ATTACK_FLOW_SEVERITY_NODE_CLASS_MAP: Record<string, string> = {
+  critical: "border-red-500 bg-red-50 dark:bg-red-950",
+  high: "border-orange-500 bg-orange-50 dark:bg-orange-950",
+  medium: "border-yellow-500 bg-yellow-50 dark:bg-yellow-950",
+  low: "border-blue-500 bg-blue-50 dark:bg-blue-950",
 };
 
 // ─── Edge Styling — Turbo Flow Pattern ───────────────────────────────────────

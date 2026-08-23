@@ -68,7 +68,13 @@ import { Drawer } from "@/components/drawer";
 import { GraphInteractionToolbar } from "@/components/graph-chrome";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey } from "@/lib/graph-presentation";
-import { graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
+import {
+  ATTACK_FLOW_MINIMAP_COLORS,
+  ATTACK_FLOW_NODE_CLASS_MAP,
+  ATTACK_FLOW_SEVERITY_NODE_CLASS_MAP,
+  graphNodeDisplayLabels,
+  readableGraphEdges,
+} from "@/lib/graph-utils";
 import { useAuthState } from "@/components/auth-provider";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
@@ -1258,39 +1264,15 @@ const NODE_ICONS: Record<string, React.ElementType> = {
   tool: Wrench,
 };
 
-const NODE_COLORS: Record<string, string> = {
-  cve: "border-red-600 bg-red-950/80",
-  package: "border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]/80",
-  server: "border-blue-600 bg-blue-950/80",
-  agent: "border-emerald-600 bg-emerald-950/80",
-  credential: "border-yellow-600 bg-yellow-950/80",
-  tool: "border-purple-600 bg-purple-950/80",
-};
-
-const MINIMAP_COLORS: Record<string, string> = {
-  cve: "#ef4444",
-  package: "#52525b",
-  server: "#3b82f6",
-  agent: "#10b981",
-  credential: "#eab308",
-  tool: "#a855f7",
-};
-
 // ─── Lifecycle Custom Node ──────────────────────────────────────────────────
 
 function LifecycleNode({ data }: { data: AttackFlowNodeData }) {
   const nodeType = data.nodeType;
   const Icon = NODE_ICONS[nodeType] ?? Bug;
 
-  const sevColors: Record<string, string> = {
-    critical: "border-red-500 bg-red-950",
-    high: "border-orange-500 bg-orange-950",
-    medium: "border-yellow-500 bg-yellow-950",
-    low: "border-blue-500 bg-blue-950",
-  };
   const border = nodeType === "cve" && data.severity
-    ? sevColors[data.severity.toLowerCase()] ?? NODE_COLORS[nodeType]
-    : NODE_COLORS[nodeType];
+    ? ATTACK_FLOW_SEVERITY_NODE_CLASS_MAP[data.severity.toLowerCase()] ?? ATTACK_FLOW_NODE_CLASS_MAP[nodeType]
+    : ATTACK_FLOW_NODE_CLASS_MAP[nodeType];
 
   return (
     <div className={`rounded-lg border-2 px-3 py-2 min-w-[140px] max-w-[200px] shadow-lg ${border}`}>
@@ -1529,7 +1511,7 @@ function LifecycleFlow({
         <Background color="#27272a" gap={20} />
         <Controls className="agents-flow-controls" />
         <MiniMap
-          nodeColor={(n) => MINIMAP_COLORS[(n.data as AttackFlowNodeData)?.nodeType] ?? "#52525b"}
+          nodeColor={(n) => ATTACK_FLOW_MINIMAP_COLORS[(n.data as AttackFlowNodeData)?.nodeType] ?? "#52525b"}
           className="!bg-[color:var(--surface-muted)] !border-[color:var(--border-subtle)] !rounded-lg"
           maskColor="rgba(0,0,0,0.7)"
         />

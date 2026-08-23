@@ -6,8 +6,11 @@ Uses a mock psycopg_pool to avoid needing a real PostgreSQL instance.
 import json
 import sys
 import types
+from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
 
 # ─── Mock psycopg infrastructure ─────────────────────────────────────────────
 
@@ -558,6 +561,32 @@ def test_job_store_init_migrates_triggered_by_column(mock_pool):
     PostgresJobStore(pool=mock_pool)
     migration_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "ALTER TABLE scan_jobs" in sql)
     assert "ADD COLUMN triggered_by TEXT" in migration_sql
+
+
+def test_job_store_active_count_uses_indexed_columns_without_job_json(mock_pool, mock_maintenance_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    store = PostgresJobStore(pool=mock_pool, maintenance_pool=mock_maintenance_pool)
+    mock_pool._conn.executed.clear()
+
+    store.count_active(tenant_id="tenant-alpha")
+
+    sql, params = next((sql, params) for sql, params in mock_pool._conn.executed if "SELECT COUNT(*) FROM scan_jobs" in sql)
+    assert "status IN (%s, %s)" in sql
+    assert "team_id = %s" in sql
+    assert "data" not in sql.lower()
+    assert params == ("pending", "running", "tenant-alpha")
+
+
+def test_job_store_active_count_indexes_exist_in_runtime_store_and_schema(mock_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    PostgresJobStore(pool=mock_pool)
+    runtime_sql = (ROOT / "deploy" / "supabase" / "postgres" / "runtime-schema.sql").read_text()
+    init_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed)
+    for index_name in ("idx_jobs_status", "idx_jobs_team_status"):
+        assert index_name in init_sql
+        assert index_name in runtime_sql
 
 
 # ─── PostgresFleetStore ───────────────────────────────────────────────────────

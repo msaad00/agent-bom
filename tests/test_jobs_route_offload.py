@@ -23,6 +23,19 @@ _TICK_SECONDS = 0.01
 _MIN_TICKS_WHILE_OFFLOADED = 5
 
 
+def _completed_job():
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+
+    return ScanJob(
+        job_id="job-offload",
+        tenant_id="default",
+        status=JobStatus.DONE,
+        created_at="2026-08-23T00:00:00+00:00",
+        request=ScanRequest(),
+        result={"findings": []},
+    )
+
+
 def _blocking_store() -> MagicMock:
     store = MagicMock()
 
@@ -93,3 +106,47 @@ async def test_list_jobs_response_contract_is_unchanged() -> None:
     assert body["offset"] == 0
     assert body["status_counts"] == {"done": 2, "failed": 1}
     assert [job["job_id"] for job in body["jobs"]] == ["j-1", "j-2"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/scan/job-offload",
+        "/v1/scan/job-offload/status",
+        "/v1/scan/job-offload/remediation",
+        "/v1/scan/job-offload/skill-audit",
+        "/v1/scan/job-offload/stream",
+    ],
+)
+async def test_per_job_reads_keep_the_event_loop_responsive(path: str) -> None:
+    """Every per-job route must offload a potentially remote durable read."""
+    import httpx
+
+    from agent_bom.api.server import app
+
+    ticks = 0
+    job = _completed_job()
+
+    def slow_job_lookup(*_args: Any, **_kwargs: Any):
+        time.sleep(_BLOCKING_SECONDS)
+        return job
+
+    async def heartbeat() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(_TICK_SECONDS)
+            ticks += 1
+
+    with patch("agent_bom.api.routes.scan._job_for_request", side_effect=slow_job_lookup):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            beat = asyncio.create_task(heartbeat())
+            await asyncio.sleep(_TICK_SECONDS * 2)
+            before = ticks
+            response = await client.get(path)
+            observed = ticks - before
+            beat.cancel()
+
+    assert response.status_code == 200, response.text
+    assert observed >= _MIN_TICKS_WHILE_OFFLOADED, f"{path} advanced only {observed} tick(s) during a {_BLOCKING_SECONDS}s job read"

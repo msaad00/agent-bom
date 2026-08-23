@@ -166,6 +166,8 @@ class PostgresJobStore:
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id, created_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON scan_jobs(status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_team_status ON scan_jobs(team_id, status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_batch ON scan_jobs(team_id, batch_id, created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_parent ON scan_jobs(team_id, parent_job_id, created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_schedule ON scan_jobs(team_id, schedule_id, created_at DESC)")
@@ -408,6 +410,21 @@ class PostgresJobStore:
                 tuple(params),
             ).fetchall()
         return {str(status): int(count) for status, count in rows}
+
+    def count_active(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> int:
+        """Count active jobs without selecting or deserializing report JSON."""
+        _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.count_active()")
+        clauses = ["status IN (%s, %s)"]
+        params: list[object] = ["pending", "running"]
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
+        with self._scope_connection(all_tenants=all_tenants) as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM scan_jobs WHERE {' AND '.join(clauses)}",  # nosec B608
+                tuple(params),
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def query_cis_benchmark_checks(
         self,

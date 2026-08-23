@@ -60,11 +60,11 @@ Finding + UnifiedGraph contracts. Select any image for the full-size proof.
 
 <table>
   <tr>
-    <th>1 · Discover</th>
+    <th>1 · Discover inventory</th>
     <th>2 · Scan</th>
   </tr>
   <tr>
-    <td><a href="docs/images/mesh-live.png"><img src="docs/images/mesh-live.png" alt="Discovered agents, MCP servers, tools, packages, findings, and labeled relationships" width="440" /></a></td>
+    <td><a href="docs/images/fleet-state-live.png"><img src="docs/images/fleet-state-live.png" alt="Persisted developer endpoint and agent inventory with evidence state, lifecycle, and trust posture" width="440" /></a></td>
     <td><a href="docs/images/jobs-pipeline-live.png"><img src="docs/images/jobs-pipeline-live.png" alt="Completed read-only scan pipeline from discovery through persisted findings, graph, and report evidence" width="440" /></a></td>
   </tr>
   <tr>

@@ -124,6 +124,12 @@ class JobStore(Protocol):
         *,
         query: str | None = None,
     ) -> dict[str, int]: ...
+    def count_active(
+        self,
+        tenant_id: str | None = None,
+        *,
+        all_tenants: bool = False,
+    ) -> int: ...
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int: ...
 
 
@@ -264,6 +270,16 @@ class InMemoryJobStore:
                 key = job.status.value if isinstance(job.status, JobStatus) else str(job.status)
                 counts[key] = counts.get(key, 0) + 1
             return counts
+
+    def count_active(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> int:
+        """Count pending/running jobs without materialising job payloads."""
+        _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.count_active()")
+        with self._lock:
+            return sum(
+                1
+                for job in self._jobs.values()
+                if (tenant_id is None or job.tenant_id == tenant_id) and job.status in {JobStatus.PENDING, JobStatus.RUNNING}
+            )
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._lock:
@@ -537,6 +553,24 @@ class SQLiteJobStore:
                 params,
             ).fetchall()
             return {str(status): int(count) for status, count in rows}
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
+
+    def count_active(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> int:
+        """Count pending/running jobs with the indexed status columns only."""
+        _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.count_active()")
+        try:
+            clauses = ["status IN (?, ?)"]
+            params: list[object] = [JobStatus.PENDING.value, JobStatus.RUNNING.value]
+            if tenant_id is not None:
+                clauses.append("tenant_id = ?")
+                params.append(tenant_id)
+            row = self._conn.execute(
+                f"SELECT COUNT(*) FROM jobs WHERE {' AND '.join(clauses)}",  # nosec B608
+                params,
+            ).fetchone()
+            return int(row[0]) if row else 0
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

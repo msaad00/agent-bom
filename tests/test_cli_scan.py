@@ -1458,7 +1458,7 @@ def test_scan_save_flag(tmp_path):
     assert result.exit_code == 0
 
 
-def test_scan_incomplete_offline_scan_exits_two(monkeypatch, tmp_path):
+def test_scan_incomplete_offline_scan_exits_one(monkeypatch, tmp_path):
     profile_output = tmp_path / "profile-report.json"
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -1481,7 +1481,7 @@ output = "{profile_output}"
 
     result = _run(["scan", "--demo", "--no-auto-update-db"])
 
-    assert result.exit_code == 2
+    assert result.exit_code == 1
     assert "populated local vulnerability DB" in result.output
     # Verdict-led default panel labels the row "Security posture:"; the
     # ``--verbose`` form labels it "SECURITY POSTURE:". Either is acceptable
@@ -1504,7 +1504,7 @@ def test_scan_incomplete_offline_scan_honors_explicit_output(monkeypatch, tmp_pa
 
     result = _run(["scan", "--demo", "--no-auto-update-db", "--format", "json", "--output", str(output)])
 
-    assert result.exit_code == 2
+    assert result.exit_code == 1
     assert "populated local vulnerability DB" in result.output
     assert output.exists()
     payload = json.loads(output.read_text(encoding="utf-8"))

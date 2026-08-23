@@ -13,6 +13,7 @@ const rows: RankedPathRow[] = [
     riskScore: 9.6,
     nodeCount: 4,
     agents: 2,
+    roleChain: "agent → server → package → finding",
   },
   {
     key: "k2::1",
@@ -34,6 +35,7 @@ describe("RankedPathList", () => {
     expect(screen.getByText("#2")).toBeInTheDocument();
     expect(screen.getByText(/CVE-2026-0002/)).toBeInTheDocument();
     expect(screen.getByText(/3 hops · 2 agents/)).toBeInTheDocument();
+    expect(screen.getByText("agent → server → package → finding")).toBeInTheDocument();
     // The single DAG renders in the command-center panel, not per row here.
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });

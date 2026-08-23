@@ -25,4 +25,11 @@ describe("investigation demo hierarchy", () => {
     expect(page).not.toContain(">Snapshot</p>");
     expect(page).not.toContain("Large estate ·");
   });
+
+  it("does not make the ranked path queue wait for fix-first enrichment", () => {
+    expect(page).not.toContain("const [graph, view] = await Promise.all");
+    expect(page).toContain("async function loadAttackPaths");
+    expect(page).toContain("async function loadFixFirstEnrichment");
+    expect(page).toContain("Ranked paths are ready; fix guidance is still loading");
+  });
 });

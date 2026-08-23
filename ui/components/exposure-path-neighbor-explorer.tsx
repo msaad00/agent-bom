@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { Bot, Bug, ChevronRight, Database, KeyRound, Loader2, Package, Server, ShieldAlert, Wrench } from "lucide-react";
 import { api, type GraphNodeNeighborsResponse } from "@/lib/api";
 import type { UnifiedNode } from "@/lib/graph-schema";
-import { exposureRoleForEntityType } from "@/lib/attack-paths";
+import { buildGraphInvestigationHref, exposureRoleForEntityType } from "@/lib/attack-paths";
 import { formatExposureEntityDisplay } from "@/lib/entity-display";
 import type { ExposureEntityRole, ExposurePath } from "@/lib/exposure-path";
 
@@ -197,6 +198,20 @@ function HopRow({ hop, scanId }: { hop: ExposurePath["hops"][number]; scanId?: s
             <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
               +{moreCount} more neighbor{moreCount === 1 ? "" : "s"} not shown
             </p>
+          )}
+          {load?.status === "ready" && (
+            <Link
+              href={buildGraphInvestigationHref({
+                scanId,
+                rootId: hop.id,
+                rootLabel: hop.label,
+              })}
+              aria-label={`Traverse from ${hop.label}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 text-[11px] font-medium text-sky-800 transition hover:border-sky-500/60 dark:text-sky-200"
+            >
+              Traverse from this hop
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
           )}
         </div>
       )}

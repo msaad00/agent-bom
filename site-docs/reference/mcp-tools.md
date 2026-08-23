@@ -10,6 +10,10 @@ They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
+`agent-bom mcp server` and the programmatic server both expose the complete
+81-tool catalog by default. Use `--profile guided` only when a client needs the
+smaller workflow-oriented context envelope.
+
 <details>
 <summary>Complete current catalog (81 tools)</summary>
 

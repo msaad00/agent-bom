@@ -58,6 +58,7 @@ import {
 } from "@/lib/api";
 import {
   attackPathKey,
+  attackPathRoleChain,
   buildFindingsHref,
   buildGraphInvestigationHref,
   buildSecurityGraphHref,
@@ -107,8 +108,10 @@ function AttackPathInvestigationContent() {
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
+  const [loadingFixFirst, setLoadingFixFirst] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [graphLoadError, setGraphLoadError] = useState<string | null>(null);
+  const [fixFirstLoadError, setFixFirstLoadError] = useState<string | null>(null);
   const [apiErrorKind, setApiErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
@@ -238,39 +241,34 @@ function AttackPathInvestigationContent() {
       setFixFirstView(null);
       setSelectedAttackPathKey(null);
       setGraphLoadError(null);
+      setFixFirstLoadError(null);
       return;
     }
 
     let cancelled = false;
 
-    async function loadGraph() {
+    setGraphData(null);
+    setFixFirstView(null);
+    setGraphLoadError(null);
+    setFixFirstLoadError(null);
+
+    async function loadAttackPaths() {
       setLoadingGraph(true);
       setLoadingMorePaths(false);
       setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
       try {
-        const [graph, view] = await Promise.all([
-          api.getGraphAttackPaths({
-            scanId: selectedScanId,
-            offset: 0,
-            limit: ATTACK_PATH_FETCH_PAGE,
-          }),
-          api.getFixFirstGraphView({
-            scanId: selectedScanId,
-            cve: focus.cve || undefined,
-            packageName: focus.packageName || undefined,
-            agentName: focus.agentName || undefined,
-            limit: FIX_FIRST_CARD_LIMIT,
-          }),
-        ]);
+        const graph = await api.getGraphAttackPaths({
+          scanId: selectedScanId,
+          offset: 0,
+          limit: ATTACK_PATH_FETCH_PAGE,
+        });
         if (cancelled) return;
         setGraphData(graph);
-        setFixFirstView(view);
         setApiError(null);
         setGraphLoadError(null);
       } catch (error) {
         if (cancelled) return;
         setGraphData(null);
-        setFixFirstView(null);
         setGraphLoadError(userFacingApiErrorMessage(error, "Failed to load security graph"));
         setApiErrorKind(_classifyGraphErrorKind(error));
       } finally {
@@ -278,7 +276,30 @@ function AttackPathInvestigationContent() {
       }
     }
 
-    void loadGraph();
+    async function loadFixFirstEnrichment() {
+      setLoadingFixFirst(true);
+      try {
+        const view = await api.getFixFirstGraphView({
+          scanId: selectedScanId,
+          cve: focus.cve || undefined,
+          packageName: focus.packageName || undefined,
+          agentName: focus.agentName || undefined,
+          limit: FIX_FIRST_CARD_LIMIT,
+        });
+        if (cancelled) return;
+        setFixFirstView(view);
+        setFixFirstLoadError(null);
+      } catch (error) {
+        if (cancelled) return;
+        setFixFirstView(null);
+        setFixFirstLoadError(userFacingApiErrorMessage(error, "Fix guidance is unavailable"));
+      } finally {
+        if (!cancelled) setLoadingFixFirst(false);
+      }
+    }
+
+    void loadAttackPaths();
+    void loadFixFirstEnrichment();
     return () => {
       cancelled = true;
     };
@@ -348,12 +369,12 @@ function AttackPathInvestigationContent() {
       (left, right) => right.composite_risk - left.composite_risk,
     );
     const fromFixFirst = fixFirstCards.map((card) => card.attack_path);
-    const focusedPaths =
-      focus.nodeId || focus.findingId
-        ? fromFixFirst.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus))
-        : fromFixFirst;
+    const focusedApiPaths = fromApi.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus));
+    const focusedEnrichedPaths = fromFixFirst.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus));
     const base = hasFocusContext
-      ? focusedPaths
+      ? focusedApiPaths.length > 0
+        ? focusedApiPaths
+        : focusedEnrichedPaths
       : fromApi.length > 0
         ? fromApi
         : fromFixFirst;
@@ -439,6 +460,7 @@ function AttackPathInvestigationContent() {
           riskScore: path.composite_risk,
           nodeCount: path.hops.length,
           agents: labelsForAttackPathType(path, graphNodeById, "agent").length,
+          roleChain: attackPathRoleChain(path, graphNodeById),
         };
         if (card?.rank_meta?.tool_capabilities?.length) {
           row.capabilityTags = card.rank_meta.tool_capabilities;
@@ -834,6 +856,16 @@ function AttackPathInvestigationContent() {
                 : ""
           }`}
           subtitle={`Select a path to focus its graph and evidence here.${
+            loadingFixFirst
+              ? " Ranked paths are ready; fix guidance is still loading."
+              : fixFirstLoadError
+                ? " Ranked paths are ready; fix guidance is temporarily unavailable."
+                : graphData?.count_metadata?.source === "persisted_graph_paths"
+                  ? " Ranked from persisted scan paths."
+                  : graphData?.count_metadata?.source === "derived_graph_paths"
+                    ? " Ranked from bounded graph traversal."
+                    : ""
+          }${
             selectedCampaign
               ? ` Filtered to crown-jewel cluster “${selectedCampaign.crown_jewel_label || selectedCampaign.crown_jewel}”.`
               : ""

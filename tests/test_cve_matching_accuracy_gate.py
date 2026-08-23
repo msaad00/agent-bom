@@ -25,6 +25,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 CORPUS = ROOT / "tests" / "fixtures" / "cve_accuracy_corpus.json"
 BASELINE = ROOT / "docs" / "CVE_MATCHING_ACCURACY.json"
+README = ROOT / "README.md"
+SCANNING_DOC = ROOT / "site-docs" / "features" / "scanning.md"
 
 
 def _load_harness():
@@ -67,6 +69,20 @@ def test_clean_tree_matches_the_recorded_baseline(entries: list[dict]) -> None:
     assert result["recall"] >= baseline["recall"]
     assert result["precision"] >= baseline["precision"]
     assert result["false_negative"] == 0, f"missed vulnerable versions: {result['false_negative']}"
+
+
+def test_public_accuracy_claim_matches_the_reproducible_baseline() -> None:
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    evaluated = baseline["evaluated"]
+    positives = baseline["true_positive"]
+    negatives = baseline["true_negative"]
+    for path in (README, SCANNING_DOC):
+        text = " ".join(path.read_text(encoding="utf-8").split())
+        assert f"{evaluated:,} comparable OSV advisories" in text
+        assert f"{positives:,} affected-version checks" in text
+        assert f"{negatives:,} fixed-version checks" in text
+        assert "zero false negatives and zero false positives" in text
+        assert "not a universal scanner-accuracy claim" in text
 
 
 def test_the_gate_detects_a_window_collapse_regression(entries: list[dict]) -> None:

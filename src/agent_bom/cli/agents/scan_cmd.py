@@ -203,7 +203,11 @@ def _exit_incomplete_scan_with_partial_summary(
         )
         if posture:
             render_posture_summary(agents, [])
-    raise SystemExit(2)
+    # The command produced a truthful partial artifact, so this is a failed
+    # scan verdict rather than a caller/usage error.  Keep exit 2 reserved for
+    # invalid arguments and empty inputs; CI must fail closed on incomplete
+    # evidence through the same exit-1 family as other scan verdicts.
+    raise SystemExit(1)
 
 
 def _reset_offline_mode() -> None:

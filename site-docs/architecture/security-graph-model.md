@@ -124,13 +124,18 @@ To keep the graph readable at larger sizes, `agent-bom` uses:
 - focused vs expanded topology modes
 - relationship-scope filters
 - node detail enrichment on demand
+- an independent persisted-path fast lane, so full-estate fix guidance cannot
+  delay the first ranked path
+- semantic role chains in the queue (`agent → server → package → finding`)
+  and bounded one-hop traversal for direct dependencies and dependents
 
 The operator workflow should be:
 
 1. start with the focused graph or attack-path shortlist
 2. narrow by agent, severity, or relationship scope
-3. open node detail for IDs, timestamps, and impact
-4. page or expand only when the current slice is too narrow
+3. expand a hop for bounded direct neighbors, or traverse from it into lineage
+4. open node detail for IDs, timestamps, and impact
+5. page or expand only when the current slice is too narrow
 
 ## Relationship categories
 

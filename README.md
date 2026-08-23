@@ -29,7 +29,8 @@
 data platforms, MCP servers, and runtime activity, then normalizes the evidence
 into one Finding + UnifiedGraph model for prioritized investigation and action.
 
-Blast radius connects a package finding to the AI surfaces that can reach it:
+Blast radius starts at an agent or MCP tool entrypoint and connects a package
+finding to the AI surfaces that can reach it:
 
 ```text
 package
@@ -43,6 +44,12 @@ package
 The terminal report shows this attack path for human review. MCP clients can
 query the same evidence through `exposure_paths` and use `should_i_deploy` for
 a bounded pre-deployment verdict.
+
+**Measured matcher proof:** the committed, mutation-tested range benchmark
+currently covers 207 comparable OSV advisories, 19,161 affected-version checks,
+and 576 fixed-version checks with zero false negatives and zero false positives.
+[Method and machine-readable result](docs/CVE_MATCHING_ACCURACY.json). This is a
+reproducible range-matcher baseline, not a universal scanner-accuracy claim.
 
 - **Run where you deploy:** the same deterministic scanner produces findings, SARIF, SBOMs, HTML reports, and graph exports on a workstation, in CI, in Docker/Kubernetes, or in your control plane.
 - **Centralize when ready:** self-host fleet, browser, compliance, and audit evidence inside your cloud and identity boundary.
@@ -108,6 +115,10 @@ Need a disconnected scan? Seed the smallest package-advisory database first:
 agent-bom db update --osv-ecosystem PyPI
 agent-bom scan . --offline
 ```
+
+If that database is missing or unreadable, the scan writes a partial artifact
+when `-o` is set and exits `1`; CI therefore cannot mistake unavailable
+advisory coverage for a clean scan.
 
 On a fresh database, that command covers only the selected ecosystem; packages
 from other ecosystems remain explicit offline coverage gaps. Repeat

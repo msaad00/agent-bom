@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   attackPathKey,
+  attackPathRoleChain,
   attackPathSequenceLabels,
   buildGraphInvestigationHref,
   buildSecurityGraphHref,
@@ -318,6 +319,29 @@ describe("attack path helpers", () => {
         rootLabel: "flask",
       }),
     ).toBe("/security-graph?scan=scan-123&agent=Claude+Desktop&investigate=1&root=pkg-1&q=flask&lens=lineage");
+  });
+
+  it("summarizes the correlated hop roles without repeating adjacent layers", () => {
+    const nodes = new Map<string, UnifiedNode>([
+      ["agent-1", graphNode("agent-1", EntityType.AGENT, "reviewer")],
+      ["server-1", graphNode("server-1", EntityType.SERVER, "github")],
+      ["server-2", graphNode("server-2", EntityType.CLOUD_RESOURCE, "runner")],
+      ["pkg-1", graphNode("pkg-1", EntityType.PACKAGE, "form-data")],
+      ["cve-1", graphNode("cve-1", EntityType.VULNERABILITY, "CVE-2025-7783")],
+    ]);
+    const path: AttackPath = {
+      source: "agent-1",
+      target: "cve-1",
+      hops: ["agent-1", "server-1", "server-2", "pkg-1", "cve-1"],
+      edges: [],
+      composite_risk: 9.8,
+      summary: "reachable package",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2025-7783"],
+    };
+
+    expect(attackPathRoleChain(path, nodes)).toBe("agent → server → package → finding");
   });
 
   it("decodes graph investigation roots from URL params", () => {

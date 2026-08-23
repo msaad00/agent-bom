@@ -13,13 +13,18 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _now
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
 from agent_bom.demo_estate.showcase_graph import (
+    SHOWCASE_BASELINE_CREATED_AT,
+    SHOWCASE_BASELINE_SCAN_ID,
+    SHOWCASE_CURRENT_CREATED_AT,
     SHOWCASE_PACKAGES,
+    SHOWCASE_SCAN_ID,
     SHOWCASE_SERVERS,
     SHOWCASE_TENANT,
     seed_showcase_fleet_and_runtime,
     seed_showcase_graph_if_empty,
     seed_showcase_identities,
 )
+from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
 
@@ -293,6 +298,50 @@ def _store_demo_scan_job(report: dict[str, Any], *, tenant_id: str) -> str:
     return job.job_id
 
 
+def _seed_showcase_posture_trends(report: dict[str, Any], *, tenant_id: str) -> int:
+    """Persist the labeled sample estate's deterministic two-point trajectory.
+
+    The current point is derived through the same canonical scan-result adapter
+    used by completed live scans.  The older point represents the explicitly
+    synthetic estate before 25 findings were remediated; it exists only in demo
+    estate mode and uses the graph baseline's timestamp and scan identity.
+    Stable scan IDs make repeated bootstrap calls upserts rather than duplicate
+    history.
+    """
+    from dataclasses import replace
+
+    from agent_bom.api.stores import _get_trend_store
+    from agent_bom.api.trend_recording import trend_point_from_scan_result
+    from agent_bom.posture import _score_to_grade
+
+    current = trend_point_from_scan_result(
+        report,
+        tenant_id=tenant_id,
+        scan_id=SHOWCASE_SCAN_ID,
+        completed_at=SHOWCASE_CURRENT_CREATED_AT,
+    )
+    if current is None:
+        return 0
+
+    baseline_score = max(0.0, current.posture_score - 8.0)
+    baseline = replace(
+        current,
+        timestamp=SHOWCASE_BASELINE_CREATED_AT,
+        scan_id=SHOWCASE_BASELINE_SCAN_ID,
+        total_vulns=current.total_vulns + 25,
+        critical=current.critical + 2,
+        high=current.high + 12,
+        medium=current.medium + 8,
+        low=current.low + 3,
+        posture_score=baseline_score,
+        posture_grade=_score_to_grade(baseline_score),
+    )
+    trend_store = _get_trend_store()
+    trend_store.record(baseline)
+    trend_store.record(current)
+    return 2
+
+
 def _graph_owner_scan_id(graph_store: Any, tenant_id: str) -> str:
     """Return the scan id whose snapshot the graph read path will serve."""
     try:
@@ -445,6 +494,17 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
         if finding_count < 1:
             raise RuntimeError("demo estate scan produced zero findings")
         job_id = _store_demo_scan_job(report, tenant_id=tenant_id)
+        try:
+            summary["posture_trend_points"] = _seed_showcase_posture_trends(
+                report,
+                tenant_id=tenant_id,
+            )
+        except Exception as exc:
+            _logger.warning(
+                "demo estate posture trend seeding failed: %s",
+                sanitize_error(exc, generic=True),
+            )
+            summary["posture_trend_error"] = True
         summary.update(
             {
                 "seeded": True,

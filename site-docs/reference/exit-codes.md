@@ -14,7 +14,7 @@ automation can distinguish caller mistakes from control-plane outages.
 | Code  | Name                | Meaning                                                                                                       | Typical sources                                                            |
 | ----- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `0`   | success             | Command completed; no findings or all findings under the default or configured severity threshold.             | Any subcommand that finished cleanly; `scan --exit-zero` with vulnerability findings only. |
-| `1`   | scan verdict or operational failure | Either (a) a scan gate matched — see "Why `scan` exits 1" below — or (b) a precondition failed: missing config, unreachable backend, missing required env var, dependency not present. | Default critical threshold or `--fail-on-severity` matched, `agent-bom scan --demo` (malicious package fails closed), `--clickhouse-url` missing, NVD unreachable, optional dependency not installed, `agent-bom connect <provider>` failing to verify or register. |
+| `1`   | scan verdict or operational failure | Either (a) a scan gate matched — see "Why `scan` exits 1" below — or (b) a precondition failed: missing config, unreachable backend, missing required env var, dependency not present. | Default critical threshold or `--fail-on-severity` matched, an incomplete scan such as a missing or unreadable offline vulnerability database, `agent-bom scan --demo` (malicious package fails closed), `--clickhouse-url` missing, NVD unreachable, optional dependency not installed, `agent-bom connect <provider>` failing to verify or register. |
 | `2`   | usage or empty      | Invalid arguments, no input to act on, or report contained no rows after filtering.                            | Click `UsageError` (auto), `agent-bom skills audit` with no skill files, empty result rendering, `agent-bom connect` when the control plane rejects the payload (`400`/`422`). |
 | `3`   | policy gate failed  | An opt-in policy gate failed. Currently emitted by `--require-fresh-db` / `AGENT_BOM_REQUIRE_FRESH_DB` when the local vuln DB is stale. Otherwise reserved for future policy gates. | `agent-bom scan --require-fresh-db` against a stale local vuln DB.          |
 | `4`   | (reserved)          | Reserved for "auth required" / "auth invalid" on commands that talk to an authenticated control plane.        | Not yet emitted.                                                           |
@@ -35,6 +35,13 @@ named on the last line of the output. A scan exits `1` when any of these hold.
 | A policy rule failed | Yes — `--policy`, or `--model-policy-mode enforce` / `--require-model-signatures` / `--block-unsafe-model-formats` (all default off) | Your policy rejected the result. |
 | A known-malicious package was found | **No — fails closed** | A typosquat, dependency-confusion, or known-malicious advisory match. Exiting `0` here would let the package install. |
 | The scan did not complete | **No — fails closed** | A requested collector degraded or failed; `scan_run.issues` in the artifact says which. A partial artifact with zero findings must not read as clean. |
+
+A missing, empty, or unreadable local advisory database during `scan --offline`
+is an incomplete scan, so `scan` writes a partial artifact when an output was
+requested and exits `1`. It is not a usage error (`2`) because the command and
+input were valid. The narrower `check` command retains its established
+precondition contract and exits `2` when its requested offline advisory lookup
+cannot start.
 
 `scan` defaults to a `critical` vulnerability gate, so a report containing
 critical findings exits non-zero even when no threshold flag was passed. The

@@ -154,6 +154,7 @@ healthy self-hosted rollout to validate with the bundled k6 harness.
 |---|---|---:|---:|
 | `GET /v1/graph?limit=100` | store-backed overview page | < 300 ms p95 | < 500 ms p95 |
 | `GET /v1/graph/search?q=agent&limit=25` | store-backed search page | < 250 ms p95 | < 400 ms p95 |
+| `GET /v1/graph/attack-paths?limit=25` | persisted-path queue with path-edge envelope | < 150 ms p95 | < 300 ms p95 |
 | `GET /v1/fleet?limit=25` | authenticated fleet read | < 200 ms p95 | < 350 ms p95 |
 | `GET /v1/fleet/stats` | fleet summary read | < 150 ms p95 | < 300 ms p95 |
 | `POST /v1/proxy/audit` | proxy audit ingest batch | < 300 ms p95 | < 500 ms p95 |
@@ -172,6 +173,13 @@ k6 run deploy/loadtest/k6-control-plane-api.js
 k6 run deploy/loadtest/k6-graph-api.js
 k6 run deploy/loadtest/k6-proxy-audit.js
 ```
+
+The v0.102.0 release-candidate measurement on the local 6.8k-node demo
+snapshot returned 25 persisted paths in 38.4–39.7 ms after warm-up. Restricting
+the response to the edges that prove those paths reduced the envelope from
+508,562 to 192,879 bytes while direct-neighbor traversal remained available
+through the node-neighbor endpoint. Raw samples and scope are recorded in
+[`perf/results/attack-path-queue-envelope-live-2026-08-22.json`](perf/results/attack-path-queue-envelope-live-2026-08-22.json).
 
 Interpretation:
 

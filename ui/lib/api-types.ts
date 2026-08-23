@@ -172,6 +172,13 @@ export interface UnifiedGraphResponse extends Omit<
   attack_paths: GraphAttackPath[];
   pagination: GraphPagination;
   completeness?: GraphCompleteness | undefined;
+  count_metadata?: {
+    source?: "persisted_graph_paths" | "derived_graph_paths" | string;
+    returned?: number;
+    total?: number;
+    scope?: string;
+    [key: string]: unknown;
+  } | undefined;
 }
 
 /** Shared HTTP/MCP inventory projection over the tenant-scoped graph store. */

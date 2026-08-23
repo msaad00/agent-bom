@@ -14,6 +14,8 @@ def test_exit_code_contract_documents_required_cli_codes() -> None:
         assert code in text
     assert "subprocess passthrough" in text
     assert "ok, findings, usage, auth, and server failures" in text
+    assert "missing or unreadable offline vulnerability database" in text
+    assert "partial artifact" in text
 
 
 def test_exit_code_contract_maps_http_statuses_to_cli_families() -> None:

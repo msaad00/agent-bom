@@ -52,9 +52,11 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     api_server._shutting_down = False
     original_job_store = api_stores._store
     original_graph_store = api_stores._graph_store
+    original_trend_store = api_stores._trend_store
     original_hub_store = hub_store_mod._HUB_STORE
     api_stores._store = None
     api_stores._graph_store = None
+    api_stores._trend_store = None
     set_compliance_hub_store(None)
     reset_findings_count_cache()
     from agent_bom.demo_estate.bootstrap import reset_demo_estate_bootstrap_status
@@ -71,6 +73,7 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     finally:
         api_stores._store = original_job_store
         api_stores._graph_store = original_graph_store
+        api_stores._trend_store = original_trend_store
         set_compliance_hub_store(original_hub_store)
         reset_findings_count_cache()
         reset_backpressure_for_tests()
@@ -131,6 +134,36 @@ def test_demo_estate_bootstrap_seeds_jobs_and_graph(demo_estate_client: TestClie
     payload = graph.json()
     node_count = len(payload.get("nodes") or [])
     assert node_count > 0
+
+
+def test_demo_estate_bootstrap_seeds_honest_posture_trajectory(
+    demo_estate_client: TestClient,
+) -> None:
+    """The labeled sample estate proves the shipped trend path with two points."""
+    from agent_bom.demo_estate.showcase_graph import (
+        SHOWCASE_BASELINE_CREATED_AT,
+        SHOWCASE_CURRENT_CREATED_AT,
+        SHOWCASE_SCAN_ID,
+    )
+
+    response = demo_estate_client.get("/v1/trends", headers=VIEWER, params={"limit": 2})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["count"] == 2
+    current, previous = payload["data_points"]
+    assert current["scan_id"] == SHOWCASE_SCAN_ID
+    assert current["timestamp"] == SHOWCASE_CURRENT_CREATED_AT
+    assert previous["scan_id"] == SHOWCASE_BASELINE_SCAN_ID
+    assert previous["timestamp"] == SHOWCASE_BASELINE_CREATED_AT
+    assert current["posture_score"] > previous["posture_score"]
+    assert current["total_vulns"] < previous["total_vulns"]
+
+    from agent_bom.demo_estate.bootstrap import _seed_showcase_posture_trends
+
+    assert _seed_showcase_posture_trends(_demo_report(demo_estate_client), tenant_id="default") == 2
+    repeated = demo_estate_client.get("/v1/trends", headers=VIEWER, params={"limit": 30}).json()
+    assert repeated["count"] == 2
 
 
 def test_demo_estate_bootstrap_validates_versioned_enterprise_contract(

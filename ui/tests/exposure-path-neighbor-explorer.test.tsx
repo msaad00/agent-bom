@@ -89,6 +89,10 @@ describe("ExposurePathNeighborExplorer", () => {
     expect(screen.getByText("Dependents")).toBeInTheDocument();
     expect(screen.getByText("werkzeug")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Collapse neighbors of database/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Traverse from database/i })).toHaveAttribute(
+      "href",
+      "/security-graph?scan=scan-1&investigate=1&root=server%3Adatabase&q=database&lens=lineage",
+    );
 
     // Collapsing hides the revealed neighbors without refetching.
     fireEvent.click(screen.getByRole("button", { name: /Collapse neighbors of database/i }));

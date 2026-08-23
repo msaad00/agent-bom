@@ -19,6 +19,17 @@ automated findings open until the next daily schedule.
 
 ### Fixed
 
+- Offline repository scans with a missing or unreadable vulnerability database
+  now return the documented incomplete-scan verdict (`1`) while preserving a
+  partial artifact, instead of misclassifying valid input as usage error `2`.
+- Ranked attack paths render independently from slower full-estate fix guidance,
+  expose their correlated role chain, support bounded traversal from each hop,
+  and transfer only the relationships that prove the returned paths.
+- The labeled sample estate now records an idempotent two-point posture
+  trajectory through the production trend store, and the public scanner story
+  links its mutation-tested OSV range-matching evidence without presenting the
+  bounded benchmark as universal accuracy.
+
 - Graph label budgets survive accessibility normalization, persisted attack
   paths derive from the final projected estate, and forced demo seeding never
   displaces newer operator evidence. The demo now exposes and renders an

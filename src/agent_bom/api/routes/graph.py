@@ -1791,6 +1791,14 @@ def _serialize_attack_path_queue(
     path_source: str,
 ) -> dict[str, Any]:
     nodes_by_id = {node.id: node for node in nodes}
+    # `edges_for_node_ids` intentionally returns every incident edge for its
+    # general graph-page callers.  A ranked path page has a tighter evidence
+    # contract: ship only relationships that connect consecutive hops in one
+    # of the returned paths.  Neighbor context is available through the
+    # bounded node-neighbor endpoint, so unrelated chords among the same hop
+    # nodes only inflate transfer/render cost and visually imply extra proof.
+    path_pairs = {pair for path in paths for pair in zip(path.hops, path.hops[1:], strict=False)}
+    path_edges = [edge for edge in path_edges if (edge.source, edge.target) in path_pairs]
     stats = _sync_attack_path_stats(stats, total=total, paths=paths)
     completeness = graph_completeness(
         returned=len(paths),

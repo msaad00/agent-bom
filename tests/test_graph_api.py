@@ -2034,6 +2034,15 @@ class TestGraphStoreBackendSelection:
                 tool_exposure=["run_shell"],
             )
         )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="vuln:cve",
+                relationship=RelationshipType.OWNS,
+            )
+        )
         client = TestClient(app)
 
         response = client.get("/v1/graph/attack-paths", params={"limit": 1})
@@ -2047,6 +2056,10 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["exposure_path"]["relationships"][0]["relationship"] == "uses"
         assert body["attack_paths"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
         assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
+        assert {(edge["source_id"], edge["target_id"]) for edge in body["edges"]} == {
+            ("agent:a", "server:s"),
+            ("server:s", "vuln:cve"),
+        }
         assert body["pagination"]["total"] == 1
         assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)
         assert any(call[0] == "nodes_by_ids" for call in recording_graph_store.calls)

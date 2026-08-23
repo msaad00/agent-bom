@@ -25,6 +25,11 @@ download the archive again before updating advisory IDs. Use the broader
 `agent-bom db update` for distro/image, exploit-probability, and
 known-exploited-vulnerability feeds.
 
+An offline repository scan with a missing, empty, or unreadable advisory
+database fails closed with status `1`. When an output path is requested, the
+artifact is still written with `scan_run.outcome: partial` and the unavailable
+coverage named; it must not be interpreted as a clean zero-finding result.
+
 ## 1. Run the Release-Pinned Demo
 
 ```bash

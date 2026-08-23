@@ -15,6 +15,8 @@ export interface RankedPathRow {
   riskScore: number;
   nodeCount: number;
   agents: number;
+  /** Compact correlated layer sequence, for example agent → server → finding. */
+  roleChain?: string | undefined;
   /** MCP tool capability tags (read/write/exec/net) feeding path scoring. */
   capabilityTags?: string[] | undefined;
   /** Environments seen on path hops (prod weighting explainability). */
@@ -94,6 +96,14 @@ export function RankedPathList({
               <span className="mt-0.5 block text-[11px] text-[color:var(--text-tertiary)]">
                 {pathSpanLabel(row.nodeCount)} · {row.agents} agent{row.agents === 1 ? "" : "s"}
               </span>
+              {row.roleChain ? (
+                <span
+                  className="mt-0.5 block truncate font-mono text-[10px] text-[color:var(--text-secondary)]"
+                  title={row.roleChain}
+                >
+                  {row.roleChain}
+                </span>
+              ) : null}
               {(row.capabilityTags?.length || row.environmentTags?.length) ? (
                 <span className="mt-1 flex flex-wrap gap-1">
                   {(row.environmentTags ?? []).slice(0, 2).map((tag) => (

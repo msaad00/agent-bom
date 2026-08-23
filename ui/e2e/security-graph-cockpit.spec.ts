@@ -150,7 +150,12 @@ function buildCockpitGraph(nodeCount = 5) {
 async function routeCockpit(
   page: Page,
   snapshotNodeCount?: number,
-  options: { emptyFocusResults?: boolean; emptyRollup?: boolean; rollupDelayMs?: number } = {},
+  options: {
+    emptyFocusResults?: boolean;
+    emptyRollup?: boolean;
+    rollupDelayMs?: number;
+    fixFirstDelayMs?: number;
+  } = {},
 ) {
   const graph = buildCockpitGraph(snapshotNodeCount);
 
@@ -198,6 +203,9 @@ async function routeCockpit(
     });
   });
   await page.route("**/v1/graph/views/fix-first?**", async (route) => {
+    if (options.fixFirstDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, options.fixFirstDelayMs));
+    }
     const attackPath = graph.attack_paths[0]!;
     const cards = options.emptyFocusResults
       ? []
@@ -403,6 +411,17 @@ test("focused investigation never shows an unrelated global path", async ({ page
 
   await expect(page.getByText("No attack paths matched the current focus")).toBeVisible();
   await expect(page.getByText("Critical package reachable from MCP server")).toHaveCount(0);
+});
+
+test("ranked persisted paths render before slower fix guidance", async ({ page }) => {
+  await routeCockpit(page, undefined, { fixFirstDelayMs: 2_000 });
+
+  await page.goto("/security-graph");
+  await expect(page.getByText("#1 fix first")).toBeVisible();
+  await expect(page.getByText(/Ranked paths are ready; fix guidance is still loading/)).toBeVisible();
+  await expect(page.getByText("agent → server → package → finding")).toBeVisible();
+
+  await expect(page.getByText("Critical package reachable from MCP server")).toBeVisible();
 });
 
 test("ranked path selection focuses the in-place interactive graph and announces the change", async ({ page }) => {

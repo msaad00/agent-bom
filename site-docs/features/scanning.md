@@ -38,6 +38,19 @@ Linux paths use `~/.config/` equivalents.
 | [GitHub Advisories](https://github.com/advisories) | Supplemental advisory data |
 | Commercial vuln API | Optional enrichment when a vendor API token is configured |
 
+### Reproducible matching evidence
+
+The committed, mutation-tested range benchmark currently covers 207 comparable
+OSV advisories, 19,161 affected-version checks, and 576 fixed-version checks
+with zero false negatives and zero false positives. The benchmark removes the
+explicit affected-version list before exercising range logic, uses advisory
+fixed releases as its defensible negative set, and fails under a deliberately
+reintroduced multi-window bug. See the
+[machine-readable result](../../docs/CVE_MATCHING_ACCURACY.json) and
+[`scripts/cve_matching_accuracy.py`](../../scripts/cve_matching_accuracy.py).
+This is a reproducible range-matcher baseline, not a universal scanner-accuracy
+claim.
+
 ## Credential exposure detection
 
 Config files are parsed for server definitions. Environment variable **values** are automatically redacted — only key names are reported. Patterns detected:

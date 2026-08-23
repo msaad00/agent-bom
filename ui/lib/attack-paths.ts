@@ -164,6 +164,16 @@ export function toAttackCardNodes(path: AttackPath, nodeById: Map<string, Unifie
   return nodes;
 }
 
+/** Compact semantic chain for a ranked row before the analyst opens its DAG. */
+export function attackPathRoleChain(path: AttackPath, nodeById: Map<string, UnifiedNode>): string {
+  const roles: string[] = [];
+  for (const node of toAttackCardNodes(path, nodeById)) {
+    const role = node.type === "cve" ? "finding" : node.type;
+    if (roles[roles.length - 1] !== role) roles.push(role);
+  }
+  return roles.join(" → ");
+}
+
 const GENERIC_PATH_TITLE = /^exposure path\b/i;
 
 /**

@@ -161,10 +161,11 @@ _ToolReturn = TypeVar("_ToolReturn")
 _SERVER_CARD_PROMPTS = _METADATA_SERVER_CARD_PROMPTS
 _SERVER_CARD_TOOLS = _METADATA_SERVER_CARD_TOOLS
 
-# The guided profile is the default human/agent front door.  It contains every
+# The guided profile is an explicit context-saving option. It contains every
 # tool referenced by the eight shipped workflow prompts plus the three asset
-# inventory drill-downs.  Programmatic callers keep the historical full
-# catalog unless they explicitly request this profile.
+# inventory drill-downs. CLI and programmatic callers default to the full
+# catalog so registry and local clients see the advertised surface unless they
+# deliberately request a smaller prompt-oriented profile.
 _GUIDED_TOOL_NAMES = frozenset(
     {
         "audit_integrity",

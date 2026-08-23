@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "measured_at": "2026-08-22",
+  "source_base_sha": "48ddff0a7e4882659f48dbf7afbb3658db35167e",
+  "environment": {
+    "backend": "sqlite",
+    "host": "macos-local",
+    "python": "3.13",
+    "snapshot": "showcase",
+    "snapshot_nodes": 6802,
+    "snapshot_edges": 22993,
+    "persisted_attack_paths": 2155
+  },
+  "request": "/v1/graph/attack-paths?scan_id=showcase&offset=0&limit=25",
+  "before": {
+    "edge_scope": "all incident edges among returned hop nodes",
+    "returned_paths": 25,
+    "returned_nodes": 73,
+    "returned_edges": 428,
+    "response_bytes": 508562,
+    "warm_seconds": [0.047782, 0.041942, 0.041674, 0.042510, 0.044478]
+  },
+  "after": {
+    "edge_scope": "consecutive relationships proving returned paths",
+    "returned_paths": 25,
+    "returned_nodes": 73,
+    "returned_edges": 57,
+    "response_bytes": 192879,
+    "warm_seconds": [0.039663, 0.038387, 0.038373, 0.038482, 0.038597]
+  },
+  "notes": [
+    "The queue reports pagination and completeness for the full persisted path count.",
+    "Bounded direct dependencies and dependents remain available from the node-neighbor endpoint.",
+    "This is a local release-candidate measurement, not a hosted production SLA."
+  ]
+}

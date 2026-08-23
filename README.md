@@ -138,6 +138,32 @@ in full either way, and the last line names the gate that matched. Full
 Save an artifact with `agent-bom scan . -f sarif -o findings.sarif`, or follow
 the [first-run guide](docs/FIRST_RUN.md) for formats and CI use.
 
+### Daily developer loop
+
+Try the scanner without installing it, then check a package before adding it:
+
+```bash
+uvx agent-bom scan .
+uvx agent-bom check requests@2.33.0 --ecosystem pypi
+```
+
+`check` returns an allow/unsafe/incomplete pre-install verdict; `scan` covers the
+repository plus discovered AI/MCP configuration. To make both dependency and
+secret gates automatic for a team, pin the shipped consumer hooks:
+
+```yaml
+repos:
+  - repo: https://github.com/msaad00/agent-bom
+    rev: v0.102.0
+    hooks:
+      - id: agent-bom-secrets
+      - id: agent-bom-scan
+```
+
+Run `pre-commit install` once. The hooks install agent-bom into their own
+isolated environment, so contributors do not need a separate global install.
+[Hook behavior and CI examples](docs/DEPLOYMENT.md#pre-commit-hook).
+
 <details>
 <summary><b>Expansion paths — pick one only after the front door works</b></summary>
 

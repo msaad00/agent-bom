@@ -46,8 +46,8 @@ with zero false negatives and zero false positives. The benchmark removes the
 explicit affected-version list before exercising range logic, uses advisory
 fixed releases as its defensible negative set, and fails under a deliberately
 reintroduced multi-window bug. See the
-[machine-readable result](../../docs/CVE_MATCHING_ACCURACY.json) and
-[`scripts/cve_matching_accuracy.py`](../../scripts/cve_matching_accuracy.py).
+[machine-readable result](https://github.com/msaad00/agent-bom/blob/main/docs/CVE_MATCHING_ACCURACY.json) and
+[`scripts/cve_matching_accuracy.py`](https://github.com/msaad00/agent-bom/blob/main/scripts/cve_matching_accuracy.py).
 This is a reproducible range-matcher baseline, not a universal scanner-accuracy
 claim.
 

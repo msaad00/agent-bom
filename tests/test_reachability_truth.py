@@ -44,4 +44,3 @@ def test_unrated_active_exploitation_never_ranks_below_equivalent_low() -> None:
 
     assert unknown.calculate_risk_score() >= low.calculate_risk_score()
     assert none.calculate_risk_score() >= low.calculate_risk_score()
-

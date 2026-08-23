@@ -1295,9 +1295,7 @@ def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
         rel = _rel_value(edge)
         if rel == RelationshipType.VULNERABLE_TO.value:
             vulnerability_node = graph.nodes.get(edge.target)
-            if vulnerability_node is not None and node_reachability(
-                getattr(vulnerability_node, "attributes", None)
-            ).permits_exploit_chain:
+            if vulnerability_node is not None and node_reachability(getattr(vulnerability_node, "attributes", None)).permits_exploit_chain:
                 vulnerable.add(edge.source)
         elif rel == RelationshipType.HAS_PERMISSION.value:
             principal = graph.nodes.get(edge.source)

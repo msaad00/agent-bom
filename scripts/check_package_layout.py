@@ -128,7 +128,6 @@ ALLOWED_TOP_LEVEL_MODULES: frozenset[str] = frozenset(
         "hardware_evidence.py",
         "history.py",
         "http_client.py",
-        "ignore.py",
         "ignores.py",
         "image.py",
         "integrity.py",

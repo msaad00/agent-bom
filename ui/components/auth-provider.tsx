@@ -63,6 +63,23 @@ function isRetryableProbeError(err: unknown): boolean {
   );
 }
 
+function isLoopbackBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(window.location.hostname.toLowerCase());
+}
+
+async function tryLoopbackDevSession(): Promise<boolean> {
+  if (!isLoopbackBrowser()) return false;
+  try {
+    await api.createDevAuthSession();
+    return true;
+  } catch {
+    // Expected for explicit API-key/SSO deployments, where the dev key is
+    // intentionally absent. Preserve the original auth result and show login.
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     setReconnecting(false);
+    let devSessionAttempted = false;
     for (let attempt = 1; attempt <= MAX_PROBE_ATTEMPTS; attempt += 1) {
       try {
         const next = await api.getAuthMe();
@@ -82,6 +100,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       } catch (nextError) {
+        if (nextError instanceof ApiAuthError && !devSessionAttempted) {
+          devSessionAttempted = true;
+          if (await tryLoopbackDevSession()) {
+            continue;
+          }
+        }
         if (isRetryableProbeError(nextError) && attempt < MAX_PROBE_ATTEMPTS) {
           // Silent recovery: keep the gate in its loading/reconnecting state
           // rather than flashing the fatal screen for a single aborted fetch.

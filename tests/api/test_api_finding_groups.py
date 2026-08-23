@@ -177,12 +177,7 @@ def test_grouping_projects_graph_reachability_once_after_the_occurrence_walk(mon
     )
     job.status = JobStatus.DONE
     job.completed_at = "2026-08-20T12:01:00Z"
-    job.result = {
-        "findings": [
-            _finding(f"pkg:pypi/requests@2.0.0?image=worker-{index}")
-            for index in range(1_005)
-        ]
-    }
+    job.result = {"findings": [_finding(f"pkg:pypi/requests@2.0.0?image=worker-{index}") for index in range(1_005)]}
     _get_store().put(job)
     calls: list[int] = []
     sanitizations: list[str] = []

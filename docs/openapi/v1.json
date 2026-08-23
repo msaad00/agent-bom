@@ -9787,6 +9787,21 @@
         ]
       }
     },
+    "/v1/auth/dev-session": {
+      "post": {
+        "description": "Mint the active zero-config loopback session without exposing its key.\n\n``agent-bom serve`` enables this only when it generated an ephemeral dev\nkey for a loopback bind and no explicit authentication was configured.\nThis endpoint lets a separately served local Next.js UI obtain the same\nbrowser session as the packaged, same-origin dashboard.",
+        "operationId": "create_loopback_dev_session_v1_auth_dev_session_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Loopback Dev Session",
+        "tags": [
+          "enterprise"
+        ]
+      }
+    },
     "/v1/auth/invitations": {
       "post": {
         "description": "Provision a NEW tenant and mint its first scoped API key (admin-only).\n\nThe hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:\nit creates a brand-new tenant (server-generated id \u2014 an invite can never\ntarget an existing tenant), mints one scoped API key for it through the\nsame key-minting path every other route uses (no new crypto), and returns\na one-time invite payload. The new tenant is bounded by the conservative\ndefault tenant quotas automatically (they apply to any tenant with no\noverrides); the effective bounds are echoed back for operator visibility.\n\nAdmin-only + ``auth.keys:write`` scope (enforced by the API middleware, the\nsame gate as ``POST /v1/auth/keys``). Never accepts a provider secret \u2014 it\nmints a credential, it does not take one (\u00a711 connect-once model). The raw\nkey is returned exactly once in this response body and is never logged.",

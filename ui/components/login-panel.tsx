@@ -9,7 +9,8 @@ import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
 import { ssoLoginPreset } from "@/lib/sso-login-presets";
 
-const AUTH_FAILURE_MESSAGE = "That API key wasn't accepted — check it and try again.";
+const AUTH_FAILURE_MESSAGE =
+  "That key is not active. If the local server restarted, reload to use its new dev session; otherwise paste the current raw key without the :role suffix.";
 const OIDC_BROWSER_LOGIN_PATH = "/v1/auth/oidc/login";
 const SNOWFLAKE_OAUTH_LOGIN_PATH = "/v1/auth/snowflake/login";
 

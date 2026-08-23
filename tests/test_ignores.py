@@ -281,6 +281,8 @@ def test_load_legacy_package_rules_into_structured_format(tmp_path):
             "reason": "Suppressed via legacy flat ignore rule",
         },
     ]
+
+
 def test_load_flat_id_list_dedupes(tmp_path):
     f = tmp_path / ".image-scan-ignore"
     f.write_text("CVE-2025-6141\ncve-2025-6141\nCVE-2025-6141\n")

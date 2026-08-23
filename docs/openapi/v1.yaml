@@ -6826,6 +6826,26 @@ paths:
       summary: Auth Debug
       tags:
       - enterprise
+  /v1/auth/dev-session:
+    post:
+      description: 'Mint the active zero-config loopback session without exposing
+        its key.
+
+
+        ``agent-bom serve`` enables this only when it generated an ephemeral dev
+
+        key for a loopback bind and no explicit authentication was configured.
+
+        This endpoint lets a separately served local Next.js UI obtain the same
+
+        browser session as the packaged, same-origin dashboard.'
+      operationId: create_loopback_dev_session_v1_auth_dev_session_post
+      responses:
+        '204':
+          description: Successful Response
+      summary: Create Loopback Dev Session
+      tags:
+      - enterprise
   /v1/auth/invitations:
     post:
       description: "Provision a NEW tenant and mint its first scoped API key (admin-only).\n\

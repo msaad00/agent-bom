@@ -2063,6 +2063,56 @@ def test_dev_session_cookie_authenticates_dashboard(monkeypatch):
     assert client.get("/v1/overview").status_code == 200
 
 
+def test_loopback_dev_session_bootstraps_separately_served_ui(monkeypatch):
+    """A local Next UI can mint the same session without learning the dev key."""
+    from agent_bom.api.server import set_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    set_dev_api_key("abk_loopback_bootstrap_test")
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/auth/dev-session",
+            json={},
+            headers={"Origin": "http://127.0.0.1:3440"},
+        )
+        assert response.status_code == 204
+        assert client.get("/v1/overview").status_code == 200
+    finally:
+        set_dev_api_key(None)
+
+
+def test_loopback_dev_session_fails_closed_without_local_origin_or_dev_key(monkeypatch):
+    """The unauthenticated bootstrap cannot mint sessions for non-local sites."""
+    from agent_bom.api.server import set_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    client = TestClient(app)
+    set_dev_api_key(None)
+    assert (
+        client.post(
+            "/v1/auth/dev-session",
+            json={},
+            headers={"Origin": "http://127.0.0.1:3440"},
+        ).status_code
+        == 404
+    )
+
+    set_dev_api_key("abk_loopback_bootstrap_test")
+    try:
+        assert client.post("/v1/auth/dev-session", json={}).status_code == 403
+        assert (
+            client.post(
+                "/v1/auth/dev-session",
+                json={},
+                headers={"Origin": "https://attacker.example"},
+            ).status_code
+            == 403
+        )
+    finally:
+        set_dev_api_key(None)
+
+
 def test_no_dev_session_cookie_without_active_dev_key(monkeypatch):
     """No dev key set => the helper is a no-op (fail-closed for non-zero-config serves)."""
     from agent_bom.api.server import _maybe_attach_dev_session_cookie, set_dev_api_key

@@ -837,6 +837,7 @@ export const api = {
   updateTenantQuota: (body: TenantQuotaUpdateRequest) =>
     put<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota", body),
   resetTenantQuota: () => del("/v1/auth/quota"),
+  createDevAuthSession: () => postVoid("/v1/auth/dev-session", {}),
   createAuthSession: (apiKey: string) => postVoid("/v1/auth/session", { api_key: apiKey }),
   deleteAuthSession: () => del("/v1/auth/session"),
   reportClientError: (body: { message: string; digest?: string | undefined; path?: string | undefined; component?: string | undefined }) =>

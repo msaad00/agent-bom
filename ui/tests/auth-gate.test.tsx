@@ -79,6 +79,53 @@ describe("AuthGate", () => {
     expect(screen.queryByText("protected surface")).not.toBeInTheDocument();
   });
 
+  it("recovers a separately served loopback UI through the ephemeral dev session", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        json: () => Promise.resolve({ detail: "Unauthorized" }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 204, statusText: "No Content" })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: () => Promise.resolve({
+          authenticated: true,
+          auth_required: true,
+          configured_modes: ["api_key"],
+          recommended_ui_mode: "session_api_key",
+          auth_method: "browser_session_dev_key",
+          subject: "loopback-dev-key",
+          role: "admin",
+          tenant_id: "default",
+          role_summary: { capabilities: [] },
+          memberships: [],
+          request_id: null,
+          trace_id: null,
+          span_id: null,
+        }),
+      }) as typeof fetch;
+
+    render(
+      <AuthProvider>
+        <AuthGate>
+          <div>local dev surface</div>
+        </AuthGate>
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("local dev surface")).toBeInTheDocument());
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      "/v1/auth/dev-session",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+  });
+
   it("recovers silently from a single aborted probe without flashing the fatal state", async () => {
     const abortError = Object.assign(new Error("Fetch is aborted"), { name: "AbortError" });
     global.fetch = vi

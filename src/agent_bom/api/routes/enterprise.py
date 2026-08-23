@@ -1,6 +1,7 @@
 """Enterprise API routes — auth, audit, exceptions, baselines, trends, SIEM, Jira, FP.
 
 Endpoints:
+    POST   /v1/auth/dev-session              bootstrap loopback dev browser session
     POST   /v1/auth/invitations              create a new tenant + mint its first scoped key (admin)
     POST   /v1/auth/keys                      create API key
     POST   /v1/auth/keys/{key_id}/rotate      rotate API key
@@ -541,7 +542,59 @@ def _clear_browser_session_cookie(response: Response, request: Request) -> None:
     )
 
 
+def _loopback_browser_origin(request: Request) -> bool:
+    """Return whether a browser request originated from a loopback UI.
+
+    The zero-config dev-session exchange is deliberately browser-only.  An
+    explicit loopback Origin prevents an unrelated web page from using the
+    operator's local API as a session-minting CSRF target.
+    """
+    origin = request.headers.get("origin", "").strip()
+    if not origin:
+        return False
+    try:
+        hostname = (urlsplit(origin).hostname or "").lower()
+    except ValueError:
+        return False
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
 # ── API Key Management (RBAC) ───────────────────────────────────────────────
+
+
+@router.post("/auth/dev-session", tags=["enterprise"], status_code=204)
+async def create_loopback_dev_session(request: Request, response: Response) -> None:
+    """Mint the active zero-config loopback session without exposing its key.
+
+    ``agent-bom serve`` enables this only when it generated an ephemeral dev
+    key for a loopback bind and no explicit authentication was configured.
+    This endpoint lets a separately served local Next.js UI obtain the same
+    browser session as the packaged, same-origin dashboard.
+    """
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.server import get_dev_api_key
+
+    if get_dev_api_key() is None:
+        raise HTTPException(status_code=404, detail="Loopback dev session is not active")
+    if not _loopback_browser_origin(request):
+        raise HTTPException(status_code=403, detail="Loopback browser origin required")
+
+    _set_browser_session_cookie(
+        response,
+        request,
+        subject="loopback-dev-key",
+        role="admin",
+        tenant_id="default",
+        auth_method="browser_session_dev_key",
+    )
+    log_action(
+        "auth.browser_session_created",
+        actor="loopback-dev-key",
+        resource="auth/dev-session",
+        tenant_id="default",
+        method="loopback_dev_key",
+    )
+    return None
 
 
 @router.post("/auth/session", tags=["enterprise"], status_code=204)

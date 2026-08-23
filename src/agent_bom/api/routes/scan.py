@@ -348,6 +348,7 @@ def iter_tenant_scan_spine_findings(
     """
     from agent_bom.api.compliance_hub_store import status_matches
     from agent_bom.api.findings_current import current_scan_findings
+
     rows = current_scan_findings(
         _completed_jobs_for_tenant(tenant_id),
         since=since,

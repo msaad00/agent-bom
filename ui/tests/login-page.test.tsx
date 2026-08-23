@@ -251,7 +251,11 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() =>
-      expect(screen.getByText("That API key wasn't accepted — check it and try again.")).toBeInTheDocument(),
+      expect(
+        screen.getByText(
+          "That key is not active. If the local server restarted, reload to use its new dev session; otherwise paste the current raw key without the :role suffix.",
+        ),
+      ).toBeInTheDocument(),
     );
   });
 

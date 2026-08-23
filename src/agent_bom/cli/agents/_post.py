@@ -286,9 +286,7 @@ def compute_exit_code(
     # Filter blast radii to exclude VEX-suppressed vulnerabilities
     from agent_bom.vex import is_vex_suppressed as _is_vex_suppressed
 
-    _active_blast_radii = [
-        br for br in blast_radii if not br.suppressed and not _is_vex_suppressed(br.vulnerability)
-    ]
+    _active_blast_radii = [br for br in blast_radii if not br.suppressed and not _is_vex_suppressed(br.vulnerability)]
 
     # Delta mode: further restrict active findings to new-only
     if ctx.delta_result is not None:

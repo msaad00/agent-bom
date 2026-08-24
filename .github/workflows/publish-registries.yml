@@ -210,9 +210,33 @@ jobs:
           echo "::error::Smithery server card does not match the released version/tool/schema contract"
           exit 1
 
+      - name: Check Smithery catalog parity
+        id: smithery_catalog
+        if: steps.smithery_config.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          echo "fresh=false" >> "$GITHUB_OUTPUT"
+          if ! curl -fsS --connect-timeout 10 --max-time 30 \
+              "https://api.smithery.ai/servers/agent-bom/agent-bom" \
+              -o /tmp/smithery-catalog.json; then
+            echo "::notice::Smithery catalog could not be read before publication; creating a release"
+            exit 0
+          fi
+          jq -S '[.tools[].name] | sort' /tmp/smithery-server-card.json > /tmp/smithery-expected-tool-names.json
+          jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
+          if cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json; then
+            TOOL_COUNT=$(jq -r '.tools | length' /tmp/smithery-catalog.json)
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            echo "Smithery already exposes the released ${TOOL_COUNT}-tool catalog; skipping a duplicate deployment"
+          else
+            EXPECTED=$(jq -r 'length' /tmp/smithery-expected-tool-names.json)
+            ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
+            echo "Smithery catalog differs from the released contract (${ACTUAL}/${EXPECTED} tools); publishing a new deployment"
+          fi
+
       - name: Publish to Smithery
         id: smithery_publish
-        if: steps.smithery_config.outputs.enabled == 'true'
+        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
@@ -259,30 +283,33 @@ jobs:
 
       - name: Wait for Smithery release
         id: smithery_release
-        if: steps.smithery_config.outputs.enabled == 'true'
+        if: steps.smithery_config.outputs.enabled == 'true' && steps.smithery_catalog.outputs.fresh != 'true'
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
           RELEASE_ID: ${{ steps.smithery_publish.outputs.release_id }}
         run: |
           set -euo pipefail
-          for ATTEMPT in $(seq 1 18); do
+          for ATTEMPT in $(seq 1 90); do
             STATUS=$(curl -fsS --connect-timeout 10 --max-time 30 \
               "https://api.smithery.ai/servers/agent-bom%2Fagent-bom/releases/${RELEASE_ID}" \
               -H "Authorization: Bearer ${SMITHERY_API_TOKEN}" | jq -er '.status')
-            echo "Smithery release attempt ${ATTEMPT}/18 — ${STATUS}"
+            echo "Smithery release attempt ${ATTEMPT}/90 — ${STATUS}"
             case "$STATUS" in
               SUCCESS)
                 echo "scan_status=SUCCESS" >> "$GITHUB_OUTPUT"
                 exit 0
                 ;;
-              FAILURE|FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
+              AUTH_REQUIRED)
+                echo "::notice::Smithery is waiting for publisher authorization; authorize the pending release in the Smithery UI"
+                ;;
+              FAILURE|FAILURE_SCAN|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR)
                 echo "::error::Smithery release did not complete successfully (${STATUS})"
                 exit 1
                 ;;
             esac
             sleep 10
           done
-          echo "::error::Smithery release did not finish before the verification timeout"
+          echo "::error::Smithery release did not finish within 15 minutes; authorize the pending release in the Smithery UI and re-run this workflow"
           exit 1
 
       - name: Verify Smithery catalog inventory
@@ -293,16 +320,23 @@ jobs:
         run: |
           set -euo pipefail
           for ATTEMPT in $(seq 1 12); do
-            ACTUAL=$(curl -fsS --connect-timeout 10 --max-time 30 \
-              "https://api.smithery.ai/servers/agent-bom/agent-bom" | jq -er '.tools | length')
-            if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ]; then
+            if curl -fsS --connect-timeout 10 --max-time 30 \
+                "https://api.smithery.ai/servers/agent-bom/agent-bom" \
+                -o /tmp/smithery-catalog.json; then
+              jq -S '[.tools[].name] | sort' /tmp/smithery-catalog.json > /tmp/smithery-actual-tool-names.json
+              ACTUAL=$(jq -r 'length' /tmp/smithery-actual-tool-names.json)
+            else
+              ACTUAL=unavailable
+            fi
+            if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ] && \
+              cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json; then
               echo "Smithery catalog exposes all ${ACTUAL} tools for v${VERSION}"
               exit 0
             fi
-            echo "Smithery catalog attempt ${ATTEMPT}/12 exposes ${ACTUAL}/${EXPECTED_TOOL_COUNT} tools"
+            echo "Smithery catalog attempt ${ATTEMPT}/12 does not match the released ${EXPECTED_TOOL_COUNT}-tool name set (actual=${ACTUAL})"
             sleep 10
           done
-          echo "::error::Smithery catalog did not converge to ${EXPECTED_TOOL_COUNT} tools"
+          echo "::error::Smithery catalog did not converge to the released ${EXPECTED_TOOL_COUNT}-tool name set"
           exit 1
 
   glama:
@@ -333,6 +367,7 @@ jobs:
         env:
           GLAMA_WEBHOOK_URL: ${{ secrets.GLAMA_WEBHOOK_URL }}
           GLAMA_REPAIR: ${{ inputs.glama_repair }}
+          REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}
           RELEASE_REF: ${{ needs.release.outputs.release_ref }}
           RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
           VERSION: ${{ needs.release.outputs.version }}
@@ -343,8 +378,8 @@ jobs:
           fail_or_warn() {
             local message="$1"
             echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"
-            if [ "$GLAMA_REPAIR" = "true" ]; then
-              echo "::error::Requested Glama repair ${message}"
+            if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ] || [ "$GLAMA_REPAIR" = "true" ]; then
+              echo "::error::Required Glama publication ${message}"
               return 1
             fi
             echo "::warning::Automatic Glama rebuild ${message}; the freshness issue will remain open"
@@ -380,27 +415,16 @@ jobs:
             exit $?
           fi
 
-      # Glama re-crawls listings on its own cadence (can be hours), so a tight
-      # post-trigger freshness window can legitimately fail on release day.
-      # Preserve the distinction between a successful trigger and no trigger.
       - name: Verify Glama listing freshness
-        continue-on-error: true
         env:
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
           EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
-          REBUILD_TRIGGERED: ${{ steps.glama_trigger.outputs.rebuild_triggered }}
         run: |
-          if ! python scripts/check_glama_listing.py \
-              --expected "$EXPECTED_VERSION" \
-              --expected-tool-count "$EXPECTED_TOOL_COUNT" \
-              --retries 6 \
-              --delay-seconds 30; then
-            if [ "$REBUILD_TRIGGERED" = "true" ]; then
-              echo "::warning::Glama listing has not refreshed yet after the rebuild trigger. Glama re-crawls asynchronously and may take hours. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
-            else
-              echo "::warning::Glama listing remains stale and no rebuild was triggered. Configure the repository Actions secret GLAMA_WEBHOOK_URL or rebuild the exact release manually. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
-            fi
-          fi
+          python scripts/check_glama_listing.py \
+            --expected "$EXPECTED_VERSION" \
+            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+            --retries 6 \
+            --delay-seconds 30
 
   clawhub:
     name: Publish to ClawHub

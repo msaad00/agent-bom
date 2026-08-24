@@ -649,15 +649,14 @@ def test_postgres_ci_upgrade_checks_preserved_queue_through_scoped_maintenance_r
     ) not in workflow
 
 
-def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_clawhub_set():
+def test_publish_registries_workflow_validates_registry_gates_and_curated_clawhub_set():
     """Smithery publishing must never use Smithery's proxy as its upstream."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
     assert "SMITHERY_MCP_URL" in workflow
     assert "server.smithery.ai" in workflow
     assert "avoid publishing the proxy back to itself" in workflow
-    # The Smithery probe no longer hard-fails the publish on async rebuild lag.
     assert "--forbid-auth-required" not in workflow
-    assert "continue-on-error: true" in workflow
+    assert "continue-on-error: true" not in workflow
     assert "integrations/openclaw/scan" in workflow
     assert "integrations/openclaw/compliance" in workflow
     assert "integrations/openclaw/registry" in workflow
@@ -731,17 +730,15 @@ def test_glama_rebuild_webhook_is_secret_and_missing_secret_is_honest():
     assert 'echo "rebuild_triggered=false" >> "$GITHUB_OUTPUT"' in workflow
     assert "No Glama rebuild was triggered" in workflow
     assert "set GLAMA_WEBHOOK_URL as a repository Actions secret" in workflow
-    assert "REBUILD_TRIGGERED: ${{ steps.glama_trigger.outputs.rebuild_triggered }}" in workflow
-    assert 'if [ "$REBUILD_TRIGGERED" = "true" ]; then' in workflow
     assert 'HTTP_STATUS" -lt 300' in workflow
     assert 'HTTP_STATUS" -lt 400' not in workflow
-    # The gate reads the operator's stated intent, not merely that the run was
-    # dispatched. Gating on event_name made every manual re-publish a "repair",
-    # so an unconfigured optional webhook failed the whole multi-registry run
-    # and blocked releases (#4651). Repair is now opt-in.
+    assert "REGISTRY_PUBLISH_REQUIRED: ${{ github.event_name == 'workflow_run' }}" in workflow
     assert "GLAMA_REPAIR: ${{ inputs.glama_repair }}" in workflow
-    assert 'if [ "$GLAMA_REPAIR" = "true" ]; then' in workflow
-    assert "::error::Requested Glama repair" in workflow
+    assert 'if [ "$REGISTRY_PUBLISH_REQUIRED" = "true" ] || [ "$GLAMA_REPAIR" = "true" ]; then' in workflow
+    assert "::error::Required Glama publication" in workflow
+    glama_job = workflow.split("  glama:\n", 1)[1].split("  clawhub:\n", 1)[0]
+    assert "continue-on-error: true" not in glama_job
+    assert "python scripts/check_glama_listing.py" in glama_job
     assert "exit 1" in workflow
 
 
@@ -753,11 +750,16 @@ def test_smithery_publish_is_gated_on_server_card_and_catalog_parity():
     assert "(.tools | length) == $tool_count" in workflow
     assert '(.inputSchema | type == "object")' in workflow
     assert '(.authentication.schemes | index("oauth2") != null)' in workflow
+    assert "Check Smithery catalog parity" in workflow
+    assert "smithery_catalog.outputs.fresh != 'true'" in workflow
+    assert "smithery-expected-tool-names.json" in workflow
+    assert "smithery-actual-tool-names.json" in workflow
     assert "Wait for Smithery release" in workflow
-    assert "FAILURE|FAILURE_SCAN|AUTH_REQUIRED|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR" in workflow
+    assert "AUTH_REQUIRED)" in workflow
+    assert "FAILURE|FAILURE_SCAN|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR" in workflow
     assert "caller-supplied bearerToken by design" not in workflow
     assert "Verify Smithery catalog inventory" in workflow
-    assert 'if [ "$ACTUAL" = "$EXPECTED_TOOL_COUNT" ]; then' in workflow
+    assert 'cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json' in workflow
 
 
 def test_refresh_latest_container_keeps_release_code_but_applies_runtime_security_overlay():

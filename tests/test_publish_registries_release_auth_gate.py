@@ -23,6 +23,19 @@ def test_automatic_forward_release_cannot_report_success_when_smithery_is_skippe
     assert "Smithery publication is required for an automatic forward release" in workflow
 
 
+def test_smithery_publication_is_idempotent_and_waits_for_publisher_authorization() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Check Smithery catalog parity" in workflow
+    assert "smithery_catalog.outputs.fresh != 'true'" in workflow
+    assert "smithery-expected-tool-names.json" in workflow
+    assert "skipping a duplicate deployment" in workflow
+    assert "for ATTEMPT in $(seq 1 90)" in workflow
+    assert "AUTH_REQUIRED)" in workflow
+    assert "authorize the pending release in the Smithery UI" in workflow
+    assert "within 15 minutes" in workflow
+
+
 def test_surface_freshness_rechecks_immediately_after_registry_publication() -> None:
     workflow = (ROOT / ".github/workflows/surface-freshness.yml").read_text(encoding="utf-8")
     assert 'workflows: ["Publish to Registries"]' in workflow

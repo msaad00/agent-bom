@@ -44,7 +44,10 @@ remote deployment metadata, and non-empty tools.
 5. Click **Continue**
 
 **Option B — Automated**:
-The `publish-registries.yml` workflow auto-publishes to Smithery on each release using:
+The `publish-registries.yml` workflow compares the released server-card tool
+names with Smithery's public catalog before publishing. If they already match,
+the workflow skips a duplicate deployment. If capabilities changed, it creates
+an external release using:
 - `SMITHERY_API_TOKEN`
 
 `SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
@@ -52,8 +55,11 @@ must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
 depends on that variable; it uses the Smithery catalog API directly.
 
 Do not add the upstream bearer token to Smithery `configSchema`. Smithery
-reserves the `Authorization` header for OAuth, and the release workflow treats
-OAuth/auth-timeout status or a stale catalog count as publication failure.
+reserves the `Authorization` header for OAuth. A new authenticated capability
+scan can pause as `AUTH_REQUIRED`; authorize that pending release in Smithery's
+**Releases** UI. The workflow waits up to 15 minutes and otherwise fails
+honestly. After authorization, re-running the workflow verifies catalog parity
+without creating another deployment.
 
 ### Verification
 
@@ -122,6 +128,25 @@ multipart API shim, so local publishing and CI stay aligned.
 
 ```bash
 clawhub install agent-bom-scan
+```
+
+---
+
+## 4. Glama
+
+Glama indexes the repository README and builds the MCP schema from
+`integrations/glama/Dockerfile`. Automatic forward releases require the
+`GLAMA_WEBHOOK_URL` Actions secret; a missing webhook or a stale public listing
+fails the registry workflow rather than reporting a green publication.
+
+For a manual repair, open the server's **Admin → Repository** page and run
+**Sync**, then dispatch **Publish to Registries** again. Verification requires
+both the released version marker and the exact released MCP tool count.
+
+```bash
+python scripts/check_glama_listing.py \
+  --expected 0.102.0 \
+  --expected-tool-count 84
 ```
 
 ---

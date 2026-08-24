@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from agent_bom.canonical_ids import canonical_finding_id
 from agent_bom.finding import (
     Asset,
     ControlTag,
@@ -165,6 +166,19 @@ def test_finding_same_content_produces_same_id():
     assert f1.id == f2.id
 
 
+def test_finding_without_occurrence_locator_preserves_legacy_id_material():
+    """Adding locator support must not churn existing unlocated finding IDs."""
+    asset = Asset(name="pkg", asset_type="package")
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=asset,
+        severity="HIGH",
+    )
+
+    assert finding.id == canonical_finding_id(asset.stable_id, "", "", "")
+
+
 def test_finding_different_assets_produce_different_ids():
     """Different assets → different Finding IDs even with same CVE."""
     f1 = Finding(
@@ -225,6 +239,52 @@ def test_non_package_finding_identity_accepts_compact_package_evidence():
     )
 
     assert first.id != second.id
+
+
+def test_non_package_finding_identity_separates_distinct_evidence_paths():
+    """One vulnerability at two locations on an asset is two occurrences."""
+    container_asset = Asset(name="runtime-image", asset_type="container")
+    first = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.CONTAINER,
+        asset=container_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-4242",
+        evidence={"path": "/opt/app/vendor-a"},
+    )
+    second = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.CONTAINER,
+        asset=container_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-4242",
+        evidence={"path": "/opt/app/vendor-b"},
+    )
+
+    assert first.id != second.id
+
+
+def test_finding_identity_ignores_volatile_evidence_at_one_location():
+    """Confidence and scan timestamps must not churn an occurrence identity."""
+    container_asset = Asset(name="runtime-image", asset_type="container")
+    first = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.CONTAINER,
+        asset=container_asset,
+        severity="HIGH",
+        cve_id="CVE-2026-4242",
+        evidence={"path": "/opt/app/vendor-a", "confidence": 0.7, "observed_at": "2026-08-23T10:00:00Z"},
+    )
+    second = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.CONTAINER,
+        asset=container_asset,
+        severity="CRITICAL",
+        cve_id="CVE-2026-4242",
+        evidence={"path": "/opt/app/vendor-a", "confidence": 0.9, "observed_at": "2026-08-24T10:00:00Z"},
+    )
+
+    assert first.id == second.id
 
 
 def test_distinct_cves_on_one_non_package_asset_never_share_an_id():

@@ -305,6 +305,60 @@ class Asset:
         return source_ids(identifier=self.identifier, location=self.location)
 
 
+_OCCURRENCE_EVIDENCE_KEYS: tuple[str, ...] = (
+    "occurrence_id",
+    "occurrence_key",
+    "source_finding_id",
+    "path",
+    "file",
+    "file_path",
+    "manifest_path",
+    "config_path",
+    "location",
+    "source_location",
+    "line",
+    "line_number",
+    "start_line",
+    "column",
+    "column_number",
+    "start_column",
+    "rule",
+    "rule_id",
+    "check_id",
+    "control_id",
+    "resource_id",
+    "resource_arn",
+    "resource_uri",
+    "uri",
+    "symbol",
+    "function",
+    "method",
+    "server_name",
+    "tool_name",
+    "model_id",
+    "dataset_id",
+    "indicator_ref",
+)
+
+
+def _occurrence_evidence_qualifier(evidence: object) -> dict[str, object]:
+    """Return stable location/source fields that distinguish one occurrence.
+
+    Findings deliberately ignore volatile evidence such as confidence, score,
+    timestamps, and remediation state so repeated scans preserve identity. The
+    allowlist contains source-native locators that identify *where* the issue
+    occurred; when present, those locators prevent two occurrences on the same
+    canonical asset from silently collapsing.
+    """
+    if not isinstance(evidence, dict):
+        return {}
+    return {
+        key: value
+        for key in _OCCURRENCE_EVIDENCE_KEYS
+        if (value := evidence.get(key)) not in (None, "", [], {})
+    }
+
+
 @dataclass
 class Finding:
     """Unified finding — one model for all issue types across all sources.
@@ -476,7 +530,9 @@ class Finding:
             except Exception:  # noqa: BLE001 — finding construction must stay resilient
                 pass
         if not self.id:
-            # Deterministic ID: same CVE on same asset always same ID
+            # Deterministic occurrence ID: the same issue at the same location
+            # on one asset stays stable, while distinct source-native locations
+            # cannot silently collapse into one workflow record.
             cve_part = self.vulnerability_id or self.title
             pkg_name = ""
             pkg_version = ""
@@ -498,12 +554,11 @@ class Finding:
                 # packages attached to one container/server silently collapse.
                 if pkg_name and not pkg_version and "@" in pkg_name:
                     pkg_name, pkg_version = pkg_name.rsplit("@", 1)
-            self.id = canonical_finding_id(
-                self.asset.stable_id,
-                cve_part,
-                pkg_name,
-                pkg_version,
-            )
+            qualifiers: list[object] = [pkg_name, pkg_version]
+            occurrence_qualifier = _occurrence_evidence_qualifier(self.evidence)
+            if occurrence_qualifier:
+                qualifiers.append(occurrence_qualifier)
+            self.id = canonical_finding_id(self.asset.stable_id, cve_part, *qualifiers)
 
     @property
     def canonical_id(self) -> str:

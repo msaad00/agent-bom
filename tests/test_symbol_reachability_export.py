@@ -11,14 +11,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agent_bom.api.pipeline import _ast_result_for_symbol_reach, _project_paths_for_symbol_reach
 from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
 from agent_bom.finding import blast_radius_to_finding
-from agent_bom.graph.blast_reach import apply_symbol_reachability_to_blast_radii
+from agent_bom.graph.blast_reach import apply_symbol_reachability_to_blast_radii, resync_cve_findings_from_blast_radii
+from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulnerability
 from agent_bom.output import to_json
 from agent_bom.output.sarif import to_sarif
-from agent_bom.reachability_cve import FUNCTION_REACHABLE
+from agent_bom.reachability_cve import FUNCTION_REACHABLE, PACKAGE_REACHABLE, UNREACHABLE
 
 
 def _reach(package: str, module: str, symbol: str) -> DependencySymbolReach:
@@ -148,6 +151,45 @@ def test_all_machine_views_agree_on_reachability_verdict() -> None:
         assert table.column("symbol_reachability").to_pylist()[0] == FUNCTION_REACHABLE
     except ImportError:
         pass
+
+
+@pytest.mark.parametrize(
+    ("graph_reachable", "dependency_reachable", "expected"),
+    [
+        (True, False, PACKAGE_REACHABLE),
+        (False, True, UNREACHABLE),
+        (None, True, UNREACHABLE),
+    ],
+)
+def test_graph_path_truth_drives_symbol_fallback_across_projections(
+    graph_reachable: bool | None,
+    dependency_reachable: bool,
+    expected: str,
+) -> None:
+    """Graph-path truth, not manifest closure, drives the package fallback."""
+    br = _python_br(["danger"], pkg_name="leftpad")
+    br.graph_reachable = graph_reachable
+    br.dependency_reachable = dependency_reachable
+    findings = [blast_radius_to_finding(br)]
+
+    stamped = apply_symbol_reachability_to_blast_radii(
+        [br],
+        ASTAnalysisResult(dependency_symbol_reach=[_reach("requests", "requests", "get")]),
+    )
+    assert stamped == 1
+    assert br.symbol_reachability == expected
+
+    assert resync_cve_findings_from_blast_radii(findings, [br]) == 1
+    report = AIBOMReport(agents=[], blast_radii=[br], findings=findings)
+    payload = to_json(report)
+
+    finding_verdict = payload["findings"][0]["evidence"]["symbol_reachability"]
+    blast_verdict = payload["blast_radius"][0]["symbol_reachability"]
+    sarif_verdict = to_sarif(report)["runs"][0]["results"][0]["properties"]["symbol_reachability"]
+    graph = build_unified_graph_from_report(payload)
+    graph_verdict = graph.get_node(f"vuln:{br.vulnerability.id}").attributes["symbol_reachability"]
+
+    assert finding_verdict == blast_verdict == sarif_verdict == graph_verdict == expected
 
 
 def test_project_paths_for_symbol_reach_dedupes_scan_targets() -> None:

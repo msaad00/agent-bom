@@ -111,10 +111,11 @@ def apply_symbol_reachability_to_blast_radii(
     passes conservative import-proof guards. Rust/Java/C#/Ruby parsers are regex-backed:
     they never invent manifest coordinates or walk unresolved MCP tool handlers.
 
-    The structural dependency reach on the row (``dependency_reachable``) is
-    fed in as the import / dependency-closure fallback so a package that is reached but
-    whose symbols were not individually captured reports ``package_reachable``
-    rather than ``unreachable``.
+    Evidence-backed attack-path reach on the row (``graph_reachable``) is fed
+    in as the package fallback so a package on a proven path whose symbols were
+    not individually captured reports ``package_reachable``. Structural
+    ``dependency_reachable`` manifest closure remains separate context and
+    cannot upgrade symbol execution reachability.
 
     Returns the count of rows whose signal was populated. Scores are
     recalculated by default so the report cannot carry a post-analysis verdict
@@ -149,7 +150,7 @@ def apply_symbol_reachability_to_blast_radii(
                 package=br.package.name,
                 advisory=br.vulnerability,
                 index=index,
-                package_reachable=br.dependency_reachable,
+                package_reachable=br.graph_reachable,
                 ecosystem=ecosystem,
             )
         except Exception as exc:  # noqa: BLE001

@@ -1942,6 +1942,10 @@ class TestGraphStoreBackendSelection:
         assert count_metadata["filters"] == {"scan_id": "store-scan", "offset": 0, "limit": 5}
         assert count_metadata["returned"] == len(queue["attack_paths"])
         assert count_metadata["total"] == queue["pagination"]["total"]
+        assert count_metadata["snapshot_total"] == 1
+        assert count_metadata["materialized_paths"] == 0
+        assert count_metadata["derived_paths"] == 1
+        assert count_metadata["returned_rows"] == len(queue["attack_paths"])
         assert count_metadata["completeness"] == queue["completeness"]
         assert queue["stats"]["attack_path_count"] == 1
         assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]

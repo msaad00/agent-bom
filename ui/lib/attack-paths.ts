@@ -707,3 +707,32 @@ export function mergeAttackPathGraphPages(
     },
   };
 }
+
+export interface GraphPathQueueCounts {
+  snapshotTotal: number;
+  materializedPaths: number;
+  derivedPaths: number;
+  returnedRows: number;
+  renderedRows: number;
+  truncated: boolean;
+}
+
+/** Reconcile snapshot, transfer, and presentation counts without conflating them. */
+export function graphPathQueueCounts(
+  graph: UnifiedGraphResponse | null | undefined,
+  renderedRows: number,
+): GraphPathQueueCounts {
+  const metadata = graph?.count_metadata;
+  const snapshotTotal = metadata?.snapshot_total ?? graph?.pagination?.total ?? 0;
+  const source = metadata?.source;
+  return {
+    snapshotTotal,
+    materializedPaths:
+      metadata?.materialized_paths ?? (source === "persisted_graph_paths" ? snapshotTotal : 0),
+    derivedPaths:
+      metadata?.derived_paths ?? (source === "derived_graph_paths" ? snapshotTotal : 0),
+    returnedRows: graph?.attack_paths.length ?? 0,
+    renderedRows: Math.max(0, renderedRows),
+    truncated: Boolean(graph?.completeness?.truncated ?? graph?.pagination?.has_more),
+  };
+}

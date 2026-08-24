@@ -8,6 +8,7 @@ import {
   buildSecurityGraphHref,
   decodeGraphInvestigationParams,
   descriptiveAttackPathTitle,
+  graphPathQueueCounts,
   dedupeAttackPathsForPresentation,
   investigationRootForAttackPath,
   labelsForAttackPathType,
@@ -939,5 +940,31 @@ describe("mergeAttackPathGraphPages", () => {
     ]);
     expect(merged.pagination).toEqual(second.pagination);
     expect(merged.stats.attack_path_count).toBe(3);
+  });
+});
+
+describe("graphPathQueueCounts", () => {
+  it("keeps snapshot, materialization, transfer, render, and truncation counts distinct", () => {
+    const graph = {
+      attack_paths: [{}, {}, {}],
+      pagination: { total: 84, offset: 0, limit: 3, has_more: true },
+      completeness: { returned: 3, total: 84, truncated: true, reason: "path_page_limit" },
+      count_metadata: {
+        source: "persisted_graph_paths",
+        snapshot_total: 84,
+        materialized_paths: 84,
+        derived_paths: 0,
+        returned_rows: 3,
+      },
+    } as unknown as import("@/lib/api-types").UnifiedGraphResponse;
+
+    expect(graphPathQueueCounts(graph, 2)).toEqual({
+      snapshotTotal: 84,
+      materializedPaths: 84,
+      derivedPaths: 0,
+      returnedRows: 3,
+      renderedRows: 2,
+      truncated: true,
+    });
   });
 });

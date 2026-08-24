@@ -64,6 +64,7 @@ import {
   buildSecurityGraphHref,
   descriptiveAttackPathTitle,
   dedupeAttackPathsForPresentation,
+  graphPathQueueCounts,
   investigationRootForAttackPath,
   labelsForAttackPathType,
   matchesAttackPathFocus,
@@ -475,6 +476,10 @@ function AttackPathInvestigationContent() {
       }),
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
+  const pathQueueCounts = useMemo(
+    () => graphPathQueueCounts(graphData, rankedRows.length),
+    [graphData, rankedRows.length],
+  );
 
   const selectedAttackPath = useMemo(
     () =>
@@ -849,15 +854,7 @@ function AttackPathInvestigationContent() {
             setCompletedSteps((current) => ({ ...current, path: true }));
             setPathView("graph");
           }}
-          title={`${attackPaths.length} ranked path${attackPaths.length !== 1 ? "s" : ""}${
-            !filtersNarrowQueue &&
-            typeof graphData?.pagination?.total === "number" &&
-            graphData.pagination.total > attackPaths.length
-              ? ` of ${graphData.pagination.total}`
-              : allAttackPaths.length !== attackPaths.length
-                ? ` of ${allAttackPaths.length}`
-                : ""
-          }`}
+          title={`${pathQueueCounts.renderedRows} rendered · ${pathQueueCounts.returnedRows} returned · ${pathQueueCounts.snapshotTotal} snapshot paths${pathQueueCounts.truncated ? " · truncated" : ""}`}
           subtitle={`Select a path to focus its graph and evidence here.${
             loadingFixFirst
               ? " Ranked paths are ready; fix guidance is still loading."
@@ -868,7 +865,7 @@ function AttackPathInvestigationContent() {
                   : graphData?.count_metadata?.source === "derived_graph_paths"
                     ? " Ranked from bounded graph traversal."
                     : ""
-          }${
+          } ${pathQueueCounts.materializedPaths} materialized · ${pathQueueCounts.derivedPaths} derived.${
             selectedCampaign
               ? ` Filtered to crown-jewel cluster “${selectedCampaign.crown_jewel_label || selectedCampaign.crown_jewel}”.`
               : ""

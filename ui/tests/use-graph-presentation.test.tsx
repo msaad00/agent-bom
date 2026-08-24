@@ -57,9 +57,31 @@ describe("useGraphPresentation", () => {
     );
 
     expect(result.current.hasSavedState).toBe(true);
+    expect(result.current.restoredSavedState).toBe(true);
     expect(result.current.viewport).toEqual({ x: -20, y: 15, zoom: 1.4 });
     expect(result.current.nodes[0]?.position).toEqual({ x: 120, y: 240 });
     expect(result.current.nodes[0]?.ariaLabel).toBe("Package A");
+  });
+
+  it("rejects an invalid saved viewport so the canvas can fit visible evidence", () => {
+    window.localStorage.setItem(
+      graphPresentationStorageKey(scope),
+      JSON.stringify({
+        version: 1,
+        positions: {},
+        viewport: { x: 0, y: 0, zoom: Number.POSITIVE_INFINITY },
+        layout: "dagre-lr",
+        locked: true,
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useGraphPresentation({ nodes, scope, layout: "dagre-lr" }),
+    );
+
+    expect(result.current.hasSavedState).toBe(false);
+    expect(result.current.restoredSavedState).toBe(false);
+    expect(result.current.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
   });
 
   it("uses a generic accessibility fallback instead of a raw node identifier", () => {

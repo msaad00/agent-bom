@@ -32,10 +32,11 @@ describe("interactive React Flow surface contract", () => {
     expect(content).toContain("onMoveEnd={presentation.onMoveEnd}");
   });
 
-  it("keeps the investigation legend interactive", () => {
-    expect(source("components/security-graph-investigation.tsx")).toContain(
-      'className="pointer-events-auto absolute left-3 top-3',
-    );
+  it("keeps investigation controls interactive without overlaying evidence nodes", () => {
+    const content = source("components/security-graph-investigation.tsx");
+    expect(content).toContain('data-testid="security-graph-legend-band"');
+    expect(content).toContain('data-testid="security-graph-interaction-band"');
+    expect(content).not.toContain('className="pointer-events-auto absolute left-3 top-3');
   });
 
   it("uses the shared renderer decision for broad full-snapshot investigations", () => {

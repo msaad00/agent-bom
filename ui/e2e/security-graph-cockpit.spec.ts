@@ -263,7 +263,21 @@ async function routeCockpit(
     });
   });
   await page.route("**/v1/graph/attack-paths?**", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...graph,
+        pagination: { total: graph.attack_paths.length, offset: 0, limit: 100, has_more: false },
+        completeness: { returned: graph.attack_paths.length, total: graph.attack_paths.length, truncated: false, reason: "" },
+        count_metadata: {
+          source: "persisted_graph_paths",
+          snapshot_total: graph.attack_paths.length,
+          materialized_paths: graph.attack_paths.length,
+          derived_paths: 0,
+          returned_rows: graph.attack_paths.length,
+        },
+      }),
+    });
   });
   await page.route("**/v1/graph/diff?**", async (route) => {
     await route.fulfill({
@@ -590,12 +604,68 @@ test("ranked paths reach the first viewport instead of sitting under a tower of 
   await page.goto("/security-graph");
   await page.waitForLoadState("networkidle");
 
-  const paths = page.getByText(/ranked paths of/).first();
+  const paths = page.getByText(/rendered · .* returned · .* snapshot paths/).first();
   await expect(paths).toBeVisible();
   const box = await paths.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.y).toBeLessThan(900);
 });
+
+for (const viewport of [
+  { width: 1512, height: 811 },
+  { width: 1568, height: 780 },
+] as const) {
+  test(`investigation canvas preserves evidence and saved viewport at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await routeCockpit(page);
+
+    await page.goto("/security-graph");
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("Attack path queue").getByRole("button", { name: /#1/ }).click();
+    const detail = page.getByRole("region", { name: "Selected path detail" });
+    const canvas = detail.getByTestId("security-graph-investigation");
+    const legendBand = detail.getByTestId("security-graph-legend-band");
+    const interactionBand = detail.getByTestId("security-graph-interaction-band");
+    const nodeBand = canvas.locator(".react-flow");
+    await expect(canvas).toBeVisible();
+    await expect(legendBand).toBeVisible();
+    await expect(interactionBand).toBeVisible();
+    await expect(canvas.locator(".react-flow__node")).not.toHaveCount(0);
+
+    const [legendBox, canvasBox, interactionBox, nodeBandBox] = await Promise.all([
+      legendBand.boundingBox(),
+      canvas.boundingBox(),
+      interactionBand.boundingBox(),
+      nodeBand.boundingBox(),
+    ]);
+    expect(legendBox).not.toBeNull();
+    expect(canvasBox).not.toBeNull();
+    expect(interactionBox).not.toBeNull();
+    expect(nodeBandBox).not.toBeNull();
+    expect(legendBox!.y + legendBox!.height).toBeLessThanOrEqual(canvasBox!.y + 1);
+    expect(interactionBox!.y + interactionBox!.height).toBeLessThanOrEqual(nodeBandBox!.y + 1);
+
+    const fitButton = interactionBand.getByRole("button", { name: /fit visible/i });
+    await fitButton.click();
+    await expect.poll(() => page.evaluate(() =>
+      Object.keys(window.localStorage).some((key) => key.startsWith("agent-bom:graph-presentation:v1:")),
+    )).toBe(true);
+    await page.waitForTimeout(350);
+    const savedTransform = await canvas.locator(".react-flow__viewport").getAttribute("style");
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("Attack path queue").getByRole("button", { name: /#1/ }).click();
+    await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
+    await expect.poll(async () =>
+      detail.getByTestId("security-graph-investigation").locator(".react-flow__viewport").getAttribute("style"),
+    ).toBe(savedTransform);
+
+    await page.screenshot({
+      path: testInfo.outputPath(`security-graph-${viewport.width}x${viewport.height}.png`),
+      fullPage: true,
+    });
+  });
+}
 
 test("the deploy gate is disclosure-gated rather than always expanded", async ({ page }) => {
   // "Should I deploy?" is a deliberate, occasional action — not something that

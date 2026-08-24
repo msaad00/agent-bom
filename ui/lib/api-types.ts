@@ -206,6 +206,10 @@ export interface UnifiedGraphResponse extends Omit<
     source?: "persisted_graph_paths" | "derived_graph_paths" | string;
     returned?: number;
     total?: number;
+    snapshot_total?: number;
+    materialized_paths?: number;
+    derived_paths?: number;
+    returned_rows?: number;
     scope?: string;
     [key: string]: unknown;
   } | undefined;
@@ -1288,6 +1292,11 @@ export interface FindingFacets {
   status: Record<"open" | "resolved", number>;
   domain: Record<"cspm" | "vuln" | "aspm" | "dspm" | "aispm", number>;
   freshness: Record<"last_24_hours" | "last_7_days" | "last_30_days" | "older" | "unavailable", number>;
+  reachability?: Record<"reachable" | "unreachable" | "unassessed", number>;
+  exploit_intelligence?: Record<"kev_and_epss" | "kev_only" | "epss_only" | "unavailable", number>;
+  fixability?: Record<"fix_available" | "no_fix_available", number>;
+  ownership?: Record<"owned" | "unowned", number>;
+  disposition?: Record<"affected" | "not_affected" | "under_investigation" | "untriaged", number>;
 }
 
 /** Applied time-window echoed by windowed read surfaces (#4009). */

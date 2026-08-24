@@ -190,6 +190,88 @@ def test_facets_exclude_only_their_own_active_dimension() -> None:
     assert body["facets"]["domain"]["aspm"] == 1
 
 
+def test_operational_facets_cover_the_whole_query_not_only_the_returned_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant = "default"
+    now = datetime.now(timezone.utc).isoformat()
+    findings = [
+        {
+            "id": f"finding-{index:02d}",
+            "finding_type": "CVE",
+            "source": "SBOM",
+            "cve_id": f"CVE-2026-{index:04d}",
+            "severity": "high",
+        }
+        for index in range(25)
+    ]
+    findings.append(
+        {
+            "id": "finding-outside-first-page",
+            "finding_type": "CVE",
+            "source": "SBOM",
+            "cve_id": "CVE-2026-9999",
+            "severity": "low",
+            "graph_reachable": True,
+            "is_kev": True,
+            "epss_score": 0.91,
+            "fixed_version": "2.0.0",
+            "owner": "appsec",
+        }
+    )
+    job = ScanJob(job_id="scan-whole-query-facets", tenant_id=tenant, created_at=now, request=ScanRequest())
+    job.status = JobStatus.DONE
+    job.completed_at = now
+    job.result = {"findings": findings}
+    _get_store().put(job)
+
+    monkeypatch.setattr(
+        "agent_bom.api.routes.enterprise.build_tenant_triage_state_index",
+        lambda _tenant_id: object(),
+    )
+    monkeypatch.setattr(
+        "agent_bom.api.routes.scan._finding_triage_state",
+        lambda row, _index: {"decision": "affected", "assignee": "appsec"} if row.get("id") == "finding-outside-first-page" else None,
+    )
+
+    response = TestClient(app).get(
+        "/v1/findings?include_facets=true&limit=25&window_days=0",
+        headers=_headers(tenant),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["findings"]) == 25
+    assert body["total"] == 26
+    assert body["facets"]["reachability"] == {
+        "reachable": 1,
+        "unreachable": 0,
+        "unassessed": 25,
+    }
+    assert body["facets"]["exploit_intelligence"] == {
+        "kev_and_epss": 1,
+        "kev_only": 0,
+        "epss_only": 0,
+        "unavailable": 25,
+    }
+    assert body["facets"]["fixability"] == {"fix_available": 1, "no_fix_available": 25}
+    assert body["facets"]["ownership"] == {"owned": 1, "unowned": 25}
+    assert body["facets"]["disposition"] == {
+        "affected": 1,
+        "not_affected": 0,
+        "under_investigation": 0,
+        "untriaged": 25,
+    }
+    for dimension in (
+        "reachability",
+        "exploit_intelligence",
+        "fixability",
+        "ownership",
+        "disposition",
+    ):
+        assert body["facet_metadata"]["completeness"]["dimensions"][dimension] == "exact"
+
+
 def test_facet_walk_is_single_pass_and_marks_scan_budget_partial(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.api.routes.scan import _finding_facets_bounded
 
@@ -238,6 +320,11 @@ def test_facet_walk_is_single_pass_and_marks_scan_budget_partial(monkeypatch: py
             "status": "bounded",
             "domain": "bounded",
             "freshness": "bounded",
+            "reachability": "bounded",
+            "exploit_intelligence": "bounded",
+            "fixability": "bounded",
+            "ownership": "bounded",
+            "disposition": "bounded",
         },
     }
 

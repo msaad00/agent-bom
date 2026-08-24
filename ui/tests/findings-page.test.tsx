@@ -570,6 +570,11 @@ describe("FindingsPage", () => {
         status: { open: 12, resolved: 1 },
         domain: { cspm: 2, vuln: 9, aspm: 1, dspm: 0, aispm: 1 },
         freshness: { last_24_hours: 2, last_7_days: 3, last_30_days: 4, older: 1, unavailable: 3 },
+        reachability: { reachable: 4, unreachable: 6, unassessed: 3 },
+        exploit_intelligence: { kev_and_epss: 2, kev_only: 1, epss_only: 4, unavailable: 6 },
+        fixability: { fix_available: 8, no_fix_available: 5 },
+        ownership: { owned: 9, unowned: 4 },
+        disposition: { affected: 3, not_affected: 2, under_investigation: 1, untriaged: 7 },
       },
       facets_approximate: false,
     });
@@ -580,8 +585,8 @@ describe("FindingsPage", () => {
     expect(apiMock.listFindings).toHaveBeenCalledWith(expect.objectContaining({ includeFacets: true }));
     const summary = screen.getByTestId("findings-workspace-summary");
     expect(within(summary).getByText("5 observed ≤7d")).toBeInTheDocument();
-    expect(within(summary).getByText("Whole query")).toBeInTheDocument();
-    expect(within(summary).getAllByText("Current page")).toHaveLength(3);
+    expect(within(summary).getAllByText("Whole query")).toHaveLength(4);
+    expect(within(summary).queryByText("Current page")).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Reach / exploit" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Owner / SLA" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Control mapping" })).not.toBeInTheDocument();
@@ -684,6 +689,11 @@ describe("FindingsPage", () => {
         status: { open: 2, resolved: 0 },
         domain: { cspm: 0, vuln: 2, aspm: 0, dspm: 0, aispm: 0 },
         freshness: { last_24_hours: 0, last_7_days: 0, last_30_days: 0, older: 0, unavailable: 2 },
+        reachability: { reachable: 1, unreachable: 0, unassessed: 1 },
+        exploit_intelligence: { kev_and_epss: 0, kev_only: 0, epss_only: 0, unavailable: 2 },
+        fixability: { fix_available: 0, no_fix_available: 2 },
+        ownership: { owned: 0, unowned: 2 },
+        disposition: { affected: 0, not_affected: 0, under_investigation: 0, untriaged: 2 },
       },
     });
 
@@ -692,7 +702,7 @@ describe("FindingsPage", () => {
     expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
     const summary = screen.getByTestId("findings-workspace-summary");
     expect(within(summary).getByText("1 reachable")).toBeInTheDocument();
-    expect(within(summary).getByText("1 assessed on this page")).toBeInTheDocument();
+    expect(within(summary).getByText("1 assessed · 1 unassessed")).toBeInTheDocument();
     expect(screen.getByText("Reachable · 2 hops")).toBeInTheDocument();
   });
 
@@ -720,6 +730,7 @@ describe("FindingsPage", () => {
         status: { open: 1, resolved: 0 },
         domain: { cspm: 1, vuln: 0, aspm: 0, dspm: 0, aispm: 0 },
         freshness: { last_24_hours: 1, last_7_days: 0, last_30_days: 0, older: 0, unavailable: 0 },
+        disposition: { affected: 1, not_affected: 0, under_investigation: 0, untriaged: 0 },
       },
     });
     apiMock.listFindingTriage.mockResolvedValue({

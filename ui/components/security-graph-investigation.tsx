@@ -169,8 +169,11 @@ function InvestigationFlow({
   }, [fitVisible, presentation]);
 
   return (
-    <div className="relative h-full">
-      {presentation.enabled && nodes.length > 0 && <div className="absolute right-3 top-3 z-20">
+    <div className="flex h-full min-h-0 flex-col">
+      {presentation.enabled && nodes.length > 0 && <div
+        className="flex shrink-0 justify-end border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
+        data-testid="security-graph-interaction-band"
+      >
         <GraphInteractionToolbar
           editing={presentation.editing}
           hasSelection={Boolean(selectedNodeId)}
@@ -181,43 +184,45 @@ function InvestigationFlow({
           onToggleEditing={presentation.toggleEditing}
         />
       </div>}
-      <ReactFlow
-        key={presentation.storageKey}
-        nodes={presentation.nodes}
-        edges={presentedEdges}
-        nodeTypes={lineageNodeTypes}
-        fitView={!presentation.hasSavedState}
-        fitViewOptions={fitOptions}
-        minZoom={0.2}
-        maxZoom={2.5}
-        defaultViewport={presentation.viewport}
-        zoomOnScroll
-        zoomOnPinch
-        panOnDrag
-        preventScrolling
-        nodesDraggable={presentation.editing}
-        nodesConnectable={false}
-        nodesFocusable
-        edgesFocusable
-        elementsSelectable
-        deleteKeyCode={null}
-        onNodesChange={presentation.onNodesChange}
-        onNodeDragStop={presentation.onNodeDragStop}
-        onMoveEnd={presentation.onMoveEnd}
-        onNodeClick={(_, node) => onNodeSelect(node.id)}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-        <Controls className={CONTROLS_CLASS} showInteractive={false} />
-        {shouldShowGraphMiniMap(viewportInput) && (
-          <MiniMap
-            className={MINIMAP_CLASS}
-            style={{ background: MINIMAP_BG }}
-            maskColor={MINIMAP_MASK}
-            nodeColor={minimapNodeColor}
-          />
-        )}
-      </ReactFlow>
+      <div className="relative min-h-0 flex-1">
+        <ReactFlow
+          key={`${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "fresh"}`}
+          nodes={presentation.nodes}
+          edges={presentedEdges}
+          nodeTypes={lineageNodeTypes}
+          fitView={!presentation.hasSavedState}
+          fitViewOptions={fitOptions}
+          minZoom={0.2}
+          maxZoom={2.5}
+          defaultViewport={presentation.viewport}
+          zoomOnScroll
+          zoomOnPinch
+          panOnDrag
+          preventScrolling
+          nodesDraggable={presentation.editing}
+          nodesConnectable={false}
+          nodesFocusable
+          edgesFocusable
+          elementsSelectable
+          deleteKeyCode={null}
+          onNodesChange={presentation.onNodesChange}
+          onNodeDragStop={presentation.onNodeDragStop}
+          onMoveEnd={presentation.onMoveEnd}
+          onNodeClick={(_, node) => onNodeSelect(node.id)}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+          <Controls className={CONTROLS_CLASS} showInteractive={false} />
+          {shouldShowGraphMiniMap(viewportInput) && (
+            <MiniMap
+              className={MINIMAP_CLASS}
+              style={{ background: MINIMAP_BG }}
+              maskColor={MINIMAP_MASK}
+              nodeColor={minimapNodeColor}
+            />
+          )}
+        </ReactFlow>
+      </div>
     </div>
   );
 }
@@ -444,18 +449,27 @@ export function SecurityGraphInvestigation({
         </div>
       </div>
 
+      {rendererDecision.kind === "react-flow" && layout.nodes.length > 0 ? (
+        <div
+          className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2"
+          data-testid="security-graph-legend-band"
+        >
+          <GraphLegend items={legendItems} />
+        </div>
+      ) : null}
+
       <div
         id="security-graph-investigation-canvas"
-        className="relative min-h-[40rem] h-[min(56vh,42rem)] bg-[color:var(--surface-muted)]"
+        className="relative h-[clamp(32rem,56vh,42rem)] bg-[color:var(--surface-muted)]"
         data-testid="security-graph-investigation"
       >
         {loading ? (
-          <div className="flex h-full min-h-[40rem] items-center justify-center gap-2 text-sm text-[color:var(--text-secondary)]">
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-[color:var(--text-secondary)]">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading graph evidence…
           </div>
         ) : layout.nodes.length === 0 ? (
-          <div className="flex h-full min-h-[40rem] items-center justify-center px-6 text-center text-sm text-[color:var(--text-secondary)]">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[color:var(--text-secondary)]">
             No graph nodes matched this path. Run a fresh scan or clear focus to inspect the full snapshot.
           </div>
         ) : rendererDecision.kind === "webgl" ? (
@@ -481,12 +495,6 @@ export function SecurityGraphInvestigation({
             />
           </ReactFlowProvider>
         )}
-
-        {rendererDecision.kind === "react-flow" ? (
-          <div className="pointer-events-auto absolute left-3 top-3 max-w-[min(24rem,calc(100vw-2rem))]">
-            <GraphLegend items={legendItems} />
-          </div>
-        ) : null}
       </div>
 
       {drawerData && (

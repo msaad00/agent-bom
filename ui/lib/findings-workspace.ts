@@ -47,58 +47,62 @@ function freshnessMetric(
 }
 
 export function buildEngineeringMetrics(
-  rows: EnrichedVuln[],
-  triageByKey: ReadonlyMap<string, FindingTriageItem>,
+  _rows: EnrichedVuln[],
+  _triageByKey: ReadonlyMap<string, FindingTriageItem>,
   facets: FindingFacets | null,
   facetsApproximate = false,
 ): FindingsWorkspaceMetric[] {
-  const reachabilityKnown = rows.filter((row) => typeof row.graph_reachable === "boolean");
-  const reachable = reachabilityKnown.filter((row) => row.graph_reachable === true).length;
-  const exploitSignals = rows.filter(
-    (row) => row.is_kev === true || typeof row.epss_score === "number",
-  ).length;
-  const fixes = rows.filter(
-    (row) => Boolean(row.fixed_version?.trim()) || (row.remediation_versions?.length ?? 0) > 0,
-  ).length;
-  const owned = rows.filter((row) =>
-    Boolean(row.owner?.trim() || triageForFinding(row, triageByKey)?.assignee?.trim()),
-  ).length;
+  const reachability = facets?.reachability;
+  const exploit = facets?.exploit_intelligence;
+  const fixability = facets?.fixability;
+  const ownership = facets?.ownership;
+  const prefix = facetsApproximate ? "~" : "";
+  const assessed = reachability ? reachability.reachable + reachability.unreachable : 0;
+  const exploitEnriched = exploit ? exploit.kev_and_epss + exploit.kev_only + exploit.epss_only : 0;
+  const kev = exploit ? exploit.kev_and_epss + exploit.kev_only : 0;
+  const epss = exploit ? exploit.kev_and_epss + exploit.epss_only : 0;
 
   return [
     freshnessMetric(facets, facetsApproximate),
-    reachabilityKnown.length > 0
+    reachability && assessed > 0
       ? {
           label: "Reachability",
-          value: `${reachable} reachable`,
-          detail: `${reachabilityKnown.length} assessed on this page`,
-          scope: "page",
+          value: `${prefix}${reachability.reachable} reachable`,
+          detail: `${prefix}${assessed} assessed · ${prefix}${reachability.unassessed} unassessed`,
+          scope: "query",
         }
       : {
           label: "Reachability",
           value: "Unavailable",
-          detail: "No graph reachability evidence on this page",
-          scope: "page",
+          detail: reachability ? `${prefix}${reachability.unassessed} unassessed across this query` : "The server did not return reachability facets",
+          scope: "query",
           unavailable: true,
         },
-    exploitSignals > 0
+    exploit
       ? {
           label: "Exploit intelligence",
-          value: `${exploitSignals} enriched`,
-          detail: "KEV and/or EPSS evidence on this page",
-          scope: "page",
+          value: `${prefix}${exploitEnriched} enriched`,
+          detail: `${prefix}${kev} KEV · ${prefix}${epss} EPSS · ${prefix}${exploit.unavailable} unavailable`,
+          scope: "query",
         }
       : {
           label: "Exploit intelligence",
           value: "Unavailable",
-          detail: "No KEV or EPSS evidence on this page",
-          scope: "page",
+          detail: "The server did not return exploit-intelligence facets",
+          scope: "query",
           unavailable: true,
         },
-    {
+    fixability && ownership ? {
       label: "Fix ownership",
-      value: `${fixes} fixable · ${owned} owned`,
-      detail: `${Math.max(rows.length - fixes, 0)} without a fix on this page`,
-      scope: "page",
+      value: `${prefix}${fixability.fix_available} fixable · ${prefix}${ownership.owned} owned`,
+      detail: `${prefix}${fixability.no_fix_available} without a fix · ${prefix}${ownership.unowned} unowned`,
+      scope: "query",
+    } : {
+      label: "Fix ownership",
+      value: "Unavailable",
+      detail: "The server did not return fixability and ownership facets",
+      scope: "query",
+      unavailable: true,
     },
   ];
 }
@@ -115,10 +119,10 @@ export function buildComplianceMetrics(
   const triage = rows
     .map((row) => triageForFinding(row, triageByKey))
     .filter((row): row is FindingTriageItem => Boolean(row));
-  const decided = triage.filter(
-    (row) => row.decision === "affected" || row.decision === "not_affected",
-  ).length;
   const openVexReady = triage.filter((row) => row.vex_eligible).length;
+  const disposition = facets?.disposition;
+  const dispositionPrefix = facetsApproximate ? "~" : "";
+  const decided = disposition ? disposition.affected + disposition.not_affected : 0;
 
   return [
     freshnessMetric(facets, facetsApproximate),
@@ -132,18 +136,18 @@ export function buildComplianceMetrics(
       scope: "page",
       unavailable: mapped === 0,
     },
-    triage.length > 0
+    disposition
       ? {
           label: "Disposition",
-          value: `${decided} decided`,
-          detail: `${Math.max(rows.length - decided, 0)} pending on this page`,
-          scope: "page",
+          value: `${dispositionPrefix}${decided} decided`,
+          detail: `${dispositionPrefix}${disposition.under_investigation} investigating · ${dispositionPrefix}${disposition.untriaged} untriaged`,
+          scope: "query",
         }
       : {
           label: "Disposition",
           value: "Unavailable",
-          detail: "No disposition records loaded for this page",
-          scope: "page",
+          detail: "The server did not return disposition facets for this query",
+          scope: "query",
           unavailable: true,
         },
     {

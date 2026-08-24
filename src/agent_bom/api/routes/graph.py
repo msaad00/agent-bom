@@ -2058,6 +2058,8 @@ def _serialize_attack_path_queue(
     limit: int,
     stats: dict[str, Any],
     path_source: str,
+    materialized_paths: int,
+    derived_paths: int,
 ) -> dict[str, Any]:
     nodes_by_id = {node.id: node for node in nodes}
     # `edges_for_node_ids` intentionally returns every incident edge for its
@@ -2100,6 +2102,13 @@ def _serialize_attack_path_queue(
             "filters": {"scan_id": scan_id, "offset": offset, "limit": limit},
             "returned": len(paths),
             "total": total,
+            # Additive, explicitly named counts let clients distinguish the
+            # snapshot's source rows from the page transferred over HTTP and
+            # from the smaller subset they may choose to render.
+            "snapshot_total": total,
+            "materialized_paths": materialized_paths,
+            "derived_paths": derived_paths,
+            "returned_rows": len(paths),
             "completeness": completeness,
         },
     }
@@ -2787,6 +2796,8 @@ async def get_graph_attack_paths(
         offset=offset,
         limit=limit,
     )
+    materialized_paths = total
+    derived_paths = 0
     path_source = "persisted_graph_paths"
     if total == 0:
         graph = await _load_graph_for_investigation(
@@ -2800,6 +2811,7 @@ async def get_graph_attack_paths(
             offset=offset,
             limit=limit,
         )
+        derived_paths = total
         path_source = "derived_graph_paths"
     hop_ids = {hop for path in paths for hop in path.hops}
     nodes = await _graph_store_call(
@@ -2832,6 +2844,8 @@ async def get_graph_attack_paths(
         limit=limit,
         stats=stats,
         path_source=path_source,
+        materialized_paths=materialized_paths,
+        derived_paths=derived_paths,
     )
 
 

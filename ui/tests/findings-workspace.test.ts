@@ -33,6 +33,11 @@ const facets: FindingFacets = {
   status: { open: 12, resolved: 1 },
   domain: { cspm: 2, vuln: 9, aspm: 1, dspm: 0, aispm: 1 },
   freshness: { last_24_hours: 2, last_7_days: 3, last_30_days: 4, older: 1, unavailable: 3 },
+  reachability: { reachable: 4, unreachable: 6, unassessed: 3 },
+  exploit_intelligence: { kev_and_epss: 2, kev_only: 1, epss_only: 4, unavailable: 6 },
+  fixability: { fix_available: 8, no_fix_available: 5 },
+  ownership: { owned: 9, unowned: 4 },
+  disposition: { affected: 3, not_affected: 2, under_investigation: 1, untriaged: 7 },
 };
 
 function triage(overrides: Partial<FindingTriageItem> = {}): FindingTriageItem {
@@ -56,8 +61,8 @@ function triage(overrides: Partial<FindingTriageItem> = {}): FindingTriageItem {
 }
 
 describe("findings persona summaries", () => {
-  it("keeps server facet facts query-scoped and page-derived facts explicit", () => {
-    const row = finding({ graph_reachable: true, epss_score: 0.42, fixed_version: "2.0.0" });
+  it("keeps operational KPIs query-scoped instead of deriving them from the page", () => {
+    const row = finding();
     const triageByKey = new Map([[findingTriageKey(row.id, "pkg-a"), triage()]]);
 
     const metrics = buildEngineeringMetrics([row], triageByKey, facets);
@@ -66,7 +71,10 @@ describe("findings persona summaries", () => {
       value: "5 observed ≤7d",
       scope: "query",
     });
-    expect(metrics.slice(1).every((metric) => metric.scope === "page")).toBe(true);
+    expect(metrics.every((metric) => metric.scope === "query")).toBe(true);
+    expect(metrics[1]).toMatchObject({ value: "4 reachable", detail: "10 assessed · 3 unassessed" });
+    expect(metrics[2]).toMatchObject({ value: "7 enriched", detail: "3 KEV · 6 EPSS · 6 unavailable" });
+    expect(metrics[3]).toMatchObject({ value: "8 fixable · 9 owned", detail: "5 without a fix · 4 unowned" });
   });
 
   it("does not turn absent compliance or freshness evidence into factual zero", () => {
@@ -80,6 +88,7 @@ describe("findings persona summaries", () => {
     expect(metrics.find((metric) => metric.label === "Disposition")).toMatchObject({
       value: "Unavailable",
       unavailable: true,
+      scope: "query",
     });
   });
 

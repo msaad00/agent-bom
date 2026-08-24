@@ -2169,6 +2169,15 @@ def _finding_facets_bounded(
     status_counts: dict[str, int] = {key: 0 for key in ("open", "resolved")}
     domain_counts: dict[str, int] = {key: 0 for key in SECURITY_DOMAINS}
     freshness_counts: dict[str, int] = {key: 0 for key in _FRESHNESS_BUCKETS}
+    reachability_counts = {key: 0 for key in ("reachable", "unreachable", "unassessed")}
+    exploit_counts = {key: 0 for key in ("kev_and_epss", "kev_only", "epss_only", "unavailable")}
+    fixability_counts = {key: 0 for key in ("fix_available", "no_fix_available")}
+    ownership_counts = {key: 0 for key in ("owned", "unowned")}
+    disposition_counts = {key: 0 for key in ("affected", "not_affected", "under_investigation", "untriaged")}
+
+    from agent_bom.api.routes.enterprise import build_tenant_triage_state_index
+
+    triage_index = build_tenant_triage_state_index(tenant_id)
 
     class_scope = dict(scope)
     class_scope.pop("finding_class", None)
@@ -2244,6 +2253,25 @@ def _finding_facets_bounded(
         if severity_matches and status_matches_active and full_scope_matches:
             total += 1
             freshness_counts[_freshness_bucket(row)] += 1
+            reachable = row.get("graph_reachable")
+            reachability_counts["reachable" if reachable is True else "unreachable" if reachable is False else "unassessed"] += 1
+            is_kev = row.get("is_kev") is True
+            epss = row.get("epss_score")
+            has_epss = isinstance(epss, (int, float)) and not isinstance(epss, bool)
+            exploit_counts[
+                "kev_and_epss" if is_kev and has_epss else "kev_only" if is_kev else "epss_only" if has_epss else "unavailable"
+            ] += 1
+            remediation_versions = row.get("remediation_versions")
+            has_remediation_version = isinstance(remediation_versions, (list, tuple)) and any(
+                str(value).strip() for value in remediation_versions
+            )
+            has_fix = bool(str(row.get("fixed_version") or "").strip()) or has_remediation_version
+            fixability_counts["fix_available" if has_fix else "no_fix_available"] += 1
+            triage_state = _finding_triage_state(row, triage_index)
+            owner = str(row.get("owner") or "").strip() or str((triage_state or {}).get("assignee") or "").strip()
+            ownership_counts["owned" if owner else "unowned"] += 1
+            decision = str((triage_state or {}).get("decision") or "").strip()
+            disposition_counts[decision if decision in {"affected", "not_affected", "under_investigation"} else "untriaged"] += 1
 
     # ``total`` and the severity histogram have to answer the same question on
     # the same basis. Under pushdown the histogram is the store's unbounded
@@ -2267,6 +2295,11 @@ def _finding_facets_bounded(
         "status": walk_state,
         "domain": walk_state,
         "freshness": walk_state,
+        "reachability": walk_state,
+        "exploit_intelligence": walk_state,
+        "fixability": walk_state,
+        "ownership": walk_state,
+        "disposition": walk_state,
     }
     return (
         {
@@ -2275,6 +2308,11 @@ def _finding_facets_bounded(
             "status": status_counts,
             "domain": domain_counts,
             "freshness": freshness_counts,
+            "reachability": reachability_counts,
+            "exploit_intelligence": exploit_counts,
+            "fixability": fixability_counts,
+            "ownership": ownership_counts,
+            "disposition": disposition_counts,
         },
         total,
         {

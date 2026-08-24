@@ -114,7 +114,7 @@ matched paths, and a verdict; it does not deploy, remediate, or open pull
 requests.
 
 ### registry_lookup
-Look up an MCP server in the 1099-entry server security metadata registry.
+Look up an MCP server in the 1112-entry server security metadata registry.
 ```
 registry_lookup(server_name="brave-search")
 ```

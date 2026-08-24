@@ -1817,6 +1817,8 @@ class TestGraphStoreBackendSelection:
         assert body["cards"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
         assert body["cards"][0]["exposure_path"]["reachability"] == "confirmed"
         assert body["cards"][0]["exposure_path"]["reachabilityBasis"] == ["graph_path"]
+        assert body["cards"][0]["rank_meta"]["reachability"] == "confirmed"
+        assert body["cards"][0]["rank_meta"]["raw_severity"] == "critical"
         assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
             "critical_reach",
             "credential_exposure",
@@ -1824,6 +1826,74 @@ class TestGraphStoreBackendSelection:
         }
         assert body["cards"][0]["next_actions"][0]["href"] == "/findings?cve=CVE-2026-1"
         assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_fix_first_cards_dedupe_presentational_duplicates_but_keep_identity_and_assets(self, recording_graph_store):
+        graph = recording_graph_store.graph
+        graph.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="agent-b"))
+        graph.add_node(UnifiedNode(id="server:one", entity_type=EntityType.SERVER, label="asset-one"))
+        graph.add_node(UnifiedNode(id="server:two", entity_type=EntityType.SERVER, label="asset-two"))
+        graph.add_node(UnifiedNode(id="pkg:shared", entity_type=EntityType.PACKAGE, label="shared-lib"))
+        graph.add_node(
+            UnifiedNode(
+                id="vuln:uuid",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-4242",
+                severity="critical",
+                attributes={"finding_id": "8ac0c0e8-cc5a-4a7c-aad8-e9b26c7b10d2"},
+            )
+        )
+        graph.add_node(
+            UnifiedNode(
+                id="vuln:uuid-2",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-4242",
+                severity="critical",
+                attributes={"finding_id": "6a1e5de4-20ad-4afd-8e3f-e5bb690df5ac"},
+            )
+        )
+
+        def add_path(agent: str, server: str, *, summary: str, finding_node: str = "vuln:uuid") -> None:
+            finding_id = str(graph.nodes[finding_node].attributes["finding_id"])
+            graph.attack_paths.append(
+                AttackPath(
+                    source=agent,
+                    target=finding_node,
+                    hops=[agent, server, "pkg:shared", finding_node],
+                    edges=["uses", "depends_on", "vulnerable_to"],
+                    composite_risk=91.0,
+                    summary=summary,
+                    vuln_ids=["CVE-2026-4242"],
+                    finding_ids=[finding_id],
+                    reachability="confirmed",
+                )
+            )
+
+        add_path("agent:a", "server:one", summary="stored occurrence one")
+        add_path("agent:a", "server:one", summary="stored occurrence duplicate")
+        add_path("agent:a", "server:one", summary="distinct stored finding", finding_node="vuln:uuid-2")
+        add_path("agent:b", "server:one", summary="different agent")
+        add_path("agent:a", "server:two", summary="different asset")
+
+        response = TestClient(app).get("/v1/graph/views/fix-first", params={"scan_id": "store-scan", "limit": 10})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(graph.attack_paths) == 5
+        assert body["summary"]["matched_paths"] == 5
+        assert body["summary"]["presentation_paths"] == 3
+        assert body["summary"]["collapsed_occurrences"] == 2
+        assert len(body["cards"]) == 3
+        duplicate_card = next(card for card in body["cards"] if card["occurrence_count"] == 3)
+        assert duplicate_card["title"].startswith("CVE-2026-4242 via agent-a")
+        assert duplicate_card["affected"]["findings"] == [
+            "8ac0c0e8-cc5a-4a7c-aad8-e9b26c7b10d2",
+            "6a1e5de4-20ad-4afd-8e3f-e5bb690df5ac",
+        ]
+        assert duplicate_card["affected"]["finding_labels"] == ["CVE-2026-4242"]
+        assert duplicate_card["next_actions"][0]["href"] == ("/findings?finding=8ac0c0e8-cc5a-4a7c-aad8-e9b26c7b10d2")
+        assert len({card["semantic_key"] for card in body["cards"]}) == 3
+        assert {tuple(card["affected"]["agents"]) for card in body["cards"]} == {("agent-a",), ("agent-b",)}
+        assert {tuple(card["affected"]["servers"]) for card in body["cards"]} == {("asset-one",), ("asset-two",)}
 
     def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))

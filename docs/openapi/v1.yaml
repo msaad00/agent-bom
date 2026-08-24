@@ -16736,6 +16736,18 @@ paths:
                     items:
                       additionalProperties: true
                       properties:
+                        affected:
+                          additionalProperties: true
+                          properties:
+                            finding_labels:
+                              items:
+                                type: string
+                              type: array
+                            findings:
+                              items:
+                                type: string
+                              type: array
+                          type: object
                         exposure_path:
                           description: Investigation-first exposure path shared by
                             graph views and report exports.
@@ -16828,6 +16840,35 @@ paths:
                           - hops
                           - relationships
                           type: object
+                        id:
+                          type: string
+                        occurrence_count:
+                          minimum: 1
+                          type: integer
+                        occurrence_path_ids:
+                          items:
+                            type: string
+                          type: array
+                        rank:
+                          minimum: 1
+                          type: integer
+                        rank_meta:
+                          additionalProperties: true
+                          properties:
+                            raw_severity:
+                              type: string
+                            reachability:
+                              enum:
+                              - confirmed
+                              - likely
+                              - unknown
+                              - unlikely
+                              type: string
+                          type: object
+                        semantic_key:
+                          type: string
+                        title:
+                          type: string
                       type: object
                     type: array
                   created_at:

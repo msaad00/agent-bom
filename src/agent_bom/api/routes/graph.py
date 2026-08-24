@@ -233,7 +233,32 @@ _FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
                         "items": {
                             "type": "object",
                             "properties": {
+                                "id": {"type": "string"},
+                                "semantic_key": {"type": "string"},
+                                "occurrence_count": {"type": "integer", "minimum": 1},
+                                "occurrence_path_ids": {"type": "array", "items": {"type": "string"}},
+                                "rank": {"type": "integer", "minimum": 1},
+                                "title": {"type": "string"},
                                 "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
+                                "rank_meta": {
+                                    "type": "object",
+                                    "properties": {
+                                        "reachability": {
+                                            "type": "string",
+                                            "enum": ["confirmed", "likely", "unknown", "unlikely"],
+                                        },
+                                        "raw_severity": {"type": "string"},
+                                    },
+                                    "additionalProperties": True,
+                                },
+                                "affected": {
+                                    "type": "object",
+                                    "properties": {
+                                        "findings": {"type": "array", "items": {"type": "string"}},
+                                        "finding_labels": {"type": "array", "items": {"type": "string"}},
+                                    },
+                                    "additionalProperties": True,
+                                },
                             },
                             "additionalProperties": True,
                         },
@@ -426,6 +451,82 @@ def _node_labels_for_types(graph: UnifiedGraph, path_hops: list[str], entity_typ
 
 def _finding_ids_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: list[str]) -> list[str]:
     return _finding_ids_for_nodes(graph.nodes, path_hops, vuln_ids)
+
+
+def _finding_labels_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: list[str]) -> list[str]:
+    """Return operator-readable advisory/node labels, never canonical UUIDs."""
+    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+
+    labels: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: object) -> None:
+        text = str(value or "").strip()
+        if not text or text.lower() in seen:
+            return
+        labels.append(text)
+        seen.add(text.lower())
+
+    for hop in path_hops:
+        node = graph.nodes.get(hop)
+        if not node or node.entity_type not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
+            continue
+        attrs = node.attributes if isinstance(node.attributes, dict) else {}
+        canonical = finding_id_from_node_attributes(attrs)
+        for key in ("cve_id", "vulnerability_id", "advisory_id", "rule_id", "title"):
+            if attrs.get(key):
+                add(attrs[key])
+                break
+        else:
+            if node.label and node.label != canonical:
+                add(node.label)
+    for value in vuln_ids:
+        if value and value not in _finding_ids_for_nodes(graph.nodes, path_hops, []):
+            add(value)
+    return labels
+
+
+def _identity_finding_ids_for_path(graph: UnifiedGraph, path: AttackPath) -> list[str]:
+    """Canonical finding identities, falling back to advisory ids on legacy rows."""
+    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+
+    stamped = [
+        finding_id
+        for hop in path.hops
+        if (node := graph.nodes.get(hop)) is not None
+        if (finding_id := finding_id_from_node_attributes(node.attributes if isinstance(node.attributes, dict) else None))
+    ]
+    candidates = stamped or list(path.finding_ids) or _finding_ids_for_path(graph, path.hops, path.vuln_ids)
+    return list(dict.fromkeys(value for value in candidates if value))
+
+
+def _node_ids_for_types(graph: UnifiedGraph, path_hops: list[str], entity_types: set[EntityType]) -> list[str]:
+    return sorted({hop for hop in path_hops if (node := graph.nodes.get(hop)) is not None and node.entity_type in entity_types})
+
+
+def _path_identity(path: AttackPath) -> str:
+    return f"{path.source}::{path.target}::{'->'.join(path.hops)}"
+
+
+def _path_semantic_key(graph: UnifiedGraph, path: AttackPath) -> str:
+    """Stable presentation identity; asset/agent dimensions prevent over-collapse."""
+    findings = sorted(label.lower() for label in _finding_labels_for_path(graph, path.hops, path.vuln_ids))
+    if not findings:
+        findings = sorted(_identity_finding_ids_for_path(graph, path)) or [path.target]
+    agents = _node_ids_for_types(
+        graph,
+        path.hops,
+        {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
+    ) or [path.source]
+    packages = _node_ids_for_types(graph, path.hops, {EntityType.PACKAGE})
+    assets = _node_ids_for_types(graph, path.hops, {EntityType.SERVER, EntityType.CONTAINER, EntityType.CLOUD_RESOURCE})
+    parts = (
+        ("finding", findings),
+        ("agent", agents),
+        ("package", packages),
+        ("asset", assets),
+    )
+    return "&".join(f"{name}={quote(','.join(values), safe='')}" for name, values in parts)
 
 
 def _finding_ids_for_nodes(nodes: dict[str, Any], path_hops: list[str], vuln_ids: list[str]) -> list[str]:
@@ -647,8 +748,13 @@ def _risk_reasons_for_path(graph: UnifiedGraph, path: AttackPath) -> list[dict[s
     return reasons[:4]
 
 
-def _next_actions_for_path(graph: UnifiedGraph, path: AttackPath) -> list[dict[str, str]]:
-    findings = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
+def _next_actions_for_path(
+    graph: UnifiedGraph,
+    path: AttackPath,
+    *,
+    finding_ids: list[str] | None = None,
+) -> list[dict[str, str]]:
+    findings = finding_ids if finding_ids is not None else _identity_finding_ids_for_path(graph, path)
     agents = _node_labels_for_types(
         graph,
         path.hops,
@@ -656,11 +762,16 @@ def _next_actions_for_path(graph: UnifiedGraph, path: AttackPath) -> list[dict[s
     )
     actions: list[dict[str, str]] = []
     if findings:
+        finding_href = (
+            f"/findings?cve={quote(findings[0])}"
+            if findings[0].upper().startswith(("CVE-", "GHSA-"))
+            else f"/findings?finding={quote(findings[0])}"
+        )
         actions.append(
             {
                 "title": "Validate lead finding",
                 "detail": "Open the first finding and confirm the root cause before expanding the graph.",
-                "href": f"/findings?cve={quote(findings[0])}",
+                "href": finding_href,
             }
         )
     if agents:
@@ -703,8 +814,14 @@ def _fix_first_card_for_path(
     rank: int,
     *,
     edge_lookup: _EdgeLookup | None = None,
+    occurrence_paths: list[AttackPath] | None = None,
 ) -> dict:
-    findings = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
+    grouped_paths = occurrence_paths or [path]
+    findings = list(dict.fromkeys(finding for item in grouped_paths for finding in _identity_finding_ids_for_path(graph, item)))
+    finding_labels = list(
+        dict.fromkeys(label for item in grouped_paths for label in _finding_labels_for_path(graph, item.hops, item.vuln_ids))
+    )
+    occurrence_path_ids = list(dict.fromkeys(_path_identity(item) for item in grouped_paths))
     agents = _node_labels_for_types(
         graph,
         path.hops,
@@ -713,13 +830,18 @@ def _fix_first_card_for_path(
     servers = _node_labels_for_types(graph, path.hops, {EntityType.SERVER, EntityType.CONTAINER, EntityType.CLOUD_RESOURCE})
     packages = _node_labels_for_types(graph, path.hops, {EntityType.PACKAGE})
     sequence = [graph.nodes[hop].label for hop in path.hops if hop in graph.nodes]
-    title_parts = [findings[0] if findings else "Exposure path"]
+    target_node = graph.nodes.get(path.target)
+    display_finding = finding_labels[0] if finding_labels else target_node.label if target_node and target_node.label else "Exposure path"
+    title_parts = [display_finding]
     if agents:
         title_parts.append(f"via {agents[0]}")
     if path.tool_exposure:
         title_parts.append(f"with {path.tool_exposure[0]}")
     return {
-        "id": f"{path.source}::{path.target}::{'->'.join(path.hops)}",
+        "id": _path_identity(path),
+        "semantic_key": _path_semantic_key(graph, path),
+        "occurrence_count": len(grouped_paths),
+        "occurrence_path_ids": occurrence_path_ids,
         "rank": rank,
         "title": " ".join(title_parts),
         "summary": path.summary or "Review this path before opening the full topology graph.",
@@ -735,12 +857,13 @@ def _fix_first_card_for_path(
         "nodes": [graph.nodes[hop].to_dict() for hop in path.hops if hop in graph.nodes],
         "sequence_labels": sequence,
         "risk_reasons": _risk_reasons_for_path(graph, path),
-        "next_actions": _next_actions_for_path(graph, path),
+        "next_actions": _next_actions_for_path(graph, path, finding_ids=findings),
         "affected": {
             "agents": agents,
             "servers": servers,
             "packages": packages,
             "findings": findings,
+            "finding_labels": finding_labels,
             "credentials": list(path.credential_exposure),
             "tools": list(path.tool_exposure),
         },
@@ -1859,10 +1982,27 @@ def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str
         key=lambda path: path_rank_tuple(graph, path),
         reverse=True,
     )
+    presentation_paths: list[tuple[AttackPath, list[AttackPath]]] = []
+    presentation_index: dict[str, int] = {}
+    for path in ranked_paths:
+        semantic_key = _path_semantic_key(graph, path)
+        existing = presentation_index.get(semantic_key)
+        if existing is None:
+            presentation_index[semantic_key] = len(presentation_paths)
+            presentation_paths.append((path, [path]))
+        else:
+            presentation_paths[existing][1].append(path)
+
     cards = []
     edge_lookup = _build_edge_lookup(graph.edges)
-    for index, path in enumerate(ranked_paths[:limit]):
-        card = _fix_first_card_for_path(graph, path, index + 1, edge_lookup=edge_lookup)
+    for index, (path, occurrence_paths) in enumerate(presentation_paths[:limit]):
+        card = _fix_first_card_for_path(
+            graph,
+            path,
+            index + 1,
+            edge_lookup=edge_lookup,
+            occurrence_paths=occurrence_paths,
+        )
         card["rank_meta"] = criticality_rank_meta(graph, path)
         cards.append(card)
     covered_findings = {finding for card in cards for finding in card["affected"]["findings"]}
@@ -1877,6 +2017,8 @@ def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str
         "summary": {
             "total_paths": len(available_paths),
             "matched_paths": len(ranked_paths),
+            "presentation_paths": len(presentation_paths),
+            "collapsed_occurrences": len(ranked_paths) - len(presentation_paths),
             "returned_paths": len(cards),
             "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
             "covered_findings": len(covered_findings),
@@ -1891,9 +2033,9 @@ def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str
         },
         "completeness": graph_completeness(
             returned=len(cards),
-            total=len(ranked_paths),
-            truncated=len(ranked_paths) > len(cards),
-            reason="path_card_limit" if len(ranked_paths) > len(cards) else "",
+            total=len(presentation_paths),
+            truncated=len(presentation_paths) > len(cards),
+            reason="path_card_limit" if len(presentation_paths) > len(cards) else "",
         ),
     }
 

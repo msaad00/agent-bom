@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from agent_bom.graph.severity import severity_rank
 from agent_bom.risk_analyzer import CAPABILITY_WEIGHTS, ToolCapability
 
 if TYPE_CHECKING:
@@ -17,6 +18,12 @@ if TYPE_CHECKING:
 
 _PROD_ENVIRONMENTS = frozenset({"prod", "production", "prd", "live"})
 _STAGING_ENVIRONMENTS = frozenset({"staging", "stage", "preprod", "pre-production"})
+_REACHABILITY_ORDER = {
+    "unlikely": 0,
+    "unknown": 1,
+    "likely": 2,
+    "confirmed": 3,
+}
 
 
 def environment_weight(node: UnifiedNode) -> float:
@@ -59,8 +66,13 @@ def tool_capability_boost(node: UnifiedNode) -> float:
     return min(8.0, max(weights) * 0.8)
 
 
-def path_rank_tuple(graph: UnifiedGraph, path: AttackPath) -> tuple[float, float, int, int, int]:
-    """Sort key for fix-first ranking (higher is worse / fix first)."""
+def path_rank_tuple(graph: UnifiedGraph, path: AttackPath) -> tuple[int, float, float, int, int, int]:
+    """Sort key for fix-first ranking (higher is worse / fix first).
+
+    Reachability is an ordinal evidence tier, not a new arithmetic score:
+    confirmed > likely > unknown > unlikely. Existing composite risk,
+    environment, and capability weighting remain unchanged within each tier.
+    """
     env_mult = 1.0
     cap_boost = 0.0
     for hop in path.hops:
@@ -71,6 +83,7 @@ def path_rank_tuple(graph: UnifiedGraph, path: AttackPath) -> tuple[float, float
         cap_boost = max(cap_boost, tool_capability_boost(node))
     weighted_risk = float(path.composite_risk) * env_mult + cap_boost
     return (
+        _REACHABILITY_ORDER.get(str(path.reachability).strip().lower(), _REACHABILITY_ORDER["unknown"]),
         weighted_risk,
         float(path.composite_risk),
         len(path.hops),
@@ -84,12 +97,16 @@ def criticality_rank_meta(graph: UnifiedGraph, path: AttackPath) -> dict[str, ob
     environments: list[str] = []
     capabilities: list[str] = []
     max_env = 1.0
+    raw_severity = "unknown"
     for hop in path.hops:
         node = graph.nodes.get(hop)
         if node is None:
             continue
         max_env = max(max_env, environment_weight(node))
         attrs = node.attributes or {}
+        severity = str(getattr(node, "severity", "") or "").strip().lower()
+        if severity and severity_rank(severity) > severity_rank(raw_severity):
+            raw_severity = severity
         env = attrs.get("environment") or getattr(getattr(node, "dimensions", None), "environment", "")
         if isinstance(env, str) and env and env not in environments:
             environments.append(env)
@@ -102,6 +119,8 @@ def criticality_rank_meta(graph: UnifiedGraph, path: AttackPath) -> dict[str, ob
                     if text and text not in capabilities:
                         capabilities.append(text)
     return {
+        "reachability": str(path.reachability or "unknown").strip().lower(),
+        "raw_severity": raw_severity,
         "environment_weight": round(max_env, 3),
         "environments": environments[:4],
         "tool_capabilities": capabilities[:8],

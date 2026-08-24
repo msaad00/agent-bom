@@ -345,6 +345,8 @@ export interface FixFirstAction {
 }
 
 export interface FixFirstRankMeta {
+  reachability?: "confirmed" | "likely" | "unknown" | "unlikely" | string;
+  raw_severity?: string;
   environment_weight?: number;
   environments?: string[];
   tool_capabilities?: string[];
@@ -352,6 +354,9 @@ export interface FixFirstRankMeta {
 
 export interface FixFirstPathCard {
   id: string;
+  semantic_key?: string;
+  occurrence_count?: number;
+  occurrence_path_ids?: string[];
   rank: number;
   title: string;
   summary: string;
@@ -367,6 +372,7 @@ export interface FixFirstPathCard {
     servers: string[];
     packages: string[];
     findings: string[];
+    finding_labels?: string[];
     credentials: string[];
     tools: string[];
   };

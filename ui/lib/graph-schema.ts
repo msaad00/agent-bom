@@ -400,6 +400,9 @@ export interface AttackPath {
   vuln_ids: string[];
   /** Stable Finding.id anchors when stamped (preferred over CVE labels). */
   finding_ids?: string[];
+  /** Executability evidence tier; optional on legacy graph snapshots. */
+  reachability?: "confirmed" | "likely" | "unknown" | "unlikely" | string;
+  reachability_basis?: string[];
   /**
    * Potential ATT&CK/ATLAS techniques mapped from this path's observed
    * evidence, ordered by hop. Optional so older graph snapshots without the

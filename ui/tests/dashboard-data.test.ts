@@ -53,9 +53,10 @@ describe("buildExposurePathView", () => {
     expect(view.href).not.toContain("scan=");
   });
 
-  it("builds the node chain and key, appending an index when provided", () => {
+  it("builds the node chain with a stable semantic key", () => {
     const view = buildExposurePathView(makeBlast(), "scan-1", 3);
-    expect(view.key).toBe("CVE-2026-0002:flask:3");
+    expect(view.key).toBe("cve-2026-0002::flask::claude%20desktop::mcp-fs");
+    expect(buildExposurePathView(makeBlast(), "scan-1", 99).key).toBe(view.key);
     expect(view.riskScore).toBe(9.1);
     expect(view.nodes).toEqual([
       { type: "cve", label: "CVE-2026-0002", severity: "critical" },
@@ -68,7 +69,7 @@ describe("buildExposurePathView", () => {
 
   it("uses an index-less key for a single row", () => {
     const view = buildExposurePathView(makeBlast({ package: undefined }), "scan-1");
-    expect(view.key).toBe("CVE-2026-0002:unknown");
+    expect(view.key).toBe("cve-2026-0002::unknown::claude%20desktop::mcp-fs");
     // Package hop dropped when absent; scan still threaded.
     expect(view.href).toBe(
       "/security-graph?scan=scan-1&cve=CVE-2026-0002&agent=Claude+Desktop",
@@ -80,7 +81,7 @@ describe("buildTopRiskExposurePath", () => {
   it("maps an OverviewTopRisk into a CVE→package→agent chain (#4063)", () => {
     const view = buildTopRiskExposurePath(makeTopRisk(), 0);
     expect(view.riskScore).toBe(9.4);
-    expect(view.key).toBe("CVE-2026-9001:requests:0");
+    expect(view.key).toBe("cve-2026-9001::requests::ingest%20bot::unknown");
     expect(view.nodes).toEqual([
       { type: "cve", label: "CVE-2026-9001", severity: "critical" },
       { type: "package", label: "requests" },
@@ -108,7 +109,7 @@ describe("buildTopRiskExposurePath", () => {
     const view = buildTopRiskExposurePath(
       makeTopRisk({ package: null, affected_agents: [] }),
     );
-    expect(view.key).toBe("CVE-2026-9001:unknown");
+    expect(view.key).toBe("cve-2026-9001::unknown::unknown::unknown");
     expect(view.nodes).toEqual([
       { type: "cve", label: "CVE-2026-9001", severity: "critical" },
     ]);
@@ -135,7 +136,7 @@ describe("buildExecExposurePaths", () => {
       [{ ...makeBlast(), scanId: "scan-xyz" }],
       // The same CVE appears in top_risks (server folds the scan in) — must NOT
       // double-count, and the richer scan row (with scanId graph drill) wins.
-      [makeTopRisk({ vulnerability_id: "CVE-2026-0002" })],
+      [makeTopRisk({ vulnerability_id: "CVE-2026-0002", package: "flask", affected_agents: ["Claude Desktop"] })],
     );
     expect(paths).toHaveLength(1);
     expect(paths[0]!.href).toBe(
@@ -143,11 +144,16 @@ describe("buildExecExposurePaths", () => {
     );
   });
 
-  it("merges hub-only risks alongside scan blasts, deduped and ranked", () => {
+  it("merges hub-only risks alongside scan blasts, semantically deduped and ranked", () => {
     const paths = buildExecExposurePaths(
       [{ ...makeBlast({ vulnerability_id: "CVE-2026-0002", risk_score: 5.0 }), scanId: "s1" }],
       [
-        makeTopRisk({ vulnerability_id: "CVE-2026-0002", risk_score: 9.9 }), // dup of scan
+        makeTopRisk({
+          vulnerability_id: "CVE-2026-0002",
+          package: "flask",
+          affected_agents: ["Claude Desktop"],
+          risk_score: 9.9,
+        }), // semantic dup of scan
         makeTopRisk({ vulnerability_id: "CVE-2026-7777", risk_score: 8.0 }), // hub-only
       ],
     );
@@ -159,6 +165,30 @@ describe("buildExecExposurePaths", () => {
     // Hub-only risk drills to real finding rows.
     const hub = paths.find((p) => p.nodes[0]!.label === "CVE-2026-7777");
     expect(hub!.href).toBe("/findings?cve=CVE-2026-7777");
+  });
+
+  it("dedupes identical presentations but preserves different agents and assets", () => {
+    const duplicate = makeBlast({ vulnerability_id: "CVE-2026-5000", package: "shared" });
+    const paths = buildExecExposurePaths(
+      [
+        { ...duplicate, scanId: "s1" },
+        { ...duplicate, scanId: "s1" },
+        { ...duplicate, affected_agents: ["Other Agent"], scanId: "s1" },
+        { ...duplicate, affected_servers: ["other-server"], scanId: "s1" },
+      ],
+      [],
+      5,
+    );
+
+    expect(paths).toHaveLength(3);
+    expect(new Set(paths.map((path) => path.key)).size).toBe(3);
+    expect(paths.map((path) => path.nodes.map((node) => node.label))).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(["Claude Desktop", "mcp-fs"]),
+        expect.arrayContaining(["Other Agent", "mcp-fs"]),
+        expect.arrayContaining(["Claude Desktop", "other-server"]),
+      ]),
+    );
   });
 
   it("returns an empty strip when there are genuinely no risks", () => {

@@ -86,3 +86,42 @@ def test_path_rank_tuple_raises_prod_paths_above_dev() -> None:
     meta = criticality_rank_meta(graph, high)
     assert "production" in meta["environments"]
     assert "execute" in meta["tool_capabilities"]
+
+
+def test_path_rank_tuple_orders_reachability_without_overwriting_raw_severity() -> None:
+    """Equal-risk findings rank by evidence strength, while severity stays raw."""
+    graph = UnifiedGraph(scan_id="s", tenant_id="default", created_at="2026-08-24T00:00:00Z")
+    graph.add_node(
+        UnifiedNode(
+            id="finding",
+            entity_type=EntityType.VULNERABILITY,
+            label="CVE-2026-4242",
+            severity="critical",
+        )
+    )
+
+    def path(reachability: str) -> AttackPath:
+        return AttackPath(
+            source="finding",
+            target="finding",
+            hops=["finding"],
+            edges=[],
+            composite_risk=80.0,
+            summary=reachability,
+            credential_exposure=[],
+            tool_exposure=[],
+            vuln_ids=["CVE-2026-4242"],
+            reachability=reachability,
+        )
+
+    confirmed = path("confirmed")
+    likely = path("likely")
+    unknown = path("unknown")
+    unlikely = path("unlikely")
+
+    assert path_rank_tuple(graph, confirmed) > path_rank_tuple(graph, likely)
+    assert path_rank_tuple(graph, likely) > path_rank_tuple(graph, unknown)
+    assert path_rank_tuple(graph, unknown) > path_rank_tuple(graph, unlikely)
+    meta = criticality_rank_meta(graph, confirmed)
+    assert meta["reachability"] == "confirmed"
+    assert meta["raw_severity"] == "critical"

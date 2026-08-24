@@ -237,16 +237,35 @@ export function blastAgents(blast: BlastRadius): string[] {
   return blast.affected_agents ?? [];
 }
 
+function execExposureSemanticKey(
+  finding: string,
+  packageName?: string | null,
+  agent?: string | null,
+  asset?: string | null,
+): string {
+  const dimensions = [finding, packageName || "unknown", agent || "unknown", asset || "unknown"];
+  return dimensions.map((value) => encodeURIComponent(value.trim().toLowerCase())).join("::");
+}
+
+function execExposureAggregateKey(
+  finding: string,
+  packageName?: string | null,
+  agent?: string | null,
+): string {
+  return execExposureSemanticKey(finding, packageName, agent, null);
+}
+
 /**
  * Build the exec→graph exposure-path row for a finding. Threads the finding's
  * own `scanId` into the security-graph drill so the drill lands on the scan
  * that produced the finding — not whichever scan happens to be latest (#3966).
- * `index` disambiguates the key within a shortlist; omit it for a single row.
+ * The key is semantic and stable across fetch order. Identical presentations
+ * dedupe while a different agent or asset remains a distinct occurrence.
  */
 export function buildExposurePathView(
   blast: BlastRadius,
   scanId?: string,
-  index?: number,
+  _index?: number,
 ): ExposurePathView {
   const agents = blastAgents(blast);
   const credentials = blastCredentials(blast);
@@ -259,9 +278,13 @@ export function buildExposurePathView(
   }
   if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
   if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
-  const baseKey = `${blast.vulnerability_id}:${blast.package ?? "unknown"}`;
   return {
-    key: index === undefined ? baseKey : `${baseKey}:${index}`,
+    key: execExposureSemanticKey(
+      blast.vulnerability_id,
+      blast.package,
+      agents[0],
+      blast.affected_servers?.[0],
+    ),
     nodes,
     riskScore: blast.risk_score ?? blast.blast_score / 10,
     href: buildSecurityGraphHref({
@@ -290,7 +313,7 @@ const CVE_ID_PATTERN = /^CVE-\d{4}-\d{4,}$/i;
  */
 export function buildTopRiskExposurePath(
   risk: OverviewTopRisk,
-  index?: number,
+  _index?: number,
 ): ExposurePathView {
   const severity = (risk.severity || "").trim().toLowerCase();
   const nodes: ExposurePathView["nodes"] = [
@@ -308,9 +331,8 @@ export function buildTopRiskExposurePath(
       ? `/findings?severity=${encodeURIComponent(severity)}`
       : "/findings";
 
-  const baseKey = `${risk.vulnerability_id}:${risk.package ?? "unknown"}`;
   return {
-    key: index === undefined ? baseKey : `${baseKey}:${index}`,
+    key: execExposureSemanticKey(risk.vulnerability_id, risk.package, agent),
     nodes,
     riskScore: risk.risk_score ?? 0,
     href,
@@ -323,8 +345,10 @@ export function buildTopRiskExposurePath(
  * richest chain (server/credential hops) plus the scan→graph drill, so they lead;
  * the server-reconciled `overview.top_risks` — the authoritative source that also
  * covers hub/bulk-ingested findings, which never create scan jobs — contributes
- * any risk not already represented by a scan blast. Deduped by `vulnerability_id`
- * so scan and hub are never double-counted; ranked worst-first and capped.
+ * any risk not already represented by a scan blast. Presentation rows dedupe
+ * by finding + package + agent + asset; the aggregate overview copy is removed
+ * when a richer scan occurrence covers its finding/package/agent. Different
+ * agents or assets remain distinct. Ranked worst-first and capped.
  */
 export function buildExecExposurePaths(
   allBlast: (BlastRadius & { scanId?: string })[],
@@ -334,13 +358,30 @@ export function buildExecExposurePaths(
   const blastRanked = [...allBlast].sort(
     (a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score),
   );
-  const blastViews = blastRanked.map((blast, index) =>
-    buildExposurePathView(blast, blast.scanId, index),
+  const seen = new Set<string>();
+  const blastViews = blastRanked.flatMap((blast, index) => {
+    const view = buildExposurePathView(blast, blast.scanId, index);
+    if (seen.has(view.key)) return [];
+    seen.add(view.key);
+    return [view];
+  });
+  const covered = new Set(
+    blastRanked.map((blast) =>
+      execExposureAggregateKey(blast.vulnerability_id, blast.package, blastAgents(blast)[0]),
+    ),
   );
-  const covered = new Set(blastRanked.map((b) => b.vulnerability_id).filter(Boolean));
   const topRiskViews = (topRisks ?? [])
-    .filter((r) => r.vulnerability_id && !covered.has(r.vulnerability_id))
-    .map((risk, index) => buildTopRiskExposurePath(risk, blastViews.length + index));
+    .filter(
+      (risk) =>
+        risk.vulnerability_id &&
+        !covered.has(execExposureAggregateKey(risk.vulnerability_id, risk.package, risk.affected_agents?.[0])),
+    )
+    .flatMap((risk, index) => {
+      const view = buildTopRiskExposurePath(risk, blastViews.length + index);
+      if (seen.has(view.key)) return [];
+      seen.add(view.key);
+      return [view];
+    });
   return [...blastViews, ...topRiskViews]
     .sort((a, b) => b.riskScore - a.riskScore)
     .slice(0, limit);

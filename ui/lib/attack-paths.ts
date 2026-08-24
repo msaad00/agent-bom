@@ -66,6 +66,65 @@ export function attackPathKey(path: AttackPath): string {
   return `${path.source}::${path.target}::${path.hops.join("->")}`;
 }
 
+function pathNodeIdsForTypes(
+  path: AttackPath,
+  nodeById: Map<string, UnifiedNode>,
+  entityTypes: ReadonlySet<string>,
+): string[] {
+  return [...new Set(
+    path.hops.filter((hop) => {
+      const node = nodeById.get(hop);
+      return node ? entityTypes.has(String(node.entity_type)) : false;
+    }),
+  )].sort();
+}
+
+/** Stable presentation key without mutating or collapsing stored path rows. */
+export function attackPathPresentationKey(
+  path: AttackPath,
+  nodeById: Map<string, UnifiedNode>,
+): string {
+  const findingNodeLabels = path.hops.flatMap((hop) => {
+    const node = nodeById.get(hop);
+    if (!node || ![EntityType.VULNERABILITY, EntityType.MISCONFIGURATION].includes(node.entity_type as EntityType)) {
+      return [];
+    }
+    return [node.label.trim().toLowerCase()];
+  });
+  const advisoryLabels = path.vuln_ids.map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const findings = [...new Set(advisoryLabels.length ? advisoryLabels : findingNodeLabels)].sort();
+  const agents = pathNodeIdsForTypes(
+    path,
+    nodeById,
+    new Set([EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT]),
+  );
+  const packages = pathNodeIdsForTypes(path, nodeById, new Set([EntityType.PACKAGE]));
+  const assets = pathNodeIdsForTypes(
+    path,
+    nodeById,
+    new Set([EntityType.SERVER, EntityType.CONTAINER, EntityType.CLOUD_RESOURCE]),
+  );
+  return JSON.stringify({
+    finding: findings.length ? findings : path.finding_ids?.length ? [...path.finding_ids].sort() : [path.target],
+    agent: agents.length ? agents : [path.source],
+    package: packages,
+    asset: assets,
+  });
+}
+
+export function dedupeAttackPathsForPresentation(
+  paths: AttackPath[],
+  nodeById: Map<string, UnifiedNode>,
+): AttackPath[] {
+  const seen = new Set<string>();
+  return paths.filter((path) => {
+    const key = attackPathPresentationKey(path, nodeById);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function moveAttackPathSelection(
   attackPaths: AttackPath[],
   currentKey: string | null,

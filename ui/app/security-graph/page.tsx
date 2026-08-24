@@ -63,6 +63,7 @@ import {
   buildGraphInvestigationHref,
   buildSecurityGraphHref,
   descriptiveAttackPathTitle,
+  dedupeAttackPathsForPresentation,
   investigationRootForAttackPath,
   labelsForAttackPathType,
   matchesAttackPathFocus,
@@ -361,9 +362,10 @@ function AttackPathInvestigationContent() {
     [campaigns, selectedCampaignId],
   );
 
-  // Authoritative queue is the attack-paths API (offset + has_more). Fix-first
-  // cards enrich titles/actions but must not silently cap the global queue at
-  // FIX_FIRST_CARD_LIMIT when more ranked paths exist server-side.
+  // The attack-paths API remains the authoritative paginated occurrence queue.
+  // Fix-first cards supply the evidence-calibrated presentation order for the
+  // initial shortlist; append every non-enriched occurrence so this never caps
+  // the global queue at FIX_FIRST_CARD_LIMIT.
   const allAttackPaths = useMemo(() => {
     const fromApi = [...(graphData?.attack_paths ?? [])].sort(
       (left, right) => right.composite_risk - left.composite_risk,
@@ -371,20 +373,21 @@ function AttackPathInvestigationContent() {
     const fromFixFirst = fixFirstCards.map((card) => card.attack_path);
     const focusedApiPaths = fromApi.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus));
     const focusedEnrichedPaths = fromFixFirst.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus));
-    const base = hasFocusContext
-      ? focusedApiPaths.length > 0
-        ? focusedApiPaths
-        : focusedEnrichedPaths
-      : fromApi.length > 0
-        ? fromApi
-        : fromFixFirst;
+    const enriched = hasFocusContext ? focusedEnrichedPaths : fromFixFirst;
+    const occurrences = hasFocusContext ? focusedApiPaths : fromApi;
+    const enrichedKeys = new Set(enriched.map(attackPathKey));
+    const base = [...enriched, ...occurrences.filter((path) => !enrichedKeys.has(attackPathKey(path)))];
     if (!selectedCampaign?.member_paths?.length) return base;
     const members = new Set(selectedCampaign.member_paths);
     return base.filter((path) => members.has(`${path.source}->${path.target}`));
   }, [fixFirstCards, focus, graphData?.attack_paths, graphNodeById, hasFocusContext, selectedCampaign]);
+  const presentationAttackPaths = useMemo(
+    () => dedupeAttackPathsForPresentation(allAttackPaths, graphNodeById),
+    [allAttackPaths, graphNodeById],
+  );
   const attackPaths = useMemo(
-    () => filterAttackPathsForInvestigation(allAttackPaths, graphNodeById, investigationFilters),
-    [allAttackPaths, graphNodeById, investigationFilters],
+    () => filterAttackPathsForInvestigation(presentationAttackPaths, graphNodeById, investigationFilters),
+    [graphNodeById, investigationFilters, presentationAttackPaths],
   );
   const pathEnvironments = useMemo(
     () => collectPathEnvironments(allAttackPaths, graphNodeById),

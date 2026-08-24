@@ -8,6 +8,7 @@ import {
   buildSecurityGraphHref,
   decodeGraphInvestigationParams,
   descriptiveAttackPathTitle,
+  dedupeAttackPathsForPresentation,
   investigationRootForAttackPath,
   labelsForAttackPathType,
   mapAttackPathChainType,
@@ -297,6 +298,45 @@ describe("attack path helpers", () => {
       "Finding B via agent-b",
     ]);
     expect(rankedAttackPathRows([pathB], cards)[0]?.card?.title).toBe("Finding B via agent-b");
+  });
+
+  it("dedupes the queue by finding, agent, package, and asset", () => {
+    const nodes = new Map<string, UnifiedNode>([
+      ["finding", graphNode("finding", EntityType.VULNERABILITY, "CVE-2026-4242")],
+      ["agent-a", graphNode("agent-a", EntityType.AGENT, "Agent A")],
+      ["agent-b", graphNode("agent-b", EntityType.AGENT, "Agent B")],
+      ["asset-a", graphNode("asset-a", EntityType.SERVER, "Asset A")],
+      ["asset-b", graphNode("asset-b", EntityType.SERVER, "Asset B")],
+      ["package", graphNode("package", EntityType.PACKAGE, "shared")],
+    ]);
+    const path = (agent: string, asset: string, summary: string): AttackPath => ({
+      source: agent,
+      target: "finding",
+      hops: [agent, asset, "package", "finding"],
+      edges: [],
+      composite_risk: 90,
+      summary,
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2026-4242"],
+      finding_ids: ["finding-uuid"],
+    });
+
+    const deduped = dedupeAttackPathsForPresentation(
+      [
+        path("agent-a", "asset-a", "first occurrence"),
+        path("agent-a", "asset-a", "duplicate occurrence"),
+        path("agent-b", "asset-a", "different agent"),
+        path("agent-a", "asset-b", "different asset"),
+      ],
+      nodes,
+    );
+
+    expect(deduped.map((item) => item.summary)).toEqual([
+      "first occurrence",
+      "different agent",
+      "different asset",
+    ]);
   });
 
   it("builds a focused security-graph href from canonical context", () => {

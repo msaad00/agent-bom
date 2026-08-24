@@ -229,7 +229,7 @@ def test_ast_result_for_symbol_reach_reads_ordinary_application_project() -> Non
     assert result is not None
     assert result.tools == []
     assert result.application_entrypoints
-    assert {reach.package for reach in result.dependency_symbol_reach} == {"requests"}
+    assert {reach.package for reach in result.dependency_symbol_reach} == {"rich"}
     assert all(reach.entrypoint_provenance for reach in result.dependency_symbol_reach)
 
 

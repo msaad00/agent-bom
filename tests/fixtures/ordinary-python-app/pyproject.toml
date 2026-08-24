@@ -2,8 +2,8 @@
 name = "ordinary-python-app"
 version = "0.1.0"
 dependencies = [
-  "requests==2.32.5",
-  "httpx==0.28.1",
+  "rich==14.1.0",
+  "attrs==25.3.0",
 ]
 
 [project.scripts]

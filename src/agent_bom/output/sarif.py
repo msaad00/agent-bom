@@ -957,6 +957,24 @@ def to_sarif(
                 "suppressed": finding.suppressed,
                 **(
                     {
+                        key: sanitize_text(value, max_len=500)
+                        for key in ("category", "entrypoint", "sink", "source")
+                        if (value := evidence.get(key))
+                    }
+                    if finding.finding_type == FindingType.SAST
+                    else {}
+                ),
+                **(
+                    {
+                        key: [sanitize_text(item, max_len=500) for item in value]
+                        for key in ("call_path", "detector_categories")
+                        if isinstance((value := evidence.get(key)), list)
+                    }
+                    if finding.finding_type == FindingType.SAST
+                    else {}
+                ),
+                **(
+                    {
                         "workload_runtime_evidence": _sanitize_sarif_property(finding.workload_runtime_evidence),
                     }
                     if isinstance(getattr(finding, "workload_runtime_evidence", None), dict) and finding.workload_runtime_evidence

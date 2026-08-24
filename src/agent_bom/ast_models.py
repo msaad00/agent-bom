@@ -43,6 +43,10 @@ class ToolSignature:
     line_number: int
     decorators: list[str] = field(default_factory=list)
     is_async: bool = False
+    handler: str = ""
+    registration_kind: str = ""
+    framework: str = ""
+    provenance: str = ""
 
 
 @dataclass
@@ -166,6 +170,16 @@ class ASTAnalysisResult:
                     "line": t.line_number,
                     "is_async": t.is_async,
                     "decorators": t.decorators,
+                    **(
+                        {
+                            "handler": t.handler,
+                            "registration_kind": t.registration_kind,
+                            "framework": t.framework,
+                            "provenance": t.provenance,
+                        }
+                        if t.registration_kind
+                        else {}
+                    ),
                 }
                 for t in self.tools
             ],
@@ -544,3 +558,17 @@ class _FunctionAnalysis:
     dangerous_calls: list[tuple[str, int, bool]] = field(default_factory=list)
     imported_modules: dict[str, str] = field(default_factory=dict, repr=False)
     imported_functions: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False)
+    entrypoint_name: str = ""
+    entrypoint_kind: str = "mcp_tool"
+    entrypoint_framework: str = ""
+    entrypoint_provenance: str = ""
+
+
+@dataclass(frozen=True)
+class _PythonToolRegistration:
+    """Evidence-backed Python framework tool registration."""
+
+    tool_name: str
+    handler_name: str
+    framework: str
+    provenance: str

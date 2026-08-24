@@ -1401,6 +1401,10 @@ def _apply_ast_tool_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any])
                     "source_file": source_file,
                     "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
                     "parameters": sanitize_sensitive_payload(raw.get("parameters", [])),
+                    "handler": sanitize_text(raw.get("handler", ""), max_len=200),
+                    "registration_kind": sanitize_text(raw.get("registration_kind", ""), max_len=100),
+                    "framework": sanitize_text(raw.get("framework", ""), max_len=100),
+                    "provenance": sanitize_text(raw.get("provenance", ""), max_len=500),
                     "discovery_source": "ast_analysis",
                     "canonical_id": canonical_graph_node_id(EntityType.TOOL.value, tool_id),
                 },
@@ -1413,7 +1417,13 @@ def _apply_ast_tool_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any])
                 source=file_id,
                 target=tool_id,
                 relationship=RelationshipType.DEFINES,
-                evidence={"source": "ast_analysis", "line": raw.get("line")},
+                evidence={
+                    "source": "ast_analysis",
+                    "line": raw.get("line"),
+                    "registration_kind": sanitize_text(raw.get("registration_kind", ""), max_len=100),
+                    "framework": sanitize_text(raw.get("framework", ""), max_len=100),
+                    "provenance": sanitize_text(raw.get("provenance", ""), max_len=500),
+                },
             )
         )
 

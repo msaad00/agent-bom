@@ -294,8 +294,9 @@ def _merge_unified_graph_evidence(graph: DepGraph, data: dict[str, Any]) -> None
     ``build_unified_graph_from_report`` (the single source of cloud graph truth)
     and grafts its cloud/identity/posture nodes + edges onto the DepGraph so every
     existing serializer (json/dot/mermaid/graphml/cypher) shows the full estate.
-    Source-discovered MCP tools also originate only in the unified graph; graft
-    those tool/file nodes so graph export does not discard their provenance.
+    Source-discovered MCP and framework tools also originate only in the
+    unified graph; graft those tool/file nodes so graph export does not discard
+    their provenance.
     Best-effort: never raises into the export path.
     """
     try:

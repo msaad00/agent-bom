@@ -950,6 +950,47 @@ def test_scan_no_discover_scans_explicit_project_packages(tmp_path):
     assert [agent["name"] for agent in report["agents"]] == ["project:repo"]
 
 
+def test_scan_no_discover_analyzes_code_in_the_explicit_project(tmp_path):
+    """No-discover excludes ambient inputs, not source inside the named project."""
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "requirements.txt").write_text("langchain==0.3.0\n", encoding="utf-8")
+    (project / "app.py").write_text(
+        "import subprocess\n"
+        "from langchain.agents import AgentExecutor\n"
+        "from langchain.tools import Tool\n\n"
+        "def run_shell(command: str) -> str:\n"
+        "    return subprocess.check_output(command, shell=True, text=True)\n\n"
+        "shell_tool = Tool(name='shell', func=run_shell, description='Run a command')\n"
+        "agent = AgentExecutor(agent=None, tools=[shell_tool])\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.json"
+
+    result = _run(
+        [
+            "scan",
+            "--project",
+            str(project),
+            "--no-discover",
+            "--no-scan",
+            "--exit-zero",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    code_findings = [finding for finding in report["findings"] if finding.get("evidence", {}).get("entrypoint") == "shell"]
+    assert len(code_findings) == 1
+    assert code_findings[0]["severity"] == "critical"
+    assert code_findings[0]["evidence"]["sink"] == "subprocess.check_output"
+    assert "ast_analysis" in report["scan_sources"]
+
+
 def test_scan_no_discover_without_artifact_exits_usage_error(tmp_path, monkeypatch):
     # --no-discover with no explicit input artifact has nothing to scan. Exiting
     # 0 "clean" is a false-negative; it must hard-fail as a usage error (exit 2).

@@ -528,18 +528,27 @@ def _append_source_tool_elements(elements: list[dict], report: "AIBOMReport") ->
             known_nodes.add(tool_id)
             line = raw.get("line") if isinstance(raw.get("line"), int) else None
             description = sanitize_text(raw.get("description", ""), max_len=1_000)
+            handler = sanitize_text(raw.get("handler", ""), max_len=200)
+            registration_kind = sanitize_text(raw.get("registration_kind", ""), max_len=100)
+            framework = sanitize_text(raw.get("framework", ""), max_len=100)
+            provenance = sanitize_text(raw.get("provenance", ""), max_len=500)
+            tool_label = "Framework tool" if registration_kind == "framework_tool" else "MCP tool"
             elements.append(
                 {
                     "data": {
                         "id": tool_id,
                         "label": tool_name,
                         "type": "tool",
-                        "tip": f"MCP tool: {tool_name}\nSource: {source_file}" + (f":{line}" if line else ""),
+                        "tip": f"{tool_label}: {tool_name}\nSource: {source_file}" + (f":{line}" if line else ""),
                         "description": description,
                         "sourceFile": source_file,
                         "line": line,
+                        "handler": handler,
+                        "registration_kind": registration_kind,
+                        "framework": framework,
+                        "provenance": provenance,
                         "discovery_source": "ast_analysis",
-                        "searchText": f"{tool_name} {source_file} {description}".lower(),
+                        "searchText": f"{tool_name} {handler} {framework} {source_file} {description}".lower(),
                     }
                 }
             )
@@ -554,6 +563,9 @@ def _append_source_tool_elements(elements: list[dict], report: "AIBOMReport") ->
                         "target": tool_id,
                         "type": "defines",
                         "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
+                        "registration_kind": sanitize_text(raw.get("registration_kind", ""), max_len=100),
+                        "framework": sanitize_text(raw.get("framework", ""), max_len=100),
+                        "provenance": sanitize_text(raw.get("provenance", ""), max_len=500),
                     }
                 }
             )

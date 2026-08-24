@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from agent_bom.ast_analyzer import analyze_project
 from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.models import AIBOMReport
@@ -104,3 +107,34 @@ def test_overlapping_detectors_share_one_sink_finding() -> None:
     findings = report.to_findings()
     assert len(findings) == 1
     assert findings[0].severity == "critical"
+
+
+def test_framework_registered_tool_verdict_survives_finding_and_export_surfaces(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "import subprocess\n"
+        "from langchain.agents import AgentExecutor\n"
+        "from langchain.tools import Tool\n\n"
+        "def run_shell(command: str) -> str:\n"
+        "    return subprocess.check_output(command, shell=True, text=True)\n\n"
+        "shell_tool = Tool(name='shell', func=run_shell, description='Run a command')\n"
+        "agent = AgentExecutor(agent=None, tools=[shell_tool])\n"
+    )
+    analysis = analyze_project(tmp_path).to_dict()
+    report = AIBOMReport(ai_inventory_data={"ast_analysis": analysis}, scan_sources=["ast_analysis"])
+
+    findings = report.to_findings()
+    assert len(findings) == 1
+    assert findings[0].severity == "critical"
+    assert findings[0].evidence["entrypoint"] == "shell"
+
+    payload = to_json(report)
+    assert [finding["evidence"]["entrypoint"] for finding in payload["findings"]] == ["shell"]
+    sarif = to_sarif(report)
+    assert len(sarif["runs"][0]["results"]) == 1
+    assert sarif["runs"][0]["results"][0]["properties"]["entrypoint"] == "shell"
+
+    graph = build_unified_graph_from_report(payload, scan_id="framework-tool-flow")
+    tool = next(node for node in graph.nodes.values() if node.entity_type == EntityType.TOOL)
+    assert tool.label == "shell"
+    assert tool.attributes["handler"] == "run_shell"
+    assert tool.attributes["registration_kind"] == "framework_tool"

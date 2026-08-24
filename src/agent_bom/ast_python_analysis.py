@@ -18,6 +18,7 @@ from agent_bom.ast_models import (
     FlowFinding,
     ToolSignature,
     _FunctionAnalysis,
+    _PythonToolRegistration,
 )
 from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS
 from agent_bom.ast_signal_utils import check_prompt_risks as _check_prompt_risks
@@ -134,6 +135,8 @@ _GUARDRAIL_IMPORTS = {
 # to it, so Python-only projects reported no framework.
 _FRAMEWORK_IMPORTS: dict[str, str] = {
     "langchain": "LangChain",
+    "langchain_core": "LangChain",
+    "langchain_community": "LangChain",
     "langgraph": "LangGraph",
     "crewai": "CrewAI",
     "autogen": "AutoGen",
@@ -376,6 +379,217 @@ def _call_name(node: ast.AST) -> str:
     if isinstance(node, ast.Call):
         return _call_name(node.func)
     return ""
+
+
+def _keyword_value(call: ast.Call, name: str) -> ast.expr | None:
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return keyword.value
+    return None
+
+
+_FRAMEWORK_TOOL_ROOTS: dict[str, str] = {
+    "langchain": "LangChain",
+    "langchain_core": "LangChain",
+    "langchain_community": "LangChain",
+    "langgraph": "LangGraph",
+    "crewai": "CrewAI",
+    "llama_index": "LlamaIndex",
+    "autogen": "AutoGen",
+    "autogen_agentchat": "AutoGen",
+    "pydantic_ai": "Pydantic AI",
+    "semantic_kernel": "Semantic Kernel",
+}
+_FRAMEWORK_AGENT_CONSTRUCTORS = frozenset(
+    {
+        "Agent",
+        "AgentExecutor",
+        "Crew",
+        "create_react_agent",
+        "create_openai_functions_agent",
+        "initialize_agent",
+    }
+)
+_FRAMEWORK_TOOL_CONSTRUCTORS = frozenset({"Tool", "StructuredTool", "FunctionTool", "DynamicTool", "ToolWrapper", "tool"})
+_FRAMEWORK_TOOL_HANDLER_KEYWORDS = ("func", "coroutine", "function", "callback", "handler")
+
+
+def _framework_for_imported_call(
+    call: ast.Call,
+    imported_modules: dict[str, str],
+    imported_functions: dict[str, tuple[str, str]],
+) -> str:
+    """Resolve a constructor's framework from explicit import evidence."""
+    call_name = _call_name(call.func)
+    head = call_name.split(".", 1)[0]
+    imported = imported_functions.get(head)
+    module_name = imported[0] if imported else imported_modules.get(head, "")
+    root = module_name.split(".", 1)[0]
+    return _FRAMEWORK_TOOL_ROOTS.get(root, "")
+
+
+def _canonical_imported_call_name(
+    call: ast.Call,
+    imported_functions: dict[str, tuple[str, str]],
+) -> str:
+    """Return a call name with a directly imported alias resolved."""
+    call_name = _call_name(call.func)
+    head, separator, tail = call_name.partition(".")
+    imported = imported_functions.get(head)
+    if imported is None:
+        return call_name
+    symbol = imported[1]
+    return f"{symbol}.{tail}" if separator and tail else symbol
+
+
+def _module_assignments(tree: ast.Module) -> dict[str, ast.expr]:
+    assignments: dict[str, ast.expr] = {}
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if isinstance(target, ast.Name):
+                    assignments[target.id] = statement.value
+        elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value is not None:
+            assignments[statement.target.id] = statement.value
+    return assignments
+
+
+def _resolve_framework_tool_exprs(
+    node: ast.expr | None,
+    assignments: dict[str, ast.expr],
+    *,
+    depth: int = 0,
+) -> list[tuple[str, ast.Call]]:
+    """Resolve a static tools collection to constructor calls and bindings."""
+    if node is None or depth > 6:
+        return []
+    if isinstance(node, ast.Name):
+        assigned = assignments.get(node.id)
+        if assigned is None:
+            return []
+        if isinstance(assigned, ast.Call):
+            return [(node.id, assigned)]
+        return _resolve_framework_tool_exprs(assigned, assignments, depth=depth + 1)
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        resolved: list[tuple[str, ast.Call]] = []
+        for item in node.elts:
+            resolved.extend(_resolve_framework_tool_exprs(item, assignments, depth=depth + 1))
+        return resolved
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return [
+            *_resolve_framework_tool_exprs(node.left, assignments, depth=depth + 1),
+            *_resolve_framework_tool_exprs(node.right, assignments, depth=depth + 1),
+        ]
+    if isinstance(node, ast.Call):
+        return [("inline", node)]
+    return []
+
+
+def _framework_tool_from_call(
+    binding: str,
+    call: ast.Call,
+    *,
+    framework: str,
+    agent_constructor: str,
+    index: int,
+    imported_modules: dict[str, str],
+    imported_functions: dict[str, tuple[str, str]],
+    function_names: set[str],
+) -> _PythonToolRegistration | None:
+    call_name = _canonical_imported_call_name(call, imported_functions)
+    short_name = call_name.rsplit(".", 1)[-1]
+    constructor_name = short_name
+    handler_node: ast.expr | None = None
+
+    if short_name == "from_function":
+        owner = call_name.rsplit(".", 1)[0].rsplit(".", 1)[-1]
+        if owner not in _FRAMEWORK_TOOL_CONSTRUCTORS:
+            return None
+        constructor_name = f"{owner}.from_function"
+        if call.args:
+            handler_node = call.args[0]
+    elif short_name in _FRAMEWORK_TOOL_CONSTRUCTORS:
+        for keyword_name in _FRAMEWORK_TOOL_HANDLER_KEYWORDS:
+            handler_node = _keyword_value(call, keyword_name)
+            if handler_node is not None:
+                break
+        if handler_node is None and short_name == "Tool" and len(call.args) >= 2:
+            handler_node = call.args[1]
+    else:
+        return None
+
+    constructor_framework = _framework_for_imported_call(call, imported_modules, imported_functions)
+    if not constructor_framework:
+        # ``StructuredTool.from_function`` resolves through the imported owner,
+        # not the terminal method name.
+        owner = call_name.split(".", 1)[0]
+        imported = imported_functions.get(owner)
+        module_name = imported[0] if imported else imported_modules.get(owner, "")
+        constructor_framework = _FRAMEWORK_TOOL_ROOTS.get(module_name.split(".", 1)[0], "")
+    if not constructor_framework or not isinstance(handler_node, ast.Name) or handler_node.id not in function_names:
+        return None
+
+    tool_name = ""
+    name_node = _keyword_value(call, "name")
+    if name_node is not None:
+        tool_name = _extract_string_value(name_node) or ""
+    if not tool_name and call.args and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str):
+        tool_name = call.args[0].value
+    if not tool_name:
+        tool_name = handler_node.id
+    tool_name = tool_name.strip()
+    if not tool_name:
+        return None
+
+    provenance = f"python:{framework}:{agent_constructor}.tools[{index}]:{binding}->{constructor_name}(func={handler_node.id})"
+    return _PythonToolRegistration(
+        tool_name=tool_name,
+        handler_name=handler_node.id,
+        framework=framework,
+        provenance=provenance,
+    )
+
+
+def _collect_framework_tool_registrations(
+    tree: ast.Module,
+    imported_modules: dict[str, str],
+    imported_functions: dict[str, tuple[str, str]],
+) -> list[_PythonToolRegistration]:
+    """Collect only tools statically wired to a recognized framework agent."""
+    assignments = _module_assignments(tree)
+    function_names = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    registrations: list[_PythonToolRegistration] = []
+    seen: set[tuple[str, str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        agent_constructor = _canonical_imported_call_name(node, imported_functions).rsplit(".", 1)[-1]
+        if agent_constructor not in _FRAMEWORK_AGENT_CONSTRUCTORS:
+            continue
+        framework = _framework_for_imported_call(node, imported_modules, imported_functions)
+        if not framework:
+            continue
+        tools_node = _keyword_value(node, "tools")
+        if tools_node is None and agent_constructor == "create_react_agent" and len(node.args) >= 2:
+            tools_node = node.args[1]
+        for index, (binding, tool_call) in enumerate(_resolve_framework_tool_exprs(tools_node, assignments)):
+            registration = _framework_tool_from_call(
+                binding,
+                tool_call,
+                framework=framework,
+                agent_constructor=agent_constructor,
+                index=index,
+                imported_modules=imported_modules,
+                imported_functions=imported_functions,
+                function_names=function_names,
+            )
+            if registration is None:
+                continue
+            key = (registration.tool_name, registration.handler_name, registration.provenance)
+            if key not in seen:
+                seen.add(key)
+                registrations.append(registration)
+    return registrations
 
 
 def _call_references_sensitive_credential_path(call: ast.Call) -> bool:
@@ -776,6 +990,10 @@ def _is_untrusted_source_call(call_name: str) -> bool:
 
 def _is_sanitizer_call_name(call_name: str) -> bool:
     lower_name = call_name.lower()
+    # Security-sensitive APIs whose names happen to contain a validation hint
+    # (notably ``subprocess.check_output``) are sinks, never sanitizers.
+    if lower_name in {name.lower() for name in _DANGEROUS_CALLS}:
+        return False
     if lower_name in _SANITIZER_CALLS:
         return True
     return any(hint in lower_name for hint in _VALIDATION_HINTS)
@@ -827,6 +1045,12 @@ def _analyze_file(
         current_module=current_module,
         rel_path=rel_path,
     )
+    framework_tool_registrations = _collect_framework_tool_registrations(
+        tree,
+        imported_modules,
+        imported_functions,
+    )
+    framework_registration_by_handler = {registration.handler_name: registration for registration in framework_tool_registrations}
 
     # Pass 1: Detect frameworks and guardrails from imports
     for node in ast.walk(tree):
@@ -919,14 +1143,14 @@ def _analyze_file(
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             decorators = []
-            is_tool = False
+            is_decorated_tool = False
             is_dispatch_handler = False
             for dec in node.decorator_list:
                 dec_name = _get_decorator_name(dec)
                 if dec_name:
                     decorators.append(dec_name)
                     if _is_agent_tool_decorator(dec_name):
-                        is_tool = True
+                        is_decorated_tool = True
                     if dec_name.rsplit(".", 1)[-1] in _MCP_DISPATCH_SEGMENTS:
                         is_dispatch_handler = True
 
@@ -937,7 +1161,16 @@ def _analyze_file(
             if is_dispatch_handler and low_level_tools:
                 is_tool_signature = False
             else:
-                is_tool_signature = is_tool
+                is_tool_signature = is_decorated_tool
+
+            framework_registration = framework_registration_by_handler.get(node.name)
+            is_tool = is_decorated_tool or framework_registration is not None
+            entrypoint_name = framework_registration.tool_name if framework_registration else node.name
+            entrypoint_kind = "framework_tool" if framework_registration else "mcp_tool"
+            entrypoint_framework = framework_registration.framework if framework_registration else ""
+            entrypoint_provenance = framework_registration.provenance if framework_registration else ""
+            if framework_registration is not None:
+                is_tool_signature = True
 
             if is_tool_signature:
                 params = _extract_params(node)
@@ -945,7 +1178,7 @@ def _analyze_file(
                 docstring = ast.get_docstring(node) or ""
                 tools.append(
                     ToolSignature(
-                        name=node.name,
+                        name=entrypoint_name,
                         parameters=params,
                         return_type=return_type,
                         description=docstring[:300],
@@ -953,6 +1186,10 @@ def _analyze_file(
                         line_number=node.lineno,
                         decorators=decorators,
                         is_async=isinstance(node, ast.AsyncFunctionDef),
+                        handler=node.name if framework_registration else "",
+                        registration_kind=entrypoint_kind if framework_registration else "",
+                        framework=entrypoint_framework,
+                        provenance=entrypoint_provenance,
                     )
                 )
 
@@ -969,6 +1206,10 @@ def _analyze_file(
                 cfg_edges=_build_function_cfg_edges(node, rel_path),
                 imported_modules=dict(imported_modules),
                 imported_functions=dict(imported_functions),
+                entrypoint_name=entrypoint_name,
+                entrypoint_kind=entrypoint_kind,
+                entrypoint_framework=entrypoint_framework,
+                entrypoint_provenance=entrypoint_provenance,
             )
             dynamic_string_names: set[str] = set()
             for inner_stmt in ast.walk(node):
@@ -994,14 +1235,14 @@ def _analyze_file(
                                 category="unguarded_tool_sink",
                                 title="Tool entrypoint reaches dangerous sink without validation",
                                 detail=(
-                                    f"Tool `{node.name}` in {rel_path} calls `{call_name}` without an obvious "
+                                    f"Tool `{entrypoint_name}` in {rel_path} calls `{call_name}` without an obvious "
                                     "validation or authorization branch."
                                 ),
                                 file_path=rel_path,
                                 line_number=line_num,
-                                entrypoint=node.name,
+                                entrypoint=entrypoint_name,
                                 sink=call_name,
-                                call_path=[node.name, call_name],
+                                call_path=[entrypoint_name, call_name],
                             )
                         )
                 if is_tool and call_name and _is_path_access_call_name(call_name) and _call_references_sensitive_credential_path(inner):
@@ -1009,12 +1250,12 @@ def _analyze_file(
                         FlowFinding(
                             category="credential_file_access",
                             title="Tool entrypoint reads a credential file",
-                            detail=(f"Tool `{node.name}` in {rel_path} reads a known credential-file location."),
+                            detail=(f"Tool `{entrypoint_name}` in {rel_path} reads a known credential-file location."),
                             file_path=rel_path,
                             line_number=getattr(inner, "lineno", node.lineno),
-                            entrypoint=node.name,
+                            entrypoint=entrypoint_name,
                             sink=call_name,
-                            call_path=[node.name, call_name],
+                            call_path=[entrypoint_name, call_name],
                         )
                     )
                 if is_tool and call_name and _is_privilege_escalation_call_name(call_name):
@@ -1022,12 +1263,12 @@ def _analyze_file(
                         FlowFinding(
                             category="privilege_escalation",
                             title="Tool entrypoint can assume another identity",
-                            detail=f"Tool `{node.name}` in {rel_path} calls an identity-assumption API.",
+                            detail=f"Tool `{entrypoint_name}` in {rel_path} calls an identity-assumption API.",
                             file_path=rel_path,
                             line_number=getattr(inner, "lineno", node.lineno),
-                            entrypoint=node.name,
+                            entrypoint=entrypoint_name,
                             sink=call_name,
-                            call_path=[node.name, call_name],
+                            call_path=[entrypoint_name, call_name],
                         )
                     )
                 if _is_unsafe_deserialization_call_name(call_name) and not _uses_safe_yaml_loader(inner):
@@ -1040,9 +1281,9 @@ def _analyze_file(
                             ),
                             file_path=rel_path,
                             line_number=getattr(inner, "lineno", node.lineno),
-                            entrypoint=node.name,
+                            entrypoint=entrypoint_name,
                             sink=call_name,
-                            call_path=[node.name, call_name],
+                            call_path=[entrypoint_name, call_name],
                         )
                     )
                 if _is_command_execution_call_name(call_name) and _is_shell_execution_call(call_name, inner):
@@ -1058,9 +1299,9 @@ def _analyze_file(
                                 ),
                                 file_path=rel_path,
                                 line_number=getattr(inner, "lineno", node.lineno),
-                                entrypoint=node.name,
+                                entrypoint=entrypoint_name,
                                 sink=call_name,
-                                call_path=[node.name, call_name],
+                                call_path=[entrypoint_name, call_name],
                             )
                         )
                 if _is_http_client_call_name(call_name):
@@ -1076,9 +1317,9 @@ def _analyze_file(
                                 ),
                                 file_path=rel_path,
                                 line_number=getattr(inner, "lineno", node.lineno),
-                                entrypoint=node.name,
+                                entrypoint=entrypoint_name,
                                 sink=call_name,
-                                call_path=[node.name, call_name],
+                                call_path=[entrypoint_name, call_name],
                             )
                         )
                 if _is_sql_call_name(call_name):
@@ -1097,9 +1338,9 @@ def _analyze_file(
                                 ),
                                 file_path=rel_path,
                                 line_number=getattr(inner, "lineno", node.lineno),
-                                entrypoint=node.name,
+                                entrypoint=entrypoint_name,
                                 sink=call_name,
-                                call_path=[node.name, call_name],
+                                call_path=[entrypoint_name, call_name],
                             )
                         )
             function_analyses.append(func_info)
@@ -1885,7 +2126,12 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
     for func in functions:
         if not func.is_tool or not func.param_names:
             continue
-        tool_findings, _ = analyze_function(func, set(func.param_names), [func.simple_name], set())
+        tool_findings, _ = analyze_function(
+            func,
+            set(func.param_names),
+            [func.entrypoint_name or func.simple_name],
+            set(),
+        )
         for finding in tool_findings:
             dedup_key = (finding.category, finding.file_path, finding.sink, finding.line_number, finding.entrypoint)
             if dedup_key in seen_findings:
@@ -1920,7 +2166,7 @@ def _build_dependency_symbol_reach(
     reached: list[DependencySymbolReach] = []
     seen: set[tuple[str, str, str, str, int]] = set()
     roots: list[tuple[str, _FunctionAnalysis, ApplicationEntrypoint | None]] = [
-        (func.simple_name, func, None) for func in functions if func.is_tool
+        (func.entrypoint_name or func.simple_name, func, None) for func in functions if func.is_tool
     ]
     for index, entry in enumerate(application_entrypoints or []):
         matches = [func for func in functions if func.simple_name == entry.handler.rsplit(".", 1)[-1] and func.file_path == entry.file_path]
@@ -1928,7 +2174,8 @@ def _build_dependency_symbol_reach(
             roots.append((f"__application_entrypoint_{index}", matches[0], entry))
 
     for root_name, root, application_entrypoint in roots:
-        queue: list[tuple[str, list[str]]] = [(root.qualified_name, [root.simple_name])]
+        exposed_root_name = root.entrypoint_name or root.simple_name
+        queue: list[tuple[str, list[str]]] = [(root.qualified_name, [exposed_root_name])]
         visited: set[str] = set()
         while queue:
             current_id, path = queue.pop(0)
@@ -1949,7 +2196,7 @@ def _build_dependency_symbol_reach(
                 seen.add(dedup_key)
                 reached.append(
                     DependencySymbolReach(
-                        entrypoint=application_entrypoint.name if application_entrypoint else root.simple_name,
+                        entrypoint=application_entrypoint.name if application_entrypoint else exposed_root_name,
                         package=package,
                         module=module_name,
                         symbol=symbol,
@@ -1960,9 +2207,9 @@ def _build_dependency_symbol_reach(
                             f"{module_name}.{symbol}",
                         ],
                         depth=max(0, len(path) - 1),
-                        entrypoint_kind=application_entrypoint.kind if application_entrypoint else "mcp_tool",
-                        entrypoint_framework=application_entrypoint.framework if application_entrypoint else "",
-                        entrypoint_provenance=application_entrypoint.provenance if application_entrypoint else "",
+                        entrypoint_kind=application_entrypoint.kind if application_entrypoint else root.entrypoint_kind,
+                        entrypoint_framework=(application_entrypoint.framework if application_entrypoint else root.entrypoint_framework),
+                        entrypoint_provenance=(application_entrypoint.provenance if application_entrypoint else root.entrypoint_provenance),
                     )
                 )
             for child in adjacency.get(current_id, []):
@@ -2009,7 +2256,8 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
     for func in functions:
         if not func.is_tool:
             continue
-        queue: list[tuple[str, list[str]]] = [(func.qualified_name, [func.simple_name])]
+        entrypoint_name = func.entrypoint_name or func.simple_name
+        queue: list[tuple[str, list[str]]] = [(func.qualified_name, [entrypoint_name])]
         visited: set[str] = set()
         while queue:
             current_id, path = queue.pop(0)
@@ -2028,7 +2276,7 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
                     continue
                 if len(path) <= 1:
                     continue
-                dedup_key = (func.simple_name, sink_name, current.file_path, line_num)
+                dedup_key = (entrypoint_name, sink_name, current.file_path, line_num)
                 if dedup_key in seen_findings:
                     continue
                 seen_findings.add(dedup_key)
@@ -2037,11 +2285,11 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
                         category="interprocedural_dangerous_flow",
                         title="Tool helper chain reaches dangerous sink",
                         detail=(
-                            f"Tool `{func.simple_name}` reaches `{sink_name}` through a bounded helper-call chain in {current.file_path}."
+                            f"Tool `{entrypoint_name}` reaches `{sink_name}` through a bounded helper-call chain in {current.file_path}."
                         ),
                         file_path=current.file_path,
                         line_number=line_num,
-                        entrypoint=func.simple_name,
+                        entrypoint=entrypoint_name,
                         sink=sink_name,
                         call_path=path + [sink_name],
                     )

@@ -380,6 +380,142 @@ def test_tool_records_without_a_list_tools_handler_are_not_agent_tools(tmp_path:
     assert _tool_names(tmp_path) == {"count_tools"}
 
 
+LANGCHAIN_REGISTERED_TOOL = """import subprocess
+
+import requests
+from langchain.agents import AgentExecutor
+from langchain.tools import Tool
+
+
+def fetch_url(url: str) -> str:
+    return requests.get(url).text
+
+
+def run_shell(command: str) -> str:
+    fetch_url("https://example.invalid/audit")
+    return subprocess.check_output(command, shell=True, text=True)
+
+
+shell_tool = Tool(name="shell", func=run_shell, description="Run a shell command")
+agent = AgentExecutor(agent=None, tools=[shell_tool])
+"""
+
+
+LANGCHAIN_UNREGISTERED_TOOL = """import subprocess
+
+from langchain.tools import Tool
+
+
+def run_shell(command: str) -> str:
+    return subprocess.check_output(command, shell=True, text=True)
+
+
+shell_tool = Tool(name="shell", func=run_shell, description="Run a shell command")
+"""
+
+
+def test_framework_registered_constructor_tool_is_a_code_flow_root(tmp_path: Path) -> None:
+    """A framework registration, not the class name alone, makes the handler invokable."""
+    (tmp_path / "app.py").write_text(LANGCHAIN_REGISTERED_TOOL)
+
+    payload = analyze_project(tmp_path).to_dict()
+    assert payload["tools"] == [
+        {
+            "name": "shell",
+            "parameters": [{"name": "command", "type": "str", "default": None}],
+            "return_type": "str",
+            "description": "",
+            "file": "app.py",
+            "line": 12,
+            "is_async": False,
+            "decorators": [],
+            "handler": "run_shell",
+            "registration_kind": "framework_tool",
+            "framework": "LangChain",
+            "provenance": "python:LangChain:AgentExecutor.tools[0]:shell_tool->Tool(func=run_shell)",
+        }
+    ]
+
+    flow = [finding for finding in payload["flow_findings"] if finding["entrypoint"] == "shell"]
+    assert any(finding["category"] == "unguarded_tool_sink" and finding["sink"] == "subprocess.check_output" for finding in flow)
+    assert any(finding["category"] == "tainted_command_execution" and finding["sink"] == "subprocess.check_output" for finding in flow)
+
+    reach = [entry for entry in payload["dependency_symbol_reach"] if entry["entrypoint"] == "shell"]
+    assert {(entry["package"], entry["symbol"]) for entry in reach} == {
+        ("requests", "get"),
+        ("subprocess", "check_output"),
+    }
+    assert all(entry["entrypoint_kind"] == "framework_tool" for entry in reach)
+    assert all(entry["entrypoint_framework"] == "LangChain" for entry in reach)
+    assert all(entry["entrypoint_provenance"].startswith("python:LangChain:AgentExecutor.tools") for entry in reach)
+
+
+def test_unregistered_framework_tool_constructor_is_not_an_invocation_root(tmp_path: Path) -> None:
+    """Importing a framework and constructing a Tool is not proof an agent can invoke it."""
+    (tmp_path / "app.py").write_text(LANGCHAIN_UNREGISTERED_TOOL)
+
+    result = analyze_project(tmp_path)
+
+    assert result.tools == []
+    assert result.flow_findings == []
+    assert result.dependency_symbol_reach == []
+
+
+@pytest.mark.parametrize(
+    "source, expected_name, expected_handler, expected_framework",
+    [
+        (
+            "from langchain.agents import AgentExecutor\n"
+            "from langchain.tools import Tool\n\n"
+            "def lookup(query: str) -> str:\n    return query\n\n"
+            "agent = AgentExecutor(agent=None, tools=[Tool(name='lookup-docs', func=lookup, description='Lookup')])\n",
+            "lookup-docs",
+            "lookup",
+            "LangChain",
+        ),
+        (
+            "from langgraph.prebuilt import create_react_agent as make_agent\n"
+            "from langchain_core.tools import StructuredTool as ST\n\n"
+            "def lookup(query: str) -> str:\n    return query\n\n"
+            "lookup_tool = ST.from_function(lookup, name='lookup-docs')\n"
+            "agent = make_agent(None, [lookup_tool])\n",
+            "lookup-docs",
+            "lookup",
+            "LangGraph",
+        ),
+    ],
+)
+def test_framework_registration_resolves_inline_positional_and_aliased_forms(
+    tmp_path: Path,
+    source: str,
+    expected_name: str,
+    expected_handler: str,
+    expected_framework: str,
+) -> None:
+    (tmp_path / "app.py").write_text(source)
+
+    tools = analyze_project(tmp_path).to_dict()["tools"]
+
+    assert [(tool["name"], tool["handler"], tool["framework"]) for tool in tools] == [(expected_name, expected_handler, expected_framework)]
+
+
+def test_framework_agent_does_not_promote_a_project_local_tool_record(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "from dataclasses import dataclass\n"
+        "from langchain.agents import AgentExecutor\n\n"
+        "@dataclass\n"
+        "class Tool:\n"
+        "    name: str\n"
+        "    func: object\n\n"
+        "def handler(value: str) -> str:\n"
+        "    return value\n\n"
+        "record = Tool(name='inventory-record', func=handler)\n"
+        "agent = AgentExecutor(agent=None, tools=[record])\n"
+    )
+
+    assert analyze_project(tmp_path).tools == []
+
+
 LOWLEVEL_CALL_TOOL_RUNS_A_SHELL = """import subprocess
 from typing import Any
 

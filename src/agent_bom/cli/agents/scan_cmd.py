@@ -2609,9 +2609,9 @@ def scan(
         for w in all_tp_warnings:
             con.print(f"  [yellow]⚠[/yellow] {w}")
 
-    # ── Step 1m: AST source code analysis (auto-detect Python AI code) ──
+    # ── Step 1m: AST source code analysis (explicit project scope) ──
     _ast_result_for_reach = None
-    if not skill_only and not no_discover and project and not dry_run:
+    if not skill_only and project and not dry_run:
         from pathlib import Path as _APath
 
         _aproj = _APath(project)

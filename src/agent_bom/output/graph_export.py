@@ -310,7 +310,10 @@ def _merge_unified_graph_evidence(graph: DepGraph, data: dict[str, Any]) -> None
         etype = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
         is_ast_tool = etype == "tool" and node.attributes.get("discovery_source") == "ast_analysis"
         is_ast_source = etype == "source_file" and "ast_analysis" in node.data_sources
-        if (etype not in _CLOUD_ENTITY_TYPES and not is_ast_tool and not is_ast_source) or node.id in graph._nodes:
+        is_ast_entrypoint = etype == "code_module" and node.attributes.get("node_kind") == "application_entrypoint"
+        if (
+            etype not in _CLOUD_ENTITY_TYPES and not is_ast_tool and not is_ast_source and not is_ast_entrypoint
+        ) or node.id in graph._nodes:
             continue
         graph.add_node(
             node.id,

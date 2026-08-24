@@ -1,0 +1,10 @@
+[project]
+name = "ordinary-python-app"
+version = "0.1.0"
+dependencies = [
+  "requests==2.32.5",
+  "httpx==0.28.1",
+]
+
+[project.scripts]
+ordinary-fetch = "ordinary_app.cli:main"

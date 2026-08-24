@@ -8,14 +8,15 @@ Extends the regex-based scanner with semantic analysis:
 - **Credential flow analysis** — tracks env var → agent parameter paths
 - **Framework-specific patterns** — LangChain chains, CrewAI crews, MCP servers, etc.
 - **Call graph extraction** — function-to-function edges for Python entrypoints
+- **Application entrypoints** — evidence-backed CLI, main, and route invocation roots
 - **Bounded helper-chain findings** — lightweight call-path detection from tool entrypoints to dangerous sinks
 
 Python files use full AST parsing. JS/TS files contribute prompt/tool/guardrail
 signals plus parser-backed import, handler, and call-chain extraction so
 non-Python agent projects participate in the same inventory and flow model.
-Go, Rust, Java, Kotlin, C#, Ruby, PHP (Composer), and Swift sources also contribute MCP
-tool entrypoints and dependency-symbol reach for Cargo/Maven/NuGet/RubyGems/Composer/SPM
-CVE join.
+Go, Rust, Java, Kotlin, C#, Ruby, PHP (Composer), and Swift sources also contribute
+MCP tool and application entrypoints plus dependency-symbol reach for
+Cargo/Maven/NuGet/RubyGems/Composer/SPM CVE joins.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
@@ -27,12 +28,11 @@ Compliance mapping:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, Mapping
 
-if TYPE_CHECKING:
-    from agent_bom.ast.js_ts import JSTSFunction, JSTSToolRegistration
+from agent_bom.ast.application_entrypoints import detect_application_entrypoints
 from agent_bom.ast.js_ts import JS_TS_EXTS as _JS_TS_EXTS
-from agent_bom.ast.js_ts import build_js_ts_dependency_symbol_reach
+from agent_bom.ast.js_ts import JSTSFunction, JSTSToolRegistration, build_js_ts_dependency_symbol_reach
 from agent_bom.ast.js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
 from agent_bom.ast.js_ts import js_ts_function_key as _js_ts_function_key
 from agent_bom.ast.js_ts import scan_js_ts_file as _scan_js_ts_file
@@ -48,8 +48,10 @@ from agent_bom.ast_go import scan_go_file as _scan_go_file
 from agent_bom.ast_java import _java_method_key, _load_maven_dependency_map, build_java_dependency_symbol_reach
 from agent_bom.ast_java import scan_java_file as _scan_java_file
 from agent_bom.ast_models import (
+    ApplicationEntrypoint,
     ASTAnalysisResult,
     CallEdge,
+    DependencySymbolReach,
     _CSharpMethodAnalysis,
     _CSharpToolRegistration,
     _FunctionAnalysis,
@@ -116,6 +118,46 @@ _HIGH_SIGNAL_SOURCE_NAMES = frozenset(
 _TEST_SOURCE_PARTS = frozenset({"test", "tests", "testing", "__tests__", "fixtures", "__fixtures__"})
 
 
+def _application_handler(
+    entry: ApplicationEntrypoint,
+    analyses: Mapping[str, Any],
+) -> tuple[str, Any] | None:
+    """Resolve a declared application handler to one parsed function only."""
+    handler_name = entry.handler.rsplit(".", 1)[-1]
+    class_hint = entry.handler.rsplit(".", 1)[0] if "." in entry.handler else ""
+    candidates: list[tuple[str, Any]] = []
+    for key, analysis in analyses.items():
+        if getattr(analysis, "name", "") != handler_name:
+            continue
+        owner = str(getattr(analysis, "class_name", "") or getattr(analysis, "scope_name", ""))
+        if class_hint and owner and owner.rsplit(".", 1)[-1] != class_hint.rsplit(".", 1)[-1]:
+            continue
+        candidates.append((key, analysis))
+    same_file = [candidate for candidate in candidates if getattr(candidate[1], "file_path", "") == entry.file_path]
+    if len(same_file) == 1:
+        return same_file[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _stamp_application_reaches(
+    reaches: list[DependencySymbolReach],
+    entries_by_token: Mapping[str, ApplicationEntrypoint],
+) -> None:
+    """Replace internal traversal tokens with public entrypoint evidence."""
+    for reach in reaches:
+        entry = entries_by_token.get(reach.entrypoint)
+        if entry is None:
+            continue
+        reach.entrypoint = entry.name
+        if reach.call_path:
+            reach.call_path[0] = entry.name
+        reach.entrypoint_kind = entry.kind
+        reach.entrypoint_framework = entry.framework
+        reach.entrypoint_provenance = entry.provenance
+
+
 def _is_test_source_path(path: str) -> bool:
     """Return whether analysis evidence came from test-only source material."""
     candidate = Path(path)
@@ -156,10 +198,9 @@ def project_has_analyzable_sources(project_path: str | Path) -> bool:
 def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     """Analyze a project directory for prompts, tools, and risky call paths.
 
-    Extracts system prompts, guardrails, tool signatures, taint/data-flow
-    findings, and a lightweight CFG/call graph from Python source code. Also
-    performs prompt/tool/guardrail and dangerous-call extraction for JS/TS and
-    Go source files so non-Python MCP projects show up in the same path.
+    Extracts system prompts, guardrails, tool signatures, explicit application
+    entrypoints, taint/data-flow findings, and a lightweight CFG/call graph.
+    Non-Python source participates in the same inventory and reachability model.
 
     Args:
         project_path: Root directory to scan.
@@ -314,6 +355,8 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         + len(swift_files)
         + len(kotlin_files)
     )
+    selected_source_files = [path for group in file_groups for path in group if path in selected]
+    result.application_entrypoints = detect_application_entrypoints(project, selected_source_files)
     function_analyses: list[_FunctionAnalysis] = []
     js_ts_functions: dict[str, JSTSFunction] = {}
     js_ts_tool_registrations: list[JSTSToolRegistration] = []
@@ -333,6 +376,15 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     swift_tool_registrations: list[_SwiftToolRegistration] = []
     kotlin_functions: dict[str, _KotlinFunctionAnalysis] = {}
     kotlin_tool_registrations: list[_KotlinToolRegistration] = []
+    js_ts_application_registrations: list[JSTSToolRegistration] = []
+    go_application_registrations: list[_GoToolRegistration] = []
+    rust_application_registrations: list[_RustToolRegistration] = []
+    java_application_registrations: list[_JavaToolRegistration] = []
+    csharp_application_registrations: list[_CSharpToolRegistration] = []
+    ruby_application_registrations: list[_RubyToolRegistration] = []
+    php_application_registrations: list[_PhpToolRegistration] = []
+    swift_application_registrations: list[_SwiftToolRegistration] = []
+    kotlin_application_registrations: list[_KotlinToolRegistration] = []
     maven_dependency_map = _load_maven_dependency_map(project)
     nuget_namespace_map = load_nuget_namespace_map(project)
     ruby_gem_map = load_ruby_gem_map(project)
@@ -505,10 +557,152 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
                 kotlin_functions[_kotlin_function_key(kotlin_function.scope_name, kotlin_function.name)] = kotlin_function
             kotlin_tool_registrations.extend(kotlin_analysis.tool_registrations)
 
+    application_entries_by_token: dict[str, ApplicationEntrypoint] = {}
+    for index, entry in enumerate(result.application_entrypoints):
+        if entry.language == "python":
+            continue
+        token = f"__application_entrypoint_{index}"
+        if entry.language == "javascript_typescript":
+            resolved = _application_handler(entry, js_ts_functions)
+            if resolved is None:
+                continue
+            handler_key, _handler = resolved
+            js_ts_application_registrations.append(
+                JSTSToolRegistration(tool_name=token, handler_name=handler_key, line_number=entry.line_number)
+            )
+        elif entry.language == "go":
+            resolved = _application_handler(entry, go_functions)
+            if resolved is None:
+                continue
+            _handler_key, handler = resolved
+            go_application_registrations.append(
+                _GoToolRegistration(
+                    tool_name=token,
+                    handler_name=handler.name,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    scope_name=handler.scope_name,
+                    imported_aliases=handler.imported_aliases,
+                )
+            )
+        elif entry.language == "rust":
+            resolved = _application_handler(entry, rust_functions)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            rust_application_registrations.append(
+                _RustToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    module_name=handler.module_name,
+                    crate_bindings=handler.crate_bindings,
+                )
+            )
+        elif entry.language == "java":
+            resolved = _application_handler(entry, java_methods)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            java_application_registrations.append(
+                _JavaToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    class_name=handler.class_name,
+                    import_bindings=handler.import_bindings,
+                )
+            )
+        elif entry.language == "csharp":
+            resolved = _application_handler(entry, csharp_methods)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            csharp_application_registrations.append(
+                _CSharpToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    class_name=handler.class_name,
+                    import_bindings=handler.import_bindings,
+                )
+            )
+        elif entry.language == "ruby":
+            resolved = _application_handler(entry, ruby_methods)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            ruby_application_registrations.append(
+                _RubyToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    class_name=handler.class_name,
+                    import_bindings=handler.import_bindings,
+                )
+            )
+        elif entry.language == "php":
+            resolved = _application_handler(entry, php_methods)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            php_application_registrations.append(
+                _PhpToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    class_name=handler.class_name,
+                    import_bindings=handler.import_bindings,
+                )
+            )
+        elif entry.language == "swift":
+            resolved = _application_handler(entry, swift_functions)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            swift_application_registrations.append(
+                _SwiftToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    scope_name=handler.scope_name,
+                    import_bindings=handler.import_bindings,
+                )
+            )
+        elif entry.language == "kotlin":
+            resolved = _application_handler(entry, kotlin_functions)
+            if resolved is None:
+                continue
+            handler_key, handler = resolved
+            kotlin_application_registrations.append(
+                _KotlinToolRegistration(
+                    tool_name=token,
+                    handler_name=handler_key,
+                    line_number=entry.line_number,
+                    file_path=entry.file_path,
+                    scope_name=handler.scope_name,
+                    import_bindings=handler.import_bindings,
+                )
+            )
+        else:
+            continue
+        application_entries_by_token[token] = entry
+
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
-    result.dependency_symbol_reach.extend(_build_dependency_symbol_reach(function_analyses))
+    result.dependency_symbol_reach.extend(
+        _build_dependency_symbol_reach(
+            function_analyses,
+            [entry for entry in result.application_entrypoints if entry.language == "python"],
+        )
+    )
     result.flow_findings.extend(_build_taint_findings(function_analyses))
     js_ts_call_edges, js_ts_interprocedural_findings = _build_js_ts_flow_findings(
         functions=js_ts_functions,
@@ -587,6 +781,75 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             max_depth=_python_max_taint_depth(),
         )
     )
+
+    application_reaches: list[DependencySymbolReach] = []
+    application_reaches.extend(
+        build_js_ts_dependency_symbol_reach(
+            functions=js_ts_functions,
+            tool_registrations=js_ts_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_go_dependency_symbol_reach(
+            functions=go_functions,
+            tool_registrations=go_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_rust_dependency_symbol_reach(
+            functions=rust_functions,
+            tool_registrations=rust_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_java_dependency_symbol_reach(
+            methods=java_methods,
+            tool_registrations=java_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_csharp_dependency_symbol_reach(
+            methods=csharp_methods,
+            tool_registrations=csharp_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_ruby_dependency_symbol_reach(
+            methods=ruby_methods,
+            tool_registrations=ruby_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_php_dependency_symbol_reach(
+            methods=php_methods,
+            tool_registrations=php_application_registrations,
+            package_map=composer_package_map,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_swift_dependency_symbol_reach(
+            functions=swift_functions,
+            tool_registrations=swift_application_registrations,
+            package_map=swift_package_map,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    application_reaches.extend(
+        build_kotlin_dependency_symbol_reach(
+            functions=kotlin_functions,
+            tool_registrations=kotlin_application_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    _stamp_application_reaches(application_reaches, application_entries_by_token)
+    result.dependency_symbol_reach.extend(application_reaches)
 
     # Test fixtures remain visible in inventory, but are not production
     # reachability evidence. Otherwise dev-only imports become build-blocking

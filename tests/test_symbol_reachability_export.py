@@ -221,6 +221,18 @@ def test_ast_result_for_symbol_reach_reads_python_project(tmp_path: Path) -> Non
     assert result.dependency_symbol_reach
 
 
+def test_ast_result_for_symbol_reach_reads_ordinary_application_project() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "ordinary-python-app"
+
+    result = _ast_result_for_symbol_reach([str(fixture)])
+
+    assert result is not None
+    assert result.tools == []
+    assert result.application_entrypoints
+    assert {reach.package for reach in result.dependency_symbol_reach} == {"requests"}
+    assert all(reach.entrypoint_provenance for reach in result.dependency_symbol_reach)
+
+
 def test_ast_result_for_symbol_reach_reads_php_only_project(tmp_path: Path) -> None:
     project = tmp_path / "php-mcp"
     project.mkdir()

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agent_bom.ast.source_reader import read_source_for_analysis
 from agent_bom.ast_models import (
+    ApplicationEntrypoint,
     CallEdge,
     ControlFlowEdge,
     DependencySymbolReach,
@@ -1895,8 +1896,11 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
     return aggregated_findings
 
 
-def _build_dependency_symbol_reach(functions: list[_FunctionAnalysis]) -> list[DependencySymbolReach]:
-    """Build bounded tool-entrypoint → imported dependency symbol reach evidence."""
+def _build_dependency_symbol_reach(
+    functions: list[_FunctionAnalysis],
+    application_entrypoints: list[ApplicationEntrypoint] | None = None,
+) -> list[DependencySymbolReach]:
+    """Build bounded externally-invokable-root → dependency symbol evidence."""
     by_name: dict[str, list[_FunctionAnalysis]] = {}
     by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
     for func in functions:
@@ -1915,10 +1919,16 @@ def _build_dependency_symbol_reach(functions: list[_FunctionAnalysis]) -> list[D
     max_depth = _max_taint_depth()
     reached: list[DependencySymbolReach] = []
     seen: set[tuple[str, str, str, str, int]] = set()
-    for tool in functions:
-        if not tool.is_tool:
-            continue
-        queue: list[tuple[str, list[str]]] = [(tool.qualified_name, [tool.simple_name])]
+    roots: list[tuple[str, _FunctionAnalysis, ApplicationEntrypoint | None]] = [
+        (func.simple_name, func, None) for func in functions if func.is_tool
+    ]
+    for index, entry in enumerate(application_entrypoints or []):
+        matches = [func for func in functions if func.simple_name == entry.handler.rsplit(".", 1)[-1] and func.file_path == entry.file_path]
+        if len(matches) == 1:
+            roots.append((f"__application_entrypoint_{index}", matches[0], entry))
+
+    for root_name, root, application_entrypoint in roots:
+        queue: list[tuple[str, list[str]]] = [(root.qualified_name, [root.simple_name])]
         visited: set[str] = set()
         while queue:
             current_id, path = queue.pop(0)
@@ -1933,20 +1943,26 @@ def _build_dependency_symbol_reach(functions: list[_FunctionAnalysis]) -> list[D
                 if external is None:
                     continue
                 package, module_name, symbol = external
-                dedup_key = (tool.simple_name, module_name, symbol, current.file_path, line_num)
+                dedup_key = (root_name, module_name, symbol, current.file_path, line_num)
                 if dedup_key in seen:
                     continue
                 seen.add(dedup_key)
                 reached.append(
                     DependencySymbolReach(
-                        entrypoint=tool.simple_name,
+                        entrypoint=application_entrypoint.name if application_entrypoint else root.simple_name,
                         package=package,
                         module=module_name,
                         symbol=symbol,
                         file_path=current.file_path,
                         line_number=line_num,
-                        call_path=[*path, f"{module_name}.{symbol}"],
+                        call_path=[
+                            *([application_entrypoint.name, *path[1:]] if application_entrypoint else path),
+                            f"{module_name}.{symbol}",
+                        ],
                         depth=max(0, len(path) - 1),
+                        entrypoint_kind=application_entrypoint.kind if application_entrypoint else "mcp_tool",
+                        entrypoint_framework=application_entrypoint.framework if application_entrypoint else "",
+                        entrypoint_provenance=application_entrypoint.provenance if application_entrypoint else "",
                     )
                 )
             for child in adjacency.get(current_id, []):

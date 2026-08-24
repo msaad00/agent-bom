@@ -83,7 +83,7 @@ class FlowFinding:
 
 @dataclass
 class DependencySymbolReach:
-    """Imported dependency symbol reachable from a tool entrypoint."""
+    """Imported dependency symbol reachable from an externally invokable root."""
 
     entrypoint: str
     package: str
@@ -95,6 +95,23 @@ class DependencySymbolReach:
     depth: int = 0
     confidence: str = "import-symbol"
     ecosystem: str = "pypi"
+    entrypoint_kind: str = "mcp_tool"
+    entrypoint_framework: str = ""
+    entrypoint_provenance: str = ""
+
+
+@dataclass
+class ApplicationEntrypoint:
+    """Evidence-backed non-MCP application invocation root."""
+
+    name: str
+    handler: str
+    kind: str
+    framework: str
+    language: str
+    file_path: str
+    line_number: int
+    provenance: str
 
 
 @dataclass
@@ -107,6 +124,7 @@ class ASTAnalysisResult:
     call_edges: list[CallEdge] = field(default_factory=list)
     cfg_edges: list[ControlFlowEdge] = field(default_factory=list)
     flow_findings: list[FlowFinding] = field(default_factory=list)
+    application_entrypoints: list[ApplicationEntrypoint] = field(default_factory=list)
     dependency_symbol_reach: list[DependencySymbolReach] = field(default_factory=list)
     frameworks_detected: list[str] = field(default_factory=list)
     files_analyzed: int = 0
@@ -184,6 +202,19 @@ class ASTAnalysisResult:
                 }
                 for finding in self.flow_findings
             ],
+            "application_entrypoints": [
+                {
+                    "name": entry.name,
+                    "handler": entry.handler,
+                    "kind": entry.kind,
+                    "framework": entry.framework,
+                    "language": entry.language,
+                    "file": entry.file_path,
+                    "line": entry.line_number,
+                    "provenance": entry.provenance,
+                }
+                for entry in self.application_entrypoints
+            ],
             "dependency_symbol_reach": [
                 {
                     "entrypoint": reach.entrypoint,
@@ -196,6 +227,15 @@ class ASTAnalysisResult:
                     "depth": reach.depth,
                     "confidence": reach.confidence,
                     "ecosystem": reach.ecosystem,
+                    **(
+                        {
+                            "entrypoint_kind": reach.entrypoint_kind,
+                            "entrypoint_framework": reach.entrypoint_framework,
+                            "entrypoint_provenance": reach.entrypoint_provenance,
+                        }
+                        if reach.entrypoint_kind != "mcp_tool"
+                        else {}
+                    ),
                 }
                 for reach in self.dependency_symbol_reach
             ],
@@ -209,6 +249,7 @@ class ASTAnalysisResult:
                 "total_call_edges": len(self.call_edges),
                 "total_cfg_edges": len(self.cfg_edges),
                 "total_flow_findings": len(self.flow_findings),
+                "total_application_entrypoints": len(self.application_entrypoints),
                 "total_dependency_symbol_reach": len(self.dependency_symbol_reach),
                 "prompts_with_risks": sum(1 for p in self.prompts if p.risk_flags),
             },

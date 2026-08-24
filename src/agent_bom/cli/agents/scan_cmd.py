@@ -2622,17 +2622,26 @@ def scan(
             try:
                 _ast_result = _ast_analyze(project)
                 _ast_result_for_reach = _ast_result
-                if _ast_result.prompts or _ast_result.guardrails or _ast_result.tools or _ast_result.flow_findings:
+                if (
+                    _ast_result.prompts
+                    or _ast_result.guardrails
+                    or _ast_result.tools
+                    or _ast_result.flow_findings
+                    or _ast_result.application_entrypoints
+                    or _ast_result.dependency_symbol_reach
+                ):
                     report.ai_inventory_data = report.ai_inventory_data or {}
                     report.ai_inventory_data["ast_analysis"] = _ast_result.to_dict()
                     _n_prompts = len(_ast_result.prompts)
                     _n_guards = len(_ast_result.guardrails)
                     _n_tools = len(_ast_result.tools)
+                    _n_entrypoints = len(_ast_result.application_entrypoints)
                     _n_risky = sum(1 for p in _ast_result.prompts if p.risk_flags)
-                    if _n_prompts or _n_guards or _n_tools:
+                    if _n_prompts or _n_guards or _n_tools or _n_entrypoints:
                         con.print(
                             f"  [cyan]>[/cyan] Code analysis: {_n_prompts} prompts, "
-                            f"{_n_guards} guardrails, {_n_tools} tools" + (f" [red]({_n_risky} risky prompts)[/red]" if _n_risky else "")
+                            f"{_n_guards} guardrails, {_n_tools} tools, {_n_entrypoints} application entrypoints"
+                            + (f" [red]({_n_risky} risky prompts)[/red]" if _n_risky else "")
                         )
                     _scan_sources.append("ast_analysis")
             except Exception as exc:  # noqa: BLE001

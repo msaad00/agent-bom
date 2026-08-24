@@ -22,7 +22,19 @@ _AST_TOOLS = {
                 "line": 42,
                 "parameters": ["customer_id"],
             }
-        ]
+        ],
+        "application_entrypoints": [
+            {
+                "name": "ordinary-fetch",
+                "handler": "main",
+                "kind": "console_script",
+                "framework": "Python packaging",
+                "language": "python",
+                "file": "src/cli.py",
+                "line": 12,
+                "provenance": "metadata:pyproject.toml:[project.scripts]=ordinary.cli:main",
+            }
+        ],
     }
 }
 
@@ -80,3 +92,26 @@ def test_source_discovered_tool_is_in_cytoscape_export() -> None:
         and item["data"].get("type") == "defines"
         for item in elements
     )
+
+
+def test_application_entrypoint_provenance_survives_graph_projections() -> None:
+    unified = build_unified_graph_from_report(_scan_json())
+    entry = next(node for node in unified.nodes.values() if node.attributes.get("node_kind") == "application_entrypoint")
+    assert entry.attributes["handler"] == "main"
+    assert entry.attributes["entrypoint_kind"] == "console_script"
+    assert entry.attributes["provenance"].startswith("metadata:pyproject.toml")
+
+    standalone = build_graph_from_scan_data(_scan_json())
+    exported = next(node for node in standalone.nodes if node.attributes.get("node_kind") == "application_entrypoint")
+    assert exported.attributes["provenance"] == entry.attributes["provenance"]
+
+    report = AIBOMReport(
+        generated_at=datetime(2026, 8, 20, tzinfo=timezone.utc),
+        scan_id="source-entrypoint-scan",
+        tool_version="0.102.0",
+        ai_inventory_data=_AST_TOOLS,
+    )
+    elements = build_graph_elements(report, [])
+    cytoscape = next(item["data"] for item in elements if item.get("data", {}).get("type") == "application_entrypoint")
+    assert cytoscape["handler"] == "main"
+    assert cytoscape["provenance"] == entry.attributes["provenance"]

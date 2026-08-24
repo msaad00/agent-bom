@@ -906,8 +906,11 @@ def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
             continue
         if merged is None:
             merged = result
-        elif result.dependency_symbol_reach:
-            merged.dependency_symbol_reach.extend(result.dependency_symbol_reach)
+        else:
+            if result.application_entrypoints:
+                merged.application_entrypoints.extend(result.application_entrypoints)
+            if result.dependency_symbol_reach:
+                merged.dependency_symbol_reach.extend(result.dependency_symbol_reach)
     return merged
 
 

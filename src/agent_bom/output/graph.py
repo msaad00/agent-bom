@@ -475,7 +475,7 @@ def build_graph_elements(
 
 
 def _append_source_tool_elements(elements: list[dict], report: "AIBOMReport") -> None:
-    """Append AST-discovered MCP tools and their defining source files."""
+    """Append AST-discovered tools/application roots and defining source files."""
     inventory = report.ai_inventory_data
     if not isinstance(inventory, dict):
         return
@@ -483,7 +483,12 @@ def _append_source_tool_elements(elements: list[dict], report: "AIBOMReport") ->
     if not isinstance(analysis, dict):
         return
     raw_tools = analysis.get("tools")
+    raw_entrypoints = analysis.get("application_entrypoints")
     if not isinstance(raw_tools, list):
+        raw_tools = []
+    if not isinstance(raw_entrypoints, list):
+        raw_entrypoints = []
+    if not raw_tools and not raw_entrypoints:
         return
 
     known_nodes = {str(item["data"]["id"]) for item in elements if "id" in item.get("data", {})}
@@ -547,6 +552,74 @@ def _append_source_tool_elements(elements: list[dict], report: "AIBOMReport") ->
                     "data": {
                         "source": file_id,
                         "target": tool_id,
+                        "type": "defines",
+                        "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
+                    }
+                }
+            )
+
+    for raw in raw_entrypoints:
+        if not isinstance(raw, dict):
+            continue
+        entry_name = sanitize_text(raw.get("name", ""), max_len=200).strip()
+        handler = sanitize_text(raw.get("handler", ""), max_len=200).strip()
+        source_file = sanitize_text(raw.get("file", ""), max_len=500).strip().replace("\\", "/")
+        while source_file.startswith("./"):
+            source_file = source_file[2:]
+        if not entry_name or not handler or not source_file:
+            continue
+
+        file_id = f"source_file:{source_file}"
+        if file_id not in known_nodes:
+            known_nodes.add(file_id)
+            elements.append(
+                {
+                    "data": {
+                        "id": file_id,
+                        "label": source_file.rsplit("/", 1)[-1],
+                        "type": "source_file",
+                        "path": source_file,
+                        "tip": f"Source file: {source_file}",
+                        "searchText": source_file.lower(),
+                    }
+                }
+            )
+
+        entry_id = f"application_entrypoint:source:{stable_node_id(source_file, entry_name, handler)}"
+        if entry_id not in known_nodes:
+            known_nodes.add(entry_id)
+            line = raw.get("line") if isinstance(raw.get("line"), int) else None
+            kind = sanitize_text(raw.get("kind", "application_entrypoint"), max_len=100)
+            framework = sanitize_text(raw.get("framework", ""), max_len=100)
+            provenance = sanitize_text(raw.get("provenance", ""), max_len=500)
+            elements.append(
+                {
+                    "data": {
+                        "id": entry_id,
+                        "label": entry_name,
+                        "type": "application_entrypoint",
+                        "entrypointKind": kind,
+                        "handler": handler,
+                        "framework": framework,
+                        "provenance": provenance,
+                        "tip": f"Application entrypoint: {entry_name}\nHandler: {handler}\nSource: {source_file}"
+                        + (f":{line}" if line else ""),
+                        "sourceFile": source_file,
+                        "line": line,
+                        "discovery_source": "ast_analysis",
+                        "searchText": f"{entry_name} {handler} {kind} {framework} {source_file}".lower(),
+                    }
+                }
+            )
+
+        edge_key = (file_id, entry_id, "defines")
+        if edge_key not in known_edges:
+            known_edges.add(edge_key)
+            elements.append(
+                {
+                    "data": {
+                        "source": file_id,
+                        "target": entry_id,
                         "type": "defines",
                         "line": raw.get("line") if isinstance(raw.get("line"), int) else None,
                     }

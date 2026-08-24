@@ -759,7 +759,7 @@ def test_smithery_publish_is_gated_on_server_card_and_catalog_parity():
     assert "FAILURE|FAILURE_SCAN|AUTH_TIMEOUT|CANCELLED|INTERNAL_ERROR" in workflow
     assert "caller-supplied bearerToken by design" not in workflow
     assert "Verify Smithery catalog inventory" in workflow
-    assert 'cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json' in workflow
+    assert "cmp -s /tmp/smithery-expected-tool-names.json /tmp/smithery-actual-tool-names.json" in workflow
 
 
 def test_refresh_latest_container_keeps_release_code_but_applies_runtime_security_overlay():

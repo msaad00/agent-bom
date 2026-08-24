@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-08-17",
-  "_total_servers": 1099,
+  "_updated": "2026-08-24",
+  "_total_servers": 1112,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -409,7 +409,7 @@
     "@modelcontextprotocol/server-everything": {
       "package": "@modelcontextprotocol/server-everything",
       "ecosystem": "npm",
-      "latest_version": "2026.7.4",
+      "latest_version": "2026.8.18",
       "description": "Demo server with all MCP primitives",
       "name": "Everything",
       "risk_justification": "Demo/testing server with no real-world side effects. No credential exposure or network access.",
@@ -436,7 +436,7 @@
     "mcp-server-git": {
       "package": "mcp-server-git",
       "ecosystem": "pypi",
-      "latest_version": "2026.7.10",
+      "latest_version": "2026.8.18",
       "description": "Git operations on local repositories",
       "name": "Git",
       "risk_justification": "Read/write access to local Git repositories. Can commit and push code changes without credential exposure.",
@@ -464,7 +464,7 @@
     "mcp-server-time": {
       "package": "mcp-server-time",
       "ecosystem": "pypi",
-      "latest_version": "2026.7.10",
+      "latest_version": "2026.8.18",
       "description": "Time and timezone utilities",
       "name": "Time",
       "risk_justification": "Local computation only. No credential exposure or network access.",
@@ -486,7 +486,7 @@
     "mcp-server-fetch": {
       "package": "mcp-server-fetch",
       "ecosystem": "pypi",
-      "latest_version": "2026.7.10",
+      "latest_version": "2026.8.18",
       "description": "HTTP fetch (Python implementation)",
       "name": "Fetch (Python)",
       "risk_justification": "Can fetch arbitrary HTTP URLs, enabling SSRF and internal network probing. No credential storage but network access is unbounded.",
@@ -586,7 +586,7 @@
     "mcp-atlassian": {
       "package": "mcp-atlassian",
       "ecosystem": "pypi",
-      "latest_version": "0.23.0",
+      "latest_version": "0.23.1",
       "description": "Jira and Confluence integration",
       "name": "Atlassian",
       "risk_justification": "Read/write access to Jira and Confluence via ATLASSIAN_API_TOKEN. Token exposure enables workspace-wide access.",
@@ -815,7 +815,7 @@
     "@supabase/mcp-server-supabase": {
       "package": "@supabase/mcp-server-supabase",
       "ecosystem": "npm",
-      "latest_version": "0.10.0",
+      "latest_version": "0.11.0",
       "description": "Read/write Supabase tables, storage, Edge Functions",
       "name": "Supabase",
       "risk_justification": "Executes raw SQL and manages Edge Functions via SUPABASE_SERVICE_ROLE_KEY. Key exposure enables full database and serverless function control.",
@@ -873,7 +873,7 @@
     "mcp-server-redis": {
       "package": "mcp-server-redis",
       "ecosystem": "npm",
-      "latest_version": "0.0.2",
+      "latest_version": "0.0.1-security",
       "description": "Read and write Redis keys",
       "name": "Redis",
       "risk_justification": "Read/write access to Redis keys via REDIS_URL. Token exposure enables arbitrary key operations.",
@@ -901,10 +901,12 @@
       ],
       "source_url": "https://github.com/redis/mcp-redis",
       "version_source": "npm",
-      "known_cves": [],
+      "known_cves": [
+        "GHSA-wrqr-prmr-6x32"
+      ],
       "cve_summary": {
         "total": 0,
-        "ghsa_count": 0,
+        "ghsa_count": 1,
         "critical": 0,
         "kev": 0,
         "severity_breakdown": {
@@ -1048,7 +1050,7 @@
     "exa-mcp-server": {
       "package": "exa-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "3.4.0",
+      "latest_version": "3.4.1",
       "description": "AI-native web search via Exa",
       "name": "Exa",
       "risk_justification": "Read-only web search via EXA_API_KEY. No write capability.",
@@ -2938,7 +2940,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.13.0",
+      "latest_version": "2.15.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -22063,9 +22065,293 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ad.inside/inside-ads": {
+      "package": "ad.inside/inside-ads",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Telegram ad exchange: estimate reach and cost with no account, then create and run campaigns.",
+      "name": "ad.inside/inside-ads",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ad.inside/inside-ads",
+        "inside-ads"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.advisorsai/store-readiness": {
+      "package": "ai.advisorsai/store-readiness",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "One read-only public-page readiness check with a signed, recheckable evidence receipt.",
+      "name": "ai.advisorsai/store-readiness",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.advisorsai/store-readiness",
+        "store-readiness"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agentmesh/mesh": {
+      "package": "ai.agentmesh/mesh",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Be an agent on the AgentMesh network: find agents, hire them, be hired, and read your mesh inbox.",
+      "name": "ai.agentmesh/mesh",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agentmesh/mesh",
+        "mesh"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agentroam/agentroam": {
+      "package": "ai.agentroam/agentroam",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Buy travel eSIMs, gift cards and mobile top-ups with crypto — user confirms before any order.",
+      "name": "ai.agentroam/agentroam",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agentroam/agentroam",
+        "agentroam"
+      ],
+      "source_url": "https://github.com/adiny/nomad-crypto-travel",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.aqta/seal": {
+      "package": "ai.aqta/seal",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Verify Seal AI decision receipts: signed evidence anyone can check, no account needed.",
+      "name": "ai.aqta/seal",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.aqta/seal",
+        "seal"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.astrofabric/mcp": {
+      "package": "ai.astrofabric/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Agentic growth platform: a mission agent plus 70+ metered SEO, ads, outbound and CRM ops tools.",
+      "name": "ai.astrofabric/mcp",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.astrofabric/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.atlier/project-desk": {
+      "package": "ai.atlier/project-desk",
+      "ecosystem": "mcp-registry",
+      "latest_version": "4.7.0",
+      "description": "Agent-updated work tracker for builders directing AI across multiple projects.",
+      "name": "ai.atlier/project-desk",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.atlier/project-desk",
+        "project-desk"
+      ],
+      "source_url": "https://github.com/Wildsdesign/Atlier",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.awraiter/telegram": {
+      "package": "ai.awraiter/telegram",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Telegram channels you administer: analytics, content plans, scheduled publishing. No userbot",
+      "name": "ai.awraiter/telegram",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.awraiter/telegram",
+        "telegram"
+      ],
+      "source_url": "https://github.com/MediaZione/AwrAiter",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.betslipdoctor/mcp": {
+      "package": "ai.betslipdoctor/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.1.0",
+      "description": "Read, grade, and track a subscriber's betslips with preserved truth and no wager placement.",
+      "name": "ai.betslipdoctor/mcp",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.betslipdoctor/mcp"
+      ],
+      "source_url": "https://github.com/opspot-ai/betslipdoctor",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bidclub/bidclub": {
+      "package": "ai.bidclub/bidclub",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Search 45+ investor podcasts and read transcripts, TL;DRs, digests — bilingual EN/中文, keyless.",
+      "name": "ai.bidclub/bidclub",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bidclub/bidclub",
+        "bidclub"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bitroad/bitroad": {
+      "package": "ai.bitroad/bitroad",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Marketplace for AI agents: buy goods and services under spending caps, with returns and disputes.",
+      "name": "ai.bitroad/bitroad",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bitroad/bitroad",
+        "bitroad"
+      ],
+      "source_url": "https://github.com/bitroadai/bitroad-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.calaf/calaf": {
+      "package": "ai.calaf/calaf",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Connect your Calaf recruiting book: validate and import seeds; people only enter via in-app review.",
+      "name": "ai.calaf/calaf",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.calaf/calaf",
+        "calaf"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.calaf/seeds": {
+      "package": "ai.calaf/seeds",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Author and validate Calaf workspace seeds against the app's real importer. No account needed.",
+      "name": "ai.calaf/seeds",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.calaf/seeds",
+        "seeds"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-08-24T09:33:02Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-08-17T09:27:10Z",
+  "_mcp_registry_sync": "2026-08-24T09:33:04Z",
   "_mcp_registry_sync_source": "mcp-official",
-  "_cve_enriched": "2026-07-13"
+  "_cve_enriched": "2026-08-24"
 }

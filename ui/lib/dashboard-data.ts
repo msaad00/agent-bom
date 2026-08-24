@@ -267,6 +267,7 @@ export function buildExposurePathView(
   scanId?: string,
   _index?: number,
 ): ExposurePathView {
+  void _index; // Retain call compatibility; identity must not depend on fetch order.
   const agents = blastAgents(blast);
   const credentials = blastCredentials(blast);
   const nodes: ExposurePathView["nodes"] = [
@@ -315,6 +316,7 @@ export function buildTopRiskExposurePath(
   risk: OverviewTopRisk,
   _index?: number,
 ): ExposurePathView {
+  void _index; // Retain call compatibility; identity must not depend on fetch order.
   const severity = (risk.severity || "").trim().toLowerCase();
   const nodes: ExposurePathView["nodes"] = [
     severity

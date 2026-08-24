@@ -332,7 +332,11 @@ def test_store_backed_producer_peak_advantage_widens_with_scale() -> None:
 # ── Default-off: no container -> in-RAM path, identical output ────────────────
 
 
-def test_default_off_uses_in_ram_container() -> None:
+def test_default_off_uses_in_ram_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Both builds mint nodes and edges independently. Freeze their default
+    # timestamps so this test compares container behavior, not wall-clock drift.
+    monkeypatch.setattr("agent_bom.graph.node._now_iso", lambda: _FIXED_CREATED_AT)
+    monkeypatch.setattr("agent_bom.graph.edge._now_iso", lambda: _FIXED_CREATED_AT, raising=False)
     report = _constructed_report()
     default = build_unified_graph_from_report(report, scan_id="c", tenant_id="t1")
     assert type(default) is UnifiedGraph

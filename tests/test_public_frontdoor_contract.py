@@ -25,21 +25,22 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     for claim in (
         "Discover. Scan.",
         "Correlate. Act.",
-        "Security evidence across code, AI agents, MCP, cloud, containers, identity, and data.",
-        "repos + SBOMs",
-        "images + containers",
-        "agents + MCP",
-        "cloud + control plane",
-        "AI + MCP CLIENTS",
+        "Security evidence across repositories, supply chains, AI + MCP, cloud, identity, and data.",
+        "repos + SCA",
+        "images + IaC",
+        "AI + MCP + models",
+        "cloud + identity + data",
+        "AI CLIENTS + MODELS",
         "CLOUD + IDENTITY + DATA",
         "discover → scan → correlate → act",
     ):
         assert claim in svg
     for integration in (
         "Claude",
+        "Codex CLI",
+        "OpenAI · GPT",
         "Cursor",
         "GitHub Copilot",
-        "Codex",
         "VS Code",
         "Windsurf",
         "Cortex Code",
@@ -47,7 +48,6 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         "Azure",
         "GCP",
         "Kubernetes",
-        "Okta",
         "Snowflake",
         "Databricks",
         "ClickHouse",
@@ -63,23 +63,20 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     assert "/Users/" not in svg
     assert "<image" not in svg
     assert "tint-" not in svg
-    assert svg.count("<symbol ") == 13
-    assert svg.count('href="#embedded-') == 13
+    assert svg.count("<symbol ") == 10
+    assert svg.count('href="#embedded-') == 11
     assert render_social_preview(template) == svg
     for relative_asset in (
         "brand/mark-dark.svg",
         "vendor/simple-icons/claude.svg",
         "vendor/simple-icons/cursor.svg",
         "vendor/simple-icons/githubcopilot.svg",
-        "vendor/simple-icons/windsurf.svg",
         "vendor/simple-icons/amazonwebservices.svg",
         "vendor/simple-icons/microsoftazure.svg",
         "vendor/simple-icons/googlecloud.svg",
         "vendor/simple-icons/kubernetes.svg",
-        "vendor/simple-icons/okta.svg",
         "vendor/simple-icons/snowflake.svg",
         "vendor/simple-icons/databricks.svg",
-        "vendor/simple-icons/clickhouse.svg",
     ):
         assert relative_asset in template_svg
         assert (source.parent / relative_asset).is_file()
@@ -119,6 +116,9 @@ def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
 
     assert len(content_lines) <= 12
     assert "agent or tool entrypoint → MCP server → package → finding" in frontdoor
+    for capability in ("repositories", "SCA", "secrets", "IaC", "AI agents", "models", "cloud", "identity"):
+        assert capability in frontdoor
+    assert "scheduled or connected scans" in frontdoor
     assert "incomplete evidence stays explicit" in normalized
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
 
@@ -151,7 +151,9 @@ def test_persona_routes_start_with_their_actual_work() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     personas = readme.split("## Who it is for", 1)[1].split("\n## ", 1)[0]
 
-    assert "| Security engineer | `agent-bom scan . -f sarif -o findings.sarif`" in personas
+    assert "| AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif`" in personas
+    assert "| AI / ML engineer | `agent-bom scan .`" in personas
+    assert "| Cloud security | `agent-bom connect aws`" in personas
     assert "| Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve`" in personas
     assert "owner and sla" in personas.lower()
 

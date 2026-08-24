@@ -249,7 +249,9 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     # (never one card) — findings and reachability are not audit certification.
     assert "AppSec/GRC" not in readme
     assert "AppSec / GRC" not in readme
-    assert "| Security engineer |" in readme
+    assert "| AppSec / product security |" in readme
+    assert "| AI / ML engineer |" in readme
+    assert "| Cloud security |" in readme
     assert "| GRC / audit |" in readme
 
     # Dense diagrams and the full gallery live in full-size docs; the README

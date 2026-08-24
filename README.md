@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Act. Security evidence across code, AI agents, MCP, cloud, containers, identity, and data." width="960" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Act. Security evidence across repositories, software supply chains, AI and MCP, cloud, identity, and data." width="960" />
 </p>
 
 <p align="center"><sub>The marks above represent supported discovery, scanning, connection, deployment, or evidence backends—not identical connector depth. <a href="docs/INTEGRATIONS.md">See the capability matrix.</a></sub></p>
@@ -27,16 +27,18 @@
 
 ## Discover → Scan → Correlate → Act
 
-`agent-bom` discovers code, AI agents, MCP, images, clusters, cloud, identity,
-and data. It scans for security evidence, correlates reachable risk in one
-Finding + UnifiedGraph model, then carries prioritized work through owner, fix,
-verification, or runtime policy.
+`agent-bom` scans repositories and software supply chains across SCA, secrets,
+IaC, and containers; inventories AI agents, MCP, models, and datasets; and connects
+read-only cloud, identity, Snowflake, and data sources. It normalizes that evidence
+into one Finding + UnifiedGraph model, correlates reachable risk, then carries
+work through owner, fix, verification, compliance evidence, or runtime policy.
 
 `agent or tool entrypoint → MCP server → package → finding → impact → owner → fix → verify`
 
-Run locally or in CI, centralize in your own control plane, and enforce MCP
-traffic at runtime. Raw source and credentials stay local; collected, inferred,
-static, and runtime relationships stay distinct; incomplete evidence stays explicit.
+Run ad hoc locally or in CI, or use your self-hosted control plane for
+scheduled or connected scans, history, assignments, and runtime enforcement.
+Raw source and credentials stay inside the customer-controlled execution boundary;
+collected, inferred, static, and runtime relationships stay distinct; incomplete evidence stays explicit.
 
 [Quick start](#quick-start) · [Evidence workflow](docs/HOW_IT_WORKS.md) · [Integration capability matrix](docs/INTEGRATIONS.md) · [Measured matcher proof](docs/CVE_MATCHING_ACCURACY.json) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
@@ -44,8 +46,9 @@ static, and runtime relationships stay distinct; incomplete evidence stays expli
 
 | Role | Start here | Primary outcome |
 |---|---|---|
-| AI engineer | `agent-bom scan .` | Inventory agents, MCP servers, and models, and catch issues before they ship |
-| Security engineer | `agent-bom scan . -f sarif -o findings.sarif` | Gate CI on prioritized findings and carry reachable evidence into review |
+| AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif` | Scan repository dependencies, secrets, IaC, and images; gate CI with reachable findings |
+| AI / ML engineer | `agent-bom scan .` | Inventory agents, MCP clients and servers, skills, models, and datasets before they ship |
+| Cloud security | `agent-bom connect aws` | Connect a read-only cloud or Snowflake source, then evaluate inventory, posture, and identity evidence |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Centralize evidence, assign an owner and SLA, remediate, and verify |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Review control mappings and export evidence with explicit gaps |
 | Leadership / CISO | `pip install 'agent-bom[ui]' && agent-bom serve` | Review posture, coverage, material risk, and change over time |

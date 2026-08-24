@@ -1,90 +1,138 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="578" viewBox="0 0 1280 578" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="834" viewBox="0 0 1280 834" fill="none">
 <title>agent-bom personas and value</title>
-<rect width="1280" height="578" rx="12" fill="#16161d"/>
-<rect x="23" y="18" width="610" height="242" rx="12" fill="#fb7185"/>
+<rect width="1280" height="834" rx="12" fill="#16161d"/>
+<rect x="23" y="18" width="610" height="242" rx="12" fill="#2dd4bf"/>
 <rect x="23" y="22" width="610" height="238" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1.4"/>
-<rect x="37" y="32" width="40" height="40" rx="11" fill="#fb7185" opacity="0.16"/><g transform="translate(41,36) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#fb7185"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#fb7185"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#fb7185"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/></g></g>
-<text x="85" y="58" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">AI engineer</text>
-<rect x="37" y="82" width="45" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
-<text x="59.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">agents</text>
-<rect x="88" y="82" width="69" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
-<text x="122.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">MCP servers</text>
-<rect x="163" y="82" width="45" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
-<text x="185.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">models</text>
+<rect x="37" y="32" width="40" height="40" rx="11" fill="#2dd4bf" opacity="0.16"/><g transform="translate(41,36) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#2dd4bf"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#2dd4bf"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#2dd4bf"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 14.3l3.15 1.15v2.1c0 2.1-1.4 3.5-3.15 4-1.75-.5-3.15-1.9-3.15-4v-2.1z" fill="#0f0f13" stroke="none"/><path d="M17.1 17.95l1 1 1.8-1.8" stroke="#2dd4bf" stroke-width="1.05"/></g></g>
+<text x="85" y="58" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">AppSec / product security</text>
+<rect x="37" y="82" width="40" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
+<text x="57.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">repos</text>
+<rect x="83" y="82" width="30" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
+<text x="98.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">SCA</text>
+<rect x="119" y="82" width="50" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
+<text x="144.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">secrets</text>
+<rect x="175" y="82" width="30" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
+<text x="190.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">IaC</text>
 <line x1="39" y1="110" x2="617" y2="110" stroke="#2a2a31" stroke-width="1"/>
-<polygon points="328,120 323,113 333,113" fill="#fb7185" opacity="0.9"/>
-<text x="41" y="144" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#fb7185">START</text>
-<text x="115" y="144" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom scan .</text>
-<rect x="35" y="158" width="586" height="88" rx="8" fill="#fb7185" opacity="0.10"/>
-<rect x="35" y="158" width="586" height="88" rx="8" fill="none" stroke="#fb7185" opacity="0.4"/>
-<text x="45" y="182" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fb7185">OUTCOME</text>
-<text x="125" y="182" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Agent-native surface</text>
-<text x="125" y="203" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">394 API ops · 84 MCP tools</text>
-<text x="45" y="228" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fb7185">PROOF</text>
-<text x="125" y="228" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">AI BOM · SARIF · graph</text>
-<rect x="647" y="18" width="610" height="242" rx="12" fill="#2dd4bf"/>
+<polygon points="328,120 323,113 333,113" fill="#2dd4bf" opacity="0.9"/>
+<text x="41" y="144" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#2dd4bf">START</text>
+<text x="115" y="144" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom scan . -f sarif</text>
+<rect x="35" y="158" width="586" height="88" rx="8" fill="#2dd4bf" opacity="0.10"/>
+<rect x="35" y="158" width="586" height="88" rx="8" fill="none" stroke="#2dd4bf" opacity="0.4"/>
+<text x="45" y="182" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#2dd4bf">OUTCOME</text>
+<text x="125" y="182" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Gate CI with reachable risk</text>
+<text x="125" y="203" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Findings keep evidence and ownership</text>
+<text x="45" y="228" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#2dd4bf">PROOF</text>
+<text x="125" y="228" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">SARIF · SBOM · paths</text>
+<rect x="647" y="18" width="610" height="242" rx="12" fill="#fb7185"/>
 <rect x="647" y="22" width="610" height="238" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1.4"/>
-<rect x="661" y="32" width="40" height="40" rx="11" fill="#2dd4bf" opacity="0.16"/><g transform="translate(665,36) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#2dd4bf"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#2dd4bf"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#2dd4bf"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 14.3l3.15 1.15v2.1c0 2.1-1.4 3.5-3.15 4-1.75-.5-3.15-1.9-3.15-4v-2.1z" fill="#0f0f13" stroke="none"/><path d="M17.1 17.95l1 1 1.8-1.8" stroke="#2dd4bf" stroke-width="1.05"/></g></g>
-<text x="709" y="58" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">Security engineer</text>
-<rect x="661" y="82" width="84" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
-<text x="703.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">exposure paths</text>
-<rect x="751" y="82" width="74" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
-<text x="788.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">reachability</text>
-<rect x="831" y="82" width="65" height="18" rx="6" fill="#2dd4bf" fill-opacity="0.12" stroke="#2dd4bf" stroke-opacity="0.4"/>
-<text x="863.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#2dd4bf">identities</text>
+<rect x="661" y="32" width="40" height="40" rx="11" fill="#fb7185" opacity="0.16"/><g transform="translate(665,36) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#fb7185"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#fb7185"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#fb7185"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/></g></g>
+<text x="709" y="58" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">AI / ML engineer</text>
+<rect x="661" y="82" width="45" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
+<text x="683.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">agents</text>
+<rect x="712" y="82" width="30" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
+<text x="727.0" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">MCP</text>
+<rect x="748" y="82" width="45" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
+<text x="770.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">models</text>
+<rect x="799" y="82" width="55" height="18" rx="6" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.4"/>
+<text x="826.5" y="95" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fb7185">datasets</text>
 <line x1="663" y1="110" x2="1241" y2="110" stroke="#2a2a31" stroke-width="1"/>
-<polygon points="952,120 947,113 957,113" fill="#2dd4bf" opacity="0.9"/>
-<text x="665" y="144" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#2dd4bf">START</text>
-<text x="739" y="144" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom serve</text>
-<rect x="659" y="158" width="586" height="88" rx="8" fill="#2dd4bf" opacity="0.10"/>
-<rect x="659" y="158" width="586" height="88" rx="8" fill="none" stroke="#2dd4bf" opacity="0.4"/>
-<text x="669" y="182" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#2dd4bf">OUTCOME</text>
-<text x="749" y="182" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Triage by reachability</text>
-<text x="749" y="203" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Path -&gt; Impact -&gt; Owner -&gt; Fix -&gt; Verify</text>
-<text x="669" y="228" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#2dd4bf">PROOF</text>
-<text x="749" y="228" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Paths · owners · verification</text>
-<rect x="23" y="274" width="610" height="242" rx="12" fill="#fbbf24"/>
+<polygon points="952,120 947,113 957,113" fill="#fb7185" opacity="0.9"/>
+<text x="665" y="144" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#fb7185">START</text>
+<text x="739" y="144" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom scan .</text>
+<rect x="659" y="158" width="586" height="88" rx="8" fill="#fb7185" opacity="0.10"/>
+<rect x="659" y="158" width="586" height="88" rx="8" fill="none" stroke="#fb7185" opacity="0.4"/>
+<text x="669" y="182" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fb7185">OUTCOME</text>
+<text x="749" y="182" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Agent-native inventory</text>
+<text x="749" y="203" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">394 API ops · 84 MCP tools</text>
+<text x="669" y="228" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fb7185">PROOF</text>
+<text x="749" y="228" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">AI BOM · graph · runtime</text>
+<rect x="23" y="274" width="610" height="242" rx="12" fill="#38bdf8"/>
 <rect x="23" y="278" width="610" height="238" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1.4"/>
-<rect x="37" y="288" width="40" height="40" rx="11" fill="#fbbf24" opacity="0.16"/><g transform="translate(41,292) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#fbbf24"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#fbbf24"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#fbbf24"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16.0" y="14.6" width="5.0" height="6.6" rx="0.9" fill="none" stroke="#0f0f13" stroke-width="1.05"/><path d="M17.2 14.2h2.6v1.2h-2.6z" fill="#0f0f13" stroke="none"/><path d="M17.1 17.0h2.8 M17.1 18.4h2.8 M17.1 19.8h1.8" stroke="#0f0f13" stroke-width="1.0"/></g></g>
-<text x="85" y="314" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">GRC / audit</text>
-<rect x="37" y="338" width="65" height="18" rx="6" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.4"/>
-<text x="69.5" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fbbf24">compliance</text>
-<rect x="108" y="338" width="55" height="18" rx="6" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.4"/>
-<text x="135.5" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fbbf24">evidence</text>
-<rect x="169" y="338" width="65" height="18" rx="6" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.4"/>
-<text x="201.5" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fbbf24">frameworks</text>
+<rect x="37" y="288" width="40" height="40" rx="11" fill="#38bdf8" opacity="0.16"/><g transform="translate(41,292) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#38bdf8"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#38bdf8"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#38bdf8"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/></g></g>
+<text x="85" y="314" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">Cloud security</text>
+<rect x="37" y="338" width="40" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="57.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">cloud</text>
+<rect x="83" y="338" width="60" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="113.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">Snowflake</text>
+<rect x="149" y="338" width="55" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="176.5" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">identity</text>
+<rect x="210" y="338" width="30" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="225.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">CIS</text>
 <line x1="39" y1="366" x2="617" y2="366" stroke="#2a2a31" stroke-width="1"/>
-<polygon points="328,376 323,369 333,369" fill="#fbbf24" opacity="0.9"/>
-<text x="41" y="400" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#fbbf24">START</text>
-<text x="115" y="400" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom report compliance-narrative</text>
-<rect x="35" y="414" width="586" height="88" rx="8" fill="#fbbf24" opacity="0.10"/>
-<rect x="35" y="414" width="586" height="88" rx="8" fill="none" stroke="#fbbf24" opacity="0.4"/>
-<text x="45" y="438" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fbbf24">OUTCOME</text>
-<text x="125" y="438" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Audit-ready exports</text>
-<text x="125" y="459" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Explicit gaps stay explicit</text>
-<text x="45" y="484" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fbbf24">PROOF</text>
-<text x="125" y="484" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Mappings · signed evidence</text>
-<rect x="647" y="274" width="610" height="242" rx="12" fill="#38bdf8"/>
+<polygon points="328,376 323,369 333,369" fill="#38bdf8" opacity="0.9"/>
+<text x="41" y="400" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#38bdf8">START</text>
+<text x="115" y="400" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom connect aws</text>
+<rect x="35" y="414" width="586" height="88" rx="8" fill="#38bdf8" opacity="0.10"/>
+<rect x="35" y="414" width="586" height="88" rx="8" fill="none" stroke="#38bdf8" opacity="0.4"/>
+<text x="45" y="438" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#38bdf8">OUTCOME</text>
+<text x="125" y="438" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Read-only connected posture</text>
+<text x="125" y="459" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Inventory and gaps stay evidence-backed</text>
+<text x="45" y="484" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#38bdf8">PROOF</text>
+<text x="125" y="484" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Posture · identity · graph</text>
+<rect x="647" y="274" width="610" height="242" rx="12" fill="#a78bfa"/>
 <rect x="647" y="278" width="610" height="238" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1.4"/>
-<rect x="661" y="288" width="40" height="40" rx="11" fill="#38bdf8" opacity="0.16"/><g transform="translate(665,292) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#38bdf8"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#38bdf8"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#38bdf8"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/></g></g>
-<text x="709" y="314" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">Leadership / CISO</text>
-<rect x="661" y="338" width="50" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
-<text x="686.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">posture</text>
-<rect x="717" y="338" width="55" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
-<text x="744.5" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">coverage</text>
-<rect x="778" y="338" width="94" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
-<text x="825.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">change over time</text>
+<rect x="661" y="288" width="40" height="40" rx="11" fill="#a78bfa" opacity="0.16"/><g transform="translate(665,292) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#a78bfa"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#a78bfa"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#a78bfa"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16.2" y="14.7" width="4.6" height="6.2" rx="1" fill="#0f0f13" stroke="none"/><path d="M17.3 17.9l.95.95 1.75-1.75" stroke="#a78bfa" stroke-width="1.05"/></g></g>
+<text x="709" y="314" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">Platform / DevOps</text>
+<rect x="661" y="338" width="79" height="18" rx="6" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.4"/>
+<text x="700.5" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#a78bfa">control plane</text>
+<rect x="746" y="338" width="40" height="18" rx="6" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.4"/>
+<text x="766.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#a78bfa">fleet</text>
+<rect x="792" y="338" width="50" height="18" rx="6" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.4"/>
+<text x="817.0" y="351" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#a78bfa">runtime</text>
 <line x1="663" y1="366" x2="1241" y2="366" stroke="#2a2a31" stroke-width="1"/>
-<polygon points="952,376 947,369 957,369" fill="#38bdf8" opacity="0.9"/>
-<text x="665" y="400" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#38bdf8">START</text>
+<polygon points="952,376 947,369 957,369" fill="#a78bfa" opacity="0.9"/>
+<text x="665" y="400" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#a78bfa">START</text>
 <text x="739" y="400" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom serve</text>
-<rect x="659" y="414" width="586" height="88" rx="8" fill="#38bdf8" opacity="0.10"/>
-<rect x="659" y="414" width="586" height="88" rx="8" fill="none" stroke="#38bdf8" opacity="0.4"/>
-<text x="669" y="438" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#38bdf8">OUTCOME</text>
-<text x="749" y="438" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">One correlated view</text>
-<text x="749" y="459" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Material risk, not raw volume</text>
-<text x="669" y="484" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#38bdf8">PROOF</text>
-<text x="749" y="484" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Posture · coverage · trends</text>
-<rect x="24" y="538" width="1232" height="28" rx="8" fill="#0c1a14" stroke="#1f4438"/><text x="640" y="558" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="600" fill="#4ade80">SCAN + CI · CENTRALIZE EVIDENCE · ENFORCE AT RUNTIME — one Finding + UnifiedGraph</text>
+<rect x="659" y="414" width="586" height="88" rx="8" fill="#a78bfa" opacity="0.10"/>
+<rect x="659" y="414" width="586" height="88" rx="8" fill="none" stroke="#a78bfa" opacity="0.4"/>
+<text x="669" y="438" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#a78bfa">OUTCOME</text>
+<text x="749" y="438" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Self-hosted evidence plane</text>
+<text x="749" y="459" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Assign -&gt; Fix -&gt; Verify in one workflow</text>
+<text x="669" y="484" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#a78bfa">PROOF</text>
+<text x="749" y="484" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Owners · SLA · verification</text>
+<rect x="23" y="530" width="610" height="242" rx="12" fill="#fbbf24"/>
+<rect x="23" y="534" width="610" height="238" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1.4"/>
+<rect x="37" y="544" width="40" height="40" rx="11" fill="#fbbf24" opacity="0.16"/><g transform="translate(41,548) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#fbbf24"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#fbbf24"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#fbbf24"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16.0" y="14.6" width="5.0" height="6.6" rx="0.9" fill="none" stroke="#0f0f13" stroke-width="1.05"/><path d="M17.2 14.2h2.6v1.2h-2.6z" fill="#0f0f13" stroke="none"/><path d="M17.1 17.0h2.8 M17.1 18.4h2.8 M17.1 19.8h1.8" stroke="#0f0f13" stroke-width="1.0"/></g></g>
+<text x="85" y="570" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">GRC / audit</text>
+<rect x="37" y="594" width="65" height="18" rx="6" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.4"/>
+<text x="69.5" y="607" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fbbf24">compliance</text>
+<rect x="108" y="594" width="55" height="18" rx="6" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.4"/>
+<text x="135.5" y="607" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fbbf24">evidence</text>
+<rect x="169" y="594" width="65" height="18" rx="6" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.4"/>
+<text x="201.5" y="607" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#fbbf24">frameworks</text>
+<line x1="39" y1="622" x2="617" y2="622" stroke="#2a2a31" stroke-width="1"/>
+<polygon points="328,632 323,625 333,625" fill="#fbbf24" opacity="0.9"/>
+<text x="41" y="656" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#fbbf24">START</text>
+<text x="115" y="656" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom report compliance-narrative</text>
+<rect x="35" y="670" width="586" height="88" rx="8" fill="#fbbf24" opacity="0.10"/>
+<rect x="35" y="670" width="586" height="88" rx="8" fill="none" stroke="#fbbf24" opacity="0.4"/>
+<text x="45" y="694" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fbbf24">OUTCOME</text>
+<text x="125" y="694" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">Audit-ready exports</text>
+<text x="125" y="715" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Explicit gaps stay explicit</text>
+<text x="45" y="740" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#fbbf24">PROOF</text>
+<text x="125" y="740" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Mappings · signed evidence</text>
+<rect x="647" y="530" width="610" height="242" rx="12" fill="#38bdf8"/>
+<rect x="647" y="534" width="610" height="238" rx="12" fill="#161619" stroke="#2a2a31" stroke-width="1.4"/>
+<rect x="661" y="544" width="40" height="40" rx="11" fill="#38bdf8" opacity="0.16"/><g transform="translate(665,548) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#38bdf8"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#38bdf8"/><circle cx="18.5" cy="18" r="6" fill="#161619"/><circle cx="18.5" cy="18" r="4.6" fill="#38bdf8"/><g fill="none" stroke="#0f0f13" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/></g></g>
+<text x="709" y="570" font-family="Inter,system-ui,sans-serif" font-size="20.15" font-weight="800" fill="#e9e9ec">Leadership / CISO</text>
+<rect x="661" y="594" width="50" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="686.0" y="607" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">posture</text>
+<rect x="717" y="594" width="55" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="744.5" y="607" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">coverage</text>
+<rect x="778" y="594" width="94" height="18" rx="6" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-opacity="0.4"/>
+<text x="825.0" y="607" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="700" fill="#38bdf8">change over time</text>
+<line x1="663" y1="622" x2="1241" y2="622" stroke="#2a2a31" stroke-width="1"/>
+<polygon points="952,632 947,625 957,625" fill="#38bdf8" opacity="0.9"/>
+<text x="665" y="656" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.1em" fill="#38bdf8">START</text>
+<text x="739" y="656" font-family="ui-monospace,monospace" font-size="14.3" font-weight="700" fill="#e9e9ec">agent-bom serve</text>
+<rect x="659" y="670" width="586" height="88" rx="8" fill="#38bdf8" opacity="0.10"/>
+<rect x="659" y="670" width="586" height="88" rx="8" fill="none" stroke="#38bdf8" opacity="0.4"/>
+<text x="669" y="694" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#38bdf8">OUTCOME</text>
+<text x="749" y="694" font-family="Inter,system-ui,sans-serif" font-size="16.9" font-weight="800" fill="#e9e9ec">One correlated view</text>
+<text x="749" y="715" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="600" fill="#82828c">Material risk, not raw volume</text>
+<text x="669" y="740" font-family="ui-monospace,monospace" font-size="11.7" font-weight="800" letter-spacing="0.08em" fill="#38bdf8">PROOF</text>
+<text x="749" y="740" font-family="Inter,system-ui,sans-serif" font-size="13.65" font-weight="700" fill="#e9e9ec">Posture · coverage · trends</text>
+<rect x="24" y="794" width="1232" height="28" rx="8" fill="#0c1a14" stroke="#1f4438"/><text x="640" y="814" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.05" font-weight="600" fill="#4ade80">SCAN + CI · CENTRALIZE EVIDENCE · ENFORCE AT RUNTIME — one Finding + UnifiedGraph</text>
 </svg>

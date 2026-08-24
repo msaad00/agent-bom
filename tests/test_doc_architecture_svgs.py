@@ -152,14 +152,22 @@ def test_architecture_does_not_present_snowflake_as_a_hosting_target() -> None:
 
 def test_persona_value_renders_buyer_lanes() -> None:
     svg = persona_value("dark")
-    for title in ("AI engineer", "Security engineer", "GRC / audit", "Leadership / CISO"):
+    for title in (
+        "AppSec / product security",
+        "AI / ML engineer",
+        "Cloud security",
+        "Platform / DevOps",
+        "GRC / audit",
+        "Leadership / CISO",
+    ):
         assert title in svg
-    # The old lane titles must not linger anywhere in the artwork.
-    for retired in ("AppSec", "Developers", "Platform / SRE", "AI / MCP owners"):
+    for retired in ("Developers", "Platform / SRE", "AI / MCP owners"):
         assert retired not in svg, retired
     assert f"{REST_OPERATION_COUNT} API ops" in svg
-    assert "Agent-native surface" in svg
-    assert "Triage by reachability" in svg
+    assert "Gate CI with reachable risk" in svg
+    assert "Agent-native inventory" in svg
+    assert "Read-only connected posture" in svg
+    assert "Self-hosted evidence plane" in svg
     assert "Audit-ready exports" in svg
     for command in (
         "agent-bom scan .",
@@ -168,8 +176,10 @@ def test_persona_value_renders_buyer_lanes() -> None:
     ):
         assert command in svg
     for artifact in (
-        "AI BOM · SARIF · graph",
-        "Paths · owners · verification",
+        "SARIF · SBOM · paths",
+        "AI BOM · graph · runtime",
+        "Posture · identity · graph",
+        "Owners · SLA · verification",
         "Mappings · signed evidence",
         "Posture · coverage · trends",
     ):
@@ -183,8 +193,9 @@ def test_readme_persona_table_covers_each_operating_lane() -> None:
     """Public onboarding routes each audience to its actual first action."""
     titles = [row[0] for row in _readme_persona_rows()]
     assert titles == [
-        "AI engineer",
-        "Security engineer",
+        "AppSec / product security",
+        "AI / ML engineer",
+        "Cloud security",
         "Platform / DevOps",
         "GRC / audit",
         "Leadership / CISO",
@@ -204,7 +215,10 @@ def test_readme_links_end_to_end_workflow_before_persona_detail() -> None:
     persona_heading = readme.index("## Who it is for")
     assert workflow_heading < workflow_link < persona_heading
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in readme[workflow_heading:persona_heading]
-    assert "raw source and credentials stay local" in readme[workflow_heading:persona_heading].lower()
+    assert (
+        "raw source and credentials stay inside the customer-controlled execution boundary"
+        in readme[workflow_heading:persona_heading].lower()
+    )
     assert "### From source to verified action" not in readme
 
 

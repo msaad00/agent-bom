@@ -1753,31 +1753,45 @@ class PersonaLane(NamedTuple):
     accent_key: str
 
 
-# The four personas. One entry per README table row, in the same order.
-#
-# This was five lanes against seven README rows -- the artwork and the table had
-# drifted apart, so the picture and the text described different products.
-# Consolidated to the four audiences the evidence layer actually serves, with
-# "AI engineer" naming the person who builds agents and MCP servers rather than
-# the vaguer "AI / MCP owner".
+# One entry per README table row. Keep application, AI, and cloud security
+# explicit: collapsing all three into "Security engineer" hides the distinct
+# first commands and evidence each buyer needs to see.
 PERSONA_LANES: tuple[PersonaLane, ...] = (
     PersonaLane(
-        "AI engineer",
-        "agents · MCP servers · models",
+        "AppSec / product security",
+        "repos · SCA · secrets · IaC",
+        "agent-bom scan . -f sarif",
+        "Gate CI with reachable risk",
+        "Findings keep evidence and ownership",
+        "SARIF · SBOM · paths",
+        "appsec",
+    ),
+    PersonaLane(
+        "AI / ML engineer",
+        "agents · MCP · models · datasets",
         "agent-bom scan .",
-        "Agent-native surface",
+        "Agent-native inventory",
         f"{REST_OPERATION_COUNT} API ops · {MCP_TOOL_COUNT} MCP tools",
-        "AI BOM · SARIF · graph",
+        "AI BOM · graph · runtime",
         "mcp",
     ),
     PersonaLane(
-        "Security engineer",
-        "exposure paths · reachability · identities",
+        "Cloud security",
+        "cloud · Snowflake · identity · CIS",
+        "agent-bom connect aws",
+        "Read-only connected posture",
+        "Inventory and gaps stay evidence-backed",
+        "Posture · identity · graph",
+        "platform",
+    ),
+    PersonaLane(
+        "Platform / DevOps",
+        "control plane · fleet · runtime",
         "agent-bom serve",
-        "Triage by reachability",
-        "Path -> Impact -> Owner -> Fix -> Verify",
-        "Paths · owners · verification",
-        "appsec",
+        "Self-hosted evidence plane",
+        "Assign -> Fix -> Verify in one workflow",
+        "Owners · SLA · verification",
+        "dev",
     ),
     PersonaLane(
         "GRC / audit",
@@ -1821,7 +1835,7 @@ PERSONA_CARD_PAD_X = 16
 # (value title). The 39-char sub line that used to sit flush against the pill
 # edge was shortened after the box-aware fit audit showed it clipping; 33 is the
 # widest that now ships, and the audit fails anything past its box.
-PERSONA_TITLE_MAX_CHARS = 24
+PERSONA_TITLE_MAX_CHARS = 25
 PERSONA_START_MAX_CHARS = 40
 PERSONA_VALUE_TITLE_MAX_CHARS = 34
 PERSONA_VALUE_SUB_MAX_CHARS = 46

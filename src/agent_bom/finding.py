@@ -352,11 +352,7 @@ def _occurrence_evidence_qualifier(evidence: object) -> dict[str, object]:
     """
     if not isinstance(evidence, dict):
         return {}
-    return {
-        key: value
-        for key in _OCCURRENCE_EVIDENCE_KEYS
-        if (value := evidence.get(key)) not in (None, "", [], {})
-    }
+    return {key: value for key in _OCCURRENCE_EVIDENCE_KEYS if (value := evidence.get(key)) not in (None, "", [], {})}
 
 
 @dataclass

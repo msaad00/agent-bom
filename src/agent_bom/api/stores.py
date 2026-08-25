@@ -16,6 +16,7 @@ from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
     from agent_bom.api.credential_store import CredentialRefStore
+    from agent_bom.api.graph_scenario_store import GraphScenarioStore
     from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.api.issue_mapping_store import IssueMappingStore
     from agent_bom.api.mcp_observation_store import MCPObservationStore
@@ -569,6 +570,39 @@ def set_graph_store(store: GraphStoreProtocol) -> None:
     """Switch the graph store backend. Call before server startup."""
     global _graph_store
     _graph_store = store
+
+
+# ─── Proposed graph scenarios (pluggable, never observed graph tables) ──────
+_graph_scenario_store: GraphScenarioStore | None = None
+
+
+def _get_graph_scenario_store() -> GraphScenarioStore:
+    """Get durable scenario persistence for the configured deployment tier."""
+    global _graph_scenario_store
+    if _graph_scenario_store is None:
+        with _store_lock:
+            if _graph_scenario_store is None:
+                from agent_bom.api.storage_schema import postgres_deployment_configured
+
+                if postgres_deployment_configured():
+                    from agent_bom.api.postgres_graph_scenario import PostgresGraphScenarioStore
+
+                    _graph_scenario_store = PostgresGraphScenarioStore()
+                elif os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.graph_scenario_store import SQLiteGraphScenarioStore
+
+                    _graph_scenario_store = SQLiteGraphScenarioStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.graph_scenario_store import SQLiteGraphScenarioStore
+
+                    _graph_scenario_store = SQLiteGraphScenarioStore()
+    return _graph_scenario_store
+
+
+def set_graph_scenario_store(store: GraphScenarioStore) -> None:
+    """Switch scenario persistence explicitly, primarily for isolated tests."""
+    global _graph_scenario_store
+    _graph_scenario_store = store
 
 
 def get_last_scan_report() -> dict | None:

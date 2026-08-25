@@ -576,6 +576,26 @@ CREATE TABLE IF NOT EXISTS graph_filter_presets (
     PRIMARY KEY (name, tenant_id)
 );
 
+-- Proposed architecture scenarios are isolated from immutable observed graph
+-- snapshots. No scenario write targets graph_nodes or graph_edges.
+CREATE TABLE IF NOT EXISTS graph_scenarios (
+    id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    base_scan_id TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    operations JSONB NOT NULL,
+    assumptions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_by TEXT NOT NULL DEFAULT '',
+    provenance JSONB NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (id, tenant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_graph_scenarios_tenant_updated
+    ON graph_scenarios(tenant_id, updated_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS graph_node_search (
     node_id         TEXT NOT NULL,
     tenant_id       TEXT NOT NULL DEFAULT 'default',
@@ -1197,6 +1217,24 @@ BEGIN
 END
 $$;
 
+ALTER TABLE graph_scenarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_scenarios FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_scenarios'
+          AND policyname = 'graph_scenarios_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_scenarios_tenant_isolation ON graph_scenarios
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 ALTER TABLE graph_node_search ENABLE ROW LEVEL SECURITY;
 ALTER TABLE graph_node_search FORCE ROW LEVEL SECURITY;
 
@@ -1642,4 +1680,5 @@ $$;
 --   attack_paths       — persisted fix-first attack-path projections
 --   interaction_risks  — agent interaction / toxic-combo risk overlays
 --   graph_filter_presets — tenant-scoped saved graph filters
+--   graph_scenarios      — tenant-scoped proposed graph changes pinned to snapshots
 --   osv_cache          — OSV vulnerability API response cache

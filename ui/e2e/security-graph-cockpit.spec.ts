@@ -265,6 +265,85 @@ async function routeCockpit(
       ]),
     });
   });
+  await page.route("**/v1/graph/scenarios", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        schema: "graph.scenarios.v1",
+        count: 1,
+        scenarios: [
+          {
+            scenario_id: "scenario-private-endpoint",
+            tenant_id: "default",
+            name: "Private service endpoint",
+            description: "Replace public database access with a private endpoint.",
+            base_scan_id: scanId,
+            assumptions: ["The endpoint policy is deployed with least privilege."],
+            changes: [],
+            revision: 2,
+            created_by: "analyst@example.com",
+            created_at: createdAt,
+            updated_at: createdAt,
+          },
+        ],
+      }),
+    });
+  });
+  await page.route("**/v1/graph/scenarios/scenario-private-endpoint/comparison?**", async (route) => {
+    const proposedNode = node(
+      "proposal:scenario-private-endpoint:private-endpoint",
+      "cloud_resource",
+      "Private service endpoint",
+    );
+    proposedNode.status = "proposed";
+    proposedNode.attributes = {
+      evidence_state: "proposed",
+      observed: false,
+      deployed: false,
+      scenario_id: "scenario-private-endpoint",
+      scenario_revision: 2,
+      assumption: "The endpoint policy is deployed with least privilege.",
+    };
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        schema: "graph.scenario-comparison.v1",
+        scenario: {
+          scenario_id: "scenario-private-endpoint",
+          tenant_id: "default",
+          name: "Private service endpoint",
+          description: "Replace public database access with a private endpoint.",
+          base_scan_id: scanId,
+          assumptions: ["The endpoint policy is deployed with least privilege."],
+          changes: [],
+          revision: 2,
+          created_by: "analyst@example.com",
+          created_at: createdAt,
+          updated_at: createdAt,
+        },
+        current: { scan_id: scanId, node_count: graph.nodes.length, edge_count: graph.edges.length },
+        proposed: {
+          node_count: graph.nodes.length + 1,
+          edge_count: graph.edges.length,
+          modeled: true,
+          nodes: [...graph.nodes, proposedNode],
+          edges: graph.edges,
+          completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: graph.nodes.length + 1, total: graph.nodes.length + 1 },
+        },
+        difference: {
+          nodes_added: [proposedNode.id],
+          nodes_removed: [],
+          nodes_changed: ["server:github"],
+          edges_added: [],
+          edges_removed: ["server:github->cred:gh-token:exposes_cred"],
+          touched_observed_path_count: 1,
+          touched_observed_path_ids: ["agent:desktop->cred:gh-token"],
+        },
+        available: true,
+        stale: false,
+      }),
+    });
+  });
   await page.route("**/v1/graph/views/fix-first?**", async (route) => {
     if (options.fixFirstDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, options.fixFirstDelayMs));
@@ -402,6 +481,50 @@ async function routeCockpit(
     });
   });
 }
+
+for (const proof of [
+  { theme: "dark", width: 1512, height: 811 },
+  { theme: "light", width: 1568, height: 780 },
+] as const) {
+  test(`scenario comparison stays truthful at ${proof.width}x${proof.height} ${proof.theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: proof.width, height: proof.height });
+    await routeCockpit(page, 36);
+    await page.addInitScript((selectedTheme) => {
+      window.localStorage.setItem("agent-bom-theme", selectedTheme);
+    }, proof.theme);
+
+    await page.goto(`/security-graph?lens=estate&rollup=0&scenario=scenario-private-endpoint&state=proposed`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("status")).toContainText(
+      "Proposed scenario — not observed or deployed",
+    );
+    await expect(page.getByText("Current · observed")).toBeVisible();
+    await expect(page.getByText("Proposed · modeled")).toBeVisible();
+    await page.getByRole("tab", { name: "Difference" }).click();
+    await expect(page).toHaveURL(/state=difference/);
+    await expect(page.getByTestId("graph-scenario-difference")).toContainText(
+      "1 touched observed paths",
+    );
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflows).toBe(false);
+    await page.screenshot({
+      path: testInfo.outputPath(`graph-scenario-${proof.width}x${proof.height}-${proof.theme}.png`),
+      fullPage: true,
+    });
+  });
+}
+
+test("Attack Paths keeps scenario state observed-only", async ({ page }) => {
+  await routeCockpit(page);
+  await page.goto(`/security-graph?lens=attack-path&scenario=scenario-private-endpoint&state=proposed`);
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText(/Attack Paths remains observed-only/)).toBeVisible();
+  await expect(page.getByText(/Proposed scenario — not observed or deployed/)).toHaveCount(0);
+  await expect(page).toHaveURL(/state=current/);
+});
 
 async function expectCockpitVisible(page: Page) {
   await expect(page.getByRole("heading", { name: "Investigation" })).toBeVisible();

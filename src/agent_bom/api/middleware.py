@@ -1210,6 +1210,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # doesn't silently lock viewers/analysts out of read-only surfaces.
         ("POST", "/v1/graph/query", "viewer"),
         ("POST", "/v1/graph/should-i-deploy", "viewer"),
+        ("GET", "/v1/graph/scenarios", "viewer"),
+        ("POST", "/v1/graph/scenarios", "analyst"),
+        ("PUT", "/v1/graph/scenarios/", "analyst"),
+        ("DELETE", "/v1/graph/scenarios/", "admin"),
         ("POST", "/v1/audit/export/verify", "viewer"),
         # Per-span attack-path correlation is a read-only join over a submitted
         # trace (returns no key material, stores nothing) — keep it viewer even
@@ -1301,6 +1305,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("DELETE", "/v1/cloud/connections/", "cloud.connection:write"),
         ("GET", "/v1/findings", "finding:read"),
         ("GET", "/v1/graph", "graph:read"),
+        ("GET", "/v1/graph/scenarios", "graph:read"),
+        ("POST", "/v1/graph/scenarios", "scan:write"),
+        ("PUT", "/v1/graph/scenarios/", "scan:write"),
+        ("DELETE", "/v1/graph/scenarios/", "config:write"),
         ("POST", "/v1/graph/query", "graph:read"),
         ("POST", "/v1/graph/should-i-deploy", "graph:read"),
         ("GET", "/v1/auth/keys", "auth.keys:read"),

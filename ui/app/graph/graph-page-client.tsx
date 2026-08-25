@@ -32,6 +32,11 @@ import {
   type DriftScrubberPair,
 } from "@/components/graph-drift-timeline";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
+import {
+  GraphScenarioAuthoring,
+  GraphScenarioComparisonPanel,
+  GraphScenarioSelector,
+} from "@/components/graph-scenario-comparison";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import {
   GraphRollupDecisionSurface,
@@ -124,6 +129,8 @@ import {
   type GraphNodeDetailResponse,
   type GraphQueryResponse,
   type GraphSnapshot,
+  type GraphScenario,
+  type GraphScenarioComparisonResponse,
   type UnifiedGraphResponse,
 } from "@/lib/api";
 import type {
@@ -166,6 +173,12 @@ import { useCaptureMode } from "@/lib/use-capture-mode";
 import { useAuthState } from "@/components/auth-provider";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation";
+import { roleCanConnect } from "@/lib/roles";
+import {
+  parseGraphScenarioViewState,
+  proposedGraphFromComparison,
+  type GraphScenarioViewState,
+} from "@/lib/graph-scenario";
 
 // The whole current-scan graph loads in one request (no numbered pagination).
 // The bound matches the interactive render budget: past it, the overview
@@ -714,6 +727,26 @@ function GraphPageInner() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
+  const [scenarios, setScenarios] = useState<GraphScenario[]>([]);
+  const [selectedScenarioId, setSelectedScenarioId] = useState(() =>
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("scenario") ?? ""
+      : "",
+  );
+  const [scenarioState, setScenarioState] = useState<GraphScenarioViewState>(() =>
+    typeof window !== "undefined"
+      ? parseGraphScenarioViewState(
+          new URLSearchParams(window.location.search).get("state"),
+        )
+      : "current",
+  );
+  const [scenarioComparison, setScenarioComparison] =
+    useState<GraphScenarioComparisonResponse | null>(null);
+  const [loadingScenarios, setLoadingScenarios] = useState(false);
+  const [loadingScenarioComparison, setLoadingScenarioComparison] =
+    useState(false);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [scenarioRefreshKey, setScenarioRefreshKey] = useState(0);
   const [attackPathQueue, setAttackPathQueue] = useState<UnifiedGraphResponse | null>(
     null,
   );
@@ -898,6 +931,65 @@ function GraphPageInner() {
   const canvasAgentRef = useRef(canvasAgent);
   canvasLensRef.current = canvasLens;
   canvasAgentRef.current = canvasAgent;
+
+  const selectedScenario = useMemo(
+    () =>
+      scenarios.find((scenario) => scenario.scenario_id === selectedScenarioId) ??
+      scenarioComparison?.scenario ??
+      null,
+    [scenarioComparison?.scenario, scenarios, selectedScenarioId],
+  );
+  const attackPathLens = canvasLens === "attack-path";
+
+  useEffect(() => {
+    setLoadingScenarios(true);
+    api
+      .getGraphScenarios()
+      .then((response) => {
+        setScenarios(response.scenarios);
+        setScenarioError(null);
+      })
+      .catch(() => {
+        // Scenarios are additive. An older/read-only API must not prevent the
+        // observed graph from rendering.
+        setScenarios([]);
+      })
+      .finally(() => setLoadingScenarios(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedScenarioId || !selectedScanId) {
+      setScenarioComparison(null);
+      setScenarioError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingScenarioComparison(true);
+    setScenarioError(null);
+    api
+      .getGraphScenarioComparison(selectedScenarioId, selectedScanId)
+      .then((response) => {
+        if (!cancelled) setScenarioComparison(response);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setScenarioComparison(null);
+        setScenarioError("Could not load the scenario comparison.");
+        setScenarioState("current");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingScenarioComparison(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scenarioRefreshKey, selectedScanId, selectedScenarioId]);
+
+  useEffect(() => {
+    if (attackPathLens && scenarioState !== "current") {
+      setScenarioState("current");
+    }
+  }, [attackPathLens, scenarioState]);
 
   useEffect(() => {
     const next = createCanvasLensGraphFilters(canvasLens, canvasAgent);
@@ -1100,6 +1192,18 @@ function GraphPageInner() {
     };
   }, [attackPathQueue, graphData]);
 
+  const proposedGraphData = useMemo(
+    () =>
+      mergedGraphData
+        ? proposedGraphFromComparison(mergedGraphData, scenarioComparison)
+        : null,
+    [mergedGraphData, scenarioComparison],
+  );
+  const projectedGraphData =
+    scenarioState === "current" || attackPathLens
+      ? mergedGraphData
+      : proposedGraphData;
+
   const activeSnapshot = useMemo(
     () =>
       snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
@@ -1260,7 +1364,7 @@ function GraphPageInner() {
     graphData?.nodes.length ??
     0;
 
-  const rollupEligible = graphRollupEligible({
+  const rollupEligible = scenarioState === "current" && graphRollupEligible({
     hasSelectedScan: Boolean(selectedScanId),
     rollupPreference: rollupPreferenceRef.current,
     rollupDismissed,
@@ -1379,7 +1483,7 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
-    if (!mergedGraphData) {
+    if (!projectedGraphData) {
       return {
         nodes: [],
         edges: [],
@@ -1389,9 +1493,9 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
-    return buildUnifiedFlowGraph(mergedGraphData, filters);
+    return buildUnifiedFlowGraph(projectedGraphData, filters);
   }, [
-    mergedGraphData,
+    projectedGraphData,
     filters,
     rollupNavigationActive,
     rollupCanvasPending,
@@ -1444,6 +1548,10 @@ function GraphPageInner() {
     // of the shareable view state.
     const lens = currentSearch.get("lens") || searchParams.get("lens");
     if (lens) nextParams.set("lens", lens);
+    if (selectedScenarioId) {
+      nextParams.set("scenario", selectedScenarioId);
+      nextParams.set("state", attackPathLens ? "current" : scenarioState);
+    }
     if (captureMode) {
       nextParams.set("capture", "1");
     }
@@ -1501,6 +1609,7 @@ function GraphPageInner() {
     router.replace(url, { scroll: false });
   }, [
     activeScopePreset,
+    attackPathLens,
     captureMode,
     filters,
     investigationMode,
@@ -1512,13 +1621,15 @@ function GraphPageInner() {
     router,
     searchParams,
     selectedScanId,
+    selectedScenarioId,
+    scenarioState,
   ]);
 
   // Constraint propagation — recompute valid values whenever graph or
   // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
   const filterAlgebra = useMemo(
-    () => applyFilters(graphData, filters),
-    [graphData, filters],
+    () => applyFilters(projectedGraphData, filters),
+    [projectedGraphData, filters],
   );
   const validValues = filterAlgebra.validValues;
 
@@ -2642,6 +2753,20 @@ function GraphPageInner() {
               ))}
             </select>
 
+            <GraphScenarioSelector
+              scenarios={scenarios}
+              selectedId={selectedScenarioId}
+              loading={loadingScenarios}
+              onSelect={(scenarioId) => {
+                setSelectedScenarioId(scenarioId);
+                setScenarioState("current");
+                if (!scenarioId) {
+                  setScenarioComparison(null);
+                  setScenarioError(null);
+                }
+              }}
+            />
+
             <GraphEvidenceExportButton
               scanId={selectedScanId || undefined}
               filenamePrefix={
@@ -2714,6 +2839,52 @@ function GraphPageInner() {
               <GraphLensSwitcher variant="compact" legendItems={legendItems} />
             </div>
           </div>
+
+          <GraphScenarioComparisonPanel
+            scenario={selectedScenario}
+            comparison={scenarioComparison}
+            state={scenarioState}
+            loading={loadingScenarioComparison}
+            error={scenarioError}
+            attackPathLens={attackPathLens}
+            baseSnapshotAvailable={Boolean(
+              selectedScenario &&
+                snapshots.some(
+                  (snapshot) => snapshot.scan_id === selectedScenario.base_scan_id,
+                ),
+            )}
+            onStateChange={setScenarioState}
+            onSwitchBase={() => {
+              if (selectedScenario) {
+                setSelectedScanId(selectedScenario.base_scan_id);
+              }
+            }}
+            authoring={
+              <GraphScenarioAuthoring
+                scanId={selectedScanId}
+                scenario={selectedScenario}
+                session={session}
+                canWrite={
+                  roleCanConnect(
+                    session?.role_summary?.role ?? session?.role,
+                  ) &&
+                  !session?.managed_trial_mode &&
+                  session?.auth_method !== "managed_trial_oidc"
+                }
+                onSaved={(savedScenario) => {
+                  setScenarios((current) => [
+                    savedScenario,
+                    ...current.filter(
+                      (item) => item.scenario_id !== savedScenario.scenario_id,
+                    ),
+                  ]);
+                  setSelectedScenarioId(savedScenario.scenario_id);
+                  setScenarioState("proposed");
+                  setScenarioRefreshKey((current) => current + 1);
+                }}
+              />
+            }
+          />
 
           {activeScopePreset === "assetDrift" && (
             <div className="mt-3 space-y-3">

@@ -15,6 +15,7 @@ from agent_bom.api.stores import (
     _get_credential_ref_store,
     _get_exception_store,
     _get_fleet_store,
+    _get_graph_scenario_store,
     _get_graph_store,
     _get_policy_store,
     _get_schedule_store,
@@ -143,6 +144,8 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
         quota = _get_tenant_quota_store().get(tenant_id)
     except RuntimeError:
         unavailable["tenant_quota"] = _TENANT_STORE_UNAVAILABLE
+    graph_scenario_store = _get_graph_scenario_store()
+    graph_scenario_count = graph_scenario_store.count(tenant_id)
 
     counts = {
         "jobs": len(jobs),
@@ -157,6 +160,7 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
         "api_keys": len(api_keys),
         "graph_snapshots": len(graph_snapshots),
         "tenant_quota_overrides": 1 if quota is not None else 0,
+        "graph_scenarios": graph_scenario_count,
         "audit_log_entries_retained": get_audit_log().count(tenant_id=tenant_id),
         "policy_audit_entries_retained": _policy_audit_count(tenant_id),
     }
@@ -186,6 +190,7 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
             "api_keys": [record.to_dict() for record in api_keys[:limit]],
             "graph_snapshots": graph_snapshots[:limit],
             "tenant_quota_overrides": quota or {},
+            "graph_scenarios": [_dump_record(record) for record in graph_scenario_store.list(tenant_id, limit=limit)],
         }
     return payload
 
@@ -227,6 +232,7 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
         "api_keys": get_key_store().delete_tenant(tenant_id),
         "tenant_quota_overrides": 1 if _get_tenant_quota_store().delete(tenant_id) else 0,
         "graph_rows": _delete_graph_tenant(tenant_id),
+        "graph_scenarios": _get_graph_scenario_store().delete_tenant(tenant_id),
     }
     return deleted
 

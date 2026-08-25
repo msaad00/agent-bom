@@ -129,6 +129,8 @@ const SHARED_INVESTIGATION_PARAMS = [
   "rollup",
   "rollup_node",
   "trace",
+  "scenario",
+  "state",
 ] as const;
 
 export function buildInvestigationLensHref(

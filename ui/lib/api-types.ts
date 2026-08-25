@@ -166,6 +166,123 @@ export interface GraphSnapshot {
   analysis_status?: import("./graph-schema").GraphStats["analysis_status"] | undefined;
 }
 
+export type GraphScenarioChange =
+  | {
+      kind: "add_node";
+      key: string;
+      entity_type: string;
+      label: string;
+      presentation?: Record<string, unknown> | undefined;
+    }
+  | { kind: "remove_node"; node_id: string }
+  | {
+      kind: "patch_node";
+      node_id: string;
+      patch: {
+        label?: string | undefined;
+        status?: string | undefined;
+        risk_score?: number | undefined;
+        severity?: string | undefined;
+        attributes?: Partial<
+          Record<
+            | "description"
+            | "environment"
+            | "owner"
+            | "provider"
+            | "region"
+            | "account_id"
+            | "repository"
+            | "fix_status"
+            | "disposition"
+            | "reachability",
+            unknown
+          >
+        > | undefined;
+        compliance_tags?: string[] | undefined;
+        data_sources?: string[] | undefined;
+      };
+    }
+  | {
+      kind: "add_edge";
+      source: string;
+      target: string;
+      relationship: string;
+      direction: "directed" | "bidirectional";
+      weight: number;
+      traversable: boolean;
+      confidence: number;
+    }
+  | {
+      kind: "remove_edge";
+      source: string;
+      target: string;
+      relationship: string;
+    };
+
+/** Persisted, snapshot-pinned proposed architecture. Never observed state. */
+export interface GraphScenario {
+  scenario_id: string;
+  tenant_id: string;
+  name: string;
+  description: string;
+  base_scan_id: string;
+  assumptions: string[];
+  changes: GraphScenarioChange[];
+  revision: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphScenariosResponse {
+  schema: "graph.scenarios.v1" | string;
+  count: number;
+  scenarios: GraphScenario[];
+}
+
+export interface GraphScenarioResponse {
+  schema: "graph.scenarios.v1" | string;
+  scenario: GraphScenario;
+}
+
+export interface GraphScenarioComparisonCounts {
+  scan_id?: string | undefined;
+  node_count: number;
+  edge_count: number;
+  completeness?: GraphCompleteness | undefined;
+  base_status?: "available" | "stale" | "unavailable" | string | undefined;
+  latest_scan_id?: string | null | undefined;
+}
+
+export interface GraphScenarioProposedGraph
+  extends GraphScenarioComparisonCounts {
+  modeled: true;
+  nodes: UnifiedNode[];
+  edges: UnifiedEdge[];
+}
+
+export interface GraphScenarioDifference {
+  nodes_added: unknown[];
+  nodes_removed: unknown[];
+  nodes_changed: unknown[];
+  edges_added: unknown[];
+  edges_removed: unknown[];
+  touched_observed_path_count: number;
+  touched_observed_path_ids: string[];
+}
+
+export interface GraphScenarioComparisonResponse {
+  schema: "graph.scenario-comparison.v1" | string;
+  scenario: GraphScenario;
+  current: GraphScenarioComparisonCounts;
+  proposed: GraphScenarioProposedGraph;
+  difference: GraphScenarioDifference;
+  available: boolean;
+  unavailable_reason?: string | null | undefined;
+  base_status?: string | undefined;
+  stale?: boolean | undefined;
+}
+
 /** Adjacent-pair entry from GET /v1/graph/history */
 export interface GraphHistoryDiffSummary {
   nodes_added?: number;

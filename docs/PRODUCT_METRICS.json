@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-08-24",
+  "generated_on": "2026-08-25",
   "version": "0.102.0",
   "metrics": [
     {
@@ -28,7 +28,7 @@
     },
     {
       "name": "API route modules",
-      "value": 48,
+      "value": 49,
       "source": "src/agent_bom/api/routes",
       "notes": "Counts Python files in the routes package, including __init__.py."
     },
@@ -40,7 +40,7 @@
     },
     {
       "name": "Python modules",
-      "value": 869,
+      "value": 872,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

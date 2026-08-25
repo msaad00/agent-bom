@@ -1,6 +1,129 @@
 {
   "components": {
     "schemas": {
+      "AddEdgeOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "assumption": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Assumption",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "direction": {
+            "default": "directed",
+            "enum": [
+              "directed",
+              "bidirectional"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "kind": {
+            "const": "add_edge",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/RelationshipType"
+          },
+          "source": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          },
+          "traversable": {
+            "default": true,
+            "title": "Traversable",
+            "type": "boolean"
+          },
+          "weight": {
+            "default": 1.0,
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "target",
+          "relationship"
+        ],
+        "title": "AddEdgeOperation",
+        "type": "object"
+      },
+      "AddNodeOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "assumption": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Assumption",
+            "type": "string"
+          },
+          "entity_type": {
+            "$ref": "#/components/schemas/EntityType"
+          },
+          "key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "const": "add_node",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/ScenarioNodePatch",
+            "default": {}
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "entity_type",
+          "label"
+        ],
+        "title": "AddNodeOperation",
+        "type": "object"
+      },
       "AdoptionEventRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3249,6 +3372,55 @@
         "title": "EntitlementHealth",
         "type": "object"
       },
+      "EntityType": {
+        "description": "Node entity types, mapped to OCSF classes.",
+        "enum": [
+          "agent",
+          "server",
+          "package",
+          "tool",
+          "tool_call",
+          "model",
+          "dataset",
+          "framework",
+          "container",
+          "cloud_resource",
+          "resource",
+          "source_file",
+          "code_module",
+          "config_file",
+          "external_import",
+          "ci_job",
+          "directory",
+          "vulnerability",
+          "misconfiguration",
+          "credential",
+          "credential_ref",
+          "org",
+          "account",
+          "user",
+          "group",
+          "role",
+          "policy",
+          "service_account",
+          "service_principal",
+          "federated_identity",
+          "managed_identity",
+          "access_grant",
+          "access_policy",
+          "blueprint",
+          "drift_incident",
+          "data_store",
+          "api_gateway",
+          "application",
+          "provider",
+          "environment",
+          "fleet",
+          "cluster"
+        ],
+        "title": "EntityType",
+        "type": "string"
+      },
       "EstateFindingSummary": {
         "additionalProperties": false,
         "description": "Unbounded totals for the estate's posture, whatever a view chooses to show.\n\nEvery field here counts the WHOLE estate. A bounded list beside this summary\nis a page of it, never a redefinition of it \u2014 which is why the story can cap\nwhat it renders without any surface reporting a page size as a total.",
@@ -4989,6 +5161,156 @@
         "title": "GraphQueryRequest",
         "type": "object"
       },
+      "GraphScenarioCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "items": {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "base_scan_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Base Scan Id",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "add_edge": "#/components/schemas/AddEdgeOperation",
+                  "add_node": "#/components/schemas/AddNodeOperation",
+                  "patch_node": "#/components/schemas/PatchNodeOperation",
+                  "remove_edge": "#/components/schemas/RemoveEdgeOperation",
+                  "remove_node": "#/components/schemas/RemoveNodeOperation"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddNodeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveNodeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/PatchNodeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/AddEdgeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveEdgeOperation"
+                }
+              ]
+            },
+            "maxItems": 500,
+            "title": "Changes",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "base_scan_id"
+        ],
+        "title": "GraphScenarioCreate",
+        "type": "object"
+      },
+      "GraphScenarioUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "items": {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "changes": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "add_edge": "#/components/schemas/AddEdgeOperation",
+                  "add_node": "#/components/schemas/AddNodeOperation",
+                  "patch_node": "#/components/schemas/PatchNodeOperation",
+                  "remove_edge": "#/components/schemas/RemoveEdgeOperation",
+                  "remove_node": "#/components/schemas/RemoveNodeOperation"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddNodeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveNodeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/PatchNodeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/AddEdgeOperation"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveEdgeOperation"
+                }
+              ]
+            },
+            "maxItems": 500,
+            "title": "Changes",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scenario_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "expected_revision",
+          "name"
+        ],
+        "title": "GraphScenarioUpdate",
+        "type": "object"
+      },
       "GraphScopeDescriptor": {
         "properties": {
           "basis": {
@@ -5666,6 +5988,32 @@
         "title": "PackageCheckRequest",
         "type": "object"
       },
+      "PatchNodeOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "patch_node",
+            "title": "Kind",
+            "type": "string"
+          },
+          "node_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Node Id",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/ScenarioNodePatch"
+          }
+        },
+        "required": [
+          "kind",
+          "node_id",
+          "patch"
+        ],
+        "title": "PatchNodeOperation",
+        "type": "object"
+      },
       "PolicyCreate": {
         "additionalProperties": false,
         "properties": {
@@ -6115,6 +6463,117 @@
           }
         },
         "title": "PushPayload",
+        "type": "object"
+      },
+      "RelationshipType": {
+        "description": "Edge relationship types across all graph surfaces.",
+        "enum": [
+          "hosts",
+          "uses",
+          "uses_framework",
+          "depends_on",
+          "provides_tool",
+          "exposes_cred",
+          "reaches_tool",
+          "serves_model",
+          "contains",
+          "imports",
+          "defines",
+          "runs",
+          "configures",
+          "observes",
+          "affects",
+          "vulnerable_to",
+          "exploitable_via",
+          "remediates",
+          "triggers",
+          "shares_server",
+          "shares_cred",
+          "lateral_path",
+          "manages",
+          "owns",
+          "part_of",
+          "member_of",
+          "assumes",
+          "trusts",
+          "attached",
+          "inherits",
+          "can_access",
+          "cross_account_trust",
+          "authenticates_as",
+          "scoped_to",
+          "governs",
+          "exhibits_drift",
+          "exposed_to",
+          "stores",
+          "has_permission",
+          "protects",
+          "acted_as",
+          "invoked",
+          "called",
+          "used_credential",
+          "accessed",
+          "delegated_to",
+          "correlates_with",
+          "possibly_correlates_with",
+          "belongs_to"
+        ],
+        "title": "RelationshipType",
+        "type": "string"
+      },
+      "RemoveEdgeOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "remove_edge",
+            "title": "Kind",
+            "type": "string"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/RelationshipType"
+          },
+          "source": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "target",
+          "relationship"
+        ],
+        "title": "RemoveEdgeOperation",
+        "type": "object"
+      },
+      "RemoveNodeOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "remove_node",
+            "title": "Kind",
+            "type": "string"
+          },
+          "node_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "node_id"
+        ],
+        "title": "RemoveNodeOperation",
         "type": "object"
       },
       "ReportFormat": {
@@ -7118,6 +7577,258 @@
           "status"
         ],
         "title": "ScanScopePayload",
+        "type": "object"
+      },
+      "ScenarioNodeAttributes": {
+        "additionalProperties": false,
+        "description": "Presentation and posture attributes scenarios may model.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "enum": [
+                  "open",
+                  "accepted",
+                  "mitigated",
+                  "resolved",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "fix_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fixable",
+                  "not_fixable",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Status"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "reachability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "confirmed",
+                  "likely",
+                  "unlikely",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reachability"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "repository": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository"
+          }
+        },
+        "title": "ScenarioNodeAttributes",
+        "type": "object"
+      },
+      "ScenarioNodePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioNodeAttributes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "compliance_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compliance Tags"
+          },
+          "data_sources": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Sources"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "",
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "info",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "inactive",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "ScenarioNodePatch",
         "type": "object"
       },
       "ScheduleCreate": {
@@ -24518,6 +25229,266 @@
           }
         },
         "summary": "Get Graph Rollup",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/scenarios": {
+      "get": {
+        "operationId": "list_graph_scenarios_v1_graph_scenarios_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Graph Scenarios V1 Graph Scenarios Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Graph Scenarios",
+        "tags": [
+          "graph"
+        ]
+      },
+      "post": {
+        "operationId": "create_graph_scenario_v1_graph_scenarios_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphScenarioCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Graph Scenario V1 Graph Scenarios Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Graph Scenario",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/scenarios/{scenario_id}": {
+      "delete": {
+        "operationId": "delete_graph_scenario_v1_graph_scenarios__scenario_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Expected Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Graph Scenario",
+        "tags": [
+          "graph"
+        ]
+      },
+      "get": {
+        "operationId": "get_graph_scenario_v1_graph_scenarios__scenario_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Graph Scenario V1 Graph Scenarios  Scenario Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Graph Scenario",
+        "tags": [
+          "graph"
+        ]
+      },
+      "put": {
+        "operationId": "update_graph_scenario_v1_graph_scenarios__scenario_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphScenarioUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Graph Scenario V1 Graph Scenarios  Scenario Id  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Graph Scenario",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/scenarios/{scenario_id}/comparison": {
+      "get": {
+        "operationId": "compare_graph_scenario_v1_graph_scenarios__scenario_id__comparison_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact pinned base snapshot ID",
+            "in": "query",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "description": "Exact pinned base snapshot ID",
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Graph Scenario V1 Graph Scenarios  Scenario Id  Comparison Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Graph Scenario",
         "tags": [
           "graph"
         ]

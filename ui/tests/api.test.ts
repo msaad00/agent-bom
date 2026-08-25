@@ -433,6 +433,32 @@ describe('api.getGraphRollup', () => {
   })
 })
 
+describe('api.updateGraphScenario', () => {
+  it('pins the route identity in the body and does not resend the immutable base', async () => {
+    const fetchMock = mockFetch({ schema: 'graph.scenarios.v1', scenario: {} })
+    global.fetch = fetchMock
+
+    await api.updateGraphScenario('scenario-1', {
+      name: 'Private endpoint',
+      description: '',
+      assumptions: [],
+      changes: [],
+      expected_revision: 3,
+    })
+
+    const [url, options] = fetchMock.mock.calls[0]!
+    expect(url).toBe('/v1/graph/scenarios/scenario-1')
+    expect(JSON.parse(options.body)).toEqual({
+      scenario_id: 'scenario-1',
+      name: 'Private endpoint',
+      description: '',
+      assumptions: [],
+      changes: [],
+      expected_revision: 3,
+    })
+  })
+})
+
 describe('api.getScan', () => {
   it('returns expected shape', async () => {
     const payload = {

@@ -992,6 +992,7 @@ from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
 from agent_bom.api.routes.gateway_feed import router as _gateway_feed_router  # noqa: E402
 from agent_bom.api.routes.governance import router as _governance_router  # noqa: E402
 from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
+from agent_bom.api.routes.graph_scenarios import router as _graph_scenarios_router  # noqa: E402
 from agent_bom.api.routes.identities import router as _identities_router  # noqa: E402
 from agent_bom.api.routes.intel import router as _intel_router  # noqa: E402
 from agent_bom.api.routes.inventory_assets import router as _inventory_assets_router  # noqa: E402
@@ -1046,6 +1047,7 @@ for _router in (
     _governance_router,
     _blueprints_router,
     _graph_router,
+    _graph_scenarios_router,
     _identities_router,
     _intel_router,
     _inventory_assets_router,

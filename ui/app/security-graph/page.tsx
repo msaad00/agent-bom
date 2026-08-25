@@ -145,6 +145,14 @@ function AttackPathInvestigationContent() {
   );
 
   const investigationStep = parseInvestigationStep(searchParams.get("step"));
+  const selectedScenarioId = searchParams.get("scenario");
+
+  useEffect(() => {
+    if (!selectedScenarioId || searchParams.get("state") === "current") return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("state", "current");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, selectedScenarioId]);
 
   const setInvestigationStep = useCallback(
     (next: InvestigationStep) => {
@@ -692,6 +700,13 @@ function AttackPathInvestigationContent() {
       />
 
       <GraphLensSwitcher variant="compact" />
+
+      {selectedScenarioId ? (
+        <div className="graph-callout-sky">
+          Attack Paths remains observed-only. Open Estate, Cloud, Repository,
+          Identity, or Lineage to compare this scenario's modeled state.
+        </div>
+      ) : null}
 
       {/* The loop is a control, not content: it rides in the toolbar row rather
           than owning a full-width band with an explanatory paragraph. The page

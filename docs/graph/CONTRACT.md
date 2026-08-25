@@ -109,6 +109,27 @@ These are the explicit non-promises. Reading them is how regulators understand t
 - **No exhaustive centrality.** Bottleneck ranking is *approximate* betweenness: shortest-path traversals from a bounded, deterministic sample of source nodes (50–200, scaled to graph size, drawn by fixed stride over sorted node ids so the answer never depends on insertion order). Every response carries `sampled_sources` and `total_nodes`, and nodes no sampled path crossed are omitted rather than reported at score `0.0`. Treat the ranking as a strong signal, not a proof that no other choke point exists.
 - **No complete answer from a bounded load.** When a snapshot is loaded under a node budget, every projection of it — filtered views, the typed inventory / attack-path / lateral-movement / compliance / runtime views, the estate roll-up and its drill-downs — reports `completeness.truncated` with the reason(s) that applied and the pre-truncation estate total (`total_nodes_source` on roll-up summaries, `stats.total_nodes_source` on graph responses). A filter cannot make truncation untrue: the nodes that were never read might have matched.
 
+### Proposed scenarios are not observed evidence
+
+The Investigation Canvas can save a bounded architecture delta against one
+exact `base_scan_id` and compare `Current`, `Proposed`, and `Difference` over
+the same canonical entity and relationship taxonomy. This is a design tool,
+not a second scanner:
+
+- `Current` is the immutable persisted scan snapshot.
+- `Proposed` is a server-authored overlay whose additions are labeled
+  `evidence_state=proposed`, `observed=false`, and `deployed=false`.
+- `Difference` names additions, removals, posture changes, and observed paths
+  touched by the proposal. A touched path is not reported as eliminated or
+  remediated.
+
+Scenarios are tenant-scoped, revisioned, and pinned. The comparison endpoint
+does not fall forward to the latest snapshot when the base is missing or the
+selected snapshot differs; it returns an explicit unavailable state. Scenario
+operations never write into observed graph tables, findings, SARIF, runtime
+enforcement, or materialized attack paths. Only a later scan can verify that a
+proposed state was deployed and establish its findings or paths.
+
 ---
 
 ## 5. Re-baseline procedure

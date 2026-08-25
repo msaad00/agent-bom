@@ -13,6 +13,10 @@ import type {
   ScanJob,
   ScanJobStatus,
   GraphSnapshot,
+  GraphScenario,
+  GraphScenariosResponse,
+  GraphScenarioResponse,
+  GraphScenarioComparisonResponse,
   GraphHistoryResponse,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
@@ -189,6 +193,11 @@ export type {
   GraphCompleteness,
   GraphAttackPath,
   GraphSnapshot,
+  GraphScenario,
+  GraphScenarioChange,
+  GraphScenariosResponse,
+  GraphScenarioResponse,
+  GraphScenarioComparisonResponse,
   GraphHistoryResponse,
   GraphHistorySnapshot,
   UnifiedGraphResponse,
@@ -974,6 +983,41 @@ export const api = {
     // widen to all retained snapshots so old history is never silently hidden.
     if (windowDays != null) params.set("window_days", String(windowDays));
     return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`);
+  },
+
+  /** List persistent, snapshot-pinned proposed architecture scenarios. */
+  getGraphScenarios: () =>
+    get<GraphScenariosResponse>("/v1/graph/scenarios"),
+
+  /** Compare one proposed scenario against its exact observed base snapshot. */
+  getGraphScenarioComparison: (scenarioId: string, scanId: string) => {
+    const params = new URLSearchParams({ scan_id: scanId });
+    return get<GraphScenarioComparisonResponse>(
+      `/v1/graph/scenarios/${encodeURIComponent(scenarioId)}/comparison?${params.toString()}`,
+    );
+  },
+
+  /** Persist a new snapshot-pinned proposed architecture scenario. */
+  createGraphScenario: (scenario: Omit<GraphScenario, "scenario_id" | "tenant_id" | "revision" | "created_by" | "created_at" | "updated_at">) =>
+    post<GraphScenarioResponse>("/v1/graph/scenarios", scenario),
+
+  /** Replace a scenario using optimistic revision control. */
+  updateGraphScenario: (
+    scenarioId: string,
+    scenario: Omit<GraphScenario, "scenario_id" | "tenant_id" | "base_scan_id" | "revision" | "created_by" | "created_at" | "updated_at"> & { expected_revision: number },
+  ) =>
+    put<GraphScenarioResponse>(
+      `/v1/graph/scenarios/${encodeURIComponent(scenarioId)}`,
+      { ...scenario, scenario_id: scenarioId },
+    ),
+
+  deleteGraphScenario: (scenarioId: string, expectedRevision: number) => {
+    const params = new URLSearchParams({
+      expected_revision: String(expectedRevision),
+    });
+    return del(
+      `/v1/graph/scenarios/${encodeURIComponent(scenarioId)}?${params.toString()}`,
+    );
   },
 
   /** Retained graph history with adjacent diff summaries — GET /v1/graph/history */

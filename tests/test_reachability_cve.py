@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agent_bom.ast.js_ts import npm_package_from_module as _npm_package_from_module
 from agent_bom.ast_analyzer import analyze_project
 from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
@@ -28,6 +30,7 @@ from agent_bom.reachability_cve import (
     FUNCTION_REACHABLE,
     PACKAGE_REACHABLE,
     UNREACHABLE,
+    RuntimeDependencyReachIndex,
     SymbolReachIndex,
     advisory_affected_symbols_by_path,
     classify_reachability,
@@ -528,6 +531,128 @@ def test_wiring_stamps_unreachable_when_symbol_absent() -> None:
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 1
     assert br.symbol_reachability == UNREACHABLE
+
+
+def test_wiring_reaches_runtime_transitive_package_from_reached_parent() -> None:
+    br = _python_br([], pkg_name="urllib3")
+    br.package.is_direct = False
+    br.package.parent_package = "requests"
+    br.package.dependency_depth = 1
+    br.package.dependency_scope = "runtime"
+    br.package.reachability_evidence = "lockfile"
+    packages = [
+        Package(name="requests", version="2.19.1", ecosystem="pypi"),
+        br.package,
+    ]
+
+    stamped = apply_symbol_reachability_to_blast_radii(
+        [br],
+        _ast_result_with_get(),
+        packages=packages,
+    )
+
+    assert stamped == 1
+    assert br.symbol_reachability == PACKAGE_REACHABLE
+    assert br.symbol_reachability_reason == "runtime dependency reached from an entrypoint"
+    assert br.runtime_dependency_chain == ["requests", "urllib3"]
+
+
+def test_runtime_dependency_index_is_multi_hop_and_cycle_safe() -> None:
+    packages = [
+        Package(name="requests", version="2.19.1", ecosystem="pypi"),
+        Package(
+            name="urllib3",
+            version="1.23",
+            ecosystem="pypi",
+            is_direct=False,
+            parent_package="requests",
+            dependency_depth=1,
+            reachability_evidence="lockfile",
+        ),
+        Package(
+            name="idna",
+            version="2.7",
+            ecosystem="pypi",
+            is_direct=False,
+            parent_package="urllib3",
+            dependency_depth=2,
+            reachability_evidence="lockfile",
+        ),
+        # Duplicate occurrence introduces a cycle; the shortest-path map must
+        # retain the reached route and terminate.
+        Package(
+            name="urllib3",
+            version="1.23",
+            ecosystem="pypi",
+            is_direct=False,
+            parent_package="idna",
+            dependency_depth=3,
+            reachability_evidence="lockfile",
+        ),
+    ]
+    symbol_index = SymbolReachIndex.from_ast_result(_ast_result_with_get())
+
+    runtime_index = RuntimeDependencyReachIndex.from_packages(packages, symbol_index)
+
+    assert runtime_index.chain_for_package("idna", ecosystem="pypi") == ("requests", "urllib3", "idna")
+
+
+def test_runtime_dependency_index_omits_ambiguous_versions() -> None:
+    packages = [
+        Package(name="requests", version="2.19.1", ecosystem="pypi"),
+        Package(
+            name="urllib3",
+            version="1.23",
+            ecosystem="pypi",
+            is_direct=False,
+            parent_package="requests",
+            dependency_depth=1,
+            reachability_evidence="lockfile",
+        ),
+        Package(
+            name="urllib3",
+            version="2.6.3",
+            ecosystem="pypi",
+            is_direct=False,
+            parent_package="requests",
+            dependency_depth=1,
+            reachability_evidence="lockfile",
+        ),
+    ]
+
+    runtime_index = RuntimeDependencyReachIndex.from_packages(
+        packages,
+        SymbolReachIndex.from_ast_result(_ast_result_with_get()),
+    )
+
+    assert runtime_index.chain_for_package("urllib3", ecosystem="pypi") == ()
+
+
+@pytest.mark.parametrize(
+    ("scope", "evidence"),
+    [
+        ("dev", "lockfile"),
+        ("optional", "lockfile"),
+        ("runtime", "declaration_only"),
+        ("runtime", "unknown"),
+    ],
+)
+def test_wiring_does_not_upgrade_unproven_transitive_edges(scope: str, evidence: str) -> None:
+    br = _python_br([], pkg_name="unused-child")
+    br.package.is_direct = False
+    br.package.parent_package = "requests"
+    br.package.dependency_depth = 1
+    br.package.dependency_scope = scope
+    br.package.reachability_evidence = evidence
+
+    apply_symbol_reachability_to_blast_radii(
+        [br],
+        _ast_result_with_get(),
+        packages=[Package(name="requests", version="2.19.1", ecosystem="pypi"), br.package],
+    )
+
+    assert br.symbol_reachability == UNREACHABLE
+    assert br.runtime_dependency_chain == []
 
 
 def test_wiring_skips_unsupported_ecosystem_rows() -> None:

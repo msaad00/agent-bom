@@ -717,6 +717,8 @@ def _cve_sarif_result(
         "reachability": finding.reachability,
         "symbol_reachability": evidence(finding, "symbol_reachability"),
         "reachable_affected_symbols": evidence(finding, "reachable_affected_symbols", []),
+        "symbol_reachability_reason": evidence(finding, "symbol_reachability_reason"),
+        "runtime_dependency_chain": evidence(finding, "runtime_dependency_chain", []),
         "affected_servers": list(finding.affected_servers),
         "affected_agents": list(finding.affected_agents),
         "exposed_tools": list(finding.exposed_tools),

@@ -2930,7 +2930,11 @@ def scan(
         # Python finding carries a function_reachable / package_reachable /
         # unreachable signal. No-op when no Python entrypoints were analysed.
         if _ast_result_for_reach is not None:
-            apply_symbol_reachability_to_blast_radii(blast_radii, _ast_result_for_reach)
+            apply_symbol_reachability_to_blast_radii(
+                blast_radii,
+                _ast_result_for_reach,
+                packages=all_packages,
+            )
         # The dual-write `report.findings` was materialized before the stamping
         # above, so its CVE findings still carry null reachability. Re-project the
         # stamped rows onto them so the JSON `findings[]` view agrees with

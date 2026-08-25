@@ -1,0 +1,20 @@
+version = 1
+requires-python = ">=3.11"
+
+[[package]]
+name = "attrs"
+version = "25.3.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "urllib3"
+version = "1.23"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "requests"
+version = "2.19.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+  { name = "urllib3" },
+]

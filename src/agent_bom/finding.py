@@ -1544,6 +1544,8 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "graph_reachable_from_agents": _sanitized_evidence_field(getattr(br, "graph_reachable_from_agents", [])),
         "symbol_reachability": getattr(br, "symbol_reachability", None),
         "reachable_affected_symbols": _sanitized_evidence_field(getattr(br, "reachable_affected_symbols", [])),
+        "symbol_reachability_reason": getattr(br, "symbol_reachability_reason", None),
+        "runtime_dependency_chain": _sanitized_evidence_field(getattr(br, "runtime_dependency_chain", [])),
         "layer_attribution": _sanitized_evidence_field([_package_occurrence_evidence(occ) for occ in br.layer_attribution]),
         "published_at": getattr(vuln, "published_at", None),
         "modified_at": getattr(vuln, "modified_at", None),

@@ -56,6 +56,7 @@ snapshot re-analysis pipeline.
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -68,7 +69,7 @@ from agent_bom.package_utils import (
 
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
-    from agent_bom.models import Vulnerability
+    from agent_bom.models import Package, Vulnerability
 
 # Three-state signal. Ordered most-specific (most reachable) first.
 FUNCTION_REACHABLE = "function_reachable"
@@ -223,6 +224,94 @@ class SymbolReachIndex:
 
 
 @dataclass(frozen=True)
+class RuntimeDependencyReachIndex:
+    """Lockfile/runtime dependency paths descending from reached packages.
+
+    Only explicit runtime edges with resolved evidence are followed. Optional,
+    development, conditional, declaration-only, unknown, orphaned, and
+    ambiguous edges remain absent so manifest presence cannot become execution
+    proof. Cycles are bounded by the shortest-path map.
+    """
+
+    _chains_by_key: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    @classmethod
+    def from_packages(
+        cls,
+        packages: Iterable["Package"],
+        symbol_index: SymbolReachIndex,
+    ) -> "RuntimeDependencyReachIndex":
+        package_rows = list(packages)
+        known_keys = {
+            _pkg_index_key(package.name, package.ecosystem)
+            for package in package_rows
+            if package.name and package.ecosystem
+        }
+        versions_by_key: dict[str, set[str]] = defaultdict(set)
+        for package in package_rows:
+            if package.name and package.ecosystem:
+                versions_by_key[_pkg_index_key(package.name, package.ecosystem)].add(package.version)
+        ambiguous_keys = {key for key, versions in versions_by_key.items() if len(versions) > 1}
+        names_by_key: dict[str, str] = {}
+        children: dict[str, set[str]] = defaultdict(set)
+        for package in package_rows:
+            if not package.name or not package.ecosystem:
+                continue
+            child_key = _pkg_index_key(package.name, package.ecosystem)
+            names_by_key.setdefault(child_key, package.name)
+            parent = (package.parent_package or "").strip()
+            scope = (package.dependency_scope or "").strip().lower()
+            evidence = (package.reachability_evidence or "").strip().lower()
+            if (
+                package.is_direct
+                or package.dependency_depth < 1
+                or not parent
+                or scope != "runtime"
+                or evidence not in {"lockfile", "runtime_dependency"}
+            ):
+                continue
+            parent_key = _pkg_index_key(parent, package.ecosystem)
+            if (
+                parent_key not in known_keys
+                or parent_key == child_key
+                or parent_key in ambiguous_keys
+                or child_key in ambiguous_keys
+            ):
+                continue
+            names_by_key.setdefault(parent_key, parent)
+            children[parent_key].add(child_key)
+
+        chains: dict[str, tuple[str, ...]] = {}
+        queue: deque[str] = deque()
+        for key in sorted(known_keys):
+            package_name = names_by_key.get(key, key.split(":", 1)[-1])
+            ecosystem = key.split(":", 1)[0]
+            if symbol_index.is_package_reached(package_name, ecosystem=ecosystem):
+                chains[key] = (package_name,)
+                queue.append(key)
+
+        while queue:
+            parent_key = queue.popleft()
+            parent_chain = chains[parent_key]
+            for child_key in sorted(children.get(parent_key, ())):
+                candidate = (*parent_chain, names_by_key[child_key])
+                existing = chains.get(child_key)
+                if existing is not None and (len(existing), existing) <= (len(candidate), candidate):
+                    continue
+                chains[child_key] = candidate
+                queue.append(child_key)
+        return cls(chains)
+
+    def chain_for_package(self, package: str, *, ecosystem: str = "pypi") -> tuple[str, ...]:
+        """Return a transitive runtime path, excluding directly reached roots."""
+        chain = self._chains_by_key.get(_pkg_index_key(package, ecosystem), ())
+        return chain if len(chain) > 1 else ()
+
+    def __bool__(self) -> bool:
+        return any(len(chain) > 1 for chain in self._chains_by_key.values())
+
+
+@dataclass(frozen=True)
 class AdvisoryIdentifiers:
     """CVE/CWE/CPE identifiers extracted from an advisory for reachability context."""
 
@@ -241,6 +330,7 @@ class ReachabilitySignal:
     matched_symbols: tuple[str, ...] = ()
     advisory_symbols: tuple[str, ...] = ()
     call_path: tuple[str, ...] = ()
+    runtime_dependency_chain: tuple[str, ...] = ()
     advisory_identifiers: AdvisoryIdentifiers = field(default_factory=AdvisoryIdentifiers)
 
     @property
@@ -539,6 +629,7 @@ def classify_reachability(
     advisory: "Vulnerability | Mapping[str, Any] | None",
     index: SymbolReachIndex,
     package_reachable: bool | None = None,
+    runtime_dependency_chain: Iterable[str] = (),
     ecosystem: str = "pypi",
 ) -> ReachabilitySignal:
     """Classify one vulnerable package into a three-state reachability signal.
@@ -553,12 +644,15 @@ def classify_reachability(
     index:
         Reached-symbol index for the scanned project.
     package_reachable:
-        Optional import / dependency-closure reach signal from the graph
-        layer (``BlastRadius.graph_reachable``). When ``True`` it lets us
-        report ``package_reachable`` for a package that is imported but
-        whose symbols were not individually captured. ``None`` means the
-        caller has no graph-reach evidence and we rely on the symbol index
-        alone.
+        Optional evidence-backed attack-path signal from the graph layer
+        (``BlastRadius.graph_reachable``). When ``True`` it lets us report
+        ``package_reachable`` for a package on a proven path whose symbols
+        were not individually captured. ``None`` means the caller has no
+        graph-path evidence and we rely on the symbol index alone.
+    runtime_dependency_chain:
+        A resolved runtime-only package path beginning at a package reached
+        from an application entrypoint. Declaration-only and non-runtime edges
+        must not be passed here.
     ecosystem:
         Package ecosystem for index lookup (``pypi``, ``npm``, …).
     """
@@ -566,7 +660,8 @@ def classify_reachability(
     advisory_symbols = extract_affected_symbols(advisory)
     advisory_by_path = extract_affected_symbols_by_path(advisory)
     advisory_ids = extract_advisory_identifiers(advisory)
-    pkg_reached = index.is_package_reached(package, ecosystem=eco) or package_reachable is True
+    runtime_chain = tuple(runtime_dependency_chain)
+    pkg_reached = index.is_package_reached(package, ecosystem=eco) or package_reachable is True or bool(runtime_chain)
     call_path = index.call_path_for_package(package, ecosystem=eco)
 
     # Match each affected symbol against the symbols reached IN THE SUB-PACKAGE
@@ -596,7 +691,11 @@ def classify_reachability(
         )
 
     if pkg_reached:
-        if not advisory_symbols:
+        if runtime_chain:
+            reason = "runtime dependency reached from an entrypoint"
+            if advisory_symbols:
+                reason = f"{reason}; affected symbol reach is not proven"
+        elif not advisory_symbols:
             reason = "package reached; advisory carries no symbol data"
         else:
             reason = "package reached but no affected symbol is reached"
@@ -608,6 +707,7 @@ def classify_reachability(
             reason=reason,
             advisory_symbols=tuple(sorted(advisory_symbols)),
             call_path=call_path,
+            runtime_dependency_chain=runtime_chain,
             advisory_identifiers=advisory_ids,
         )
 
@@ -626,6 +726,7 @@ __all__ = [
     "UNREACHABLE",
     "AdvisoryIdentifiers",
     "SymbolReachIndex",
+    "RuntimeDependencyReachIndex",
     "ReachabilitySignal",
     "advisory_affected_symbols_list",
     "advisory_affected_symbols_by_path",

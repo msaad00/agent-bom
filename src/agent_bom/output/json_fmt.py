@@ -1004,6 +1004,8 @@ def _blast_radius_json_entry(
         "graph_reachable_from_agents": getattr(br, "graph_reachable_from_agents", []),
         "symbol_reachability": getattr(br, "symbol_reachability", None),
         "reachable_affected_symbols": getattr(br, "reachable_affected_symbols", []),
+        "symbol_reachability_reason": getattr(br, "symbol_reachability_reason", None),
+        "runtime_dependency_chain": getattr(br, "runtime_dependency_chain", []),
     }
 
 

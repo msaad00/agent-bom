@@ -481,6 +481,8 @@ def build_unified_graph_from_report(
                     "reachability_basis": list(br_dict.get("reachability_basis") or []),
                     "graph_reachable": br_dict.get("graph_reachable"),
                     "symbol_reachability": br_dict.get("symbol_reachability"),
+                    "symbol_reachability_reason": br_dict.get("symbol_reachability_reason"),
+                    "runtime_dependency_chain": list(br_dict.get("runtime_dependency_chain") or []),
                     "dependency_reachable": br_dict.get("dependency_reachable"),
                 },
                 compliance_tags=_collect_compliance_tags(br_dict),
@@ -1025,6 +1027,8 @@ def build_unified_graph_from_report(
             vuln_node.attributes["reachability_basis"] = list(br_dict.get("reachability_basis") or [])
             vuln_node.attributes["graph_reachable"] = br_dict.get("graph_reachable")
             vuln_node.attributes["symbol_reachability"] = br_dict.get("symbol_reachability")
+            vuln_node.attributes["symbol_reachability_reason"] = br_dict.get("symbol_reachability_reason")
+            vuln_node.attributes["runtime_dependency_chain"] = list(br_dict.get("runtime_dependency_chain") or [])
             vuln_node.attributes["dependency_reachable"] = br_dict.get("dependency_reachable")
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 

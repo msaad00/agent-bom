@@ -325,6 +325,8 @@ def build_context_graph(
                         "risk_score": br_dict.get("risk_score", 0),
                         "package": br_dict.get("package", ""),
                         "symbol_reachability": br_dict.get("symbol_reachability"),
+                        "symbol_reachability_reason": br_dict.get("symbol_reachability_reason"),
+                        "runtime_dependency_chain": list(br_dict.get("runtime_dependency_chain") or []),
                     },
                 )
             )

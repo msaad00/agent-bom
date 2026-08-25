@@ -21,6 +21,7 @@ from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulnerability
 from agent_bom.output import to_json
 from agent_bom.output.sarif import to_sarif
+from agent_bom.parsers.python_parsers import parse_uv_lock
 from agent_bom.reachability_cve import FUNCTION_REACHABLE, PACKAGE_REACHABLE, UNREACHABLE
 
 
@@ -153,6 +154,58 @@ def test_all_machine_views_agree_on_reachability_verdict() -> None:
         pass
 
 
+def test_transitive_runtime_reach_provenance_is_preserved_across_machine_views() -> None:
+    import csv
+    import io
+
+    from agent_bom.output.csv_fmt import to_csv
+
+    br = _python_br([], pkg_name="urllib3")
+    br.package.is_direct = False
+    br.package.parent_package = "requests"
+    br.package.dependency_depth = 1
+    br.package.reachability_evidence = "lockfile"
+    packages = [Package(name="requests", version="2.19.1", ecosystem="pypi"), br.package]
+
+    apply_symbol_reachability_to_blast_radii(
+        [br],
+        ASTAnalysisResult(dependency_symbol_reach=[_reach("requests", "requests", "get")]),
+        packages=packages,
+    )
+    finding = blast_radius_to_finding(br)
+    report = AIBOMReport(agents=[], blast_radii=[br], findings=[finding])
+    payload = to_json(report)
+    sarif_props = to_sarif(report)["runs"][0]["results"][0]["properties"]
+    graph_attrs = build_unified_graph_from_report(payload).get_node(f"vuln:{br.vulnerability.id}").attributes
+    csv_row = next(csv.DictReader(io.StringIO(to_csv(report))))
+
+    assert payload["findings"][0]["evidence"]["runtime_dependency_chain"] == ["requests", "urllib3"]
+    assert payload["blast_radius"][0]["runtime_dependency_chain"] == ["requests", "urllib3"]
+    assert sarif_props["runtime_dependency_chain"] == ["requests", "urllib3"]
+    assert graph_attrs["runtime_dependency_chain"] == ["requests", "urllib3"]
+    assert csv_row["runtime_dependency_chain"] == "requests;urllib3"
+
+
+def test_api_finding_projection_preserves_transitive_runtime_reach_provenance() -> None:
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.routes.scan import _finding_from_blast_radius
+
+    row = _finding_from_blast_radius(
+        {
+            "vulnerability_id": "CVE-2099-7",
+            "package": "urllib3@1.23",
+            "symbol_reachability": PACKAGE_REACHABLE,
+            "symbol_reachability_reason": "runtime dependency reached from an entrypoint",
+            "runtime_dependency_chain": ["requests", "urllib3"],
+        },
+        ScanJob(job_id="scan-1", created_at="2026-08-25T00:00:00Z", request=ScanRequest()),
+    )
+
+    assert row["symbol_reachability"] == PACKAGE_REACHABLE
+    assert row["symbol_reachability_reason"] == "runtime dependency reached from an entrypoint"
+    assert row["runtime_dependency_chain"] == ["requests", "urllib3"]
+
+
 @pytest.mark.parametrize(
     ("graph_reachable", "dependency_reachable", "expected"),
     [
@@ -229,8 +282,31 @@ def test_ast_result_for_symbol_reach_reads_ordinary_application_project() -> Non
     assert result is not None
     assert result.tools == []
     assert result.application_entrypoints
-    assert {reach.package for reach in result.dependency_symbol_reach} == {"rich"}
+    assert {reach.package for reach in result.dependency_symbol_reach} == {"requests"}
     assert all(reach.entrypoint_provenance for reach in result.dependency_symbol_reach)
+
+
+def test_ordinary_application_reaches_runtime_child_but_not_unused_manifest_dependency() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "ordinary-python-app"
+    ast_result = _ast_result_for_symbol_reach([str(fixture)])
+    assert ast_result is not None
+    packages = parse_uv_lock(fixture)
+    by_name = {package.name: package for package in packages}
+    runtime_child = _python_br([], pkg_name="urllib3")
+    runtime_child.package = by_name["urllib3"]
+    unused = _python_br([], pkg_name="attrs")
+    unused.package = by_name["attrs"]
+
+    apply_symbol_reachability_to_blast_radii(
+        [runtime_child, unused],
+        ast_result,
+        packages=packages,
+    )
+
+    assert runtime_child.symbol_reachability == PACKAGE_REACHABLE
+    assert runtime_child.runtime_dependency_chain == ["requests", "urllib3"]
+    assert unused.symbol_reachability == UNREACHABLE
+    assert unused.runtime_dependency_chain == []
 
 
 def test_ast_result_for_symbol_reach_reads_php_only_project(tmp_path: Path) -> None:

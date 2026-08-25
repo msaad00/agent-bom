@@ -22,7 +22,7 @@ from agent_bom.graph.dependency_reach import compute_dependency_reach
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult
     from agent_bom.finding import Finding
-    from agent_bom.models import Agent, BlastRadius
+    from agent_bom.models import Agent, BlastRadius, Package
 
 _logger = logging.getLogger(__name__)
 
@@ -101,6 +101,7 @@ def apply_symbol_reachability_to_blast_radii(
     blast_radii: list["BlastRadius"],
     ast_result: "ASTAnalysisResult",
     *,
+    packages: list["Package"] | None = None,
     rescore: bool = True,
 ) -> int:
     """Join CVE affected-symbols to AST symbol reach on each BlastRadius row.
@@ -111,11 +112,10 @@ def apply_symbol_reachability_to_blast_radii(
     passes conservative import-proof guards. Rust/Java/C#/Ruby parsers are regex-backed:
     they never invent manifest coordinates or walk unresolved MCP tool handlers.
 
-    Evidence-backed attack-path reach on the row (``graph_reachable``) is fed
-    in as the package fallback so a package on a proven path whose symbols were
-    not individually captured reports ``package_reachable``. Structural
-    ``dependency_reachable`` manifest closure remains separate context and
-    cannot upgrade symbol execution reachability.
+    Evidence-backed attack-path reach on the row (``graph_reachable``) and
+    resolved runtime-only parent edges descending from a symbol-reached package
+    are package fallbacks. Structural ``dependency_reachable`` manifest closure
+    remains separate context and cannot upgrade symbol execution reachability.
 
     Returns the count of rows whose signal was populated. Scores are
     recalculated by default so the report cannot carry a post-analysis verdict
@@ -127,9 +127,10 @@ def apply_symbol_reachability_to_blast_radii(
         return 0
 
     try:
-        from agent_bom.reachability_cve import SymbolReachIndex, classify_reachability
+        from agent_bom.reachability_cve import RuntimeDependencyReachIndex, SymbolReachIndex, classify_reachability
 
         index = SymbolReachIndex.from_ast_result(ast_result)
+        runtime_index = RuntimeDependencyReachIndex.from_packages(packages or (), index)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("Symbol reachability surfacing skipped: %s", exc)
         return 0
@@ -146,11 +147,13 @@ def apply_symbol_reachability_to_blast_radii(
         if ecosystem not in _SYMBOL_REACH_ECOSYSTEMS:
             continue
         try:
+            runtime_chain = runtime_index.chain_for_package(br.package.name, ecosystem=ecosystem)
             signal = classify_reachability(
                 package=br.package.name,
                 advisory=br.vulnerability,
                 index=index,
                 package_reachable=br.graph_reachable,
+                runtime_dependency_chain=runtime_chain,
                 ecosystem=ecosystem,
             )
         except Exception as exc:  # noqa: BLE001
@@ -158,6 +161,8 @@ def apply_symbol_reachability_to_blast_radii(
             continue
         br.symbol_reachability = signal.state
         br.reachable_affected_symbols = list(signal.matched_symbols)
+        br.symbol_reachability_reason = signal.reason
+        br.runtime_dependency_chain = list(signal.runtime_dependency_chain)
         if rescore:
             br.calculate_risk_score()
         stamped += 1

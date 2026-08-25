@@ -68,6 +68,8 @@ _COLUMNS = [
     "owner",
     "sla_due_at",
     "workflow_status",
+    "symbol_reachability_reason",
+    "runtime_dependency_chain",
 ]
 
 
@@ -131,6 +133,8 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
             "owner": finding.owner or "",
             "sla_due_at": finding.to_dict().get("sla_due_at") or "",
             "workflow_status": workflow_status(finding),
+            "symbol_reachability_reason": evidence(finding, "symbol_reachability_reason", ""),
+            "runtime_dependency_chain": ";".join(evidence(finding, "runtime_dependency_chain", []) or []),
         }
         writer.writerow({key: _excel_safe_cell(value) for key, value in row.items()})
 

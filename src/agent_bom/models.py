@@ -966,6 +966,8 @@ class BlastRadius:
     # advisory symbols when function-reachable.
     symbol_reachability: Optional[str] = None
     reachable_affected_symbols: list[str] = field(default_factory=list)
+    symbol_reachability_reason: Optional[str] = None
+    runtime_dependency_chain: list[str] = field(default_factory=list)
 
     # Appended after the existing reachability fields to preserve positional
     # construction compatibility. Structural closure proves an agent-to-package

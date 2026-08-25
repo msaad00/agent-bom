@@ -190,6 +190,8 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "graph_reachable",
         "symbol_reachability",
         "reachable_affected_symbols",
+        "symbol_reachability_reason",
+        "runtime_dependency_chain",
         "match_confidence_tier",
         "vex_status",
         "vex_justification",

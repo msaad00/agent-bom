@@ -228,6 +228,8 @@ def test_parquet_schema_is_additive_and_versioned() -> None:
         "owner",
         "sla_due_at",
         "lifecycle_status",
+        "symbol_reachability_reason",
+        "runtime_dependency_chain",
     ]
     for name in (
         "finding_type",
@@ -246,9 +248,9 @@ def test_parquet_schema_is_additive_and_versioned() -> None:
     for name in _V1_COLUMNS:
         assert name in table.schema.names
     # Additive change is signalled via a schema-version bump in file metadata.
-    assert PARQUET_SCHEMA_VERSION == "3"
+    assert PARQUET_SCHEMA_VERSION == "4"
     meta = table.schema.metadata or {}
-    assert meta.get(b"agent_bom.parquet_schema_version") == b"3"
+    assert meta.get(b"agent_bom.parquet_schema_version") == b"4"
 
 
 def test_parquet_preserves_scan_provenance_and_workflow_context() -> None:

@@ -134,6 +134,10 @@ UV_LOCK = textwrap.dedent("""\
     name = "httpx"
     version = "0.27.0"
     source = { registry = "https://pypi.org/simple" }
+    dependencies = [
+        { name = "anyio" },
+        { name = "certifi" },
+    ]
 
     [[package]]
     name = "certifi"
@@ -175,6 +179,17 @@ class TestUvLock:
         by_name = {p.name: p for p in pkgs}
         assert by_name["httpx"].is_direct is True
         assert by_name["certifi"].is_direct is False  # transitive
+
+    def test_runtime_parent_edges_from_lockfile(self, tmp_path):
+        (tmp_path / "uv.lock").write_text(UV_LOCK)
+        (tmp_path / "pyproject.toml").write_text(PYPROJECT_WITH_DEPS)
+
+        by_name = {p.name: p for p in parse_uv_lock(tmp_path)}
+
+        assert by_name["certifi"].parent_package == "httpx"
+        assert by_name["certifi"].dependency_depth == 1
+        assert by_name["certifi"].dependency_scope == "runtime"
+        assert by_name["certifi"].reachability_evidence == "lockfile"
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert parse_uv_lock(tmp_path) == []

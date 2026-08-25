@@ -23,10 +23,11 @@ from agent_bom.output.finding_views import (
 
 # Lake/Parquet schema version. v1 = the CVE+malicious 28-column table; v2 added
 # unified finding identity; v3 appends scan provenance, source/asset identity,
-# and persisted workflow context. Every evolution is additive: no prior column
+# and persisted workflow context; v4 appends transitive runtime reach
+# provenance. Every evolution is additive: no prior column
 # is renamed, retyped, or reordered, so existing Iceberg/lake consumers keep
 # reading their original projection unchanged.
-PARQUET_SCHEMA_VERSION = "3"
+PARQUET_SCHEMA_VERSION = "4"
 
 _COLUMNS = [
     "cve_id",
@@ -71,6 +72,8 @@ _COLUMNS = [
     "owner",
     "sla_due_at",
     "lifecycle_status",
+    "symbol_reachability_reason",
+    "runtime_dependency_chain",
 ]
 
 
@@ -124,6 +127,8 @@ def _row_dict(finding, report: AIBOMReport) -> dict[str, Any]:
         "owner": workflow.get("owner"),
         "sla_due_at": workflow.get("sla_due_at"),
         "lifecycle_status": workflow.get("lifecycle_status"),
+        "symbol_reachability_reason": evidence(finding, "symbol_reachability_reason", "") or None,
+        "runtime_dependency_chain": ";".join(evidence(finding, "runtime_dependency_chain", []) or []) or None,
     }
 
 
@@ -201,6 +206,8 @@ def _schema(pa):
             ("owner", pa.string()),
             ("sla_due_at", pa.string()),
             ("lifecycle_status", pa.string()),
+            ("symbol_reachability_reason", pa.string()),
+            ("runtime_dependency_chain", pa.string()),
         ],
         metadata={b"agent_bom.parquet_schema_version": PARQUET_SCHEMA_VERSION.encode()},
     )

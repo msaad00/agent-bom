@@ -1548,6 +1548,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                         max_depth=3,
                     )
                 total_pkgs += len(server.packages)
+        all_packages = [package for agent in agents for server in agent.mcp_servers for package in server.packages]
         pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
         # ── Scanning phase ──
@@ -1665,7 +1666,11 @@ def _run_scan_sync(job: ScanJob) -> None:
                     job.progress.append(f"Reachability: stamped {stamped} blast-radius row(s) with graph-walk evidence")
             _ast_for_reach = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req, extra_paths=extra_symbol_paths))
             if _ast_for_reach is not None:
-                sym_stamped = apply_symbol_reachability_to_blast_radii(blast_radii, _ast_for_reach)
+                sym_stamped = apply_symbol_reachability_to_blast_radii(
+                    blast_radii,
+                    _ast_for_reach,
+                    packages=all_packages,
+                )
                 if sym_stamped:
                     with lock:
                         job.progress.append(f"Symbol reachability: stamped {sym_stamped} blast-radius row(s) with function-level evidence")

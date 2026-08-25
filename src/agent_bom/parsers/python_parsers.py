@@ -10,10 +10,12 @@ import json
 import logging
 import re
 import subprocess
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
+from agent_bom.package_utils import normalize_package_name
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 from agent_bom.version_utils import strip_pip_extras
 
@@ -173,11 +175,10 @@ def parse_poetry_lock(directory: Path) -> list[Package]:
 def parse_uv_lock(directory: Path) -> list[Package]:
     """Parse packages from uv.lock (TOML format, uv package manager).
 
-    uv.lock uses a [[package]] array similar to poetry.lock.  Direct
-    dependencies have a ``[package.metadata]`` table; all entries have
-    ``name`` and ``version``.  We treat every entry as a resolved dep and
-    mark is_direct=False (uv flattens the graph; direct vs transitive
-    distinction requires reading pyproject.toml alongside the lock file).
+    uv.lock uses a ``[[package]]`` array similar to poetry.lock. Direct
+    dependencies come from ``pyproject.toml``; resolved ``dependencies``
+    entries preserve the runtime parent graph so downstream reachability can
+    follow a proven lockfile edge without treating every declaration as live.
     """
     lock_file = directory / "uv.lock"
     if not lock_file.exists():
@@ -203,22 +204,64 @@ def parse_uv_lock(directory: Path) -> list[Package]:
                 for dep_str in proj.get("project", {}).get("dependencies", []):
                     m = re.match(r"^([a-zA-Z0-9_.-]+)", dep_str)
                     if m:
-                        direct_names.add(m.group(1).lower())
+                        direct_names.add(normalize_package_name(m.group(1), "pypi"))
             except (OSError, tomllib.TOMLDecodeError, KeyError) as exc:
                 logger.debug("Could not parse pyproject.toml for direct deps: %s", exc)
 
-        for pkg in data.get("package", []):
+        package_rows = [pkg for pkg in data.get("package", []) if isinstance(pkg, dict)]
+        names = [normalize_package_name(str(pkg.get("name", "")), "pypi") for pkg in package_rows]
+        name_counts = Counter(names)
+        unique_names = {name for name, count in name_counts.items() if name and count == 1}
+        children: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for pkg in package_rows:
+            parent = normalize_package_name(str(pkg.get("name", "")), "pypi")
+            if parent not in unique_names:
+                continue
+            for dependency in pkg.get("dependencies", []):
+                if isinstance(dependency, str):
+                    child = normalize_package_name(dependency, "pypi")
+                    scope = "runtime"
+                elif isinstance(dependency, dict):
+                    child = normalize_package_name(str(dependency.get("name", "")), "pypi")
+                    scope = "conditional" if dependency.get("marker") else "runtime"
+                else:
+                    continue
+                if child in unique_names:
+                    children[parent].append((child, scope))
+
+        # Select one deterministic shortest runtime introducing path for the
+        # Package model's single parent field. Ambiguous versions are omitted
+        # above rather than guessed.
+        parent_by_name: dict[str, str] = {}
+        depth_by_name: dict[str, int] = {name: 0 for name in direct_names if name in unique_names}
+        queue = deque(sorted(depth_by_name))
+        while queue:
+            parent = queue.popleft()
+            for child, scope in sorted(children.get(parent, [])):
+                if scope != "runtime" or child in depth_by_name:
+                    continue
+                parent_by_name[child] = parent
+                depth_by_name[child] = depth_by_name[parent] + 1
+                queue.append(child)
+
+        for pkg in package_rows:
             name = pkg.get("name", "")
             version = pkg.get("version", "unknown")
             if not name:
                 continue
+            normalized_name = normalize_package_name(str(name), "pypi")
+            is_direct = normalized_name in direct_names if direct_names else False
             packages.append(
                 Package(
                     name=name,
                     version=version,
                     ecosystem="pypi",
                     purl=f"pkg:pypi/{name}@{version}",
-                    is_direct=(name.lower() in direct_names) if direct_names else False,
+                    is_direct=is_direct,
+                    parent_package=parent_by_name.get(normalized_name),
+                    dependency_depth=depth_by_name.get(normalized_name, 0 if is_direct else 0),
+                    dependency_scope="runtime" if is_direct or normalized_name in parent_by_name else "unknown",
+                    reachability_evidence="lockfile",
                 )
             )
     except Exception as exc:

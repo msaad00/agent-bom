@@ -12,12 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs" / "images" / "vendor" / "provenance.json"
 
 ALLOWED_SOURCE_HOSTS = {
+    "cdn.openai.com",
     "arch-center.azureedge.net",
+    "openai.com",
     "aws.amazon.com",
     "cloud.google.com",
     "d1.awsstatic.com",
     "learn.microsoft.com",
     "services.google.com",
+    "www.anthropic.com",
 }
 
 # The manifest carries two kinds of asset, told apart by which pin they use.
@@ -32,8 +35,10 @@ ALLOWED_SOURCE_HOSTS = {
 # check is what stops either kind from drifting.
 FIRST_PARTY_VENDORS = {
     "Amazon Web Services",
+    "Anthropic Claude",
     "Google Cloud",
     "Microsoft Azure",
+    "OpenAI",
 }
 ICON_SET_VENDORS = {
     "Amazon Web Services",
@@ -48,7 +53,6 @@ ICON_SET_VENDORS = {
     "Windsurf",
 }
 REPOSITORY_PINNED_VENDORS = {
-    "Anthropic Claude",
     "Cursor",
 }
 ICON_SET_SOURCE_HOST = "simpleicons.org"

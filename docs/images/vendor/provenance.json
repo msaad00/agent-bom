@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "retrieved_at": "2026-08-21",
+  "retrieved_at": "2026-08-25",
   "purpose": "Official vendor icons used only to identify supported sources in agent-bom architecture and workflow documentation.",
   "assets": [
     {
@@ -108,13 +108,22 @@
       "terms": "Unmodified Simple Icons vector used for nominative technical documentation; ClickHouse trademarks remain ClickHouse property."
     },
     {
-      "path": "docs/images/vendor/simple-icons/claude.svg",
+      "path": "docs/images/vendor/claude-icon-rounded.svg",
       "vendor": "Anthropic Claude",
-      "source_repo": "https://github.com/msaad00/agent-bom",
-      "source_commit": "a06bedd517cb205822c26be32e4365c98b37a4a0",
-      "source_path": "ui/public/logos/claude.svg",
-      "sha256": "e1ba80de7ba898388979bd3b8aba033d665408b5d86cb4ed6b44dc87625395be",
-      "terms": "Repository-local integration mark reused for nominative technical documentation; Anthropic trademarks remain Anthropic property."
+      "source_page": "https://www.anthropic.com/news",
+      "source_archive": "https://www.anthropic.com/press-kit",
+      "source_path": "Anthropic media resources/Anthropic logos/Claude logos/4 Claude icon/SVG/ClaudeIcon-Rounded.svg",
+      "sha256": "059e22f525d67c6258c4f64514f0b0e717c914df8a706936d0299d5e6b8082d9",
+      "terms": "Exact Claude icon from Anthropic's official media press kit, used only to identify the supported Claude integration; Anthropic and Claude marks remain Anthropic property."
+    },
+    {
+      "path": "docs/images/vendor/openai-blossom-white.svg",
+      "vendor": "OpenAI",
+      "source_page": "https://openai.com/brand/",
+      "source_archive": "https://cdn.openai.com/brand/openai-logos.zip",
+      "source_path": "OpenAI-logos/SVGs/OAI_OpenAI-Blossom_White.svg",
+      "sha256": "01d158767c4eec0e47bd617e67759c33da0accd1438be1a8d29dfdb99ce87285",
+      "terms": "Exact OpenAI logo asset used only to identify the supported OpenAI and Codex integration family under OpenAI's published brand guidelines; OpenAI marks remain OpenAI property."
     },
     {
       "path": "docs/images/vendor/simple-icons/cursor.svg",

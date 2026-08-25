@@ -60,8 +60,8 @@ describe("RemediationPage", () => {
       jobs: [{ job_id: "job-1", status: "done", created_at: "2026-08-12T00:00:00Z" }],
     });
     apiMock.listTickets.mockResolvedValue({ tickets: [] });
-    // Command center is rendered above the plan; keep it in an honest empty
-    // state so the test isolates the package-plan density caption.
+    // Keep the collapsed campaign workflow in an honest empty state so the
+    // test isolates the package-plan density caption.
     apiMock.listRiskCampaigns.mockResolvedValue({
       schema_version: "risk-campaigns.v1",
       tenant_id: "tenant-a",
@@ -114,5 +114,18 @@ describe("RemediationPage", () => {
       expect(screen.getByText(/1 matching package(?!s)/i)).toBeInTheDocument();
     });
     expect(screen.getByText(/1 on this page/i)).toBeInTheDocument();
+  });
+
+  it("leads with fixable packages and collapses campaign workflow detail", async () => {
+    apiMock.getRemediation.mockResolvedValue([remediationItem("openssl", "critical")]);
+
+    render(<RemediationPage />);
+
+    const plan = await screen.findByRole("heading", { name: "Package remediation plan" });
+    const workflow = screen.getByText("Campaign workflow and verification", { exact: true });
+    const disclosure = workflow.closest("details");
+
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(plan.compareDocumentPosition(workflow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

@@ -55,36 +55,34 @@
 
     <text x="60" y="251" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">AI CLIENTS + MODELS</text>
     <text x="648" y="251" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">CLOUD + IDENTITY + DATA</text>
-    <text x="1220" y="251" text-anchor="end" fill="#64748b" font-size="11">Also supports VS Code · Windsurf · Okta · ClickHouse</text>
+    <text x="1220" y="251" text-anchor="end" fill="#64748b" font-size="11">Also supports VS Code · Okta · ClickHouse</text>
     <line x1="626" y1="247" x2="626" y2="369" stroke="#334155" stroke-width="1" />
 
     <g transform="translate(60 270)">
       <g>
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <image href="vendor/simple-icons/claude.svg" x="10" y="10" width="44" height="44"/>
+        <image href="vendor/claude-icon-rounded.svg" x="10" y="10" width="44" height="44"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Claude</text>
       </g>
       <g transform="translate(98)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <circle cx="32" cy="32" r="19" fill="#111827" stroke="#22d3ee"/>
-        <text x="32" y="38" text-anchor="middle" fill="#67e8f9" font-size="17" font-weight="800">CX</text>
-        <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Codex CLI</text>
+        <image href="vendor/openai-blossom-white.svg" x="10" y="10" width="44" height="44"/>
+        <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="10.5" font-weight="600">OpenAI / Codex</text>
       </g>
       <g transform="translate(196)">
-        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
-        <circle cx="32" cy="32" r="19" fill="#111827" stroke="#86efac"/>
-        <text x="32" y="37" text-anchor="middle" fill="#86efac" font-size="14" font-weight="800">GPT</text>
-        <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="10.5" font-weight="600">OpenAI · GPT</text>
-      </g>
-      <g transform="translate(294)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/cursor.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="13" font-weight="600">Cursor</text>
       </g>
-      <g transform="translate(392)">
+      <g transform="translate(294)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
         <image href="vendor/simple-icons/githubcopilot.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
         <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">GitHub Copilot</text>
+      </g>
+      <g transform="translate(392)">
+        <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
+        <image href="vendor/simple-icons/windsurf.svg" x="10" y="10" width="44" height="44" filter="url(#tint-white)"/>
+        <text x="32" y="87" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Windsurf</text>
       </g>
       <g transform="translate(490)">
         <rect width="64" height="64" rx="16" fill="#0f172a" stroke="#334155"/>

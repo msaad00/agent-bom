@@ -543,11 +543,9 @@ function RemediationPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      <RiskCampaignCommandCenter />
-
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between border-t border-[var(--border-subtle)] pt-6">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">
             Package remediation plan
@@ -555,6 +553,11 @@ function RemediationPage() {
           <p className="text-[var(--text-secondary)] text-sm mt-1">
             {items.length} packages prioritized by reach, severity, and available fixes
           </p>
+          {items.length > 0 && (
+            <p className="text-[var(--text-tertiary)] text-xs mt-1">
+              Top {Math.min(5, items.length)} clear {impact.controls} controls across {impact.frameworks} framework{impact.frameworks === 1 ? "" : "s"}
+            </p>
+          )}
         </div>
         {items.length > 0 && (
           <button
@@ -611,29 +614,6 @@ function RemediationPage() {
       {/* Content */}
       {!loading && !error && items.length > 0 && (
         <>
-          {/* Compliance impact summary */}
-          <div className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl px-5 py-4">
-            <p className="text-sm text-[var(--text-secondary)]">
-              <span className="font-semibold text-emerald-400">
-                Fixing the top {Math.min(5, items.length)} package
-                {Math.min(5, items.length) !== 1 ? "s" : ""}
-              </span>{" "}
-              clears{" "}
-              <span className="font-semibold text-[var(--foreground)]">
-                {impact.controls} controls
-              </span>{" "}
-              across{" "}
-              <span className="font-semibold text-[var(--foreground)]">
-                {impact.frameworks} framework
-                {impact.frameworks !== 1 ? "s" : ""}
-              </span>
-            </p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              Based on OWASP LLM Top 10 and MITRE ATLAS tags assigned to each
-              remediation item.
-            </p>
-          </div>
-
           {/* Filters */}
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -769,6 +749,21 @@ function RemediationPage() {
           />
         </>
       )}
+
+      <details className="group overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 marker:content-none">
+          <div>
+            <div className="text-sm font-semibold text-[var(--foreground)]">Campaign workflow and verification</div>
+            <div className="mt-0.5 text-xs text-[var(--text-tertiary)]">
+              Assign owners and SLAs, sync tickets, and re-verify completed fixes.
+            </div>
+          </div>
+          <ChevronDown className="h-4 w-4 shrink-0 text-[var(--text-tertiary)] transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-[var(--border-subtle)] px-4 py-4">
+          <RiskCampaignCommandCenter />
+        </div>
+      </details>
 
       {/* Ticket modal */}
       {ticketItem && (

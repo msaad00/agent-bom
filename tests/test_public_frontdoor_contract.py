@@ -37,8 +37,7 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         assert claim in svg
     for integration in (
         "Claude",
-        "Codex CLI",
-        "OpenAI · GPT",
+        "OpenAI / Codex",
         "Cursor",
         "GitHub Copilot",
         "VS Code",
@@ -63,12 +62,15 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     assert "/Users/" not in svg
     assert "<image" not in svg
     assert "tint-" not in svg
-    assert svg.count("<symbol ") == 10
-    assert svg.count('href="#embedded-') == 11
+    assert "Codex CLI" not in svg
+    assert "OpenAI · GPT" not in svg
+    assert svg.count("<symbol ") == 12
+    assert svg.count('href="#embedded-') == 13
     assert render_social_preview(template) == svg
     for relative_asset in (
         "brand/mark-dark.svg",
-        "vendor/simple-icons/claude.svg",
+        "vendor/claude-icon-rounded.svg",
+        "vendor/openai-blossom-white.svg",
         "vendor/simple-icons/cursor.svg",
         "vendor/simple-icons/githubcopilot.svg",
         "vendor/simple-icons/amazonwebservices.svg",

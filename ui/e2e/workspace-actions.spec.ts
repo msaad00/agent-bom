@@ -170,6 +170,7 @@ async function routeRemediation(page: Page) {
 test("remediation compact rows disclose detail and durable re-verification", async ({ page }) => {
   await routeRemediation(page);
   await page.goto("/remediation");
+  await page.getByText("Campaign workflow and verification", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "Risk campaigns" })).toBeVisible();
 
   const campaignSummary = page.getByText(campaign.title, { exact: true });
@@ -198,6 +199,7 @@ test("remediation remains horizontally contained on mobile", async ({ page }) =>
   await page.setViewportSize({ width: 390, height: 844 });
   await routeRemediation(page);
   await page.goto("/remediation");
+  await page.getByText("Campaign workflow and verification", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "Risk campaigns" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
 });

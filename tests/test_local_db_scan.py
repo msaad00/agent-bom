@@ -480,6 +480,8 @@ def test_db_covered_ecosystems_includes_declared_scoped_sync_with_zero_advisorie
 
     monkeypatch.setattr("agent_bom.db.schema.DB_PATH", db_file)
     assert _db_covered_ecosystems() == {"pypi"}
+    assert _db_covered_ecosystems({"pypi", "npm"}) == {"pypi"}
+    assert _db_covered_ecosystems({"npm"}) == set()
 
 
 def test_db_covered_ecosystems_does_not_infer_scope_from_cross_ecosystem_rows(tmp_path, monkeypatch):
@@ -558,6 +560,13 @@ def test_db_covered_ecosystems_bounds_legacy_query_to_requested_ecosystems(tmp_p
     assert len(coverage_queries) == 1
     assert "WHERE ecosystem IN" in coverage_queries[0]
     assert "npm" not in coverage_queries[0]
+
+    statements.clear()
+    requested = {f"synthetic-{index}" for index in range(400)} | {"pypi"}
+    assert _db_covered_ecosystems(requested) == {"pypi"}
+    chunked_queries = [statement for statement in statements if "FROM affected" in statement]
+    assert len(chunked_queries) == 2
+    assert all("WHERE ecosystem IN" in statement for statement in chunked_queries)
 
 
 def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monkeypatch):

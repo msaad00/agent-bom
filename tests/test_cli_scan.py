@@ -426,10 +426,12 @@ def test_scan_json_reuses_canonical_report_projection(monkeypatch, tmp_path):
     output = tmp_path / "report.json"
     original_to_json = scan_cmd.to_json
     projection_calls = 0
+    projected_reports = []
 
     def _count_projection(report):
         nonlocal projection_calls
         projection_calls += 1
+        projected_reports.append(report)
         return original_to_json(report)
 
     def _unexpected_reprojection(_report):
@@ -457,7 +459,14 @@ def test_scan_json_reuses_canonical_report_projection(monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert projection_calls == 1
-    assert json.loads(output.read_text(encoding="utf-8"))["document_type"] == "AI-BOM"
+    actual = json.loads(output.read_text(encoding="utf-8"))
+    expected = json_fmt.redact_json_payload(original_to_json(projected_reports[0]))
+    # Full equality pins summaries, finding counts, reachability/verdict fields,
+    # and enrichment—not merely the outer document marker.
+    assert actual == expected
+    assert actual["document_type"] == "AI-BOM"
+    assert actual["summary"] == expected["summary"]
+    assert actual.get("findings") == expected.get("findings")
 
 
 def test_scan_agent_mode_reuses_canonical_report_projection(monkeypatch):
@@ -467,10 +476,12 @@ def test_scan_agent_mode_reuses_canonical_report_projection(monkeypatch):
 
     original_to_json = scan_cmd.to_json
     projection_calls = 0
+    projected_reports = []
 
     def _count_projection(report):
         nonlocal projection_calls
         projection_calls += 1
+        projected_reports.append(report)
         return original_to_json(report)
 
     def _unexpected_reprojection(_report):
@@ -484,7 +495,18 @@ def test_scan_agent_mode_reuses_canonical_report_projection(monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert projection_calls == 1
-    assert json.loads(result.output)["data"]["document_type"] == "AI-BOM"
+    actual = json.loads(result.output)["data"]
+    expected_report = json_fmt.redact_json_payload(original_to_json(projected_reports[0]))
+    expected = success_envelope(
+        command="agents",
+        report_json=expected_report,
+        exit_code=0,
+        token_budget=0,
+        full=False,
+        output_path=None,
+    )["data"]
+    assert actual == expected
+    assert actual["document_type"] == "AI-BOM"
 
 
 def test_scan_save_records_local_analytics_once(monkeypatch, tmp_path):

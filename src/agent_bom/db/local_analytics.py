@@ -8,6 +8,7 @@ history JSON file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import uuid
@@ -542,22 +543,24 @@ def _finding_rows(run_id: str, scan_id: str, findings: list[dict[str, Any]]) -> 
     duplicate producer rows collapse instead of aborting the transaction.
     """
     entries: dict[tuple[str, str], dict[str, Any]] = {}
-    occurrences_by_semantic: dict[str, set[str]] = defaultdict(set)
+    projections_by_semantic: dict[str, set[str]] = defaultdict(set)
     for finding in findings:
         vulnerability_id = _vulnerability_id_from_finding(finding)
         package_ref = str(finding.get("package") or "")
         ecosystem = str(finding.get("ecosystem") or "")
         semantic_key = _finding_key(finding, vulnerability_id, package_ref, ecosystem)
         occurrence_key = _finding_occurrence_key(finding, package_ref, ecosystem)
-        entries.setdefault((semantic_key, occurrence_key), finding)
-        occurrences_by_semantic[semantic_key].add(occurrence_key)
+        projection_key = _finding_projection_key(finding)
+        storage_discriminator = f"{occurrence_key}:{projection_key}"
+        entries.setdefault((semantic_key, storage_discriminator), finding)
+        projections_by_semantic[semantic_key].add(storage_discriminator)
 
     rows: list[tuple[Any, ...]] = []
-    for (semantic_key, occurrence_key), finding in entries.items():
-        if len(occurrences_by_semantic[semantic_key]) == 1:
+    for (semantic_key, storage_discriminator), finding in entries.items():
+        if len(projections_by_semantic[semantic_key]) == 1:
             storage_key = semantic_key
         else:
-            suffix = uuid.uuid5(uuid.NAMESPACE_URL, f"agent-bom:local-finding-occurrence:{occurrence_key}")
+            suffix = uuid.uuid5(uuid.NAMESPACE_URL, f"agent-bom:local-finding-occurrence:{storage_discriminator}")
             storage_key = f"{semantic_key}:{suffix}"
         rows.append(_finding_row(run_id, scan_id, finding, finding_key=storage_key))
     return rows
@@ -593,6 +596,12 @@ def _finding_occurrence_key(finding: dict[str, Any], package_ref: str, ecosystem
         "ecosystem": ecosystem,
     }
     return json.dumps(occurrence, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _finding_projection_key(finding: dict[str, Any]) -> str:
+    """Return a stable full-row key so only structurally exact duplicates collapse."""
+    canonical = json.dumps(finding, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _finding_row(

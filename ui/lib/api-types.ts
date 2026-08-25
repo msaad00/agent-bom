@@ -220,14 +220,49 @@ export interface InventorySummaryResponse {
   schema_version: string;
   tenant_id: string;
   scan_id: string;
+  created_at?: string | undefined;
   total_assets: number;
   by_type: Record<string, number>;
   by_group: Record<string, number>;
   finding_count: number;
+  facets: InventoryFacets;
+  facet_metadata: InventoryFacetMetadata;
   completeness: GraphCompleteness;
 }
 
-export interface InventoryAsset {
+export interface InventoryFacetBucket {
+  value: string | null;
+  count: number;
+}
+
+export interface InventoryFacet {
+  buckets: InventoryFacetBucket[];
+}
+
+export interface InventoryFacets {
+  type: InventoryFacet;
+  source: InventoryFacet;
+  provider: InventoryFacet;
+  environment: InventoryFacet;
+  severity: InventoryFacet;
+}
+
+export interface InventoryFacetMetadata {
+  basis: string;
+  mode: "self_excluding" | string;
+  exact: boolean;
+  scan_id: string;
+  dimensions?: Record<string, string> | undefined;
+}
+
+export interface InventoryFindingSummary {
+  total: number;
+  by_severity: Record<string, number>;
+  ids: string[];
+  top_severity: string;
+}
+
+export interface InventoryAssetBase {
   id: string;
   type: string;
   name: string;
@@ -240,21 +275,44 @@ export interface InventoryAsset {
   sources: string[];
   first_seen: string;
   last_seen: string;
+  attributes: Record<string, unknown>;
+  compliance_tags: string[];
+  ecosystem: string;
+  version: string;
+}
+
+export interface InventoryAsset extends InventoryAssetBase {
+  finding_summary: InventoryFindingSummary;
+  relationship_count: number;
+}
+
+export interface InventoryPagination {
+  total: number;
+  offset: number;
+  limit: number;
+  cursor?: string | undefined;
+  next_cursor?: string | undefined;
+  has_more: boolean;
+  facet_filtered: boolean;
 }
 
 export interface InventoryAssetsResponse {
   schema_version: string;
   tenant_id: string;
+  scan_id: string;
+  created_at: string;
   assets: InventoryAsset[];
   filters: Record<string, string | string[]>;
-  pagination: GraphPagination & { facet_filtered: boolean };
+  pagination: InventoryPagination;
+  facets: InventoryFacets;
+  facet_metadata: InventoryFacetMetadata;
   completeness: GraphCompleteness;
 }
 
 export interface InventoryAssetDetailResponse {
   schema_version: string;
   tenant_id: string;
-  asset: InventoryAsset;
+  asset: InventoryAssetBase;
   node: Record<string, unknown>;
   edges_out: Record<string, unknown>[];
   edges_in: Record<string, unknown>[];

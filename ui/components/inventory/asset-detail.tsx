@@ -5,6 +5,7 @@ import { Bug, ExternalLink, FileCheck, Network, Share2 } from "lucide-react";
 
 import { SeverityBadge } from "@/components/severity-badge";
 import { ICON_SIZE } from "@/lib/icon-sizes";
+import type { InventoryAssetDetailResponse } from "@/lib/api";
 import type { AssetKindConfig, AssetRow } from "@/lib/inventory";
 import {
   complianceHref,
@@ -45,10 +46,28 @@ function readableAttributes(attributes: Record<string, unknown>): [string, strin
   return rows.slice(0, 12);
 }
 
-export function AssetDetail({ row, config }: { row: AssetRow; config: AssetKindConfig }) {
+export function AssetDetail({
+  row,
+  config,
+  detail,
+  loading = false,
+  error = "",
+  scanId,
+}: {
+  row: AssetRow;
+  config: AssetKindConfig;
+  detail?: InventoryAssetDetailResponse | undefined;
+  loading?: boolean | undefined;
+  error?: string | undefined;
+  scanId?: string | undefined;
+}) {
   const Icon = config.icon;
-  const attrRows = readableAttributes(row.attributes);
+  const attributes = detail?.asset.attributes ?? row.attributes;
+  const attrRows = readableAttributes(attributes);
   const compliance = complianceHref(row);
+  const relationshipCount = detail
+    ? detail.edges_in.length + detail.edges_out.length
+    : null;
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
@@ -111,6 +130,31 @@ export function AssetDetail({ row, config }: { row: AssetRow; config: AssetKindC
         ))}
       </dl>
 
+      <section className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
+          Snapshot context
+        </p>
+        {loading ? (
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Loading relationships and impact…</p>
+        ) : error ? (
+          <p className="mt-1 text-xs text-[color:var(--status-danger)]">{error}</p>
+        ) : detail ? (
+          <dl className="mt-1 divide-y divide-[color:var(--border-subtle)]">
+            <MetaRow label="Relationships" value={relationshipCount?.toLocaleString() ?? "0"} />
+            <MetaRow label="Neighbors" value={detail.neighbors.length.toLocaleString()} />
+            <MetaRow label="Evidence sources" value={detail.sources.length.toLocaleString()} />
+            <MetaRow
+              label="Impact fields"
+              value={Object.keys(detail.impact ?? {}).length.toLocaleString()}
+            />
+          </dl>
+        ) : (
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            Select this row to resolve its tenant-scoped relationships and impact.
+          </p>
+        )}
+      </section>
+
       {row.complianceTags.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {row.complianceTags.slice(0, 8).map((tag) => (
@@ -129,9 +173,9 @@ export function AssetDetail({ row, config }: { row: AssetRow; config: AssetKindC
           Correlate
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <CorrelationLink href={findingsHref(row)} icon={Bug} label="Findings" hint={`${row.findingCount} correlated`} />
-          <CorrelationLink href={securityGraphHref(row)} icon={Network} label="Security graph" hint="Blast radius" />
-          <CorrelationLink href={lineageHref(row)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
+          <CorrelationLink href={findingsHref(row, scanId)} icon={Bug} label="Findings" hint={`${row.findingCount} correlated`} />
+          <CorrelationLink href={securityGraphHref(row, scanId)} icon={Network} label="Security graph" hint="Blast radius" />
+          <CorrelationLink href={lineageHref(row, scanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
           {compliance ? (
             <CorrelationLink href={compliance} icon={FileCheck} label="Compliance" hint={row.complianceTags[0]} />
           ) : null}

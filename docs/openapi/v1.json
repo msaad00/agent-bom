@@ -27556,7 +27556,7 @@
     },
     "/v1/inventory/assets": {
       "get": {
-        "description": "Paginated, filterable asset rows across every source in the unified graph.\n\n``type`` and ``search`` and ``min_severity`` are pushed into the graph store\n(``page_nodes`` / ``search_nodes``); ``environment`` / ``provider`` /\n``source`` are matched in-route with a keyset refill loop so a filtered page\nis never silently truncated.",
+        "description": "Paginated, filterable asset rows across every source in the unified graph.\n\nEvery filter and the exact whole-query total is evaluated natively by the\ngraph store. Facet buckets are self-excluding and computed across the whole\nfiltered snapshot, never only the displayed page.",
         "operationId": "list_inventory_assets_v1_inventory_assets_get",
         "parameters": [
           {
@@ -27647,6 +27647,24 @@
               ],
               "description": "Filter by data source / provenance facet",
               "title": "Source"
+            }
+          },
+          {
+            "description": "Filter by highest directly linked finding severity",
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by highest directly linked finding severity",
+              "title": "Severity"
             }
           },
           {
@@ -27826,7 +27844,7 @@
     },
     "/v1/inventory/summary": {
       "get": {
-        "description": "Asset counts for the tenant's current graph snapshot, by type and group.\n\nBacked by the graph store's ``snapshot_stats`` (its ``node_types`` bucket).\nFindings are excluded \u2014 this counts assets across AI, cloud, Snowflake, and\nidentity uniformly because they already coexist as typed nodes in the one\nsnapshot.",
+        "description": "Asset counts for the tenant's current graph snapshot, by type and group.\n\nBacked by the graph store's exact native inventory query. Findings are\nexcluded \u2014 this counts assets across AI, cloud, Snowflake, and identity\nuniformly because they already coexist as typed nodes in the one snapshot.",
         "operationId": "inventory_summary_v1_inventory_summary_get",
         "parameters": [
           {

@@ -195,7 +195,11 @@ export type {
   InventorySummaryResponse,
   InventoryAssetsResponse,
   InventoryAsset,
+  InventoryAssetBase,
   InventoryAssetDetailResponse,
+  InventoryFacets,
+  InventoryFacetMetadata,
+  InventoryFindingSummary,
   FixFirstGraphViewResponse,
   FixFirstPathCard,
   GraphAttackCampaign,
@@ -1040,6 +1044,7 @@ export const api = {
     environment?: string | undefined;
     provider?: string | undefined;
     source?: string | undefined;
+    severity?: string | undefined;
     minSeverity?: string | undefined;
     scanId?: string | undefined;
     cursor?: string | undefined;
@@ -1052,6 +1057,7 @@ export const api = {
     if (filters?.environment) params.set("environment", filters.environment);
     if (filters?.provider) params.set("provider", filters.provider);
     if (filters?.source) params.set("source", filters.source);
+    if (filters?.severity) params.set("severity", filters.severity);
     if (filters?.minSeverity) params.set("min_severity", filters.minSeverity);
     if (filters?.scanId) params.set("scan_id", filters.scanId);
     if (filters?.cursor) params.set("cursor", filters.cursor);

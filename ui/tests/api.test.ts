@@ -347,6 +347,42 @@ describe('api.getGraphImpact', () => {
   })
 })
 
+describe('inventory API client', () => {
+  it('serializes the exact snapshot, taxonomy, and whole-query filters', async () => {
+    const fetchMock = mockFetch({ assets: [], pagination: { total: 0 } })
+    global.fetch = fetchMock
+
+    await api.getInventoryAssets({
+      type: ['agent', 'model'],
+      search: 'payments agent',
+      environment: 'production',
+      provider: 'aws',
+      source: 'runtime',
+      severity: 'critical',
+      scanId: 'scan/1',
+      cursor: 'cursor/2',
+      limit: 100,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/inventory/assets?type=agent%2Cmodel&search=payments+agent&environment=production&provider=aws&source=runtime&severity=critical&scan_id=scan%2F1&cursor=cursor%2F2&limit=100',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('pins lazy asset detail to the selected snapshot', async () => {
+    const fetchMock = mockFetch({ asset: { id: 'pkg:requests' } })
+    global.fetch = fetchMock
+
+    await api.getInventoryAsset('pkg:requests', 'scan/1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/inventory/assets/pkg%3Arequests?scan_id=scan%2F1',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+})
+
 describe('api.getGraphRollup', () => {
   it('requests the estate roll-up endpoint with scan and drill params', async () => {
     const payload = {

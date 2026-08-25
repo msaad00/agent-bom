@@ -6,8 +6,8 @@ servers, models, frameworks, tools, credentials, managed identities), cloud
 Snowflake (accounts, warehouses, databases, roles, users), and identity (users,
 roles, policies, service accounts). All of these already coexist as OCSF-typed
 nodes in the ONE tenant-scoped unified graph snapshot, so this router is a thin,
-read-only projection over the existing graph store (``page_nodes`` /
-``search_nodes`` / ``snapshot_stats`` / ``node_context``) — it introduces no new
+read-only projection over the existing graph store (``query_inventory`` /
+``node_context``) — it introduces no new
 data model or second store.
 
 The graph-store projection logic lives in ``agent_bom.api.inventory_service`` so
@@ -79,10 +79,9 @@ async def inventory_summary(
 ) -> dict[str, Any]:
     """Asset counts for the tenant's current graph snapshot, by type and group.
 
-    Backed by the graph store's ``snapshot_stats`` (its ``node_types`` bucket).
-    Findings are excluded — this counts assets across AI, cloud, Snowflake, and
-    identity uniformly because they already coexist as typed nodes in the one
-    snapshot.
+    Backed by the graph store's exact native inventory query. Findings are
+    excluded — this counts assets across AI, cloud, Snowflake, and identity
+    uniformly because they already coexist as typed nodes in the one snapshot.
     """
     tenant = _tenant(request)
     try:
@@ -109,6 +108,7 @@ async def list_inventory_assets(
     environment: Optional[str] = Query(None, description="Filter by environment facet (e.g. production)"),
     provider: Optional[str] = Query(None, description="Filter by provider facet (e.g. aws, snowflake)"),
     source: Optional[str] = Query(None, description="Filter by data source / provenance facet"),
+    severity: Optional[str] = Query(None, description="Filter by highest directly linked finding severity"),
     min_severity: Optional[str] = Query(None, description="Minimum severity floor (critical/high/medium/low)"),
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
     cursor: Optional[str] = Query(None, description="Opaque keyset cursor from a previous page's next_cursor"),
@@ -117,10 +117,9 @@ async def list_inventory_assets(
 ) -> dict[str, Any]:
     """Paginated, filterable asset rows across every source in the unified graph.
 
-    ``type`` and ``search`` and ``min_severity`` are pushed into the graph store
-    (``page_nodes`` / ``search_nodes``); ``environment`` / ``provider`` /
-    ``source`` are matched in-route with a keyset refill loop so a filtered page
-    is never silently truncated.
+    Every filter and the exact whole-query total is evaluated natively by the
+    graph store. Facet buckets are self-excluding and computed across the whole
+    filtered snapshot, never only the displayed page.
     """
     tenant = _tenant(request)
     try:
@@ -132,6 +131,7 @@ async def list_inventory_assets(
             environment=environment,
             provider=provider,
             source=source,
+            severity=severity,
             min_severity=min_severity,
             scan_id=scan_id,
             cursor=cursor,

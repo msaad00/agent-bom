@@ -41,7 +41,10 @@ from agent_bom.graph.completeness import (
     graph_completeness,
     impact_completeness,
 )
+from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 from agent_bom.graph.severity_floor import severity_floor_sql
+
+_FINDING_ENTITY_TYPE_VALUES = frozenset(entity_type.value for entity_type in FINDING_ENTITY_TYPES)
 
 # Deep OFFSET paging is O(offset): the store still walks and discards every
 # skipped row, so ``offset=490000`` costs seconds even with the sort indexes.
@@ -249,6 +252,24 @@ class GraphStoreProtocol(Protocol):
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[UnifiedNode], int, str | None]: ...
+
+    def query_inventory(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        asset_entity_types: set[str],
+        entity_types: set[str] | None = None,
+        search: str = "",
+        environment: str = "",
+        provider: str = "",
+        source: str = "",
+        severity: str = "",
+        min_severity_rank: int = 0,
+        cursor: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict[str, Any]: ...
 
     def nodes_by_ids(
         self,
@@ -1975,6 +1996,298 @@ class SQLiteGraphStore:
             return effective_scan_id, created_at, nodes, total, next_cursor
         finally:
             conn.close()
+
+    def query_inventory(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        asset_entity_types: set[str],
+        entity_types: set[str] | None = None,
+        search: str = "",
+        environment: str = "",
+        provider: str = "",
+        source: str = "",
+        severity: str = "",
+        min_severity_rank: int = 0,
+        cursor: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Query exact inventory rows and whole-query facets in native SQL.
+
+        The snapshot is resolved once and every count, facet, row, relationship,
+        and finding summary is evaluated against that immutable tenant-scoped
+        snapshot. Facets are self-excluding: each bucket honors every active
+        filter except its own dimension.
+        """
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        _assert_offset_within_cap(offset, cursor)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return self._empty_inventory_result(scan_id=scan_id)
+        try:
+            effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return self._empty_inventory_result(scan_id="")
+
+            asset_types = sorted(asset_entity_types)
+            asset_placeholders = ",".join("?" for _ in asset_types)
+            finding_types = sorted(_FINDING_ENTITY_TYPE_VALUES)
+            finding_placeholders = ",".join("?" for _ in finding_types)
+            cte = f"""
+                WITH finding_links AS (
+                    SELECT e.source_id AS asset_id, f.severity_id
+                    FROM graph_edges e
+                    JOIN graph_nodes f ON f.tenant_id = e.tenant_id AND f.scan_id = e.scan_id AND f.id = e.target_id
+                    WHERE e.tenant_id = ? AND e.scan_id = ? AND f.entity_type IN ({finding_placeholders})
+                    UNION ALL
+                    SELECT e.target_id AS asset_id, f.severity_id
+                    FROM graph_edges e
+                    JOIN graph_nodes f ON f.tenant_id = e.tenant_id AND f.scan_id = e.scan_id AND f.id = e.source_id
+                    WHERE e.tenant_id = ? AND e.scan_id = ? AND f.entity_type IN ({finding_placeholders})
+                ), finding_rollup AS (
+                    SELECT asset_id, MAX(COALESCE(severity_id, 0)) AS finding_severity_rank
+                    FROM finding_links GROUP BY asset_id
+                ), assets_raw AS (
+                    SELECT n.*,
+                           NULLIF(LOWER(COALESCE(json_extract(n.dimensions, '$.environment'),
+                                                  json_extract(n.attributes, '$.environment'), '')), '') AS inventory_environment,
+                           NULLIF(LOWER(COALESCE(json_extract(n.dimensions, '$.cloud_provider'),
+                                                  json_extract(n.attributes, '$.provider'),
+                                                  json_extract(n.attributes, '$.cloud_provider'), '')), '') AS inventory_provider,
+                           NULLIF(LOWER(COALESCE(json_extract(n.dimensions, '$.ecosystem'),
+                                                  json_extract(n.attributes, '$.ecosystem'), '')), '') AS inventory_ecosystem,
+                           finding_rollup.finding_severity_rank
+                    FROM graph_nodes n
+                    LEFT JOIN finding_rollup ON finding_rollup.asset_id = n.id
+                    WHERE n.tenant_id = ? AND n.scan_id = ?
+                      AND n.entity_type IN ({asset_placeholders})
+                ), assets AS (
+                    SELECT *, CASE finding_severity_rank
+                        WHEN 5 THEN 'critical' WHEN 4 THEN 'high'
+                        WHEN 3 THEN 'medium' WHEN 2 THEN 'low' WHEN 1 THEN 'info'
+                        ELSE NULL END AS finding_severity
+                    FROM assets_raw
+                )
+            """  # nosec B608 - placeholders only; type values are bound
+            cte_params: list[Any] = [
+                tenant_id,
+                effective_scan_id,
+                *finding_types,
+                tenant_id,
+                effective_scan_id,
+                *finding_types,
+                tenant_id,
+                effective_scan_id,
+                *asset_types,
+            ]
+
+            normalized = {
+                "environment": environment.strip().lower(),
+                "provider": provider.strip().lower(),
+                "source": source.strip().lower(),
+                "severity": severity.strip().lower(),
+            }
+
+            def filtered_where(*, exclude: str = "") -> tuple[str, list[Any]]:
+                clauses: list[str] = []
+                params: list[Any] = []
+                if entity_types and exclude != "type":
+                    values = sorted(entity_types)
+                    clauses.append(f"entity_type IN ({','.join('?' for _ in values)})")
+                    params.extend(values)
+                if search.strip():
+                    clauses.append("(LOWER(label) LIKE ? ESCAPE '\\' OR LOWER(attributes) LIKE ? ESCAPE '\\')")
+                    token = f"%{_escape_like_query(search.strip().lower())}%"
+                    params.extend([token, token])
+                if normalized["environment"] and exclude != "environment":
+                    clauses.append("inventory_environment = ?")
+                    params.append(normalized["environment"])
+                if normalized["provider"] and exclude != "provider":
+                    clauses.append("inventory_provider = ?")
+                    params.append(normalized["provider"])
+                if normalized["source"] and exclude != "source":
+                    clauses.append("EXISTS (SELECT 1 FROM json_each(assets.data_sources) src WHERE LOWER(src.value) = ?)")
+                    params.append(normalized["source"])
+                if normalized["severity"] and exclude != "severity":
+                    clauses.append("finding_severity = ?")
+                    params.append(normalized["severity"])
+                if min_severity_rank and exclude != "severity":
+                    clauses.append("COALESCE(finding_severity_rank, 0) >= ?")
+                    params.append(min_severity_rank)
+                return (" AND ".join(clauses) if clauses else "1 = 1"), params
+
+            where_sql, where_params = filtered_where()
+            facet_sql = [f"SELECT '__total__' AS facet, NULL AS value, COUNT(*) AS count FROM assets WHERE {where_sql}"]
+            facet_params: list[Any] = [*where_params]
+            facet_columns = {
+                "type": "entity_type",
+                "environment": "inventory_environment",
+                "provider": "inventory_provider",
+                "severity": "finding_severity",
+            }
+            for facet, column in facet_columns.items():
+                facet_where, current_params = filtered_where(exclude=facet)
+                facet_sql.append(
+                    f"SELECT '{facet}', {column}, COUNT(*) FROM assets WHERE {facet_where} GROUP BY {column}"  # nosec B608 - static mapping
+                )
+                facet_params.extend(current_params)
+            source_where, source_params = filtered_where(exclude="source")
+            facet_sql.append(
+                f"""
+                    SELECT 'source', value, COUNT(DISTINCT id) FROM (
+                        SELECT assets.id, NULLIF(LOWER(src.value), '') AS value
+                        FROM assets JOIN json_each(assets.data_sources) src
+                        WHERE {source_where}
+                        UNION ALL
+                        SELECT assets.id, NULL FROM assets
+                        WHERE {source_where} AND json_array_length(data_sources) = 0
+                    ) source_buckets GROUP BY value
+                """  # nosec B608 - source_where contains only generated placeholders
+            )
+            facet_params.extend([*source_params, *source_params])
+            facet_rows = conn.execute(cte + " UNION ALL ".join(facet_sql), [*cte_params, *facet_params]).fetchall()
+            facets: dict[str, list[dict[str, Any]]] = {
+                name: [] for name in ("type", "source", "provider", "environment", "severity")
+            }
+            total = 0
+            for facet, value, count in facet_rows:
+                if facet == "__total__":
+                    total = int(count or 0)
+                    continue
+                facets[str(facet)].append({"value": value if value not in {"", None} else None, "count": int(count)})
+            for buckets in facets.values():
+                buckets.sort(key=lambda bucket: (-int(bucket["count"]), "" if bucket["value"] is None else str(bucket["value"])))
+
+            row_params = [*cte_params, *where_params]
+            cursor_clause = ""
+            if cursor:
+                severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+                cursor_clause = """
+                    AND (severity_id < ?
+                      OR (severity_id = ? AND risk_score < ?)
+                      OR (severity_id = ? AND risk_score = ? AND label > ?)
+                      OR (severity_id = ? AND risk_score = ? AND label = ? AND id > ?))
+                """
+                row_params.extend(
+                    [severity_id, severity_id, risk_score, severity_id, risk_score, label, severity_id, risk_score, label, node_id]
+                )
+            rows = conn.execute(
+                cte
+                + f"""
+                    SELECT id, entity_type, label, category_uid, class_uid, type_uid,
+                           status, risk_score, severity, severity_id, first_seen, last_seen,
+                           attributes, compliance_tags, data_sources, dimensions
+                    FROM assets
+                    WHERE {where_sql} {cursor_clause}
+                    ORDER BY severity_id DESC, risk_score DESC, label ASC, id ASC
+                    LIMIT ? OFFSET ?
+                """,  # nosec B608 - clauses contain only generated placeholders
+                [*row_params, limit + 1, 0 if cursor else offset],
+            ).fetchall()
+            has_more = len(rows) > limit or (not cursor and offset + limit < total)
+            nodes = [self._node_from_row(row) for row in rows[:limit]]
+            next_cursor = encode_graph_cursor(nodes[-1]) if has_more and nodes else None
+
+            finding_summaries, relationship_counts = self._inventory_page_context(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                node_ids={node.id for node in nodes},
+                finding_types=finding_types,
+            )
+            finding_count = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM graph_nodes WHERE tenant_id = ? AND scan_id = ? AND entity_type IN ({finding_placeholders})",  # nosec B608 - placeholders only
+                    [tenant_id, effective_scan_id, *finding_types],
+                ).fetchone()[0]
+                or 0
+            )
+            return {
+                "scan_id": effective_scan_id,
+                "created_at": created_at,
+                "nodes": nodes,
+                "total": total,
+                "next_cursor": next_cursor,
+                "facets": facets,
+                "finding_summaries": finding_summaries,
+                "relationship_counts": relationship_counts,
+                "finding_count": finding_count,
+            }
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _empty_inventory_result(*, scan_id: str) -> dict[str, Any]:
+        return {
+            "scan_id": scan_id,
+            "created_at": "",
+            "nodes": [],
+            "total": 0,
+            "next_cursor": None,
+            "facets": {name: [] for name in ("type", "source", "provider", "environment", "severity")},
+            "finding_summaries": {},
+            "relationship_counts": {},
+            "finding_count": 0,
+        }
+
+    def _inventory_page_context(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        node_ids: set[str],
+        finding_types: list[str],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
+        if not node_ids:
+            return {}, {}
+        node_values = sorted(node_ids)
+        node_marks = ",".join("?" for _ in node_values)
+        finding_marks = ",".join("?" for _ in finding_types)
+        rows = conn.execute(
+            f"""
+                SELECT a.id, f.id,
+                       CASE LOWER(COALESCE(f.severity, '')) WHEN 'informational' THEN 'info'
+                            ELSE LOWER(COALESCE(f.severity, '')) END
+                FROM graph_nodes a
+                JOIN graph_edges e ON e.tenant_id = a.tenant_id AND e.scan_id = a.scan_id
+                    AND (e.source_id = a.id OR e.target_id = a.id)
+                JOIN graph_nodes f ON f.tenant_id = e.tenant_id AND f.scan_id = e.scan_id
+                    AND f.id = CASE WHEN e.source_id = a.id THEN e.target_id ELSE e.source_id END
+                WHERE a.tenant_id = ? AND a.scan_id = ? AND a.id IN ({node_marks})
+                  AND f.entity_type IN ({finding_marks})
+                GROUP BY a.id, f.id, f.severity
+                ORDER BY a.id, f.severity_id DESC, f.id
+            """,  # nosec B608 - placeholder lists only
+            [tenant_id, scan_id, *node_values, *finding_types],
+        ).fetchall()
+        summaries: dict[str, dict[str, Any]] = {}
+        for asset_id, finding_id, finding_severity in rows:
+            summary = summaries.setdefault(
+                str(asset_id), {"total": 0, "by_severity": {}, "ids": [], "top_severity": ""}
+            )
+            summary["total"] += 1
+            summary["ids"].append(str(finding_id))
+            if finding_severity:
+                by_severity = summary["by_severity"]
+                by_severity[str(finding_severity)] = int(by_severity.get(str(finding_severity), 0)) + 1
+                if not summary["top_severity"]:
+                    summary["top_severity"] = str(finding_severity)
+        relationship_rows = conn.execute(
+            f"""
+                SELECT node_id, COUNT(*) FROM (
+                    SELECT source_id AS node_id, source_id, target_id, relationship FROM graph_edges
+                    WHERE tenant_id = ? AND scan_id = ? AND source_id IN ({node_marks})
+                    UNION
+                    SELECT target_id AS node_id, source_id, target_id, relationship FROM graph_edges
+                    WHERE tenant_id = ? AND scan_id = ? AND target_id IN ({node_marks})
+                ) GROUP BY node_id
+            """,  # nosec B608 - placeholder lists only
+            [tenant_id, scan_id, *node_values, tenant_id, scan_id, *node_values],
+        ).fetchall()
+        return summaries, {str(row[0]): int(row[1]) for row in relationship_rows}
 
     def edges_for_node_ids(
         self,

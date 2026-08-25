@@ -520,6 +520,9 @@ class NeptuneGraphStore:
     def search_nodes(self, **_kwargs: Any) -> tuple[list[UnifiedNode], int, str | None]:
         self._unsupported("search_nodes")
 
+    def query_inventory(self, **_kwargs: Any) -> dict[str, Any]:
+        self._unsupported("query_inventory")
+
     def nodes_by_ids(self, **_kwargs: Any) -> list[UnifiedNode]:
         self._unsupported("nodes_by_ids")
 

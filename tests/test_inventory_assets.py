@@ -41,7 +41,17 @@ def _seed_graph(store: SQLiteGraphStore, *, tenant_id: str = "default", scan_id:
     g = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
     # ── AI ──
     g.add_node(_node("agent:a", EntityType.AGENT, "orders-agent", environment="production", data_sources=["mcp-scan"]))
-    g.add_node(_node("server:mcp", EntityType.SERVER, "mcp-filesystem", environment="production", data_sources=["mcp-scan"]))
+    g.add_node(
+        _node(
+            "server:mcp",
+            EntityType.SERVER,
+            "mcp-filesystem",
+            environment="production",
+            data_sources=["mcp-scan"],
+            attributes={"version": "1.2.3", "owner": "platform"},
+            compliance_tags=["LLM05", "CIS-1.1"],
+        )
+    )
     g.add_node(_node("model:gpt", EntityType.MODEL, "gpt-4o"))
     g.add_node(_node("framework:lc", EntityType.FRAMEWORK, "langchain"))
     g.add_node(_node("tool:sh", EntityType.TOOL, "run_shell"))
@@ -158,6 +168,77 @@ def test_list_returns_asset_rows_and_excludes_findings(inventory_store):
     assert body["completeness"]["returned"] == 16
 
 
+def test_list_is_store_exact_and_exposes_snapshot_facets_and_bounded_context(inventory_store, monkeypatch):
+    """Inventory truth is computed natively by the store, not by a capped Python walk."""
+    monkeypatch.setattr(inventory_store, "page_nodes", lambda **_kwargs: pytest.fail("legacy page_nodes path used"))
+    monkeypatch.setattr(inventory_store, "search_nodes", lambda **_kwargs: pytest.fail("legacy search_nodes path used"))
+
+    body = TestClient(app).get("/v1/inventory/assets?limit=100").json()
+    assert body["scan_id"] == "inv-scan-1"
+    assert body["created_at"]
+    assert body["pagination"]["total"] == 16
+    assert body["facet_metadata"] == {
+        "basis": "whole_query",
+        "mode": "self_excluding",
+        "exact": True,
+        "scan_id": "inv-scan-1",
+    }
+    assert {bucket["value"]: bucket["count"] for bucket in body["facets"]["environment"]["buckets"]} == {
+        None: 12,
+        "production": 3,
+        "staging": 1,
+    }
+    assert {bucket["value"]: bucket["count"] for bucket in body["facets"]["provider"]["buckets"]} == {
+        None: 8,
+        "aws": 3,
+        "snowflake": 5,
+    }
+
+    server = next(asset for asset in body["assets"] if asset["id"] == "server:mcp")
+    assert server["attributes"] == {"owner": "platform", "version": "1.2.3"}
+    assert server["compliance_tags"] == ["LLM05", "CIS-1.1"]
+    assert server["version"] == "1.2.3"
+    assert server["ecosystem"] == ""
+    assert server["relationship_count"] == 2
+    assert server["finding_summary"] == {
+        "total": 1,
+        "by_severity": {"critical": 1},
+        "ids": ["vuln:CVE-2024-1"],
+        "top_severity": "critical",
+    }
+
+
+def test_facet_counts_are_self_excluding_and_severity_means_linked_finding(inventory_store):
+    body = TestClient(app).get("/v1/inventory/assets?provider=aws&severity=critical&limit=100").json()
+    assert body["pagination"]["total"] == 0
+    # Provider ignores its own active filter but honors severity, so the linked
+    # server remains in the null provider bucket. Severity ignores itself but
+    # honors provider, so all three AWS assets remain in the null-severity bucket.
+    assert body["facets"]["provider"]["buckets"] == [{"value": None, "count": 1}]
+    assert body["facets"]["severity"]["buckets"] == [{"value": None, "count": 3}]
+
+    critical = TestClient(app).get("/v1/inventory/assets?severity=critical&limit=100").json()
+    assert critical["pagination"]["total"] == 1
+    assert [asset["id"] for asset in critical["assets"]] == ["server:mcp"]
+
+
+def test_explicit_scan_is_resolved_once_and_tenant_scoped(tmp_path):
+    from agent_bom.api.stores import _get_graph_store
+
+    original = _get_graph_store()
+    store = SQLiteGraphStore(tmp_path / "inv-scan-scope.db")
+    _seed_graph(store, tenant_id="default", scan_id="visible")
+    _seed_graph(store, tenant_id="tenant-b", scan_id="hidden")
+    set_graph_store(store)
+    try:
+        body = TestClient(app).get("/v1/inventory/assets?scan_id=hidden&limit=100").json()
+        assert body["scan_id"] == ""
+        assert body["pagination"]["total"] == 0
+        assert body["assets"] == []
+    finally:
+        set_graph_store(original)
+
+
 def test_list_type_filter(inventory_store):
     client = TestClient(app)
     resp = client.get("/v1/inventory/assets?type=role&limit=100")
@@ -253,6 +334,28 @@ def test_list_facet_filter_paginates_without_dropping_rows(tmp_path):
             cursor = pagination["next_cursor"]
         assert len(seen) == total, f"facet pagination dropped rows: got {len(seen)} of {total}"
         assert len(set(seen)) == total, "facet pagination returned duplicate rows across pages"
+    finally:
+        set_graph_store(original)
+
+
+def test_native_facet_query_has_no_legacy_5000_node_scan_cap(tmp_path):
+    """A match sorted beyond 5,000 assets remains visible with an exact total."""
+    from agent_bom.api.stores import _get_graph_store
+
+    original = _get_graph_store()
+    store = SQLiteGraphStore(tmp_path / "inv-over-legacy-cap.db")
+    graph = UnifiedGraph(scan_id="inv-over-cap", tenant_id="default")
+    for index in range(5_001):
+        graph.add_node(_node(f"agent:a{index:04d}", EntityType.AGENT, f"agent-{index:04d}"))
+    graph.add_node(_node("agent:target", EntityType.AGENT, "zzzz-target", provider="aws"))
+    store.save_graph(graph)
+    set_graph_store(store)
+    try:
+        body = TestClient(app).get("/v1/inventory/assets?provider=aws&limit=10").json()
+        assert body["scan_id"] == "inv-over-cap"
+        assert body["pagination"]["total"] == 1
+        assert [asset["id"] for asset in body["assets"]] == ["agent:target"]
+        assert body["facet_metadata"]["exact"] is True
     finally:
         set_graph_store(original)
 

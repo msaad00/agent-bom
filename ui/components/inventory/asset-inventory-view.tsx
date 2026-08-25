@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { PageLaneHeader } from "@/components/page-lane";
 import { SeverityBadge } from "@/components/severity-badge";
 import { SplitLayout } from "@/components/split-layout";
@@ -13,28 +14,10 @@ import { AssetDetail } from "@/components/inventory/asset-detail";
 import { useInventory } from "@/lib/inventory-context";
 import {
   ASSET_KIND_BY_ID,
-  dataSourceOptions,
-  filterAssetRows,
-  sortAssetRows,
   summarizeRows,
   type AssetKindId,
   type AssetRow,
-  type AssetSortKey,
 } from "@/lib/inventory";
-
-const SEVERITY_FILTERS: { key: string; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "critical", label: "Critical" },
-  { key: "high", label: "High" },
-  { key: "medium", label: "Medium" },
-  { key: "low", label: "Low" },
-];
-
-const COLUMN_TO_SORT: Record<string, AssetSortKey> = {
-  label: "label",
-  severity: "severity",
-  findings: "findings",
-};
 
 export function AssetInventoryView({
   kind,
@@ -47,35 +30,30 @@ export function AssetInventoryView({
   onSeverityFilterChange?: ((severity: string) => void) | undefined;
 }) {
   const config = ASSET_KIND_BY_ID[kind];
-  const { model, loading, loadingMore, hasMore, error, errorKind, reload, loadMore } = useInventory();
-
-  const [query, setQuery] = useState("");
-  const [localSeverity, setLocalSeverity] = useState("all");
-  const severity = severityFilter ?? localSeverity;
-  const setSeverity = onSeverityFilterChange ?? setLocalSeverity;
-  const [source, setSource] = useState("all");
-  const [withFindingsOnly, setWithFindingsOnly] = useState(false);
-  const [sortKey, setSortKey] = useState<AssetSortKey>("severity");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const {
+    model,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    errorKind,
+    details,
+    detailLoadingId,
+    detailError,
+    clearFilters,
+    reload,
+    loadMore,
+    loadAssetDetail,
+  } = useInventory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const allRows = useMemo(() => model?.rowsByKind[kind] ?? [], [model, kind]);
   const total = model?.totalsByKind[kind] ?? 0;
   const loadedCount = model?.loadedByKind[kind] ?? 0;
-
-  const sources = useMemo(() => dataSourceOptions(allRows), [allRows]);
-  const filtered = useMemo(
-    () => filterAssetRows(allRows, { query, severity, dataSource: source, withFindingsOnly }),
-    [allRows, query, severity, source, withFindingsOnly],
-  );
-  const rows = useMemo(
-    () => sortAssetRows(filtered, sortKey, sortDir),
-    [filtered, sortKey, sortDir],
-  );
   const summary = useMemo(() => summarizeRows(allRows), [allRows]);
   const selected = useMemo(
-    () => rows.find((row) => row.id === selectedId) ?? allRows.find((row) => row.id === selectedId) ?? null,
-    [rows, allRows, selectedId],
+    () => allRows.find((row) => row.id === selectedId) ?? null,
+    [allRows, selectedId],
   );
 
   const header = (
@@ -107,7 +85,7 @@ export function AssetInventoryView({
     );
   }
 
-  if (!model || allRows.length === 0) {
+  if (!model || total === 0) {
     return (
       <div className="space-y-5">
         {header}
@@ -128,46 +106,40 @@ export function AssetInventoryView({
     );
   }
 
-  const onSortChange = (columnKey: string) => {
-    const nextKey = COLUMN_TO_SORT[columnKey];
-    if (!nextKey) return;
-    if (nextKey === sortKey) {
-      setSortDir((dir) => (dir === "desc" ? "asc" : "desc"));
-    } else {
-      setSortKey(nextKey);
-      setSortDir("desc");
-    }
-  };
-
   const columns = buildColumns(kind);
 
   return (
     <div className="flex min-h-0 flex-col gap-5">
       {header}
 
+      <InventoryFacetBar
+        severityFilter={severityFilter === "all" ? "" : severityFilter}
+        onSeverityFilterChange={onSeverityFilterChange}
+      />
+
       <StatStrip
         items={[
-          { label: "Total", value: total, hint: total > loadedCount ? `${loadedCount} loaded` : undefined },
-          { label: total > loadedCount || hasMore ? "Loaded with findings" : "With findings", value: summary.withFindings, accent: summary.withFindings > 0 ? "warn" : "neutral" },
-          { label: total > loadedCount || hasMore ? "Loaded critical" : "Critical", value: summary.criticalAssets, accent: "critical" },
-          { label: total > loadedCount || hasMore ? "Loaded high" : "High", value: summary.highAssets, accent: "high" },
-          { label: total > loadedCount || hasMore ? "Loaded correlations" : "Correlated findings", value: summary.totalFindings },
+          { label: "Snapshot kind assets", value: total.toLocaleString() },
+          { label: "Matching filters", value: model.matchingTotal.toLocaleString() },
+          { label: "Loaded rows", value: loadedCount.toLocaleString() },
+          { label: "Loaded with findings", value: summary.withFindings.toLocaleString(), accent: summary.withFindings > 0 ? "warn" : "neutral" },
+          { label: "Loaded direct findings", value: summary.totalFindings.toLocaleString() },
         ]}
       />
 
       <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]">
         <span className="font-medium text-[color:var(--text-secondary)]">Coverage:</span> {config.coverageNote}
-        {model?.completeness && !model.completeness.complete ? (
+        {model.completeness && !model.completeness.complete ? (
           <span className="ml-1 text-[color:var(--status-warn)]">
-            Current graph page is {model.completeness.status}; load more pages before treating row-level correlations as exhaustive.
+            Exact totals and facets cover the whole filtered snapshot; displayed rows and their direct correlations are {model.completeness.status}.
           </span>
         ) : null}
-        {total > loadedCount || hasMore ? (
+        {model.matchingTotal > loadedCount || hasMore ? (
           <span className="text-[color:var(--text-tertiary)]">
             {" "}
             Showing {loadedCount.toLocaleString()}
-            {total > loadedCount ? ` of ${total.toLocaleString()}` : ""}
-            {hasMore ? " — more pages available from the graph store." : "."}
+            {model.matchingTotal > loadedCount ? ` of ${model.matchingTotal.toLocaleString()} matching assets` : " matching assets"}
+            {hasMore ? " — more rows are available from the pinned snapshot." : "."}
           </span>
         ) : null}
         {hasMore ? (
@@ -185,72 +157,25 @@ export function AssetInventoryView({
         ) : null}
       </div>
 
-      {/* Filter toolbar — findings-style, token-driven. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {SEVERITY_FILTERS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setSeverity(key)}
-              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                severity === key
-                  ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                  : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setWithFindingsOnly((value) => !value)}
-            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-              withFindingsOnly
-                ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-            }`}
-          >
-            With findings
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          {sources.length > 1 ? (
-            <select
-              value={source}
-              onChange={(event) => setSource(event.target.value)}
-              className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--text-secondary)] focus:border-[color:var(--border-strong)] focus:outline-none"
-              aria-label="Filter by data source"
-            >
-              <option value="all">All sources</option>
-              {sources.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={`Search ${config.label.toLowerCase()}…`}
-            className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--foreground)] placeholder:text-[color:var(--text-tertiary)] focus:border-[color:var(--border-strong)] focus:outline-none sm:w-60"
-          />
-        </div>
-      </div>
-
-      <SplitLayout
+      {model.matchingTotal === 0 ? (
+        <PageEmptyState
+          title={`No ${config.label.toLowerCase()} match these filters`}
+          detail="The selected snapshot contains this asset kind, but no rows match the current whole-inventory filters."
+          action={{ label: "Clear filters", onClick: clearFilters, variant: "secondary" }}
+        />
+      ) : (
+        <SplitLayout
         masterWidth="60%"
         master={
           <DataTable<AssetRow>
             columns={columns}
-            rows={rows}
+            rows={allRows}
             rowKey={(row) => row.id}
-            onRowClick={(row) => setSelectedId(row.id)}
+            onRowClick={(row) => {
+              setSelectedId(row.id);
+              void loadAssetDetail(row.id);
+            }}
             selectedKey={selected?.id}
-            sort={{ key: sortKeyToColumn(sortKey), direction: sortDir }}
-            onSortChange={onSortChange}
             maxHeight="calc(100vh - 22rem)"
             caption={`${config.label} inventory`}
             empty={
@@ -259,12 +184,7 @@ export function AssetInventoryView({
                 <button
                   type="button"
                   className="underline"
-                  onClick={() => {
-                    setQuery("");
-                    setSeverity("all");
-                    setSource("all");
-                    setWithFindingsOnly(false);
-                  }}
+                  onClick={clearFilters}
                 >
                   Clear filters
                 </button>
@@ -273,9 +193,19 @@ export function AssetInventoryView({
             data-testid={`inventory-table-${kind}`}
           />
         }
-        detail={selected ? <AssetDetail row={selected} config={config} /> : null}
+        detail={selected ? (
+          <AssetDetail
+            row={selected}
+            config={config}
+            detail={details[selected.id]}
+            loading={detailLoadingId === selected.id}
+            error={detailError}
+            scanId={model.scanId}
+          />
+        ) : null}
         placeholder={`Select a ${config.singular} to see its posture, attributes, and correlations.`}
-      />
+        />
+      )}
 
       {error && errorKind === "network" ? (
         <button type="button" onClick={reload} className="self-start text-xs text-[color:var(--text-tertiary)] underline">
@@ -284,12 +214,6 @@ export function AssetInventoryView({
       ) : null}
     </div>
   );
-}
-
-function sortKeyToColumn(key: AssetSortKey): string {
-  if (key === "label") return "label";
-  if (key === "findings") return "findings";
-  return "severity";
 }
 
 function FindingsCell({ row }: { row: AssetRow }) {
@@ -325,7 +249,7 @@ function buildColumns(kind: AssetKindId): DataTableColumn<AssetRow>[] {
     {
       key: "label",
       header: config.primaryColumn,
-      sortable: true,
+      sortable: false,
       cell: (row) => {
         const secondary = secondaryFor(row);
         return (
@@ -340,15 +264,15 @@ function buildColumns(kind: AssetKindId): DataTableColumn<AssetRow>[] {
     },
     {
       key: "severity",
-      header: "Severity",
-      sortable: true,
+      header: "Finding severity",
+      sortable: false,
       width: "7rem",
       cell: (row) => <SeverityBadge severity={row.severity} />,
     },
     {
       key: "findings",
       header: "Findings",
-      sortable: true,
+      sortable: false,
       align: "right",
       width: "8rem",
       cell: (row) => <FindingsCell row={row} />,

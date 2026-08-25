@@ -149,6 +149,30 @@ def graph_store(request: pytest.FixtureRequest) -> Any:
 
 
 class TestSeverityFloorKeepsTopologyOnEveryBackend:
+    def test_inventory_query_is_exact_and_finding_aware(self, graph_store: Any) -> None:
+        from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
+
+        finding_types = {entity_type.value for entity_type in FINDING_ENTITY_TYPES}
+        result = graph_store.query_inventory(
+            tenant_id="default",
+            asset_entity_types={entity_type.value for entity_type in EntityType} - finding_types,
+            severity="critical",
+            limit=50,
+        )
+        assert result["scan_id"] == "sev-topo"
+        assert result["total"] == 1
+        assert [node.id for node in result["nodes"]] == ["pkg:express"]
+        assert result["finding_summaries"]["pkg:express"] == {
+            "total": 2,
+            "by_severity": {"critical": 1, "low": 1},
+            "ids": ["vuln:crit", "vuln:low"],
+            "top_severity": "critical",
+        }
+        assert result["facets"]["severity"] == [
+            {"value": None, "count": 4},
+            {"value": "critical", "count": 1},
+        ]
+
     def test_page_nodes(self, graph_store: Any) -> None:
         _scan, _created, nodes, total, _cursor = graph_store.page_nodes(tenant_id="default", min_severity_rank=HIGH_FLOOR, limit=100)
         ids = {n.id for n in nodes}
@@ -193,6 +217,18 @@ def test_postgres_does_not_hand_roll_its_own_severity_floor() -> None:
             "context node the finding hangs off; use severity_floor_sql"
         )
         assert "severity_floor" in source, f"PostgresGraphStore.{method} should build its floor with the shared helper"
+
+
+def test_postgres_inventory_is_native_sql_not_python_paging() -> None:
+    import inspect
+
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+
+    source = inspect.getsource(PostgresGraphStore.query_inventory)
+    assert "page_nodes" not in source and "search_nodes" not in source
+    assert "COUNT(*)" in source
+    assert "jsonb_array_elements_text" in source
+    assert "finding_severity" in source
 
 
 # ── 2. a node budget must bound the read, not just the result ───────────────

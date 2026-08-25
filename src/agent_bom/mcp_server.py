@@ -1336,6 +1336,9 @@ def create_mcp_server(
         environment: Annotated[str | None, Field(description="Filter by environment facet, e.g. 'production'.")] = None,
         provider: Annotated[str | None, Field(description="Filter by provider facet, e.g. 'aws', 'snowflake'.")] = None,
         source: Annotated[str | None, Field(description="Filter by data-source / provenance facet.")] = None,
+        severity: Annotated[
+            str | None, Field(description="Filter by the asset's highest directly linked finding severity.")
+        ] = None,
         min_severity: Annotated[
             str | None, Field(description="Minimum severity floor for included assets: critical / high / medium / low.")
         ] = None,
@@ -1346,11 +1349,10 @@ def create_mcp_server(
     ) -> str:
         """Return a filtered, paginated page of inventory asset rows.
 
-        ``type`` / ``search`` / ``min_severity`` are pushed into the graph store;
-        the ``environment`` / ``provider`` / ``source`` facets are matched with a
-        bounded keyset refill loop so a filtered page is never silently truncated.
-        Page deep with the returned ``pagination.next_cursor``. Findings never
-        appear in the list.
+        Every filter and the exact whole-query total is evaluated natively by
+        the graph store. Facets are self-excluding and never derived from the
+        displayed page. Page deep with ``pagination.next_cursor``. Findings
+        never appear in the list.
         """
         return await _execute_tool_async(
             "inventory_list",
@@ -1361,6 +1363,7 @@ def create_mcp_server(
             environment=environment,
             provider=provider,
             source=source,
+            severity=severity,
             min_severity=min_severity,
             scan_id=scan_id,
             cursor=cursor,

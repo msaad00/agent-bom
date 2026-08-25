@@ -1,228 +1,222 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AssetInventoryView } from "@/components/inventory/asset-inventory-view";
 import { InventoryIndex } from "@/components/inventory/inventory-index";
-import { InventoryProvider } from "@/lib/inventory-context";
 import { api } from "@/lib/api";
-import type { UnifiedGraphResponse } from "@/lib/api";
+import type {
+  InventoryAsset,
+  InventoryAssetDetailResponse,
+  InventoryAssetsResponse,
+  InventoryFacets,
+  InventorySummaryResponse,
+} from "@/lib/api";
+import { InventoryProvider } from "@/lib/inventory-context";
+import { ASSET_KIND_BY_ID } from "@/lib/inventory";
 
-function node(
-  id: string,
-  entityType: string,
-  overrides: Partial<UnifiedGraphResponse["nodes"][number]> = {},
-): UnifiedGraphResponse["nodes"][number] {
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      getInventorySummary: vi.fn(),
+      getInventoryAssets: vi.fn(),
+      getInventoryAsset: vi.fn(),
+      getGraph: vi.fn(),
+    },
+  };
+});
+
+const SNAPSHOT = "scan-inventory-7";
+
+function facets(): InventoryFacets {
+  return {
+    type: {
+      buckets: [
+        { value: "package", count: 700 },
+        { value: "server", count: 200 },
+        { value: "agent", count: 100 },
+      ],
+    },
+    source: { buckets: [{ value: "sbom", count: 700 }, { value: "runtime", count: 300 }] },
+    provider: { buckets: [{ value: "aws", count: 300 }] },
+    environment: { buckets: [{ value: "production", count: 900 }] },
+    severity: { buckets: [{ value: "critical", count: 9 }, { value: "high", count: 71 }] },
+  };
+}
+
+function summary(overrides: Partial<InventorySummaryResponse> = {}): InventorySummaryResponse {
+  return {
+    schema_version: "inventory.summary.v1",
+    tenant_id: "tenant-a",
+    scan_id: SNAPSHOT,
+    created_at: "2026-08-25T03:00:00Z",
+    total_assets: 1000,
+    by_type: { package: 700, server: 200, agent: 100 },
+    by_group: { ai: 300, code: 700 },
+    finding_count: 123,
+    facets: facets(),
+    facet_metadata: { basis: "whole_query", mode: "self_excluding", exact: true, scan_id: SNAPSHOT },
+    completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1000, total: 1000 },
+    ...overrides,
+  };
+}
+
+function asset(id: string, overrides: Partial<InventoryAsset> = {}): InventoryAsset {
   return {
     id,
-    entity_type: entityType,
-    label: id,
-    category_uid: 0,
-    class_uid: 0,
-    type_uid: 0,
+    type: "package",
+    name: id.replace(/^pkg:/, ""),
+    environment: "production",
+    provider: "",
+    risk: 9.2,
+    severity: "high",
     status: "active",
-    risk_score: 0,
-    severity: "none",
-    severity_id: 0,
-    first_seen: "2026-07-01T00:00:00Z",
-    last_seen: "2026-07-10T00:00:00Z",
-    attributes: {},
-    compliance_tags: [],
-    data_sources: [],
-    dimensions: {},
-    ...overrides,
-  } as UnifiedGraphResponse["nodes"][number];
-}
-
-function edge(source: string, target: string): UnifiedGraphResponse["edges"][number] {
-  return {
-    id: `${source}->${target}`,
-    source,
-    target,
-    relationship: "vulnerable_to",
-    direction: "directed",
-    weight: 1,
-    traversable: true,
-    first_seen: "2026-07-01T00:00:00Z",
-    last_seen: "2026-07-10T00:00:00Z",
-    evidence: {},
-    activity_id: 0,
-  } as UnifiedGraphResponse["edges"][number];
-}
-
-function graph(
-  nodes: UnifiedGraphResponse["nodes"],
-  edges: UnifiedGraphResponse["edges"] = [],
-): UnifiedGraphResponse {
-  return {
-    scan_id: "scan-1",
-    tenant_id: "t1",
-    created_at: "2026-07-10T00:00:00Z",
-    nodes,
-    edges,
-    attack_paths: [],
-    interaction_risks: [],
-    stats: {
-      total_nodes: nodes.length,
-      total_edges: edges.length,
-      node_types: {},
-      severity_counts: {},
-      relationship_types: {},
-      attack_path_count: 0,
-      interaction_risk_count: 0,
-      max_attack_path_risk: 0,
-      highest_interaction_risk: 0,
+    source: "sbom",
+    sources: ["sbom", "lockfile"],
+    first_seen: "2026-08-20T00:00:00Z",
+    last_seen: "2026-08-25T00:00:00Z",
+    attributes: { license: "Apache-2.0" },
+    compliance_tags: ["LLM05"],
+    ecosystem: "pypi",
+    version: "2.32.4",
+    finding_summary: {
+      total: 3,
+      by_severity: { critical: 1, high: 2 },
+      ids: ["finding:CVE-1", "finding:CVE-2", "finding:CVE-3"],
+      top_severity: "critical",
     },
-    pagination: { total: nodes.length, offset: 0, limit: 4000, has_more: false },
-  } as unknown as UnifiedGraphResponse;
+    relationship_count: 4,
+    ...overrides,
+  };
 }
 
-function renderWithProvider(ui: React.ReactElement) {
-  return render(<InventoryProvider>{ui}</InventoryProvider>);
+function page(
+  assets: InventoryAsset[] = [asset("pkg:requests"), asset("pkg:flask", { name: "flask", severity: "none" })],
+  overrides: Partial<InventoryAssetsResponse> = {},
+): InventoryAssetsResponse {
+  return {
+    schema_version: "inventory.assets.v1",
+    tenant_id: "tenant-a",
+    scan_id: SNAPSHOT,
+    created_at: "2026-08-25T03:00:00Z",
+    assets,
+    filters: {},
+    pagination: { total: 700, offset: 0, limit: 100, next_cursor: "cursor-2", has_more: true, facet_filtered: false },
+    facets: facets(),
+    facet_metadata: { basis: "whole_query", mode: "self_excluding", exact: true, scan_id: SNAPSHOT },
+    completeness: { status: "truncated", complete: false, sampled: false, truncated: true, returned: assets.length, total: 700, reason: "asset_page_limit" },
+    ...overrides,
+  };
 }
 
-describe("AssetInventoryView", () => {
-  it("renders correlated package rows from the graph", async () => {
-    vi.spyOn(api, "getGraph").mockResolvedValue(
-      graph(
-        [
-          node("requests", "package", {
-            severity: "high",
-            dimensions: { ecosystem: "pypi" },
-            data_sources: ["sbom"],
-          }),
-          node("flask", "package", { severity: "none", data_sources: ["sbom"] }),
-          node("CVE-2026-1", "vulnerability", { severity: "critical" }),
-        ],
-        [edge("CVE-2026-1", "requests")],
-      ),
-    );
+function detail(row: InventoryAsset = asset("pkg:requests")): InventoryAssetDetailResponse {
+  return {
+    schema_version: "inventory.asset.v1",
+    tenant_id: "tenant-a",
+    asset: row,
+    node: {
+      id: row.id,
+      entity_type: row.type,
+      label: row.name,
+      attributes: { license: "Apache-2.0", owner: "platform-security" },
+      compliance_tags: ["LLM05"],
+    },
+    edges_out: [{ id: "e1", source: row.id, target: "finding:CVE-1", relationship: "vulnerable_to" }],
+    edges_in: [],
+    neighbors: ["finding:CVE-1"],
+    sources: [],
+    impact: { affected_count: 4, affected_by_type: { agent: 2, server: 2 } },
+    completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1, total: 1 },
+  };
+}
 
-    renderWithProvider(<AssetInventoryView kind="packages" />);
+function renderPackages(ui: React.ReactElement) {
+  return render(
+    <InventoryProvider entityTypes={ASSET_KIND_BY_ID.packages.entityTypes}>
+      {ui}
+    </InventoryProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(api.getInventorySummary).mockResolvedValue(summary());
+  vi.mocked(api.getInventoryAssets).mockResolvedValue(page());
+  vi.mocked(api.getInventoryAsset).mockResolvedValue(detail());
+});
+
+describe("AssetInventoryView inventory projection", () => {
+  it("renders bounded package rows and their server-authored finding summaries", async () => {
+    renderPackages(<AssetInventoryView kind="packages" />);
 
     const table = await screen.findByTestId("inventory-table-packages");
     await waitFor(() => expect(within(table).getByText("requests")).toBeInTheDocument());
     expect(within(table).getByText("flask")).toBeInTheDocument();
-    // "pypi" ecosystem is shown as the row's secondary line.
-    expect(within(table).getByText(/pypi/)).toBeInTheDocument();
+    expect(within(table).getAllByText(/pypi/)).toHaveLength(2);
+    expect(within(table).getAllByText("3")).toHaveLength(2);
+    expect(within(table).getAllByText("1C")).toHaveLength(2);
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("filters rows by the search box", async () => {
-    vi.spyOn(api, "getGraph").mockResolvedValue(
-      graph([
-        node("requests", "package", { data_sources: ["sbom"] }),
-        node("flask", "package", { data_sources: ["sbom"] }),
-      ]),
-    );
+  it("keeps whole-query totals distinct from the two displayed rows", async () => {
+    renderPackages(<AssetInventoryView kind="packages" />);
 
-    renderWithProvider(<AssetInventoryView kind="packages" />);
-    const table = await screen.findByTestId("inventory-table-packages");
-    await waitFor(() => expect(within(table).getByText("flask")).toBeInTheDocument());
-
-    fireEvent.change(screen.getByPlaceholderText(/search packages/i), {
-      target: { value: "requests" },
-    });
-
-    await waitFor(() => expect(within(table).queryByText("flask")).not.toBeInTheDocument());
-    expect(within(table).getByText("requests")).toBeInTheDocument();
+    await screen.findByTestId("inventory-table-packages");
+    expect(screen.getAllByText("700").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Showing 2 of 700 matching assets/i)).toBeInTheDocument();
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("opens a detail pane with correlation links on row click", async () => {
-    vi.spyOn(api, "getGraph").mockResolvedValue(
-      graph(
-        [
-          node("requests", "package", { severity: "high", data_sources: ["sbom"] }),
-          node("CVE-2026-1", "vulnerability", { severity: "critical" }),
-        ],
-        [edge("CVE-2026-1", "requests")],
-      ),
-    );
-
-    renderWithProvider(<AssetInventoryView kind="packages" />);
+  it("loads full graph context lazily only after a row is selected", async () => {
+    renderPackages(<AssetInventoryView kind="packages" />);
     const table = await screen.findByTestId("inventory-table-packages");
     await waitFor(() => expect(within(table).getByText("requests")).toBeInTheDocument());
 
+    expect(api.getInventoryAsset).not.toHaveBeenCalled();
     fireEvent.click(within(table).getByText("requests"));
 
-    // Correlation link into Findings scoped to this asset.
-    const findingsLink = await screen.findByRole("link", { name: /Findings/i });
-    expect(findingsLink).toHaveAttribute("href", "/findings?q=requests");
-    expect(screen.getByRole("link", { name: /Security graph/i })).toHaveAttribute(
-      "href",
-      "/security-graph?package=requests",
-    );
-  });
-
-  it("shows an honest empty state when the kind has no assets", async () => {
-    vi.spyOn(api, "getGraph").mockResolvedValue(graph([node("agent-1", "agent")]));
-
-    renderWithProvider(<AssetInventoryView kind="cloud" />);
     await waitFor(() =>
-      expect(screen.getByText(/No cloud resources discovered yet/i)).toBeInTheDocument(),
+      expect(api.getInventoryAsset).toHaveBeenCalledWith("pkg:requests", SNAPSHOT),
     );
+    expect(api.getInventoryAsset).toHaveBeenCalledTimes(1);
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("loads the next graph page when Load more is clicked", async () => {
-    const getGraph = vi.spyOn(api, "getGraph");
-    getGraph.mockResolvedValueOnce({
-      ...graph(
-        [node("pkg-1", "package", { data_sources: ["sbom"] })],
-        [],
-      ),
-      stats: {
-        total_nodes: 2,
-        total_edges: 0,
-        node_types: { package: 2 },
-        severity_counts: {},
-        relationship_types: {},
-        attack_path_count: 0,
-        interaction_risk_count: 0,
-        max_attack_path_risk: 0,
-        highest_interaction_risk: 0,
-      },
-      pagination: { total: 2, offset: 0, limit: 1, has_more: true, next_cursor: "cur-2" },
-      completeness: {
-        status: "truncated",
-        complete: false,
-        sampled: false,
-        truncated: true,
-        returned: 1,
-        total: 2,
-        reason: "node_page_limit",
-      },
-    } as unknown as UnifiedGraphResponse);
-    getGraph.mockResolvedValueOnce({
-      ...graph([node("pkg-2", "package", { data_sources: ["sbom"] })], []),
-      pagination: { total: 2, offset: 1, limit: 1, has_more: false, next_cursor: "" },
-    } as unknown as UnifiedGraphResponse);
-    renderWithProvider(<AssetInventoryView kind="packages" />);
-    const table = await screen.findByTestId("inventory-table-packages");
-    expect(screen.getByText(/Current graph page is truncated/i)).toBeInTheDocument();
-    await waitFor(() => expect(within(table).getByText("pkg-1")).toBeInTheDocument());
-    expect(within(table).queryByText("pkg-2")).not.toBeInTheDocument();
+  it("does not present a filtered empty page as an empty estate", async () => {
+    vi.mocked(api.getInventoryAssets).mockResolvedValue(
+      page([], {
+        pagination: { total: 0, offset: 0, limit: 100, next_cursor: "", has_more: false, facet_filtered: true },
+        completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 0, total: 0 },
+      }),
+    );
 
-    fireEvent.click(screen.getByTestId("inventory-load-more"));
-    await waitFor(() => expect(within(table).getByText("pkg-2")).toBeInTheDocument());
-    expect(getGraph).toHaveBeenCalledWith(expect.objectContaining({ cursor: "cur-2" }));
+    renderPackages(<AssetInventoryView kind="packages" />);
+
+    expect(await screen.findByText(/No packages match/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No packages discovered yet/i)).not.toBeInTheDocument();
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 });
 
-describe("InventoryIndex", () => {
-  it("renders one card per asset kind with counts", async () => {
-    vi.spyOn(api, "getGraph").mockResolvedValue(
-      graph([
-        node("requests", "package"),
-        node("srv-1", "server"),
-        node("agent-1", "agent"),
-      ]),
+describe("InventoryIndex whole-query truth", () => {
+  it("renders authoritative snapshot and kind totals despite a bounded first page", async () => {
+    render(
+      <InventoryProvider>
+        <InventoryIndex />
+      </InventoryProvider>,
     );
-
-    renderWithProvider(<InventoryIndex />);
 
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Asset inventory" })).toBeInTheDocument(),
     );
-    expect(screen.getByRole("link", { name: /^Packages/ })).toHaveAttribute("href", "/inventory/packages");
+    expect(screen.getByText("1,000")).toBeInTheDocument();
+    const packages = screen.getByRole("link", { name: /^Packages/ });
+    expect(packages).toHaveAttribute("href", "/inventory/packages");
+    expect(within(packages).getByText("700")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^MCP servers/ })).toHaveAttribute("href", "/inventory/servers");
-    expect(screen.getByRole("link", { name: /^Cloud resources/ })).toHaveAttribute("href", "/inventory/cloud");
+    expect(screen.getByRole("link", { name: /^AI agents/ })).toHaveAttribute("href", "/inventory/agents");
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 });

@@ -1,165 +1,235 @@
 /**
- * An asset-type page must ask for its own asset type.
- *
- * `/inventory` advertises 93 AI agents, 211 MCP servers and 258 container
- * images. Clicking any of those three cards landed on:
- *
- *     "No ai agents discovered yet — Run a scan or connect an account"
- *
- * with every request returning 200 on a healthy API and the estate fully
- * populated. **562 advertised assets were unreachable**, and the empty state
- * told the user to run a scan they had already run.
- *
- * The mechanism is the same split this release has been closing everywhere: the
- * card COUNT comes from `stats.node_types`, computed over the whole snapshot,
- * while the ROWS come from `api.getGraph({ limit, offset: 0 })` — a *ranked*
- * page of 1,073 nodes out of 6,802, dominated by misconfigurations. Agents,
- * servers and containers rank below the cut, so the page had genuinely zero of
- * them to show.
- *
- * `/v1/graph` has accepted an `entity_types` filter the whole time, and
- * `api.getGraph` has accepted `entityTypes` the whole time. Neither was wired
- * up. So the fix is not a new capability — it is asking the question the page
- * actually means: *give me this kind*, not *give me the top of the estate and
- * hope my kind is in it*.
+ * Inventory routes read the dedicated inventory projection, never an arbitrary
+ * ranked page from `/v1/graph`. The summary selects one exact snapshot; every
+ * list request and continuation cursor stays pinned to that snapshot and to
+ * the route/filter scope that produced the first page.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
-import { InventoryProvider } from "@/lib/inventory-context";
+import type {
+  InventoryAsset,
+  InventoryAssetsResponse,
+  InventoryFacets,
+  InventorySummaryResponse,
+} from "@/lib/api";
+import { InventoryProvider, useInventory } from "@/lib/inventory-context";
 import { ASSET_KIND_BY_ID } from "@/lib/inventory";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...actual, api: { ...actual.api, getGraph: vi.fn() } };
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      getInventorySummary: vi.fn(),
+      getInventoryAssets: vi.fn(),
+      getInventoryAsset: vi.fn(),
+      getGraph: vi.fn(),
+    },
+  };
 });
 
-/** A ranked page shaped like the real one: misconfigurations only. */
-function rankedPageWithoutAgents() {
-  const nodes = Array.from({ length: 40 }, (_unused, index) => ({
-    id: `misconfig:${index}`,
-    entity_type: "misconfiguration",
-    label: `CIS finding ${index}`,
-    severity: "high",
-    attributes: {},
-    compliance_tags: [],
-    data_sources: ["scan"],
-  }));
+const SNAPSHOT = "inventory-snapshot-42";
+
+function facets(): InventoryFacets {
   return {
-    scan_id: "s1",
-    tenant_id: "default",
-    created_at: "2026-08-10T00:00:00Z",
-    nodes,
-    edges: [],
-    attack_paths: [],
-    interaction_risks: [],
-    // The counts the cards render — the estate genuinely holds 93 agents.
-    stats: { total_nodes: 6802, total_edges: 22993, node_types: { misconfiguration: 1581, agent: 93 } },
-    pagination: { total: 6802, offset: 0, limit: 40, has_more: true },
+    type: { buckets: [{ value: "agent", count: 93 }, { value: "container", count: 258 }] },
+    source: { buckets: [{ value: "runtime", count: 74 }, { value: "cloud:aws", count: 19 }] },
+    provider: { buckets: [{ value: "aws", count: 19 }] },
+    environment: { buckets: [{ value: "production", count: 61 }] },
+    severity: { buckets: [{ value: "high", count: 11 }] },
   };
 }
 
-/** The same estate, asked the right question: only agent nodes. */
-function agentOnlyPage() {
-  const nodes = Array.from({ length: 5 }, (_unused, index) => ({
-    id: `agent:${index}`,
-    entity_type: "agent",
-    label: `agent-${index}`,
-    severity: "none",
+function summary(): InventorySummaryResponse {
+  return {
+    schema_version: "inventory.summary.v1",
+    tenant_id: "default",
+    scan_id: SNAPSHOT,
+    created_at: "2026-08-25T00:00:00Z",
+    total_assets: 351,
+    by_type: { agent: 93, container: 258 },
+    by_group: { ai: 351 },
+    finding_count: 18,
+    facets: facets(),
+    facet_metadata: { basis: "whole_query", mode: "self_excluding", exact: true, scan_id: SNAPSHOT },
+    completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 351, total: 351 },
+  };
+}
+
+function asset(id: string, type = "agent"): InventoryAsset {
+  return {
+    id,
+    type,
+    name: id.replace(/^\w+:/, ""),
+    environment: "production",
+    provider: "aws",
+    risk: 8.1,
+    severity: "high",
+    status: "active",
+    source: "runtime",
+    sources: ["runtime"],
+    first_seen: "2026-08-24T00:00:00Z",
+    last_seen: "2026-08-25T00:00:00Z",
     attributes: {},
     compliance_tags: [],
-    data_sources: ["scan"],
-  }));
-  return { ...rankedPageWithoutAgents(), nodes, pagination: { total: 93, offset: 0, limit: 40, has_more: true } };
+    ecosystem: "",
+    version: "",
+    finding_summary: { total: 1, by_severity: { high: 1 }, ids: [`finding:${id}`], top_severity: "high" },
+    relationship_count: 2,
+  };
+}
+
+function page(
+  assets: InventoryAsset[] = [asset("agent:one")],
+  { cursor = "cursor-2", hasMore = true }: { cursor?: string; hasMore?: boolean } = {},
+): InventoryAssetsResponse {
+  return {
+    schema_version: "inventory.assets.v1",
+    tenant_id: "default",
+    scan_id: SNAPSHOT,
+    created_at: "2026-08-25T00:00:00Z",
+    assets,
+    filters: {},
+    pagination: { total: 93, offset: 0, limit: 100, next_cursor: hasMore ? cursor : "", has_more: hasMore, facet_filtered: true },
+    facets: facets(),
+    facet_metadata: { basis: "whole_query", mode: "self_excluding", exact: true, scan_id: SNAPSHOT },
+    completeness: {
+      status: hasMore ? "truncated" : "complete",
+      complete: !hasMore,
+      sampled: false,
+      truncated: hasMore,
+      returned: assets.length,
+      total: 93,
+      ...(hasMore ? { reason: "asset_page_limit" } : {}),
+    },
+  };
+}
+
+function InventoryProbe() {
+  const { model, setFilter, loadMore } = useInventory();
+  return (
+    <div>
+      <span data-testid="loaded-agent-count">{model?.loadedByKind.agents ?? 0}</span>
+      <button
+        type="button"
+        onClick={() => {
+          setFilter("search", "payments");
+          setFilter("source", "runtime");
+          setFilter("provider", "aws");
+          setFilter("environment", "production");
+          setFilter("severity", "high");
+        }}
+      >
+        Apply scope
+      </button>
+      <button type="button" onClick={() => void loadMore()}>Load more</button>
+    </div>
+  );
 }
 
 beforeEach(() => {
-  vi.mocked(api.getGraph).mockReset();
+  vi.clearAllMocks();
+  vi.mocked(api.getInventorySummary).mockResolvedValue(summary());
+  vi.mocked(api.getInventoryAssets).mockResolvedValue(page());
 });
 
-describe("an asset-type page asks for its own type", () => {
-  it("requests the kind's entity types rather than a global ranked page", async () => {
-    vi.mocked(api.getGraph).mockResolvedValue(agentOnlyPage() as never);
+describe("inventory API route scope", () => {
+  it("reads summary first, then pins the kind list to its exact snapshot", async () => {
+    render(
+      <InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}>
+        <InventoryProbe />
+      </InventoryProvider>,
+    );
+
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
+    expect(api.getInventorySummary).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.getInventorySummary).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.getInventoryAssets).mock.invocationCallOrder[0]!,
+    );
+    expect(api.getInventoryAssets).toHaveBeenCalledWith({
+      type: ASSET_KIND_BY_ID.agents.entityTypes,
+      scanId: SNAPSHOT,
+      limit: 100,
+      offset: 0,
+    });
+    expect(api.getGraph).not.toHaveBeenCalled();
+  });
+
+  it("keeps fixed type and every server filter on the continuation cursor", async () => {
+    vi.mocked(api.getInventoryAssets)
+      .mockResolvedValueOnce(page())
+      .mockResolvedValueOnce(page())
+      .mockResolvedValueOnce(page([asset("agent:two")], { hasMore: false }));
 
     render(
       <InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}>
-        <div />
+        <InventoryProbe />
       </InventoryProvider>,
     );
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
 
-    await waitFor(() => expect(api.getGraph).toHaveBeenCalled());
-    const call = vi.mocked(api.getGraph).mock.calls[0]?.[0];
-    expect(call?.entityTypes).toEqual(ASSET_KIND_BY_ID.agents.entityTypes);
-  });
-
-  it("still fetches unfiltered when no kind is scoped (the index page)", async () => {
-    vi.mocked(api.getGraph).mockResolvedValue(rankedPageWithoutAgents() as never);
-
-    render(
-      <InventoryProvider>
-        <div />
-      </InventoryProvider>,
-    );
-
-    await waitFor(() => expect(api.getGraph).toHaveBeenCalled());
-    expect(vi.mocked(api.getGraph).mock.calls[0]?.[0]?.entityTypes).toBeUndefined();
-  });
-
-  it("pushes the URL-owned minimum severity into every server graph page", async () => {
-    vi.mocked(api.getGraph).mockResolvedValue(agentOnlyPage() as never);
-
-    render(
-      <InventoryProvider
-        entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}
-        minSeverity="high"
-      >
-        <div />
-      </InventoryProvider>,
-    );
-
-    await waitFor(() => expect(api.getGraph).toHaveBeenCalled());
-    expect(vi.mocked(api.getGraph).mock.calls[0]?.[0]).toEqual(
+    fireEvent.click(screen.getByRole("button", { name: "Apply scope" }));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        entityTypes: ASSET_KIND_BY_ID.agents.entityTypes,
-        minSeverity: "high",
+        type: ASSET_KIND_BY_ID.agents.entityTypes,
+        search: "payments",
+        source: "runtime",
+        provider: "aws",
+        environment: "production",
+        severity: "high",
+        scanId: SNAPSHOT,
+        offset: 0,
       }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(3));
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith({
+      type: ASSET_KIND_BY_ID.agents.entityTypes,
+      search: "payments",
+      source: "runtime",
+      provider: "aws",
+      environment: "production",
+      severity: "high",
+      scanId: SNAPSHOT,
+      limit: 100,
+      cursor: "cursor-2",
+    });
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("renders the kind's rows instead of an empty state", async () => {
-    vi.mocked(api.getGraph).mockResolvedValue(agentOnlyPage() as never);
-    const { AssetInventoryView } = await import("@/components/inventory/asset-inventory-view");
+  it("keeps the overview untyped while still using the inventory projection", async () => {
+    render(<InventoryProvider><InventoryProbe /></InventoryProvider>);
 
-    render(
-      <InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}>
-        <AssetInventoryView kind="agents" />
-      </InventoryProvider>,
-    );
-
-    await waitFor(() => expect(screen.queryByText(/discovered yet/i)).toBeNull());
-    expect(screen.getByText("agent-0")).toBeInTheDocument();
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.getInventoryAssets).mock.calls[0]?.[0]?.type).toBeUndefined();
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("refetches when the scoped kind changes", async () => {
-    vi.mocked(api.getGraph).mockResolvedValue(agentOnlyPage() as never);
-
+  it("refetches the list without refetching summary when the routed kind changes", async () => {
     const { rerender } = render(
       <InventoryProvider entityTypes={ASSET_KIND_BY_ID.agents.entityTypes}>
-        <div />
+        <InventoryProbe />
       </InventoryProvider>,
     );
-    await waitFor(() => expect(api.getGraph).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(1));
 
     rerender(
       <InventoryProvider entityTypes={ASSET_KIND_BY_ID.containers.entityTypes}>
-        <div />
+        <InventoryProbe />
       </InventoryProvider>,
     );
-    await waitFor(() => expect(api.getGraph).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(api.getGraph).mock.calls[1]?.[0]?.entityTypes).toEqual(
-      ASSET_KIND_BY_ID.containers.entityTypes,
+
+    await waitFor(() => expect(api.getInventoryAssets).toHaveBeenCalledTimes(2));
+    expect(api.getInventorySummary).toHaveBeenCalledTimes(1);
+    expect(api.getInventoryAssets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: ASSET_KIND_BY_ID.containers.entityTypes, scanId: SNAPSHOT }),
     );
+    expect(api.getGraph).not.toHaveBeenCalled();
   });
 });

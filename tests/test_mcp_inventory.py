@@ -184,6 +184,24 @@ async def test_inventory_list_provider_facet(seeded_store) -> None:
 
 
 @pytest.mark.asyncio
+async def test_inventory_list_severity_and_facets_match_http_contract(seeded_store) -> None:
+    response = await inventory_list_impl(
+        severity="critical", limit=100, _get_graph_store=_store_factory(seeded_store), _truncate_response=lambda v: v
+    )
+    body = json.loads(response)
+    assert body["scan_id"] == "inv-scan-1"
+    assert body["pagination"]["total"] == 1
+    assert [asset["id"] for asset in body["assets"]] == ["server:mcp"]
+    assert body["assets"][0]["finding_summary"]["top_severity"] == "critical"
+    assert body["facet_metadata"] == {
+        "basis": "whole_query",
+        "mode": "self_excluding",
+        "exact": True,
+        "scan_id": "inv-scan-1",
+    }
+
+
+@pytest.mark.asyncio
 async def test_inventory_list_excludes_findings(seeded_store) -> None:
     response = await inventory_list_impl(limit=100, _get_graph_store=_store_factory(seeded_store), _truncate_response=lambda v: v)
     body = json.loads(response)

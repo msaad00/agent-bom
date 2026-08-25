@@ -713,7 +713,9 @@ def _resolve_snapshot(
         "SELECT created_at FROM graph_snapshots WHERE scan_id = ? AND tenant_id = ?",
         (effective_scan_id, tenant_id),
     ).fetchone()
-    return effective_scan_id, (str(row["created_at"]) if row else "")
+    if row is None:
+        return "", ""
+    return effective_scan_id, str(row["created_at"])
 
 
 def _digest_payload(payload: Any) -> str:

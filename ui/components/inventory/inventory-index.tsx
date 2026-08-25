@@ -5,15 +5,16 @@ import { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { PageLaneHeader } from "@/components/page-lane";
 import { StatStrip } from "@/components/stat-strip";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ICON_SIZE } from "@/lib/icon-sizes";
 import { useInventory } from "@/lib/inventory-context";
-import { ASSET_KINDS, summarizeRows } from "@/lib/inventory";
+import { ASSET_KINDS } from "@/lib/inventory";
 
 export function InventoryIndex() {
-  const { model, loading, error, errorKind } = useInventory();
+  const { model, summary, loading, error, errorKind } = useInventory();
 
   const header = (
     <PageLaneHeader
@@ -24,35 +25,32 @@ export function InventoryIndex() {
   );
 
   const cards = useMemo(() => {
-    if (!model) return [];
+    if (!summary) return [];
+    const typeCounts = new Map(
+      (model?.facets.type.buckets ?? summary.facets.type.buckets)
+        .filter((bucket) => bucket.value)
+        .map((bucket) => [bucket.value!, bucket.count]),
+    );
     return ASSET_KINDS.map((kind) => {
-      const rows = model.rowsByKind[kind.id];
-      const summary = summarizeRows(rows);
       return {
         kind,
-        total: model.totalsByKind[kind.id],
-        loaded: model.loadedByKind[kind.id],
-        ...summary,
+        total: kind.entityTypes.reduce(
+          (count, entityType) => count + (typeCounts.get(entityType) ?? 0),
+          0,
+        ),
       };
     });
-  }, [model]);
+  }, [model, summary]);
 
   const totals = useMemo(() => {
-    if (!model) return { assets: 0, withFindings: 0, critical: 0, findings: 0 };
-    let assets = 0;
-    let withFindings = 0;
-    let critical = 0;
-    let findings = 0;
-    for (const kind of ASSET_KINDS) {
-      assets += model.totalsByKind[kind.id];
-      const summary = summarizeRows(model.rowsByKind[kind.id]);
-      withFindings += summary.withFindings;
-      critical += summary.criticalAssets;
-      findings += summary.totalFindings;
-    }
-    return { assets, withFindings, critical, findings };
-  }, [model]);
-  const complete = model?.completeness?.complete ?? true;
+    const sourceCount = summary?.facets.source.buckets.filter((bucket) => bucket.value).length ?? 0;
+    return {
+      assets: summary?.total_assets ?? 0,
+      matching: model?.matchingTotal ?? 0,
+      findings: summary?.finding_count ?? 0,
+      sources: sourceCount,
+    };
+  }, [model, summary]);
 
   if (loading && !model) {
     return (
@@ -72,7 +70,7 @@ export function InventoryIndex() {
     );
   }
 
-  if (!model || totals.assets === 0) {
+  if (!summary || totals.assets === 0) {
     return (
       <div className="space-y-5">
         {header}
@@ -96,27 +94,36 @@ export function InventoryIndex() {
     <div className="space-y-6">
       {header}
 
+      <InventoryFacetBar />
+
       <StatStrip
         items={[
-          { label: "Assets", value: totals.assets.toLocaleString() },
-          { label: complete ? "With findings" : "Loaded with findings", value: totals.withFindings, accent: totals.withFindings > 0 ? "warn" : "neutral" },
-          { label: complete ? "Critical assets" : "Loaded critical assets", value: totals.critical, accent: "critical" },
-          { label: complete ? "Correlated findings" : "Loaded correlations", value: totals.findings },
+          { label: "Snapshot assets", value: totals.assets.toLocaleString() },
+          { label: "Matching filters", value: totals.matching.toLocaleString() },
+          { label: "Snapshot findings", value: totals.findings.toLocaleString(), accent: totals.findings > 0 ? "warn" : "neutral" },
+          { label: "Evidence sources", value: totals.sources.toLocaleString() },
         ]}
       />
 
-      {model.completeness && !model.completeness.complete ? (
+      {model?.completeness && !model.completeness.complete ? (
         <div
           data-testid="inventory-coverage"
           className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]"
         >
           <span className="font-medium text-[color:var(--foreground)]">Evidence coverage:</span>{" "}
-          {model.completeness.status}. The totals are authoritative, while findings and relationships are loaded from the current graph page.
+          {model.completeness.status}. Matching totals and facets remain exact; only the displayed rows are cursor-bounded.
         </div>
       ) : null}
 
+      {model && model.matchingTotal === 0 ? (
+        <PageEmptyState
+          title="No assets match these filters"
+          detail="The snapshot contains assets, but none match the selected whole-inventory filters. Clear a filter or choose another source scope."
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(({ kind, total, criticalAssets, highAssets, withFindings }) => {
+        {cards.map(({ kind, total }) => {
           const Icon = kind.icon;
           const empty = total === 0;
           return (
@@ -154,23 +161,7 @@ export function InventoryIndex() {
                     {empty ? "none yet" : total === 1 ? kind.singular : `${kind.singular}s`}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px]">
-                  {criticalAssets > 0 ? (
-                    <span className="rounded-full border border-[color:var(--severity-critical)]/40 px-1.5 py-0.5 font-semibold text-[color:var(--severity-critical)]">
-                      {criticalAssets} crit
-                    </span>
-                  ) : null}
-                  {highAssets > 0 ? (
-                    <span className="rounded-full border border-[color:var(--severity-high)]/40 px-1.5 py-0.5 font-semibold text-[color:var(--severity-high)]">
-                      {highAssets} high
-                    </span>
-                  ) : null}
-                  {withFindings > 0 && criticalAssets === 0 && highAssets === 0 ? (
-                    <span className="rounded-full border border-[color:var(--border-subtle)] px-1.5 py-0.5 text-[color:var(--text-tertiary)]">
-                      {withFindings} flagged
-                    </span>
-                  ) : null}
-                </div>
+                <span className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">whole-query facet</span>
               </div>
             </Link>
           );

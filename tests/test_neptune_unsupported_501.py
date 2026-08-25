@@ -62,7 +62,8 @@ def sqlite_client():
 # (method, path, op-name-fragment) — each endpoint's first store interaction is
 # an unsupported Neptune op, so each must return 501 (not 500).
 _UNSUPPORTED_ENDPOINTS = [
-    ("GET", "/v1/inventory/assets", "page_nodes"),
+    ("GET", "/v1/inventory/assets", "query_inventory"),
+    ("GET", "/v1/inventory/summary", "query_inventory"),
     ("GET", "/v1/inventory/assets/agent:a", "node_context"),
     ("GET", "/v1/graph/attack-paths?limit=5", "attack_paths"),
     ("GET", "/v1/graph/impact?node=agent:a", "impact_of"),
@@ -113,12 +114,6 @@ def test_query_traversal_endpoint_returns_501(neptune_client):
     # first (nodes_by_ids / traverse_subgraph) must degrade honestly, not 500.
     detail = resp.json()["detail"]
     assert "Neptune" in detail and "experimental" in detail
-
-
-def test_supported_neptune_op_is_unaffected(neptune_client):
-    """snapshot_stats IS implemented, so /v1/inventory/summary stays 200."""
-    resp = neptune_client.get("/v1/inventory/summary")
-    assert resp.status_code == 200, resp.text
 
 
 @pytest.mark.parametrize("method,path,op", _UNSUPPORTED_ENDPOINTS)

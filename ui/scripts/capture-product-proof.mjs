@@ -1228,6 +1228,141 @@ function graphResponseWithPagination(data = graph) {
   };
 }
 
+const INVENTORY_FINDING_TYPES = new Set([
+  "finding",
+  "vulnerability",
+  "misconfiguration",
+  "secret",
+  "pii_exposure",
+]);
+
+function inventoryFindingSummary(nodeId) {
+  const findingIds = graph.edges
+    .filter((item) => item.source === nodeId || item.target === nodeId)
+    .map((item) => (item.source === nodeId ? item.target : item.source))
+    .filter((id) => INVENTORY_FINDING_TYPES.has(graph.nodes.find((item) => item.id === id)?.entity_type));
+  const findings = findingIds.map((id) => graph.nodes.find((item) => item.id === id)).filter(Boolean);
+  const bySeverity = findings.reduce(
+    (counts, item) => ({ ...counts, [item.severity]: (counts[item.severity] ?? 0) + 1 }),
+    {},
+  );
+  const topSeverity = findings
+    .map((item) => item.severity)
+    .sort((left, right) => severityId(right) - severityId(left))[0] ?? "none";
+  return { total: findings.length, by_severity: bySeverity, ids: findingIds, top_severity: topSeverity };
+}
+
+function inventoryAssetRows() {
+  return graph.nodes
+    .filter((item) => !INVENTORY_FINDING_TYPES.has(item.entity_type))
+    .map((item) => {
+      const relatedEdges = graph.edges.filter((edgeItem) => edgeItem.source === item.id || edgeItem.target === item.id);
+      return {
+        id: item.id,
+        type: item.entity_type,
+        name: item.label,
+        environment: item.dimensions?.environment ?? item.attributes?.environment ?? "",
+        provider: item.dimensions?.cloud_provider ?? item.attributes?.provider ?? "",
+        risk: item.risk_score,
+        severity: item.severity,
+        status: item.status,
+        source: item.data_sources?.[0] ?? "",
+        sources: item.data_sources ?? [],
+        first_seen: item.first_seen,
+        last_seen: item.last_seen,
+        attributes: item.attributes ?? {},
+        compliance_tags: item.compliance_tags ?? [],
+        ecosystem: item.dimensions?.ecosystem ?? item.attributes?.ecosystem ?? "",
+        version: item.attributes?.version ?? "",
+        finding_summary: inventoryFindingSummary(item.id),
+        relationship_count: relatedEdges.length,
+      };
+    });
+}
+
+function inventoryBuckets(rows, dimension) {
+  const counts = new Map();
+  for (const row of rows) {
+    let values;
+    if (dimension === "type") values = [row.type || null];
+    else if (dimension === "source") values = row.sources.length > 0 ? row.sources : [null];
+    else if (dimension === "severity") {
+      values = [row.finding_summary.total > 0 ? row.finding_summary.top_severity : null];
+    } else values = [row[dimension] || null];
+    for (const value of new Set(values)) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((left, right) => right.count - left.count || String(left.value).localeCompare(String(right.value)));
+}
+
+function inventoryFacets(rows) {
+  return Object.fromEntries(
+    ["type", "source", "provider", "environment", "severity"].map((dimension) => [
+      dimension,
+      { buckets: inventoryBuckets(rows, dimension) },
+    ]),
+  );
+}
+
+function inventorySummaryFixture() {
+  const rows = inventoryAssetRows();
+  const byType = Object.fromEntries(
+    inventoryBuckets(rows, "type")
+      .filter((item) => item.value)
+      .map((item) => [item.value, item.count]),
+  );
+  return {
+    schema_version: "inventory.summary.v1",
+    tenant_id: "default",
+    scan_id: SCAN_ID,
+    created_at: CREATED_AT,
+    total_assets: rows.length,
+    by_type: byType,
+    by_group: {},
+    finding_count: graph.nodes.filter((item) => INVENTORY_FINDING_TYPES.has(item.entity_type)).length,
+    facets: inventoryFacets(rows),
+    facet_metadata: { basis: "whole_query", mode: "self_excluding", exact: true, scan_id: SCAN_ID },
+    completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: rows.length, total: rows.length },
+  };
+}
+
+function inventoryAssetsFixture(requestUrl) {
+  const url = new URL(requestUrl);
+  const requestedTypes = new Set((url.searchParams.get("type") ?? "").split(",").filter(Boolean));
+  const query = (url.searchParams.get("search") ?? "").toLowerCase();
+  const environment = url.searchParams.get("environment") ?? "";
+  const provider = url.searchParams.get("provider") ?? "";
+  const source = url.searchParams.get("source") ?? "";
+  const severity = url.searchParams.get("severity") ?? "";
+  const allRows = inventoryAssetRows();
+  const rows = allRows.filter((row) => {
+    if (requestedTypes.size > 0 && !requestedTypes.has(row.type)) return false;
+    if (query && !`${row.id} ${row.name} ${row.type} ${row.sources.join(" ")}`.toLowerCase().includes(query)) return false;
+    if (environment && row.environment !== environment) return false;
+    if (provider && row.provider !== provider) return false;
+    if (source && !row.sources.includes(source)) return false;
+    if (severity && row.finding_summary.top_severity !== severity) return false;
+    return true;
+  });
+  const limit = Number(url.searchParams.get("limit") ?? 100);
+  const offset = Number(url.searchParams.get("offset") ?? 0);
+  const pageRows = rows.slice(offset, offset + limit);
+  const hasMore = offset + pageRows.length < rows.length;
+  return {
+    schema_version: "inventory.assets.v1",
+    tenant_id: "default",
+    scan_id: SCAN_ID,
+    created_at: CREATED_AT,
+    assets: pageRows,
+    filters: { type: [...requestedTypes], search: query, environment, provider, source, severity },
+    pagination: { total: rows.length, offset, limit, cursor: "", next_cursor: "", has_more: hasMore, facet_filtered: Boolean(environment || provider || source || severity) },
+    facets: inventoryFacets(rows),
+    facet_metadata: { basis: "whole_query", mode: "self_excluding", exact: true, scan_id: SCAN_ID },
+    completeness: { status: hasMore ? "truncated" : "complete", complete: !hasMore, sampled: false, truncated: hasMore, returned: pageRows.length, total: rows.length, ...(hasMore ? { reason: "asset_page_limit" } : {}) },
+  };
+}
+
 async function fulfill(route, body, status = 200) {
   await route.fulfill({
     status,
@@ -1532,6 +1667,27 @@ async function installRoutes(page) {
     { scan_id: SCAN_ID, created_at: CREATED_AT, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
     { scan_id: PREVIOUS_SCAN_ID, created_at: "2026-06-03T19:00:00Z", node_count: 22, edge_count: 25, risk_summary: { critical: 5, high: 8, medium: 6 } },
   ]));
+  await page.route("**/v1/inventory/summary?**", (route) => fulfill(route, inventorySummaryFixture()));
+  await page.route("**/v1/inventory/assets?**", (route) => fulfill(route, inventoryAssetsFixture(route.request().url())));
+  await page.route("**/v1/inventory/assets/**", (route) => {
+    const url = new URL(route.request().url());
+    const assetId = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
+    const asset = inventoryAssetRows().find((item) => item.id === assetId);
+    const selected = graph.nodes.find((item) => item.id === assetId);
+    if (!asset || !selected) return fulfill(route, { detail: "Asset not found" }, 404);
+    return fulfill(route, {
+      schema_version: "inventory.asset.v1",
+      tenant_id: "default",
+      asset,
+      node: selected,
+      edges_out: graph.edges.filter((item) => item.source === assetId),
+      edges_in: graph.edges.filter((item) => item.target === assetId),
+      neighbors: graph.edges.filter((item) => item.source === assetId || item.target === assetId).flatMap((item) => [item.source, item.target]).filter((id) => id !== assetId),
+      sources: asset.sources,
+      impact: { node_id: assetId, affected_nodes: [], affected_by_type: {}, affected_count: 0, max_depth_reached: 0 },
+      completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1, total: 1 },
+    });
+  });
   await page.route("**/v1/graph/views/fix-first?**", (route) => fulfill(route, fixFirstView()));
   await page.route("**/v1/graph/presets**", (route) => fulfill(route, []));
   await page.route("**/v1/graph/rollup?**", (route) => fulfill(route, {
@@ -2364,7 +2520,7 @@ async function main() {
       await scrollTo(inventoryPage, 0);
     }, {
       expectedText: ["Asset inventory", "Packages", "MCP servers", "AI agents", "Cloud resources", "Coverage reflects only what has actually been scanned or connected"],
-      expectedApiPaths: ["/v1/graph"],
+      expectedApiPaths: ["/v1/inventory/summary", "/v1/inventory/assets"],
     });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click({ force: true });

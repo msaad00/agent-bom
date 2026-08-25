@@ -9,17 +9,22 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { GraphCompleteness, UnifiedGraphResponse } from "@/lib/api";
+import type {
+  GraphCompleteness,
+  InventoryAsset,
+  InventoryAssetsResponse,
+  InventoryFacets,
+  InventorySummaryResponse,
+  UnifiedGraphResponse,
+} from "@/lib/api";
 import type { PageLane } from "@/lib/page-lanes";
 import { severityRank } from "@/lib/severity";
 
 /**
- * Asset Inventory reads exclusively from the canonical context graph
- * (`GET /v1/graph`, exposed as `api.getGraph`). Every asset row and every
- * correlation number below is derived from real graph nodes + edges — nothing
- * is fabricated. Coverage is therefore exactly whatever the platform has
- * actually discovered for the tenant; a kind with no nodes renders an honest
- * empty state rather than placeholder data.
+ * Asset Inventory reads the server-owned projection over the canonical graph
+ * (`GET /v1/inventory/*`). Counts and facets are whole-query values, while each
+ * bounded row carries its direct finding summary and can lazily resolve full
+ * graph context through the asset detail endpoint.
  */
 
 export type AssetKindId =
@@ -78,7 +83,7 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     singular: "MCP server",
     description:
       "Model Context Protocol servers your agents connect to, with transport, tools, and correlated findings.",
-    entityTypes: ["server"],
+    entityTypes: ["server", "tool", "tool_call"],
     lane: "ai-estate",
     primaryColumn: "Server",
     coverageNote:
@@ -91,7 +96,7 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     singular: "agent",
     description:
       "AI agents and clients discovered in the estate, correlated to the servers, credentials, and findings they touch.",
-    entityTypes: ["agent"],
+    entityTypes: ["agent", "model", "framework", "dataset"],
     lane: "ai-estate",
     primaryColumn: "Agent",
     coverageNote:
@@ -104,7 +109,18 @@ export const ASSET_KINDS: readonly AssetKindConfig[] = [
     singular: "cloud resource",
     description:
       "Compute, storage, databases, and network resources from connected cloud accounts (CSPM inventory).",
-    entityTypes: ["cloud_resource", "resource", "data_store", "api_gateway"],
+    entityTypes: [
+      "cloud_resource",
+      "resource",
+      "data_store",
+      "api_gateway",
+      "account",
+      "org",
+      "environment",
+      "provider",
+      "cluster",
+      "fleet",
+    ],
     lane: "cloud-data",
     primaryColumn: "Resource",
     coverageNote:
@@ -240,8 +256,99 @@ export interface InventoryModel {
   loadedByKind: Record<AssetKindId, number>;
   scanId: string;
   createdAt: string;
+  /** Exact count after every active server filter, independent of page size. */
+  matchingTotal: number;
+  facets: InventoryFacets;
+  facetExact: boolean;
   /** Whether the current graph page is exhaustive or still cursor-bounded. */
   completeness?: GraphCompleteness | undefined;
+}
+
+/** Convert one server-projected asset row without inventing graph context. */
+export function inventoryAssetToRow(asset: InventoryAsset): AssetRow | null {
+  const entityType = asset.type.toLowerCase();
+  const kind = assetKindForEntityType(entityType);
+  if (!kind) return null;
+  const findingSummary = asset.finding_summary ?? {
+    total: 0,
+    by_severity: {},
+    ids: [],
+    top_severity: "none",
+  };
+  const severity = (
+    findingSummary.total > 0 ? findingSummary.top_severity || "unknown" : "none"
+  ).toLowerCase();
+  return {
+    id: asset.id,
+    kind,
+    entityType,
+    label: asset.name || asset.id,
+    severity,
+    severityRank: severityRank(severity),
+    riskScore: typeof asset.risk === "number" ? asset.risk : 0,
+    status: asset.status || "unknown",
+    ecosystem: asset.ecosystem || undefined,
+    provider: asset.provider || undefined,
+    environment: asset.environment || undefined,
+    version: asset.version || undefined,
+    dataSources: Array.isArray(asset.sources) ? asset.sources : [],
+    findingCount: findingSummary.total,
+    criticalCount: findingSummary.by_severity.critical ?? 0,
+    highCount: findingSummary.by_severity.high ?? 0,
+    topFindingSeverity: findingSummary.top_severity || "none",
+    firstSeen: asset.first_seen || undefined,
+    lastSeen: asset.last_seen || undefined,
+    attributes: asset.attributes ?? {},
+    complianceTags: asset.compliance_tags ?? [],
+    findingIds: findingSummary.ids ?? [],
+  };
+}
+
+/** Build the UI model from authoritative inventory summary + one bounded page. */
+export function buildInventoryFromApi(
+  summary: InventorySummaryResponse,
+  page: InventoryAssetsResponse,
+): InventoryModel {
+  const rowsByKind = emptyRecord();
+  for (const asset of page.assets) {
+    const row = inventoryAssetToRow(asset);
+    if (row) rowsByKind[row.kind].push(row);
+  }
+  const totalsByKind = emptyCounts();
+  const loadedByKind = emptyCounts();
+  for (const kind of ASSET_KINDS) {
+    totalsByKind[kind.id] = kind.entityTypes.reduce(
+      (total, entityType) => total + (summary.by_type[entityType] ?? 0),
+      0,
+    );
+    loadedByKind[kind.id] = rowsByKind[kind.id].length;
+  }
+  return {
+    rowsByKind,
+    totalsByKind,
+    loadedByKind,
+    scanId: page.scan_id || summary.scan_id,
+    createdAt: page.created_at || summary.created_at || "",
+    matchingTotal: page.pagination.total,
+    facets: page.facets ?? summary.facets,
+    facetExact: Boolean(page.facet_metadata?.exact),
+    completeness: page.completeness,
+  };
+}
+
+/** Merge cursor pages without widening the pinned snapshot or duplicating ids. */
+export function mergeInventoryAssetPages(
+  current: InventoryAssetsResponse,
+  next: InventoryAssetsResponse,
+): InventoryAssetsResponse {
+  if (current.scan_id !== next.scan_id) {
+    throw new Error("Inventory pagination crossed graph snapshots");
+  }
+  const ids = new Set(current.assets.map((asset) => asset.id));
+  return {
+    ...next,
+    assets: [...current.assets, ...next.assets.filter((asset) => !ids.has(asset.id))],
+  };
 }
 
 function attrString(node: GraphNode, key: string): string | undefined {
@@ -384,6 +491,15 @@ export function buildInventory(graph: UnifiedGraphResponse): InventoryModel {
     loadedByKind,
     scanId: graph.scan_id,
     createdAt: graph.created_at,
+    matchingTotal: Object.values(totalsByKind).reduce((total, count) => total + count, 0),
+    facets: {
+      type: { buckets: [] },
+      source: { buckets: [] },
+      provider: { buckets: [] },
+      environment: { buckets: [] },
+      severity: { buckets: [] },
+    },
+    facetExact: false,
     completeness: graph.completeness,
   };
 }

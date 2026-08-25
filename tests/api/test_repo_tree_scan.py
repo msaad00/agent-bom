@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -118,8 +119,15 @@ def test_repo_tree_persists_clean_sast_execution(monkeypatch: pytest.MonkeyPatch
 
 
 def test_repo_tree_persists_skipped_sast_execution_without_invoking_remote_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    run_mock = MagicMock()
-    monkeypatch.setattr("agent_bom.sast.subprocess.run", run_mock)
+    real_run = subprocess.run
+    sast_run_mock = MagicMock()
+
+    def run_without_remote_sast(command, *args, **kwargs):
+        if command and command[0] == "git":
+            return real_run(command, *args, **kwargs)
+        return sast_run_mock(command, *args, **kwargs)
+
+    monkeypatch.setattr("agent_bom.sast.subprocess.run", run_without_remote_sast)
     monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
 
     result = scan_cloned_repo_tree(str(tmp_path), agents=[], warnings=[], offline=True)
@@ -128,7 +136,7 @@ def test_repo_tree_persists_skipped_sast_execution_without_invoking_remote_confi
     assert result.sast_data["execution_status"] == "skipped"
     assert result.sast_data["status_reason"] == "offline_remote_config"
     assert result.sast_data["status_detail"] == "SAST skipped because offline mode disallows registry-backed rules."
-    run_mock.assert_not_called()
+    sast_run_mock.assert_not_called()
 
 
 def test_repo_tree_persists_sanitized_failed_sast_execution(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

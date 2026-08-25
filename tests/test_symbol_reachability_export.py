@@ -282,7 +282,7 @@ def test_ast_result_for_symbol_reach_reads_ordinary_application_project() -> Non
     assert result is not None
     assert result.tools == []
     assert result.application_entrypoints
-    assert {reach.package for reach in result.dependency_symbol_reach} == {"requests"}
+    assert {reach.package for reach in result.dependency_symbol_reach} == {"rich"}
     assert all(reach.entrypoint_provenance for reach in result.dependency_symbol_reach)
 
 
@@ -292,8 +292,8 @@ def test_ordinary_application_reaches_runtime_child_but_not_unused_manifest_depe
     assert ast_result is not None
     packages = parse_uv_lock(fixture)
     by_name = {package.name: package for package in packages}
-    runtime_child = _python_br([], pkg_name="urllib3")
-    runtime_child.package = by_name["urllib3"]
+    runtime_child = _python_br([], pkg_name="markdown-it-py")
+    runtime_child.package = by_name["markdown-it-py"]
     unused = _python_br([], pkg_name="attrs")
     unused.package = by_name["attrs"]
 
@@ -304,7 +304,7 @@ def test_ordinary_application_reaches_runtime_child_but_not_unused_manifest_depe
     )
 
     assert runtime_child.symbol_reachability == PACKAGE_REACHABLE
-    assert runtime_child.runtime_dependency_chain == ["requests", "urllib3"]
+    assert runtime_child.runtime_dependency_chain == ["rich", "markdown-it-py"]
     assert unused.symbol_reachability == UNREACHABLE
     assert unused.runtime_dependency_chain == []
 

@@ -1,8 +1,9 @@
-import requests
+import rich
 
 
 def emit_status(message: str) -> int:
-    return requests.get(message, timeout=5).status_code
+    rich.print(message)
+    return 0
 
 
 def exported_but_unused() -> str:
@@ -10,7 +11,7 @@ def exported_but_unused() -> str:
 
 
 def main() -> int:
-    return emit_status("https://example.com/health")
+    return emit_status("ordinary application ready")
 
 
 if __name__ == "__main__":

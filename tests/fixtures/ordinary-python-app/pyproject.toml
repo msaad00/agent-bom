@@ -2,7 +2,7 @@
 name = "ordinary-python-app"
 version = "0.1.0"
 dependencies = [
-  "requests==2.19.1",
+  "rich==14.1.0",
   "attrs==25.3.0",
 ]
 

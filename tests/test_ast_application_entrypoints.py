@@ -27,10 +27,10 @@ def test_ordinary_repository_reaches_used_dependency_only() -> None:
     assert result.tools == []
     assert {entry.kind for entry in result.application_entrypoints} == {"console_script", "language_main"}
     assert {entry.handler for entry in result.application_entrypoints} == {"main"}
-    assert {reach.package for reach in result.dependency_symbol_reach} == {"requests"}
+    assert {reach.package for reach in result.dependency_symbol_reach} == {"rich"}
     assert all(reach.package != "attrs" for reach in result.dependency_symbol_reach)
     reach_index = SymbolReachIndex.from_ast_result(result)
-    assert reach_index.is_package_reached("requests", ecosystem="pypi") is True
+    assert reach_index.is_package_reached("rich", ecosystem="pypi") is True
     assert reach_index.is_package_reached("attrs", ecosystem="pypi") is False
     assert all(reach.entrypoint_kind in {"console_script", "language_main"} for reach in result.dependency_symbol_reach)
     assert all(reach.entrypoint_provenance for reach in result.dependency_symbol_reach)

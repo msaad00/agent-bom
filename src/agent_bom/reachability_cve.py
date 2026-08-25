@@ -242,11 +242,7 @@ class RuntimeDependencyReachIndex:
         symbol_index: SymbolReachIndex,
     ) -> "RuntimeDependencyReachIndex":
         package_rows = list(packages)
-        known_keys = {
-            _pkg_index_key(package.name, package.ecosystem)
-            for package in package_rows
-            if package.name and package.ecosystem
-        }
+        known_keys = {_pkg_index_key(package.name, package.ecosystem) for package in package_rows if package.name and package.ecosystem}
         versions_by_key: dict[str, set[str]] = defaultdict(set)
         for package in package_rows:
             if package.name and package.ecosystem:
@@ -271,12 +267,7 @@ class RuntimeDependencyReachIndex:
             ):
                 continue
             parent_key = _pkg_index_key(parent, package.ecosystem)
-            if (
-                parent_key not in known_keys
-                or parent_key == child_key
-                or parent_key in ambiguous_keys
-                or child_key in ambiguous_keys
-            ):
+            if parent_key not in known_keys or parent_key == child_key or parent_key in ambiguous_keys or child_key in ambiguous_keys:
                 continue
             names_by_key.setdefault(parent_key, parent)
             children[parent_key].add(child_key)

@@ -513,6 +513,53 @@ def test_db_covered_ecosystems_does_not_infer_scope_from_cross_ecosystem_rows(tm
     assert _db_covered_ecosystems() == {"pypi"}
 
 
+def test_db_covered_ecosystems_bounds_legacy_query_to_requested_ecosystems(tmp_path, monkeypatch):
+    """Scan coverage must not enumerate an entire multi-million-row catalog."""
+    from agent_bom.db import schema
+    from agent_bom.db.schema import init_db
+    from agent_bom.scanners import _db_covered_ecosystems
+
+    db_file = tmp_path / "legacy.db"
+    conn = init_db(db_file)
+    conn.executemany(
+        "INSERT INTO vulns(id,summary,severity,source) VALUES (?,?,?,?)",
+        [
+            ("OSV-PYPI-1", "python advisory", "high", "osv"),
+            ("OSV-NPM-1", "node advisory", "high", "osv"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,?)",
+        [
+            ("OSV-PYPI-1", "pypi", "requests", "0", "3.0.0", ""),
+            ("OSV-NPM-1", "npm", "express", "0", "5.0.0", ""),
+        ],
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source,last_synced,record_count,metadata_json) VALUES (?,?,?,?)",
+        ("osv", "2026-08-24T12:00:00+00:00", 2, "{}"),
+    )
+    conn.commit()
+    conn.close()
+
+    statements: list[str] = []
+    original_open = schema.open_existing_db_readonly
+
+    def _traced_open(path):
+        traced = original_open(path)
+        traced.set_trace_callback(statements.append)
+        return traced
+
+    monkeypatch.setattr(schema, "DB_PATH", db_file)
+    monkeypatch.setattr(schema, "open_existing_db_readonly", _traced_open)
+
+    assert _db_covered_ecosystems({"pypi"}) == {"pypi"}
+    coverage_queries = [statement for statement in statements if "FROM affected" in statement]
+    assert len(coverage_queries) == 1
+    assert "WHERE ecosystem IN" in coverage_queries[0]
+    assert "npm" not in coverage_queries[0]
+
+
 def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monkeypatch):
     """A package in an ecosystem the DB has zero advisories for warns, not raises."""
     from agent_bom.scanners import scan_packages

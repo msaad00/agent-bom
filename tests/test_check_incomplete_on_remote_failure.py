@@ -36,7 +36,7 @@ def _run(monkeypatch, *, db_ecosystems: set[str], osv_failed: bool, args: list[s
 
     # package_scan resolves these through ``agent_bom.scanners`` so tests can
     # replace them; patch them where the runtime actually looks them up.
-    monkeypatch.setattr(scanners_mod, "_db_covered_ecosystems", lambda: db_ecosystems, raising=False)
+    monkeypatch.setattr(scanners_mod, "_db_covered_ecosystems", lambda *_args: db_ecosystems, raising=False)
     monkeypatch.setattr(scanners_mod, "_scan_packages_local_db", lambda packages: (0, set()), raising=False)
     monkeypatch.setattr("agent_bom.parsers.os_parsers.enrich_os_package_context", lambda pkg: True)
 

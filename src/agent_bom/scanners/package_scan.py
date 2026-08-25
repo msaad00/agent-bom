@@ -455,7 +455,8 @@ def _flag_remote_lookup_gap(osv_targets: list[Package]) -> None:
 
     if not any(warning.get("kind") == "remote_lookup_error" for warning in peek_coverage_warnings()):
         return
-    covered_ecos = _scanners_patchable("_db_covered_ecosystems")()
+    target_ecosystems = {eco for package in osv_targets for eco in _db_ecosystems_for_package(package)}
+    covered_ecos = _scanners_patchable("_db_covered_ecosystems")(target_ecosystems)
     uncovered = [pkg for pkg in osv_targets if not any(eco in covered_ecos for eco in _db_ecosystems_for_package(pkg))]
     if not uncovered:
         return
@@ -480,7 +481,7 @@ def _flag_remote_lookup_gap(osv_targets: list[Package]) -> None:
     )
 
 
-def _db_covered_ecosystems() -> set[str]:
+def _db_covered_ecosystems(ecosystems: set[str] | None = None) -> set[str]:
     """Return the lowercased ecosystems the local vulnerability DB has advisories for.
 
     An advisory DB only stores *vulnerable* package-versions, so it cannot
@@ -490,6 +491,11 @@ def _db_covered_ecosystems() -> set[str]:
     package in that ecosystem with no rows is clean; an ecosystem with zero
     advisories is a real coverage gap. Returns an empty set when the DB is
     missing/unreadable (callers treat that as "no offline coverage at all").
+
+    When ``ecosystems`` is provided, bound the legacy row-inference query to
+    those inventory ecosystems. The affected table can contain millions of
+    rows and thousands of distro-scoped ecosystems; a scan only needs coverage
+    truth for the ecosystems it is actually evaluating.
     """
     try:
         from agent_bom.db.schema import (
@@ -502,7 +508,6 @@ def _db_covered_ecosystems() -> set[str]:
             return set()
         conn = open_existing_db_readonly(DB_PATH)
         try:
-            rows = conn.execute("SELECT DISTINCT ecosystem FROM affected").fetchall()
             declared: set[str] = set()
             coverage_mode = "legacy"
             columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(sync_meta)").fetchall()}
@@ -515,9 +520,27 @@ def _db_covered_ecosystems() -> set[str]:
                         metadata = {}
                     if isinstance(metadata, dict):
                         coverage_mode = str(metadata.get("coverage", "legacy"))
-                        ecosystems = metadata.get("ecosystems")
-                        if isinstance(ecosystems, list):
-                            declared = {str(item).lower() for item in ecosystems if isinstance(item, str) and item}
+                        declared_ecosystems = metadata.get("ecosystems")
+                        if isinstance(declared_ecosystems, list):
+                            declared = {str(item).lower() for item in declared_ecosystems if isinstance(item, str) and item}
+            requested = {str(item).lower() for item in ecosystems or set() if str(item).strip()}
+            if coverage_mode == "selected_ecosystems":
+                return declared & requested if ecosystems is not None else declared
+            if coverage_mode == "partial":
+                return set()
+
+            if ecosystems is None:
+                rows = conn.execute("SELECT DISTINCT ecosystem FROM affected").fetchall()
+            elif not requested:
+                rows = []
+            else:
+                rows = []
+                requested_list = sorted(requested)
+                for start in range(0, len(requested_list), 400):
+                    chunk = requested_list[start : start + 400]
+                    placeholders = ", ".join("?" for _ in chunk)
+                    query = f"SELECT DISTINCT ecosystem FROM affected WHERE ecosystem IN ({placeholders})"  # nosec B608
+                    rows.extend(conn.execute(query, chunk).fetchall())
         finally:
             conn.close()
         # Ecosystem-specific OSV archives can contain cross-ecosystem aliases.
@@ -525,11 +548,10 @@ def _db_covered_ecosystems() -> set[str]:
         # ecosystem's complete archive was synchronized. Scoped metadata is
         # therefore authoritative; row inference remains only for legacy/full
         # databases that predate the explicit coverage contract.
-        if coverage_mode == "selected_ecosystems":
-            return declared
-        if coverage_mode == "partial":
-            return set()
-        return {str(r[0]).lower() for r in rows if r[0]} | declared
+        inferred = {str(r[0]).lower() for r in rows if r[0]}
+        if ecosystems is not None:
+            declared &= requested
+        return inferred | declared
     except Exception as exc:  # noqa: BLE001
         _logger.debug("Could not read local DB ecosystem coverage: %s", exc)
         return set()
@@ -1544,7 +1566,8 @@ async def scan_packages(
     from agent_bom.coverage import osv_fallback_db_keys
 
     force_osv_keys = osv_fallback_db_keys(scannable, gaps=coverage_gaps) if not scan_offline else set()
-    covered_ecos = _scanners_patchable("_db_covered_ecosystems")()
+    inventory_ecosystems = {eco for package in scannable for eco in _db_ecosystems_for_package(package)}
+    covered_ecos = _scanners_patchable("_db_covered_ecosystems")(inventory_ecosystems)
     # Either an exact package hit or a declared complete ecosystem archive is
     # sufficient local evidence. Sparse-release fallbacks deliberately override
     # both so EOL coverage cannot be mistaken for a clean result.

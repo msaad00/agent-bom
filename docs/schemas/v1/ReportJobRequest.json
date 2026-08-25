@@ -58,6 +58,7 @@
             "vulnerability",
             "misconfiguration",
             "secret",
+            "pii",
             "identity",
             "unclassified"
           ],

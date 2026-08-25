@@ -24,7 +24,6 @@ ICON_COLORS = {
     "kubernetes": "#326ce5",
     "microsoftazure": "#0078d4",
     "okta": "#007dc1",
-    "openai": "#f8fafc",
     "snowflake": "#29b5e8",
     "windsurf": "#f8fafc",
 }

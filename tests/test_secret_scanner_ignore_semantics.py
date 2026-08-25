@@ -10,6 +10,7 @@ from a single gitignored browser-automation cache.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from agent_bom.secret_scanner import scan_secrets
@@ -38,6 +39,35 @@ def test_source_outside_ignores_still_reports_its_secret(tmp_path: Path) -> None
     """Guard against over-pruning: ignoring one path must not silence the rest."""
     (tmp_path / ".gitignore").write_text(".playwright-mcp/\n")
     (tmp_path / "app.py").write_text(_SECRET)
+
+    assert "app.py" in _scanned_files(tmp_path)
+
+
+def test_tracked_file_matching_later_gitignore_rule_is_scanned(tmp_path: Path) -> None:
+    """Git ignore rules never suppress files already present in the index."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    tracked = tmp_path / "config.env"
+    tracked.write_text(_SECRET)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "config.env"], check=True)
+    (tmp_path / ".gitignore").write_text("*.env\n")
+
+    result = scan_secrets(str(tmp_path))
+
+    assert "config.env" in {finding.file_path for finding in result.findings}
+
+
+def test_git_index_query_failure_scans_instead_of_excluding(tmp_path: Path, monkeypatch) -> None:
+    """Coverage fails closed when trackedness cannot be established."""
+    from agent_bom.scanners import repo_ignore
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".gitignore").write_text("*.py\n")
+    (tmp_path / "app.py").write_text(_SECRET)
+
+    def _timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=5)
+
+    monkeypatch.setattr(repo_ignore.subprocess, "run", _timeout)
 
     assert "app.py" in _scanned_files(tmp_path)
 

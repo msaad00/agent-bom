@@ -73,8 +73,17 @@ def test_pii_and_credential_stay_distinct_in_sarif() -> None:
 
 # ── Non-routable / documentation IPv4 literals are not PII ───────────────────
 
-_LOCAL_IPS = ["127.0.0.1", "0.0.0.0", "192.0.2.10", "198.51.100.4", "203.0.113.77",
-              "10.0.0.5", "192.168.1.1", "169.254.1.1", "255.255.255.255"]
+_LOCAL_IPS = [
+    "127.0.0.1",
+    "0.0.0.0",
+    "192.0.2.10",
+    "198.51.100.4",
+    "203.0.113.77",
+    "10.0.0.5",
+    "192.168.1.1",
+    "169.254.1.1",
+    "255.255.255.255",
+]
 
 
 def test_localhost_ip_is_not_reported(tmp_path: Path) -> None:
@@ -85,9 +94,16 @@ def test_localhost_ip_is_not_reported(tmp_path: Path) -> None:
     assert ip_findings == [], f"non-routable literals reported as PII: {[f.file_path for f in ip_findings]}"
 
 
+def test_routable_service_ips_without_pii_context_are_not_reported(tmp_path: Path) -> None:
+    (tmp_path / "settings.yml").write_text("dns_server: 8.8.8.8\nremote_host: 52.94.236.248\n")
+
+    findings = [f for f in scan_secrets(str(tmp_path)).findings if "IP Address" in f.secret_type]
+    assert findings == []
+
+
 def test_routable_ip_with_pii_context_is_still_reported(tmp_path: Path) -> None:
-    """Do not weaken real detection: a routable literal still reports, at medium."""
-    (tmp_path / "settings.yml").write_text("client_ip: 8.8.8.8\nremote_host: 52.94.236.248\n")
+    """Do not weaken real detection: an address in a client record still reports."""
+    (tmp_path / "settings.yml").write_text("client_ip: 52.94.236.248\n")
 
     findings = [f for f in scan_secrets(str(tmp_path)).findings if "IP Address" in f.secret_type]
     assert findings, "routable IPv4 should still be reported"

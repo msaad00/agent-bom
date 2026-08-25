@@ -28,8 +28,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent_bom.repo_ignore import GITIGNORE_FILENAME, SCANNER_IGNORE_FILENAME, RepositoryIgnore
 from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
+from agent_bom.scanners.repo_ignore import GITIGNORE_FILENAME, SCANNER_IGNORE_FILENAME, RepositoryIgnore
 from agent_bom.traversal import iter_discovery_files
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -453,10 +453,13 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
                 match = pattern.search(line)
                 if not match:
                     continue
-                if name == "IP Address (IPv4)" and not _is_reportable_ipv4(match.group(0)):
-                    # Configuration, not personal data. Keep scanning the line so a
-                    # later pattern can still match it.
-                    continue
+                if name == "IP Address (IPv4)":
+                    if not _IPV4_PII_CONTEXT_RE.search(line) or not _is_reportable_ipv4(match.group(0)):
+                        # A routable service/configuration address is not itself
+                        # evidence of personal data. Require an explicit user,
+                        # client, visitor, or request-record field before
+                        # classifying the literal as PII.
+                        continue
                 findings.append(
                     SecretFinding(
                         file_path=rel_path,
@@ -483,6 +486,11 @@ _DOCUMENTATION_IPV4_NETS = (
     ipaddress.IPv4Network("192.0.2.0/24"),
     ipaddress.IPv4Network("198.51.100.0/24"),
     ipaddress.IPv4Network("203.0.113.0/24"),
+)
+_IPV4_PII_CONTEXT_RE = re.compile(
+    r"(?:^|[^a-z0-9])(?:client|customer|user|visitor|request|session|login|source)[_-]?ip(?:v4)?\b"
+    r"|(?:^|[^a-z0-9])ip[_-]?address\b",
+    re.IGNORECASE,
 )
 
 
@@ -573,7 +581,6 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
     result.ignored_paths = ignore.ignored_count
     if ignore.ignored_count:
         result.warnings.append(
-            f"Skipped {ignore.ignored_count} path(s) excluded by repository ignore rules "
-            f"({GITIGNORE_FILENAME} / {SCANNER_IGNORE_FILENAME})"
+            f"Skipped {ignore.ignored_count} path(s) excluded by repository ignore rules ({GITIGNORE_FILENAME} / {SCANNER_IGNORE_FILENAME})"
         )
     return result

@@ -51,14 +51,6 @@ REPOSITORY_PINNED_VENDORS = {
     "Anthropic Claude",
     "Cursor",
 }
-# A mark its owner does not publish as a redistributable diagram asset, and which
-# no CC0 icon set carries, is pinned to the exact upstream bytes by URL + sha256
-# instead. Modifications must be stated, because the bytes on disk are not the
-# bytes upstream serves.
-UPSTREAM_PINNED_VENDORS = {
-    "OpenAI",
-}
-UPSTREAM_PINNED_HOSTS = {"upload.wikimedia.org"}
 ICON_SET_SOURCE_HOST = "simpleicons.org"
 ICON_SET_ALLOWED_LICENSES = {"CC0-1.0"}
 _FULL_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -76,10 +68,6 @@ def _repository_pinned(assets: list[dict]) -> list[dict]:
     return [asset for asset in assets if "source_repo" in asset and "source_page" not in asset]
 
 
-def _upstream_pinned(assets: list[dict]) -> list[dict]:
-    return [asset for asset in assets if "source_url" in asset and "source_repo" not in asset and "source_archive" not in asset]
-
-
 def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert data["schema_version"] == 1
@@ -89,17 +77,15 @@ def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
     first_party = _first_party(assets)
     icon_set = _icon_set(assets)
     repository_pinned = _repository_pinned(assets)
-    upstream_pinned = _upstream_pinned(assets)
 
     # Every asset must declare exactly one pin. An entry with neither is
     # unpinned; an entry with both hides which guarantee actually applies.
-    assert len(first_party) + len(icon_set) + len(repository_pinned) + len(upstream_pinned) == len(assets)
+    assert len(first_party) + len(icon_set) + len(repository_pinned) == len(assets)
     assert not [a for a in assets if "source_archive" in a and "source_repo" in a]
 
     assert {asset["vendor"] for asset in first_party} == FIRST_PARTY_VENDORS
     assert {asset["vendor"] for asset in icon_set} == ICON_SET_VENDORS
     assert {asset["vendor"] for asset in repository_pinned} == (REPOSITORY_PINNED_VENDORS)
-    assert {asset["vendor"] for asset in upstream_pinned} == UPSTREAM_PINNED_VENDORS
 
     # Shared contract: the bytes on disk are the bytes that were reviewed.
     for asset in assets:
@@ -128,11 +114,3 @@ def test_vendor_diagram_assets_have_first_party_pinned_provenance() -> None:
         assert repo.scheme == "https"
         # A branch or tag can move; only a full commit sha pins the bytes.
         assert _FULL_COMMIT_SHA.match(asset["source_commit"]), asset["path"]
-
-    for asset in upstream_pinned:
-        for key in ("source_page", "source_url"):
-            parsed = urlparse(asset[key])
-            assert parsed.scheme == "https"
-        assert urlparse(asset["source_url"]).hostname in UPSTREAM_PINNED_HOSTS
-        # These bytes were edited before vendoring, so the edit has to be on record.
-        assert asset["modifications"]

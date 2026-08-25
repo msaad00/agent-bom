@@ -27,6 +27,7 @@ directory be pruned during the walk instead of enumerated and filtered.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -38,6 +39,63 @@ SCANNER_IGNORE_FILENAME = ".agentbomignore"
 # A single ignore file can be hostile or accidentally enormous; cap what we
 # compile so a pathological repository cannot stall discovery.
 _MAX_PATTERNS_PER_FILE = 5_000
+_GIT_QUERY_TIMEOUT_SECONDS = 5
+
+
+def _inside_git_checkout(path: Path) -> bool:
+    """Best-effort checkout detection when Git itself cannot answer."""
+    return any((candidate / ".git").exists() for candidate in (path, *path.parents))
+
+
+def _git_tracked_paths(root: Path) -> tuple[frozenset[str], frozenset[str], bool]:
+    """Return tracked files/directories relative to *root*.
+
+    Git ignore rules only apply to untracked paths. If a checkout is visible but
+    Git cannot enumerate its index, disable .gitignore exclusions rather than
+    risk suppressing a committed secret. Explicit .agentbomignore rules remain
+    available because they are scanner policy, not inferred Git state.
+    """
+    command = ["git", "-C", str(root), "rev-parse", "--show-toplevel"]
+    try:
+        top_level = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return frozenset(), frozenset(), _inside_git_checkout(root)
+
+    if top_level.returncode != 0:
+        return frozenset(), frozenset(), _inside_git_checkout(root)
+
+    repository_root = Path(top_level.stdout.strip()).resolve()
+    try:
+        listed = subprocess.run(
+            ["git", "-C", str(repository_root), "ls-files", "-z", "--cached"],
+            check=False,
+            capture_output=True,
+            timeout=_GIT_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return frozenset(), frozenset(), True
+    if listed.returncode != 0:
+        return frozenset(), frozenset(), True
+
+    tracked_files: set[str] = set()
+    tracked_dirs: set[str] = set()
+    for raw_path in listed.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        try:
+            repository_relative = raw_path.decode("utf-8", errors="surrogateescape")
+            scan_relative = (repository_root / repository_relative).relative_to(root).as_posix()
+        except ValueError:
+            continue
+        tracked_files.add(scan_relative)
+        tracked_dirs.update(parent.as_posix() for parent in PurePosixPath(scan_relative).parents if parent.as_posix() != ".")
+    return frozenset(tracked_files), frozenset(tracked_dirs), False
 
 
 def _compile(lines: list[str]) -> PathSpec | None:
@@ -83,10 +141,20 @@ class RepositoryIgnore:
     _layers: list[_Layer] = field(default_factory=list)
     _loaded_dirs: set[str] = field(default_factory=set)
     ignored_count: int = 0
+    _tracked_files: frozenset[str] = frozenset()
+    _tracked_dirs: frozenset[str] = frozenset()
+    _gitignore_fail_closed: bool = False
 
     @classmethod
     def for_root(cls, root: Path) -> "RepositoryIgnore":
-        instance = cls(root=Path(root))
+        resolved_root = Path(root).resolve()
+        tracked_files, tracked_dirs, gitignore_fail_closed = _git_tracked_paths(resolved_root)
+        instance = cls(
+            root=resolved_root,
+            _tracked_files=tracked_files,
+            _tracked_dirs=tracked_dirs,
+            _gitignore_fail_closed=gitignore_fail_closed,
+        )
         instance._load_dir("")
         return instance
 
@@ -123,12 +191,31 @@ class RepositoryIgnore:
         """Return True when the last matching rule excludes *rel_path*."""
         candidate = f"{rel_path}/" if is_dir and not rel_path.endswith("/") else rel_path
         excluded = False
-        for layer in self._ordered_layers():
+        ordered_layers = self._ordered_layers()
+        for layer in (item for item in ordered_layers if not item.is_override):
+            if self._gitignore_fail_closed:
+                break
             scoped = self._scope(candidate, layer.base)
             if scoped is None:
                 continue
             # ``check_file`` reports the *last* matching pattern, which is how
             # negation is resolved inside a single file.
+            result = layer.spec.check_file(scoped)
+            if result.include is None:
+                continue
+            excluded = bool(result.include)
+
+        # Git never ignores an already tracked file. Likewise, an ignored
+        # directory cannot be pruned when it contains tracked descendants.
+        # Scanner-specific overrides remain authoritative and are evaluated
+        # afterward, so .agentbomignore may intentionally exclude tracked data.
+        if (is_dir and rel_path in self._tracked_dirs) or (not is_dir and rel_path in self._tracked_files):
+            excluded = False
+
+        for layer in (item for item in ordered_layers if item.is_override):
+            scoped = self._scope(candidate, layer.base)
+            if scoped is None:
+                continue
             result = layer.spec.check_file(scoped)
             if result.include is None:
                 continue

@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Act. Security evidence across repositories, software supply chains, AI and MCP, cloud, identity, and data." width="960" />
 </p>
 
-<p align="center"><sub>Supported backends — connector depth varies. <a href="docs/INTEGRATIONS.md">See the capability matrix.</a></sub></p>
+<p align="center"><sub>The marks above represent supported discovery, scanning, connection, deployment, or evidence backends—not identical connector depth. <a href="docs/INTEGRATIONS.md">See the capability matrix.</a></sub></p>
 
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>

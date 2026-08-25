@@ -96,9 +96,9 @@ def test_scan_secrets_keeps_ipv4_pii_in_code_config_and_secret_contexts(tmp_path
     # It deliberately uses routable addresses: RFC 5737 documentation ranges and
     # RFC 1918 private ranges identify no one and are suppressed by address class,
     # which would otherwise mask the context behaviour under test.
-    (tmp_path / "app.py").write_text('ADMIN_BIND_IP = "8.8.8.8"\n', encoding="utf-8")
-    (tmp_path / "service.yaml").write_text("upstream_ip: 9.9.9.9\n", encoding="utf-8")
-    (tmp_path / ".env").write_text("SERVICE_IP=1.1.1.1\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text('ADMIN_CLIENT_IP = "8.8.8.8"\n', encoding="utf-8")
+    (tmp_path / "service.yaml").write_text("client_ip: 9.9.9.9\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("USER_IP=1.1.1.1\n", encoding="utf-8")
     (tmp_path / "implementation-notes.txt").write_text(
         "The tutorial mentions 4.4.4.4 as an example address.\n",
         encoding="utf-8",

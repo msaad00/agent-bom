@@ -26,7 +26,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from agent_bom.repo_ignore import RepositoryIgnore
+    from agent_bom.scanners.repo_ignore import RepositoryIgnore
 
 # Directory names never worth descending for source/manifest discovery: VCS
 # metadata, virtualenvs, vendored dependencies, build output, and tool caches.

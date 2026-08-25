@@ -194,10 +194,18 @@ class SQLiteGraphScenarioStore:
                     operations, assumptions, created_by, provenance, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    record["id"], tenant_id, record["base_scan_id"], record["revision"],
-                    record["name"], record["description"], json.dumps(record["operations"], sort_keys=True),
-                    json.dumps(record.get("assumptions") or [], sort_keys=True), record.get("created_by", ""),
-                    json.dumps(record["provenance"], sort_keys=True), record["created_at"], record["updated_at"],
+                    record["id"],
+                    tenant_id,
+                    record["base_scan_id"],
+                    record["revision"],
+                    record["name"],
+                    record["description"],
+                    json.dumps(record["operations"], sort_keys=True),
+                    json.dumps(record.get("assumptions") or [], sort_keys=True),
+                    record.get("created_by", ""),
+                    json.dumps(record["provenance"], sort_keys=True),
+                    record["created_at"],
+                    record["updated_at"],
                 ),
             )
             self._conn.commit()
@@ -245,10 +253,16 @@ class SQLiteGraphScenarioStore:
                    provenance = ?, updated_at = ?
                WHERE tenant_id = ? AND id = ? AND revision = ?""",
             (
-                record["revision"], record["name"], record["description"],
-                json.dumps(record["operations"], sort_keys=True), json.dumps(record.get("assumptions") or [], sort_keys=True),
+                record["revision"],
+                record["name"],
+                record["description"],
+                json.dumps(record["operations"], sort_keys=True),
+                json.dumps(record.get("assumptions") or [], sort_keys=True),
                 json.dumps(record["provenance"], sort_keys=True),
-                record["updated_at"], tenant_id, scenario_id, expected_revision,
+                record["updated_at"],
+                tenant_id,
+                scenario_id,
+                expected_revision,
             ),
         )
         self._conn.commit()

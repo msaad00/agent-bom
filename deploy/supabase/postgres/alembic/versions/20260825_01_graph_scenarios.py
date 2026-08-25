@@ -15,6 +15,18 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Incremental upgrades may run from a stamped prior head in an otherwise
+    # empty CI/operator database. Keep the schema-authority row self-contained
+    # instead of assuming the full bootstrap SQL ran first.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS control_plane_schema_versions (
+            component TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS graph_scenarios (

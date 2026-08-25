@@ -21,9 +21,7 @@ from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGr
 
 def _graph(scan_id: str, *, extra_node: bool = False) -> UnifiedGraph:
     graph = UnifiedGraph(scan_id=scan_id, tenant_id="default")
-    graph.created_at = (
-        "2026-08-25T00:00:02+00:00" if scan_id == "snapshot-latest" else "2026-08-25T00:00:01+00:00"
-    )
+    graph.created_at = "2026-08-25T00:00:02+00:00" if scan_id == "snapshot-latest" else "2026-08-25T00:00:01+00:00"
     graph.add_node(
         UnifiedNode(
             id="cloud:api",
@@ -274,7 +272,8 @@ def test_invalid_stored_operation_returns_unavailable_without_partial_applicatio
 
 
 def test_payload_cap_extra_fields_and_managed_trial_read_only(
-    scenario_client: tuple[TestClient, Any, Any], monkeypatch: pytest.MonkeyPatch,
+    scenario_client: tuple[TestClient, Any, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, _graph_store, _scenario_store = scenario_client
     extra = client.post("/v1/graph/scenarios", json={**_create_body(), "authority": "observed"})
@@ -299,9 +298,7 @@ def test_payload_cap_extra_fields_and_managed_trial_read_only(
     monkeypatch.setenv("AGENT_BOM_MANAGED_TRIAL_MODE", "1")
     assert client.get("/v1/graph/scenarios").status_code == 200
     assert client.get(f"/v1/graph/scenarios/{scenario_id}").status_code == 200
-    assert client.get(
-        f"/v1/graph/scenarios/{scenario_id}/comparison", params={"scan_id": "snapshot-old"}
-    ).status_code == 200
+    assert client.get(f"/v1/graph/scenarios/{scenario_id}/comparison", params={"scan_id": "snapshot-old"}).status_code == 200
     denied = client.post("/v1/graph/scenarios", json=_create_body())
     assert denied.status_code == 403
     assert "managed trial" in denied.json()["detail"].lower()
@@ -316,7 +313,8 @@ def test_payload_cap_extra_fields_and_managed_trial_read_only(
 
 
 def test_backend_failures_are_sanitized(
-    scenario_client: tuple[TestClient, SQLiteGraphStore, Any], monkeypatch: pytest.MonkeyPatch,
+    scenario_client: tuple[TestClient, SQLiteGraphStore, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, graph_store, _scenario_store = scenario_client
     secret = "postgresql://admin:super-secret@internal/scenarios"
@@ -342,7 +340,10 @@ def test_backend_failures_are_sanitized(
     ],
 )
 def test_auth_contract_is_read_viewer_write_analyst_delete_admin(
-    method: str, path: str, role: str, scope: str,
+    method: str,
+    path: str,
+    role: str,
+    scope: str,
 ) -> None:
     policy = object.__new__(middleware.APIKeyMiddleware)
     assert policy._required_role(method, path) == role
@@ -356,17 +357,21 @@ def test_postgres_scenario_schema_is_migration_owned_tenant_rls() -> None:
     root = Path(__file__).resolve().parents[1]
     init_sql = (root / "deploy/supabase/postgres/init.sql").read_text()
     runtime_sql = (root / "deploy/supabase/postgres/runtime-schema.sql").read_text()
+    migration_sql = (root / "deploy/supabase/postgres/alembic/versions/20260825_01_graph_scenarios.py").read_text()
     assert "CREATE TABLE IF NOT EXISTS graph_scenarios" in init_sql
     assert "ALTER TABLE graph_scenarios ENABLE ROW LEVEL SECURITY" in init_sql
     assert "ALTER TABLE graph_scenarios FORCE ROW LEVEL SECURITY" in init_sql
     assert "graph_scenarios_tenant_isolation" in init_sql
     assert "graph_scenarios" in runtime_sql
+    assert migration_sql.index("CREATE TABLE IF NOT EXISTS control_plane_schema_versions") < migration_sql.index(
+        "INSERT INTO control_plane_schema_versions"
+    )
     component = next(item for item in CONTROL_PLANE_SCHEMA_COMPONENTS if item.component == "graph_scenarios")
     assert component.backend == "sqlite/postgres" and component.tenant_scoped is True
 
     source = inspect.getsource(PostgresGraphScenarioStore)
-    assert "ensure_postgres_schema_version(conn, \"graph_scenarios\")" in source
-    assert "_ensure_tenant_rls(conn, \"graph_scenarios\", \"tenant_id\")" in source
+    assert 'ensure_postgres_schema_version(conn, "graph_scenarios")' in source
+    assert '_ensure_tenant_rls(conn, "graph_scenarios", "tenant_id")' in source
     assert "with _tenant_connection(self._pool)" in source
     assert "revision = %s" in source and "expected_revision" in source
 

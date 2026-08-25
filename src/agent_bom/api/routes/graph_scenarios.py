@@ -65,9 +65,7 @@ class AddNodeOperation(_ClosedModel):
     key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
     entity_type: EntityType
     label: str = Field(min_length=1, max_length=512)
-    presentation: ScenarioNodePatch = Field(
-        default=ScenarioNodePatch(label=None, risk_score=None, compliance_tags=None, data_sources=None)
-    )
+    presentation: ScenarioNodePatch = Field(default=ScenarioNodePatch(label=None, risk_score=None, compliance_tags=None, data_sources=None))
     assumption: str = Field("", max_length=1_000)
     rationale: str = Field("", max_length=2_000)
 
@@ -149,22 +147,14 @@ def _validate_unique_additions(changes: list[ScenarioOperation]) -> None:
             for reference in (change.source, change.target):
                 if reference.startswith("proposal:") and reference.removeprefix("proposal:") not in proposed_keys:
                     raise ValueError(f"unknown proposed node reference {reference!r}")
-    mutated_nodes = [
-        change.node_id for change in changes if isinstance(change, (PatchNodeOperation, RemoveNodeOperation))
-    ]
+    mutated_nodes = [change.node_id for change in changes if isinstance(change, (PatchNodeOperation, RemoveNodeOperation))]
     if len(mutated_nodes) != len(set(mutated_nodes)):
         raise ValueError("an observed node may be patched or removed only once per scenario")
-    edge_ids = [
-        (change.source, change.target, change.relationship.value)
-        for change in changes
-        if isinstance(change, AddEdgeOperation)
-    ]
+    edge_ids = [(change.source, change.target, change.relationship.value) for change in changes if isinstance(change, AddEdgeOperation)]
     if len(edge_ids) != len(set(edge_ids)):
         raise ValueError("add_edge changes must use unique semantic edge identities")
     removed_edge_ids = {
-        (change.source, change.target, change.relationship.value)
-        for change in changes
-        if isinstance(change, RemoveEdgeOperation)
+        (change.source, change.target, change.relationship.value) for change in changes if isinstance(change, RemoveEdgeOperation)
     }
     if set(edge_ids).intersection(removed_edge_ids):
         raise ValueError("the same edge cannot be both added and removed")
@@ -354,10 +344,7 @@ def _entity_provenance(scenario: dict[str, Any], operation: Any) -> dict[str, An
         **base,
         "revision": int(scenario["revision"]),
         "author": scenario.get("created_by", ""),
-        "assumption": str(
-            getattr(operation, "assumption", "")
-            or (scenario_assumptions[0] if scenario_assumptions else "")
-        ),
+        "assumption": str(getattr(operation, "assumption", "") or (scenario_assumptions[0] if scenario_assumptions else "")),
         "rationale": str(getattr(operation, "rationale", "") or scenario.get("description", "")),
     }
 
@@ -371,10 +358,7 @@ def _apply_operations(
     attack_paths: list[Any],
 ) -> dict[str, Any]:
     nodes = {node.id: node.to_dict() for node in graph.nodes.values()}
-    edges = {
-        _edge_key(edge.source, edge.target, edge.relationship.value): edge.to_dict()
-        for edge in graph.edges
-    }
+    edges = {_edge_key(edge.source, edge.target, edge.relationship.value): edge.to_dict() for edge in graph.edges}
     operations = _OPERATION_ADAPTER.validate_python(scenario.get("operations") or [])
     nodes_added: list[str] = []
     nodes_removed: list[str] = []
@@ -419,9 +403,7 @@ def _apply_operations(
         elif isinstance(operation, PatchNodeOperation):
             if operation.node_id not in nodes:
                 raise ValueError(f"patch_node references unavailable node {operation.node_id!r}")
-            nodes[operation.node_id] = _patch_node(
-                nodes[operation.node_id], operation.patch, _entity_provenance(scenario, operation)
-            )
+            nodes[operation.node_id] = _patch_node(nodes[operation.node_id], operation.patch, _entity_provenance(scenario, operation))
             nodes_changed.append(operation.node_id)
             touched_nodes.add(operation.node_id)
         elif isinstance(operation, AddEdgeOperation):
@@ -497,9 +479,13 @@ def _apply_operations(
 
 def _empty_difference() -> dict[str, Any]:
     return {
-        "nodes_added": [], "nodes_removed": [], "nodes_changed": [],
-        "edges_added": [], "edges_removed": [],
-        "touched_observed_path_count": 0, "touched_observed_path_ids": [],
+        "nodes_added": [],
+        "nodes_removed": [],
+        "nodes_changed": [],
+        "edges_added": [],
+        "edges_removed": [],
+        "touched_observed_path_count": 0,
+        "touched_observed_path_ids": [],
     }
 
 
@@ -511,9 +497,7 @@ def _observed_references(scenario: dict[str, Any]) -> set[str]:
         elif isinstance(operation, (PatchNodeOperation, RemoveNodeOperation)):
             references.add(operation.node_id)
         elif isinstance(operation, (AddEdgeOperation, RemoveEdgeOperation)):
-            references.update(
-                reference for reference in (operation.source, operation.target) if not reference.startswith("proposal:")
-            )
+            references.update(reference for reference in (operation.source, operation.target) if not reference.startswith("proposal:"))
     return references
 
 
@@ -611,15 +595,22 @@ async def compare_graph_scenario(
                 "node_count": 0,
                 "edge_count": 0,
                 "completeness": {
-                    "status": "unavailable", "complete": False, "truncated": False,
-                    "returned": 0, "total": 0, "reason": "selected_snapshot_mismatch",
+                    "status": "unavailable",
+                    "complete": False,
+                    "truncated": False,
+                    "returned": 0,
+                    "total": 0,
+                    "reason": "selected_snapshot_mismatch",
                 },
                 "base_status": "unavailable",
                 "latest_scan_id": None,
             },
             "proposed": {
-                "node_count": 0, "edge_count": 0, "modeled": True,
-                "nodes": [], "edges": [],
+                "node_count": 0,
+                "edge_count": 0,
+                "modeled": True,
+                "nodes": [],
+                "edges": [],
                 "completeness": {"complete": False, "truncated": False, "reason": "selected_snapshot_mismatch"},
             },
             "difference": _empty_difference(),
@@ -652,7 +643,11 @@ async def compare_graph_scenario(
             "scenario": {**_public_scenario(scenario), "base_status": "unavailable"},
             "current": current,
             "proposed": {
-                "node_count": 0, "edge_count": 0, "modeled": True, "nodes": [], "edges": [],
+                "node_count": 0,
+                "edge_count": 0,
+                "modeled": True,
+                "nodes": [],
+                "edges": [],
                 "completeness": {"complete": False, "truncated": False, "reason": "base_snapshot_unavailable"},
             },
             "difference": _empty_difference(),
@@ -729,7 +724,11 @@ async def compare_graph_scenario(
             "scenario": {**_public_scenario(scenario), "base_status": status},
             "current": current,
             "proposed": {
-                "node_count": 0, "edge_count": 0, "modeled": True, "nodes": [], "edges": [],
+                "node_count": 0,
+                "edge_count": 0,
+                "modeled": True,
+                "nodes": [],
+                "edges": [],
                 "completeness": {"complete": False, "truncated": False, "reason": "invalid_scenario"},
             },
             "difference": _empty_difference(),
@@ -763,7 +762,14 @@ async def compare_graph_scenario(
 
 
 __all__ = [
-    "AddEdgeOperation", "AddNodeOperation", "GraphScenarioCreate", "GraphScenarioUpdate",
-    "PatchNodeOperation", "RemoveEdgeOperation", "RemoveNodeOperation", "ScenarioNodePatch",
-    "compare_graph_scenario", "router",
+    "AddEdgeOperation",
+    "AddNodeOperation",
+    "GraphScenarioCreate",
+    "GraphScenarioUpdate",
+    "PatchNodeOperation",
+    "RemoveEdgeOperation",
+    "RemoveNodeOperation",
+    "ScenarioNodePatch",
+    "compare_graph_scenario",
+    "router",
 ]

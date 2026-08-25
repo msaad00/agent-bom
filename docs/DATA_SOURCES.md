@@ -32,7 +32,7 @@ cloud grants: [CLOUD_CONNECT.md](CLOUD_CONNECT.md)
 | **IaC** | Terraform/K8s/Helm scanner drivers | `agent-bom iac -p .` | Local/IaC tree read-only |
 | **SBOM** | SBOM import driver | `agent-bom sbom ingest <file>` | Parses supplied artifact only |
 | **Model** | Model advisory / Hugging Face paths | `agent-bom agents --huggingface` (etc.) | Token read from env at runtime; never stored |
-| **AWS** | Read-only IAM role (`SecurityAudit` + optional `ViewOnlyAccess`) | `agent-bom connect aws` → `AGENT_BOM_AWS_INVENTORY=1` → `agent-bom cloud aws` | [connect-aws](../deploy/terraform/connect-aws/README.md); STS `AssumeRole` + `ExternalId` for org fan-out |
+| **AWS** | Read-only IAM role (`SecurityAudit` + optional `ViewOnlyAccess`) | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` → deploy → connect with outputs → `agent-bom cloud aws` | Emitted CloudFormation; optional [Terraform](../deploy/terraform/connect-aws/README.md); STS `AssumeRole` + `ExternalId` for org fan-out |
 | **Azure** | `Reader` + `Security Reader` | `agent-bom connect azure` → `AGENT_BOM_AZURE_INVENTORY=1` → `agent-bom cloud azure` | [connect-azure](../deploy/terraform/connect-azure/README.md); `DefaultAzureCredential` chain |
 | **GCP** | Read-only inventory, IAM review, Cloud Asset, and service-usage roles | `agent-bom connect gcp` → `AGENT_BOM_GCP_INVENTORY=1` → `agent-bom cloud gcp` | [connect-gcp](../deploy/terraform/connect-gcp/README.md); ADC / SA key JSON |
 | **Snowflake** | `ABOM_READONLY` role; key-pair JWT or browser SSO | `pip install 'agent-bom[snowflake]'` → `agent-bom connect snowflake` → `agent-bom agents --snowflake` | [connect-snowflake](../deploy/terraform/connect-snowflake/README.md); Python connector auth — no `snowsql` session required |

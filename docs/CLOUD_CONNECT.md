@@ -12,16 +12,32 @@ stores a password.
 
 ---
 
-## 1b. Grant methods (pick what your rights allow)
+## 1b. Generate the read-only AWS grant
+
+The first path works from the installed wheel and does not require a source
+checkout or Terraform:
+
+```bash
+pip install agent-bom
+agent-bom connect aws --emit --out agent-bom-aws-readonly.json
+```
+
+The command writes a deployable CloudFormation template to the named file and
+prints the next `agent-bom connect aws` command to stderr. Review and deploy the
+template in AWS, then use its role ARN and the generated ExternalId to establish
+the connection. The emitted baseline is read-only and least-privilege; content
+reads remain explicit `--deep-scan` opt-ins.
+
+### Other grant methods (pick what your rights allow)
 
 The **same read-only grant** can be minted three ways. Choose based on who is
 allowed to change IAM / RBAC in your org — not based on what agent-bom prefers.
 
 | Method | When to use | Where |
 |--------|-------------|--------|
-| **CLI** | You already have `aws` / `az` / `gcloud` / `snow` on a laptop or bastion | `scripts/provision/README.md` + Connections wizard **CLI** tab |
+| **Packaged emit (start here)** | You installed agent-bom from PyPI and want a reviewable deploy artifact | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` |
 | **CloudShell** | No local Terraform; you can open the vendor browser shell | Same recipes, framed for AWS CloudShell / Azure Cloud Shell / Google Cloud Shell / Snowsight |
-| **Terraform** | Platform/SRE owns apply rights and wants reviewable state | `deploy/terraform/connect-*` + Connections wizard **Terraform** tab |
+| **Repository Terraform (optional)** | Platform/SRE has a source checkout, owns apply rights, and wants Terraform state | `deploy/terraform/connect-*` + Connections wizard **Terraform** tab |
 
 `agent-bom connect <provider>` prints all three. The control-plane Connections
 wizard lets you copy the matching script. Secondary vendors (Databricks,

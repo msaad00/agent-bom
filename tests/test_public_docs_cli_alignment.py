@@ -196,13 +196,12 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
         )
         == 1
     )
-    # The hero is one claim plus the numbers. The scan/centralize/enforce
-    # sentence duplicated what "What it is" says a few lines later, so the
-    # storefront opened with the same paragraph twice.
+    # The hero is one claim plus stable calls to action. Volatile inventory
+    # counts belong on their owning capability surfaces, not in the header.
     assert "Scan repositories, images, and cloud accounts" not in hero
-    assert "<b>15</b> package ecosystems" in hero
-    assert "<b>16</b> compliance surfaces" in hero
-    assert "<b>84</b> MCP tools" in hero
+    assert "package ecosystems" not in hero
+    assert "compliance surfaces" not in hero
+    assert "MCP tools · no account required" not in hero
     assert '<a href="#quick-start"><b>Quick start</b></a>' in hero
     assert '<a href="https://msaad00.github.io/agent-bom/">Docs</a>' in hero
     # The hero links the live demo. This project operates that Cloud Run service

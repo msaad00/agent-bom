@@ -163,12 +163,16 @@ the built-in onboarding helper to print the exact read-only setup and confirm
 your credentials are detectable:
 
 ```bash
-agent-bom connect aws     # or: connect azure | connect gcp
+agent-bom connect aws --emit --out agent-bom-aws-readonly.json
 ```
 
-### 3a. Apply the read-only Terraform (AWS)
+Deploy the emitted CloudFormation artifact, then establish the connection with
+its role ARN and ExternalId. This path works from the installed wheel.
 
-`deploy/terraform/connect-aws` mints a least-privilege role: AWS-managed
+### 3a. Optional source-checkout Terraform (AWS)
+
+For teams that already use a repository checkout and Terraform state,
+`deploy/terraform/connect-aws` mints the same least-privilege role: AWS-managed
 `SecurityAudit` (+ optional `ViewOnlyAccess`), a unique non-guessable name, and
 an **always-enforced high-entropy `sts:ExternalId`**. No access keys, no
 write permissions.

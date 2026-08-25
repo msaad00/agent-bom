@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/social-preview.svg" alt="agent-bom — Discover. Scan. Correlate. Act. Security evidence across repositories, software supply chains, AI and MCP, cloud, identity, and data." width="960" />
 </p>
 
-<p align="center"><sub>The marks above represent supported discovery, scanning, connection, deployment, or evidence backends—not identical connector depth. <a href="docs/INTEGRATIONS.md">See the capability matrix.</a></sub></p>
+<p align="center"><sub>Supported backends vary by capability. <a href="docs/INTEGRATIONS.md">Capability matrix.</a></sub></p>
 
 <p align="center">
   <a href="https://github.com/msaad00/agent-bom/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/msaad00/agent-bom/ci.yml?branch=main&style=flat&label=Build" alt="Build"></a>
@@ -19,7 +19,6 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  <b>15</b> package ecosystems · <b>16</b> compliance surfaces · <b>84</b> MCP tools · no account required<br />
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="https://agent-bom-demo-82102570041.us-central1.run.app">Live demo</a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
@@ -48,7 +47,7 @@ collected, inferred, static, and runtime relationships stay distinct; incomplete
 |---|---|---|
 | AppSec / product security | `agent-bom scan . -f sarif -o findings.sarif` | Scan repository dependencies, secrets, IaC, and images; gate CI with reachable findings |
 | AI / ML engineer | `agent-bom scan .` | Inventory agents, MCP clients and servers, skills, models, and datasets before they ship |
-| Cloud security | `agent-bom connect aws` | Connect a read-only cloud or Snowflake source, then evaluate inventory, posture, and identity evidence |
+| Cloud security | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` | Generate a read-only grant, then connect and evaluate inventory, posture, and identity evidence |
 | Platform / DevOps | `pip install 'agent-bom[ui]' && agent-bom serve` | Centralize evidence, assign an owner and SLA, remediate, and verify |
 | GRC / audit | `agent-bom report compliance-narrative scan.json` | Review control mappings and export evidence with explicit gaps |
 | Leadership / CISO | `pip install 'agent-bom[ui]' && agent-bom serve` | Review posture, coverage, material risk, and change over time |
@@ -176,7 +175,7 @@ isolated environment, so contributors do not need a separate global install.
 | A shared deployment (Docker, Helm, EKS, Snowflake) | [Self-host](#self-host) table |
 | Gate a pull request | [first-run guide §5](docs/FIRST_RUN.md#5-gate-ci-on-the-result) |
 | Give an AI agent the tools | `agent-bom mcp server` — [MCP server](docs/MCP_SERVER.md) |
-| Connect a cloud account | `agent-bom connect aws` — [cloud connections](docs/CLOUD_CONNECT.md) |
+| Connect a cloud account | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` — [cloud connections](docs/CLOUD_CONNECT.md) |
 
 </details>
 
@@ -232,7 +231,7 @@ real identity, TLS, PostgreSQL, encryption, and audit keys before exposing it.
 | Need | First action | Artifact or next step |
 |---|---|---|
 | GitHub CI | `uses: msaad00/agent-bom@v0.102.0` | SARIF, PR summary, and a policy exit code |
-| Cloud evidence | `agent-bom connect aws` | Stored connection reference; run scans from the control plane |
+| Cloud evidence | `agent-bom connect aws --emit --out agent-bom-aws-readonly.json` | Deploy the read-only grant, then connect and scan |
 | Runtime gateway | `agent-bom gateway serve --from-control-plane http://127.0.0.1:8422 --bind 127.0.0.1:8090` | Allow, warn, and block audit events |
 | Agent interface | `agent-bom mcp server` | 84 MCP tools, 6 resources, and 8 workflow prompts |
 | Agent distribution | [Smithery manifest](integrations/smithery.yaml) · [Glama](glama.json) · [MCP registry](integrations/mcp-registry) · [Docker MCP](integrations/docker-mcp-registry) | Registry-specific installation metadata |

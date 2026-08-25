@@ -61,6 +61,16 @@ class TestAwsEmit:
         # Round-trip guidance points back at connect aws.
         assert "connect aws" in r.stderr
 
+    def test_first_run_emit_command_writes_clean_artifact_and_guidance_to_stderr(self, tmp_path) -> None:
+        out = tmp_path / "agent-bom-aws-readonly.json"
+
+        r = _run(["connect", "aws", "--emit", "--out", str(out)])
+
+        assert r.exit_code == 0, r.output
+        assert json.loads(out.read_text())["AWSTemplateFormatVersion"] == "2010-09-09"
+        assert r.stdout == ""
+        assert "connect aws" in r.stderr
+
     def test_default_format_when_flag_has_no_value(self) -> None:
         # `--emit` with no explicit format uses the provider default.
         r = _run(["connect", "aws", "--emit"])

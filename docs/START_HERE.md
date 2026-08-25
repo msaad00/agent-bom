@@ -62,8 +62,9 @@ token auth, opt-in per provider. It never writes, reads no secret values, and
 moves no data out of your account.
 
 ```bash
-# AWS — print the read-only grant, attach SecurityAudit, then:
-agent-bom connect aws
+# AWS — emit a deployable read-only grant from the installed wheel, then:
+agent-bom connect aws --emit --out agent-bom-aws-readonly.json
+# Deploy the artifact; establish the connection with its role ARN + ExternalId.
 export AGENT_BOM_AWS_INVENTORY=1 AWS_PROFILE=<readonly-profile>
 agent-bom cloud aws --cis
 

@@ -2119,7 +2119,9 @@ class SQLiteGraphStore:
                 return (" AND ".join(clauses) if clauses else "1 = 1"), params
 
             where_sql, where_params = filtered_where()
-            facet_sql = [f"SELECT '__total__' AS facet, NULL AS value, COUNT(*) AS count FROM assets WHERE {where_sql}"]
+            facet_sql = [
+                f"SELECT '__total__' AS facet, NULL AS value, COUNT(*) AS count FROM assets WHERE {where_sql}"  # nosec B608 - generated clauses only
+            ]
             facet_params: list[Any] = [*where_params]
             facet_columns = {
                 "type": "entity_type",

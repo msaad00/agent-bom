@@ -74,6 +74,12 @@ updates:
         patterns:
           - "react"
           - "react-dom"
+    ignore:
+      # ESLint 10 is outside the declared peer ranges of the current React
+      # hooks and JSX accessibility plugins. Resume majors once both support it.
+      - dependency-name: "eslint"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "npm"
     directory: "/sdks/typescript"

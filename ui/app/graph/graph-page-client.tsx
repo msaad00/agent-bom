@@ -894,6 +894,10 @@ function GraphPageInner() {
     }
   }, [canvasLens, searchParams]);
   const canvasAgent = searchParams.get("agent");
+  const canvasLensRef = useRef(canvasLens);
+  const canvasAgentRef = useRef(canvasAgent);
+  canvasLensRef.current = canvasLens;
+  canvasAgentRef.current = canvasAgent;
 
   useEffect(() => {
     const next = createCanvasLensGraphFilters(canvasLens, canvasAgent);
@@ -988,11 +992,14 @@ function GraphPageInner() {
       }
     }
     setFilters(
-      createCanvasLensGraphFilters(canvasLens, canvasAgent) ??
+      createCanvasLensGraphFilters(
+        canvasLensRef.current,
+        canvasAgentRef.current,
+      ) ??
         DEFAULT_FILTERS,
     );
     setInitializedFocus(false);
-  }, [canvasAgent, canvasLens, selectedScanId]);
+  }, [selectedScanId]);
 
   useEffect(() => {
     if (!selectedScanId) {

@@ -44,11 +44,11 @@ describe("GraphLensSwitcher", () => {
     expect(screen.getByText("Attack Paths")).toBeInTheDocument();
     expect(screen.getByText("Lineage")).toBeInTheDocument();
     expect(screen.getByText("Asset Drift")).toBeInTheDocument();
-    expect(screen.getByText("Specialized views")).toBeInTheDocument();
+    expect(screen.getByText("More views")).toBeInTheDocument();
     expect(screen.getByText("Agent Mesh")).not.toBeVisible();
     expect(screen.getByText("Context")).not.toBeVisible();
 
-    fireEvent.click(screen.getByText("Specialized views"));
+    fireEvent.click(screen.getByText("More views"));
 
     expect(screen.getByText("Agent Mesh")).toBeVisible();
     expect(screen.getByText("Context")).toBeVisible();
@@ -96,7 +96,7 @@ describe("GraphLensSwitcher", () => {
   it("switches to the mesh lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
-    fireEvent.click(screen.getByText("Specialized views"));
+    fireEvent.click(screen.getByText("More views"));
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");
@@ -105,7 +105,7 @@ describe("GraphLensSwitcher", () => {
   it("switches to the context lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
-    fireEvent.click(screen.getByText("Specialized views"));
+    fireEvent.click(screen.getByText("More views"));
     fireEvent.click(screen.getByRole("button", { name: /context/i }));
 
     expect(push).toHaveBeenCalledWith("/security-graph?lens=context");
@@ -139,7 +139,7 @@ describe("GraphLensSwitcher", () => {
     params = new URLSearchParams({ scan: "scan-123", node: "asset-1" });
     render(<GraphLensSwitcher variant="compact" />);
 
-    fireEvent.click(screen.getByText("Specialized views"));
+    fireEvent.click(screen.getByText("More views"));
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");

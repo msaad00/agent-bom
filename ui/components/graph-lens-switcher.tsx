@@ -226,16 +226,16 @@ export function GraphLensSwitcher({
           </p>
         </div>
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <InsightLayerToggle layers={canonicalLayers} onToggle={onToggle} />
         <details
-          className="group border-t border-[color:var(--border-subtle)] pt-2"
+          className="group relative"
           open={specializedViewActive}
         >
-          <summary className="w-fit cursor-pointer select-none text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]">
-            Specialized views
+          <summary className="graph-chip-neutral cursor-pointer select-none whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] hover:border-[color:var(--border-strong)]">
+            More views
           </summary>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 flex min-w-72 flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--background)] p-3 shadow-xl">
             <InsightLayerToggle
               layers={specializedViews}
               label="Views"

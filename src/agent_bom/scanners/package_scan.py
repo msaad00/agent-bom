@@ -493,9 +493,9 @@ def _db_covered_ecosystems(ecosystems: set[str] | None = None) -> set[str]:
     missing/unreadable (callers treat that as "no offline coverage at all").
 
     When ``ecosystems`` is provided, bound the legacy row-inference query to
-    those inventory ecosystems. The affected table can contain millions of
-    rows and thousands of distro-scoped ecosystems; a scan only needs coverage
-    truth for the ecosystems it is actually evaluating.
+    those inventory ecosystems. If none match, retain one catalog-presence
+    witness so callers can distinguish an uncovered ecosystem from a wholly
+    empty DB without enumerating the multi-million-row catalog.
     """
     try:
         from agent_bom.db.schema import (
@@ -541,6 +541,18 @@ def _db_covered_ecosystems(ecosystems: set[str] | None = None) -> set[str]:
                     placeholders = ", ".join("?" for _ in chunk)
                     query = f"SELECT DISTINCT ecosystem FROM affected WHERE ecosystem IN ({placeholders})"  # nosec B608
                     rows.extend(conn.execute(query, chunk).fetchall())
+                if not rows:
+                    # Preserve the existing populated-catalog signal without
+                    # enumerating every ecosystem.  Callers use a non-empty set
+                    # to distinguish "this inventory ecosystem is uncovered"
+                    # from "the advisory DB is completely empty"; the sampled
+                    # ecosystem cannot satisfy membership for the uncovered
+                    # package, so its verdict remains conservative.
+                    sample = conn.execute(
+                        "SELECT ecosystem FROM affected WHERE ecosystem IS NOT NULL AND ecosystem <> '' LIMIT 1"
+                    ).fetchone()
+                    if sample is not None:
+                        rows.append(sample)
         finally:
             conn.close()
         # Ecosystem-specific OSV archives can contain cross-ecosystem aliases.

@@ -569,6 +569,36 @@ def test_db_covered_ecosystems_bounds_legacy_query_to_requested_ecosystems(tmp_p
     assert all("WHERE ecosystem IN" in statement for statement in chunked_queries)
 
 
+def test_db_covered_ecosystems_keeps_populated_catalog_truth_for_uncovered_scope(tmp_path, monkeypatch):
+    """A bounded miss must not make a populated legacy catalog look empty."""
+    from agent_bom.db import schema
+    from agent_bom.db.schema import init_db
+    from agent_bom.scanners import _db_covered_ecosystems
+
+    db_file = tmp_path / "legacy.db"
+    conn = init_db(db_file)
+    conn.execute(
+        "INSERT INTO vulns(id,summary,severity,source) VALUES (?,?,?,?)",
+        ("OSV-NPM-1", "node advisory", "high", "osv"),
+    )
+    conn.execute(
+        "INSERT INTO affected(vuln_id,ecosystem,package_name,introduced,fixed,last_affected) VALUES (?,?,?,?,?,?)",
+        ("OSV-NPM-1", "npm", "express", "0", "5.0.0", ""),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source,last_synced,record_count,metadata_json) VALUES (?,?,?,?)",
+        ("osv", "2026-08-24T12:00:00+00:00", 1, "{}"),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(schema, "DB_PATH", db_file)
+
+    covered = _db_covered_ecosystems({"pypi"})
+    assert covered
+    assert "pypi" not in covered
+
+
 def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monkeypatch):
     """A package in an ecosystem the DB has zero advisories for warns, not raises."""
     from agent_bom.scanners import scan_packages

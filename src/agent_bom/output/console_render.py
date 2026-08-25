@@ -20,7 +20,7 @@ from agent_bom.output.cis_posture import (
     cis_pass_rate,
     cis_verdict,
 )
-from agent_bom.output.compact import _coverage_bar, _pct
+from agent_bom.output.compact import _compact_detail, _coverage_bar, _pct
 from agent_bom.output.finding_views import (
     active_cve_findings,
     cve_findings,
@@ -1669,8 +1669,8 @@ def _cis_evidence(check: dict) -> str:
         shown = ", ".join(str(r) for r in resources[:4])
         if len(resources) > 4:
             shown += f" (+{len(resources) - 4} more)"
-        return shown
-    return str(check.get("evidence") or "").strip()
+        return _compact_detail(shown, limit=160)
+    return _compact_detail(str(check.get("evidence") or "").strip(), limit=160)
 
 
 def _cis_remediation_line(check: dict) -> str:

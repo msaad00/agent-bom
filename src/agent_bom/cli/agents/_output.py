@@ -397,7 +397,6 @@ def render_output(
                 print_section_divider(con, "Summary")
                 print_compact_summary(report, verbose=verbose)
                 print_compact_agents(report)
-                print_section_divider(con, "Findings")
                 print_compact_blast_radius(report, fixable_only=fixable_only, page=compact_page)
                 print_compact_graph_findings(report)
 
@@ -447,17 +446,12 @@ def render_output(
                             con.print(f"      [green]→ {sk_f.recommendation}[/green]")
 
             if verbose:
-                print_section_divider(con, "Remediation")
                 print_remediation_plan(report)
-                print_section_divider(con, "CIS Posture")
                 render_cis_findings_from_context(ctx)
                 print_export_hint(report)
             else:
-                print_section_divider(con, "Remediation")
                 print_compact_remediation(report, page=compact_page)
-                print_section_divider(con, "CIS Posture")
                 print_compact_cis_posture(report)
-                print_section_divider(con, "Compliance Evidence")
                 print_compact_compliance_status(report)
                 print_compact_export_hint(report)
             print_scan_next_steps(con, report, quiet=quiet)

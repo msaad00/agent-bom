@@ -119,6 +119,18 @@ def test_terminal_each_failed_has_evidence_and_recommendation():
     assert "Remediate c0." in out
 
 
+def test_terminal_collapses_long_evidence_cells() -> None:
+    check = _check("long", "fail", "high")
+    check["evidence"] = "sensitive posture detail " * 30
+    report = AIBOMReport(cis_benchmark_data={"checks": [check], "passed": 0, "failed": 1, "pass_rate": 0.0})
+
+    out = _render(report)
+
+    evidence_line = next(line for line in out.splitlines() if "evidence:" in line)
+    assert evidence_line.endswith("…")
+    assert len(evidence_line) < 190
+
+
 def test_terminal_header_has_verdict_and_pass_rate():
     out = _render(_report_large())
     assert "75% pass" in out

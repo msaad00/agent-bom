@@ -457,11 +457,13 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     table = Table(expand=True, padding=(0, 1))
     table.add_column("Sev", no_wrap=True)
     table.add_column("Vulnerability", no_wrap=True)
-    table.add_column("Package", ratio=2)
+    table.add_column("Package", ratio=2, overflow="fold")
     if has_blast_context:
-        table.add_column("Blast Radius", ratio=3, no_wrap=True)
-    table.add_column("EPSS", justify="center", no_wrap=True)
-    table.add_column("Fix", ratio=1)
+        table.add_column("Blast Radius", ratio=3, overflow="fold")
+    show_epss = any(finding.epss_score is not None for finding in shown)
+    if show_epss:
+        table.add_column("EPSS", justify="center", no_wrap=True)
+    table.add_column("Fix", ratio=1, overflow="fold")
 
     for finding in shown:
         forward_fix = _forward_fix_version(finding)
@@ -504,22 +506,22 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
                 if len(cred_names) > 1:
                     chain_parts[-1] += f"+{len(cred_names) - 1}"
             blast_display = " → ".join(chain_parts) if chain_parts else "[dim]—[/dim]"
-            table.add_row(
+            row = [
                 _sev_badge(finding_severity(finding)),
                 f"{vuln_id}{kev}",
                 pkg_display,
                 blast_display,
-                epss_display,
-                fix,
-            )
+            ]
         else:
-            table.add_row(
+            row = [
                 _sev_badge(finding_severity(finding)),
                 f"{vuln_id}{kev}",
                 pkg_display,
-                epss_display,
-                fix,
-            )
+            ]
+        if show_epss:
+            row.append(epss_display)
+        row.append(fix)
+        table.add_row(*row)
 
     console.print(table)
 
@@ -674,6 +676,7 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
     """
     from rich.markup import escape
 
+    from agent_bom.finding import Finding
     from agent_bom.graph.severity import severity_worst_first_rank
     from agent_bom.output import _sev_badge, console
     from agent_bom.output.finding_views import _MACHINE_EXPORT_TYPES, finding_severity
@@ -684,12 +687,52 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
 
     findings.sort(key=lambda finding: severity_worst_first_rank(str(finding.severity)))
 
+    # IaC scanners legitimately emit one stored finding per file/line. The
+    # compact operator view groups identical rule occurrences while the report,
+    # SARIF, JSON, and graph retain every occurrence for drill-through.
+    grouped: list[tuple[Finding, int, list[str]]] = []
+    grouped_index: dict[tuple[str, str, str, str], int] = {}
+    for finding in findings:
+        evidence = finding.evidence or {}
+        is_iac = evidence.get("iac") is True
+        if not is_iac:
+            grouped.append((finding, 1, [finding.asset.name]))
+            continue
+        key = (
+            finding.finding_type.value,
+            str(evidence.get("rule_id") or finding.title or ""),
+            str(finding.severity),
+            finding.description or "",
+        )
+        existing = grouped_index.get(key)
+        if existing is None:
+            grouped_index[key] = len(grouped)
+            grouped.append((finding, 1, [finding.asset.name]))
+            continue
+        representative, count, assets = grouped[existing]
+        if finding.asset.name not in assets:
+            assets.append(finding.asset.name)
+        grouped[existing] = (representative, count + 1, assets)
+
     console.print()
-    console.print(Rule(lane_title("analyze", f"Graph & Policy Findings ({len(findings)})"), style="dim"))
-    for finding in findings[:limit]:
+    title = f"Graph & Policy Findings ({len(findings)} occurrences"
+    if len(grouped) != len(findings):
+        title += f" · {len(grouped)} groups"
+    title += ")"
+    console.print(Rule(lane_title("analyze", title), style="dim"))
+    for finding, occurrence_count, assets in grouped[:limit]:
         category = finding.finding_type.value
-        console.print(f"  {_sev_badge(finding_severity(finding))} [dim]{escape(category)}[/dim] [bold]{escape(finding.title or '')}[/bold]")
+        occurrences = f" [dim]× {occurrence_count} occurrences[/dim]" if occurrence_count > 1 else ""
+        console.print(
+            f"  {_sev_badge(finding_severity(finding))} [dim]{escape(category)}[/dim] "
+            f"[bold]{escape(finding.title or '')}[/bold]{occurrences}"
+        )
         chain_parts: list[str] = []
+        if occurrence_count > 1:
+            shown_assets = ", ".join(assets[:3])
+            if len(assets) > 3:
+                shown_assets += f" (+{len(assets) - 3} more)"
+            chain_parts.append(escape(shown_assets))
         if finding.affected_agents:
             chain_parts.append(escape(", ".join(finding.affected_agents[:3])))
         if finding.affected_servers:
@@ -699,8 +742,9 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
         evidence_line = " → ".join(chain_parts) or escape(_compact_detail(finding.description or "", limit=110))
         if evidence_line:
             console.print(f"      [dim]{evidence_line}[/dim]")
-    if len(findings) > limit:
-        console.print(f"  [dim]... {len(findings) - limit} more — --verbose full list[/dim]")
+    if len(grouped) > limit:
+        hidden_occurrences = sum(count for _, count, _ in grouped[limit:])
+        console.print(f"  [dim]... {hidden_occurrences} more occurrence(s) — --verbose full list[/dim]")
 
 
 def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:

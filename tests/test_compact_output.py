@@ -631,6 +631,44 @@ def test_compact_blast_radius_never_truncates_cve_ids_at_80_cols():
     assert "CVE-2020-143…" not in output
 
 
+def test_compact_blast_radius_preserves_package_and_fix_at_80_and_200_cols():
+    pkg = Package(name="averyverylongpackagename-for-width", version="1.2.3", ecosystem="pypi", vulnerabilities=[])
+    server = _make_server(name="server-with-long-name", packages=[pkg])
+    agent = _make_agent(name="agent-with-long-name", servers=[server])
+    vuln = _vuln("CVE-2020-14343", Severity.CRITICAL, fixed="5.4.123456789")
+    report = AIBOMReport(agents=[agent], blast_radii=[_blast(vuln, pkg, [agent], [server])])
+
+    for width in (80, 200):
+        output = _plain(_capture_width(print_compact_blast_radius, report, width=width))
+        assert "averyverylongpackagename-for-width@1.2.3" in "".join(output.split())
+        assert "5.4.123456789" in "".join(output.split())
+        assert "EPSS" not in output
+
+
+def test_compact_graph_groups_repeated_iac_occurrences_but_keeps_distinct_rules():
+    from agent_bom.finding import iac_finding_to_finding
+    from agent_bom.output import print_compact_graph_findings
+
+    common = {
+        "rule_id": "K8S-001",
+        "title": "Container runs privileged",
+        "message": "Privileged containers bypass isolation.",
+        "severity": "high",
+    }
+    findings = [
+        iac_finding_to_finding({**common, "file_path": "deploy/a.yaml", "line_number": 4}),
+        iac_finding_to_finding({**common, "file_path": "deploy/b.yaml", "line_number": 8}),
+        iac_finding_to_finding({**common, "rule_id": "K8S-002", "file_path": "deploy/c.yaml", "line_number": 9}),
+    ]
+
+    output = _plain(_capture(print_compact_graph_findings, AIBOMReport(findings=findings)))
+
+    assert "3 occurrences · 2 groups" in output
+    assert "× 2 occurrences" in " ".join(output.split())
+    assert "deploy/a.yaml, deploy/b.yaml" in output
+    assert output.count("Container runs privileged") == 2
+
+
 def test_compact_detail_never_ends_on_dangling_punctuation():
     from agent_bom.output.compact import _compact_detail
 

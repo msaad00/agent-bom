@@ -1076,7 +1076,10 @@ jobs:
   graph-performance:
     name: Graph performance
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The measured contract asserts peak-heap ratios rather than wall-clock
+    # latency. Keep enough headroom for SQLite + tracemalloc on CPU-constrained
+    # hosted runners while retaining a finite bound for genuine hangs.
+    timeout-minutes: 30
     permissions:
       contents: read
     needs: changes

@@ -182,6 +182,70 @@ def test_local_analytics_store_records_unified_non_cve_findings(tmp_path):
     assert '"asset_type": "prompt_template"' in rows[0]["asset_json"]
 
 
+def test_local_analytics_preserves_distinct_occurrences_with_shared_identity(tmp_path):
+    """One semantic finding may have multiple independently stored occurrences."""
+    store = LocalAnalyticsStore(tmp_path / "local.sqlite")
+    report = _report("scan-occurrences")
+    report["scan_run"] = {"run_id": "run-occurrences"}
+    report.pop("blast_radius")
+    first = {
+        "schema_version": "1",
+        "id": "semantic-finding-1",
+        "canonical_id": "semantic-finding-1",
+        "occurrence_id": "semantic-finding-1",
+        "finding_type": "CIS_FAIL",
+        "source": "CLOUD_SECURITY",
+        "severity": "high",
+        "title": "Shared policy failure",
+        "asset": {
+            "name": "service-a",
+            "asset_type": "iac_resource",
+            "identifier": "service-a",
+            "canonical_id": "asset-a",
+            "location": "deploy/a.yaml",
+        },
+        "affected_agents": ["agent-a"],
+        "evidence": {"path": "deploy/a.yaml", "line": 12},
+    }
+    second = {
+        **first,
+        "asset": {
+            "name": "service-b",
+            "asset_type": "iac_resource",
+            "identifier": "service-b",
+            "canonical_id": "asset-b",
+            "location": "deploy/b.yaml",
+        },
+        "affected_agents": ["agent-b"],
+        "evidence": {"path": "deploy/b.yaml", "line": 27},
+    }
+    # Exact duplicate producer rows collapse, but the distinct occurrence must
+    # survive with the same semantic/canonical identity.
+    report["findings"] = [first, dict(first), second]
+
+    store.record_scan_report(report, source="cli")
+    first_rows = store.query(
+        "SELECT finding_key, canonical_id, affected_agents_json, asset_json FROM scan_findings WHERE run_id = ? ORDER BY finding_key",
+        ("run-occurrences",),
+    )
+
+    assert len(first_rows) == 2
+    assert {row["canonical_id"] for row in first_rows} == {"semantic-finding-1"}
+    assert len({row["finding_key"] for row in first_rows}) == 2
+    assert all(row["finding_key"].startswith("semantic-finding-1:") for row in first_rows)
+    assert {row["affected_agents_json"] for row in first_rows} == {'["agent-a"]', '["agent-b"]'}
+
+    # Re-recording the same durable run replaces its occurrence rows with the
+    # same deterministic storage keys instead of multiplying them.
+    store.record_scan_report(report, source="cli")
+    second_rows = store.query(
+        "SELECT finding_key, canonical_id, affected_agents_json, asset_json FROM scan_findings WHERE run_id = ? ORDER BY finding_key",
+        ("run-occurrences",),
+    )
+    assert second_rows == first_rows
+    assert store.query("SELECT COUNT(*) AS count FROM scan_runs WHERE run_id = ?", ("run-occurrences",)) == [{"count": 1}]
+
+
 def test_history_save_dual_writes_local_analytics(monkeypatch, tmp_path):
     import agent_bom.db.local_analytics as local_analytics
     import agent_bom.history as history

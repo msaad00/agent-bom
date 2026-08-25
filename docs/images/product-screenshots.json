@@ -1,7 +1,7 @@
 {
   "release_version": "0.102.0",
-  "captured_at": "2026-08-25T04:22:12.610Z",
-  "source_commit": "493bfa91d5d0dba24e541836b53b4863a0b1b647",
+  "captured_at": "2026-08-25T04:24:48.518Z",
+  "source_commit": "3e0c1bbef91e869cda298fe84032a201c374a85c",
   "source_tree": "clean",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — sample environment label. The deterministic Playwright harness uses unmistakably fictional DEMO-VULN identifiers and synthetic risk signals. No customer or private infrastructure data is used. These records demonstrate UI states only; they are not advisory, EPSS, KEV, or buyer-environment evidence.",
   "screenshots": [
@@ -147,7 +147,7 @@
       "page": "/audit?capture=1",
       "scope": "Audit log filtered to identity resources with issue, rotate, and revoke events",
       "visible_version": "0.102.0",
-      "sha256": "sha256:504287d115ef3dde0f4e86c31872e3de3cee6e7392faf559e53c21b0140831bb"
+      "sha256": "sha256:a8e36b051e6f853fc1b57324d7558781371986cfecfc3b3ec5c7ccc57fd5268c"
     },
     {
       "presentation": "dark desktop",

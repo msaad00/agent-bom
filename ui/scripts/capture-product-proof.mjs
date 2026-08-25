@@ -1667,7 +1667,16 @@ async function installRoutes(page) {
     { scan_id: SCAN_ID, created_at: CREATED_AT, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
     { scan_id: PREVIOUS_SCAN_ID, created_at: "2026-06-03T19:00:00Z", node_count: 22, edge_count: 25, risk_summary: { critical: 5, high: 8, medium: 6 } },
   ]));
-  await page.route("**/v1/inventory/summary?**", (route) => fulfill(route, inventorySummaryFixture()));
+  await page.route(
+    (url) => {
+      try {
+        return new URL(url).pathname === "/v1/inventory/summary";
+      } catch {
+        return false;
+      }
+    },
+    (route) => fulfill(route, inventorySummaryFixture()),
+  );
   await page.route("**/v1/inventory/assets?**", (route) => fulfill(route, inventoryAssetsFixture(route.request().url())));
   await page.route("**/v1/inventory/assets/**", (route) => {
     const url = new URL(route.request().url());

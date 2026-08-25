@@ -189,7 +189,7 @@ def _sanitize_api_path(user_path: str) -> str:
     from agent_bom.security import SecurityError
 
     if not _api_local_scans_enabled():
-        raise SecurityError("Local filesystem scan endpoints are disabled")
+        raise SecurityError("Local filesystem scans are disabled")
 
     # Normalise basic whitespace
     user_path = (user_path or "").strip()
@@ -258,6 +258,8 @@ def _api_scan_path_or_400(user_path: str) -> str:
         return _sanitize_api_path(user_path)
     except SecurityError as exc:
         _logger.warning("blocked local API scan path: %s", sanitize_text(exc))
+        if str(exc) == "Local filesystem scans are disabled":
+            raise HTTPException(status_code=400, detail="Local filesystem scans are disabled") from exc
         raise HTTPException(status_code=400, detail="Invalid scan path") from exc
 
 

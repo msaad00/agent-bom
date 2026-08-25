@@ -515,7 +515,7 @@ def test_create_scan_rejects_local_paths_by_default(monkeypatch, payload):
     client, _ = _fresh_client()
     resp = client.post("/v1/scan", json=payload)
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "Invalid scan path"
+    assert resp.json()["detail"] == "Local filesystem scans are disabled"
 
 
 def test_create_scan_non_path_targets_allowed_by_default(monkeypatch):
@@ -542,6 +542,7 @@ def test_create_scan_allows_valid_path_when_gate_enabled(monkeypatch, tmp_path):
     # Absolute paths outside the root are still rejected even with the gate on.
     resp = client.post("/v1/scan", json={"agent_projects": ["/etc"]})
     assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid scan path"
 
 
 def test_create_scan_rejects_invalid_enum_fields():

@@ -41,14 +41,14 @@ describe("buildExposurePathView", () => {
     const view = buildExposurePathView(makeBlast(), "scan-abc123");
     // The drill must target the finding's own scan, not the latest snapshot.
     expect(view.href).toBe(
-      "/security-graph?scan=scan-abc123&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop",
+      "/security-graph?lens=attack-path&scan=scan-abc123&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop",
     );
   });
 
   it("omits the scan param only when no scanId is known", () => {
     const view = buildExposurePathView(makeBlast(), undefined);
     expect(view.href).toBe(
-      "/security-graph?cve=CVE-2026-0002&package=flask&agent=Claude+Desktop",
+      "/security-graph?lens=attack-path&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop",
     );
     expect(view.href).not.toContain("scan=");
   });
@@ -72,7 +72,7 @@ describe("buildExposurePathView", () => {
     expect(view.key).toBe("cve-2026-0002::unknown::claude%20desktop::mcp-fs");
     // Package hop dropped when absent; scan still threaded.
     expect(view.href).toBe(
-      "/security-graph?scan=scan-1&cve=CVE-2026-0002&agent=Claude+Desktop",
+      "/security-graph?lens=attack-path&scan=scan-1&cve=CVE-2026-0002&agent=Claude+Desktop",
     );
   });
 });
@@ -140,7 +140,7 @@ describe("buildExecExposurePaths", () => {
     );
     expect(paths).toHaveLength(1);
     expect(paths[0]!.href).toBe(
-      "/security-graph?scan=scan-xyz&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop",
+      "/security-graph?lens=attack-path&scan=scan-xyz&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop",
     );
   });
 

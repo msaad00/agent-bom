@@ -419,15 +419,14 @@ export function attackPathSequenceLabels(path: AttackPath, nodeById: Map<string,
 }
 
 export function buildSecurityGraphHref(focus: AttackPathFocus): string {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ lens: "attack-path" });
   if (focus.scanId) params.set("scan", focus.scanId);
   if (focus.nodeId) params.set("node", focus.nodeId);
   if (focus.findingId) params.set("finding", focus.findingId);
   if (focus.cve) params.set("cve", focus.cve);
   if (focus.packageName) params.set("package", focus.packageName);
   if (focus.agentName) params.set("agent", focus.agentName);
-  const query = params.toString();
-  return query ? `/security-graph?${query}` : "/security-graph";
+  return `/security-graph?${params.toString()}`;
 }
 
 export function buildFindingsHref(focus: Pick<AttackPathFocus, "cve" | "scanId">): string {

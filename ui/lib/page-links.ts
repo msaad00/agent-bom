@@ -36,7 +36,11 @@ export function securityGraphHref(input: {
   node?: string | undefined;
   finding?: string | undefined;
 } = {}): string {
+  const hasAttackPathFocus = Boolean(
+    input.cve || input.packageName || input.agent || input.node || input.finding,
+  );
   return buildHref("/security-graph", [
+    ["lens", hasAttackPathFocus ? "attack-path" : undefined],
     ["scan", input.scan],
     ["cve", input.cve],
     ["package", input.packageName],

@@ -3,12 +3,13 @@
 interface InsightLayerToggleProps {
   layers: { id: string; label: string; icon: string; active: boolean }[];
   onToggle: (id: string) => void;
+  label?: string;
 }
 
-export function InsightLayerToggle({ layers, onToggle }: InsightLayerToggleProps) {
+export function InsightLayerToggle({ layers, onToggle, label = "Lens" }: InsightLayerToggleProps) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1">
-      <span className="mr-1 whitespace-nowrap text-xs text-[color:var(--text-tertiary)]">Lens</span>
+      <span className="mr-1 whitespace-nowrap text-xs text-[color:var(--text-tertiary)]">{label}</span>
       {layers.map((layer) => (
         <button
           key={layer.id}

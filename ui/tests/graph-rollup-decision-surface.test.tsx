@@ -91,4 +91,55 @@ describe("GraphRollupDecisionSurface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next scope page" }));
     expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
   });
+
+  it("shows independent node and relationship truncation without claiming an exhaustive map", () => {
+    render(
+      <GraphRollupDecisionSurface
+        items={[item("bounded")]}
+        edges={[]}
+        completeness={{
+          status: "truncated",
+          complete: false,
+          sampled: false,
+          truncated: true,
+          returned: 1,
+          total: 12,
+          reason: "node_budget",
+        }}
+        edgeCountMetadata={{
+          definition: "Aggregated relationship rows",
+          source_total: 517,
+          returned: 400,
+          truncated: true,
+          source_truncated: true,
+          reason: "node_budget,rollup_edge_limit",
+        }}
+        onDrill={vi.fn()}
+        onInvestigate={vi.fn()}
+        onShowMap={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/1 returned from a bounded node scope/i)).toBeInTheDocument();
+    expect(screen.getByTestId("graph-rollup-relationship-completeness")).toHaveTextContent(
+      "400 of 517 aggregated relationship rows returned from a bounded source graph · estate total unavailable",
+    );
+    expect(screen.queryByText(/complete for this scope/i)).not.toBeInTheDocument();
+  });
+
+  it("does not infer relationship completeness when the API metadata is absent", () => {
+    render(
+      <GraphRollupDecisionSurface
+        items={[item("legacy")]}
+        edges={[]}
+        onDrill={vi.fn()}
+        onInvestigate={vi.fn()}
+        onShowMap={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-rollup-relationship-completeness")).toHaveTextContent(
+      "0 aggregated relationship rows returned · completeness unavailable",
+    );
+  });
 });

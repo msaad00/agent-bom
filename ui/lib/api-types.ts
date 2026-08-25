@@ -650,6 +650,10 @@ export interface GraphRollupResponse {
   /** Container-to-container relationships, aggregated. Containment is excluded
    *  — that is the nesting the roll-up already expresses. */
   edges?: GraphRollupEdge[];
+  /** Counts for the aggregated relationship rows, independent from node
+   * completeness. `source_total` is exact for the graph used to build this
+   * roll-up; `source_truncated` says when that source graph was already bounded. */
+  edge_count_metadata?: GraphRollupEdgeCountMetadata;
   node?: {
     id: string;
     label: string;
@@ -657,6 +661,17 @@ export interface GraphRollupResponse {
     severity: string;
   } | null;
   summary: GraphRollupSummary;
+  /** Completeness of the returned roll-up nodes/containers. */
+  completeness: GraphCompleteness;
+}
+
+export interface GraphRollupEdgeCountMetadata {
+  definition: string;
+  source_total: number;
+  returned: number;
+  truncated: boolean;
+  source_truncated: boolean;
+  reason: string;
 }
 
 export interface GraphRollupEdge {

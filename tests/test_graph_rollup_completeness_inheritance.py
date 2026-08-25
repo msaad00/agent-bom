@@ -60,6 +60,14 @@ def test_rollup_of_a_truncated_snapshot_reports_truncated():
     assert "node_budget" in completeness["reason"]
 
 
+def test_rollup_relationship_counts_inherit_source_truncation():
+    metadata = rollup_view(_truncated_estate())["edge_count_metadata"]
+
+    assert metadata["source_truncated"] is True
+    assert metadata["truncated"] is True
+    assert "node_budget" in metadata["reason"]
+
+
 def test_rollup_summary_carries_the_pre_truncation_estate_total():
     """``summary.total_nodes: 15`` is what this roll-up saw; 61 is the estate."""
     summary = rollup_view(_truncated_estate())["summary"]

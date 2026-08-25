@@ -15,6 +15,15 @@ export function parseGraphRollupUrlPreference(
   return "default";
 }
 
+/** Estate Canvas entries force a roll-up unless the operator explicitly opts out. */
+export function graphRollupPreferenceForCanvas(
+  params: URLSearchParams | { get(name: string): string | null },
+  estateCanvas: boolean,
+): GraphRollupUrlPreference {
+  const preference = parseGraphRollupUrlPreference(params);
+  return estateCanvas && preference === "default" ? "force" : preference;
+}
+
 /** Only an explicit URL/operator opt-out dismisses roll-up navigation. */
 export function rollupDismissedForPreference(
   preference: GraphRollupUrlPreference,

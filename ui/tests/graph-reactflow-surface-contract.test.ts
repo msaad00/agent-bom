@@ -49,7 +49,7 @@ describe("interactive React Flow surface contract", () => {
   it("hosts every graph lens on the canonical investigation route", () => {
     const content = source("app/security-graph/page.tsx");
     expect(content).toContain("<GraphSurface />");
-    expect(content).toContain('lens !== "attack-path"');
+    expect(content).toContain("resolveSecurityGraphSurface(searchParams)");
   });
 
   it.each([

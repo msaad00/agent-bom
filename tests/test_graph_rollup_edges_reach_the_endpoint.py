@@ -119,6 +119,10 @@ class TestTopLevelRollup:
         assert payload["edges"], "the collapsed estate came back with no relationships to draw"
         assert ("agent-0", "org-0") in _edge_pairs(payload)
         assert all(edge["relationships"] == ["uses"] for edge in payload["edges"])
+        assert payload["edge_count_metadata"]["returned"] == len(payload["edges"])
+        assert payload["edge_count_metadata"]["source_total"] == len(payload["edges"])
+        assert payload["edge_count_metadata"]["truncated"] is False
+        assert payload["completeness"]["complete"] is True
 
     def test_containment_is_still_never_drawn_as_a_relationship(self, client):
         payload = client.get("/v1/graph/rollup", params={"scan_id": SCAN}).json()
@@ -145,6 +149,8 @@ class TestDrillDown:
 
         assert payload["edges"], "the drill-down came back with no relationships to draw"
         assert ("app-a-1", "app-a-2") in _edge_pairs(payload)
+        assert payload["edge_count_metadata"]["returned"] == len(payload["edges"])
+        assert payload["edge_count_metadata"]["truncated"] is False
 
     def test_a_relationship_leaving_the_drilled_container_is_not_drawn(self, client):
         """``res-a-1 -> res-b-1`` leaves ``acct-a``; nothing at this level stands for it."""

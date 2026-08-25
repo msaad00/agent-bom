@@ -348,7 +348,7 @@ describe("attack path helpers", () => {
         packageName: "flask",
         agentName: "Claude Desktop",
       }),
-    ).toBe("/security-graph?scan=scan-123&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop");
+    ).toBe("/security-graph?lens=attack-path&scan=scan-123&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop");
   });
 
   it("builds a shareable graph investigation href", () => {

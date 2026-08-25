@@ -14,7 +14,7 @@ describe("typed page links", () => {
       "/findings?q=finding+1&scan=scan%2F1",
     );
     expect(securityGraphHref({ cve: "CVE-2026-1", finding: "finding/1" })).toBe(
-      "/security-graph?cve=CVE-2026-1&finding=finding%2F1",
+      "/security-graph?lens=attack-path&cve=CVE-2026-1&finding=finding%2F1",
     );
     expect(complianceHref({ scan: "scan/1" })).toBe("/compliance?scan=scan%2F1");
     expect(remediationHref({ q: "AC-2" })).toBe("/remediation?q=AC-2");
@@ -29,7 +29,7 @@ describe("typed page links", () => {
   it("drops blank values instead of creating misleading empty filters", () => {
     expect(findingsHref({ q: "  ", scan: "" })).toBe("/findings");
     expect(securityGraphHref({ packageName: "requests", agent: undefined })).toBe(
-      "/security-graph?package=requests",
+      "/security-graph?lens=attack-path&package=requests",
     );
   });
 });

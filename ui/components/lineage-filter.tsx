@@ -112,6 +112,14 @@ export type GraphScopePreset =
   | "expanded"
   | "assetDrift";
 
+export type CanonicalCanvasLens =
+  | "estate"
+  | "cloud"
+  | "repository"
+  | "identity"
+  | "lineage"
+  | "asset-drift";
+
 export const GRAPH_SCOPE_LABELS: Record<GraphScopePreset, string> = {
   immediate: "Immediate",
   relevant: "Relevant paths",
@@ -228,6 +236,19 @@ export function createEnvironmentGraphFilters(): FilterState {
   ]);
 }
 
+export function createIdentityGraphFilters(): FilterState {
+  return {
+    ...observedScopeFilters([
+      "provider", "org", "account", "environment", "user", "group", "role",
+      "policy", "serviceAccount", "servicePrincipal", "federatedIdentity",
+      "managedIdentity", "accessGrant", "accessPolicy", "credential",
+      "cloudResource", "dataStore", "apiGateway", "agent", "server", "tool",
+      "vulnerability", "misconfiguration",
+    ]),
+    relationshipScope: "governance",
+  };
+}
+
 /** Governance-scoped lens for asset lifecycle drift evidence on the lineage graph. */
 export function createAssetLifecycleDriftGraphFilters(
   agentName: string | null = null,
@@ -274,6 +295,29 @@ export function createAssetLifecycleDriftGraphFilters(
     maxDepth: 3,
     pageSize: 100,
   };
+}
+
+/** Canonical Canvas lenses are projections of one persisted graph snapshot. */
+export function createCanvasLensGraphFilters(
+  lens: string | null,
+  agentName: string | null = null,
+): FilterState | null {
+  switch (lens) {
+    case "estate":
+      return createExpandedGraphFilters(null);
+    case "cloud":
+      return createCloudEstateGraphFilters();
+    case "repository":
+      return createRepositoryGraphFilters();
+    case "identity":
+      return createIdentityGraphFilters();
+    case "lineage":
+      return createExpandedGraphFilters(agentName);
+    case "asset-drift":
+      return createAssetLifecycleDriftGraphFilters(agentName);
+    default:
+      return null;
+  }
 }
 
 export function matchesAssetLifecycleDriftFilters(filters: FilterState): boolean {

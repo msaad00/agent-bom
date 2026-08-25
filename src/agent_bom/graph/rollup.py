@@ -387,9 +387,24 @@ def cross_container_edges(
     internal detail the container already stands for, and drawing them would
     put a loop on every card.
     """
+    rows, _source_total = _cross_container_edge_rows(graph, container_ids, children)
+    return rows
+
+
+def _cross_container_edge_rows(
+    graph: UnifiedGraph,
+    container_ids: Sequence[str],
+    children: dict[str, list[str]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Return the bounded edge rows and their pre-cap source total.
+
+    ``cross_container_edges`` remains the public list-returning helper for
+    callers that only need the projection. Roll-up responses use this richer
+    helper so the 400-row presentation cap can never look exhaustive.
+    """
     owner = _container_of(container_ids, children)
     if not owner:
-        return []
+        return [], 0
 
     aggregated: dict[tuple[str, str], dict[str, Any]] = {}
     for edge in graph.edges:
@@ -426,7 +441,44 @@ def cross_container_edges(
     ]
     # Heaviest first, then deterministic by endpoint so the truncation is stable.
     rows.sort(key=lambda row: (-int(row["count"]), str(row["source"]), str(row["target"])))
-    return rows[:_MAX_CROSS_CONTAINER_EDGES]
+    source_total = len(rows)
+    return rows[:_MAX_CROSS_CONTAINER_EDGES], source_total
+
+
+def _edge_count_metadata(
+    graph: UnifiedGraph,
+    *,
+    returned: int,
+    source_total: int,
+) -> dict[str, Any]:
+    """Describe relationship-row loss independently from node completeness.
+
+    ``source_total`` is exact for the graph materialised by the caller. If that
+    source graph was already bounded, ``source_truncated`` and the inherited
+    reason make clear that this is not an estate-wide denominator.
+    """
+    row_truncated = source_total > returned
+    source_truncated = graph.completeness.truncated
+    return {
+        "definition": "Aggregated non-containment container-to-container relationship rows in the roll-up source graph.",
+        "source_total": source_total,
+        "returned": returned,
+        "truncated": row_truncated or source_truncated,
+        "source_truncated": source_truncated,
+        "reason": _combine_reasons(
+            graph.completeness.reason if source_truncated else "",
+            "rollup_edge_limit" if row_truncated else "",
+        ),
+    }
+
+
+def _edge_projection(
+    graph: UnifiedGraph,
+    container_ids: Sequence[str],
+    children: dict[str, list[str]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows, source_total = _cross_container_edge_rows(graph, container_ids, children)
+    return rows, _edge_count_metadata(graph, returned=len(rows), source_total=source_total)
 
 
 def rollup_view(
@@ -540,6 +592,8 @@ def rollup_view(
         ],
     }
 
+    relationship_edges, edge_count_metadata = _edge_projection(graph, [c.id for c in top_level], children)
+
     return {
         "scan_id": graph.scan_id,
         "tenant_id": graph.tenant_id,
@@ -550,7 +604,8 @@ def rollup_view(
         # Container-to-container relationships, so the collapsed view renders as
         # a graph rather than a grid of disconnected cards. Containment is
         # excluded: it is the nesting the roll-up already expresses.
-        "edges": cross_container_edges(graph, [c.id for c in top_level], children),
+        "edges": relationship_edges,
+        "edge_count_metadata": edge_count_metadata,
         "orphan_summary": orphan_summary,
         "summary": {
             "total_nodes": len(graph.nodes),
@@ -600,6 +655,8 @@ def drill_down(
             "node": None,
             "filters": _filters_dict(filters),
             "children": [],
+            "edges": [],
+            "edge_count_metadata": _edge_count_metadata(graph, returned=0, source_total=0),
             "summary": {"direct_child_count": 0, "returned_child_count": 0},
             # "Not in this graph" over a bounded snapshot may only mean "never
             # loaded" — say which, rather than implying the node does not exist.
@@ -639,6 +696,8 @@ def drill_down(
 
     child_entries.sort(key=lambda c: (-c.aggregate.worst_severity_rank, -c.aggregate.descendant_count, c.id))
 
+    relationship_edges, edge_count_metadata = _edge_projection(graph, [c.id for c in child_entries], children)
+
     return {
         "scan_id": graph.scan_id,
         "tenant_id": graph.tenant_id,
@@ -655,7 +714,8 @@ def drill_down(
         # Same edges one level down. This is where they matter most: an org has
         # one root, so nothing crosses at the top, while its accounts reach each
         # other constantly.
-        "edges": cross_container_edges(graph, [c.id for c in child_entries], children),
+        "edges": relationship_edges,
+        "edge_count_metadata": edge_count_metadata,
         "summary": {
             "direct_child_count": len(direct),
             "returned_child_count": len(child_entries),

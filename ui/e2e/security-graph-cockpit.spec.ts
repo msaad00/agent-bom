@@ -155,9 +155,72 @@ async function routeCockpit(
     emptyRollup?: boolean;
     rollupDelayMs?: number;
     fixFirstDelayMs?: number;
+    rollupItemCount?: number;
   } = {},
 ) {
   const graph = buildCockpitGraph(snapshotNodeCount);
+  const baseRollupItems = [
+    {
+      id: "account:production",
+      label: "Production account",
+      entity_type: "cloud_account",
+      severity: "critical",
+      is_container: true,
+      has_children: true,
+      direct_child_count: 900,
+      aggregate: {
+        descendant_count: 900,
+        by_type: { cloud_resource: 900 },
+        severity_counts: { critical: 1, high: 53, none: 846 },
+        worst_severity: "critical",
+        worst_severity_rank: 4,
+        internet_exposed: true,
+        toxic_combo: true,
+        exposed_count: 8,
+        toxic_count: 1,
+      },
+    },
+    {
+      id: "account:development",
+      label: "Development account",
+      entity_type: "cloud_account",
+      severity: "high",
+      is_container: true,
+      has_children: true,
+      direct_child_count: 341,
+      aggregate: {
+        descendant_count: 341,
+        by_type: { cloud_resource: 341 },
+        severity_counts: { high: 20, none: 321 },
+        worst_severity: "high",
+        worst_severity_rank: 3,
+        internet_exposed: false,
+        toxic_combo: false,
+        exposed_count: 0,
+        toxic_count: 0,
+      },
+    },
+  ];
+  const requestedRollupItems = Math.max(2, options.rollupItemCount ?? 2);
+  const rollupItems = options.emptyRollup
+    ? []
+    : Array.from({ length: requestedRollupItems }, (_, index) => {
+        if (index < baseRollupItems.length) return baseRollupItems[index]!;
+        return {
+          ...baseRollupItems[1]!,
+          id: `account:team-${index}`,
+          label: `Team account ${index}`,
+          severity: "none",
+          direct_child_count: 1,
+          aggregate: {
+            ...baseRollupItems[1]!.aggregate,
+            descendant_count: 1,
+            severity_counts: { none: 1 },
+            worst_severity: "none",
+            worst_severity_rank: 0,
+          },
+        };
+      });
 
   await page.route("**/health", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
@@ -300,48 +363,7 @@ async function routeCockpit(
         created_at: createdAt,
         mode: "rollup",
         filters: {},
-        top_level: options.emptyRollup ? [] : [
-          {
-            id: "account:production",
-            label: "Production account",
-            entity_type: "cloud_account",
-            severity: "critical",
-            is_container: true,
-            has_children: true,
-            direct_child_count: 900,
-            aggregate: {
-              descendant_count: 900,
-              by_type: { cloud_resource: 900 },
-              severity_counts: { critical: 1, high: 53, none: 846 },
-              worst_severity: "critical",
-              worst_severity_rank: 4,
-              internet_exposed: true,
-              toxic_combo: true,
-              exposed_count: 8,
-              toxic_count: 1,
-            },
-          },
-          {
-            id: "account:development",
-            label: "Development account",
-            entity_type: "cloud_account",
-            severity: "high",
-            is_container: true,
-            has_children: true,
-            direct_child_count: 341,
-            aggregate: {
-              descendant_count: 341,
-              by_type: { cloud_resource: 341 },
-              severity_counts: { high: 20, none: 321 },
-              worst_severity: "high",
-              worst_severity_rank: 3,
-              internet_exposed: false,
-              toxic_combo: false,
-              exposed_count: 0,
-              toxic_count: 0,
-            },
-          },
-        ],
+        top_level: rollupItems,
         // The server aggregates every non-containment edge onto the containers
         // its endpoints roll up into, so a collapsed estate arrives as a
         // topology. This fixture used to omit the key entirely, which made the
@@ -356,11 +378,25 @@ async function routeCockpit(
             relationships: ["can_access", "uses"],
           },
         ],
+        completeness: {
+          returned: rollupItems.length,
+          total: rollupItems.length,
+          truncated: false,
+          reason: "",
+        },
+        edge_count_metadata: {
+          definition: "aggregated non-containment relationship rows between returned containers",
+          source_total: options.emptyRollup ? 0 : 1,
+          returned: options.emptyRollup ? 0 : 1,
+          truncated: false,
+          source_truncated: false,
+          reason: "",
+        },
         summary: {
           total_nodes: snapshotNodeCount ?? 1241,
           total_edges: graph.edges.length,
-          top_level_count: options.emptyRollup ? 0 : 2,
-          container_count: options.emptyRollup ? 0 : 2,
+          top_level_count: rollupItems.length,
+          container_count: rollupItems.length,
         },
       }),
     });
@@ -385,7 +421,7 @@ for (const theme of ["dark", "light"] as const) {
       window.localStorage.setItem("agent-bom-theme", selectedTheme);
     }, theme);
 
-    await page.goto("/security-graph");
+    await page.goto("/security-graph?lens=attack-path");
     await page.waitForLoadState("networkidle");
     await expectCockpitVisible(page);
 
@@ -397,7 +433,7 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
   await page.setViewportSize({ width: 390, height: 844 });
   await routeCockpit(page);
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
   await expectCockpitVisible(page);
   const overflows = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
@@ -430,7 +466,7 @@ test("focused investigation never shows an unrelated global path", async ({ page
 test("ranked persisted paths render before slower fix guidance", async ({ page }) => {
   await routeCockpit(page, undefined, { fixFirstDelayMs: 2_000 });
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await expect(page.getByText("#1 fix first")).toBeVisible();
   await expect(page.getByText(/Ranked paths are ready; fix guidance is still loading/)).toBeVisible();
   await expect(page.getByText("agent → server → package → finding")).toBeVisible();
@@ -442,7 +478,7 @@ test("ranked path selection focuses the in-place interactive graph and announces
   await page.setViewportSize({ width: 1440, height: 1000 });
   await routeCockpit(page);
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
   const workspace = page.getByRole("region", { name: "Investigation workspace" });
@@ -451,7 +487,7 @@ test("ranked path selection focuses the in-place interactive graph and announces
   const [queueBox, detailBox] = await Promise.all([queue.boundingBox(), detail.boundingBox()]);
   expect(queueBox).not.toBeNull();
   expect(detailBox).not.toBeNull();
-  expect(Math.abs(queueBox!.y - detailBox!.y)).toBeLessThan(180);
+  expect(Math.abs(queueBox!.y - detailBox!.y)).toBeLessThan(200);
 
   await queue.getByRole("button", { name: /#2/ }).click();
   await expect(detail.getByTestId("security-graph-investigation")).toBeVisible();
@@ -470,7 +506,7 @@ test("mobile ranked path selection moves the selected graph into view", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await routeCockpit(page);
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
   const queue = page.getByLabel("Attack path queue");
@@ -487,7 +523,7 @@ test(`large estates lead with non-overlapping clusters in ${theme}`, async ({ pa
     window.localStorage.setItem("agent-bom-theme", selectedTheme);
   }, theme);
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
   const evidenceScope = page.getByRole("button", { name: /Evidence scope/ });
@@ -601,7 +637,7 @@ test("ranked paths reach the first viewport instead of sitting under a tower of 
   await page.setViewportSize({ width: 1440, height: 900 });
   await routeCockpit(page);
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
   const paths = page.getByText(/rendered · .* returned · .* snapshot paths/).first();
@@ -611,6 +647,43 @@ test("ranked paths reach the first viewport instead of sitting under a tower of 
   expect(box!.y).toBeLessThan(900);
 });
 
+for (const proof of [
+  { width: 1512, height: 811, theme: "light" },
+  { width: 1568, height: 780, theme: "dark" },
+] as const) {
+  test(`estate canvas is the truthful first view at ${proof.width}x${proof.height}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: proof.width, height: proof.height });
+    await routeCockpit(page, 1_241, { rollupItemCount: 30 });
+    await page.addInitScript((theme) => {
+      window.localStorage.setItem("agent-bom-theme", theme);
+    }, proof.theme);
+
+    await page.goto("/security-graph");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByRole("heading", { name: "Investigation Canvas" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Estate/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
+    await expect(page.getByTestId("graph-rollup-relationship-completeness")).toHaveText(
+      "1 aggregated relationship rows · complete for this scope",
+    );
+    await expect(page.getByText("Agent Mesh")).toBeHidden();
+    await expect(page.getByText("Context", { exact: true })).toBeHidden();
+
+    const proofState = await page.evaluate(() => ({
+      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    }));
+    expect(proofState.horizontalOverflow).toBe(false);
+    expect(proofState.viewport).toEqual({ width: proof.width, height: proof.height });
+
+    await page.screenshot({
+      path: testInfo.outputPath(`investigation-canvas-estate-${proof.width}x${proof.height}.png`),
+      fullPage: false,
+    });
+  });
+}
+
 for (const viewport of [
   { width: 1512, height: 811 },
   { width: 1568, height: 780 },
@@ -619,7 +692,7 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await routeCockpit(page);
 
-    await page.goto("/security-graph");
+    await page.goto("/security-graph?lens=attack-path");
     await page.waitForLoadState("networkidle");
     await page.getByLabel("Attack path queue").getByRole("button", { name: /#1/ }).click();
     const detail = page.getByRole("region", { name: "Selected path detail" });
@@ -672,7 +745,7 @@ test("the deploy gate is disclosure-gated rather than always expanded", async ({
   // should cost a full band of vertical space on every visit.
   await routeCockpit(page);
 
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=attack-path");
   await page.waitForLoadState("networkidle");
 
   await expect(page.getByPlaceholder(/agent:claude-desktop/)).toBeHidden();

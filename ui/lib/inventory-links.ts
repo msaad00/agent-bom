@@ -14,7 +14,7 @@ export function findingsHref(row: AssetRow, scanId?: string): string {
  * can pivot from there.
  */
 export function securityGraphHref(row: AssetRow, scanId?: string): string {
-  const params = new URLSearchParams({ node: row.id });
+  const params = new URLSearchParams({ lens: "estate", node: row.id });
   if (scanId) params.set("scan", scanId);
   return `/security-graph?${params.toString()}`;
 }

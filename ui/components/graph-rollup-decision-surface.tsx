@@ -3,7 +3,12 @@
 import { ChevronLeft, ChevronRight, GitBranch, Layers, Network, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import type { GraphRollupContainer, GraphRollupEdge } from "@/lib/api-types";
+import type {
+  GraphCompleteness,
+  GraphRollupContainer,
+  GraphRollupEdge,
+  GraphRollupEdgeCountMetadata,
+} from "@/lib/api-types";
 
 export const ROLLUP_DECISION_THRESHOLD = 24;
 const PAGE_SIZE = 12;
@@ -52,12 +57,16 @@ function relationEvidence(itemId: string, edges: GraphRollupEdge[]): {
 export function GraphRollupDecisionSurface({
   items,
   edges,
+  completeness,
+  edgeCountMetadata,
   onDrill,
   onInvestigate,
   onShowMap,
 }: {
   items: GraphRollupContainer[];
   edges: GraphRollupEdge[];
+  completeness?: GraphCompleteness | undefined;
+  edgeCountMetadata?: GraphRollupEdgeCountMetadata | undefined;
   onDrill: (item: GraphRollupContainer) => void;
   onInvestigate: (item: GraphRollupContainer) => void;
   onShowMap: () => void;
@@ -79,6 +88,16 @@ export function GraphRollupDecisionSurface({
   }, [filter, items]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const nodeScopeLabel = completeness?.truncated
+    ? `${items.length.toLocaleString()} returned from a bounded node scope`
+    : `${items.length.toLocaleString()} containers`;
+  const edgeScopeLabel = edgeCountMetadata
+    ? edgeCountMetadata.source_truncated
+      ? `${edgeCountMetadata.returned.toLocaleString()}${edgeCountMetadata.returned < edgeCountMetadata.source_total ? ` of ${edgeCountMetadata.source_total.toLocaleString()}` : ""} aggregated relationship rows returned from a bounded source graph · estate total unavailable`
+      : edgeCountMetadata.truncated
+        ? `${edgeCountMetadata.returned.toLocaleString()} of ${edgeCountMetadata.source_total.toLocaleString()} aggregated relationship rows returned`
+      : `${edgeCountMetadata.returned.toLocaleString()} aggregated relationship rows · complete for this scope`
+    : `${edges.length.toLocaleString()} aggregated relationship rows returned · completeness unavailable`;
 
   useEffect(() => {
     setPage(0);
@@ -97,7 +116,14 @@ export function GraphRollupDecisionSurface({
             Risk-prioritized scopes
           </p>
           <p className="mt-1 text-xs text-[var(--text-secondary)]">
-            {items.length.toLocaleString()} containers collapsed from the current evidence snapshot. Drill into a scope or isolate its traversal.
+            {nodeScopeLabel} collapsed from the current evidence snapshot. Drill into a scope or isolate its traversal.
+          </p>
+          <p
+            className="mt-1 text-[11px] text-[var(--text-tertiary)]"
+            data-testid="graph-rollup-relationship-completeness"
+            title={edgeCountMetadata?.reason ? edgeCountMetadata.reason.replaceAll("_", " ") : undefined}
+          >
+            {edgeScopeLabel}
           </p>
         </div>
         <button type="button" onClick={onShowMap} className="graph-page-action">

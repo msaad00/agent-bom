@@ -109,6 +109,39 @@ def test_rollup_response_exposes_an_edges_key() -> None:
     assert isinstance(view["edges"], list)
 
 
+def test_rollup_reports_relationship_rows_cut_by_the_edge_cap() -> None:
+    """The 400-row projection cap must not look like the whole topology."""
+    graph = UnifiedGraph(scan_id="edge-cap", tenant_id="default")
+    node_ids = [f"account:{index:02d}" for index in range(21)]
+    for node_id in node_ids:
+        graph.add_node(UnifiedNode(id=node_id, entity_type=EntityType.ACCOUNT, label=node_id))
+    for source in node_ids:
+        for target in node_ids:
+            if source != target:
+                graph.add_edge(UnifiedEdge(source=source, target=target, relationship=RelationshipType.CAN_ACCESS))
+
+    view = rollup_view(graph)
+
+    assert len(view["edges"]) == 400
+    assert view["edge_count_metadata"] == {
+        "definition": "Aggregated non-containment container-to-container relationship rows in the roll-up source graph.",
+        "source_total": 420,
+        "returned": 400,
+        "truncated": True,
+        "source_truncated": False,
+        "reason": "rollup_edge_limit",
+    }
+
+
+def test_drilldown_reports_complete_relationship_row_counts() -> None:
+    view = drill_down(_graph(), "org")
+
+    assert view["edge_count_metadata"]["source_total"] == 1
+    assert view["edge_count_metadata"]["returned"] == 1
+    assert view["edge_count_metadata"]["truncated"] is False
+    assert view["edge_count_metadata"]["reason"] == ""
+
+
 @pytest.mark.parametrize("missing", ["source", "target"])
 def test_edges_referencing_absent_containers_are_dropped(missing: str) -> None:
     """An edge to a container that is not on screen cannot be drawn."""

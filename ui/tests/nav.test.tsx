@@ -367,7 +367,12 @@ describe('Nav', () => {
     const palette = screen.getByRole('dialog', { name: /command palette/i })
     const paletteHrefs = within(palette).getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(paletteHrefs).toEqual(expect.arrayContaining([
+      '/security-graph?lens=attack-path',
+      '/security-graph?lens=cloud',
+      '/security-graph?lens=repository',
+      '/security-graph?lens=identity',
       '/security-graph?lens=lineage',
+      '/security-graph?lens=asset-drift&scope=asset-drift',
       '/security-graph?lens=mesh',
       '/security-graph?lens=context',
     ]))
@@ -454,8 +459,8 @@ describe('Nav', () => {
     expect(within(palette).getByRole('button', { name: /refresh current view/i })).toBeInTheDocument()
     expect(within(palette).getByRole('link', { name: /overview/i })).toHaveAttribute('href', '/')
     expect(within(palette).getByRole('link', { name: /lineage/i })).toHaveAttribute('href', '/security-graph?lens=lineage')
-    expect(within(palette).getByRole('link', { name: /agent mesh/i })).toHaveAttribute('href', '/security-graph?lens=mesh')
-    expect(within(palette).getByRole('link', { name: /context/i })).toHaveAttribute('href', '/security-graph?lens=context')
+    expect(within(palette).getByRole('link', { name: /agent mesh.*specialized/i })).toHaveAttribute('href', '/security-graph?lens=mesh')
+    expect(within(palette).getByRole('link', { name: /context.*specialized/i })).toHaveAttribute('href', '/security-graph?lens=context')
   })
 
   it('renders the canonical agent-bom mark in the top bar', () => {

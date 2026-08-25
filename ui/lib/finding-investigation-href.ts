@@ -11,7 +11,7 @@ export function buildFindingInvestigationHref(
   >,
   options?: { scanId?: string | undefined },
 ): string {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ lens: "attack-path" });
   if (options?.scanId) params.set("scan", options.scanId);
 
   const nodeId = vuln.node_id?.trim();
@@ -34,6 +34,5 @@ export function buildFindingInvestigationHref(
 
   if (vuln.finding_id) params.set("finding", vuln.finding_id);
 
-  const query = params.toString();
-  return query ? `/security-graph?${query}` : "/security-graph";
+  return `/security-graph?${params.toString()}`;
 }

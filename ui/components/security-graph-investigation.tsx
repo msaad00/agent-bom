@@ -21,6 +21,7 @@ import { useAuthState } from "@/components/auth-provider";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { SigmaGraphOverview } from "@/components/sigma-graph-overview";
 import { api } from "@/lib/api";
+import type { GraphNodeNeighborsResponse } from "@/lib/api-types";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 import {
   BACKGROUND_COLOR,
@@ -43,6 +44,7 @@ import { useGraphLayout } from "@/lib/use-graph-layout";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey, type GraphPresentationScope } from "@/lib/graph-presentation";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+import { mergeGraphNeighborExpansions } from "@/lib/graph-neighbor-expansion";
 
 const INVESTIGATION_LAYERS = {
   provider: false,
@@ -255,15 +257,22 @@ export function SecurityGraphInvestigation({
   const [drawerData, setDrawerData] = useState<LineageNodeData | null>(null);
   const [blastLoading, setBlastLoading] = useState(false);
   const [blastActive, setBlastActive] = useState(false);
+  const [neighborExpansions, setNeighborExpansions] = useState<
+    Record<string, GraphNodeNeighborsResponse>
+  >({});
   const lastPinnedRef = useRef<string | null>(null);
 
   const activeGraph = useMemo(() => {
     if (!graph) return null;
-    if (focusMode && attackPath) {
-      return buildFocusedGraphData(graph, attackPath) ?? graph;
-    }
-    return graph;
-  }, [attackPath, focusMode, graph]);
+    const base = focusMode && attackPath
+      ? (buildFocusedGraphData(graph, attackPath) ?? graph)
+      : graph;
+    return mergeGraphNeighborExpansions(base, Object.values(neighborExpansions));
+  }, [attackPath, focusMode, graph, neighborExpansions]);
+
+  useEffect(() => {
+    setNeighborExpansions({});
+  }, [attackPath, focusMode, graph?.scan_id]);
 
   const flow = useMemo(() => {
     if (!activeGraph) {
@@ -369,6 +378,7 @@ export function SecurityGraphInvestigation({
         limit: 24,
         direction: "both",
       });
+      setNeighborExpansions((current) => ({ ...current, [selectedNodeId]: neighbors }));
       setDrawerData((current) =>
         current
           ? {
@@ -378,6 +388,12 @@ export function SecurityGraphInvestigation({
                 ...(current.attributes ?? {}),
                 node_id: selectedNodeId,
                 expanded_neighbor_ids: neighbors.neighbors.map((node) => node.id),
+                expanded_neighbor_returned: neighbors.neighbors.length,
+                expanded_neighbor_omitted: Math.max(
+                  0,
+                  neighbors.total_neighbors - neighbors.neighbors.length,
+                ),
+                expanded_neighbor_truncated: neighbors.truncated,
               },
             }
           : current,
@@ -479,6 +495,8 @@ export function SecurityGraphInvestigation({
             legendItems={legendItems}
             embedded
             onNodeSelect={setSelectedNodeId}
+            presentationScope={presentationScope}
+            presentationEnabled={!authLoading && Boolean(session)}
           />
         ) : (
           <ReactFlowProvider>

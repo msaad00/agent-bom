@@ -13,6 +13,7 @@ import {
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError, userFacingApiErrorMessage } from "@/lib/api-errors";
+import { resolveSecurityGraphSurface } from "@/lib/security-graph-route";
 
 function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -663,7 +664,7 @@ function AttackPathInvestigationContent() {
       <PageLaneHeader
         lane="command"
         title="Investigation"
-        subtitle="Prioritized attack paths first, with lineage, agent mesh, context, and raw topology available as lenses."
+        subtitle="Evidence-linked attack paths for the selected finding or asset; switch to Estate for current-state topology."
         actions={
           captureMode ? undefined : (
           <>
@@ -1081,9 +1082,10 @@ function AttackPathInvestigationContent() {
 }
 
 function SecurityGraphPageContent() {
-  const lens = useSearchParams()?.get("lens");
-  if (lens && lens !== "attack-path") return <GraphSurface />;
-  return <AttackPathInvestigationContent />;
+  const searchParams = useSearchParams();
+  return resolveSecurityGraphSurface(searchParams) === "attack-path"
+    ? <AttackPathInvestigationContent />
+    : <GraphSurface />;
 }
 
 export default function SecurityGraphPage() {

@@ -11,6 +11,17 @@ import type { LineageNodeData } from "@/components/lineage-nodes";
 import { useGraphCanvasPalette } from "@/lib/graph-canvas-theme";
 import type { LegendItem } from "@/lib/graph-utils";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
+import {
+  registerGraphPresentationKey,
+  type GraphPresentationScope,
+} from "@/lib/graph-presentation";
+import {
+  readSigmaCameraPresentation,
+  sanitizeSigmaCameraState,
+  sigmaCameraStorageKey,
+  writeSigmaCameraPresentation,
+  type SigmaCameraState,
+} from "@/lib/sigma-camera-presentation";
 import type { UnifiedGraphFlowFilters } from "@/lib/unified-graph-flow";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
@@ -30,6 +41,8 @@ type SigmaGraphOverviewProps = {
   legendItems: LegendItem[];
   embedded?: boolean;
   onNodeSelect?: (nodeId: string) => void;
+  presentationScope?: GraphPresentationScope;
+  presentationEnabled?: boolean;
 } & (
   {
     nodes: Node<LineageNodeData>[];
@@ -91,6 +104,14 @@ function RelationshipRail({ items }: { items: Array<{ relationship: string; coun
   );
 }
 
+function browserStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function SigmaGraphOverview({
   graph,
   filters,
@@ -99,6 +120,8 @@ export function SigmaGraphOverview({
   legendItems,
   embedded = false,
   onNodeSelect,
+  presentationScope,
+  presentationEnabled = true,
 }: SigmaGraphOverviewProps) {
   const captureMode = useCaptureMode();
   const palette = useGraphCanvasPalette();
@@ -108,6 +131,40 @@ export function SigmaGraphOverview({
   const onNodeSelectRef = useRef<SigmaGraphOverviewProps["onNodeSelect"]>(onNodeSelect);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const hasPresentationScope = presentationScope !== undefined;
+  const presentationTenantId = presentationScope?.tenantId ?? "";
+  const presentationSubject = presentationScope?.subject ?? "";
+  const presentationSnapshotId = presentationScope?.snapshotId ?? "";
+  const presentationLens = presentationScope?.lens ?? "";
+  const presentationFilterScope = presentationScope?.scope ?? "";
+  const cameraStorageKey = useMemo(
+    () => hasPresentationScope
+      ? sigmaCameraStorageKey({
+          tenantId: presentationTenantId,
+          subject: presentationSubject,
+          snapshotId: presentationSnapshotId,
+          lens: presentationLens,
+          scope: presentationFilterScope,
+        })
+      : null,
+    [
+      hasPresentationScope,
+      presentationFilterScope,
+      presentationLens,
+      presentationSnapshotId,
+      presentationSubject,
+      presentationTenantId,
+    ],
+  );
+  const cameraOwner = useMemo(
+    () => hasPresentationScope
+      ? { tenantId: presentationTenantId, subject: presentationSubject }
+      : null,
+    [hasPresentationScope, presentationSubject, presentationTenantId],
+  );
+  const cameraPersistenceEnabled = Boolean(
+    presentationEnabled && cameraOwner && cameraStorageKey && !captureMode,
+  );
   const model = useMemo(
     () =>
       graph
@@ -131,6 +188,17 @@ export function SigmaGraphOverview({
     if (!container) return;
     let renderer: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
     let alive = true;
+    let pendingCamera: SigmaCameraState | null = null;
+    let persistTimer: number | null = null;
+
+    const storage = cameraPersistenceEnabled ? browserStorage() : null;
+    const flushCamera = () => {
+      if (!cameraStorageKey || !cameraOwner || !pendingCamera) return;
+      registerGraphPresentationKey(storage, cameraOwner, cameraStorageKey);
+      writeSigmaCameraPresentation(storage, cameraStorageKey, pendingCamera);
+      pendingCamera = null;
+      persistTimer = null;
+    };
 
     const start = async () => {
       try {
@@ -199,7 +267,26 @@ export function SigmaGraphOverview({
         renderer.on("clickStage", () => {
           setSelectedNodeId(null);
         });
-        renderer.getCamera().setState({ ratio: 1.05 });
+        const camera = renderer.getCamera();
+        const savedCamera = cameraPersistenceEnabled && cameraStorageKey
+          ? readSigmaCameraPresentation(storage, cameraStorageKey)
+          : null;
+        // Sigma's constructor performs its normal fit/centering. A valid saved
+        // camera takes precedence over that one-shot default; absent or invalid
+        // state gets the established overview framing.
+        camera.setState(savedCamera ?? { ratio: 1.05 });
+        if (cameraPersistenceEnabled) {
+          camera.on("updated", (state) => {
+            const sanitized = sanitizeSigmaCameraState(state);
+            if (!sanitized) return;
+            pendingCamera = sanitized;
+            if (persistTimer === null) {
+              // Camera updates fire continuously while panning. Throttle the
+              // synchronous localStorage write while retaining the latest frame.
+              persistTimer = window.setTimeout(flushCamera, 80);
+            }
+          });
+        }
         renderer.refresh();
         setRenderError(null);
       } catch (error) {
@@ -212,11 +299,13 @@ export function SigmaGraphOverview({
 
     return () => {
       alive = false;
+      if (persistTimer !== null) window.clearTimeout(persistTimer);
+      flushCamera();
       renderer?.kill();
       rendererRef.current = null;
       container.replaceChildren();
     };
-  }, [model, palette]);
+  }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette]);
 
   return (
     <div

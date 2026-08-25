@@ -37,16 +37,66 @@ describe("GraphLensSwitcher", () => {
 
     expect(screen.getByTestId("graph-lens-floating-bar")).toBeInTheDocument();
     expect(screen.getByText("Security Graph Lens")).toBeInTheDocument();
+    expect(screen.getByText("Estate")).toBeInTheDocument();
+    expect(screen.getByText("Cloud")).toBeInTheDocument();
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Identity")).toBeInTheDocument();
     expect(screen.getByText("Attack Paths")).toBeInTheDocument();
     expect(screen.getByText("Lineage")).toBeInTheDocument();
     expect(screen.getByText("Asset Drift")).toBeInTheDocument();
-    expect(screen.getByText("Agent Mesh")).toBeInTheDocument();
-    expect(screen.getByText("Context")).toBeInTheDocument();
+    expect(screen.getByText("Specialized views")).toBeInTheDocument();
+    expect(screen.getByText("Agent Mesh")).not.toBeVisible();
+    expect(screen.getByText("Context")).not.toBeVisible();
+
+    fireEvent.click(screen.getByText("Specialized views"));
+
+    expect(screen.getByText("Agent Mesh")).toBeVisible();
+    expect(screen.getByText("Context")).toBeVisible();
+    expect(screen.getByText("Scan-specific views; not canonical estate lenses.")).toBeVisible();
+  });
+
+  it("treats the unfocused security graph as the estate canvas", () => {
+    pathname = "/security-graph";
+    render(<GraphLensSwitcher variant="compact" />);
+
+    expect(screen.getByRole("button", { name: /estate/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /attack paths/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("opens attack paths as an explicit lens", () => {
+    pathname = "/security-graph";
+    render(<GraphLensSwitcher variant="compact" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /attack paths/i }));
+
+    expect(push).toHaveBeenCalledWith("/security-graph?lens=attack-path");
+  });
+
+  it("exposes the canonical domain lenses as explicit routes", () => {
+    pathname = "/security-graph";
+    render(<GraphLensSwitcher variant="compact" />);
+
+    for (const [name, lens] of [
+      ["Cloud", "cloud"],
+      ["Repository", "repository"],
+      ["Identity", "identity"],
+      ["Lineage", "lineage"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(name, "i") }));
+      expect(push).toHaveBeenLastCalledWith(`/security-graph?lens=${lens}`);
+    }
   });
 
   it("switches to the mesh lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
+    fireEvent.click(screen.getByText("Specialized views"));
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");
@@ -55,12 +105,13 @@ describe("GraphLensSwitcher", () => {
   it("switches to the context lens without leaving the investigation surface", () => {
     render(<GraphLensSwitcher variant="floating" />);
 
+    fireEvent.click(screen.getByText("Specialized views"));
     fireEvent.click(screen.getByRole("button", { name: /context/i }));
 
     expect(push).toHaveBeenCalledWith("/security-graph?lens=context");
   });
 
-  it("preserves investigation focus when switching to a param-backed lens", () => {
+  it("preserves investigation focus when switching canonical lenses", () => {
     pathname = "/security-graph";
     params = new URLSearchParams({
       scan: "scan-123",
@@ -76,11 +127,22 @@ describe("GraphLensSwitcher", () => {
     });
     render(<GraphLensSwitcher variant="floating" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^.*cloud$/i }));
 
     expect(push).toHaveBeenCalledWith(
-      "/security-graph?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&rollup=1&lens=mesh",
+      "/security-graph?scan=scan-123&agent=payments-agent&cve=CVE-2026-0042&package=werkzeug&root=agent%3Apayments&root_label=Payments+agent&investigate=1&q=Payments+agent&lens=cloud",
     );
+  });
+
+  it("does not carry a canonical snapshot claim into specialized scan views", () => {
+    pathname = "/security-graph";
+    params = new URLSearchParams({ scan: "scan-123", node: "asset-1" });
+    render(<GraphLensSwitcher variant="compact" />);
+
+    fireEvent.click(screen.getByText("Specialized views"));
+    fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
+
+    expect(push).toHaveBeenCalledWith("/security-graph?lens=mesh");
   });
 
   it("keeps the target lens scope authoritative while preserving shared context", () => {

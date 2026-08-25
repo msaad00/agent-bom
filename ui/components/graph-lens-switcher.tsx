@@ -14,19 +14,51 @@ interface GraphLens {
   label: string;
   icon: string;
   href: string;
-  match: (path: string, scope: string | null, lens: string | null) => boolean;
+  preserveContext?: boolean;
+  match: (
+    path: string,
+    scope: string | null,
+    lens: string | null,
+    hasLegacyAttackFocus: boolean,
+  ) => boolean;
 }
 
 const isLegacyGraphPath = (p: string) => p === "/graph" || p.startsWith("/graph/");
 const isSecurityGraphPath = (p: string) => p.startsWith("/security-graph");
 
-const GRAPH_LENSES: GraphLens[] = [
+const CANONICAL_GRAPH_LENSES: GraphLens[] = [
   {
-    id: "attack-path",
-    label: "Attack Paths",
-    icon: "🎯",
-    href: "/security-graph",
-    match: (p, _scope, lens) => isSecurityGraphPath(p) && (!lens || lens === "attack-path"),
+    id: "estate",
+    label: "Estate",
+    icon: "◫",
+    href: "/security-graph?lens=estate&rollup=1",
+    match: (p, _scope, lens, hasLegacyAttackFocus) =>
+      isSecurityGraphPath(p) &&
+      (lens === "estate" || (!lens && !hasLegacyAttackFocus)),
+  },
+  {
+    id: "cloud",
+    label: "Cloud",
+    icon: "☁",
+    href: "/security-graph?lens=cloud",
+    match: (p, _scope, lens) =>
+      (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "cloud",
+  },
+  {
+    id: "repository",
+    label: "Repository",
+    icon: "⌘",
+    href: "/security-graph?lens=repository",
+    match: (p, _scope, lens) =>
+      (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "repository",
+  },
+  {
+    id: "identity",
+    label: "Identity",
+    icon: "◎",
+    href: "/security-graph?lens=identity",
+    match: (p, _scope, lens) =>
+      (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "identity",
   },
   {
     id: "lineage",
@@ -38,6 +70,15 @@ const GRAPH_LENSES: GraphLens[] = [
       ((isSecurityGraphPath(p) && lens === "lineage") || (isLegacyGraphPath(p) && !lens)),
   },
   {
+    id: "attack-path",
+    label: "Attack Paths",
+    icon: "🎯",
+    href: "/security-graph?lens=attack-path",
+    match: (p, _scope, lens, hasLegacyAttackFocus) =>
+      isSecurityGraphPath(p) &&
+      (lens === "attack-path" || (!lens && hasLegacyAttackFocus)),
+  },
+  {
     id: "asset-drift",
     label: "Asset Drift",
     icon: "📐",
@@ -47,11 +88,15 @@ const GRAPH_LENSES: GraphLens[] = [
       scope === ASSET_DRIFT_GRAPH_SCOPE_PARAM &&
       (lens === "asset-drift" || !lens),
   },
+];
+
+const SPECIALIZED_GRAPH_VIEWS: GraphLens[] = [
   {
     id: "mesh",
     label: "Agent Mesh",
     icon: "🕸️",
     href: "/security-graph?lens=mesh",
+    preserveContext: false,
     match: (p, _scope, lens) =>
       (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "mesh",
   },
@@ -60,15 +105,22 @@ const GRAPH_LENSES: GraphLens[] = [
     label: "Context",
     icon: "🗺️",
     href: "/security-graph?lens=context",
+    preserveContext: false,
     match: (p, _scope, lens) =>
       (isSecurityGraphPath(p) || isLegacyGraphPath(p)) && lens === "context",
   },
 ];
 
+const ALL_GRAPH_VIEWS = [...CANONICAL_GRAPH_LENSES, ...SPECIALIZED_GRAPH_VIEWS];
+
+const LEGACY_ATTACK_FOCUS_PARAMS = ["agent", "cve", "finding", "node", "package", "trace"] as const;
+
 const SHARED_INVESTIGATION_PARAMS = [
   "scan",
   "agent",
   "cve",
+  "finding",
+  "node",
   "package",
   "root",
   "root_label",
@@ -76,6 +128,7 @@ const SHARED_INVESTIGATION_PARAMS = [
   "q",
   "rollup",
   "rollup_node",
+  "trace",
 ] as const;
 
 export function buildInvestigationLensHref(
@@ -88,9 +141,18 @@ export function buildInvestigationLensHref(
     const value = current.get(key);
     if (value) params.set(key, value);
   }
+  const targetParams = new URLSearchParams(targetQuery);
+  const targetLens = targetParams.get("lens");
+  if (targetLens && targetLens !== "estate") {
+    // Roll-up is the Estate lens' composition state, not investigation
+    // identity. Carrying it into Cloud/Repository/Identity would make those
+    // buttons render the unfiltered estate roll-up and mislabel the canvas.
+    params.delete("rollup");
+    params.delete("rollup_node");
+  }
   // Target-owned parameters (for example the Asset Drift scope) are
   // authoritative and replace any context inherited from the current lens.
-  for (const [key, value] of new URLSearchParams(targetQuery)) {
+  for (const [key, value] of targetParams) {
     params.set(key, value);
   }
   const query = params.toString();
@@ -113,18 +175,31 @@ export function GraphLensSwitcher({
   const searchParams = useSearchParams();
   const scope = searchParams?.get("scope") ?? null;
   const activeLens = searchParams?.get("lens") ?? null;
+  const hasLegacyAttackFocus =
+    !activeLens && LEGACY_ATTACK_FOCUS_PARAMS.some((key) => Boolean(searchParams?.get(key)));
 
-  const layers = GRAPH_LENSES.map((lens) => ({
+  const canonicalLayers = CANONICAL_GRAPH_LENSES.map((lens) => ({
     id: lens.id,
     label: lens.label,
     icon: lens.icon,
-    active: lens.match(path, scope, activeLens),
+    active: lens.match(path, scope, activeLens, hasLegacyAttackFocus),
   }));
+  const specializedViews = SPECIALIZED_GRAPH_VIEWS.map((lens) => ({
+    id: lens.id,
+    label: lens.label,
+    icon: lens.icon,
+    active: lens.match(path, scope, activeLens, hasLegacyAttackFocus),
+  }));
+  const specializedViewActive = specializedViews.some((view) => view.active);
 
   const onToggle = (id: string) => {
-    const lens = GRAPH_LENSES.find((l) => l.id === id);
-    if (!lens || lens.match(path, scope, activeLens)) return;
-    router.push(buildInvestigationLensHref(lens.href, searchParams));
+    const lens = ALL_GRAPH_VIEWS.find((candidate) => candidate.id === id);
+    if (!lens || lens.match(path, scope, activeLens, hasLegacyAttackFocus)) return;
+    router.push(
+      lens.preserveContext === false
+        ? lens.href
+        : buildInvestigationLensHref(lens.href, searchParams),
+    );
   };
 
   const content = (
@@ -147,11 +222,31 @@ export function GraphLensSwitcher({
               variant === "floating" ? "hidden sm:block" : ""
             }`}
           >
-            One graph, multiple lenses — switch how you read the same inventory.
+            Canonical lenses share one persisted estate snapshot and its exact counts.
           </p>
         </div>
       )}
-      <InsightLayerToggle layers={layers} onToggle={onToggle} />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <InsightLayerToggle layers={canonicalLayers} onToggle={onToggle} />
+        <details
+          className="group border-t border-[color:var(--border-subtle)] pt-2"
+          open={specializedViewActive}
+        >
+          <summary className="w-fit cursor-pointer select-none text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)]">
+            Specialized views
+          </summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <InsightLayerToggle
+              layers={specializedViews}
+              label="Views"
+              onToggle={onToggle}
+            />
+            <span className="text-[10px] text-[color:var(--text-tertiary)]">
+              Scan-specific views; not canonical estate lenses.
+            </span>
+          </div>
+        </details>
+      </div>
       {legendItems && legendItems.length > 0 ? (
         <GraphLegendDock items={legendItems} defaultOpen={legendDefaultOpen} />
       ) : null}

@@ -16,7 +16,7 @@ describe("buildFindingInvestigationHref", () => {
         agents: ["Claude Desktop"],
       }),
     ).toBe(
-      "/security-graph?node=pkg%3Apypi%2Fflask%403.0.0&cve=CVE-2026-0001&package=flask&agent=Claude+Desktop&finding=fid-1",
+      "/security-graph?lens=attack-path&node=pkg%3Apypi%2Fflask%403.0.0&cve=CVE-2026-0001&package=flask&agent=Claude+Desktop&finding=fid-1",
     );
   });
 });

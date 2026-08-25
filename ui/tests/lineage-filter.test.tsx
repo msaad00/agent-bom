@@ -6,9 +6,11 @@ import {
   FilterPanel,
   createAssetLifecycleDriftGraphFilters,
   createCloudEstateGraphFilters,
+  createCanvasLensGraphFilters,
   createEnvironmentGraphFilters,
   createExpandedGraphFilters,
   createImmediateGraphFilters,
+  createIdentityGraphFilters,
   createRepositoryGraphFilters,
   GRAPH_SCOPE_DESCRIPTIONS,
   graphScopeLabelForFilters,
@@ -56,6 +58,15 @@ describe("FilterPanel", () => {
       expect(GRAPH_SCOPE_DESCRIPTIONS[preset]).toMatch(/^Type-based view/);
       expect(GRAPH_SCOPE_DESCRIPTIONS[preset]).not.toMatch(/observed/i);
     }
+  });
+
+  it("maps canonical Canvas lenses onto one persisted graph taxonomy", () => {
+    expect(createCanvasLensGraphFilters("estate")?.layers.cloudResource).toBe(true);
+    expect(createCanvasLensGraphFilters("cloud")).toEqual(createCloudEstateGraphFilters());
+    expect(createCanvasLensGraphFilters("repository")).toEqual(createRepositoryGraphFilters());
+    expect(createCanvasLensGraphFilters("identity")).toEqual(createIdentityGraphFilters());
+    expect(createCanvasLensGraphFilters("identity")?.relationshipScope).toBe("governance");
+    expect(createCanvasLensGraphFilters("mesh")).toBeNull();
   });
 
   it("names graph scope presets by operator workflow instead of raw depth", () => {

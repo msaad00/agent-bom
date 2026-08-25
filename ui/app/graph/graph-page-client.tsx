@@ -49,6 +49,7 @@ import {
   DEFAULT_FILTERS,
   createAssetLifecycleDriftGraphFilters,
   createCloudEstateGraphFilters,
+  createCanvasLensGraphFilters,
   createEnvironmentGraphFilters,
   createExpandedGraphFilters,
   createFocusedGraphFilters,
@@ -144,6 +145,7 @@ import {
 import {
   graphRollupCanvasMode,
   graphRollupEligible,
+  graphRollupPreferenceForCanvas,
   parseGraphRollupUrlPreference,
   parseRollupNodeParam,
   rollupDismissedForPreference,
@@ -827,10 +829,14 @@ function GraphPageInner() {
   const [filters, setFilters] = useState<FilterState>(() => {
     if (typeof window === "undefined") return DEFAULT_FILTERS;
     const params = new URLSearchParams(window.location.search);
-    const baseline =
-      params.get("scope") === ASSET_DRIFT_GRAPH_SCOPE_PARAM
-        ? createAssetLifecycleDriftGraphFilters(params.get("agent"))
-        : DEFAULT_FILTERS;
+    const initialLens = params.get("lens") ??
+      (window.location.pathname.startsWith("/security-graph") ? "estate" : null);
+    const baseline = createCanvasLensGraphFilters(
+      initialLens,
+      params.get("agent"),
+    ) ?? (params.get("scope") === ASSET_DRIFT_GRAPH_SCOPE_PARAM
+      ? createAssetLifecycleDriftGraphFilters(params.get("agent"))
+      : DEFAULT_FILTERS);
     return { ...baseline, ...decodeFiltersFromParams(params) };
   });
   const [initializedFocus, setInitializedFocus] = useState(false);
@@ -857,17 +863,28 @@ function GraphPageInner() {
   );
   const rollupPreferenceRef = useRef(
     typeof window !== "undefined"
-      ? parseGraphRollupUrlPreference(
-          new URLSearchParams(window.location.search),
-        )
+      ? (() => {
+          const params = new URLSearchParams(window.location.search);
+          const estateEntry =
+            window.location.pathname.startsWith("/security-graph") &&
+            (!params.get("lens") || params.get("lens") === "estate");
+          return graphRollupPreferenceForCanvas(params, estateEntry);
+        })()
       : ("default" as const),
   );
+  const explicitCanvasLens = searchParams.get("lens");
+  const canvasLens =
+    explicitCanvasLens ??
+    (pathname?.startsWith("/security-graph") ? "estate" : null);
   // Client-side lens navigation can mount this page before
   // `window.location.search` reflects the destination URL. Reconcile from
   // Next's route state before the later URL-sync effect runs so an explicit
   // `rollup=1` cannot be silently deleted on entry.
   useEffect(() => {
-    const preference = parseGraphRollupUrlPreference(searchParams);
+    const preference = graphRollupPreferenceForCanvas(
+      searchParams,
+      canvasLens === "estate",
+    );
     rollupPreferenceRef.current = preference;
     setRollupDismissed(rollupDismissedForPreference(preference));
     const requestedScanId =
@@ -875,7 +892,17 @@ function GraphPageInner() {
     if (requestedScanId) {
       requestedScanIdRef.current = requestedScanId;
     }
-  }, [searchParams]);
+  }, [canvasLens, searchParams]);
+  const canvasAgent = searchParams.get("agent");
+
+  useEffect(() => {
+    const next = createCanvasLensGraphFilters(canvasLens, canvasAgent);
+    if (!next || requestedInvestigationRef.current) return;
+    setInvestigationMode(null);
+    setReachabilitySummary(null);
+    setReachabilityError(null);
+    setFilters(next);
+  }, [canvasAgent, canvasLens]);
   const firstScanSelectionRef = useRef(true);
   // Last URL the filter→URL sync effect wrote, used to break an infinite
   // router.replace loop (see the sync effect below for the full rationale).
@@ -960,9 +987,12 @@ function GraphPageInner() {
         return;
       }
     }
-    setFilters(DEFAULT_FILTERS);
+    setFilters(
+      createCanvasLensGraphFilters(canvasLens, canvasAgent) ??
+        DEFAULT_FILTERS,
+    );
     setInitializedFocus(false);
-  }, [selectedScanId]);
+  }, [canvasAgent, canvasLens, selectedScanId]);
 
   useEffect(() => {
     if (!selectedScanId) {
@@ -1363,6 +1393,12 @@ function GraphPageInner() {
 
   useEffect(() => {
     if (initializedFocus || flow.agentNames.length === 0) return;
+    if (createCanvasLensGraphFilters(canvasLens, canvasAgent)) {
+      // Canonical Canvas lenses are estate projections. Auto-picking the first
+      // agent would silently collapse them into a single-agent investigation.
+      setInitializedFocus(true);
+      return;
+    }
     if (seededFromUrlRef.current) {
       // The user landed here with an explicit URL — respect it instead of
       // overriding agentName with the first agent in the snapshot.
@@ -1371,7 +1407,7 @@ function GraphPageInner() {
     }
     setFilters(createFocusedGraphFilters(flow.agentNames[0]));
     setInitializedFocus(true);
-  }, [flow.agentNames, initializedFocus]);
+  }, [canvasAgent, canvasLens, flow.agentNames, initializedFocus]);
 
   // Push the current filter state into the URL (replace, not push) so a
   // copied address bar reproduces the view but back/forward isn't spammed.
@@ -1480,8 +1516,11 @@ function GraphPageInner() {
   const validValues = filterAlgebra.validValues;
 
   const handleResetFilters = useCallback(() => {
-    setFilters(createFocusedGraphFilters(flow.agentNames[0] ?? null));
-  }, [flow.agentNames]);
+    setFilters(
+      createCanvasLensGraphFilters(canvasLens, canvasAgent) ??
+        createFocusedGraphFilters(flow.agentNames[0] ?? null),
+    );
+  }, [canvasAgent, canvasLens, flow.agentNames]);
 
   const flowNodeDataById = useMemo(
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
@@ -2316,6 +2355,7 @@ function GraphPageInner() {
           dynamic_only: filters.runtimeMode === "dynamic",
           include_roots: true,
           include_attack_paths: true,
+          entity_types: serverEntityTypes,
           relationship_types: serverRelationships,
         });
         const rootNode =
@@ -2356,6 +2396,7 @@ function GraphPageInner() {
       filters.vulnOnly,
       flowNodeDataById,
       selectedScanId,
+      serverEntityTypes,
       serverRelationships,
     ],
   );
@@ -2529,11 +2570,12 @@ function GraphPageInner() {
               Unified graph
             </p>
             <h1 className="mt-1 text-lg font-semibold text-[var(--foreground)]">
-              Lineage Graph
+              {canvasLens === "estate" ? "Investigation Canvas" : "Lineage Graph"}
             </h1>
             <p className="text-xs text-[var(--text-tertiary)]">
-              Evidence-backed relationships across agents, servers, packages,
-              credentials, tools, and findings.
+              {canvasLens === "estate"
+                ? "Current evidence rolled up by estate scope; drill into the same persisted graph without changing snapshot truth."
+                : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
             </p>
           </div>
 
@@ -3161,7 +3203,7 @@ function GraphPageInner() {
               Pages at or above{" "}
               {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} visible
               nodes or {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()}{" "}
-              visible edges use the limited 2D overview. Narrowing, search
+              visible edges use the bounded WebGL overview. Narrowing, search
               results, attack-path focus, and reachability drill-ins return to
               React Flow.
             </li>
@@ -3365,6 +3407,8 @@ function GraphPageInner() {
             <GraphRollupDecisionSurface
               items={rollupItems}
               edges={rollupView?.edges ?? []}
+              completeness={rollupView?.completeness}
+              edgeCountMetadata={rollupView?.edge_count_metadata}
               onDrill={drillIntoRollup}
               onInvestigate={investigateRollup}
               onShowMap={() => setRollupMapExpanded(true)}
@@ -3399,6 +3443,8 @@ function GraphPageInner() {
               edges={displayEdges}
               legendItems={legendItems}
               onNodeSelect={onLargeGraphNodeSelect}
+              presentationScope={presentationScope}
+              presentationEnabled={!authLoading && Boolean(session)}
             />
           ) : (
             <ReactFlow

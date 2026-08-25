@@ -202,6 +202,12 @@ async function routeLargeGraphPage(page: Page) {
   await page.route("**/v1/graph/attack-paths?**", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
   });
+  await page.route("**/v1/graph/scenarios", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ schema: "graph.scenarios.v1", count: 0, scenarios: [] }),
+    });
+  });
   await page.route("**/v1/graph/rollup?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",

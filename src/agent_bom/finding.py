@@ -59,6 +59,7 @@ class FindingType(str, Enum):
     MODEL_INTEGRITY = "MODEL_INTEGRITY"  # Model artifact provenance/integrity gap (tampered, unsigned, unscanned)
     CIEM_OVER_PRIVILEGE = "CIEM_OVER_PRIVILEGE"  # Cloud identity granted permissions it never uses (right-sizing)
     SENSITIVE_DATA = "SENSITIVE_DATA"  # Content-confirmed sensitive data at rest (DSPM object/database sampling)
+    PII_EXPOSURE = "PII_EXPOSURE"  # Personal data literal committed in source/config (not a credential)
 
 
 class FindingSource(str, Enum):
@@ -1137,11 +1138,16 @@ def enforcement_dict_to_finding(raw: dict) -> "Finding":
 
 
 def secret_dict_to_finding(secret: dict) -> "Finding":
-    """Convert a secret_scanner result dict into a unified CREDENTIAL_EXPOSURE Finding.
+    """Convert a secret_scanner result dict into a unified Finding.
 
     The secret *value* is never carried — only the already-redacted preview,
     type, category, and file:line — so a machine consumer (JSON / SARIF) sees
     that a secret is hardcoded and where, without the secret bytes ever leaking.
+
+    The finding type follows the scanner's ``category``. Personal data is not a
+    credential: emitting ``CREDENTIAL_EXPOSURE`` for a matched ``pii`` row told
+    operators to *rotate* a value that cannot be rotated (a matched IPv4
+    literal), and folded personal-data hygiene into credential dashboards.
     """
     from agent_bom.security import sanitize_text
 
@@ -1152,8 +1158,27 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
     category = sanitize_text(secret.get("category", "secret") or "secret", max_len=120)
     severity = sanitize_text(secret.get("severity", "medium") or "medium", max_len=40)
     loc = f"{file_path}:{line}" if line else file_path
+    is_pii = category.strip().lower() == "pii"
+    if is_pii:
+        title = f"Personal data in source: {secret_type}"
+        description = (
+            f"Personal data ({secret_type}) appears at {loc}. Committed personal data is a "
+            "privacy and data-handling concern, not a credential."
+        )
+        remediation = (
+            "Confirm the value is not real personal data. If it is, remove it from the file and "
+            "its history, and load or generate the value at runtime instead."
+        )
+    else:
+        title = f"Hardcoded {category}: {secret_type}"
+        description = (
+            f"A {category} ({secret_type}) was found hardcoded at {loc}. "
+            "Secrets must live only as OS/shell environment variables or in a "
+            "secret manager — never committed in code."
+        )
+        remediation = "Remove the hardcoded value, rotate it, and load it from an environment variable or secret manager."
     finding = Finding(
-        finding_type=FindingType.CREDENTIAL_EXPOSURE,
+        finding_type=FindingType.PII_EXPOSURE if is_pii else FindingType.CREDENTIAL_EXPOSURE,
         source=FindingSource.SECRET_SCAN,
         asset=Asset(
             name=f"{secret_type} in {file_path}" if file_path else secret_type,
@@ -1162,13 +1187,9 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
             location=file_path or None,
         ),
         severity=severity,
-        title=f"Hardcoded {category}: {secret_type}",
-        description=(
-            f"A {category} ({secret_type}) was found hardcoded at {loc}. "
-            "Secrets must live only as OS/shell environment variables or in a "
-            "secret manager — never committed in code."
-        ),
-        remediation_guidance=("Remove the hardcoded value, rotate it, and load it from an environment variable or secret manager."),
+        title=title,
+        description=description,
+        remediation_guidance=remediation,
         evidence={
             "file": file_path,
             "line": line,

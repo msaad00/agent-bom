@@ -7,6 +7,7 @@ import {
   Bug,
   ChevronRight,
   Fingerprint,
+  UserRound,
   Flame,
   KeyRound,
   ShieldCheck,
@@ -1165,6 +1166,7 @@ const ISSUE_TYPE_GLYPH: Record<IssueType, ElementType> = {
   vulnerability: Bug,
   misconfiguration: SlidersHorizontal,
   secret: KeyRound,
+  pii: UserRound,
   identity: Fingerprint,
   unclassified: Bug,
 };
@@ -1175,6 +1177,7 @@ const ISSUE_TYPE_BAR: Record<IssueType, string> = {
   vulnerability: "bg-[color:var(--text-secondary)]",
   misconfiguration: "bg-[color:var(--text-tertiary)]",
   secret: "bg-[color:var(--text-secondary)] opacity-60",
+  pii: "bg-[color:var(--text-secondary)] opacity-45",
   identity: "bg-[color:var(--text-tertiary)] opacity-50",
   unclassified: "bg-[color:var(--text-tertiary)] opacity-35",
 };
@@ -1263,7 +1266,7 @@ function SeverityIssueStrip({
     },
   ];
   const stackedTotal = bands.reduce((sum, band) => sum + band.value, 0);
-  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "identity", "unclassified"];
+  const issueTypes: IssueType[] = ["vulnerability", "misconfiguration", "secret", "pii", "identity", "unclassified"];
 
   return (
     <div

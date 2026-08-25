@@ -37,7 +37,7 @@ export interface EnrichedVuln extends Vulnerability {
   framework_tags?: string[] | undefined;
   controls?: Array<Record<string, unknown>> | undefined;
   finding_type?: string | undefined;
-  finding_class?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified" | undefined;
+  finding_class?: "vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified" | undefined;
   phantom_tools?: string[] | undefined;
   runtime_evidence?: {
     state?: "static" | "observed" | "blocked" | "replay_only" | string;

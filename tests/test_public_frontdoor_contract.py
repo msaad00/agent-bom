@@ -37,8 +37,7 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
         assert claim in svg
     for integration in (
         "Claude",
-        "Codex CLI",
-        "OpenAI · GPT",
+        "OpenAI",
         "Cursor",
         "GitHub Copilot",
         "VS Code",
@@ -63,13 +62,15 @@ def test_social_preview_is_portable_and_evidence_focused() -> None:
     assert "/Users/" not in svg
     assert "<image" not in svg
     assert "tint-" not in svg
-    assert svg.count("<symbol ") == 10
-    assert svg.count('href="#embedded-') == 11
+    assert svg.count("<symbol ") == 12
+    assert svg.count('href="#embedded-') == 13
     assert render_social_preview(template) == svg
     for relative_asset in (
         "brand/mark-dark.svg",
         "vendor/simple-icons/claude.svg",
+        "vendor/simple-icons/openai.svg",
         "vendor/simple-icons/cursor.svg",
+        "vendor/simple-icons/windsurf.svg",
         "vendor/simple-icons/githubcopilot.svg",
         "vendor/simple-icons/amazonwebservices.svg",
         "vendor/simple-icons/microsoftazure.svg",
@@ -123,7 +124,7 @@ def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in frontdoor
 
     header_note = readme.split('<p align="center">', 2)[2].split("</p>", 1)[0]
-    assert "not identical connector depth" in header_note
+    assert "connector depth varies" in header_note
 
     matrix = (ROOT / "docs" / "INTEGRATIONS.md").read_text(encoding="utf-8")
     for role in ("Client discovery", "Read-only cloud connection", "Scan and deploy", "Identity", "Data platform", "Analytics backend"):

@@ -23,6 +23,10 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from agent_bom.repo_ignore import RepositoryIgnore
 
 # Directory names never worth descending for source/manifest discovery: VCS
 # metadata, virtualenvs, vendored dependencies, build output, and tool caches.
@@ -88,6 +92,15 @@ def is_nested_worktree_root(dirpath: Path) -> bool:
     return False
 
 
+def _relative_posix(root: Path, path: Path) -> str:
+    """Return *path* relative to *root* as a POSIX string ("" for the root)."""
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return ""
+    return "" if rel == Path(".") else rel.as_posix()
+
+
 def _prune_dirnames(dirpath: Path, dirnames: list[str], skip: frozenset[str]) -> None:
     """Filter *dirnames* in place, removing skip dirs and nested worktrees."""
     dirnames[:] = [name for name in dirnames if name not in skip and not is_nested_worktree_root(dirpath / name)]
@@ -99,6 +112,7 @@ def iter_discovery_files(
     extra_skip_dirs: frozenset[str] = frozenset(),
     max_files: int | None = DEFAULT_MAX_FILES,
     on_error: Callable[[OSError], None] | None = None,
+    ignore: "RepositoryIgnore | None" = None,
 ) -> Iterator[Path]:
     """Yield files under *root*, pruning vendored/worktree subtrees while walking.
 
@@ -106,6 +120,12 @@ def iter_discovery_files(
     directory (bounding both wall-clock and peak memory) and stops after
     *max_files* files as a safety valve. *root* itself is always walked even if
     it is a worktree checkout, since the caller asked for it explicitly.
+
+    When *ignore* is supplied, repository ignore rules (``.gitignore`` /
+    ``.agentbomignore``) are applied **during** the walk so an ignored subtree is
+    pruned rather than enumerated and filtered — the traversal bound and peak
+    memory therefore improve rather than regress. *root* itself is never
+    self-ignored, since the caller named it explicitly.
 
     Yields files in ``os.walk`` order; callers that need determinism should sort
     the (already filtered, typically small) result.
@@ -118,7 +138,25 @@ def iter_discovery_files(
     for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False, onerror=on_error):
         dirpath = Path(dirpath_str)
         _prune_dirnames(dirpath, dirnames, skip)
+        if ignore is not None:
+            rel_dir = _relative_posix(root, dirpath)
+            ignore.enter_directory(rel_dir)
+            # Prune ignored subtrees in place: Git cannot re-include a file whose
+            # parent directory is excluded, so descending would be wasted work.
+            kept: list[str] = []
+            for name in dirnames:
+                child = f"{rel_dir}/{name}" if rel_dir else name
+                if ignore.is_ignored_dir(child):
+                    ignore.note_ignored()
+                else:
+                    kept.append(name)
+            dirnames[:] = kept
         for name in filenames:
+            if ignore is not None:
+                rel_file = f"{rel_dir}/{name}" if rel_dir else name
+                if ignore.is_ignored_file(rel_file):
+                    ignore.note_ignored()
+                    continue
             yield dirpath / name
             yielded += 1
             if max_files is not None and yielded >= max_files:

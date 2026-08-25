@@ -6172,6 +6172,7 @@
                   "vulnerability",
                   "misconfiguration",
                   "secret",
+                  "pii",
                   "identity",
                   "unclassified"
                 ],
@@ -18186,6 +18187,7 @@
                     "vulnerability",
                     "misconfiguration",
                     "secret",
+                    "pii",
                     "identity",
                     "unclassified"
                   ],
@@ -19050,6 +19052,7 @@
                     "vulnerability",
                     "misconfiguration",
                     "secret",
+                    "pii",
                     "identity",
                     "unclassified"
                   ],

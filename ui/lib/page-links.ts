@@ -17,7 +17,7 @@ export function findingsHref(input: {
   cve?: string | undefined;
   agent?: string | undefined;
   scan?: string | undefined;
-  issue?: "vulnerability" | "misconfiguration" | "secret" | "all";
+  issue?: "vulnerability" | "misconfiguration" | "secret" | "pii" | "all";
 } = {}): string {
   return buildHref("/findings", [
     ["q", input.q],

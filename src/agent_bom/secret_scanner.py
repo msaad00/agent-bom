@@ -23,10 +23,12 @@ Compliance:
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.repo_ignore import GITIGNORE_FILENAME, SCANNER_IGNORE_FILENAME, RepositoryIgnore
 from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
 from agent_bom.traversal import iter_discovery_files
 
@@ -280,6 +282,9 @@ class SecretScanResult:
     findings: list[SecretFinding] = field(default_factory=list)
     files_scanned: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Paths excluded by repository ignore rules. Skipping is a coverage claim,
+    # so it is counted and reported rather than silently dropped.
+    ignored_paths: int = 0
 
     @property
     def total(self) -> int:
@@ -293,6 +298,7 @@ class SecretScanResult:
         return {
             "findings": [f.to_dict() for f in self.findings],
             "files_scanned": self.files_scanned,
+            "ignored_paths": self.ignored_paths,
             "total": self.total,
             "critical": self.critical_count,
             "by_type": _group_by(self.findings, "secret_type"),
@@ -444,18 +450,24 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
         # are usually examples or contacts.
         if _should_scan_pii_line(file_path, line):
             for name, pattern in PII_PATTERNS:
-                if pattern.search(line):
-                    findings.append(
-                        SecretFinding(
-                            file_path=rel_path,
-                            line_number=line_num,
-                            secret_type=name,
-                            severity="medium",
-                            matched_preview="[PII_REDACTED]",
-                            category="pii",
-                        )
+                match = pattern.search(line)
+                if not match:
+                    continue
+                if name == "IP Address (IPv4)" and not _is_reportable_ipv4(match.group(0)):
+                    # Configuration, not personal data. Keep scanning the line so a
+                    # later pattern can still match it.
+                    continue
+                findings.append(
+                    SecretFinding(
+                        file_path=rel_path,
+                        line_number=line_num,
+                        secret_type=name,
+                        severity="medium",
+                        matched_preview="[PII_REDACTED]",
+                        category="pii",
                     )
-                    break
+                )
+                break
 
         # Entropy detection runs only on lines no named pattern already flagged,
         # so it adds coverage for novel secrets instead of duplicating findings.
@@ -463,6 +475,40 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
             findings.extend(_entropy_findings(line, rel_path, line_num))
 
     return findings
+
+
+# RFC 5737 reserves these purely for documentation and examples; Python's
+# ``ipaddress`` does not classify them, so they are listed explicitly.
+_DOCUMENTATION_IPV4_NETS = (
+    ipaddress.IPv4Network("192.0.2.0/24"),
+    ipaddress.IPv4Network("198.51.100.0/24"),
+    ipaddress.IPv4Network("203.0.113.0/24"),
+)
+
+
+def _is_reportable_ipv4(value: str) -> bool:
+    """Return False for literals that cannot identify a person.
+
+    ``127.0.0.1``, ``0.0.0.0``, RFC 1918 ranges and documentation ranges carry no
+    personal information: they are configuration, not PII. Reporting them as
+    personal data produced 475 findings on one ordinary repository — 366 of them
+    inside ``docs/`` — and buried the handful of real matches.
+    """
+    try:
+        address = ipaddress.IPv4Address(value)
+    except ValueError:
+        return False
+    if (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+        or address == ipaddress.IPv4Address("255.255.255.255")
+    ):
+        return False
+    return not any(address in net for net in _DOCUMENTATION_IPV4_NETS)
 
 
 def _should_scan_pii_line(file_path: Path, line: str) -> bool:
@@ -501,7 +547,9 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
         if warning not in result.warnings:
             result.warnings.append(warning)
 
-    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, on_error=traversal_error)):
+    ignore = RepositoryIgnore.for_root(project)
+
+    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, on_error=traversal_error, ignore=ignore)):
         if not f.is_file():
             continue
         if not _should_scan(f.relative_to(project)):
@@ -522,4 +570,10 @@ def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> S
         result.findings.extend(findings)
 
     result.files_scanned = file_count
+    result.ignored_paths = ignore.ignored_count
+    if ignore.ignored_count:
+        result.warnings.append(
+            f"Skipped {ignore.ignored_count} path(s) excluded by repository ignore rules "
+            f"({GITIGNORE_FILENAME} / {SCANNER_IGNORE_FILENAME})"
+        )
     return result

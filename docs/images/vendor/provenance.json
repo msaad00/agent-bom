@@ -157,6 +157,17 @@
       "sha256": "b45143544a125fbd03af4628dc16f9dad27ae01deee5a254b5e4a0bb90909dbf",
       "license": "CC0-1.0",
       "terms": "Unmodified Simple Icons vector used for nominative technical documentation; Okta trademarks remain Okta property."
+    },
+    {
+      "path": "docs/images/vendor/simple-icons/openai.svg",
+      "vendor": "OpenAI",
+      "source_page": "https://commons.wikimedia.org/wiki/File:ChatGPT_logo.svg",
+      "source_url": "https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg",
+      "source_path": "ChatGPT_logo.svg",
+      "sha256": "c6cbd6215801edd7e2f23d1bc80118e28e79d0d213fd6d3768afb050f93e80e2",
+      "modifications": "Extracted the six-fold blossom mark only (container square dropped); flattened the rotated <use xlink:href=\"#a\"> instances into explicit <path transform> elements so the icon carries no ids that could collide once embedded; fill set to currentColor for tinting.",
+      "terms": "Nominative use of the OpenAI mark to identify a supported integration in technical documentation, per the OpenAI brand guidelines at https://openai.com/brand/; OpenAI trademarks remain OpenAI property. Bytes were taken from the Wikimedia Commons copy recorded in source_url, not from openai.com, and are pinned by sha256.",
+      "brand_guidelines": "https://openai.com/brand/"
     }
   ],
   "neutral_icon_policy": "Use agent-bom neutral category icons when a vendor does not publish redistributable diagram assets or when trademark terms are unclear."

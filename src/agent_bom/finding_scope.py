@@ -42,11 +42,12 @@ SECURITY_DOMAIN_LABELS: dict[str, str] = {
     "aispm": "AISPM",
 }
 
-FindingClass = Literal["vulnerability", "misconfiguration", "secret", "identity", "unclassified"]
+FindingClass = Literal["vulnerability", "misconfiguration", "secret", "pii", "identity", "unclassified"]
 FINDING_CLASSES: tuple[FindingClass, ...] = (
     "vulnerability",
     "misconfiguration",
     "secret",
+    "pii",
     "identity",
     "unclassified",
 )
@@ -80,6 +81,9 @@ _MISCONFIGURATION_TYPES = {
     "CLOUD_BEST_PRACTICE_ERROR",
 }
 _SECRET_TYPES = {"CREDENTIAL_EXPOSURE"}
+# Personal data committed in source is a privacy concern, not a credential. It
+# shares the secret scanner as a *source*, so it must be decided by type first.
+_PII_TYPES = {"PII_EXPOSURE"}
 _IDENTITY_TYPES = {"CIEM_OVER_PRIVILEGE"}
 
 # Back-compat: rows persisted under the pre-rename ``appsec_sca`` key still
@@ -237,7 +241,7 @@ def _security_domain(
     if finding_type is FindingType.CIEM_OVER_PRIVILEGE:
         return "cspm"
 
-    if finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE):
+    if finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE, FindingType.PII_EXPOSURE):
         return "aspm"
 
     if source is None:
@@ -386,7 +390,7 @@ def _security_lenses(
     if primary is not None:
         lenses.add(primary)
 
-    is_code_or_secret = finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE) or source in (
+    is_code_or_secret = finding_type in (FindingType.SAST, FindingType.CREDENTIAL_EXPOSURE, FindingType.PII_EXPOSURE) or source in (
         FindingSource.SAST,
         FindingSource.SECRET_SCAN,
     )
@@ -450,6 +454,8 @@ def finding_class_for_row(row: Mapping[str, object]) -> FindingClass:
     source = str(row.get("source") or "").strip().upper()
     identifier = str(row.get("cve_id") or row.get("vulnerability_id") or "").strip().upper()
 
+    if finding_type in _PII_TYPES:
+        return "pii"
     if finding_type in _SECRET_TYPES or source == "SECRET_SCAN":
         return "secret"
     if finding_type in _IDENTITY_TYPES:

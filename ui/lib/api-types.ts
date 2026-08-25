@@ -1122,7 +1122,7 @@ export interface UnifiedFinding {
   occurrence_id?: string | undefined;
   finding_group_id?: string | undefined;
   finding_group_key?: string | undefined;
-  finding_class: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
+  finding_class: "vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified";
   canonical_id?: string | undefined;
   finding_type?: string | undefined;
   source?: string | undefined;
@@ -1258,7 +1258,7 @@ export interface FindingListEnvelope<T> {
   window?: ReadWindow | undefined;
   /** Canonical server-applied facets echoed for pagination/debugging. */
   filters?: {
-    finding_class?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
+    finding_class?: "vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified";
   } | undefined;
   /** Exact only when `facets_approximate` is false. */
   facets?: FindingFacets | undefined;
@@ -1287,7 +1287,7 @@ export interface ScopeCompleteness {
 }
 
 export interface FindingFacets {
-  finding_class: Record<"vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified", number>;
+  finding_class: Record<"vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified", number>;
   severity: Record<"critical" | "high" | "medium" | "low" | "info" | "unknown", number>;
   status: Record<"open" | "resolved", number>;
   domain: Record<"cspm" | "vuln" | "aspm" | "dspm" | "aispm", number>;

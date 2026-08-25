@@ -1,6 +1,6 @@
 import type { EnrichedVuln } from "@/lib/findings-view";
 
-export type IssueTypeFilter = "all" | "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
+export type IssueTypeFilter = "all" | "vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified";
 
 export type IssueType = Exclude<IssueTypeFilter, "all">;
 
@@ -22,6 +22,9 @@ const MISCONFIGURATION_TYPES = new Set([
   "CLOUD_BEST_PRACTICE_ERROR",
 ]);
 const SECRET_TYPES = new Set(["CREDENTIAL_EXPOSURE"]);
+// Personal data shares the secret scanner as a source, so it must be decided
+// by finding type before the source check below.
+const PII_TYPES = new Set(["PII_EXPOSURE"]);
 const IDENTITY_TYPES = new Set(["CIEM_OVER_PRIVILEGE"]);
 
 export type IssueTypeSignals = {
@@ -35,7 +38,7 @@ export type IssueTypeSignals = {
   exposed_credentials?: string[] | undefined;
 };
 
-/** Classify any finding-like signal into vuln / misconfig / secret / identity. */
+/** Classify any finding-like signal into vuln / misconfig / secret / pii / identity. */
 export function classifyIssueTypeFromSignals(signals: IssueTypeSignals): IssueType | null {
   if (signals.finding_class) return signals.finding_class;
   const findingType = (signals.finding_type ?? "").trim().toUpperCase();
@@ -43,6 +46,9 @@ export function classifyIssueTypeFromSignals(signals: IssueTypeSignals): IssueTy
     .map((source) => source.trim().toUpperCase());
   const creds = signals.exposed_credentials ?? [];
 
+  if (PII_TYPES.has(findingType)) {
+    return "pii";
+  }
   if (SECRET_TYPES.has(findingType) || sources.includes("SECRET_SCAN") || creds.length > 0) {
     return "secret";
   }
@@ -85,6 +91,7 @@ export const ISSUE_TYPE_FILTERS: { key: IssueTypeFilter; label: string; hint: st
   { key: "vulnerability", label: "Vulnerabilities", hint: "CVE / package risk" },
   { key: "misconfiguration", label: "Misconfigurations", hint: "Cloud, IaC, policy" },
   { key: "secret", label: "Secrets", hint: "Exposed credentials" },
+  { key: "pii", label: "Personal data", hint: "Personal data in source" },
   { key: "identity", label: "Identity", hint: "IAM / NHI exposure" },
   { key: "unclassified", label: "Unclassified", hint: "Needs taxonomy review" },
 ];
@@ -93,6 +100,7 @@ export const ISSUE_TYPE_SHORT: Record<IssueType, string> = {
   vulnerability: "CVE",
   misconfiguration: "Misconfig",
   secret: "Secret",
+  pii: "Personal",
   identity: "Identity",
   unclassified: "Other",
 };
@@ -108,10 +116,11 @@ export function emptyIssueSeverityMatrix(): IssueSeverityMatrix {
     vulnerability: emptySeverityBucket(),
     misconfiguration: emptySeverityBucket(),
     secret: emptySeverityBucket(),
+    pii: emptySeverityBucket(),
     identity: emptySeverityBucket(),
     unclassified: emptySeverityBucket(),
     totals: emptySeverityBucket(),
-    byType: { vulnerability: 0, misconfiguration: 0, secret: 0, identity: 0, unclassified: 0 },
+    byType: { vulnerability: 0, misconfiguration: 0, secret: 0, pii: 0, identity: 0, unclassified: 0 },
     openTotal: 0,
   };
 }

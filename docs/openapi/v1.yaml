@@ -4379,6 +4379,7 @@ components:
             - vulnerability
             - misconfiguration
             - secret
+            - pii
             - identity
             - unclassified
             type: string
@@ -12261,6 +12262,7 @@ paths:
             - vulnerability
             - misconfiguration
             - secret
+            - pii
             - identity
             - unclassified
             type: string
@@ -12794,6 +12796,7 @@ paths:
             - vulnerability
             - misconfiguration
             - secret
+            - pii
             - identity
             - unclassified
             type: string

@@ -1574,7 +1574,7 @@ export const api = {
     sla?: "overdue" | "due" | "unassigned";
     reachability?: "reachable" | "unreachable" | "unassessed";
     triage?: "not_affected" | "affected" | "under_investigation" | "untriaged";
-    findingClass?: "vulnerability" | "misconfiguration" | "secret" | "identity" | "unclassified";
+    findingClass?: "vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified";
     status?: "open" | "resolved" | "all";
     // Known-exploited only, or explicitly everything else. Omit for no filter —
     // `false` is the inverse, not the default.

@@ -242,10 +242,11 @@ describe("OverviewCockpit", () => {
           vulnerability: { critical: 1, high: 4, medium: 2, low: 0 },
           misconfiguration: { critical: 0, high: 3, medium: 1, low: 0 },
           secret: { critical: 1, high: 1, medium: 0, low: 0 },
+          pii: { critical: 0, high: 0, medium: 0, low: 0 },
           identity: { critical: 0, high: 0, medium: 0, low: 0 },
           unclassified: { critical: 0, high: 0, medium: 0, low: 0 },
           totals: { critical: 2, high: 8, medium: 3, low: 0 },
-          byType: { vulnerability: 7, misconfiguration: 4, secret: 2, identity: 0, unclassified: 0 },
+          byType: { vulnerability: 7, misconfiguration: 4, secret: 2, pii: 0, identity: 0, unclassified: 0 },
           openTotal: 13,
         }}
       />,

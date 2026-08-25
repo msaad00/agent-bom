@@ -28,7 +28,7 @@ function finding(overrides: Partial<EnrichedVuln> = {}): EnrichedVuln {
 }
 
 const facets: FindingFacets = {
-  finding_class: { vulnerability: 9, misconfiguration: 2, secret: 1, identity: 0, unclassified: 1 },
+  finding_class: { vulnerability: 9, misconfiguration: 2, secret: 1, pii: 0, identity: 0, unclassified: 1 },
   severity: { critical: 2, high: 7, medium: 3, low: 1, info: 0, unknown: 0 },
   status: { open: 12, resolved: 1 },
   domain: { cspm: 2, vuln: 9, aspm: 1, dspm: 0, aispm: 1 },

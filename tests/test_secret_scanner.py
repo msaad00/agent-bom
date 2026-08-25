@@ -92,11 +92,15 @@ def test_scan_secrets_suppresses_doc_pii_but_keeps_doc_credentials(tmp_path: Pat
 
 
 def test_scan_secrets_keeps_ipv4_pii_in_code_config_and_secret_contexts(tmp_path: Path):
-    (tmp_path / "app.py").write_text('ADMIN_BIND_IP = "198.51.100.24"\n', encoding="utf-8")
-    (tmp_path / "service.yaml").write_text("upstream_ip: 198.51.100.25\n", encoding="utf-8")
-    (tmp_path / ".env").write_text("SERVICE_IP=198.51.100.26\n", encoding="utf-8")
+    # This test pins *context* gating (code/config/.env report; prose does not).
+    # It deliberately uses routable addresses: RFC 5737 documentation ranges and
+    # RFC 1918 private ranges identify no one and are suppressed by address class,
+    # which would otherwise mask the context behaviour under test.
+    (tmp_path / "app.py").write_text('ADMIN_BIND_IP = "8.8.8.8"\n', encoding="utf-8")
+    (tmp_path / "service.yaml").write_text("upstream_ip: 9.9.9.9\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("SERVICE_IP=1.1.1.1\n", encoding="utf-8")
     (tmp_path / "implementation-notes.txt").write_text(
-        "The tutorial mentions 198.51.100.27 as an example address.\n",
+        "The tutorial mentions 4.4.4.4 as an example address.\n",
         encoding="utf-8",
     )
 

@@ -1336,9 +1336,7 @@ def create_mcp_server(
         environment: Annotated[str | None, Field(description="Filter by environment facet, e.g. 'production'.")] = None,
         provider: Annotated[str | None, Field(description="Filter by provider facet, e.g. 'aws', 'snowflake'.")] = None,
         source: Annotated[str | None, Field(description="Filter by data-source / provenance facet.")] = None,
-        severity: Annotated[
-            str | None, Field(description="Filter by the asset's highest directly linked finding severity.")
-        ] = None,
+        severity: Annotated[str | None, Field(description="Filter by the asset's highest directly linked finding severity.")] = None,
         min_severity: Annotated[
             str | None, Field(description="Minimum severity floor for included assets: critical / high / medium / low.")
         ] = None,

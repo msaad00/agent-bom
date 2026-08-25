@@ -2148,9 +2148,7 @@ class SQLiteGraphStore:
             )
             facet_params.extend([*source_params, *source_params])
             facet_rows = conn.execute(cte + " UNION ALL ".join(facet_sql), [*cte_params, *facet_params]).fetchall()
-            facets: dict[str, list[dict[str, Any]]] = {
-                name: [] for name in ("type", "source", "provider", "environment", "severity")
-            }
+            facets: dict[str, list[dict[str, Any]]] = {name: [] for name in ("type", "source", "provider", "environment", "severity")}
             total = 0
             for facet, value, count in facet_rows:
                 if facet == "__total__":
@@ -2265,9 +2263,7 @@ class SQLiteGraphStore:
         ).fetchall()
         summaries: dict[str, dict[str, Any]] = {}
         for asset_id, finding_id, finding_severity in rows:
-            summary = summaries.setdefault(
-                str(asset_id), {"total": 0, "by_severity": {}, "ids": [], "top_severity": ""}
-            )
+            summary = summaries.setdefault(str(asset_id), {"total": 0, "by_severity": {}, "ids": [], "top_severity": ""})
             summary["total"] += 1
             summary["ids"].append(str(finding_id))
             if finding_severity:

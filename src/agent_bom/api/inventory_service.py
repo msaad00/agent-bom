@@ -216,11 +216,7 @@ async def build_summary(
         limit=1,
     )
     type_buckets = result.get("facets", {}).get("type", [])
-    node_types: dict[str, int] = {
-        str(bucket["value"]): int(bucket["count"])
-        for bucket in type_buckets
-        if bucket.get("value") is not None
-    }
+    node_types: dict[str, int] = {str(bucket["value"]): int(bucket["count"]) for bucket in type_buckets if bucket.get("value") is not None}
 
     by_type: dict[str, int] = {}
     by_group: dict[str, int] = {group: 0 for group in _TYPE_GROUPS}
@@ -326,9 +322,7 @@ async def build_asset_list(
     page_rows: list[dict[str, Any]] = []
     for node in result.get("nodes", []):
         row = asset_row(node)
-        row["finding_summary"] = summaries.get(
-            node.id, {"total": 0, "by_severity": {}, "ids": [], "top_severity": ""}
-        )
+        row["finding_summary"] = summaries.get(node.id, {"total": 0, "by_severity": {}, "ids": [], "top_severity": ""})
         row["relationship_count"] = int(relationship_counts.get(node.id, 0))
         page_rows.append(row)
     total = int(result.get("total", 0))
@@ -359,10 +353,7 @@ async def build_asset_list(
             "next_cursor": next_cursor_out,
             "has_more": has_more,
             "facet_filtered": bool(
-                (environment or "").strip()
-                or (provider or "").strip()
-                or (source or "").strip()
-                or normalized_severity
+                (environment or "").strip() or (provider or "").strip() or (source or "").strip() or normalized_severity
             ),
         },
         "facets": {name: {"buckets": buckets} for name, buckets in result.get("facets", {}).items()},

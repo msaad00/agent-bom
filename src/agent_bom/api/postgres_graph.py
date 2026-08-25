@@ -2779,9 +2779,7 @@ class PostgresGraphStore:
             )
             facet_params.extend([*source_params, *source_params])
             facet_rows = conn.execute(cte + " UNION ALL ".join(facet_sql), [*cte_params, *facet_params]).fetchall()
-            facets: dict[str, list[dict[str, Any]]] = {
-                name: [] for name in ("type", "source", "provider", "environment", "severity")
-            }
+            facets: dict[str, list[dict[str, Any]]] = {name: [] for name in ("type", "source", "provider", "environment", "severity")}
             total = 0
             for facet, value, count in facet_rows:
                 if facet == "__total__":
@@ -2890,7 +2888,7 @@ class PostgresGraphStore:
                 if not summary["top_severity"]:
                     summary["top_severity"] = str(finding_severity)
         rel_rows = conn.execute(
-                f"""SELECT node_id, COUNT(*) FROM (
+            f"""SELECT node_id, COUNT(*) FROM (
                   SELECT source_id AS node_id, source_id, target_id, relationship FROM graph_edges
                     WHERE tenant_id = %s AND scan_id = %s AND source_id IN ({node_marks})
                   UNION

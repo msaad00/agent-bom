@@ -2368,8 +2368,10 @@ async function main() {
     });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click({ force: true });
-      await fleetPage.waitForTimeout(500);
-      await scrollTo(fleetPage, 0);
+      const enforcementAction = fleetPage.getByText("Re-enforce gateway deny").first();
+      await enforcementAction.waitFor({ state: "visible", timeout: 8_000 });
+      await enforcementAction.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await fleetPage.waitForTimeout(350);
     }, {
       expectedText: ["Lifecycle Distribution", "developer-copilot", "Quarantined", "Re-enforce gateway deny"],
       expectedApiPaths: ["/v1/fleet", "/v1/fleet/stats"],

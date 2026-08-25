@@ -35,7 +35,7 @@ before replacing any published product image.
    never uses the Next.js development server, so transient compilation state
    cannot enter published assets.
 
-3. Inspect all 21 PNGs and the manifest at the final README display size. The
+3. Inspect all 22 PNGs and the manifest at the final README display size. The
    harness stages files and publishes them only after every page passes.
 
 Backend-connected release evidence is a separate end-to-end smoke. For that

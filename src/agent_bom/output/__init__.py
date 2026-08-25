@@ -53,6 +53,7 @@ from agent_bom.output.json_fmt import (  # noqa: E402
     _build_remediation_json,  # noqa: F401
     _risk_narrative,  # noqa: F401
     export_json,  # noqa: F401
+    redact_json_payload,  # noqa: F401
     to_json,  # noqa: F401
     to_redacted_json,  # noqa: F401
 )

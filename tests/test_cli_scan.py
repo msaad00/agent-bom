@@ -414,8 +414,93 @@ def test_scan_records_local_analytics_without_save():
         result = _run(["scan", "--demo", "--no-scan", "--quiet"])
 
     assert result.exit_code == 0
-    assert calls
+    assert len(calls) == 1
     assert calls[0][1]["source"] == "cli"
+
+
+def test_scan_json_reuses_canonical_report_projection(monkeypatch, tmp_path):
+    """JSON output must not rebuild the full report after scan finalization."""
+    import agent_bom.cli.agents.scan_cmd as scan_cmd
+    import agent_bom.output.json_fmt as json_fmt
+
+    output = tmp_path / "report.json"
+    original_to_json = scan_cmd.to_json
+    projection_calls = 0
+
+    def _count_projection(report):
+        nonlocal projection_calls
+        projection_calls += 1
+        return original_to_json(report)
+
+    def _unexpected_reprojection(_report):
+        raise AssertionError("JSON output rebuilt the finalized report projection")
+
+    monkeypatch.setattr(scan_cmd, "to_json", _count_projection)
+    monkeypatch.setattr(json_fmt, "to_json", _unexpected_reprojection)
+    monkeypatch.setattr("agent_bom.db.local_analytics.record_scan_report_best_effort", lambda *_args, **_kwargs: None)
+
+    result = _run(
+        [
+            "scan",
+            "--demo",
+            "--no-scan",
+            "--offline",
+            "--no-auto-update-db",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+            "--exit-zero",
+            "--quiet",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert projection_calls == 1
+    assert json.loads(output.read_text(encoding="utf-8"))["document_type"] == "AI-BOM"
+
+
+def test_scan_agent_mode_reuses_canonical_report_projection(monkeypatch):
+    """Agent envelopes must reuse the report dict persisted by the CLI."""
+    import agent_bom.cli.agents.scan_cmd as scan_cmd
+    import agent_bom.output.json_fmt as json_fmt
+
+    original_to_json = scan_cmd.to_json
+    projection_calls = 0
+
+    def _count_projection(report):
+        nonlocal projection_calls
+        projection_calls += 1
+        return original_to_json(report)
+
+    def _unexpected_reprojection(_report):
+        raise AssertionError("agent-mode output rebuilt the finalized report projection")
+
+    monkeypatch.setattr(scan_cmd, "to_json", _count_projection)
+    monkeypatch.setattr(json_fmt, "to_json", _unexpected_reprojection)
+    monkeypatch.setattr("agent_bom.db.local_analytics.record_scan_report_best_effort", lambda *_args, **_kwargs: None)
+
+    result = _run(["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"])
+
+    assert result.exit_code == 0, result.output
+    assert projection_calls == 1
+    assert json.loads(result.output)["data"]["document_type"] == "AI-BOM"
+
+
+def test_scan_save_records_local_analytics_once(monkeypatch, tmp_path):
+    """History saving is the one analytics write for ``--save`` scans."""
+    import agent_bom.history as history
+
+    calls = []
+    monkeypatch.setattr(history, "HISTORY_DIR", tmp_path / "history")
+    monkeypatch.setattr("agent_bom.db.local_analytics.record_scan_report_best_effort", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    result = _run(["scan", "--demo", "--save", "--no-scan", "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert calls[0][1]["source"] == "cli"
+    assert calls[0][1]["artifact_path"].suffix == ".json"
 
 
 def test_scan_empty_state_shows_real_client_paths(monkeypatch):

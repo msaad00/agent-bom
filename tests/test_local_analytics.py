@@ -221,7 +221,7 @@ def test_cli_agents_scan_mirrors_to_local_analytics(monkeypatch, tmp_path):
 
     with sqlite3.connect(db_path) as conn:
         count = conn.execute("SELECT COUNT(*) FROM scan_runs").fetchone()[0]
-    assert count >= 1, "CLI scan must persist to local-analytics scan_runs"
+    assert count == 1, "one CLI scan must persist exactly one local-analytics run"
 
 
 def test_cli_local_analytics_mirror_is_best_effort(monkeypatch, tmp_path):

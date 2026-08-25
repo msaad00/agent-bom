@@ -1527,17 +1527,35 @@ def to_json(report: AIBOMReport) -> dict:
     return result
 
 
-def to_redacted_json(report: AIBOMReport) -> dict[str, Any]:
-    """Return a JSON report payload safe for stdout and on-disk export."""
-    data = sanitize_sensitive_payload(to_json(report))
+def redact_json_payload(report_json: dict[str, Any]) -> dict[str, Any]:
+    """Redact an existing canonical report projection for public output."""
+    data = sanitize_sensitive_payload(report_json)
     if isinstance(data, dict):
         return data
     return {"document_type": "AI-BOM", "redaction_error": "report sanitizer returned a non-object payload"}
 
 
-def export_json(report: AIBOMReport, output_path: str) -> None:
+def to_redacted_json(
+    report: AIBOMReport,
+    *,
+    report_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a JSON report payload safe for stdout and on-disk export.
+
+    ``report_json`` lets finalized scan paths reuse their canonical projection;
+    direct callers retain the original build-and-redact behavior.
+    """
+    return redact_json_payload(report_json if report_json is not None else to_json(report))
+
+
+def export_json(
+    report: AIBOMReport,
+    output_path: str,
+    *,
+    report_json: dict[str, Any] | None = None,
+) -> None:
     """Export report as JSON file."""
-    data = to_redacted_json(report)
+    data = to_redacted_json(report, report_json=report_json)
     with Path(output_path).open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
         fh.write("\n")

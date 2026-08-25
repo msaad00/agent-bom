@@ -147,6 +147,7 @@ def _stdout_serialization(
     *,
     exclude_unfixable: bool,
     offline_html: bool,
+    report_json: dict[str, Any] | None = None,
 ) -> str | None:
     """Best-effort serialize the report for stdout fallback when -o write fails.
 
@@ -162,7 +163,7 @@ def _stdout_serialization(
             from agent_bom.output.badge import to_badge
 
             return json.dumps(to_badge(report), indent=2)
-        return json.dumps(to_redacted_json(report), indent=2)
+        return json.dumps(to_redacted_json(report, report_json=report_json), indent=2)
     if output_format == "cyclonedx":
         return json.dumps(to_cyclonedx(report), indent=2)
     if output_format == "sarif":
@@ -208,6 +209,7 @@ def _enospc_report_fallback(
     *,
     exclude_unfixable: bool,
     offline_html: bool,
+    report_json: dict[str, Any] | None = None,
 ) -> Iterator[None]:
     """Catch a full-disk (or any) failure writing the ``-o`` report.
 
@@ -229,6 +231,7 @@ def _enospc_report_fallback(
             output_format,
             exclude_unfixable=exclude_unfixable,
             offline_html=offline_html,
+            report_json=report_json,
         )
         if serialized is not None:
             con.print(f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — emitting results to stdout instead.")
@@ -356,7 +359,7 @@ def render_output(
             elif agent_mode:
                 payload = success_envelope(
                     command="agents",
-                    report_json=to_redacted_json(report),
+                    report_json=to_redacted_json(report, report_json=ctx.report_json),
                     exit_code=ctx.exit_code,
                     token_budget=agent_token_budget,
                     full=agent_mode_full,
@@ -364,7 +367,7 @@ def render_output(
                 )
                 click.echo(dumps_envelope(payload), nl=False)
             else:
-                safe_json = json.dumps(to_redacted_json(report), indent=2)
+                safe_json = json.dumps(to_redacted_json(report, report_json=ctx.report_json), indent=2)
                 click.echo(safe_json, nl=False)
             sys.stdout.write("\n")
         elif _is_null_device(output) and output_format in ("console", "text", "plain"):
@@ -462,11 +465,11 @@ def render_output(
             _print_text(report, blast_radii)
         elif output_format == "json":
             if output in (None, "", "-"):
-                safe_json = json.dumps(to_redacted_json(report), indent=2)
+                safe_json = json.dumps(to_redacted_json(report, report_json=ctx.report_json), indent=2)
                 click.echo(safe_json)
             else:
                 out_path = _resolve_output_path(output, output_format)
-                export_json(report, out_path)
+                export_json(report, out_path, report_json=ctx.report_json)
                 con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
         elif output_format == "cyclonedx":
             out_path = _resolve_output_path(output, output_format)
@@ -580,7 +583,7 @@ def render_output(
             if output.endswith(".cdx.json"):
                 export_cyclonedx(report, output)
             elif output.endswith(".json"):
-                export_json(report, output)
+                export_json(report, output, report_json=ctx.report_json)
             elif output.endswith(".sarif"):
                 export_sarif(report, output, exclude_unfixable=exclude_unfixable)
             elif output.endswith(".spdx.json"):
@@ -627,6 +630,7 @@ def render_output(
             output_format,
             exclude_unfixable=exclude_unfixable,
             offline_html=offline_html,
+            report_json=ctx.report_json,
         ):
             _emit_report()
 
